@@ -655,6 +655,46 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* Secondary Stats Row */}
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Record statistics">
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants')}>
+          <div className="flex items-center gap-2">
+            <Gavel className="w-4 h-4 text-red-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.active_warrants || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Active Warrants</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/serve')}>
+          <div className="flex items-center gap-2">
+            <Briefcase className="w-4 h-4 text-amber-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.pending_serve || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Pending Serve</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/cases')}>
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-purple-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.open_cases || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Open Cases</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/records')}>
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-gray-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.total_persons || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Total Persons</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Calls by priority">
         {[
