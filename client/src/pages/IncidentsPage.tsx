@@ -1010,7 +1010,19 @@ export default function IncidentsPage() {
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}
                 >
-                  <td className="font-bold text-white text-xs font-mono">{inc.incident_number}</td>
+                  <td className="font-bold text-white text-xs font-mono">
+                    <span className="cursor-pointer hover:text-green-400 transition-colors" title="Click to copy"
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(inc.incident_number || ''); }}>
+                      {inc.incident_number}
+                    </span>
+                    {/* Age indicator */}
+                    {inc.occurred_at && (() => {
+                      const days = Math.floor((Date.now() - new Date(inc.occurred_at).getTime()) / 86400000);
+                      if (days > 30) return <span className="ml-1 text-[7px] text-red-400 font-normal">{days}d</span>;
+                      if (days > 7) return <span className="ml-1 text-[7px] text-amber-400 font-normal">{days}d</span>;
+                      return null;
+                    })()}
+                  </td>
                   <td className="text-xs text-brand-400">
                     <span className="inline-flex items-center gap-1">
                       {(() => { const Icon = INCIDENT_TYPE_ICONS[inc.type] || FileText; return <Icon className="w-3 h-3 flex-shrink-0" />; })()}
