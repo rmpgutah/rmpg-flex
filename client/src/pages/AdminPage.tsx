@@ -28,6 +28,7 @@ import {
   Plug,
   ClipboardList,
   Brain,
+  BarChart3,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -67,6 +68,7 @@ import AdminEmailTab from './admin/AdminEmailTab';
 import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 import AdminAISettingsTab from './admin/AdminAISettingsTab';
 import AdminGodModeTab from './admin/AdminGodModeTab';
+import AdminDashboardTab from './admin/AdminDashboardTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -231,7 +233,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode';
+type TabId = 'dashboard' | 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -245,7 +247,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode'];
+  const VALID_TABS = ['dashboard', 'users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -254,7 +256,7 @@ export default function AdminPage() {
       const saved = localStorage.getItem(LS_ADMIN_TAB);
       if (saved && VALID_TABS.includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
-    return 'users';
+    return 'dashboard';
   });
   const setActiveTab = useCallback((tab: TabId) => {
     setActiveTabState(tab);
@@ -623,6 +625,12 @@ export default function AdminPage() {
 
   const tabGroups: { category: string; tabs: { id: TabId; label: string; icon: React.ElementType }[] }[] = [
     {
+      category: 'Overview',
+      tabs: [
+        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
+      ],
+    },
+    {
       category: 'People & Access',
       tabs: [
         { id: 'users', label: 'Users', icon: Users },
@@ -811,6 +819,13 @@ export default function AdminPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`}>
+        {activeTab === 'dashboard' && (
+          <AdminDashboardTab
+            LoadingSpinner={LoadingSpinner}
+            onNavigate={(tabId) => setActiveTab(tabId as TabId)}
+          />
+        )}
+
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
