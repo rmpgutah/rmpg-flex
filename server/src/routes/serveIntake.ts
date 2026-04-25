@@ -70,20 +70,28 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
       const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-'));
       const tmpPdf = join(tmpDir, 'input.pdf');
       writeFileSync(tmpPdf, body);
+      // Try both pdftotext modes and pick the one with more useful content
+      let layoutText = '';
+      let rawText = '';
       try {
-        const { stdout } = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
-        res.json({ text: stdout, length: stdout.length });
-      } catch {
-        try {
-          const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
-          res.json({ text: stdout, length: stdout.length });
-        } catch {
-          res.json({ text: '', length: 0 });
-        }
-      } finally {
-        try { unlinkSync(tmpPdf); } catch {}
-        try { unlinkSync(tmpDir); } catch {}
-      }
+        const r1 = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
+        layoutText = r1.stdout || '';
+      } catch { /* layout mode failed */ }
+      try {
+        const r2 = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
+        rawText = r2.stdout || '';
+      } catch { /* raw mode failed */ }
+
+      // Pick the better result:
+      // - Layout mode preserves column structure (good for ICU field sheets)
+      // - Raw mode avoids column bleed (good for court dockets)
+      // - Use layout if it has structured labels, otherwise use the longer one
+      const hasStructuredLabels = /Party to Serve|Instructions|Documents|Plaintiff|Defendant/i.test(layoutText);
+      const text = hasStructuredLabels ? layoutText : (layoutText.length >= rawText.length ? layoutText : rawText);
+      // Cleanup temp files
+      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
+      try { require('fs').rmdirSync(tmpDir); } catch { /* ignore */ }
+      res.json({ text, length: text.length });
     } catch {
       res.status(500).json({ error: 'Text extraction failed', text: '' });
     }
