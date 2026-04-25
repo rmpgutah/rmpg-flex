@@ -2089,8 +2089,27 @@ export function pruneDeadFederalSources(): void {
       const r = disable.run('Duplicate alias — see federal_* equivalent', key);
       if (r.changes > 0) aliases++;
     }
-    if (dead || aliases) {
-      console.log(`[Warrant Scraper] Pruned federal sources: ${dead} perma-blocked, ${aliases} duplicate aliases`);
+    // ── Sweep zombie active records ────────────────────────────
+    // Disabled sources never re-scrape, so detectClearedWarrants() never
+    // fires for them. Their old records stay status='active' forever and
+    // pollute search results (e.g. 50 stale `fed_fbi_wanted` records that
+    // were pulled before the canonical `federal_fbi_wanted` source took
+    // over). Mark them cleared with a recognisable reason so analysts
+    // can distinguish "actually cleared on the source" from "we stopped
+    // tracking this source".
+    const sweep = db.prepare(
+      `UPDATE scraped_warrants
+         SET status = 'cleared',
+             cleared_at = CASE WHEN cleared_at IS NULL THEN datetime('now','localtime') ELSE cleared_at END
+       WHERE status = 'active' AND source_key = ?`,
+    );
+    let zombies = 0;
+    for (const key of [...PERMA_BLOCKED_FED_KEYS, ...REDUNDANT_ALIAS_KEYS]) {
+      const r = sweep.run(key);
+      zombies += r.changes;
+    }
+    if (dead || aliases || zombies) {
+      console.log(`[Warrant Scraper] Pruned federal sources: ${dead} perma-blocked, ${aliases} duplicate aliases, ${zombies} zombie records cleared`);
     }
     _federalSourcesPruned = true;
   } catch (err: any) {

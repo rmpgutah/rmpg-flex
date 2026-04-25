@@ -42,7 +42,42 @@ function makeDb(): Database.Database {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     )
   `).run();
+  // Mirror the production scraped_warrants schema for the zombie-sweep
+  // tests below (only the columns the sweep touches are required).
+  db.prepare(`
+    CREATE TABLE scraped_warrants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_key TEXT NOT NULL,
+      first_name TEXT,
+      last_name TEXT,
+      status TEXT NOT NULL DEFAULT 'active',
+      cleared_at TEXT
+    )
+  `).run();
   return db;
+}
+
+function seedZombieWarrants(
+  db: Database.Database,
+  rows: { source_key: string; status?: string }[],
+): void {
+  const ins = db.prepare(
+    `INSERT INTO scraped_warrants (source_key, first_name, last_name, status)
+     VALUES (?, 'Zombie', 'Record', ?)`,
+  );
+  for (const r of rows) ins.run(r.source_key, r.status ?? 'active');
+}
+
+function countActive(db: Database.Database, source_key: string): number {
+  return (db.prepare(
+    "SELECT COUNT(*) as n FROM scraped_warrants WHERE source_key = ? AND status = 'active'",
+  ).get(source_key) as { n: number }).n;
+}
+
+function countCleared(db: Database.Database, source_key: string): number {
+  return (db.prepare(
+    "SELECT COUNT(*) as n FROM scraped_warrants WHERE source_key = ? AND status = 'cleared'",
+  ).get(source_key) as { n: number }).n;
 }
 
 function seedFederalSources(db: Database.Database, keys: { source_key: string; enabled: number }[]): void {
@@ -129,6 +164,49 @@ describe('pruneDeadFederalSources', () => {
     testDb = new Database(':memory:');
     _resetFederalPruningForTests();
     expect(() => pruneDeadFederalSources()).not.toThrow();
+  });
+
+  it('sweeps active records from disabled sources to cleared', () => {
+    seedFederalSources(testDb, [
+      { source_key: 'fed_fbi_wanted', enabled: 1 },
+      { source_key: 'federal_fbi_wanted', enabled: 1 },  // canonical, untouched
+      { source_key: 'fed_atf_wanted', enabled: 1 },
+    ]);
+    seedZombieWarrants(testDb, [
+      // Stale alias rows that should get swept
+      { source_key: 'fed_fbi_wanted' },
+      { source_key: 'fed_fbi_wanted' },
+      { source_key: 'fed_atf_wanted' },
+      // Canonical source — must NOT be swept
+      { source_key: 'federal_fbi_wanted' },
+      { source_key: 'federal_fbi_wanted' },
+    ]);
+
+    pruneDeadFederalSources();
+
+    expect(countActive(testDb, 'fed_fbi_wanted')).toBe(0);
+    expect(countCleared(testDb, 'fed_fbi_wanted')).toBe(2);
+    expect(countActive(testDb, 'fed_atf_wanted')).toBe(0);
+    expect(countCleared(testDb, 'fed_atf_wanted')).toBe(1);
+    // Canonical source's records survive untouched.
+    expect(countActive(testDb, 'federal_fbi_wanted')).toBe(2);
+    expect(countCleared(testDb, 'federal_fbi_wanted')).toBe(0);
+  });
+
+  it('preserves pre-existing cleared_at timestamps when re-clearing', () => {
+    seedFederalSources(testDb, [{ source_key: 'fed_fbi_wanted', enabled: 1 }]);
+    // Already cleared with a known timestamp — sweep must not overwrite it.
+    testDb.prepare(
+      `INSERT INTO scraped_warrants (source_key, first_name, last_name, status, cleared_at)
+       VALUES ('fed_fbi_wanted', 'Old', 'Record', 'cleared', '2024-01-01T00:00:00')`,
+    ).run();
+
+    pruneDeadFederalSources();
+
+    const row = testDb.prepare(
+      `SELECT cleared_at FROM scraped_warrants WHERE first_name = 'Old'`,
+    ).get() as { cleared_at: string };
+    expect(row.cleared_at).toBe('2024-01-01T00:00:00');
   });
 });
 
