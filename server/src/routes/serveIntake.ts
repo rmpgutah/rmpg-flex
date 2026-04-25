@@ -787,6 +787,22 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     }));
     broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'pso_client_request' } });
 
+    // ── Auto-create document folder: Year > Month > "JobNumber - DefendantLast" ──
+    let documentFolderId: number | null = null;
+    try {
+      const { ensureIntakeFolderPath } = await import('./documentFolders');
+      documentFolderId = ensureIntakeFolderPath(db, userId, parsed.jobNumber, parsed.defendant.last, now);
+      // Link any files already attached to this call into the folder
+      if (documentFolderId) {
+        db.prepare('UPDATE attachments SET folder_id = ? WHERE entity_type = ? AND entity_id = ? AND folder_id IS NULL')
+          .run(documentFolderId, 'call', callId);
+        db.prepare('UPDATE attachments SET folder_id = ? WHERE entity_type = ? AND entity_id = ? AND folder_id IS NULL')
+          .run(documentFolderId, 'case', caseId);
+      }
+    } catch (err) {
+      log.warn({ err }, 'document folder creation failed (non-fatal)');
+    }
+
     res.json({
       success: true,
       call_id: callId,
@@ -799,6 +815,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       property_id: propertyId,
       serve_queue_id: serveQueueId,
       serve_attempt_ids: attemptIds,
+      document_folder_id: documentFolderId,
       client_id: clientId,
       latitude, longitude,
       sector_code: sectorCode || null,

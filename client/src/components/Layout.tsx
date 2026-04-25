@@ -48,6 +48,7 @@ import {
   Mail,
   GraduationCap,
   Microscope,
+  FolderOpen,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -123,6 +124,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
+  '/documents': 'Documents',
   '/hr': 'HR Console',
   '/admin': 'Admin',
 };
@@ -167,6 +169,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
     { path: '/serve', icon: Briefcase, label: 'Process Server' },
+    { path: '/documents', icon: FolderOpen, label: 'Documents' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
