@@ -118,6 +118,14 @@ import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
 
+// ─── Reverse-proxy trust ─────────────────────────────
+// In production we sit behind nginx (which sets X-Forwarded-For). Without
+// `trust proxy = 1`, express-rate-limit raises ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and req.ip resolves to 127.0.0.1, defeating per-IP rate-limiting.
+// Value `1` trusts EXACTLY one proxy hop — clients cannot spoof their IP
+// by stuffing X-Forwarded-For (which `true` would allow).
+app.set('trust proxy', 1);
+
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
 if (config.isProduction || config.ssl.enabled) {
