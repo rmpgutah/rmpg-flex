@@ -286,6 +286,19 @@ async function processQueue(): Promise<void> {
     }
   }
 
+  // Spillman-style "Roger" courtesy beep at end of TTS — single soft
+  // pip signaling "transmission ended, channel free." This is the
+  // dispatch-room equivalent of a Motorola two-way radio tail beep
+  // and gives operators an unambiguous audio bracket for each alert.
+  // Honors per-category mute so dispatchers who find it noisy can
+  // silence just the beep without disabling all TTS.
+  try {
+    const { isAlertSoundEnabled } = await import('./alertSoundPrefs');
+    if (isAlertSoundEnabled('roger_beep')) {
+      await playToneAsync('roger');
+    }
+  } catch { /* tone or prefs module unavailable; non-fatal */ }
+
   isSpeaking = false;
 }
 

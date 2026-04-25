@@ -7,7 +7,9 @@
 // ============================================================
 
 type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'alert' | 'chirp' | 'double_chirp' | 'descending' | 'p1_alert' | 'panic_continuous'
-  | 'gps_warn' | 'gps_lost' | 'gps_restored' | 'pursuit_alert' | 'beat_breach' | 'ack';
+  | 'gps_warn' | 'gps_lost' | 'gps_restored' | 'pursuit_alert' | 'beat_breach' | 'ack'
+  | 'bonk' | 'roger' | 'enroute_chirp' | 'onscene_chirp' | 'cleared_chirp'
+  | 'all_call' | 'priority_preempt' | 'unit_to_unit' | 'stack_pip' | 'login_ok' | 'logoff';
 
 let audioCtx: AudioContext | null = null;
 
@@ -291,6 +293,159 @@ const PROFILES: Record<ToneType, ToneProfile> = {
     gain: 0.14,
     steps: [
       { freq: 1500, start: 0, dur: 0.04 },
+    ],
+  },
+
+  // ── Bonk: Motorola/Spillman command-rejected tone ────────────
+  // Classic descending two-step "wuh-wuh" — A4 → F4 (440 → 349 Hz),
+  // each ~140ms, sawtooth wave for the slightly raspy texture
+  // Spillman dispatch consoles are known for. Used when an action
+  // is rejected (invalid command, permission denied, etc.).
+  bonk: {
+    type: 'sawtooth',
+    gain: 0.20,
+    steps: [
+      { freq: 440, start: 0,    dur: 0.14 },
+      { freq: 349, start: 0.15, dur: 0.18 },
+    ],
+  },
+
+  // ── Roger: End-of-transmission confirmation pip ──────────────
+  // Single brief 1200 Hz sine pip, 60ms — appended after every TTS
+  // announcement to mimic the Motorola "Roger beep" / "courtesy
+  // tone" that signals "transmission ended, channel free." Quiet
+  // by design; it shouldn't compete with the voice itself.
+  roger: {
+    type: 'sine',
+    gain: 0.15,
+    steps: [
+      { freq: 1200, start: 0, dur: 0.06 },
+    ],
+  },
+
+  // ── Enroute Chirp: Unit reports enroute to call ──────────────
+  // Single ascending step 700 → 900 Hz (60ms each, no gap).
+  // Spillman uses one of three distinct status confirmations for
+  // dispatch → enroute → on-scene → cleared transitions. Each is
+  // a one-shot chirp learnable by sound alone.
+  enroute_chirp: {
+    type: 'sine',
+    gain: 0.18,
+    steps: [
+      { freq: 700, start: 0,    dur: 0.06 },
+      { freq: 900, start: 0.06, dur: 0.06 },
+    ],
+  },
+
+  // ── On-Scene Chirp: Unit arrived at call ─────────────────────
+  // Two-pip A5 → C6 (880 → 1046 Hz), confirms "I'm there."
+  // Slightly higher-energy than enroute since arriving is the
+  // operationally-significant event for response-time metrics.
+  onscene_chirp: {
+    type: 'sine',
+    gain: 0.20,
+    steps: [
+      { freq: 880,  start: 0,    dur: 0.07 },
+      { freq: 1046, start: 0.09, dur: 0.10 },
+    ],
+  },
+
+  // ── Cleared Chirp: Unit cleared / available again ────────────
+  // Descending 1100 → 700 Hz, 100ms each — "wrap up" pattern.
+  // Closes the status-cycle audio bracket opened by enroute_chirp.
+  cleared_chirp: {
+    type: 'sine',
+    gain: 0.18,
+    steps: [
+      { freq: 1100, start: 0,    dur: 0.10 },
+      { freq: 700,  start: 0.11, dur: 0.10 },
+    ],
+  },
+
+  // ── All-Call: Extended attention tone for broadcasts ─────────
+  // Slow Hi-Lo siren oscillation 800/1200 Hz at ~2 Hz cadence for
+  // 1.4 seconds. Reserved for general broadcasts to ALL units —
+  // BOLOs, weather alerts, all-call from supervisor. Distinct
+  // from `warning` (faster Hi-Lo) and `panic_continuous` (rapid
+  // warble). The slower cadence reads as "attention, all units
+  // listen up" rather than "act now."
+  all_call: {
+    type: 'sine',
+    gain: 0.28,
+    steps: [
+      { freq: 800,  start: 0.00, dur: 0.20 },
+      { freq: 1200, start: 0.20, dur: 0.20 },
+      { freq: 800,  start: 0.40, dur: 0.20 },
+      { freq: 1200, start: 0.60, dur: 0.20 },
+      { freq: 800,  start: 0.80, dur: 0.20 },
+      { freq: 1200, start: 1.00, dur: 0.20 },
+      { freq: 800,  start: 1.20, dur: 0.20 },
+    ],
+  },
+
+  // ── Priority Preempt: Higher-pri call interrupts current ─────
+  // Rising pair 600 → 1000 Hz (90ms each), no gap. Brief but
+  // unambiguous "drop what you're doing" cue. Plays just before
+  // a TTS announcement of the new priority call to alert the
+  // dispatcher their attention should shift.
+  priority_preempt: {
+    type: 'sine',
+    gain: 0.26,
+    steps: [
+      { freq: 600,  start: 0,    dur: 0.09 },
+      { freq: 1000, start: 0.09, dur: 0.11 },
+    ],
+  },
+
+  // ── Unit-to-Unit: Direct message between units ───────────────
+  // Single triangle-wave pip at 1320 Hz, 80ms — softer than the
+  // dispatch-to-unit Quick Call (caution profile) so it's clear
+  // the message is intra-unit, not from console.
+  unit_to_unit: {
+    type: 'triangle',
+    gain: 0.18,
+    steps: [
+      { freq: 1320, start: 0, dur: 0.08 },
+    ],
+  },
+
+  // ── Stack Pip: Reminder for unacknowledged stacked alerts ────
+  // Single soft 1500 Hz pip, 40ms, very low gain. Fires every
+  // ~60 seconds while 2+ critical alerts remain unacknowledged.
+  // Background nag — present enough to register, quiet enough not
+  // to compete with active dispatch traffic.
+  stack_pip: {
+    type: 'sine',
+    gain: 0.10,
+    steps: [
+      { freq: 1500, start: 0, dur: 0.04 },
+    ],
+  },
+
+  // ── Login OK: Successful authentication chirp ────────────────
+  // Three-step ascending major triad C5 → E5 → G5 (523/659/784 Hz),
+  // 70ms each, no gap — classic "system ready" pattern. Plays once
+  // when a dispatcher's session is established.
+  login_ok: {
+    type: 'sine',
+    gain: 0.22,
+    steps: [
+      { freq: 523, start: 0,    dur: 0.07 },
+      { freq: 659, start: 0.07, dur: 0.07 },
+      { freq: 784, start: 0.14, dur: 0.10 },
+    ],
+  },
+
+  // ── Logoff: Session termination tone ─────────────────────────
+  // Reverse of login_ok — descending G5 → E5 → C5. Closes the
+  // session bracket. Quiet so it doesn't startle on shift change.
+  logoff: {
+    type: 'sine',
+    gain: 0.18,
+    steps: [
+      { freq: 784, start: 0,    dur: 0.07 },
+      { freq: 659, start: 0.07, dur: 0.07 },
+      { freq: 523, start: 0.14, dur: 0.10 },
     ],
   },
 

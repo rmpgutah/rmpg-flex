@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import {
   Volume2, VolumeX, Play, AlertTriangle, Activity, Navigation,
-  Phone, MapPin, Zap, RefreshCw, Bell,
+  Phone, MapPin, Zap, RefreshCw, Bell, Radio, MessageSquare,
+  LogIn, Megaphone, AlertOctagon, CheckCircle2,
 } from 'lucide-react';
 import {
   type AlertCategory,
@@ -43,7 +44,7 @@ interface CategorySpec {
   voicePreview?: string;      // text to speak alongside the tone
   icon: React.ComponentType<{ className?: string }>;
   warnIfMuted?: boolean;      // show a callout if this gets disabled
-  group: 'GPS' | 'Speed' | 'Calls' | 'Spatial' | 'Safety';
+  group: 'GPS' | 'Speed' | 'Calls' | 'Spatial' | 'Safety' | 'Status' | 'System';
 }
 
 // Each category mirrors the wiring in WebSocketContext so previews
@@ -113,14 +114,68 @@ const CATEGORIES: CategorySpec[] = [
   {
     category: 'panic',
     label: 'Panic Button',
-    description: 'Officer panic activation. ALARM SOUND + voice + red flash.',
+    description: 'Officer panic activation. ALARM SOUND + voice + red flash. Repeats every 30s until acknowledged.',
     tone: 'panic_continuous', flash: 'critical',
     voicePreview: 'Panic alert. Officer needs immediate assistance.',
     icon: Bell, group: 'Safety', warnIfMuted: true,
   },
+
+  // ── Status (Spillman dispatch-cycle confirmations) ──
+  {
+    category: 'status_chirp',
+    label: 'Unit Status Chirps',
+    description: 'Three Spillman-style confirmations: ascending=enroute, two-pip=on-scene, descending=cleared.',
+    tone: 'onscene_chirp',
+    voicePreview: undefined,
+    icon: CheckCircle2, group: 'Status',
+  },
+
+  // ── System / Spillman radio-room tones ──
+  {
+    category: 'all_call',
+    label: 'All-Call Broadcast',
+    description: 'Long Hi-Lo siren attention tone for general broadcasts to all units (BOLOs, weather alerts).',
+    tone: 'all_call', flash: 'warning',
+    icon: Megaphone, group: 'System',
+  },
+  {
+    category: 'priority_preempt',
+    label: 'Priority Preempt',
+    description: 'Brief rising pair signaling a higher-priority call is about to interrupt current dispatch traffic.',
+    tone: 'priority_preempt', flash: 'warning',
+    icon: AlertOctagon, group: 'System',
+  },
+  {
+    category: 'unit_to_unit',
+    label: 'Unit-to-Unit Message',
+    description: 'Soft triangle-wave pip for direct unit-to-unit messages (distinct from console-to-unit).',
+    tone: 'unit_to_unit',
+    icon: MessageSquare, group: 'System',
+  },
+  {
+    category: 'login_logoff',
+    label: 'Login / Logoff',
+    description: 'Ascending major triad on login (system ready), reverse on logoff. Audio session bracket.',
+    tone: 'login_ok',
+    icon: LogIn, group: 'System',
+  },
+  {
+    category: 'roger_beep',
+    label: 'Roger Beep (TTS Tail)',
+    description: 'Single soft 1200 Hz pip after every voice announcement. Spillman / Motorola courtesy tone.',
+    tone: 'roger',
+    icon: Radio, group: 'System',
+  },
+  {
+    category: 'bonk',
+    label: 'Command Rejected (BONK)',
+    description: 'Descending sawtooth two-step "wuh-wuh" when a dispatcher action is rejected. Classic Motorola P25 console tone.',
+    tone: 'bonk',
+    icon: AlertTriangle, group: 'System',
+  },
 ];
 
-const GROUP_ORDER: CategorySpec['group'][] = ['Safety', 'GPS', 'Speed', 'Calls', 'Spatial'];
+const GROUP_ORDER: CategorySpec['group'][] = ['Safety', 'GPS', 'Speed', 'Calls', 'Status', 'Spatial', 'System'];
 
 export default function AdminAlertSoundsTab({ LoadingSpinner }: Props) {
   // Track every category's enabled state. Initialized from prefs and

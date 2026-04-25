@@ -11,6 +11,7 @@ import {
 } from '../utils/voiceAlerts';
 import { flashAlert, flashSeverityFor } from '../utils/alertFlash';
 import { isAlertSoundEnabled } from '../utils/alertSoundPrefs';
+import { trackCriticalAlert, alertKey } from '../utils/alertEscalation';
 import { registerRules } from '../utils/dispatcherRules/registry';
 import { EVENT_RULES } from '../utils/dispatcherRules/events';
 import { COACHING_RULES } from '../utils/dispatcherRules/coaching';
@@ -235,6 +236,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                   announceGpsGap(sev, a.unit, a.officer_name, a.gap_minutes);
                   flashAlert(flashSeverityFor(eventType, sev));
                 }
+                // Track critical-tier GPS loss for repeat-until-acknowledged.
+                if (sev === 'critical') {
+                  trackCriticalAlert(alertKey(eventType, sev, a.unit), 'gps_lost', 'gps_gap_critical');
+                }
               } else if (eventType === 'gps:recovered') {
                 if (isAlertSoundEnabled('gps_recovered')) announceGpsRecovered(a.unit);
               } else if (eventType === 'speed:alert') {
@@ -243,6 +248,10 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                 if (isAlertSoundEnabled(cat)) {
                   if (isPursuit) announcePursuitSpeed(a.unit, a.speed_mph, a.officer_name);
                   flashAlert(flashSeverityFor(eventType, a.severity, a.speed_mph));
+                }
+                // Pursuit-speed escalates until acknowledged.
+                if (isPursuit) {
+                  trackCriticalAlert(alertKey(eventType, 'pursuit', a.unit), 'pursuit_alert', 'pursuit_speed');
                 }
               } else if (eventType === 'unit_outside_beat' || eventType === 'beat:breach') {
                 if (isAlertSoundEnabled('beat_breach')) {
@@ -253,9 +262,32 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                 // muted the audio — visual cue can't be silenced because
                 // the safety risk of missing a panic outweighs ergonomics.
                 flashAlert('critical');
+                // Panic always escalates — most critical class of alert.
+                trackCriticalAlert(alertKey(eventType, 'critical', a.unit), 'panic_continuous', 'panic');
               }
             } catch (err) {
               console.error('[WS] alert audio dispatch error:', err);
+            }
+          }
+
+          // ── Spillman-style status chirps on unit state transitions ──
+          // The server emits broadcastUnitUpdate({ action: 'unit_status_changed', ... })
+          // exactly when a unit's status actually changes (not on every
+          // GPS position update). Three distinct Spillman confirmations:
+          // ascending pair = enroute, two-pip = on-scene, descending = cleared.
+          // Operators recognize the bracket "enroute … on-scene … cleared"
+          // by sound alone without looking at the screen.
+          if ((message.type as string) === 'unit_update') {
+            const m = (message as any).data || {};
+            if (m.action === 'unit_status_changed' && m.unit?.status && isAlertSoundEnabled('status_chirp')) {
+              const status: string = m.unit.status;
+              import('../utils/dispatchTones').then(({ playTone }) => {
+                if (status === 'enroute') playTone('enroute_chirp');
+                else if (status === 'on_scene' || status === 'arrived') playTone('onscene_chirp');
+                else if (status === 'available' || status === 'cleared' || status === 'in_service') playTone('cleared_chirp');
+                // dispatched / out_of_service / off_duty: silent — those are
+                // already covered by call assignment / shift-end events.
+              }).catch(() => { /* dynamic import failed; silent */ });
             }
           }
 

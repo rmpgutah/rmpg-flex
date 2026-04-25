@@ -36,7 +36,15 @@ export type AlertCategory =
   | 'beat_breach'
   | 'panic'
   | 'p1_call'
-  | 'p2_call';
+  | 'p2_call'
+  // Spillman-style status / system tones
+  | 'status_chirp'        // enroute / on-scene / cleared confirmations
+  | 'all_call'            // broadcast attention tone
+  | 'priority_preempt'    // higher-priority call interrupting current
+  | 'unit_to_unit'        // direct unit-to-unit messages
+  | 'login_logoff'        // session start/end chirps
+  | 'roger_beep'          // courtesy tone at end of TTS
+  | 'bonk';               // command-rejected error tone
 
 interface AlertSoundPrefs {
   [category: string]: boolean;
@@ -90,6 +98,13 @@ export function getAllAlertPrefs(): Record<AlertCategory, boolean> {
     panic: true,
     p1_call: true,
     p2_call: true,
+    status_chirp: true,
+    all_call: true,
+    priority_preempt: true,
+    unit_to_unit: true,
+    login_logoff: true,
+    roger_beep: true,
+    bonk: true,
   };
   for (const k of Object.keys(all) as AlertCategory[]) {
     if (prefs[k] === false) all[k] = false;
