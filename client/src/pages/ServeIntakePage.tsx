@@ -152,6 +152,10 @@ export default function ServeIntakePage() {
   // Priority & additional notes
   const [editPriority, setEditPriority] = useState<'P1' | 'P2' | 'P3' | 'P4'>('P4');
   const [editAdditionalNotes, setEditAdditionalNotes] = useState('');
+  // Geocode preview
+  const [previewLat, setPreviewLat] = useState('');
+  const [previewLng, setPreviewLng] = useState('');
+  const [geocodeFailed, setGeocodeFailed] = useState(false);
   const [expandedPreview, setExpandedPreview] = useState<number | null>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -240,6 +244,16 @@ export default function ServeIntakePage() {
       setEditDocPages(String(p.documentPages || '0'));
       setEditBilingual(!!p.bilingual);
       setEditAttorney({ name: p.attorney?.name || '', firm: p.attorney?.firm || '', barNumber: p.attorney?.barNumber || '', tel: p.attorney?.tel || '', email: p.attorney?.email || '', fax: p.attorney?.fax || '' });
+      // Geocode preview from parse response
+      if ((resp as any).geocode) {
+        setPreviewLat(String((resp as any).geocode.latitude));
+        setPreviewLng(String((resp as any).geocode.longitude));
+        setGeocodeFailed(false);
+      } else {
+        setPreviewLat('');
+        setPreviewLng('');
+        setGeocodeFailed(true);
+      }
       setStep('review');
     } catch (err: any) {
       setError(err?.message || 'Failed to parse documents');
@@ -278,6 +292,8 @@ export default function ServeIntakePage() {
         attorney: editAttorney,
         priority: editPriority,
         additionalNotes: editAdditionalNotes || undefined,
+        latitude: previewLat ? parseFloat(previewLat) : undefined,
+        longitude: previewLng ? parseFloat(previewLng) : undefined,
       };
       if (selectedClientId) overrides.client_id = selectedClientId;
       const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
@@ -329,7 +345,7 @@ export default function ServeIntakePage() {
       editCourt, editCourtAddress, editCounty, editCourtCaseNumber, editJobNumber, editClientJobNumber,
       editDocuments, editServiceType, editServiceWindows, editSignedDate, editResponseDays,
       editClerkPhone, editDocPages, editBilingual, editAttorney, editPriority, editAdditionalNotes,
-      selectedClientId]);
+      selectedClientId, previewLat, previewLng]);
 
   const resetAll = () => {
     setStep('upload');
@@ -538,15 +554,34 @@ export default function ServeIntakePage() {
 
             <div className="panel-beveled p-4 space-y-3">
               <h3 className="text-[10px] font-bold text-[#d4a017] uppercase tracking-wider flex items-center gap-1.5"><MapPin className="w-3.5 h-3.5" /> Service Address</h3>
-              <FieldRow label="Full Address" icon={MapPin} value={editAddress} onChange={setEditAddress} placeholder="123 Main St, City, ST 84123" />
+              <FieldRow label="Full Address" icon={MapPin} value={editAddress} onChange={setEditAddress} placeholder="5245 South College Drive, Murray, UT 84123" />
               <div className="grid grid-cols-4 gap-2">
-                <FieldRow label="Building #" icon={Building2} value={editAddressParts.building} onChange={v => setEditAddressParts(p => ({ ...p, building: v }))} placeholder="123" />
+                <FieldRow label="Building #" icon={Building2} value={editAddressParts.building} onChange={v => setEditAddressParts(p => ({ ...p, building: v }))} placeholder="5245" />
                 <FieldRow label="Suite/Apt" icon={Building2} value={editAddressParts.suite} onChange={v => setEditAddressParts(p => ({ ...p, suite: v }))} placeholder="Apt 4B" />
-                <FieldRow label="City" icon={MapPin} value={editAddressParts.city} onChange={v => setEditAddressParts(p => ({ ...p, city: v }))} placeholder="City" />
+                <FieldRow label="City" icon={MapPin} value={editAddressParts.city} onChange={v => setEditAddressParts(p => ({ ...p, city: v }))} placeholder="Murray" />
                 <div className="grid grid-cols-2 gap-1">
                   <FieldRow label="State" icon={MapPin} value={editAddressParts.state} onChange={v => setEditAddressParts(p => ({ ...p, state: v }))} placeholder="UT" />
                   <FieldRow label="ZIP" icon={MapPin} value={editAddressParts.zip} onChange={v => setEditAddressParts(p => ({ ...p, zip: v }))} placeholder="84123" />
                 </div>
+              </div>
+              {/* Geocode result + manual fix */}
+              <div className={`p-2.5 border text-[10px] ${geocodeFailed ? 'bg-red-900/10 border-red-700/40' : 'bg-green-900/10 border-green-700/40'}`}>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <MapPin className={`w-3.5 h-3.5 ${geocodeFailed ? 'text-red-400' : 'text-green-400'}`} />
+                  <span className={`font-bold uppercase ${geocodeFailed ? 'text-red-400' : 'text-green-400'}`}>
+                    {geocodeFailed ? 'GEOCODING FAILED — Enter coordinates manually' : 'GEOCODED SUCCESSFULLY'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <FieldRow label="Latitude" icon={MapPin} value={previewLat} onChange={setPreviewLat} placeholder="40.6571375" />
+                  <FieldRow label="Longitude" icon={MapPin} value={previewLng} onChange={setPreviewLng} placeholder="-111.9055814" />
+                </div>
+                {previewLat && previewLng && (
+                  <a href={`https://maps.google.com/?q=${previewLat},${previewLng}`} target="_blank" rel="noopener noreferrer"
+                    className="text-[9px] text-brand-400 hover:underline mt-1 inline-flex items-center gap-1">
+                    <Navigation className="w-3 h-3" /> Verify on Google Maps →
+                  </a>
+                )}
               </div>
             </div>
           </div>
