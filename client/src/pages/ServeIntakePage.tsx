@@ -177,27 +177,26 @@ export default function ServeIntakePage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  // Initialize Google Maps Places Autocomplete on the address field
+  // Initialize Google Maps Places Autocomplete — only once when entering review step
+  const autocompleteInitialized = useRef(false);
   useEffect(() => {
-    if (step !== 'review' || !addressAutocompleteRef.current) return;
+    if (step !== 'review' || !addressAutocompleteRef.current || autocompleteInitialized.current) return;
     const g = (window as any).google;
     if (!g?.maps?.places) return;
-    const autocomplete = new g.maps.places.Autocomplete(addressAutocompleteRef.current, {
+    autocompleteInitialized.current = true;
+    const ac = new g.maps.places.Autocomplete(addressAutocompleteRef.current, {
       types: ['address'],
       componentRestrictions: { country: 'us' },
       fields: ['formatted_address', 'geometry', 'address_components'],
     });
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (place.formatted_address) {
-        setEditAddress(place.formatted_address);
-      }
+    ac.addListener('place_changed', () => {
+      const place = ac.getPlace();
+      if (place.formatted_address) setEditAddress(place.formatted_address);
       if (place.geometry?.location) {
         setPreviewLat(String(place.geometry.location.lat()));
         setPreviewLng(String(place.geometry.location.lng()));
         setGeocodeFailed(false);
       }
-      // Parse address components
       if (place.address_components) {
         const get = (type: string) => place.address_components.find((c: any) => c.types.includes(type))?.long_name || '';
         const getShort = (type: string) => place.address_components.find((c: any) => c.types.includes(type))?.short_name || '';
@@ -211,6 +210,7 @@ export default function ServeIntakePage() {
         }));
       }
     });
+    return () => { autocompleteInitialized.current = false; };
   }, [step]);
 
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
