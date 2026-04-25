@@ -3431,6 +3431,41 @@ function migrateSchema(): void {
     db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror_upd').run();
   } catch { /* ignore */ }
 
+  // ── Businesses table ──
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS businesses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        dba_name TEXT,
+        business_type TEXT,
+        ein TEXT,
+        license_number TEXT,
+        address TEXT,
+        city TEXT,
+        state TEXT,
+        zip TEXT,
+        phone TEXT,
+        email TEXT,
+        website TEXT,
+        owner_name TEXT,
+        owner_phone TEXT,
+        contact_name TEXT,
+        contact_phone TEXT,
+        contact_email TEXT,
+        industry TEXT,
+        employee_count TEXT,
+        annual_revenue TEXT,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        flags TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )
+    `).run();
+  } catch { /* already exists */ }
+
   // ── Document Folders (desktop-style file browser hierarchy) ──
   try {
     db.prepare(`
