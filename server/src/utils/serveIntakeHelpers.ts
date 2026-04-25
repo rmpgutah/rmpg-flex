@@ -79,7 +79,42 @@ export function extractAttorneyBlock(text: string): AttorneyBlock {
     };
   }
 
-  // Strategy 3: Look for "/s/ Name" signature block — common in federal filings
+  // Strategy 3: California SUM-100 / state summons — "plaintiff's attorney ... is:"
+  const caAttyIdx = lines.findIndex(l => /plaintiff.s\s+attorney|attorney.*plaintiff/i.test(l));
+  if (caAttyIdx >= 0) {
+    // Scan next few lines for "Name Esq., Address; Phone"
+    const after = lines.slice(caAttyIdx + 1, caAttyIdx + 6);
+    for (const l of after) {
+      // Pattern: "Bradley G. Hayes Esq., 2648 Durfee Ave., Ste 101, El Monte, CA 91732; (323) 477-1415"
+      const m = l.match(/^([A-Z][A-Za-z .]+?(?:\s+Esq\.?)?)\s*,\s*(\d+[^;]+?);\s*\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})/);
+      if (m) {
+        return {
+          name: m[1].trim(),
+          barNumber: '',
+          firm: '',
+          addressLine1: m[2].trim(),
+          addressLine2: '',
+          tel: `${m[3]}${m[4]}${m[5]}`,
+          fax: '',
+          email: '',
+        };
+      }
+      // Simpler: just a name line with Esq.
+      const nameOnly = l.match(/^([A-Z][A-Za-z .]+\s+Esq\.?)/);
+      if (nameOnly) {
+        const remaining = after.slice(after.indexOf(l) + 1);
+        let addr1 = '', tel2 = '', email2 = '';
+        for (const r of remaining) {
+          if (/^\d+\s+\w/.test(r) && !addr1) addr1 = r;
+          else if (/\(\d{3}\)/.test(r)) tel2 = r.replace(/\D/g, '');
+          else if (/@/.test(r)) { const em = r.match(/([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/); email2 = em ? em[0] : ''; }
+        }
+        return { name: nameOnly[1].trim(), barNumber: '', firm: '', addressLine1: addr1, addressLine2: '', tel: tel2, fax: '', email: email2 };
+      }
+    }
+  }
+
+  // Strategy 4: Look for "/s/ Name" signature block — common in federal filings
   const sigIdx = lines.findIndex(l => /^\/s\/\s+[A-Z]/.test(l));
   if (sigIdx >= 0) {
     const sigLine = lines[sigIdx];
@@ -555,11 +590,14 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     }
   }
   court = court || '';
-  // Court/deposition address — try info sheet, then subpoena "Place:" block, then any address in docket
+  // Court/deposition address — multiple strategies
   const courtAddress = info.courtAddress
     || (courtDocket.match(/Place[:\s]+([^\n]*?\d{5})/i)?.[1] || '')
     || (courtDocket.match(/(?:office of|at)\s+([^,\n]+,\s*\d+[^\n]*?\d{5})/i)?.[1] || '')
-    || (courtDocket.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,?\s*(?:UT|Utah|IL|CA|TX|NY|FL|AZ|CO)\s*\d{5})/i)?.[1] || '');
+    // California SUM-100: "The name and address of the court is: ... \n 325 South Melrose Drive, Vista, CA, 92081"
+    || (courtDocket.match(/(?:name and address of the court|address of the court)[^:]*:[^\n]*\n\s*(\d+[^\n]*?\d{5})/i)?.[1] || '')
+    || (courtDocket.match(/(?:court\s+(?:is|address))[:\s]+([^\n]*?\d{5})/i)?.[1] || '')
+    || (courtDocket.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,?\s*(?:UT|Utah|IL|CA|TX|NY|FL|AZ|CO|NV|WA|OR)\s*,?\s*\d{5})/i)?.[1] || '');
   const clerkMatch = courtDocket.match(/(?:call|contact)\s+(?:the\s+)?clerk[\s\S]*?(?:at\s*)?\(?(\d{3})\)?\s*[-.\s]?(\d{3})[-.\s]?(\d{4})/i)
     || courtDocket.match(/Clerk[:\s]*\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/i);
   const clerkPhone = clerkMatch ? `(${clerkMatch[1]}) ${clerkMatch[2]}-${clerkMatch[3]}` : '';
@@ -668,6 +706,9 @@ function summarizeRules(instructions: string): string {
   if (/leave.*?door|post.*?door|nail.*?door|tape.*?door/i.test(instructions)) bits.push('NAIL & MAIL / DOOR SERVICE AUTHORIZED');
   if (/certified\s*mail|registered\s*mail/i.test(instructions)) bits.push('CERTIFIED MAIL BACKUP');
   if (/do\s+not\s+(?:leave|post)|no\s+(?:posting|leaving)/i.test(instructions)) bits.push('DO NOT POST OR LEAVE DOCUMENTS');
+  if (/3\s+attempts?\s+(?:done\s+)?on\s+3\s+different\s+days|diligence\s+is\s+3\s+attempts/i.test(instructions)) bits.push('3 ATTEMPTS ON 3 DIFFERENT DAYS (AM/PM/EVE)');
+  if (/sub-?served?.*?(?:notify|mail|additional\s+copy)/i.test(instructions)) bits.push('IF SUB-SERVED: NOTIFY CLIENT + MAIL ADDITIONAL COPY');
+  if (/competent\s+member.*?household.*?18|person.*?(?:over|above)\s+(?:the\s+age\s+of\s+)?18/i.test(instructions)) bits.push('SUB-SERVE TO HOUSEHOLD MEMBER 18+ OR PERSON IN CHARGE');
   return bits.join('. ') + (bits.length ? '.' : '');
 }
 
