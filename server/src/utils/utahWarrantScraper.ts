@@ -448,6 +448,82 @@ export async function runWarrantWatchScan(): Promise<{
   }
 }
 
+// ── Lazy schema migration ────────────────────────────────────
+// Older production DBs were seeded with a strict CHECK constraint:
+//   event TEXT NOT NULL CHECK(event IN ('warrant_found','warrant_cleared'))
+// We later added a third event type ('potential_match') for DOB-boundary
+// analyst review. SQLite doesn't support ALTER TABLE … DROP CHECK, so
+// we detect the legacy constraint via sqlite_master and rebuild the
+// table without it. The TypeScript code is the source of truth for
+// allowed event values.
+//
+// Idempotent: skipped on databases whose CREATE TABLE already lacks the
+// strict CHECK (i.e. fresh installs from current source). Must be called
+// from each handler that writes to warrant_watch_log — see CLAUDE.md
+// gotcha #24 (no module-level getDb()).
+let _watchLogMigrated = false;
+
+export function ensureWarrantWatchLogSchema(db: ReturnType<typeof getDb>): void {
+  if (_watchLogMigrated) return;
+  try {
+    const row = db
+      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='warrant_watch_log'")
+      .get() as { sql?: string } | undefined;
+    const sql = row?.sql ?? '';
+    // Detect the legacy strict CHECK; if absent we're already on the
+    // new schema and have nothing to do.
+    if (!/CHECK\s*\(\s*event\s+IN\s*\(/i.test(sql)) {
+      _watchLogMigrated = true;
+      return;
+    }
+    const migrate = db.transaction(() => {
+      db.prepare(`
+        CREATE TABLE warrant_watch_log__new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          person_id INTEGER,
+          person_name TEXT,
+          event TEXT NOT NULL,
+          utah_warrant_id TEXT,
+          utah_person_id TEXT,
+          court_name TEXT,
+          case_id TEXT,
+          charges TEXT,
+          issue_date TEXT,
+          scan_run_id TEXT,
+          created_at TEXT DEFAULT (datetime('now','localtime')),
+          run_id INTEGER
+        )
+      `).run();
+      db.prepare(`
+        INSERT INTO warrant_watch_log__new
+          (id, person_id, person_name, event, utah_warrant_id, utah_person_id,
+           court_name, case_id, charges, issue_date, scan_run_id, created_at, run_id)
+        SELECT id, person_id, person_name, event, utah_warrant_id, utah_person_id,
+               court_name, case_id, charges, issue_date, scan_run_id, created_at, run_id
+        FROM warrant_watch_log
+      `).run();
+      db.prepare('DROP TABLE warrant_watch_log').run();
+      db.prepare('ALTER TABLE warrant_watch_log__new RENAME TO warrant_watch_log').run();
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_person ON warrant_watch_log(person_id)').run();
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_event ON warrant_watch_log(event, created_at)').run();
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_run ON warrant_watch_log(run_id)').run();
+    });
+    migrate();
+    console.log('[Warrant Watch] Migrated warrant_watch_log: dropped strict event CHECK constraint');
+    _watchLogMigrated = true;
+  } catch (err: any) {
+    // Leave _watchLogMigrated=false so we retry next call. The next INSERT
+    // will still raise the original CHECK error — a loud signal rather
+    // than a silent miss.
+    console.warn(`[Warrant Watch] Schema migration failed: ${err?.message ?? err}`);
+  }
+}
+
+// Exposed for tests
+export function _resetWatchLogMigrationForTests(): void {
+  _watchLogMigrated = false;
+}
+
 async function _runWarrantWatchScanImpl(): Promise<{
   personsChecked: number;
   newWarrants: number;
@@ -455,6 +531,7 @@ async function _runWarrantWatchScanImpl(): Promise<{
   errors: number;
 }> {
   const db = getDb();
+  ensureWarrantWatchLogSchema(db);
   const now = localNow();
   const runId = generateRunId();
 
