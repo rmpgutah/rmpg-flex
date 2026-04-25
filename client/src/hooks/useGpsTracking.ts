@@ -688,13 +688,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           startIpFallbackPoller();
           return;
         }
-        // Cap restart attempts to prevent infinite restart loops
+        // Track restart count for state UI but NEVER stop trying — vehicle CADs
+        // can't be expected to refresh manually, and a quiet GPS hardware reset
+        // (cellular hand-off, ignition cycle, OS power-save) can take many minutes.
         heartbeatRestartCountRef.current++;
         if (heartbeatRestartCountRef.current > MAX_HEARTBEAT_RESTARTS) {
-          console.error('[GPS] Max heartbeat restarts reached, stopping restart attempts');
-          if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
-          setState((prev) => ({ ...prev, error: 'GPS signal lost. Refresh the page to retry.' }));
-          return;
+          // Surface the degradation to UI but keep retrying.
+          setState((prev) => ({ ...prev, error: `GPS signal stale (${Math.round(staleDuration / 1000)}s) — auto-retrying…` }));
         }
         // Clear the stale watch and restart
         navigator.geolocation.clearWatch(watchIdRef.current);
