@@ -23,53 +23,82 @@ export function extractAttorneyBlock(text: string): AttorneyBlock {
   const empty: AttorneyBlock = { name: '', barNumber: '', firm: '', addressLine1: '', addressLine2: '', tel: '', fax: '', email: '' };
   if (!text) return empty;
 
-  // Anchor on the Bar# line
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-  const barIdx = lines.findIndex(l => /Bar#\s*\d+/i.test(l));
-  if (barIdx < 0) return empty;
 
-  const barLine = lines[barIdx];
-  const barMatch = barLine.match(/Bar#\s*(\d+)/i);
-  const barNumber = barMatch ? barMatch[1] : '';
-
-  // Name — before the comma before "(Utah" or before the parenthetical
-  const nameMatch = barLine.match(/^([A-Za-z.\s]+?)(?:,|\s*\()/);
-  const name = nameMatch ? nameMatch[1].trim() : '';
-
-  // Firm — scan upwards for ALL-CAPS line
-  const before = lines.slice(0, barIdx);
-  const firm = [...before].reverse().find(l =>
-    l.length > 3 &&
-    /^[A-Z][A-Z& .,]{3,}$/.test(l) &&
-    !/JUDICIAL|COURT|SUMMONS|NOTICE|RESPOND/.test(l)
-  ) || '';
-
-  // Scan downward for address / tel / fax / email
-  const after = lines.slice(barIdx + 1);
-  let addressLine1 = '';
-  let addressLine2 = '';
-  let tel = '';
-  let fax = '';
-  let email = '';
-
-  for (const l of after) {
-    if (/^Tel[:\s]/i.test(l)) {
-      tel = l.replace(/\D/g, '');
-    } else if (/^FAX[:\s]/i.test(l)) {
-      fax = l.replace(/\D/g, '');
-    } else if (/@/.test(l) && !email) {
-      const em = l.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/);
-      email = em ? em[0] : '';
-    } else if (/^Attorney/i.test(l)) {
-      break;
-    } else if (!addressLine1) {
-      addressLine1 = l;
-    } else if (!addressLine2) {
-      addressLine2 = l;
+  // Strategy 1: Anchor on "Bar#" or "ARDC #" or "(Bar No." line (Utah / Illinois / federal formats)
+  const barIdx = lines.findIndex(l => /Bar#\s*\d+|ARDC\s*#?\s*\d+|\(Bar\s+No\.?\s*\d+\)/i.test(l));
+  if (barIdx >= 0) {
+    const barLine = lines[barIdx];
+    const barMatch = barLine.match(/(?:Bar#|ARDC\s*#?|Bar\s+No\.?)\s*(\d+)/i);
+    const barNumber = barMatch ? barMatch[1] : '';
+    const nameMatch = barLine.match(/^([A-Za-z.\s]+?)(?:,|\s*\()/);
+    const name = nameMatch ? nameMatch[1].trim() : '';
+    const before = lines.slice(0, barIdx);
+    const firm = [...before].reverse().find(l =>
+      l.length > 3 &&
+      /^[A-Z][A-Z& .,]{3,}$/.test(l) &&
+      !/JUDICIAL|COURT|SUMMONS|NOTICE|RESPOND|CERTIFICATE|PROOF/.test(l)
+    ) || '';
+    const after = lines.slice(barIdx + 1);
+    let addressLine1 = '', addressLine2 = '', tel = '', fax = '', email = '';
+    for (const l of after) {
+      if (/^T(?:el)?[:\s]/i.test(l)) { tel = l.replace(/\D/g, ''); }
+      else if (/^F(?:ax)?[:\s]/i.test(l)) { fax = l.replace(/\D/g, ''); }
+      else if (/@/.test(l) && !email) { const em = l.match(/[\w.+-]+@[\w.-]+\.[A-Za-z]{2,}/); email = em ? em[0] : ''; }
+      else if (/^Attorney/i.test(l)) break;
+      else if (!addressLine1) addressLine1 = l;
+      else if (!addressLine2) addressLine2 = l;
     }
+    return { name, barNumber, firm, addressLine1, addressLine2, tel, fax, email };
   }
 
-  return { name, barNumber, firm, addressLine1, addressLine2, tel, fax, email };
+  // Strategy 2: Look for "who issues or requests this subpoena" block (federal subpoena form)
+  const issuerIdx = lines.findIndex(l => /who issues or requests this subpoena/i.test(l));
+  if (issuerIdx >= 0) {
+    // Next line(s) contain: "Name, Address, City, State ZIP, email, phone"
+    const after = lines.slice(issuerIdx + 1, issuerIdx + 5);
+    const combined = after.join(' ');
+    const nameMatch = combined.match(/^([A-Z][A-Za-z .]+?)(?:,\s*\d|\s+\d)/);
+    const emailMatch = combined.match(/([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/);
+    const phoneMatch = combined.match(/(\d{3}[-.]?\d{3}[-.]?\d{4})/);
+    // Scan nearby for firm name (bold/caps)
+    const nearLines = lines.slice(Math.max(0, issuerIdx - 10), issuerIdx);
+    const firm = [...nearLines].reverse().find(l =>
+      l.length > 3 && /^[A-Z][A-Z& .,]{3,}$/.test(l) &&
+      !/COURT|SUBPOENA|CERTIFICATE|NOTICE/.test(l)
+    ) || '';
+    return {
+      name: nameMatch ? nameMatch[1].trim() : '',
+      barNumber: '',
+      firm,
+      addressLine1: after[0] || '',
+      addressLine2: '',
+      tel: phoneMatch ? phoneMatch[1].replace(/\D/g, '') : '',
+      fax: '',
+      email: emailMatch ? emailMatch[1] : '',
+    };
+  }
+
+  // Strategy 3: Look for "/s/ Name" signature block — common in federal filings
+  const sigIdx = lines.findIndex(l => /^\/s\/\s+[A-Z]/.test(l));
+  if (sigIdx >= 0) {
+    const sigLine = lines[sigIdx];
+    const name = sigLine.replace(/^\/s\/\s*/, '').trim();
+    // Scan below for firm, address, contact
+    const after = lines.slice(sigIdx + 1, sigIdx + 15);
+    let firm = '', tel = '', fax = '', email = '', addr1 = '', addr2 = '';
+    for (const l of after) {
+      if (/^[A-Z][A-Z& .,]{3,}$/.test(l) && !firm && !/COURT|CERTIFICATE/.test(l)) firm = l;
+      else if (/^T(?:el)?\.?[:\s]/i.test(l)) tel = l.replace(/\D/g, '');
+      else if (/^F(?:ax)?\.?[:\s]/i.test(l)) fax = l.replace(/\D/g, '');
+      else if (/@/.test(l) && !email) { const em = l.match(/([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/); email = em ? em[0] : ''; }
+      else if (/^\d+\s+\w/.test(l) && !addr1) addr1 = l;
+      else if (/^[A-Z][a-z]+,\s+[A-Z]{2}\s+\d{5}/.test(l) && !addr2) addr2 = l;
+    }
+    return { name, barNumber: '', firm, addressLine1: addr1, addressLine2: addr2, tel, fax, email };
+  }
+
+  return empty;
 }
 
 export interface InfoSheetLabels {
@@ -498,8 +527,12 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   // Strip trailing comma/period from plaintiff name
   plaintiff = (plaintiff || '').replace(/[,.\s]+$/, '').trim();
 
-  // ── Court extraction (broader matching) ──
+  // ── Court extraction (broader matching — captures full jurisdiction) ──
   const courtPatterns = [
+    // Federal: "UNITED STATES DISTRICT COURT\nNORTHERN DISTRICT OF ILLINOIS\nEASTERN DIVISION"
+    /UNITED\s+STATES\s+DISTRICT\s+COURT\s*\n\s*([^\n]+(?:DISTRICT|DIVISION)[^\n]*)/i,
+    /UNITED\s+STATES\s+DISTRICT\s+COURT[^\n]*/i,
+    // State: "THIRD JUDICIAL DISTRICT COURT ..."
     /(FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH)\s+JUDICIAL\s+DISTRICT\s+COURT[^,\n]*/i,
     /(?:IN THE\s+)?(\w+\s+DISTRICT\s+COURT[^,\n]*)/i,
     /(?:IN THE\s+)?(\w+\s+CIRCUIT\s+COURT[^,\n]*)/i,
@@ -510,11 +543,23 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   if (!court) {
     for (const re of courtPatterns) {
       const m = courtDocket.match(re);
-      if (m) { court = (m[1] || m[0]).trim(); break; }
+      if (m) {
+        // For federal courts, try to capture the jurisdiction line below
+        let fullCourt = (m[1] || m[0]).trim();
+        if (/UNITED STATES DISTRICT COURT/i.test(fullCourt) && m[1]) {
+          fullCourt = `UNITED STATES DISTRICT COURT, ${m[1].trim()}`;
+        }
+        court = fullCourt;
+        break;
+      }
     }
   }
   court = court || '';
-  const courtAddress = info.courtAddress || (courtDocket.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,?\s*(?:UT|Utah)\s*\d{5})/i)?.[1] || '');
+  // Court/deposition address — try info sheet, then subpoena "Place:" block, then any address in docket
+  const courtAddress = info.courtAddress
+    || (courtDocket.match(/Place[:\s]+([^\n]*?\d{5})/i)?.[1] || '')
+    || (courtDocket.match(/(?:office of|at)\s+([^,\n]+,\s*\d+[^\n]*?\d{5})/i)?.[1] || '')
+    || (courtDocket.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,?\s*(?:UT|Utah|IL|CA|TX|NY|FL|AZ|CO)\s*\d{5})/i)?.[1] || '');
   const clerkMatch = courtDocket.match(/(?:call|contact)\s+(?:the\s+)?clerk[\s\S]*?(?:at\s*)?\(?(\d{3})\)?\s*[-.\s]?(\d{3})[-.\s]?(\d{4})/i)
     || courtDocket.match(/Clerk[:\s]*\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/i);
   const clerkPhone = clerkMatch ? `(${clerkMatch[1]}) ${clerkMatch[2]}-${clerkMatch[3]}` : '';
