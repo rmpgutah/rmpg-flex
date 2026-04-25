@@ -1456,7 +1456,7 @@ export default function Layout() {
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Radio Console — Desktop sidebar (left of main content) */}
-        {!isMobile && <RadioConsole />}
+        {/* RadioConsole sidebar removed — radio accessible via Comms > Radio menu */}
 
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   FolderOpen, File, ChevronRight, Plus, Trash2, Edit2, Download,
   ArrowLeft, Loader2, Upload, X, FolderPlus, Home, Search, Eye,
+  Info, FileText, HardDrive, Clock, User, Hash, Shield, Film, Image, Music,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -43,6 +44,7 @@ export default function DocumentsPage() {
   const [renamingFolder, setRenamingFolder] = useState<Folder | null>(null);
   const [renameValue, setRenameValue] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [infoFile, setInfoFile] = useState<FileItem | null>(null);
   const uploadInputRef = React.useRef<HTMLInputElement>(null);
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
 
@@ -270,6 +272,10 @@ export default function DocumentsPage() {
                   <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {new Date(file.created_at).toLocaleDateString()}</span>
                 </div>
                 <div className="flex items-center gap-1">
+                  <button type="button" onClick={() => setInfoFile(file)}
+                    className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-amber-400 transition-colors" title="File details">
+                    <Info className="w-3 h-3" />
+                  </button>
                   {canPreview(file.mime_type) && (
                     <a href={authedImageUrl(`/api/uploads/${file.file_id}`)} target="_blank" rel="noopener noreferrer"
                       className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400 transition-colors" title="View">
@@ -330,6 +336,136 @@ export default function DocumentsPage() {
           </div>
         </div>
       )}
+
+      {/* File Info Panel */}
+      {infoFile && (() => {
+        const f = infoFile;
+        const ext = f.original_name.split('.').pop()?.toUpperCase() || '?';
+        const isImage = f.mime_type?.startsWith('image/');
+        const isVideo = f.mime_type?.startsWith('video/');
+        const isAudio = f.mime_type?.startsWith('audio/');
+        const isPdf = f.mime_type === 'application/pdf';
+        const category = isImage ? 'Image' : isVideo ? 'Video' : isAudio ? 'Audio' : isPdf ? 'PDF Document' : f.mime_type?.includes('word') ? 'Word Document' : f.mime_type?.includes('sheet') ? 'Spreadsheet' : 'File';
+        const sizeKB = (f.file_size / 1024).toFixed(1);
+        const sizeMB = (f.file_size / 1048576).toFixed(2);
+        const created = new Date(f.created_at);
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setInfoFile(null)}>
+            <div className="panel-surface w-full max-w-lg mx-4 max-h-[85vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center gap-3 p-4 border-b border-rmpg-700">
+                <div className="w-12 h-12 flex items-center justify-center bg-brand-900/30 border border-brand-700/50 text-2xl">
+                  {getFileIcon(f.mime_type)}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-bold text-white truncate">{f.original_name}</h3>
+                  <p className="text-[10px] text-rmpg-400">{category} · .{ext}</p>
+                </div>
+                <button type="button" onClick={() => setInfoFile(null)} className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Preview thumbnail */}
+              {isImage && (
+                <div className="p-4 border-b border-rmpg-700 bg-surface-sunken flex items-center justify-center">
+                  <img src={authedImageUrl(`/api/uploads/${f.file_id}`)} alt={f.original_name}
+                    className="max-h-[200px] max-w-full object-contain rounded-sm border border-rmpg-700" />
+                </div>
+              )}
+
+              {/* Detail rows */}
+              <div className="p-4 space-y-0.5">
+                {/* File Identity */}
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-2 flex items-center gap-1"><FileText className="w-3 h-3" /> File Identity</div>
+                <DetailRow icon={FileText} label="File Name" value={f.original_name} />
+                <DetailRow icon={Hash} label="File ID" value={f.file_id} mono />
+                <DetailRow icon={Shield} label="MIME Type" value={f.mime_type} mono />
+                <DetailRow icon={FileText} label="Extension" value={`.${ext}`} />
+                <DetailRow icon={FileText} label="Category" value={category} />
+
+                {/* Size & Storage */}
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mt-4 mb-2 flex items-center gap-1"><HardDrive className="w-3 h-3" /> Size & Storage</div>
+                <DetailRow icon={HardDrive} label="File Size" value={`${f.file_size.toLocaleString()} bytes`} />
+                <DetailRow icon={HardDrive} label="Size (KB)" value={`${sizeKB} KB`} />
+                <DetailRow icon={HardDrive} label="Size (MB)" value={`${sizeMB} MB`} />
+                <DetailRow icon={HardDrive} label="Size Ratio" value={
+                  f.file_size < 102400 ? 'Tiny (< 100 KB)' :
+                  f.file_size < 1048576 ? 'Small (< 1 MB)' :
+                  f.file_size < 10485760 ? 'Medium (< 10 MB)' :
+                  f.file_size < 104857600 ? 'Large (< 100 MB)' : 'Very Large (100+ MB)'
+                } />
+
+                {/* Timestamps */}
+                <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mt-4 mb-2 flex items-center gap-1"><Clock className="w-3 h-3" /> Timestamps</div>
+                <DetailRow icon={Clock} label="Uploaded" value={created.toLocaleString('en-US', { timeZone: 'America/Denver', dateStyle: 'full', timeStyle: 'medium' })} />
+                <DetailRow icon={Clock} label="Date" value={created.toLocaleDateString('en-US', { timeZone: 'America/Denver' })} />
+                <DetailRow icon={Clock} label="Time" value={created.toLocaleTimeString('en-US', { timeZone: 'America/Denver', hour12: true })} />
+                <DetailRow icon={Clock} label="Age" value={(() => {
+                  const ms = Date.now() - created.getTime();
+                  const days = Math.floor(ms / 86400000);
+                  if (days === 0) return 'Today';
+                  if (days === 1) return 'Yesterday';
+                  if (days < 30) return `${days} days ago`;
+                  if (days < 365) return `${Math.floor(days / 30)} months ago`;
+                  return `${Math.floor(days / 365)} years ago`;
+                })()} />
+
+                {/* Media Info (type-specific) */}
+                {(isImage || isVideo || isAudio || isPdf) && (
+                  <>
+                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mt-4 mb-2 flex items-center gap-1">
+                      {isVideo ? <Film className="w-3 h-3" /> : isImage ? <Image className="w-3 h-3" /> : isAudio ? <Music className="w-3 h-3" /> : <FileText className="w-3 h-3" />}
+                      Media Details
+                    </div>
+                    <DetailRow icon={FileText} label="Content Type" value={
+                      isImage ? 'Raster Image' :
+                      isVideo ? 'Video Recording' :
+                      isAudio ? 'Audio Recording' :
+                      'Portable Document Format'
+                    } />
+                    <DetailRow icon={FileText} label="Encoding" value={f.mime_type.split('/')[1]?.toUpperCase() || 'Unknown'} />
+                    {isPdf && <DetailRow icon={FileText} label="Searchable" value="Yes (text layer)" />}
+                    {isVideo && <DetailRow icon={Film} label="Playback" value="Browser native player" />}
+                  </>
+                )}
+
+                {/* Folder Location */}
+                {f.folder_id && (
+                  <>
+                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mt-4 mb-2 flex items-center gap-1"><FolderOpen className="w-3 h-3" /> Location</div>
+                    <DetailRow icon={FolderOpen} label="Folder ID" value={String(f.folder_id)} mono />
+                  </>
+                )}
+              </div>
+
+              {/* Actions */}
+              <div className="p-4 border-t border-rmpg-700 flex items-center gap-2">
+                {canPreview(f.mime_type) && (
+                  <a href={authedImageUrl(`/api/uploads/${f.file_id}`)} target="_blank" rel="noopener noreferrer" className="toolbar-btn flex-1 justify-center">
+                    <Eye className="w-3 h-3" /> View
+                  </a>
+                )}
+                <a href={authedImageUrl(`/api/uploads/${f.file_id}/download`)} className="toolbar-btn toolbar-btn-primary flex-1 justify-center">
+                  <Download className="w-3 h-3" /> Download
+                </a>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// ── Detail Row component (outside main component to prevent re-render) ──
+function DetailRow({ icon: Icon, label, value, mono }: { icon: React.ElementType; label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="flex items-center gap-2 py-1.5 border-b border-rmpg-800/30 text-[11px]">
+      <Icon className="w-3 h-3 text-rmpg-500 flex-shrink-0" />
+      <span className="text-rmpg-400 w-24 flex-shrink-0">{label}</span>
+      <span className={`text-rmpg-200 flex-1 truncate ${mono ? 'font-mono text-[10px]' : ''}`}>{value}</span>
     </div>
   );
 }
