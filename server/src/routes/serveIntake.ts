@@ -621,16 +621,23 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     // ── CFS call ─────────────────────────────────────────────
     const callNumber = nextCallNumber(db);
     const fullName = `${parsed.defendant.first}${parsed.defendant.middle ? ' ' + parsed.defendant.middle : ''} ${parsed.defendant.last}`.trim();
-    const subjectDesc = `${fullName}${parsed.defendant.dob ? ', DOB ' + parsed.defendant.dob : ''}`;
+    const subjectDesc = [
+      fullName,
+      parsed.defendant.dob ? `DOB ${parsed.defendant.dob}` : null,
+      parsed.address ? `AT ${parsed.address}` : null,
+    ].filter(Boolean).join(', ');
+    // ── Structured description (consistent format regardless of source docs) ──
     const descLines: string[] = [];
     descLines.push(`SERVE ${parsed.primaryDoc || 'DOCUMENTS'} TO ${fullName.toUpperCase()}`);
-    if (parsed.address) descLines.push(`AT ${parsed.address.toUpperCase()}`);
-    if (parsed.dueDate) descLines.push(`DUE: ${parsed.dueDate}`);
+    descLines.push(`AT ${(parsed.address || 'ADDRESS UNKNOWN').toUpperCase()}`);
+    descLines.push(`CASE: ${parsed.courtCaseNumber || parsed.clientJobNumber || 'N/A'} | PLAINTIFF: ${(parsed.plaintiff || 'N/A').toUpperCase()}`);
+    descLines.push(`DUE: ${parsed.dueDate || 'NO DEADLINE'} | TYPE: ${parsed.serviceType || 'PROCESS SERVICE'}`);
     if (parsed.instructions) {
-      const trimmed = parsed.instructions.length > 400 ? parsed.instructions.slice(0, 400) + '...' : parsed.instructions;
+      const trimmed = parsed.instructions.length > 300 ? parsed.instructions.slice(0, 300) + '...' : parsed.instructions;
       descLines.push(`INSTRUCTIONS: ${trimmed}`);
     }
-    if (parsed.serviceWindows) descLines.push(`SERVICE WINDOWS: ${parsed.serviceWindows}`);
+    if (parsed.serviceWindows) descLines.push(`WINDOWS: ${parsed.serviceWindows}`);
+    if (parsed.attorney.name) descLines.push(`ATTORNEY: ${parsed.attorney.name.toUpperCase()}${parsed.attorney.tel ? ' | ' + parsed.attorney.tel : ''}`);
     const description = descLines.join('\n');
 
     const tagSet: string[] = ['civil_process', 'process_service'];
