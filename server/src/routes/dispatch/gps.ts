@@ -16,23 +16,46 @@ const GEOFENCE_BREACH_CD_MS = 3 * 60_000;
 const lastGeofenceBreachAt = new Map<string, number>();
 
 // GPS source priority — higher number wins
+// GPS source priority (higher = dominant). OwnTracks is the designated
+// authoritative source for officer tracking; everything else is a fallback.
 const GPS_SOURCE_PRIORITY: Record<string, number> = {
   browser_desktop: 1,
   browser: 1,       // legacy fallback
+  offline_desktop: 1, // queued breadcrumbs replayed from Electron offline cache
   browser_mobile: 2,
   clearpathgps: 3,
-  owntracks: 4,     // phone background GPS — most reliable, always-on
   traccar: 4,       // alternative background tracker
+  owntracks: 5,     // ★ DOMINANT — phone background GPS, declared authoritative
 };
-const GPS_STALE_MS = 30_000; // 30 seconds — stale source can be overridden by lower priority
+
+// Per-source dominance window. When the *currently stored* source is one
+// of these, a lower-priority source can only override after this much
+// silence. iOS routinely suspends OwnTracks for 1-5 minutes between
+// Significant Location updates while in a pocket, so a 30s threshold
+// would let the dispatch console's browser GPS hijack the unit's
+// position any time the officer's phone briefly slept. The 5-minute
+// floor outlasts ordinary suspension cycles while still allowing
+// graceful fallback if the phone genuinely dies.
+const GPS_DOMINANCE_WINDOW_SEC: Record<string, number> = {
+  owntracks: 300,    // 5 min — OwnTracks is dominant; nothing displaces it for 5 min
+  traccar: 300,      // 5 min — same treatment for the other background tracker
+  clearpathgps: 120, // 2 min — vehicle tracker is fairly reliable, slightly shorter window
+};
+// Default for sources not in the map above (browser, offline_desktop, etc).
+const GPS_STALE_MS = 30_000;
 const GPS_STALE_SEC = Math.floor(GPS_STALE_MS / 1000);
 
 /**
  * Atomically update a unit's live GPS position if — and only if — the
- * incoming source's priority is >= the currently-stored source's, OR
- * the stored fix is stale. Executes as a single UPDATE statement so two
- * concurrent writers cannot both pass a TOCTOU check and clobber each
- * other: the priority gate runs under the same row lock as the write.
+ * incoming source out-ranks (or ties) the stored source, OR the stored
+ * source has been silent longer than its dominance window. Runs as a
+ * single UPDATE statement so two concurrent writers cannot both pass a
+ * TOCTOU check and clobber each other: the gate runs under the same
+ * row lock as the write.
+ *
+ * Dominance windows protect high-priority sources (OwnTracks, Traccar)
+ * from being briefly displaced by lower-priority browser sources during
+ * normal iOS background-suspension cycles. See GPS_DOMINANCE_WINDOW_SEC.
  *
  * Returns true if the row was updated, false if suppressed by the gate.
  */
@@ -45,30 +68,42 @@ function updateUnitGpsIfHigherPriority(
 ): boolean {
   const db = getDb();
   const incomingPriority = GPS_SOURCE_PRIORITY[source] ?? 0;
-  // The priority ladder is encoded in SQL so the comparison happens
-  // atomically with the write. We intentionally bake in the full ladder
-  // here rather than reading it from a table — the set is tiny and
-  // changes-per-decade.
+
+  // The priority ladder + per-source dominance windows are encoded
+  // directly in SQL so the comparison happens atomically with the write.
+  // Same-or-higher priority always wins; lower priority only wins when
+  // the stored source has been silent past its window.
   const info = db.prepare(`
     UPDATE units
     SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?
     WHERE id = ?
       AND (
         gps_updated_at IS NULL
-        OR (strftime('%s','now') - strftime('%s', datetime(gps_updated_at))) > ?
         OR COALESCE(CASE gps_source
-             WHEN 'owntracks' THEN 4
+             WHEN 'owntracks' THEN 5
              WHEN 'traccar' THEN 4
              WHEN 'clearpathgps' THEN 3
              WHEN 'browser_mobile' THEN 2
              WHEN 'browser_desktop' THEN 1
              WHEN 'browser' THEN 1
+             WHEN 'offline_desktop' THEN 1
              ELSE 0
            END, 0) <= ?
+        OR (strftime('%s','now') - strftime('%s', datetime(gps_updated_at))) >
+           CASE gps_source
+             WHEN 'owntracks'    THEN 300   -- 5 min dominance
+             WHEN 'traccar'      THEN 300   -- 5 min dominance
+             WHEN 'clearpathgps' THEN 120   -- 2 min dominance
+             ELSE 30                        -- default 30s
+           END
       )
-  `).run(lat, lng, source, nowLocal, unitId, GPS_STALE_SEC, incomingPriority);
+  `).run(lat, lng, source, nowLocal, unitId, incomingPriority);
   return Number(info?.changes ?? 0) > 0;
 }
+
+// Re-export so other modules can read the dominance windows / priority
+// for telemetry, dashboards, etc. without re-deriving them.
+export { GPS_SOURCE_PRIORITY, GPS_DOMINANCE_WINDOW_SEC, GPS_STALE_SEC };
 
 /** Ray-casting point-in-polygon test */
 function pointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
