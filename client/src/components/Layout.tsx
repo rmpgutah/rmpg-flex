@@ -83,7 +83,8 @@ import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 import { useVoiceChannel } from '../hooks/useVoiceChannel';
 import VoiceChannelIndicator from './VoiceChannelIndicator';
 import { applyThemePreference } from '../utils/theme';
-import RadioConsole from './radio/RadioConsole';
+// RadioConsole sidebar was removed; radio is accessed via the Comms > Radio menu.
+// Component still exists at ./radio/RadioConsole for use inside RadioPage.
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -1455,9 +1456,6 @@ export default function Layout() {
       {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Radio Console — Desktop sidebar (left of main content) */}
-        {/* RadioConsole sidebar removed — radio accessible via Comms > Radio menu */}
-
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
