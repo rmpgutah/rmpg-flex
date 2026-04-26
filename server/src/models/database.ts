@@ -5072,6 +5072,44 @@ function migrateSchema(): void {
   addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
   addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
 
+  // ── Authoritative GPS freshness ─────────────────────────────────
+  // Tracks the most recent timestamp at which a HIGH-PRIORITY source
+  // (OwnTracks, Traccar, or other vehicle/phone tracker) wrote a
+  // position. Distinct from gps_updated_at, which can be kept "fresh"
+  // by lower-priority browser fallbacks even when the authoritative
+  // source has been dead for hours. The gap detector reads this column
+  // so it alerts the moment the dominant source goes dark — not when
+  // every source goes dark, which is much later.
+  addCol('units', 'last_authoritative_gps_at', 'TEXT');
+  addCol('units', 'last_authoritative_gps_source', 'TEXT');
+
+  // One-time backfill from existing breadcrumbs so units that have a
+  // long history but were never stamped with the new column don't
+  // trigger spurious "GPS lost" alerts on first detector run.
+  // Idempotent: only writes when the column is currently NULL.
+  try {
+    db.prepare(`
+      UPDATE units
+      SET last_authoritative_gps_at = (
+        SELECT MAX(recorded_at) FROM gps_breadcrumbs b
+        WHERE b.unit_id = units.id
+          AND b.gps_source IN ('owntracks', 'traccar', 'clearpathgps')
+      ),
+      last_authoritative_gps_source = (
+        SELECT gps_source FROM gps_breadcrumbs b
+        WHERE b.unit_id = units.id
+          AND b.gps_source IN ('owntracks', 'traccar', 'clearpathgps')
+        ORDER BY b.recorded_at DESC LIMIT 1
+      )
+      WHERE last_authoritative_gps_at IS NULL
+    `).run();
+  } catch (err) {
+    // Non-fatal: if backfill query fails (e.g. fresh DB with no
+    // breadcrumbs yet), the column just stays NULL and the gap
+    // detector treats those units as never-reported, which is correct.
+    console.warn('[migration] authoritative-gps backfill skipped:', err instanceof Error ? err.message : err);
+  }
+
   // ── OwnTracks / Traccar device-to-unit mapping table ──
   db.prepare(`
     CREATE TABLE IF NOT EXISTS owntracks_device_map (

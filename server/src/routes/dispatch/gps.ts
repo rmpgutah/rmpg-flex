@@ -69,36 +69,89 @@ function updateUnitGpsIfHigherPriority(
   const db = getDb();
   const incomingPriority = GPS_SOURCE_PRIORITY[source] ?? 0;
 
+  // Sources we treat as "authoritative" — their writes also stamp the
+  // last_authoritative_gps_at column. Browser fallbacks deliberately
+  // do NOT stamp it, so the gap detector can tell when a high-priority
+  // source has actually died versus when a fallback is just filling in.
+  const isAuthoritative = source === 'owntracks' || source === 'traccar' || source === 'clearpathgps';
+
   // The priority ladder + per-source dominance windows are encoded
   // directly in SQL so the comparison happens atomically with the write.
   // Same-or-higher priority always wins; lower priority only wins when
-  // the stored source has been silent past its window.
-  const info = db.prepare(`
-    UPDATE units
-    SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?
-    WHERE id = ?
-      AND (
-        gps_updated_at IS NULL
-        OR COALESCE(CASE gps_source
-             WHEN 'owntracks' THEN 5
-             WHEN 'traccar' THEN 4
-             WHEN 'clearpathgps' THEN 3
-             WHEN 'browser_mobile' THEN 2
-             WHEN 'browser_desktop' THEN 1
-             WHEN 'browser' THEN 1
-             WHEN 'offline_desktop' THEN 1
-             ELSE 0
-           END, 0) <= ?
-        OR (strftime('%s','now') - strftime('%s', datetime(gps_updated_at))) >
-           CASE gps_source
-             WHEN 'owntracks'    THEN 300   -- 5 min dominance
-             WHEN 'traccar'      THEN 300   -- 5 min dominance
-             WHEN 'clearpathgps' THEN 120   -- 2 min dominance
-             ELSE 30                        -- default 30s
-           END
-      )
-  `).run(lat, lng, source, nowLocal, unitId, incomingPriority);
+  // the stored source has been silent past its window. We only update
+  // the authoritative-freshness columns when the incoming source is in
+  // the authoritative tier — those columns are the heartbeat the gap
+  // detector watches for OwnTracks/Traccar specifically.
+  const sql = isAuthoritative
+    ? `UPDATE units
+       SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?,
+           last_authoritative_gps_at = ?, last_authoritative_gps_source = ?
+       WHERE id = ?
+         AND (
+           gps_updated_at IS NULL
+           OR COALESCE(CASE gps_source
+                WHEN 'owntracks' THEN 5
+                WHEN 'traccar' THEN 4
+                WHEN 'clearpathgps' THEN 3
+                WHEN 'browser_mobile' THEN 2
+                WHEN 'browser_desktop' THEN 1
+                WHEN 'browser' THEN 1
+                WHEN 'offline_desktop' THEN 1
+                ELSE 0
+              END, 0) <= ?
+           OR (strftime('%s','now') - strftime('%s', datetime(gps_updated_at))) >
+              CASE gps_source
+                WHEN 'owntracks'    THEN 300
+                WHEN 'traccar'      THEN 300
+                WHEN 'clearpathgps' THEN 120
+                ELSE 30
+              END
+         )`
+    : `UPDATE units
+       SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ?
+       WHERE id = ?
+         AND (
+           gps_updated_at IS NULL
+           OR COALESCE(CASE gps_source
+                WHEN 'owntracks' THEN 5
+                WHEN 'traccar' THEN 4
+                WHEN 'clearpathgps' THEN 3
+                WHEN 'browser_mobile' THEN 2
+                WHEN 'browser_desktop' THEN 1
+                WHEN 'browser' THEN 1
+                WHEN 'offline_desktop' THEN 1
+                ELSE 0
+              END, 0) <= ?
+           OR (strftime('%s','now') - strftime('%s', datetime(gps_updated_at))) >
+              CASE gps_source
+                WHEN 'owntracks'    THEN 300
+                WHEN 'traccar'      THEN 300
+                WHEN 'clearpathgps' THEN 120
+                ELSE 30
+              END
+         )`;
+
+  const args = isAuthoritative
+    ? [lat, lng, source, nowLocal, nowLocal, source, unitId, incomingPriority]
+    : [lat, lng, source, nowLocal, unitId, incomingPriority];
+
+  const info = db.prepare(sql).run(...args);
   return Number(info?.changes ?? 0) > 0;
+}
+
+/**
+ * Stamp the authoritative freshness even when the priority gate
+ * suppressed the live-position update (rare: a higher-priority source
+ * already holds the slot, so we skip the position write but still want
+ * to record that THIS authoritative source is alive). Called from the
+ * OwnTracks handler in the suppression case.
+ */
+function stampAuthoritativeHeartbeat(unitId: number, source: string, nowLocal: string): void {
+  if (source !== 'owntracks' && source !== 'traccar' && source !== 'clearpathgps') return;
+  const db = getDb();
+  db.prepare(
+    'UPDATE units SET last_authoritative_gps_at = ?, last_authoritative_gps_source = ? WHERE id = ?'
+  ).run(nowLocal, source, unitId);
 }
 
 // Re-export so other modules can read the dominance windows / priority
@@ -1247,6 +1300,14 @@ const owntracksHandler = (req: Request, res: Response) => {
 
     // Priority check happens inside the UPDATE's WHERE clause — atomic.
     const shouldUpdateLive = updateUnitGpsIfHigherPriority(unit.id, lat, lng, gpsSource, now);
+
+    // If the priority gate suppressed the position write, still record
+    // an authoritative heartbeat so the gap detector knows OwnTracks
+    // is alive. This keeps the alarm clock honest even when (for some
+    // reason) a higher-priority source briefly outranks us.
+    if (!shouldUpdateLive) {
+      stampAuthoritativeHeartbeat(unit.id, gpsSource, now);
+    }
 
     // Fetch full unit for broadcast
     const updated = db.prepare(`

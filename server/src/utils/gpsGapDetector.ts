@@ -53,6 +53,12 @@ interface UnitRow {
   status: string;
   gps_source: string | null;
   gps_updated_at: string | null;
+  // Per-source authoritative freshness — populated only by OwnTracks,
+  // Traccar, ClearPathGPS writes. Browser fallbacks deliberately do not
+  // touch this column, so it answers the right question: "when did the
+  // dominant tracker last report?", not "when did anyone last report?".
+  last_authoritative_gps_at: string | null;
+  last_authoritative_gps_source: string | null;
   officer_name: string | null;
   badge_number: string | null;
   latitude: number | null;
@@ -70,7 +76,9 @@ function runCheck(): void {
   const db = getDb();
   const rows = db.prepare(`
     SELECT u.id, u.call_sign, u.status, u.gps_source,
-           u.gps_updated_at, u.latitude, u.longitude,
+           u.gps_updated_at, u.last_authoritative_gps_at,
+           u.last_authoritative_gps_source,
+           u.latitude, u.longitude,
            usr.full_name AS officer_name, usr.badge_number
     FROM units u
     LEFT JOIN users usr ON u.officer_id = usr.id
@@ -92,10 +100,15 @@ function runCheck(): void {
       continue;
     }
 
-    // Skip units that have never reported GPS — no baseline to measure from.
-    if (!u.gps_updated_at) continue;
+    // Prefer last_authoritative_gps_at — that's the heartbeat of the
+    // dominant tracker (OwnTracks/Traccar). Falls back to gps_updated_at
+    // for units that have never had an authoritative source connected.
+    // Without this, a browser_desktop fallback writing every minute
+    // would mask a multi-hour OwnTracks outage.
+    const heartbeat = u.last_authoritative_gps_at ?? u.gps_updated_at;
+    if (!heartbeat) continue;
 
-    const updatedMs = new Date(u.gps_updated_at).getTime();
+    const updatedMs = new Date(heartbeat).getTime();
     if (isNaN(updatedMs)) continue;
     const ageSec = Math.floor((now - updatedMs) / 1000);
     const tier = tierFor(ageSec);
@@ -145,8 +158,15 @@ function runCheck(): void {
         gap_minutes: Math.round(ageSec / 60),
         last_latitude: u.latitude,
         last_longitude: u.longitude,
+        // `last_source` reports the CURRENT live source (which may be a
+        // browser fallback). `authoritative_source` and `_at` describe
+        // the dominant tracker that actually went silent — what
+        // dispatchers need to know about. Both are sent so the UI can
+        // render either.
         last_source: u.gps_source,
         last_seen_at: u.gps_updated_at,
+        authoritative_source: u.last_authoritative_gps_source,
+        authoritative_seen_at: u.last_authoritative_gps_at,
       });
       lastAlertAt.set(cooldownKey, now);
       currentTier.set(u.id, tier);
