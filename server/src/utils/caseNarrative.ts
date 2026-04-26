@@ -419,7 +419,7 @@ export function synthesizeCaseNarrative(input: CaseNarrativeInput): CaseNarrativ
   if (input.attorney.name) {
     const firmFrag = input.attorney.firm ? ` of ${input.attorney.firm}` : '';
     const barFrag = input.attorney.barNumber ? ` (Bar #${input.attorney.barNumber})` : '';
-    const contactFrag = [input.attorney.tel, input.attorney.email].filter(Boolean).join(' · ');
+    const contactFrag = [input.attorney.tel, input.attorney.email].filter(Boolean).join(' / ');
     whoLines.push(`PLAINTIFF'S COUNSEL: ${input.attorney.name}${firmFrag}${barFrag}${contactFrag ? ` — ${contactFrag}` : ''}`);
   }
   whoLines.push(`COURT: ${input.court || NOT_STATED}${input.courtCaseNumber ? `, Case No. ${input.courtCaseNumber}` : ''}`);
@@ -454,10 +454,10 @@ export function synthesizeCaseNarrative(input: CaseNarrativeInput): CaseNarrativ
   if (flags.verifiedComplaint) procFlags.push('VERIFIED');
   if (flags.punitiveDamages) procFlags.push('PUNITIVE DAMAGES PRAYED');
   if (flags.juryDemand) procFlags.push('JURY TRIAL DEMANDED');
-  if (procFlags.length > 0) whatLines.push(`Case flags: ${procFlags.join(' · ')}.`);
+  if (procFlags.length > 0) whatLines.push(`Case flags: ${procFlags.join(' / ')}.`);
   // Prayer-for-relief items
   if (prayerItems.length > 0) {
-    whatLines.push(`Plaintiff prays for: ${prayerItems.map((p) => p.replace(/^(?:For\s+)/i, '')).join(' · ')}.`);
+    whatLines.push(`Plaintiff prays for: ${prayerItems.map((p) => p.replace(/^(?:For\s+)/i, '')).join(' / ')}.`);
   }
   // Statutory citations
   if (statutes.length > 0) {
