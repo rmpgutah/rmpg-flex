@@ -151,6 +151,184 @@ const FORM_NUMBER_PATTERNS: Array<{ regex: RegExp; state: string | null; label: 
   { regex: /\bCCG\s*\d{4}\b/i, state: 'IL', label: 'IL Cook County Form' },
   // ── Massachusetts ──
   { regex: /\bCJD\s*\d+\b/i, state: 'MA', label: 'MA Trial Court Form' },
+
+  // ─────────────────────────────────────────────────────────────────
+  // 50-state expansion — most-served forms per state.
+  // Patterns intentionally narrow to the form-number conventions a
+  // process server actually encounters (summons, eviction, family
+  // law, small claims). State context is also detected via court-name
+  // and "STATE OF X" matches as a fallback.
+  // ─────────────────────────────────────────────────────────────────
+
+  // Alabama — Unified Judicial System (UJS)
+  { regex: /\bForm\s*C-13\b/i, state: 'AL', label: 'AL Small Claims (Form C-13)' },
+  { regex: /\bAOC[- ]CIV\s*\d+/i, state: 'AL', label: 'AL AOC Civil Form' },
+  { regex: /\bForm\s*JU-\d+/i, state: 'AL', label: 'AL Juvenile Form' },
+  { regex: /\bForm\s*DR-\d+/i, state: 'AL', label: 'AL Domestic Relations Form' },
+
+  // Alaska — Court System forms (CIV / TF / P / DR / FED)
+  { regex: /\bCIV-\d{3,}\b/i, state: 'AK', label: 'AK Civil Form' },
+  { regex: /\bTF-\d{3,}\b/i, state: 'AK', label: 'AK Trial Form' },
+  { regex: /\bDR-\d{3,}\s+\(\d{1,2}\/\d{2}\)/i, state: 'AK', label: 'AK Domestic Relations Form' },
+  { regex: /\bF-\d{3,}\b.*Alaska/i, state: 'AK', label: 'AK Family Form' },
+
+  // Arizona — Justice Court / Superior Court
+  { regex: /\bJC-\d{3,}\b/i, state: 'AZ', label: 'AZ Justice Court Form' },
+  { regex: /\bALSC[- ]\d+/i, state: 'AZ', label: 'AZ Landlord-Tenant Form' },
+
+  // Arkansas — Administrative Office of the Courts
+  { regex: /\bACR\s*\d+/i, state: 'AR', label: 'AR Court Rule Form' },
+
+  // Colorado — Judicial Department Forms (JDF)
+  { regex: /\bJDF\s*\d{1,4}\b/i, state: 'CO', label: 'CO Judicial Department Form' },
+
+  // Connecticut — Judicial Branch (JD-)
+  { regex: /\bJD-CV-\d+/i, state: 'CT', label: 'CT Civil Form' },
+  { regex: /\bJD-FM-\d+/i, state: 'CT', label: 'CT Family Form' },
+  { regex: /\bJD-PR-\d+/i, state: 'CT', label: 'CT Probate Form' },
+  { regex: /\bJD-SC-\d+/i, state: 'CT', label: 'CT Small Claims Form' },
+  { regex: /\bJD-HM-\d+/i, state: 'CT', label: 'CT Housing Matter Form' },
+
+  // Delaware — Court of Chancery / Superior Court
+  { regex: /\bC\.A\.\s*No\.\s*\d{4}-[A-Z0-9-]+/i, state: 'DE', label: 'DE Chancery C.A. Number' },
+
+  // Georgia — Superior / State / Magistrate court forms
+  { regex: /\bGCRP\s+\d+/i, state: 'GA', label: 'GA Civil Rule Form' },
+  { regex: /\bUSCR\s+\d+\.\d+/i, state: 'GA', label: 'GA Uniform Superior Court Rule' },
+
+  // Hawaii — District Court (1F, 2D, 3DC, 5DC) and Family Court (1FC etc.)
+  { regex: /\b[12345](?:DC|FC|D|F)[-\s]?P[-\s]?\d+/i, state: 'HI', label: 'HI Court Form' },
+
+  // Idaho — Court Administrative Order (CAO) forms
+  { regex: /\bCAO\s+(?:CV|FL|SC)\s*\d+-\d+/i, state: 'ID', label: 'ID Court Administrative Order Form' },
+
+  // Indiana — Trial Rule (TR) / Indiana Family Trial Rules
+  { regex: /\bIndiana\s+Trial\s+Rule\s+\d+/i, state: 'IN', label: 'IN Trial Rule Reference' },
+  { regex: /\bIFTR\s*\d+/i, state: 'IN', label: 'IN Family Trial Rule Form' },
+
+  // Iowa — Iowa Court Rules forms
+  { regex: /\bIowa\s+R\.\s*Civ\.\s*P\.\s*\d+\.\d+/i, state: 'IA', label: 'IA Rule of Civil Procedure' },
+  { regex: /\bForm\s+\d+\.\d{3,4}\b.*?Iowa/i, state: 'IA', label: 'IA Court Form' },
+
+  // Kansas — KSA / KS Supreme Court Rule
+  { regex: /\bK\.S\.A\.\s*\d+-\d+/i, state: 'KS', label: 'KS Statutes Annotated Reference' },
+
+  // Kentucky — Administrative Office of the Courts (AOC-)
+  { regex: /\bAOC-\d{3}\.?\d*/i, state: 'KY', label: 'KY AOC Form' },
+
+  // Louisiana — Code of Civil Procedure
+  { regex: /\bLa\.\s*C\.C\.P\.\s*art\.?\s*\d+/i, state: 'LA', label: 'LA Code of Civil Procedure' },
+
+  // Maine — Court Forms (CV, FM, PC)
+  { regex: /\b(?:CV|FM|PC)-\d{3}\b.*Maine/i, state: 'ME', label: 'ME Court Form' },
+
+  // Maryland — District Court Civil (DC-CV) / Circuit Court (CC-DR / CC-DC)
+  { regex: /\bDC[/-]CV[/-]\d+/i, state: 'MD', label: 'MD District Court Civil' },
+  { regex: /\bCC[/-]DR[/-]\d+/i, state: 'MD', label: 'MD Circuit Court Domestic Relations' },
+  { regex: /\bCC[/-]DC[/-]\d+/i, state: 'MD', label: 'MD Circuit Court Civil' },
+
+  // Michigan — MC / DC / SCAO forms
+  { regex: /\bMC\s+\d{2}\b/i, state: 'MI', label: 'MI MC Court Form' },
+  { regex: /\bDC\s+\d{2}\b/i, state: 'MI', label: 'MI DC Court Form' },
+  { regex: /\bSCAO[- ]\d+/i, state: 'MI', label: 'MI SCAO Form' },
+
+  // Minnesota — MNCIS / Court Rule (Minn. R. Civ. P.)
+  { regex: /\bMNCIS[- ]\d+/i, state: 'MN', label: 'MN MNCIS Form' },
+  { regex: /\bMinn\.\s*R\.\s*Civ\.\s*P\.\s*\d+/i, state: 'MN', label: 'MN Rule of Civil Procedure' },
+
+  // Mississippi — MRCP forms / Chancery
+  { regex: /\bM\.R\.C\.P\.\s*\d+/i, state: 'MS', label: 'MS Rule of Civil Procedure' },
+
+  // Missouri — Court Operating Rule (CCADM) / CR-
+  { regex: /\bCCADM\s*\d+/i, state: 'MO', label: 'MO Court Administrative Form' },
+  { regex: /\bCR-\d{3,}\b.*Missouri/i, state: 'MO', label: 'MO Civil Rule Form' },
+
+  // Montana — Mont. R. Civ. P.
+  { regex: /\bMont\.\s*R\.\s*Civ\.\s*P\.\s*\d+/i, state: 'MT', label: 'MT Rule of Civil Procedure' },
+
+  // Nebraska — DC Form 6:1.x / Neb. Ct. R.
+  { regex: /\bDC\s*Form\s*6:\d+/i, state: 'NE', label: 'NE District Court Form' },
+  { regex: /\bNeb\.\s*Ct\.\s*R\.\s*§?\s*\d+-\d+/i, state: 'NE', label: 'NE Court Rule' },
+
+  // Nevada — JCRCP / NRCP / Justice Court forms
+  { regex: /\b(?:NRCP|JCRCP)\s*\d+/i, state: 'NV', label: 'NV Civil Procedure Rule' },
+  { regex: /\bN\.R\.S\.\s*\d+\.\d+/i, state: 'NV', label: 'NV Revised Statutes' },
+
+  // New Hampshire — NHJB- prefix
+  { regex: /\bNHJB-\d{4}-?[A-Z]*/i, state: 'NH', label: 'NH Judicial Branch Form' },
+
+  // New Jersey — Court Notice (CN) / Promulgated Forms
+  { regex: /\bCN\s*\d{4,5}\b/i, state: 'NJ', label: 'NJ Court Notice Form' },
+  { regex: /\bN\.J\.\s*Ct\.\s*R\.\s*\d+:\d+-\d+/i, state: 'NJ', label: 'NJ Court Rule' },
+
+  // New Mexico — Rule 1- / 2- / 4-
+  { regex: /\bRule\s+(?:1|2|4|5|10)-\d{3}\s+NMRA/i, state: 'NM', label: 'NM Rules Annotated' },
+  { regex: /\b4-\d{3}\s+NMRA/i, state: 'NM', label: 'NM Rule 4 (Service)' },
+
+  // North Carolina — Administrative Office of the Courts (AOC)
+  { regex: /\bAOC-CV-\d+/i, state: 'NC', label: 'NC AOC Civil Form' },
+  { regex: /\bAOC-G-\d+/i, state: 'NC', label: 'NC AOC General Form' },
+  { regex: /\bAOC-CR-\d+/i, state: 'NC', label: 'NC AOC Criminal Form' },
+  { regex: /\bAOC-E-\d+/i, state: 'NC', label: 'NC AOC Estate Form' },
+  { regex: /\bAOC-J-\d+/i, state: 'NC', label: 'NC AOC Juvenile Form' },
+
+  // North Dakota — State Form Number (SFN)
+  { regex: /\bSFN\s*\d{4,5}\b/i, state: 'ND', label: 'ND State Form Number' },
+
+  // Ohio — Standard Probate Form / Ohio R. Civ. P.
+  { regex: /\bStandard\s+Probate\s+Form\s+\d+\.\d+/i, state: 'OH', label: 'OH Standard Probate Form' },
+  { regex: /\bOhio\s+R\.\s*Civ\.\s*P\.\s*\d+/i, state: 'OH', label: 'OH Rule of Civil Procedure' },
+
+  // Oklahoma — OUJI-CIV (jury instructions) and District Court Forms
+  { regex: /\bOUJI-CIV\s*\d+/i, state: 'OK', label: 'OK Uniform Jury Instructions' },
+
+  // Oregon — Oregon Rules of Civil Procedure (ORCP)
+  { regex: /\bORCP\s*\d+/i, state: 'OR', label: 'OR Rule of Civil Procedure' },
+  { regex: /\bUTCR\s*\d+\.\d+/i, state: 'OR', label: 'OR Uniform Trial Court Rule' },
+
+  // Pennsylvania — Pa. R. Civ. P. / Magisterial District Court (MDJ-)
+  { regex: /\bPa\.\s*R\.\s*Civ\.\s*P\.\s*\d+/i, state: 'PA', label: 'PA Rule of Civil Procedure' },
+  { regex: /\bMDJ-\d+/i, state: 'PA', label: 'PA Magisterial District Court Form' },
+
+  // Rhode Island — RI Superior Court Civil Cover Sheet / SU-CV
+  { regex: /\bSU-CV-\d+/i, state: 'RI', label: 'RI Superior Court Civil Form' },
+
+  // South Carolina — SCRCP / SCCA forms
+  { regex: /\bSCRCP\s*\d+/i, state: 'SC', label: 'SC Rule of Civil Procedure' },
+  { regex: /\bSCCA[/]?\d+/i, state: 'SC', label: 'SC Court Administration Form' },
+
+  // South Dakota — Unified Judicial System (UJS)
+  { regex: /\bUJS-\d{3,}\b/i, state: 'SD', label: 'SD UJS Form' },
+
+  // Tennessee — Tenn. R. Civ. P.
+  { regex: /\bTenn\.\s*R\.\s*Civ\.\s*P\.\s*\d+/i, state: 'TN', label: 'TN Rule of Civil Procedure' },
+
+  // Vermont — Vermont Judiciary Form 100 series
+  { regex: /\bV\.R\.C\.P\.\s*\d+/i, state: 'VT', label: 'VT Rule of Civil Procedure' },
+  { regex: /\b(?:JD|FAM|PROB|SC|EVIC)-\d{3,}\b.*Vermont/i, state: 'VT', label: 'VT Court Form' },
+
+  // Virginia — District Court forms (DC-) — DC-401 (warrant in debt), DC-419 (UD summons)
+  { regex: /\bDC-\d{3}\b/i, state: 'VA', label: 'VA District Court Form' },
+  { regex: /\bCC-\d{4}\b/i, state: 'VA', label: 'VA Circuit Court Form' },
+
+  // Washington — WPF (Washington Pattern Forms) / GR / CR
+  { regex: /\bWPF\s+(?:CV|FL|DR|DRPSCU|SC|UD)\s*\d+\.\d+/i, state: 'WA', label: 'WA Pattern Form' },
+  { regex: /\bWashington\s+Civil\s+Rule\s+\d+/i, state: 'WA', label: 'WA Civil Rule Reference' },
+
+  // West Virginia — WVRCP / SCA forms
+  { regex: /\bW\.\s*Va\.\s*R\.\s*Civ\.\s*P\.\s*\d+/i, state: 'WV', label: 'WV Rule of Civil Procedure' },
+  { regex: /\bSCA[- ]?[FCM]\d+/i, state: 'WV', label: 'WV Supreme Court of Appeals Form' },
+
+  // Wisconsin — General Forms (GF) / CV / FA
+  { regex: /\bGF-\d{3}\b/i, state: 'WI', label: 'WI General Form' },
+  { regex: /\bWis\.\s*Stat\.\s*§?\s*\d+\.\d+/i, state: 'WI', label: 'WI Statute Reference' },
+  { regex: /\bSC-\d{3,}\b.*Wisconsin/i, state: 'WI', label: 'WI Small Claims Form' },
+
+  // Wyoming — Wyo. R. Civ. P. / OJS forms
+  { regex: /\bWyo\.\s*R\.\s*Civ\.\s*P\.\s*\d+/i, state: 'WY', label: 'WY Rule of Civil Procedure' },
+
+  // District of Columbia — Sup. Ct. Civ. R. / Sup. Ct. Dom. Rel. R.
+  { regex: /\bSup\.\s*Ct\.\s*(?:Civ|Dom\.\s*Rel)\.\s*R\.\s*\d+/i, state: 'DC', label: 'DC Superior Court Rule' },
 ];
 
 function detectFormNumber(text: string): { number: string | null; state: string | null; label: string | null } {
@@ -227,7 +405,17 @@ function detectStateFromText(text: string, courtName: string | null): { code: st
       if (STATE_MAP[key]) return { code: STATE_MAP[key].code, name: STATE_MAP[key].name };
     }
   }
-  // 3. ZIP-based USPS-state suffix in court address (last-ditch fallback).
+  // 3. State name appearing after a comma in the court caption — e.g.
+  // "LAS VEGAS JUSTICE COURT, CLARK COUNTY, NEVADA" or "..., COLORADO".
+  // Constrained to the first ~600 chars to stay in the header region and
+  // avoid false hits on body text mentioning unrelated state names.
+  const head = text.slice(0, 600).toUpperCase();
+  for (const stateKey of Object.keys(STATE_MAP)) {
+    // Word-boundary match preceded by comma, optional whitespace.
+    const re = new RegExp(`,\\s*${stateKey.replace(/ /g, '\\s+')}\\b`);
+    if (re.test(head)) return { code: STATE_MAP[stateKey].code, name: STATE_MAP[stateKey].name };
+  }
+  // 4. ZIP-based USPS-state suffix in court address (last-ditch fallback).
   const addrState = text.match(/\b([A-Z]{2})\s+\d{5}(?:-\d{4})?\b/);
   if (addrState) {
     const code = addrState[1];

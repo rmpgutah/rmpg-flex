@@ -228,6 +228,178 @@ JURY TRIAL DEMANDED.`;
   });
 });
 
+describe('detectCourtForm — 50-state expansion', () => {
+  it('Alabama: small claims Form C-13', () => {
+    const r = detectCourtForm(`STATE OF ALABAMA, JEFFERSON COUNTY DISTRICT COURT — Form C-13 SMALL CLAIMS COMPLAINT. Plaintiff vs. Defendant. Case No. SM-2026-001.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('AL');
+    expect(r.formNumber).toMatch(/C-13/i);
+  });
+
+  it('Alaska: Civil form CIV-100', () => {
+    const r = detectCourtForm(`IN THE DISTRICT COURT OF THE STATE OF ALASKA, THIRD JUDICIAL DISTRICT AT ANCHORAGE. CIV-100 SUMMONS. Plaintiff v. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('AK');
+    expect(r.formNumber).toMatch(/CIV-100/i);
+    expect(r.category).toBe('summons');
+  });
+
+  it('Arizona: Justice Court JC-form', () => {
+    const r = detectCourtForm(`MARICOPA COUNTY JUSTICE COURT, STATE OF ARIZONA. JC-100 CIVIL COMPLAINT — Eviction. NOTICE TO DEFENDANT.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('AZ');
+    expect(r.formNumber).toMatch(/JC-100/i);
+  });
+
+  it('Colorado: JDF judicial department form', () => {
+    const r = detectCourtForm(`DISTRICT COURT, EL PASO COUNTY, COLORADO. JDF 1101 CIVIL SUMMONS. Plaintiff: v. Defendant: Case Number: 2026CV1234.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('CO');
+    expect(r.formNumber).toMatch(/JDF\s*1101/i);
+    expect(r.category).toBe('summons');
+  });
+
+  it('Connecticut: JD-CV summons', () => {
+    const r = detectCourtForm(`SUPERIOR COURT OF THE STATE OF CONNECTICUT, JUDICIAL DISTRICT OF HARTFORD. JD-CV-1 SUMMONS — CIVIL. Docket No. HHD-CV-26-0012345-S.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('CT');
+    expect(r.formNumber).toMatch(/JD-CV-1/i);
+  });
+
+  it('Idaho: CAO Court Administrative Order form', () => {
+    const r = detectCourtForm(`IN THE DISTRICT COURT OF THE FOURTH JUDICIAL DISTRICT OF THE STATE OF IDAHO IN AND FOR THE COUNTY OF ADA. CAO CV 1-1 SUMMONS.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('ID');
+    expect(r.formNumber).toMatch(/CAO\s+CV\s*1-1/i);
+  });
+
+  it('Iowa: Rule of Civil Procedure reference', () => {
+    const r = detectCourtForm(`IN THE IOWA DISTRICT COURT FOR POLK COUNTY. ORIGINAL NOTICE — Iowa R. Civ. P. 1.302. Plaintiff vs. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('IA');
+    expect(r.formNumber).toMatch(/Iowa\s+R/i);
+  });
+
+  it('Kentucky: AOC-105 summons', () => {
+    const r = detectCourtForm(`COMMONWEALTH OF KENTUCKY, FAYETTE CIRCUIT COURT. AOC-105 CIVIL SUMMONS. Plaintiff vs. Defendant. Case No. 26-CI-00123.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('KY');
+    expect(r.formNumber).toMatch(/AOC-105/i);
+  });
+
+  it('Maryland: DC-CV district court form', () => {
+    const r = detectCourtForm(`DISTRICT COURT OF MARYLAND FOR BALTIMORE COUNTY. DC-CV-001 CIVIL ACTION COMPLAINT. Plaintiff vs. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('MD');
+    expect(r.formNumber).toMatch(/DC[/-]CV[/-]001/i);
+  });
+
+  it('Michigan: MC 01 summons', () => {
+    const r = detectCourtForm(`STATE OF MICHIGAN, 16TH JUDICIAL CIRCUIT — MACOMB COUNTY. MC 01 SUMMONS AND COMPLAINT. Plaintiff v Defendant. Case No. 2026-1234-CZ.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('MI');
+    expect(r.formNumber).toMatch(/MC\s+01/i);
+  });
+
+  it('Minnesota: MNCIS form', () => {
+    const r = detectCourtForm(`STATE OF MINNESOTA, COUNTY OF HENNEPIN, FOURTH JUDICIAL DISTRICT COURT. MNCIS-1234 SUMMONS. Plaintiff v. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('MN');
+    expect(r.formNumber).toMatch(/MNCIS-1234/i);
+  });
+
+  it('Nevada: JCRCP rule reference', () => {
+    const r = detectCourtForm(`LAS VEGAS JUSTICE COURT, CLARK COUNTY, NEVADA. SUMMONS pursuant to JCRCP 4. Plaintiff vs. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('NV');
+    expect(r.courtSystem).toBe('state_justice');
+  });
+
+  it('New Hampshire: NHJB form', () => {
+    const r = detectCourtForm(`THE STATE OF NEW HAMPSHIRE, JUDICIAL BRANCH, CIRCUIT COURT — DISTRICT DIVISION. NHJB-2065-FP SUMMONS. Plaintiff v. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('NH');
+    expect(r.formNumber).toMatch(/NHJB-2065/i);
+  });
+
+  it('New Jersey: CN-numbered court notice', () => {
+    const r = detectCourtForm(`SUPERIOR COURT OF NEW JERSEY, LAW DIVISION — CIVIL PART, ESSEX COUNTY. CN 10527 SUMMONS. Plaintiff vs. Defendant. Docket No. ESX-L-001234-26.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('NJ');
+    expect(r.formNumber).toMatch(/CN\s*10527/i);
+  });
+
+  it('New Mexico: Rule 4-200 NMRA', () => {
+    const r = detectCourtForm(`STATE OF NEW MEXICO, COUNTY OF BERNALILLO, SECOND JUDICIAL DISTRICT COURT. SUMMONS — Rule 4-200 NMRA. Plaintiff v. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('NM');
+    expect(r.formNumber).toMatch(/4-200/i);
+  });
+
+  it('North Carolina: AOC-CV-100 civil summons', () => {
+    const r = detectCourtForm(`STATE OF NORTH CAROLINA, COUNTY OF MECKLENBURG. IN THE GENERAL COURT OF JUSTICE — DISTRICT COURT DIVISION. AOC-CV-100 CIVIL SUMMONS. Plaintiff vs. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('NC');
+    expect(r.formNumber).toMatch(/AOC-CV-100/i);
+  });
+
+  it('North Dakota: SFN form', () => {
+    const r = detectCourtForm(`STATE OF NORTH DAKOTA, COUNTY OF BURLEIGH, DISTRICT COURT. SFN 12345 SUMMONS. Plaintiff v. Defendant. Case No. 08-2026-CV-00123.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('ND');
+    expect(r.formNumber).toMatch(/SFN\s*12345/i);
+  });
+
+  it('Ohio: Standard Probate Form', () => {
+    const r = detectCourtForm(`PROBATE COURT OF FRANKLIN COUNTY, OHIO. Standard Probate Form 4.0 APPLICATION FOR AUTHORITY TO ADMINISTER ESTATE. Petitioner: Decedent:`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('OH');
+    expect(r.formNumber).toMatch(/Standard\s+Probate\s+Form\s+4\.0/i);
+  });
+
+  it('Oregon: ORCP rule', () => {
+    const r = detectCourtForm(`IN THE CIRCUIT COURT OF THE STATE OF OREGON FOR MULTNOMAH COUNTY. SUMMONS pursuant to ORCP 7. Plaintiff v. Defendant. Case No. 26CV12345.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('OR');
+    expect(r.formNumber).toMatch(/ORCP\s*7/i);
+  });
+
+  it('South Carolina: SCRCP rule', () => {
+    const r = detectCourtForm(`STATE OF SOUTH CAROLINA, COUNTY OF RICHLAND. IN THE COURT OF COMMON PLEAS. SUMMONS — SCRCP 4. Plaintiff vs. Defendant. Civil Action No. 2026-CP-40-12345.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('SC');
+    expect(r.formNumber).toMatch(/SCRCP\s*4/i);
+  });
+
+  it('Virginia: DC-401 warrant in debt', () => {
+    const r = detectCourtForm(`COMMONWEALTH OF VIRGINIA, FAIRFAX COUNTY GENERAL DISTRICT COURT. DC-401 WARRANT IN DEBT. Plaintiff vs. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('VA');
+    expect(r.formNumber).toMatch(/DC-401/i);
+  });
+
+  it('Washington: WPF DRPSCU 01.0100 family-law summons', () => {
+    const r = detectCourtForm(`SUPERIOR COURT OF WASHINGTON, COUNTY OF KING. WPF DRPSCU 01.0100 SUMMONS. Petitioner v. Respondent.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('WA');
+    expect(r.formNumber).toMatch(/WPF/i);
+  });
+
+  it('Wisconsin: GF-180 summons', () => {
+    const r = detectCourtForm(`STATE OF WISCONSIN, CIRCUIT COURT, DANE COUNTY. GF-180 SUMMONS. Plaintiff vs. Defendant. Case No. 26CV001234.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('WI');
+    expect(r.formNumber).toMatch(/GF-180/i);
+  });
+
+  it('District of Columbia: Sup. Ct. Civ. R. reference', () => {
+    const r = detectCourtForm(`SUPERIOR COURT OF THE DISTRICT OF COLUMBIA, CIVIL DIVISION. SUMMONS pursuant to Sup. Ct. Civ. R. 4. Plaintiff v. Defendant.`);
+    expect(r.isCourtDocument).toBe(true);
+    expect(r.state).toBe('DC');
+    expect(r.formNumber).toMatch(/Sup\.\s*Ct/i);
+  });
+});
+
 describe('detectCourtForm — boundary cases', () => {
   it('rejects clearly non-court text', () => {
     const text = 'Hello world. This is a totally unrelated text fragment without any legal markers.';
