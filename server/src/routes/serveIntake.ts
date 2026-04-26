@@ -25,6 +25,7 @@ import {
 } from '../utils/serveIntakeHelpers';
 import { buildEnrichment } from '../utils/serveIntakeEnrichment';
 import { synthesizeCaseSynopsis } from '../utils/caseSynopsis';
+import { synthesizeCaseNarrative } from '../utils/caseNarrative';
 import { detectCourtForm } from '../utils/courtFormDetector';
 import { execFile } from 'child_process';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
@@ -671,6 +672,29 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       court: parsed.court,
     });
 
+    // ── Detailed Who / What / Where / When / Why narrative — separate
+    // note that does a deep review of the Complaint document. Inherits
+    // category + money-at-stake from the synopsis so it stays consistent.
+    const defendantEntityType = classifyEntityType(`${parsed.defendant.first} ${parsed.defendant.last}`.trim());
+    const narrativeBlock = synthesizeCaseNarrative({
+      courtDocket,
+      plaintiff: parsed.plaintiff,
+      defendantFirst: parsed.defendant.first,
+      defendantMiddle: parsed.defendant.middle,
+      defendantLast: parsed.defendant.last,
+      defendantEntityType,
+      attorney: parsed.attorney,
+      court: parsed.court,
+      courtAddress: parsed.courtAddress,
+      county: parsed.county,
+      courtCaseNumber: parsed.courtCaseNumber,
+      signedDate: parsed.signedDate,
+      responseDeadlineDays: parsed.responseDeadlineDays,
+      documents: parsed.documents,
+      category: synopsis.category,
+      moneyAtStake: synopsis.moneyAtStake,
+    });
+
     // ── Notes narrative — 3 consolidated notes:
     //   1. 🚨 OFFICER BRIEFING (alert + 3-day diligence plan + door approach)
     //   2. 📂 CASE PACKET (case + court + attorney + auto-synopsis)
@@ -701,6 +725,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       timestamp: now,
       caseSynopsisText: synopsis.fullText,
       enrichmentText: enrichment.narrativeSection,
+      caseNarrativeText: narrativeBlock.fullText,
     });
     const tsBase = Date.now();
     const notesWrapped = narrative.map((n, i) => ({

@@ -546,6 +546,8 @@ export interface NotesInput {
   caseSynopsisText?: string;
   /** Aggregated enrichment narrative from serveIntakeEnrichment.ts. Optional. */
   enrichmentText?: string;
+  /** Detailed Who / What / Where / When / Why narrative from caseNarrative.ts. Optional. */
+  caseNarrativeText?: string;
   documentPages: number;
   bilingual: boolean;
   signedDate: string;
@@ -698,11 +700,21 @@ export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
   dossierLines.push(`[Auto-generated ${i.timestamp}]`);
   const dossierNote = dossierLines.join('\n');
 
-  return [
+  // ═══════════════════════════════════════════════════════════
+  // NOTE 4 — 📝 CASE NARRATIVE (detailed Who/What/Where/When/Why)
+  //   Separate, deeper-dive note that reviews the Complaint document
+  //   beyond the elevator-pitch synopsis embedded in the CASE PACKET.
+  //   Only emitted when narrative text is supplied by the route.
+  // ═══════════════════════════════════════════════════════════
+  const notes: NotesEntry[] = [
     { text: briefingNote },
     { text: packetNote },
-    { text: dossierNote },
   ];
+  if (i.caseNarrativeText) {
+    notes.push({ text: i.caseNarrativeText });
+  }
+  notes.push({ text: dossierNote });
+  return notes;
 }
 
 export function deriveServiceType(primaryToken: string, fullDocuments?: string): string {

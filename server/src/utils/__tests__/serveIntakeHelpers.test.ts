@@ -225,14 +225,25 @@ describe('buildNotesNarrative', () => {
     timestamp: '2026-04-19 07:30:12',
   };
 
-  // Note: buildNotesNarrative was rewritten to a 3-section consolidated format
-  // (briefing / case packet / dossier) so the dispatcher reads fewer, denser notes.
-  it('produces 3 consolidated emoji-headed sections in order', () => {
+  // buildNotesNarrative defaults to 3 consolidated notes (briefing / case
+  // packet / dossier). When caseNarrativeText is supplied a 4th detailed
+  // narrative note slots between CASE PACKET and DOSSIER.
+  it('produces 3 consolidated emoji-headed sections in order without narrative', () => {
     const notes = buildNotesNarrative(input);
     expect(notes).toHaveLength(3);
     expect(notes[0].text).toMatch(/^🚨 OFFICER BRIEFING/);
     expect(notes[1].text).toMatch(/^📂 CASE PACKET/);
     expect(notes[2].text).toMatch(/^👤 SUBJECT & ADDRESS DOSSIER/);
+  });
+
+  it('inserts the 4th CASE NARRATIVE note when caseNarrativeText is supplied', () => {
+    const narrativeText = '📝 CASE NARRATIVE — Detailed review of the Complaint\n══════════════════\n▸ WHO\nPLAINTIFF: Capital One';
+    const notes = buildNotesNarrative({ ...input, caseNarrativeText: narrativeText });
+    expect(notes).toHaveLength(4);
+    expect(notes[0].text).toMatch(/^🚨 OFFICER BRIEFING/);
+    expect(notes[1].text).toMatch(/^📂 CASE PACKET/);
+    expect(notes[2].text).toMatch(/^📝 CASE NARRATIVE/);
+    expect(notes[3].text).toMatch(/^👤 SUBJECT & ADDRESS DOSSIER/);
   });
 
   it('OFFICER BRIEFING contains the 3-day diligence plan with door-approach guidance', () => {
