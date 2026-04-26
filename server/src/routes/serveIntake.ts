@@ -698,6 +698,15 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     }
     if (parsed.serviceWindows) descLines.push(`WINDOWS: ${parsed.serviceWindows}`);
     if (parsed.attorney.name) descLines.push(`ATTORNEY: ${parsed.attorney.name.toUpperCase()}${parsed.attorney.tel ? ' | ' + parsed.attorney.tel : ''}`);
+    // Surface high-impact enrichment flags at the top of the description so they appear
+    // on the call list row preview without expanding the notes.
+    const descFlags: string[] = [];
+    if (enrichment.flags.activeTrespassOrder) descFlags.push('TRESPASS ORDER');
+    if (enrichment.flags.premiseAlertActive) descFlags.push('PREMISE ALERT');
+    if (enrichment.flags.officerSafetyCaution) descFlags.push('OFFICER SAFETY');
+    if (enrichment.knownVehicles.length > 0) descFlags.push(`${enrichment.knownVehicles.length} KNOWN VEH`);
+    if (enrichment.existingOpenCase) descFlags.push(`OPEN CASE ${enrichment.existingOpenCase.case_number}`);
+    if (descFlags.length > 0) descLines.push(`⚑ ${descFlags.join(' · ')}`);
     const description = descLines.join('\n');
 
     const tagSet: string[] = ['civil_process', 'process_service'];

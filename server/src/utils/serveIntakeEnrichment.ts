@@ -41,6 +41,8 @@ export interface EnrichmentResult {
     officerSafetyCaution: boolean;
     weaponsInvolved: boolean;
     secondaryType: string | null; // e.g. 'repeat_location'
+    premiseAlertActive: boolean;
+    activeTrespassOrder: boolean;
   };
   // Apartment/unit string parsed from address (for location_room field).
   unitNumber: string | null;
@@ -48,6 +50,10 @@ export interface EnrichmentResult {
   serviceWindows: ServiceWindowsTracker;
   // Closest-available-unit suggestion at intake (or null if none).
   closestUnit: { id: number; call_sign: string; distance_miles: number; officer_name: string | null } | null;
+  // Vehicle plates known to this subject (for at-door identification).
+  knownVehicles: Array<{ plate: string; state: string | null; year: number | null; make: string | null; model: string | null; color: string | null }>;
+  // Existing open civil case linked to this defendant (avoids duplicate case creation).
+  existingOpenCase: { id: number; case_number: string; title: string } | null;
 }
 
 export interface ServiceWindowsTracker {
@@ -317,6 +323,223 @@ function closestAvailableUnit(db: Db, lat: number | null, lng: number | null): E
 }
 
 // ─────────────────────────────────────────────────────────────────────
+// 9. Vehicles registered to subject (for at-door / driveway identification)
+// ─────────────────────────────────────────────────────────────────────
+function knownVehicles(db: Db, defendantPersonId: number | null): EnrichmentResult['knownVehicles'] {
+  if (!defendantPersonId) return [];
+  try {
+    const rows = db.prepare(`
+      SELECT plate_number, state, year, make, model, color
+      FROM vehicles_records
+      WHERE owner_person_id = ?
+      ORDER BY created_at DESC
+      LIMIT 6
+    `).all(defendantPersonId) as any[];
+    return rows
+      .filter((r) => r.plate_number)
+      .map((r) => ({
+        plate: String(r.plate_number).toUpperCase(),
+        state: r.state || null,
+        year: r.year ? Number(r.year) : null,
+        make: r.make || null,
+        model: r.model || null,
+        color: r.color || null,
+      }));
+  } catch {
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 10. Known associates / co-residents at the address
+// ─────────────────────────────────────────────────────────────────────
+function knownAssociates(db: Db, defendantPersonId: number | null): Array<{ name: string; relationship: string; notes: string | null }> {
+  if (!defendantPersonId) return [];
+  try {
+    const rows = db.prepare(`
+      SELECT p.first_name, p.last_name, pa.relationship_type, pa.notes
+      FROM person_associates pa
+      JOIN persons p ON p.id = pa.associate_id
+      WHERE pa.person_id = ?
+      ORDER BY pa.created_at DESC
+      LIMIT 5
+    `).all(defendantPersonId) as any[];
+    return rows.map((r) => ({
+      name: `${r.first_name || ''} ${r.last_name || ''}`.trim(),
+      relationship: String(r.relationship_type || 'associate'),
+      notes: r.notes || null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 11. Active trespass orders against subject
+// ─────────────────────────────────────────────────────────────────────
+function activeTrespassOrders(db: Db, defendantPersonId: number | null): Array<{ order_number: string; location: string; expires: string | null }> {
+  if (!defendantPersonId) return [];
+  try {
+    const rows = db.prepare(`
+      SELECT order_number, location, expiration_date
+      FROM trespass_orders
+      WHERE person_id = ? AND status = 'active'
+      ORDER BY effective_date DESC
+      LIMIT 5
+    `).all(defendantPersonId) as any[];
+    return rows.map((r) => ({
+      order_number: String(r.order_number),
+      location: String(r.location || ''),
+      expires: r.expiration_date || null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 12. Premise alerts at the service address
+// ─────────────────────────────────────────────────────────────────────
+function premiseAlerts(db: Db, address: string): Array<{ title: string; alert_level: string; description: string | null }> {
+  if (!address || address.length < 5) return [];
+  try {
+    const matchPrefix = address.split(',')[0].trim().slice(0, 40);
+    if (!matchPrefix) return [];
+    const rows = db.prepare(`
+      SELECT title, alert_level, description, alert_type
+      FROM premise_alerts
+      WHERE LOWER(address) LIKE LOWER(?)
+        AND (expires_at IS NULL OR expires_at > datetime('now'))
+      ORDER BY (CASE alert_level WHEN 'critical' THEN 0 WHEN 'warning' THEN 1 WHEN 'caution' THEN 2 ELSE 3 END), created_at DESC
+      LIMIT 5
+    `).all(`${matchPrefix}%`) as any[];
+    return rows.map((r) => ({
+      title: String(r.title || r.alert_type || 'Premise alert'),
+      alert_level: String(r.alert_level || 'info').toUpperCase(),
+      description: r.description || null,
+    }));
+  } catch {
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 13. Prior serve attempts at the exact address (any subject)
+// ─────────────────────────────────────────────────────────────────────
+function priorAttemptsAtAddress(db: Db, address: string): { attempts: number; lastResult: string | null; lastWhen: string | null } {
+  const empty = { attempts: 0, lastResult: null as string | null, lastWhen: null as string | null };
+  if (!address || address.length < 5) return empty;
+  try {
+    const matchPrefix = address.split(',')[0].trim().slice(0, 40);
+    if (!matchPrefix) return empty;
+    // serve_attempts has lat/lng but not address; join through serve_queue which carries address.
+    const row = db.prepare(`
+      SELECT COUNT(*) AS c, MAX(sa.attempt_at) AS last,
+        (SELECT result FROM serve_attempts sa2
+         JOIN serve_queue sq2 ON sq2.id = sa2.serve_queue_id
+         WHERE LOWER(sq2.recipient_address) LIKE LOWER(?)
+         ORDER BY sa2.attempt_at DESC LIMIT 1) AS last_result
+      FROM serve_attempts sa
+      JOIN serve_queue sq ON sq.id = sa.serve_queue_id
+      WHERE LOWER(sq.recipient_address) LIKE LOWER(?)
+    `).get(`${matchPrefix}%`, `${matchPrefix}%`) as any;
+    return {
+      attempts: Number(row?.c || 0),
+      lastResult: row?.last_result || null,
+      lastWhen: row?.last || null,
+    };
+  } catch {
+    return empty;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 14. Aliases / known-as for the subject
+// ─────────────────────────────────────────────────────────────────────
+function subjectAliases(db: Db, defendantPersonId: number | null): string[] {
+  if (!defendantPersonId) return [];
+  try {
+    const row = db.prepare(`SELECT aliases, alias_nickname FROM persons WHERE id = ?`).get(defendantPersonId) as any;
+    if (!row) return [];
+    const out = new Set<string>();
+    if (row.alias_nickname) out.add(String(row.alias_nickname).trim());
+    if (row.aliases) {
+      // aliases column stores either JSON array or comma-delimited string
+      try {
+        const parsed = JSON.parse(row.aliases);
+        if (Array.isArray(parsed)) parsed.forEach((a) => { if (a) out.add(String(a).trim()); });
+      } catch {
+        String(row.aliases).split(/[,;]/).forEach((a) => { const t = a.trim(); if (t) out.add(t); });
+      }
+    }
+    return Array.from(out).filter(Boolean).slice(0, 6);
+  } catch {
+    return [];
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 15. Last patrol GPS ping near the address (within 0.1mi, last 30d)
+// ─────────────────────────────────────────────────────────────────────
+function lastPatrolNearAddress(db: Db, lat: number | null, lng: number | null): { call_sign: string; officer_name: string | null; when: string; distance_miles: number } | null {
+  if (lat == null || lng == null) return null;
+  try {
+    // Bounding-box prefilter (0.1 mi ≈ 0.0015 deg lat, 0.0019 deg lng at SLC) then exact haversine.
+    const dLat = 0.002;
+    const dLng = 0.0024;
+    const rows = db.prepare(`
+      SELECT call_sign, officer_name, latitude, longitude, recorded_at
+      FROM gps_breadcrumbs
+      WHERE latitude BETWEEN ? AND ?
+        AND longitude BETWEEN ? AND ?
+        AND recorded_at > datetime('now', '-30 days', 'localtime')
+      ORDER BY recorded_at DESC
+      LIMIT 200
+    `).all(lat - dLat, lat + dLat, lng - dLng, lng + dLng) as any[];
+    if (rows.length === 0) return null;
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 3958.7613;
+      const dLatR = toRad(lat2 - lat1);
+      const dLonR = toRad(lon2 - lon1);
+      const a = Math.sin(dLatR / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLonR / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    };
+    const ranked = rows
+      .map((r) => ({
+        call_sign: String(r.call_sign || ''),
+        officer_name: r.officer_name || null,
+        when: String(r.recorded_at || ''),
+        distance_miles: Number(haversineMiles(lat, lng, r.latitude, r.longitude).toFixed(2)),
+      }))
+      .filter((r) => r.distance_miles <= 0.1)
+      .sort((a, b) => (a.when < b.when ? 1 : -1));
+    return ranked[0] || null;
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
+// 16. Existing open civil case for this defendant (avoid duplicate creation)
+// ─────────────────────────────────────────────────────────────────────
+function existingOpenCase(db: Db, defendantPersonId: number | null): EnrichmentResult['existingOpenCase'] {
+  if (!defendantPersonId) return null;
+  try {
+    const row = db.prepare(`
+      SELECT id, case_number, title
+      FROM cases
+      WHERE defendant_person_id = ? AND status = 'open'
+      ORDER BY created_at DESC LIMIT 1
+    `).get(defendantPersonId) as any;
+    if (!row) return null;
+    return { id: Number(row.id), case_number: String(row.case_number), title: String(row.title || '') };
+  } catch {
+    return null;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────
 // Main entry: run all enrichments and return a single result
 // ─────────────────────────────────────────────────────────────────────
 export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
@@ -329,6 +552,15 @@ export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
   const serviceWindows = buildServiceWindowsTracker(input.serviceWindowsLabel, input.dueDate);
   const bestTime = bestContactTime(input.db, input.defendantPersonId);
   const closestUnit = closestAvailableUnit(input.db, input.latitude, input.longitude);
+  // ── New deeper-system enrichments ──
+  const vehicles = knownVehicles(input.db, input.defendantPersonId);
+  const associates = knownAssociates(input.db, input.defendantPersonId);
+  const trespass = activeTrespassOrders(input.db, input.defendantPersonId);
+  const premise = premiseAlerts(input.db, input.address);
+  const priorAttempts = priorAttemptsAtAddress(input.db, input.address);
+  const aliases = subjectAliases(input.db, input.defendantPersonId);
+  const lastPatrol = lastPatrolNearAddress(input.db, input.latitude, input.longitude);
+  const openCase = existingOpenCase(input.db, input.defendantPersonId);
 
   // Build narrative section. Each subsection is conditional on having data.
   const lines: string[] = [];
@@ -342,6 +574,17 @@ export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
   }
   if (risk.activeBolos > 0) riskLines.push(`⚠️ ACTIVE BOLOS: ${risk.activeBolos}`);
   if (risk.officerSafetyFi > 0) riskLines.push(`⚠️ OFFICER SAFETY FI: ${risk.officerSafetyFi} prior contact(s) flagged`);
+  if (trespass.length > 0) {
+    trespass.forEach((t) => {
+      riskLines.push(`⚠️ ACTIVE TRESPASS ORDER: ${t.order_number} @ ${t.location.slice(0, 50)}${t.expires ? ` (expires ${t.expires.slice(0, 10)})` : ''}`);
+    });
+  }
+  if (premise.length > 0) {
+    premise.forEach((p) => {
+      const icon = p.alert_level === 'CRITICAL' ? '🛑' : p.alert_level === 'WARNING' ? '⚠️' : 'ℹ️';
+      riskLines.push(`${icon} PREMISE ALERT [${p.alert_level}]: ${p.title}${p.description ? ` — ${p.description.slice(0, 80)}` : ''}`);
+    });
+  }
   if (riskLines.length > 0) {
     lines.push(...riskLines);
     lines.push('');
@@ -358,6 +601,29 @@ export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
     lines.push('👤 SUBJECT HISTORY: no prior system contact');
   }
 
+  // Aliases / known-as
+  if (aliases.length > 0) {
+    lines.push(`🪪 KNOWN AS: ${aliases.map((a) => `"${a}"`).join(', ')}`);
+  }
+
+  // Vehicles registered to subject
+  if (vehicles.length > 0) {
+    lines.push(`🚗 KNOWN VEHICLES (${vehicles.length}):`);
+    vehicles.forEach((v) => {
+      const desc = [v.year, v.color, v.make, v.model].filter(Boolean).join(' ').trim() || 'vehicle';
+      lines.push(`   • ${v.plate}${v.state ? ` (${v.state})` : ''} — ${desc}`);
+    });
+  }
+
+  // Known associates / co-residents
+  if (associates.length > 0) {
+    lines.push(`👥 KNOWN ASSOCIATES (${associates.length}):`);
+    associates.forEach((a) => {
+      lines.push(`   • ${a.name} — ${a.relationship}${a.notes ? ` — ${a.notes.slice(0, 60)}` : ''}`);
+    });
+    lines.push('   ↳ Sub-serve to a competent adult 16+ at residence may apply if defendant absent.');
+  }
+
   // Address frequency
   if (addr.callCount + addr.incidentCount > 0) {
     const parts: string[] = [];
@@ -365,6 +631,19 @@ export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
     if (addr.incidentCount > 0) parts.push(`${addr.incidentCount} incident(s)`);
     lines.push(`🏠 ADDRESS HISTORY (12mo): ${parts.join(', ')}${addr.lastVisit ? ` — last visit ${addr.lastVisit.slice(0, 10)}` : ''}`);
     if (addr.callCount > 3) lines.push(`   ↳ Repeat-visit location — unit should review prior dispositions before approach.`);
+  }
+
+  // Prior serve attempts at this exact address (any subject)
+  if (priorAttempts.attempts > 0) {
+    lines.push(`📋 PRIOR SERVE ATTEMPTS AT THIS ADDRESS: ${priorAttempts.attempts}${priorAttempts.lastResult ? ` — last result: ${priorAttempts.lastResult.toUpperCase()}` : ''}${priorAttempts.lastWhen ? ` (${priorAttempts.lastWhen.slice(0, 10)})` : ''}`);
+    if (priorAttempts.lastResult && /not.served|no.contact|unable/i.test(priorAttempts.lastResult)) {
+      lines.push(`   ↳ Prior attempt unsuccessful — vary attempt window and approach.`);
+    }
+  }
+
+  // Last patrol GPS ping near address (within 0.1 mile, last 30 days)
+  if (lastPatrol) {
+    lines.push(`📡 LAST PATROL NEAR ADDRESS: ${lastPatrol.call_sign}${lastPatrol.officer_name ? ` (${lastPatrol.officer_name})` : ''} — ${lastPatrol.distance_miles}mi @ ${lastPatrol.when.slice(0, 16).replace('T', ' ')}`);
   }
 
   // Apartment / unit clarification
@@ -405,15 +684,26 @@ export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
     lines.push(`🚓 CLOSEST AVAILABLE UNIT AT INTAKE: ${closestUnit.call_sign} — ${closestUnit.distance_miles}mi${closestUnit.officer_name ? ` (${closestUnit.officer_name})` : ''}`);
   }
 
+  // Existing open civil case (avoid duplicate case creation downstream)
+  if (openCase) {
+    lines.push('');
+    lines.push(`📁 EXISTING OPEN CASE FOR THIS DEFENDANT: ${openCase.case_number} — ${openCase.title}`);
+    lines.push(`   ↳ Consider linking this serve to the existing case rather than creating a new one.`);
+  }
+
   return {
     narrativeSection: lines.join('\n'),
     flags: {
-      officerSafetyCaution: risk.activeWarrants.count > 0 || risk.officerSafetyFi > 0,
+      officerSafetyCaution: risk.activeWarrants.count > 0 || risk.officerSafetyFi > 0 || trespass.length > 0 || premise.some((p) => p.alert_level === 'CRITICAL' || p.alert_level === 'WARNING'),
       weaponsInvolved: risk.activeWarrants.types.includes('arrest') || risk.officerSafetyFi > 0,
       secondaryType: addr.callCount > 3 ? 'repeat_location' : null,
+      premiseAlertActive: premise.length > 0,
+      activeTrespassOrder: trespass.length > 0,
     },
     unitNumber,
     serviceWindows,
     closestUnit,
+    knownVehicles: vehicles,
+    existingOpenCase: openCase,
   };
 }
