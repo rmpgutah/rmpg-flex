@@ -123,9 +123,14 @@ export default function AdminPdfEngineTab({ LoadingSpinner, error, setError }: P
             <FileText size={16} /> PDF Engine Flags
           </h2>
           <p className="text-xs text-gray-400 mt-1">
-            Toggle individual forms between v1 (legacy) and v2 (new engine with preview).
-            Changes take effect on next PDF generation. {enabledCount} of {FORM_CATALOG.length} forms on v2.
+            Schema preview / migration utility. Toggles below are inert in production —
+            the system runs a single PDF engine (v1) for every download. v2 schemas are
+            kept for side-by-side preview during a future migration. {enabledCount} of {FORM_CATALOG.length} schemas marked.
           </p>
+          <div className="mt-2 px-2 py-1.5 text-[10px] border border-amber-700/50 bg-amber-900/20 text-amber-300 flex items-center gap-2">
+            <AlertTriangle size={11} />
+            <span>SINGLE-ENGINE MODE: all production PDFs route through v1. v2 schemas are preview-only.</span>
+          </div>
         </div>
         <div className="flex gap-2">
           <button

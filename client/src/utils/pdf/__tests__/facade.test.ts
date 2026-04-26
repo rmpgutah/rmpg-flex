@@ -4,40 +4,27 @@ vi.mock('../../recordPdfGenerator', () => ({
   downloadRecordPdf: vi.fn(async () => 'v1'),
 }));
 
-const downloadPdfV2Mock = vi.fn<(...args: any[]) => Promise<string>>(async () => 'v2');
-vi.mock('../v2', () => ({
-  downloadPdfV2: (...args: any[]) => downloadPdfV2Mock(...args),
-}));
+import { downloadPdf, _resetFacadeCacheForTest, _setFlagsForTest, invalidateFlagsCache } from '../facade';
 
-vi.mock('../v2/forms', () => ({
-  getV2Schema: (t: string) => ({ meta: { formNumber: t, title: 'T', revision: 'R' }, header: { kind: 'default', formId: t }, sections: [] }),
-}));
+// Single-engine facade: v1 is the only active path. The flag-based test
+// hooks remain as no-op shims for backward compat with callers that still
+// import them; calling them must not change routing.
+describe('pdf facade — single engine (v1 only)', () => {
+  beforeEach(() => { _resetFacadeCacheForTest(); });
 
-vi.mock('../../../hooks/useApi', () => ({
-  apiFetch: vi.fn(),
-}));
-
-import { downloadPdf, _resetFacadeCacheForTest, _setFlagsForTest } from '../facade';
-
-describe('pdf facade', () => {
-  beforeEach(() => { _resetFacadeCacheForTest(); downloadPdfV2Mock.mockClear(); });
-
-  it('uses v1 path when flag is false', async () => {
-    _setFlagsForTest({ warrant: false });
-    const r = await downloadPdf('warrant', { id: 1 }, 'x.pdf');
-    expect(r).toBe('v1');
+  it('routes every form to v1 regardless of flag value', async () => {
+    _setFlagsForTest({ warrant: true, citation: true, incident: true });
+    const a = await downloadPdf('warrant', { id: 1 }, 'a.pdf');
+    const b = await downloadPdf('citation', { id: 2 }, 'b.pdf');
+    const c = await downloadPdf('incident', { id: 3 }, 'c.pdf');
+    expect(a).toBe('v1');
+    expect(b).toBe('v1');
+    expect(c).toBe('v1');
   });
 
-  it('uses v2 path when flag is true', async () => {
-    _setFlagsForTest({ warrant: true });
-    const r = await downloadPdf('warrant', { id: 1 }, 'x.pdf');
-    expect(r).toBe('v2');
-  });
-
-  it('falls back to v1 if v2 throws', async () => {
-    _setFlagsForTest({ warrant: true });
-    downloadPdfV2Mock.mockRejectedValueOnce(new Error('schema exploded'));
-    const r = await downloadPdf('warrant', { id: 1 }, 'x.pdf');
-    expect(r).toBe('v1');
+  it('compat shims (invalidateFlagsCache, _setFlagsForTest, _resetFacadeCacheForTest) are no-ops and do not throw', () => {
+    expect(() => invalidateFlagsCache()).not.toThrow();
+    expect(() => _setFlagsForTest({ anything: true })).not.toThrow();
+    expect(() => _resetFacadeCacheForTest()).not.toThrow();
   });
 });
