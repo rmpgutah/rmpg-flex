@@ -25,6 +25,7 @@ import {
 } from '../utils/serveIntakeHelpers';
 import { buildEnrichment } from '../utils/serveIntakeEnrichment';
 import { synthesizeCaseSynopsis } from '../utils/caseSynopsis';
+import { detectCourtForm } from '../utils/courtFormDetector';
 import { execFile } from 'child_process';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
 import { join } from 'path';
@@ -37,9 +38,14 @@ router.use(authenticateToken);
 
 // ── Auto-detect document kind by content ─────────────────────
 function detectDocType(text: string): 'court_docket' | 'field_sheet' | 'info_sheet' | 'unknown' {
-  if (/SUMMONS|COMPLAINT|Attorney for Plaintiff|JUDICIAL DISTRICT COURT/i.test(text)) return 'court_docket';
+  // Field sheet / info sheet markers stay first — they are very specific to
+  // the upstream vendor formats (ICU, ServeManager, etc.) and we want them to
+  // win before the broader court-form detector sees a court-style document.
   if (/Party to Serve|Instructions\s*\n[\s\S]*?Sub-serve|Date & Time.*Description of Service/i.test(text)) return 'field_sheet';
   if (/^JOB\b/im.test(text) || /Service Attempts|Recipient:|Job Activity|Af\s*fi\s*davits/i.test(text)) return 'info_sheet';
+  // Robust court-form detection across all 50 states + federal.
+  const detection = detectCourtForm(text);
+  if (detection.isCourtDocument) return 'court_docket';
   return 'unknown';
 }
 
@@ -171,6 +177,15 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     // Concatenate all court_docket texts so the parser sees the full packet.
     let fieldSheet = '';
     const courtDocketParts: string[] = [];
+    const courtFormDetections: Array<{
+      category: string;
+      state: string | null;
+      stateName: string | null;
+      courtSystem: string;
+      courtName: string | null;
+      formNumber: string | null;
+      confidence: number;
+    }> = [];
     let infoSheet = '';
     for (const d of documents) {
       const txt = (d?.text || '') as string;
@@ -187,6 +202,20 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         else if (courtDocketParts.length === 0) courtDocketParts.push(txt);
         else if (!infoSheet) infoSheet = txt;
         else courtDocketParts.push(txt); // additional unknown docs → treat as court material
+      }
+      // Run the comprehensive detector on every court_docket-classified doc
+      // so the UI can show form-type / state / form-number per file.
+      if (kind === 'court_docket') {
+        const det = detectCourtForm(txt);
+        courtFormDetections.push({
+          category: det.category,
+          state: det.state,
+          stateName: det.stateName,
+          courtSystem: det.courtSystem,
+          courtName: det.courtName,
+          formNumber: det.formNumber,
+          confidence: det.confidence,
+        });
       }
     }
     const courtDocket = courtDocketParts.join('\n\n--- DOCUMENT SEPARATOR ---\n\n');
@@ -268,6 +297,8 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         courtDocket: courtDocketParts.length > 0,
         courtDocketCount: courtDocketParts.length,
         infoSheet: !!infoSheet,
+        // Per-court-docket form classifications (50-state aware).
+        courtForms: courtFormDetections,
       },
       geocode: geocodeResult,
       warnings: [duplicateWarning, activeServeWarning, geocodeWarning].filter(Boolean),
