@@ -23,6 +23,7 @@ import {
   classifyEntityType,
   type ParseOutput,
 } from '../utils/serveIntakeHelpers';
+import { buildEnrichment } from '../utils/serveIntakeEnrichment';
 import { execFile } from 'child_process';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
 import { join } from 'path';
@@ -610,7 +611,22 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     );
     const caseId = Number(caseResult.lastInsertRowid);
 
-    // ── Notes narrative (8 entries) + wrap with id/author/timestamp
+    // ── Intake enrichment — adds prior-contact intelligence, risk flags,
+    // address history, adjacent serves, structured diligence tracker, and
+    // closest-unit suggestion to the dispatch record. Best-effort: each
+    // sub-query catches its own errors and degrades gracefully.
+    const enrichment = buildEnrichment({
+      db,
+      defendant: { first: parsed.defendant.first, middle: parsed.defendant.middle, last: parsed.defendant.last, dob: parsed.defendant.dob },
+      address: parsed.address,
+      latitude,
+      longitude,
+      defendantPersonId: defendantId,
+      dueDate: parsed.dueDate || null,
+      serviceWindowsLabel: parsed.serviceWindows || '',
+    });
+
+    // ── Notes narrative (5 entries) + wrap with id/author/timestamp
     const narrative = buildNotesNarrative({
       plaintiff: parsed.plaintiff,
       orderingClientRule: parsed.orderingClientRule,
@@ -643,6 +659,14 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       text: n.text,
       timestamp: now,
     }));
+    // Append the enrichment intelligence section as its own note so it shows
+    // separately in the dispatch detail view alongside the 5 narrative sections.
+    notesWrapped.push({
+      id: String(tsBase + notesWrapped.length),
+      author: 'Serve Intake',
+      text: enrichment.narrativeSection,
+      timestamp: now,
+    });
     // Append additional dispatcher notes if provided
     if (overrides?.additionalNotes) {
       notesWrapped.push({
@@ -727,7 +751,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request',
       overrides?.priority || 'P4', ({'P1':1,'P2':2,'P3':3,'P4':4} as any)[overrides?.priority || 'P4'] || 4, 'pending',
       callerName, callerPhone || null, 'client', callerAddress || null,
-      parsed.address || 'Unknown', parsed.addressParts.building || null, parsed.addressParts.floor || null, parsed.addressParts.suite || null, null,
+      parsed.address || 'Unknown', parsed.addressParts.building || null, parsed.addressParts.floor || null, parsed.addressParts.suite || enrichment.unitNumber || null, null,
       propertyId, latitude, longitude,
       weatherConditions || null, lightingConditions || null, 'STANDARD',
       sectorCode || null, zoneCode || null, beatCode || null, beatCode || null, dispatchCode || null,
@@ -737,13 +761,30 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       1, 1, 'STATIONARY',
       callerName, callerPhone || null, requestorEmail,
       parsed.serviceType, billingCode, parsed.jobNumber || null,
-      0, parsed.serviceWindows || null, pso72hrDeadline,
+      0, JSON.stringify(enrichment.serviceWindows), pso72hrDeadline,
       parsed.primaryDoc || null, fullName, parsed.address || null,
       0, clientId, parsed.jobNumber || null, caseId,
       parsed.primaryDoc || 'DOCUMENTS', 'email', tagsJson,
       now, now,
     );
     const callId = Number(callResult.lastInsertRowid);
+
+    // ── Apply enrichment-derived safety flags + repeat-location marker.
+    // Done as a follow-up UPDATE rather than expanding the giant INSERT
+    // signature (74-column INSERT, gotcha #24 in CLAUDE.md).
+    try {
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      if (enrichment.flags.officerSafetyCaution) { sets.push('officer_safety_caution = ?'); vals.push(1); }
+      if (enrichment.flags.weaponsInvolved) { sets.push('weapons_involved = ?'); vals.push('FLAGGED'); }
+      if (enrichment.flags.secondaryType) { sets.push('secondary_type = ?'); vals.push(enrichment.flags.secondaryType); }
+      if (sets.length > 0) {
+        vals.push(callId);
+        db.prepare(`UPDATE calls_for_service SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      }
+    } catch (err) {
+      log.warn({ err }, 'enrichment flags update failed');
+    }
 
     // ── call_persons links ──────────────────────────────────
     try {
