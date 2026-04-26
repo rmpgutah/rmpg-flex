@@ -167,24 +167,24 @@ export function synthesizeCaseSynopsis(input: CaseSynopsisInput): CaseSynopsisRe
 
   let urgencyLine: string;
   if (category === 'eviction' || category === 'protective_order' || category === 'order_to_show_cause') {
-    urgencyLine = '⏱️ HIGH URGENCY — short response window or hearing date already set.';
+    urgencyLine = 'HIGH URGENCY - short response window or hearing date already set.';
   } else if (category === 'subpoena') {
-    urgencyLine = '⏱️ TIME-BOUND — appearance/production deadline is on the document itself.';
+    urgencyLine = 'TIME-BOUND - appearance/production deadline is on the document itself.';
   } else if ((input.responseDeadlineDays || 0) <= 14) {
-    urgencyLine = `⏱️ SHORT WINDOW — defendant has only ${input.responseDeadlineDays} days to respond.`;
+    urgencyLine = `SHORT WINDOW - defendant has only ${input.responseDeadlineDays} days to respond.`;
   } else {
-    urgencyLine = `⏱️ STANDARD WINDOW — defendant has ${input.responseDeadlineDays || 21} days to file a response.`;
+    urgencyLine = `STANDARD WINDOW - defendant has ${input.responseDeadlineDays || 21} days to file a response.`;
   }
 
   const lines: string[] = [];
-  lines.push('📖 WHAT YOU ARE SERVING (auto-synopsis)');
+  lines.push('WHAT YOU ARE SERVING (auto-synopsis)');
   lines.push(oneLineSummary);
   lines.push('');
-  lines.push('📌 WHAT THIS MEANS FOR THE DEFENDANT:');
+  lines.push('WHAT THIS MEANS FOR THE DEFENDANT:');
   lines.push(defendantAction);
   if (moneyAtStake) {
     lines.push('');
-    lines.push(`💰 AMOUNT IN CONTROVERSY: ${moneyAtStake}`);
+    lines.push(`AMOUNT IN CONTROVERSY: ${moneyAtStake}`);
   }
   lines.push('');
   lines.push(urgencyLine);

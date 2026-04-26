@@ -564,25 +564,23 @@ export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
 
   // Build narrative section. Each subsection is conditional on having data.
   const lines: string[] = [];
-  lines.push('🔍 INTAKE ENRICHMENT');
-  lines.push('═'.repeat(50));
+  lines.push('INTAKE ENRICHMENT');
 
   // Risk flags first (highest priority)
   const riskLines: string[] = [];
   if (risk.activeWarrants.count > 0) {
-    riskLines.push(`⚠️ ACTIVE WARRANTS: ${risk.activeWarrants.count} (${risk.activeWarrants.types.join(', ').toUpperCase() || 'unspecified type'})`);
+    riskLines.push(`ACTIVE WARRANTS: ${risk.activeWarrants.count} (${risk.activeWarrants.types.join(', ').toUpperCase() || 'unspecified type'})`);
   }
-  if (risk.activeBolos > 0) riskLines.push(`⚠️ ACTIVE BOLOS: ${risk.activeBolos}`);
-  if (risk.officerSafetyFi > 0) riskLines.push(`⚠️ OFFICER SAFETY FI: ${risk.officerSafetyFi} prior contact(s) flagged`);
+  if (risk.activeBolos > 0) riskLines.push(`ACTIVE BOLOS: ${risk.activeBolos}`);
+  if (risk.officerSafetyFi > 0) riskLines.push(`OFFICER SAFETY FI: ${risk.officerSafetyFi} prior contact(s) flagged`);
   if (trespass.length > 0) {
     trespass.forEach((t) => {
-      riskLines.push(`⚠️ ACTIVE TRESPASS ORDER: ${t.order_number} @ ${t.location.slice(0, 50)}${t.expires ? ` (expires ${t.expires.slice(0, 10)})` : ''}`);
+      riskLines.push(`ACTIVE TRESPASS ORDER: ${t.order_number} @ ${t.location.slice(0, 50)}${t.expires ? ` (expires ${t.expires.slice(0, 10)})` : ''}`);
     });
   }
   if (premise.length > 0) {
     premise.forEach((p) => {
-      const icon = p.alert_level === 'CRITICAL' ? '🛑' : p.alert_level === 'WARNING' ? '⚠️' : 'ℹ️';
-      riskLines.push(`${icon} PREMISE ALERT [${p.alert_level}]: ${p.title}${p.description ? ` — ${p.description.slice(0, 80)}` : ''}`);
+      riskLines.push(`PREMISE ALERT [${p.alert_level}]: ${p.title}${p.description ? ` - ${p.description.slice(0, 80)}` : ''}`);
     });
   }
   if (riskLines.length > 0) {
@@ -596,32 +594,32 @@ export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
     if (contacts.callCount > 0) parts.push(`${contacts.callCount} prior call(s)`);
     if (contacts.incidentCount > 0) parts.push(`${contacts.incidentCount} incident(s)`);
     if (contacts.arrestCount > 0) parts.push(`${contacts.arrestCount} arrest(s)`);
-    lines.push(`👤 SUBJECT HISTORY: ${parts.join(', ')}${contacts.lastContact ? ` — last contact ${contacts.lastContact.slice(0, 10)}` : ''}`);
+    lines.push(`SUBJECT HISTORY: ${parts.join(', ')}${contacts.lastContact ? ` - last contact ${contacts.lastContact.slice(0, 10)}` : ''}`);
   } else {
-    lines.push('👤 SUBJECT HISTORY: no prior system contact');
+    lines.push('SUBJECT HISTORY: no prior system contact');
   }
 
   // Aliases / known-as
   if (aliases.length > 0) {
-    lines.push(`🪪 KNOWN AS: ${aliases.map((a) => `"${a}"`).join(', ')}`);
+    lines.push(`KNOWN AS: ${aliases.map((a) => `"${a}"`).join(', ')}`);
   }
 
   // Vehicles registered to subject
   if (vehicles.length > 0) {
-    lines.push(`🚗 KNOWN VEHICLES (${vehicles.length}):`);
+    lines.push(`KNOWN VEHICLES (${vehicles.length}):`);
     vehicles.forEach((v) => {
       const desc = [v.year, v.color, v.make, v.model].filter(Boolean).join(' ').trim() || 'vehicle';
-      lines.push(`   • ${v.plate}${v.state ? ` (${v.state})` : ''} — ${desc}`);
+      lines.push(`   - ${v.plate}${v.state ? ` (${v.state})` : ''} - ${desc}`);
     });
   }
 
   // Known associates / co-residents
   if (associates.length > 0) {
-    lines.push(`👥 KNOWN ASSOCIATES (${associates.length}):`);
+    lines.push(`KNOWN ASSOCIATES (${associates.length}):`);
     associates.forEach((a) => {
-      lines.push(`   • ${a.name} — ${a.relationship}${a.notes ? ` — ${a.notes.slice(0, 60)}` : ''}`);
+      lines.push(`   - ${a.name} - ${a.relationship}${a.notes ? ` - ${a.notes.slice(0, 60)}` : ''}`);
     });
-    lines.push('   ↳ Sub-serve to a competent adult 16+ at residence may apply if defendant absent.');
+    lines.push('   Sub-serve to a competent adult 16+ at residence may apply if defendant absent.');
   }
 
   // Address frequency
@@ -629,36 +627,36 @@ export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
     const parts: string[] = [];
     if (addr.callCount > 0) parts.push(`${addr.callCount} call(s)`);
     if (addr.incidentCount > 0) parts.push(`${addr.incidentCount} incident(s)`);
-    lines.push(`🏠 ADDRESS HISTORY (12mo): ${parts.join(', ')}${addr.lastVisit ? ` — last visit ${addr.lastVisit.slice(0, 10)}` : ''}`);
-    if (addr.callCount > 3) lines.push(`   ↳ Repeat-visit location — unit should review prior dispositions before approach.`);
+    lines.push(`ADDRESS HISTORY (12mo): ${parts.join(', ')}${addr.lastVisit ? ` - last visit ${addr.lastVisit.slice(0, 10)}` : ''}`);
+    if (addr.callCount > 3) lines.push(`   Repeat-visit location - unit should review prior dispositions before approach.`);
   }
 
   // Prior serve attempts at this exact address (any subject)
   if (priorAttempts.attempts > 0) {
-    lines.push(`📋 PRIOR SERVE ATTEMPTS AT THIS ADDRESS: ${priorAttempts.attempts}${priorAttempts.lastResult ? ` — last result: ${priorAttempts.lastResult.toUpperCase()}` : ''}${priorAttempts.lastWhen ? ` (${priorAttempts.lastWhen.slice(0, 10)})` : ''}`);
+    lines.push(`PRIOR SERVE ATTEMPTS AT THIS ADDRESS: ${priorAttempts.attempts}${priorAttempts.lastResult ? ` - last result: ${priorAttempts.lastResult.toUpperCase()}` : ''}${priorAttempts.lastWhen ? ` (${priorAttempts.lastWhen.slice(0, 10)})` : ''}`);
     if (priorAttempts.lastResult && /not.served|no.contact|unable/i.test(priorAttempts.lastResult)) {
-      lines.push(`   ↳ Prior attempt unsuccessful — vary attempt window and approach.`);
+      lines.push(`   Prior attempt unsuccessful - vary attempt window and approach.`);
     }
   }
 
   // Last patrol GPS ping near address (within 0.1 mile, last 30 days)
   if (lastPatrol) {
-    lines.push(`📡 LAST PATROL NEAR ADDRESS: ${lastPatrol.call_sign}${lastPatrol.officer_name ? ` (${lastPatrol.officer_name})` : ''} — ${lastPatrol.distance_miles}mi @ ${lastPatrol.when.slice(0, 16).replace('T', ' ')}`);
+    lines.push(`LAST PATROL NEAR ADDRESS: ${lastPatrol.call_sign}${lastPatrol.officer_name ? ` (${lastPatrol.officer_name})` : ''} - ${lastPatrol.distance_miles}mi @ ${lastPatrol.when.slice(0, 16).replace('T', ' ')}`);
   }
 
   // Apartment / unit clarification
   if (unitNumber) {
-    lines.push(`🚪 UNIT/APT: #${unitNumber} (auto-extracted from address)`);
+    lines.push(`UNIT/APT: #${unitNumber} (auto-extracted from address)`);
   }
 
   // Adjacent jobs for route batching
   if (adjacent.length > 0) {
     lines.push('');
-    lines.push(`🗺️ NEARBY OPEN SERVES (within 1mi):`);
+    lines.push(`NEARBY OPEN SERVES (within 1mi):`);
     adjacent.forEach((a) => {
-      lines.push(`   • ${a.call_number} — ${a.distance_miles.toFixed(1)}mi — ${a.address.slice(0, 60)}`);
+      lines.push(`   - ${a.call_number} - ${a.distance_miles.toFixed(1)}mi - ${a.address.slice(0, 60)}`);
     });
-    lines.push(`   ↳ Consider batching attempts on the same patrol pass.`);
+    lines.push(`   Consider batching attempts on the same patrol pass.`);
   }
 
   // Best contact window
@@ -668,27 +666,27 @@ export function buildEnrichment(input: EnrichmentInput): EnrichmentResult {
       '15-18': '15:00-18:00', '18-21': '18:00-21:00', 'other': 'late evening / overnight',
     };
     lines.push('');
-    lines.push(`📊 BEST CONTACT WINDOW: ${fmt[bestTime.window]} (based on ${bestTime.sampleSize} prior serve attempts on this subject)`);
+    lines.push(`BEST CONTACT WINDOW: ${fmt[bestTime.window]} (based on ${bestTime.sampleSize} prior serve attempts on this subject)`);
   }
 
   // Diligence tracker
   lines.push('');
-  lines.push(`📅 DILIGENCE WINDOWS REQUIRED: ${serviceWindows.required.map((w) => w.replace('_', ' ').toUpperCase()).join(' · ')}`);
+  lines.push(`DILIGENCE WINDOWS REQUIRED: ${serviceWindows.required.map((w) => w.replace('_', ' ').toUpperCase()).join(' / ')}`);
   if (serviceWindows.next_required_by) {
-    lines.push(`   ↳ Complete by ${serviceWindows.next_required_by}.`);
+    lines.push(`   Complete by ${serviceWindows.next_required_by}.`);
   }
 
   // Closest unit suggestion
   if (closestUnit) {
     lines.push('');
-    lines.push(`🚓 CLOSEST AVAILABLE UNIT AT INTAKE: ${closestUnit.call_sign} — ${closestUnit.distance_miles}mi${closestUnit.officer_name ? ` (${closestUnit.officer_name})` : ''}`);
+    lines.push(`CLOSEST AVAILABLE UNIT AT INTAKE: ${closestUnit.call_sign} - ${closestUnit.distance_miles}mi${closestUnit.officer_name ? ` (${closestUnit.officer_name})` : ''}`);
   }
 
   // Existing open civil case (avoid duplicate case creation downstream)
   if (openCase) {
     lines.push('');
-    lines.push(`📁 EXISTING OPEN CASE FOR THIS DEFENDANT: ${openCase.case_number} — ${openCase.title}`);
-    lines.push(`   ↳ Consider linking this serve to the existing case rather than creating a new one.`);
+    lines.push(`EXISTING OPEN CASE FOR THIS DEFENDANT: ${openCase.case_number} - ${openCase.title}`);
+    lines.push(`   Consider linking this serve to the existing case rather than creating a new one.`);
   }
 
   return {

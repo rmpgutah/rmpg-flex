@@ -583,42 +583,39 @@ export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
   //   This is the single note an officer reads BEFORE leaving the station.
   // ═══════════════════════════════════════════════════════════
   const briefingLines: string[] = [];
-  briefingLines.push('🚨 OFFICER BRIEFING');
-  briefingLines.push('═'.repeat(60));
+  briefingLines.push('OFFICER BRIEFING');
   briefingLines.push(`SERVICE TYPE      : ${up(i.orderingClientRule).split('.')[0] || 'PROCESS SERVICE'}`);
-  briefingLines.push(`SERVE TO          : NAMED DEFENDANT ONLY — ${i.bilingual ? 'BILINGUAL DOCS' : 'ENGLISH ONLY'}`);
-  briefingLines.push(`DUE               : ${i.dueDate || 'NO DEADLINE'}${i.daysRemaining > 0 ? `  (${i.daysRemaining} day(s) remaining)` : i.daysRemaining === 0 ? '  ⚠️ DUE TODAY' : ''}`);
-  briefingLines.push(`DOCUMENTS         : ${docCount} doc${docCount !== 1 ? 's' : ''} · ${i.documentPages} pages — ${docList || 'unspecified'}`);
+  briefingLines.push(`SERVE TO          : NAMED DEFENDANT ONLY - ${i.bilingual ? 'BILINGUAL DOCS' : 'ENGLISH ONLY'}`);
+  briefingLines.push(`DUE               : ${i.dueDate || 'NO DEADLINE'}${i.daysRemaining > 0 ? `  (${i.daysRemaining} day(s) remaining)` : i.daysRemaining === 0 ? '  DUE TODAY' : ''}`);
+  briefingLines.push(`DOCUMENTS         : ${docCount} doc${docCount !== 1 ? 's' : ''} - ${i.documentPages} pages - ${docList || 'unspecified'}`);
   if (i.serviceWindows) briefingLines.push(`REQUIRED WINDOWS  : ${up(i.serviceWindows)}`);
 
   if (i.serviceRulesSummary) {
     briefingLines.push('');
-    briefingLines.push('⚠️ CLIENT RESTRICTIONS:');
+    briefingLines.push('CLIENT RESTRICTIONS:');
     i.serviceRulesSummary.split('. ').filter(Boolean).forEach((r) => {
-      briefingLines.push(`   • ${r.endsWith('.') ? r : r + '.'}`);
+      briefingLines.push(`   - ${r.endsWith('.') ? r : r + '.'}`);
     });
   }
 
-  // ── 3-day attempt recommendation, with high detailing ──
   briefingLines.push('');
-  briefingLines.push('📋 3-DAY DILIGENCE PLAN (required before sub-service or affidavit of non-service):');
-  briefingLines.push('─'.repeat(60));
+  briefingLines.push('3-DAY DILIGENCE PLAN (required before sub-service or affidavit of non-service):');
   if (i.recommendedAttempts.length > 0) {
     i.recommendedAttempts.forEach((a, idx) => {
       const tag = a.weekend ? '  [WEEKEND]' : '';
       briefingLines.push(`   ATTEMPT ${idx + 1}  ${a.label}${tag}`);
     });
   } else {
-    briefingLines.push('   (No automated schedule — deadline missing or in the past. Plan manually.)');
+    briefingLines.push('   (No automated schedule - deadline missing or in the past. Plan manually.)');
   }
   briefingLines.push('');
   briefingLines.push('   Approach guidance per attempt:');
-  briefingLines.push('     • Knock 3 times, wait 30 seconds between knocks. Step back from door, hands visible.');
-  briefingLines.push('     • Listen for movement, lights, TV, dogs. If signs of presence, knock once more and announce.');
-  briefingLines.push('     • If no answer: photograph front door + porch (timestamp, address visible) for affidavit.');
-  briefingLines.push('     • If a competent adult 16+ answers but defendant absent: ID them, ask name/relationship.');
-  briefingLines.push('     • Vary the day-of-week between attempts. Vary the hour by at least 4 hours from prior attempts.');
-  briefingLines.push('     • Never serve at workplace unless instructions explicitly authorize POE service.');
+  briefingLines.push('     - Knock 3 times, wait 30 seconds between knocks. Step back from door, hands visible.');
+  briefingLines.push('     - Listen for movement, lights, TV, dogs. If signs of presence, knock once more and announce.');
+  briefingLines.push('     - If no answer: photograph front door + porch (timestamp, address visible) for affidavit.');
+  briefingLines.push('     - If a competent adult 16+ answers but defendant absent: ID them, ask name/relationship.');
+  briefingLines.push('     - Vary the day-of-week between attempts. Vary the hour by at least 4 hours from prior attempts.');
+  briefingLines.push('     - Never serve at workplace unless instructions explicitly authorize POE service.');
   briefingLines.push('');
   briefingLines.push('   After EVERY attempt: log result + GPS-tagged photo in serve queue immediately.');
   briefingLines.push('   If sub-served (16+ at residence): notify client SAME DAY so they can mail an additional copy.');
@@ -632,13 +629,11 @@ export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
   //   what they are serving without opening the underlying PDF).
   // ═══════════════════════════════════════════════════════════
   const packetLines: string[] = [];
-  packetLines.push('📂 CASE PACKET');
-  packetLines.push('═'.repeat(60));
+  packetLines.push('CASE PACKET');
 
   if (i.caseSynopsisText) {
     packetLines.push(i.caseSynopsisText);
     packetLines.push('');
-    packetLines.push('─'.repeat(60));
   }
 
   packetLines.push('LEGAL REFERENCE');
@@ -676,24 +671,21 @@ export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
   //   needs to know about this person and place".
   // ═══════════════════════════════════════════════════════════
   const dossierLines: string[] = [];
-  dossierLines.push('👤 SUBJECT & ADDRESS DOSSIER');
-  dossierLines.push('═'.repeat(60));
+  dossierLines.push('SUBJECT & ADDRESS DOSSIER');
   if (i.enrichmentText) {
     dossierLines.push(i.enrichmentText);
     dossierLines.push('');
-    dossierLines.push('─'.repeat(60));
   } else {
-    dossierLines.push('(No enrichment data available — defendant not previously in system.)');
-    dossierLines.push('─'.repeat(60));
+    dossierLines.push('(No enrichment data available - defendant not previously in system.)');
   }
   dossierLines.push('');
-  dossierLines.push('📜 VERBATIM CLIENT INSTRUCTIONS:');
+  dossierLines.push('VERBATIM CLIENT INSTRUCTIONS:');
   dossierLines.push(i.instructionsVerbatim || '(none provided)');
   if (i.jobActivity.length > 0) {
     dossierLines.push('');
-    dossierLines.push('🕐 JOB ACTIVITY HISTORY:');
+    dossierLines.push('JOB ACTIVITY HISTORY:');
     i.jobActivity.forEach((e) => {
-      dossierLines.push(`   ${e.when} — ${e.action}${e.detail ? ': ' + e.detail : ''}`);
+      dossierLines.push(`   ${e.when} - ${e.action}${e.detail ? ': ' + e.detail : ''}`);
     });
   }
   dossierLines.push('');

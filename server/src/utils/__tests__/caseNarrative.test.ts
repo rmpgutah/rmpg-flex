@@ -25,12 +25,12 @@ describe('synthesizeCaseNarrative', () => {
       ...baseInput,
       courtDocket: 'COMPLAINT FOR DAMAGES — Capital One alleges Daisy Doe owes $14,500.',
     });
-    expect(r.fullText).toContain('📝 CASE NARRATIVE');
-    expect(r.fullText).toContain('▸ WHO');
-    expect(r.fullText).toContain('▸ WHAT');
-    expect(r.fullText).toContain('▸ WHERE');
-    expect(r.fullText).toContain('▸ WHEN');
-    expect(r.fullText).toContain('▸ WHY');
+    expect(r.fullText).toContain('CASE NARRATIVE');
+    expect(r.fullText).toContain('WHO:');
+    expect(r.fullText).toContain('WHAT:');
+    expect(r.fullText).toContain('WHERE:');
+    expect(r.fullText).toContain('WHEN:');
+    expect(r.fullText).toContain('WHY:');
   });
 
   it('WHO section names plaintiff, defendant, counsel with bar #, court', () => {

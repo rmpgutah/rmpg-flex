@@ -509,12 +509,11 @@ export function synthesizeCaseNarrative(input: CaseNarrativeInput): CaseNarrativ
   ];
 
   const lines: string[] = [];
-  lines.push('📝 CASE NARRATIVE — Detailed review of the Complaint');
-  lines.push('═'.repeat(60));
+  lines.push('CASE NARRATIVE - Detailed review of the Complaint');
   lines.push('Auto-generated from the court-docket text. Verify against the underlying PDF before relying on for affidavits.');
   lines.push('');
   for (const [label, body] of sections) {
-    lines.push(`▸ ${label}`);
+    lines.push(`${label}:`);
     lines.push(body);
     lines.push('');
   }

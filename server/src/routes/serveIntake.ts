@@ -773,7 +773,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     if (enrichment.flags.officerSafetyCaution) descFlags.push('OFFICER SAFETY');
     if (enrichment.knownVehicles.length > 0) descFlags.push(`${enrichment.knownVehicles.length} KNOWN VEH`);
     if (enrichment.existingOpenCase) descFlags.push(`OPEN CASE ${enrichment.existingOpenCase.case_number}`);
-    if (descFlags.length > 0) descLines.push(`⚑ ${descFlags.join(' · ')}`);
+    if (descFlags.length > 0) descLines.push(`FLAGS: ${descFlags.join(' / ')}`);
     const description = descLines.join('\n');
 
     const tagSet: string[] = ['civil_process', 'process_service'];
