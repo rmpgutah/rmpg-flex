@@ -112,7 +112,6 @@ export default function BulkDefendantTable({ onSubmitted }: Props) {
     if (parsed.length === 0) return;
     setRows((prev) => {
       // If only one empty row and parsed has data, replace it; else append.
-      const allEmpty = prev.every((r) => Object.values(r).every((v) => typeof v !== 'string' || !v.trim()) || r.kind === 'individual');
       const allBlank = prev.length === 1 && Object.entries(prev[0]).every(([k, v]) => k === 'kind' || (typeof v === 'string' && !v.trim()));
       return allBlank ? parsed : [...prev, ...parsed];
     });
