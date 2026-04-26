@@ -3797,6 +3797,68 @@ router.post('/records/raw-insert', requireRole('admin'), (req: Request, res: Res
 });
 
 // ═══════════════════════════════════════════════════════════════════════
+// GPS Health — per-unit authoritative-source freshness snapshot
+// ═══════════════════════════════════════════════════════════════════════
+// Powers the Admin → GPS Health dashboard. One row per unit with the
+// data dispatchers need to triage: current source, authoritative
+// source heartbeat, age, classification (healthy / warn / critical /
+// silent / browser-fallback). Requires admin or supervisor.
+
+router.get('/gps-health', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT
+        u.id, u.call_sign, u.status, u.gps_source, u.gps_updated_at,
+        u.last_authoritative_gps_at, u.last_authoritative_gps_source,
+        u.latitude, u.longitude,
+        usr.full_name AS officer_name,
+        usr.badge_number,
+        (SELECT COUNT(*) FROM gps_breadcrumbs b
+           WHERE b.unit_id = u.id
+             AND datetime(b.recorded_at) >= datetime('now','localtime','-24 hours')
+             AND b.gps_source IN ('owntracks','traccar','clearpathgps')) AS authoritative_points_24h,
+        (SELECT COUNT(*) FROM gps_breadcrumbs b
+           WHERE b.unit_id = u.id
+             AND datetime(b.recorded_at) >= datetime('now','localtime','-24 hours')) AS total_points_24h
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      ORDER BY u.call_sign
+    `).all() as any[];
+
+    const now = Date.now();
+    const enriched = rows.map(r => {
+      const authMs = r.last_authoritative_gps_at ? new Date(r.last_authoritative_gps_at).getTime() : NaN;
+      const liveMs = r.gps_updated_at ? new Date(r.gps_updated_at).getTime() : NaN;
+      const authAgeSec = !isNaN(authMs) ? Math.floor((now - authMs) / 1000) : null;
+      const liveAgeSec = !isNaN(liveMs) ? Math.floor((now - liveMs) / 1000) : null;
+
+      // Classification — feeds the row's color/badge in the UI:
+      //   silent       : never reported authoritative (or > 24h)
+      //   critical     : authoritative gap >= 15 min
+      //   warning      : authoritative gap 5-15 min
+      //   fallback     : authoritative healthy but live source is browser
+      //   healthy      : authoritative <5 min and matches live source
+      //   off_duty     : status is OFD/off_duty/out_of_service
+      let classification: 'healthy' | 'warning' | 'critical' | 'silent' | 'fallback' | 'off_duty' = 'silent';
+      const offDutyStatuses = new Set(['off_duty', 'OFD', 'out_of_service', 'retired']);
+      if (offDutyStatuses.has(r.status)) classification = 'off_duty';
+      else if (authAgeSec === null || authAgeSec > 86400) classification = 'silent';
+      else if (authAgeSec >= 900) classification = 'critical';
+      else if (authAgeSec >= 300) classification = 'warning';
+      else if (r.gps_source && r.gps_source !== r.last_authoritative_gps_source) classification = 'fallback';
+      else classification = 'healthy';
+
+      return { ...r, auth_age_seconds: authAgeSec, live_age_seconds: liveAgeSec, classification };
+    });
+
+    res.json({ units: enriched, generated_at: new Date().toISOString() });
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to query GPS health' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════
 // OwnTracks pending-device management
 // ═══════════════════════════════════════════════════════════════════════
 // When an OwnTracks client authenticates with a valid webhook token but

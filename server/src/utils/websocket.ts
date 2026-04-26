@@ -438,7 +438,12 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
   });
 
   // ── Server-side keepalive — detect dead connections ──────────
-  const PING_INTERVAL_MS = 30_000;
+  // Tightened from 30s → 5s to match the client. Background-tab
+  // throttling can stretch the client's 5s heartbeat to a minute or
+  // more while hidden, so the server's faster cadence guarantees we
+  // notice dead clients within ~10s even when they're silent.
+  // Bandwidth cost is negligible (RFC 6455 ping frames are ~14 bytes).
+  const PING_INTERVAL_MS = 5_000;
   const pingInterval = setInterval(() => {
     wss!.clients.forEach((ws) => {
       if ((ws as any).__isAlive === false) {

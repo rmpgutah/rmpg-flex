@@ -47,8 +47,18 @@ const WS_RECONNECT_DELAY = 3000;
 const WS_MAX_RECONNECT_DELAY = 30000;
 const WS_CONNECT_TIMEOUT = 10000; // 10s — if WS hasn't opened by then, close and retry
 const WS_MAX_RETRIES = 50;        // stop retrying after 50 consecutive failures (~25min at max backoff)
-const WS_HEARTBEAT_INTERVAL = 30000; // 30s ping interval
-const WS_PONG_TIMEOUT = 10000;       // 10s to receive pong before considering connection dead
+// Heartbeat tuned for sub-5-second dead-connection detection. The previous
+// 30s interval meant a TCP-dead-but-not-closed socket could silently drop
+// broadcasts for up to 40 seconds (30s ping + 10s pong wait), which under
+// Chrome's background-tab throttling could stretch to several minutes.
+// 5s + 3s wait gives ~8s worst-case detection while still being light on
+// cellular bandwidth (~16 bytes per ping × 12/min = 192 bytes/min).
+const WS_HEARTBEAT_INTERVAL = 5000;  // 5s ping interval
+const WS_PONG_TIMEOUT = 3000;        // 3s pong wait
+// On tab re-focus we always force an immediate ping — Chrome's
+// background-tab throttling can stretch a 5s setInterval to a minute or
+// more, so we don't trust the timer alone after the tab was hidden.
+const WS_VISIBILITY_PING_DELAY_MS = 100;
 
 export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   const { token, isAuthenticated } = useAuth();
@@ -236,9 +246,13 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                   announceGpsGap(sev, a.unit, a.officer_name, a.gap_minutes);
                   flashAlert(flashSeverityFor(eventType, sev));
                 }
-                // Track critical-tier GPS loss for repeat-until-acknowledged.
                 if (sev === 'critical') {
-                  trackCriticalAlert(alertKey(eventType, sev, a.unit), 'gps_lost', 'gps_gap_critical');
+                  trackCriticalAlert(alertKey(eventType, sev, a.unit), 'gps_lost', 'gps_gap_critical', {
+                    label: 'GPS LOST',
+                    unit: a.unit,
+                    officerName: a.officer_name,
+                    detail: a.gap_minutes ? `Last fix ${a.gap_minutes} min ago` : undefined,
+                  });
                 }
               } else if (eventType === 'gps:recovered') {
                 if (isAlertSoundEnabled('gps_recovered')) announceGpsRecovered(a.unit);
@@ -249,21 +263,26 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
                   if (isPursuit) announcePursuitSpeed(a.unit, a.speed_mph, a.officer_name);
                   flashAlert(flashSeverityFor(eventType, a.severity, a.speed_mph));
                 }
-                // Pursuit-speed escalates until acknowledged.
                 if (isPursuit) {
-                  trackCriticalAlert(alertKey(eventType, 'pursuit', a.unit), 'pursuit_alert', 'pursuit_speed');
+                  trackCriticalAlert(alertKey(eventType, 'pursuit', a.unit), 'pursuit_alert', 'pursuit_speed', {
+                    label: 'PURSUIT SPEED',
+                    unit: a.unit,
+                    officerName: a.officer_name,
+                    detail: `${Math.round(a.speed_mph)} mph`,
+                  });
                 }
               } else if (eventType === 'unit_outside_beat' || eventType === 'beat:breach') {
                 if (isAlertSoundEnabled('beat_breach')) {
                   announceBeatBreach(a.unit, a.expected_beat, a.actual_beat);
                 }
               } else if (eventType === 'panic') {
-                // Panic flash always shows even if a misguided dispatcher
-                // muted the audio — visual cue can't be silenced because
-                // the safety risk of missing a panic outweighs ergonomics.
                 flashAlert('critical');
-                // Panic always escalates — most critical class of alert.
-                trackCriticalAlert(alertKey(eventType, 'critical', a.unit), 'panic_continuous', 'panic');
+                trackCriticalAlert(alertKey(eventType, 'critical', a.unit), 'panic_continuous', 'panic', {
+                  label: 'PANIC',
+                  unit: a.unit,
+                  officerName: a.officer_name,
+                  detail: a.location || a.location_address || undefined,
+                });
               }
             } catch (err) {
               console.error('[WS] alert audio dispatch error:', err);
@@ -370,19 +389,48 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     connect();
 
-    // When tab becomes visible again, reset retry count and reconnect immediately
-    // Patrol officers often switch between apps — instant reconnect on return is critical
+    // When tab becomes visible again, force an immediate health check.
+    // Chrome's background-tab timer throttling can pause our 5s heartbeat
+    // for up to a minute while hidden — meaning a dead TCP socket can sit
+    // "open" without us noticing. On resume we don't trust the existing
+    // socket: ping it immediately and reconnect if pong doesn't arrive
+    // inside the tight pong window. Patrol officers swap apps constantly;
+    // this prevents the "I came back and it was frozen" experience.
     const handleVisibility = () => {
-      if (document.visibilityState === 'visible' && isAuthenticated && !wsRef.current) {
+      if (document.visibilityState !== 'visible' || !isAuthenticated) return;
+
+      // No live socket → straight reconnect.
+      if (!wsRef.current) {
         retryCountRef.current = 0;
         reconnectDelayRef.current = WS_RECONNECT_DELAY;
         connect();
+        return;
       }
+
+      // Live socket → probe it. If still alive, the pong handler clears
+      // the timeout. If dead, the timeout will close the socket and the
+      // onclose handler will trigger reconnect.
+      setTimeout(() => {
+        const ws = wsRef.current;
+        if (!ws || ws.readyState !== WebSocket.OPEN) return;
+        try { ws.send(JSON.stringify({ type: 'ping' })); } catch { /* ignore */ }
+        if (pongTimeoutRef.current) clearTimeout(pongTimeoutRef.current);
+        pongTimeoutRef.current = setTimeout(() => {
+          devWarn('[WS] Visibility-resume pong timeout — connection was dead, reconnecting');
+          ws.close();
+        }, WS_PONG_TIMEOUT);
+      }, WS_VISIBILITY_PING_DELAY_MS);
     };
     document.addEventListener('visibilitychange', handleVisibility);
 
+    // Also probe on window focus — covers the case of multi-monitor
+    // setups where the tab was technically visible but the dispatcher
+    // had focus on another window for hours. Cheap and idempotent.
+    window.addEventListener('focus', handleVisibility);
+
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('focus', handleVisibility);
       if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
       if (connectTimeoutRef.current) clearTimeout(connectTimeoutRef.current);
       if (heartbeatRef.current) clearInterval(heartbeatRef.current);

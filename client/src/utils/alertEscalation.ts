@@ -34,6 +34,12 @@ interface PendingAlert {
   firstFiredAt: number;    // ms epoch
   lastRepeatAt: number;    // ms epoch
   repeatCount: number;
+  // Display fields populated by the WebSocket layer when registering
+  // an alert. Drive the ACK banner UI without re-querying the server.
+  label?: string;          // "GPS LOST" / "PURSUIT SPEED" / "PANIC"
+  unit?: string;           // call sign
+  officerName?: string;
+  detail?: string;         // free-form sub-line ("9 min ago", "105 mph", etc.)
 }
 
 const REPEAT_INTERVAL_MS = 30_000;   // 30s between re-fires
@@ -47,14 +53,26 @@ let timer: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Register a critical alert for escalation. Idempotent — re-registering
- * the same key just refreshes the existing entry's lastRepeatAt so we
- * don't double-fire when a single event broadcasts multiple times.
+ * the same key refreshes lastRepeatAt + display fields so a single event
+ * broadcasting twice doesn't create a duplicate entry, but the latest
+ * payload is reflected in the ACK banner.
  */
-export function trackCriticalAlert(key: string, tone: ToneType, category: AlertCategory): void {
+export function trackCriticalAlert(
+  key: string,
+  tone: ToneType,
+  category: AlertCategory,
+  display?: { label?: string; unit?: string; officerName?: string; detail?: string }
+): void {
   const existing = pending.get(key);
   const now = Date.now();
   if (existing) {
     existing.lastRepeatAt = now;
+    if (display) {
+      // Refresh display fields on re-fire so the banner shows the latest.
+      // (e.g. updated gap_minutes, speed_mph, etc.)
+      Object.assign(existing, display);
+    }
+    emitChange();
     return;
   }
   pending.set(key, {
@@ -62,8 +80,10 @@ export function trackCriticalAlert(key: string, tone: ToneType, category: AlertC
     firstFiredAt: now,
     lastRepeatAt: now,
     repeatCount: 0,
+    ...display,
   });
   ensureSchedulerRunning();
+  emitChange();
 }
 
 /**
@@ -71,12 +91,37 @@ export function trackCriticalAlert(key: string, tone: ToneType, category: AlertC
  * "ACK" buttons. Returns true if the alert was actually pending.
  */
 export function acknowledgeAlert(key: string): boolean {
-  return pending.delete(key);
+  const removed = pending.delete(key);
+  if (removed) emitChange();
+  return removed;
 }
 
 /** Clear all pending alerts (e.g. on logout / shift change). */
 export function acknowledgeAllAlerts(): void {
+  if (pending.size === 0) return;
   pending.clear();
+  emitChange();
+}
+
+/** Notify subscribers (the ACK banner) that the queue changed. */
+function emitChange(): void {
+  try {
+    window.dispatchEvent(new CustomEvent('alert-escalation-changed', {
+      detail: { count: pending.size },
+    }));
+  } catch { /* ignore (very old browsers) */ }
+}
+
+/**
+ * Subscribe to escalation queue changes. The handler fires after every
+ * trackCriticalAlert / acknowledgeAlert / acknowledgeAllAlerts call,
+ * AND on the cooldown-expiry sweep when an alert auto-clears at the
+ * 5-min hard ceiling. Returns an unsubscribe function.
+ */
+export function subscribeEscalation(handler: () => void): () => void {
+  const listener = () => handler();
+  window.addEventListener('alert-escalation-changed', listener);
+  return () => window.removeEventListener('alert-escalation-changed', listener);
 }
 
 /** How many alerts are currently unacknowledged. */
@@ -85,12 +130,19 @@ export function pendingAlertCount(): number {
 }
 
 /** Snapshot of pending alerts for UI display. */
-export function listPendingAlerts(): Array<{ key: string; firstFiredAt: number; repeatCount: number; category: AlertCategory }> {
+export function listPendingAlerts(): Array<{
+  key: string; firstFiredAt: number; repeatCount: number; category: AlertCategory;
+  label?: string; unit?: string; officerName?: string; detail?: string;
+}> {
   return Array.from(pending.values()).map(a => ({
     key: a.key,
     firstFiredAt: a.firstFiredAt,
     repeatCount: a.repeatCount,
     category: a.category,
+    label: a.label,
+    unit: a.unit,
+    officerName: a.officerName,
+    detail: a.detail,
   }));
 }
 
@@ -105,10 +157,12 @@ function tick(): void {
   const now = Date.now();
 
   // Per-alert repeat + hard-ceiling cleanup.
+  let queueChanged = false;
   for (const a of Array.from(pending.values())) {
     // Hard ceiling — give up after 5 min of no acknowledgment.
     if (now - a.firstFiredAt >= HARD_CEILING_MS) {
       pending.delete(a.key);
+      queueChanged = true;
       continue;
     }
     if (now - a.lastRepeatAt >= REPEAT_INTERVAL_MS) {
@@ -134,6 +188,9 @@ function tick(): void {
     }
     lastStackPipAt = now;
   }
+
+  // Notify the ACK banner if any alerts auto-cleared this tick.
+  if (queueChanged) emitChange();
 
   // Stop the scheduler when the queue empties — saves a wake every
   // 5s for the 99% of session time when nothing is pending.
