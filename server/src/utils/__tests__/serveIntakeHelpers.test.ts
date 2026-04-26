@@ -204,38 +204,67 @@ describe('buildNotesNarrative', () => {
     timestamp: '2026-04-19 07:30:12',
   };
 
-  // Note: buildNotesNarrative was rewritten to a 5-section emoji-headed format.
-  // Tests below assert the current shape (alert / schedule / case / summary / reference).
-  it('produces 5 emoji-headed sections in order', () => {
+  // Note: buildNotesNarrative was rewritten to a 3-section consolidated format
+  // (briefing / case packet / dossier) so the dispatcher reads fewer, denser notes.
+  it('produces 3 consolidated emoji-headed sections in order', () => {
     const notes = buildNotesNarrative(input);
-    expect(notes).toHaveLength(5);
-    expect(notes[0].text).toMatch(/^🚨 OFFICER ALERT ESSENTIALS/);
-    expect(notes[1].text).toMatch(/^📋 RECOMMENDED DILIGENCE SCHEDULE/);
-    expect(notes[2].text).toMatch(/^📂 CASE DETAILS/);
-    expect(notes[3].text).toMatch(/^☕ CASE SUMMARY/);
-    expect(notes[4].text).toMatch(/^🕐 CLIENT HISTORY & INSTRUCTIONS/);
+    expect(notes).toHaveLength(3);
+    expect(notes[0].text).toMatch(/^🚨 OFFICER BRIEFING/);
+    expect(notes[1].text).toMatch(/^📂 CASE PACKET/);
+    expect(notes[2].text).toMatch(/^👤 SUBJECT & ADDRESS DOSSIER/);
   });
 
-  it('CASE DETAILS section contains plaintiff, case #, documents, signed date, deadline', () => {
+  it('OFFICER BRIEFING contains the 3-day diligence plan with door-approach guidance', () => {
     const notes = buildNotesNarrative(input);
-    const caseText = notes[2].text;
-    expect(caseText).toContain('PLAINTIFF: CAPITAL ONE');
-    expect(caseText).toContain('CASE #: 633570');
-    expect(caseText).toContain('SUMMONS + COMPLAINT'); // from docList
-    expect(caseText).toContain('PAGES: 11');
+    const brief = notes[0].text;
+    expect(brief).toContain('3-DAY DILIGENCE PLAN');
+    expect(brief).toContain('ATTEMPT 1');
+    expect(brief).toContain('ATTEMPT 2');
+    expect(brief).toContain('ATTEMPT 3');
+    expect(brief).toContain('Knock 3 times');
+    expect(brief).toContain('photograph front door');
+    expect(brief).toContain('Vary the day-of-week');
+    expect(brief).toContain('GPS-tagged photo');
+  });
+
+  it('CASE PACKET embeds caseSynopsisText when supplied', () => {
+    const synopsis = '📖 WHAT YOU ARE SERVING (auto-synopsis)\nDiscover Bank is suing Daisy Doe to collect $14,500.';
+    const notes = buildNotesNarrative({ ...input, caseSynopsisText: synopsis });
+    expect(notes[1].text).toContain('📖 WHAT YOU ARE SERVING');
+    expect(notes[1].text).toContain('Discover Bank is suing Daisy Doe');
+  });
+
+  it('CASE PACKET section contains plaintiff, case #, documents, signed date, deadline', () => {
+    const notes = buildNotesNarrative(input);
+    const caseText = notes[1].text;
+    expect(caseText).toContain('PLAINTIFF         : CAPITAL ONE');
+    expect(caseText).toContain('CASE #            : 633570');
+    expect(caseText).toContain('SUMMONS + COMPLAINT');
+    expect(caseText).toContain('PAGES             : 11');
     expect(caseText).toContain('(BILINGUAL)');
-    expect(caseText).toContain('SIGNED/FILED: MARCH 25, 2026');
-    expect(caseText).toContain('RESPONSE DEADLINE: 21 DAYS AFTER SERVICE');
+    expect(caseText).toContain('SIGNED / FILED    : MARCH 25, 2026');
+    expect(caseText).toContain('RESPONSE DEADLINE : 21 day(s) after service');
   });
 
-  it('ATTORNEY block in CASE DETAILS includes name, firm, bar #, address, phone, email', () => {
+  it('ATTORNEY block in CASE PACKET includes name, firm, bar #, address, phone, email', () => {
     const notes = buildNotesNarrative(input);
-    const caseText = notes[2].text;
-    expect(caseText).toContain('ATTORNEY: HEATHER VALERGA');
-    expect(caseText).toContain('FIRM: GUGLIELMO & ASSOCIATES');
-    expect(caseText).toContain('BAR #: 14431');
-    expect(caseText).toContain('ADDRESS: PO BOX 41688, TUCSON, AZ 85717');
-    expect(caseText).toContain('PHONE: (877)325-5700');
-    expect(caseText).toContain('EMAIL: Utah@guglielmolaw.com');
+    const caseText = notes[1].text;
+    expect(caseText).toContain('NAME              : HEATHER VALERGA');
+    expect(caseText).toContain('FIRM              : GUGLIELMO & ASSOCIATES');
+    expect(caseText).toContain('BAR #             : 14431');
+    expect(caseText).toContain('ADDRESS           : PO BOX 41688, TUCSON, AZ 85717');
+    expect(caseText).toContain('PHONE             : (877)325-5700');
+    expect(caseText).toContain('EMAIL             : Utah@guglielmolaw.com');
+  });
+
+  it('DOSSIER folds in enrichmentText + verbatim instructions + job activity', () => {
+    const enrichmentText = '🔍 INTAKE ENRICHMENT\n👤 SUBJECT HISTORY: 3 prior call(s)';
+    const notes = buildNotesNarrative({ ...input, enrichmentText });
+    const dossier = notes[2].text;
+    expect(dossier).toContain('🔍 INTAKE ENRICHMENT');
+    expect(dossier).toContain('SUBJECT HISTORY');
+    expect(dossier).toContain('VERBATIM CLIENT INSTRUCTIONS');
+    expect(dossier).toContain('Sub-serve on 1st attempt');
+    expect(dossier).toContain('JOB ACTIVITY HISTORY');
   });
 });

@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { extractFolderGroups, type FolderGroup } from '../utils/dropFolders';
 import {
   Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin,
   User, Building2, Phone, X, ChevronRight, Edit2, Save, ArrowLeft,
@@ -121,6 +122,12 @@ const DOC_TYPE_OPTIONS = [
 export default function ServeIntakePage() {
   const [step, setStep] = useState<Step>('upload');
   const [files, setFiles] = useState<UploadedFile[]>([]);
+  // Folder-drop queue: when a dispatcher drops multiple folders, each one
+  // becomes its own intake "job" processed sequentially. The first folder's
+  // files load immediately; subsequent folders wait in `folderQueue` and
+  // auto-load after the prior job is submitted.
+  const [folderQueue, setFolderQueue] = useState<FolderGroup[]>([]);
+  const [currentJobName, setCurrentJobName] = useState<string | null>(null);
   const [parsed, setParsed] = useState<ParsedData | null>(null);
   const [parseWarnings, setParseWarnings] = useState<string[]>([]);
   const [detectedTypes, setDetectedTypes] = useState<ParseResponse['detectedTypes'] | null>(null);
@@ -247,10 +254,28 @@ export default function ServeIntakePage() {
     setError(null);
   }, [extractPdfText]);
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
+  const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+    // Extract folder structure (each top-level folder = one intake job).
+    // Falls back to flat file list if the browser doesn't expose folder entries.
+    const groups = await extractFolderGroups(
+      e.dataTransfer,
+      (f) => f.type === 'application/pdf' || f.name.toLowerCase().endsWith('.pdf'),
+    );
+    if (groups.length === 0) {
+      // Last-resort fallback to plain files
+      if (e.dataTransfer.files.length > 0) handleFiles(e.dataTransfer.files);
+      return;
+    }
+    // Load the first group into the active intake form.
+    const [first, ...rest] = groups;
+    setCurrentJobName(first.name);
+    handleFiles(first.files);
+    // Queue any additional folders to process after this one is submitted.
+    if (rest.length > 0) {
+      setFolderQueue((prev) => [...prev, ...rest]);
+    }
   }, [handleFiles]);
 
   const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
@@ -411,6 +436,36 @@ export default function ServeIntakePage() {
     setError(null);
   };
 
+  // Reset state for a fresh job WITHOUT clearing the folder queue, so the
+  // next queued folder can be loaded as a brand new intake.
+  const resetForNextJob = useCallback(() => {
+    setStep('upload');
+    setFiles([]);
+    setParsed(null);
+    setParseWarnings([]);
+    setDetectedTypes(null);
+    setResult(null);
+    setError(null);
+  }, []);
+
+  // Advance the folder queue: pop the next group, load its files, kick off parse.
+  const advanceFolderQueue = useCallback(() => {
+    if (folderQueue.length === 0) { setCurrentJobName(null); return; }
+    const [next, ...rest] = folderQueue;
+    setFolderQueue(rest);
+    setCurrentJobName(next.name);
+    resetForNextJob();
+    handleFiles(next.files);
+  }, [folderQueue, handleFiles, resetForNextJob]);
+
+  // After a successful intake completion, auto-load the next queued folder.
+  useEffect(() => {
+    if (step === 'complete' && folderQueue.length > 0) {
+      const t = setTimeout(() => advanceFolderQueue(), 1500);
+      return () => clearTimeout(t);
+    }
+  }, [step, folderQueue.length, advanceFolderQueue]);
+
   return (
     <div className="p-4 space-y-4 max-w-5xl mx-auto">
       <PanelTitleBar title="Process Service Intake" icon={Upload}>
@@ -423,6 +478,45 @@ export default function ServeIntakePage() {
           <span className={step === 'complete' ? 'text-green-400 font-bold' : ''}>3. Complete</span>
         </div>
       </PanelTitleBar>
+
+      {/* Folder-drop queue banner — shown across all steps when there are queued
+          folders waiting to be processed as separate jobs. */}
+      {(currentJobName || folderQueue.length > 0) && (
+        <div className="panel-beveled p-3 bg-amber-900/10 border-l-4 border-amber-500/60">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-xs">
+              <span className="text-amber-300 font-bold uppercase tracking-wider text-[10px]">📁 Folder Queue</span>
+              {currentJobName && (
+                <span className="text-rmpg-200">
+                  Current job: <strong className="text-amber-200">{currentJobName}</strong>
+                </span>
+              )}
+              {folderQueue.length > 0 && (
+                <span className="text-rmpg-400">
+                  · {folderQueue.length} folder{folderQueue.length === 1 ? '' : 's'} pending
+                </span>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={() => { setFolderQueue([]); setCurrentJobName(null); }}
+              className="toolbar-btn text-[9px]"
+              title="Clear pending folders (does not affect current job)"
+            >
+              Clear queue
+            </button>
+          </div>
+          {folderQueue.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {folderQueue.map((g, i) => (
+                <span key={i} className="text-[10px] font-mono px-2 py-0.5 bg-surface-raised border border-rmpg-700 text-rmpg-300">
+                  #{i + 1} {g.name} ({g.files.length} file{g.files.length === 1 ? '' : 's'})
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ═══════ STEP 1: UPLOAD ═══════ */}
       {step === 'upload' && (
@@ -467,10 +561,10 @@ export default function ServeIntakePage() {
               <div className="w-16 h-16 rounded-full bg-surface-raised border border-rmpg-600 flex items-center justify-center mb-4">
                 <Upload className="w-8 h-8 text-rmpg-400" />
               </div>
-              <p className="text-sm font-bold text-rmpg-200">DRAG & DROP PDF DOCUMENTS</p>
-              <p className="text-[10px] text-rmpg-500 mt-1">Supports multiple files · Court Docket · Field Sheet · Info Sheet</p>
+              <p className="text-sm font-bold text-rmpg-200">DRAG & DROP PDF DOCUMENTS — OR ENTIRE FOLDERS</p>
+              <p className="text-[10px] text-rmpg-500 mt-1">Drop multiple folders to queue separate jobs · Court Docket · Field Sheet · Info Sheet</p>
               <p className="text-[10px] text-brand-400 mt-3 font-medium">or click anywhere to browse files</p>
-              <p className="text-[8px] text-rmpg-600 mt-2">Accepted: PDF files only · Max 10 files per upload</p>
+              <p className="text-[8px] text-rmpg-600 mt-2">Each folder dropped becomes its own intake job, processed sequentially.</p>
             </div>
             <input ref={fileInputRef} type="file" accept=".pdf" multiple className="hidden"
               onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }} />

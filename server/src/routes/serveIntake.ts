@@ -24,6 +24,7 @@ import {
   type ParseOutput,
 } from '../utils/serveIntakeHelpers';
 import { buildEnrichment } from '../utils/serveIntakeEnrichment';
+import { synthesizeCaseSynopsis } from '../utils/caseSynopsis';
 import { execFile } from 'child_process';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
 import { join } from 'path';
@@ -626,7 +627,23 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       serviceWindowsLabel: parsed.serviceWindows || '',
     });
 
-    // ── Notes narrative (5 entries) + wrap with id/author/timestamp
+    // ── Auto-synopsis: plain-English brief of what the case is, so the
+    // PSO understands the document at a glance without reading the PDF.
+    const synopsis = synthesizeCaseSynopsis({
+      courtDocket,
+      plaintiff: parsed.plaintiff,
+      defendantFirst: parsed.defendant.first,
+      defendantLast: parsed.defendant.last,
+      primaryDoc: parsed.primaryDoc,
+      documents: parsed.documents,
+      responseDeadlineDays: parsed.responseDeadlineDays,
+      court: parsed.court,
+    });
+
+    // ── Notes narrative — 3 consolidated notes:
+    //   1. 🚨 OFFICER BRIEFING (alert + 3-day diligence plan + door approach)
+    //   2. 📂 CASE PACKET (case + court + attorney + auto-synopsis)
+    //   3. 👤 SUBJECT & ADDRESS DOSSIER (enrichment + verbatim instructions + activity)
     const narrative = buildNotesNarrative({
       plaintiff: parsed.plaintiff,
       orderingClientRule: parsed.orderingClientRule,
@@ -644,13 +661,15 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       serviceWindows: parsed.serviceWindows,
       dueDate: parsed.dueDate,
       daysRemaining,
-      recommendedAttempts: schedule.map((s, idx) => ({
+      recommendedAttempts: schedule.map((s) => ({
         label: `${s.date.toLocaleString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric' })} ${s.window}`,
         weekend: s.weekend,
       })),
       jobActivity: parsed.jobActivity,
       instructionsVerbatim: parsed.instructions,
       timestamp: now,
+      caseSynopsisText: synopsis.fullText,
+      enrichmentText: enrichment.narrativeSection,
     });
     const tsBase = Date.now();
     const notesWrapped = narrative.map((n, i) => ({
@@ -659,14 +678,6 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       text: n.text,
       timestamp: now,
     }));
-    // Append the enrichment intelligence section as its own note so it shows
-    // separately in the dispatch detail view alongside the 5 narrative sections.
-    notesWrapped.push({
-      id: String(tsBase + notesWrapped.length),
-      author: 'Serve Intake',
-      text: enrichment.narrativeSection,
-      timestamp: now,
-    });
     // Append additional dispatcher notes if provided
     if (overrides?.additionalNotes) {
       notesWrapped.push({
