@@ -4783,6 +4783,9 @@ function migrateSchema(): void {
   // column but no migration added it — every call create threw 500 errors.
   addCol('calls_for_service', 'received_at', 'TEXT');
 
+  // ── Dispatch advanced UX: pinned calls (float-to-top sticky flag) ──
+  addCol('calls_for_service', 'pinned', 'INTEGER DEFAULT 0');
+
   // ── Feature 5: Shift handoff notes ──
   // Stored in system_config table with config_key='shift_handoff_notes'
 

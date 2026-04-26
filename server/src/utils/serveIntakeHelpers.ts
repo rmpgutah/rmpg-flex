@@ -461,36 +461,74 @@ export function computeDiligenceSchedule(
 
   if (candidates.length === 0) return [];
 
-  // Need 3 slots, each with a distinct window, and at least one weekend (if any candidate is weekend)
+  // Need 3 slots, each with a distinct window, on 3 DIFFERENT DAYS where
+  // possible (the diligence rule almost universally requires it), and at
+  // least one weekend slot if any candidate falls on a weekend.
   const hasWeekendCandidate = candidates.some(c => c.weekend);
 
-  // Try: pick one slot per distinct window, spread across days, with a weekend if possible
-  const pickByWindow = (name: DiligenceSlot['window'], preferWeekend: boolean, exclude: DiligenceSlot[]): DiligenceSlot | undefined => {
-    const pool = candidates.filter(c => c.window === name && !exclude.includes(c));
+  // Day key in local-clock space so "Mon" candidates all share one key
+  // regardless of the underlying UTC time.
+  const dayKey = (utcDate: Date) => {
+    const d = toLocal(utcDate);
+    return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+  };
+
+  // Pick a slot for the given window:
+  //   1. Prefer a slot on a day NOT yet used (so attempts spread across days)
+  //   2. Within that, prefer weekend if weekend is still required
+  //   3. Otherwise pick the earliest available day for this window
+  //   4. Same-day fallback only if no other day has this window
+  const pickByWindow = (
+    name: DiligenceSlot['window'],
+    preferWeekend: boolean,
+    chosen: DiligenceSlot[],
+    usedDays: Set<string>,
+  ): DiligenceSlot | undefined => {
+    const pool = candidates.filter(c => c.window === name && !chosen.includes(c));
+    const newDayPool = pool.filter(c => !usedDays.has(dayKey(c.date)));
+    // Prefer new day + weekend if both possible
     if (preferWeekend) {
-      const w = pool.find(c => c.weekend);
-      if (w) return w;
+      const wknd = newDayPool.find(c => c.weekend);
+      if (wknd) return wknd;
+    }
+    // Prefer any new day
+    if (newDayPool.length > 0) return newDayPool[0];
+    // Last resort — same day as something already chosen
+    if (preferWeekend) {
+      const wknd = pool.find(c => c.weekend);
+      if (wknd) return wknd;
     }
     return pool[0];
   };
 
   const chosen: DiligenceSlot[] = [];
+  const usedDays = new Set<string>();
   let weekendSatisfied = !hasWeekendCandidate;
 
   for (const w of windows) {
-    const slot = pickByWindow(w.name, !weekendSatisfied, chosen);
+    const slot = pickByWindow(w.name, !weekendSatisfied, chosen, usedDays);
     if (slot) {
       chosen.push(slot);
+      usedDays.add(dayKey(slot.date));
       if (slot.weekend) weekendSatisfied = true;
     }
   }
 
-  // If we still don't have 3 (because one window had no candidates), fall back to taking any remaining candidates in time order
+  // If we still don't have 3 (some window had no candidate), fall back to
+  // any remaining slot — but still prefer a day not already used.
   if (chosen.length < 3) {
-    const remaining = candidates.filter(c => !chosen.includes(c)).sort((a, b) => a.date.getTime() - b.date.getTime());
+    const remaining = candidates
+      .filter(c => !chosen.includes(c))
+      .sort((a, b) => {
+        const aNewDay = usedDays.has(dayKey(a.date)) ? 1 : 0;
+        const bNewDay = usedDays.has(dayKey(b.date)) ? 1 : 0;
+        if (aNewDay !== bNewDay) return aNewDay - bNewDay; // prefer 0 (new day)
+        return a.date.getTime() - b.date.getTime();
+      });
     for (const r of remaining) {
       if (chosen.length >= 3) break;
       chosen.push(r);
+      usedDays.add(dayKey(r.date));
     }
   }
 
@@ -504,6 +542,12 @@ export interface NotesInput {
   orderingClientRule: string;
   clientJobNumber: string;
   documents: string;
+  /** Auto-generated plain-English brief from caseSynopsis.ts (full text). Optional. */
+  caseSynopsisText?: string;
+  /** Aggregated enrichment narrative from serveIntakeEnrichment.ts. Optional. */
+  enrichmentText?: string;
+  /** Detailed Who / What / Where / When / Why narrative from caseNarrative.ts. Optional. */
+  caseNarrativeText?: string;
   documentPages: number;
   bilingual: boolean;
   signedDate: string;
@@ -533,140 +577,136 @@ export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
   const docList = clauses.map(c => c.toUpperCase().replace(/\s+AND\s+/g, ' + ')).join(' + ');
 
   // ═══════════════════════════════════════════════════════════
-  // NOTE 1: 🚨 OFFICER ALERT ESSENTIALS (quick-scan at the door)
+  // NOTE 1 — 🚨 OFFICER BRIEFING
+  //   Combines: officer alert essentials + recommended diligence
+  //   schedule + verbose 3-day attempt plan + "what to do at the door"
+  //   This is the single note an officer reads BEFORE leaving the station.
   // ═══════════════════════════════════════════════════════════
-  const alertLines: string[] = [];
-  alertLines.push('🚨 OFFICER ALERT ESSENTIALS');
-  alertLines.push('═'.repeat(50));
-  alertLines.push(`SERVICE TYPE: ${up(i.orderingClientRule).split('.')[0] || 'PROCESS SERVICE'}`);
-  alertLines.push(`SERVE TO: NAMED DEFENDANT ONLY — ${i.bilingual ? 'BILINGUAL DOCS' : 'ENGLISH ONLY'}`);
-  alertLines.push(`DUE: ${i.dueDate || 'NO DEADLINE'}${i.daysRemaining > 0 ? ` (${i.daysRemaining} DAYS REMAINING)` : i.daysRemaining === 0 ? ' ⚠️ DUE TODAY' : ''}`);
+  const briefingLines: string[] = [];
+  briefingLines.push('OFFICER BRIEFING');
+  briefingLines.push(`SERVICE TYPE      : ${up(i.orderingClientRule).split('.')[0] || 'PROCESS SERVICE'}`);
+  briefingLines.push(`SERVE TO          : NAMED DEFENDANT ONLY - ${i.bilingual ? 'BILINGUAL DOCS' : 'ENGLISH ONLY'}`);
+  briefingLines.push(`DUE               : ${i.dueDate || 'NO DEADLINE'}${i.daysRemaining > 0 ? `  (${i.daysRemaining} day(s) remaining)` : i.daysRemaining === 0 ? '  DUE TODAY' : ''}`);
+  briefingLines.push(`DOCUMENTS         : ${docCount} doc${docCount !== 1 ? 's' : ''} - ${i.documentPages} pages - ${docList || 'unspecified'}`);
+  if (i.serviceWindows) briefingLines.push(`REQUIRED WINDOWS  : ${up(i.serviceWindows)}`);
+
   if (i.serviceRulesSummary) {
-    alertLines.push('');
-    alertLines.push('⚠️ RESTRICTIONS:');
-    i.serviceRulesSummary.split('. ').filter(Boolean).forEach(r => {
-      alertLines.push(`  • ${r.endsWith('.') ? r : r + '.'}`);
+    briefingLines.push('');
+    briefingLines.push('CLIENT RESTRICTIONS:');
+    i.serviceRulesSummary.split('. ').filter(Boolean).forEach((r) => {
+      briefingLines.push(`   - ${r.endsWith('.') ? r : r + '.'}`);
     });
   }
-  if (i.serviceWindows) alertLines.push(`\nSERVICE WINDOWS: ${up(i.serviceWindows)}`);
-  alertLines.push(`\nDOCUMENTS: ${docCount} DOC${docCount !== 1 ? 'S' : ''} (${i.documentPages} PAGES) — ${docList}`);
-  const alertNote = alertLines.join('\n');
 
-  // ═══════════════════════════════════════════════════════════
-  // NOTE 2: 📋 RECOMMENDED DILIGENCE SCHEDULE
-  // ═══════════════════════════════════════════════════════════
-  const schedLines: string[] = [];
-  schedLines.push('📋 RECOMMENDED DILIGENCE SCHEDULE');
-  schedLines.push('═'.repeat(50));
-  schedLines.push(`DEADLINE: ${i.dueDate || 'NONE'} | DAYS REMAINING: ${i.daysRemaining}`);
-  schedLines.push(`WINDOWS: ${up(i.serviceWindows) || 'STANDARD (6AM-9AM, 9AM-6PM, 6PM-9PM)'}`);
-  schedLines.push('');
+  briefingLines.push('');
+  briefingLines.push('3-DAY DILIGENCE PLAN (required before sub-service or affidavit of non-service):');
   if (i.recommendedAttempts.length > 0) {
-    schedLines.push('PLANNED ATTEMPTS:');
     i.recommendedAttempts.forEach((a, idx) => {
-      schedLines.push(`  ATTEMPT ${idx + 1}: ${a.label}${a.weekend ? ' [WEEKEND]' : ''}`);
+      const tag = a.weekend ? '  [WEEKEND]' : '';
+      briefingLines.push(`   ATTEMPT ${idx + 1}  ${a.label}${tag}`);
     });
   } else {
-    schedLines.push('NO AUTOMATED SCHEDULE — deadline may be in the past or not set.');
-    schedLines.push('MANUALLY PLAN 3 ATTEMPTS ON 3 DIFFERENT DAYS:');
-    schedLines.push('  1. Morning attempt (before 10:00 AM)');
-    schedLines.push('  2. Afternoon attempt (10:00 AM - 5:00 PM)');
-    schedLines.push('  3. Evening attempt (after 4:00 PM)');
+    briefingLines.push('   (No automated schedule - deadline missing or in the past. Plan manually.)');
   }
-  schedLines.push('');
-  schedLines.push('AFTER EACH ATTEMPT: Log result in serve queue. If sub-served, notify client IMMEDIATELY.');
-  const schedNote = schedLines.join('\n');
+  briefingLines.push('');
+  briefingLines.push('   Approach guidance per attempt:');
+  briefingLines.push('     - Knock 3 times, wait 30 seconds between knocks. Step back from door, hands visible.');
+  briefingLines.push('     - Listen for movement, lights, TV, dogs. If signs of presence, knock once more and announce.');
+  briefingLines.push('     - If no answer: photograph front door + porch (timestamp, address visible) for affidavit.');
+  briefingLines.push('     - If a competent adult 16+ answers but defendant absent: ID them, ask name/relationship.');
+  briefingLines.push('     - Vary the day-of-week between attempts. Vary the hour by at least 4 hours from prior attempts.');
+  briefingLines.push('     - Never serve at workplace unless instructions explicitly authorize POE service.');
+  briefingLines.push('');
+  briefingLines.push('   After EVERY attempt: log result + GPS-tagged photo in serve queue immediately.');
+  briefingLines.push('   If sub-served (16+ at residence): notify client SAME DAY so they can mail an additional copy.');
+  briefingLines.push('   If served personally: complete affidavit of service the same shift.');
+  const briefingNote = briefingLines.join('\n');
 
   // ═══════════════════════════════════════════════════════════
-  // NOTE 3: 📂 CASE DETAILS (legal reference)
+  // NOTE 2 — 📂 CASE PACKET
+  //   Combines: case details + court info + attorney + AUTO-SYNOPSIS
+  //   (plain-English explanation of what the case is, so the PSO understands
+  //   what they are serving without opening the underlying PDF).
   // ═══════════════════════════════════════════════════════════
-  const caseLines: string[] = [];
-  caseLines.push('📂 CASE DETAILS');
-  caseLines.push('═'.repeat(50));
-  caseLines.push(`CASE #: ${i.clientJobNumber || 'N/A'}`);
-  caseLines.push(`PLAINTIFF: ${up(i.plaintiff)}`);
-  caseLines.push(`DOCUMENTS: ${docList}`);
-  caseLines.push(`PAGES: ${i.documentPages}${i.bilingual ? ' (BILINGUAL)' : ''}`);
-  caseLines.push(`SIGNED/FILED: ${up(i.signedDate) || 'N/A'}`);
-  caseLines.push(`RESPONSE DEADLINE: ${i.responseDeadlineDays} DAYS AFTER SERVICE`);
-  caseLines.push('');
-  caseLines.push(`COURT: ${up(i.court)}`);
-  if (i.courtAddress) caseLines.push(`COURT ADDRESS: ${up(i.courtAddress)}`);
-  if (i.clerkPhone) caseLines.push(`CLERK PHONE: ${i.clerkPhone}`);
-  caseLines.push('');
+  const packetLines: string[] = [];
+  packetLines.push('CASE PACKET');
+
+  if (i.caseSynopsisText) {
+    packetLines.push(i.caseSynopsisText);
+    packetLines.push('');
+  }
+
+  packetLines.push('LEGAL REFERENCE');
+  packetLines.push(`  CASE #            : ${i.clientJobNumber || 'N/A'}`);
+  packetLines.push(`  PLAINTIFF         : ${up(i.plaintiff)}`);
+  packetLines.push(`  DOCUMENTS         : ${docList}`);
+  packetLines.push(`  PAGES             : ${i.documentPages}${i.bilingual ? ' (BILINGUAL)' : ''}`);
+  packetLines.push(`  SIGNED / FILED    : ${up(i.signedDate) || 'N/A'}`);
+  packetLines.push(`  RESPONSE DEADLINE : ${i.responseDeadlineDays} day(s) after service`);
+  packetLines.push('');
+  packetLines.push('COURT');
+  packetLines.push(`  COURT             : ${up(i.court) || 'N/A'}`);
+  if (i.courtAddress) packetLines.push(`  ADDRESS           : ${up(i.courtAddress)}`);
+  if (i.clerkPhone) packetLines.push(`  CLERK PHONE       : ${i.clerkPhone}`);
+
   if (i.attorney.name) {
-    caseLines.push(`ATTORNEY: ${up(i.attorney.name)}`);
-    if (i.attorney.firm) caseLines.push(`FIRM: ${up(i.attorney.firm)}`);
-    if (i.attorney.barNumber) caseLines.push(`BAR #: ${i.attorney.barNumber}`);
+    packetLines.push('');
+    packetLines.push('ATTORNEY OF RECORD');
+    packetLines.push(`  NAME              : ${up(i.attorney.name)}`);
+    if (i.attorney.firm) packetLines.push(`  FIRM              : ${up(i.attorney.firm)}`);
+    if (i.attorney.barNumber) packetLines.push(`  BAR #             : ${i.attorney.barNumber}`);
     const attyAddr = [i.attorney.addressLine1, i.attorney.addressLine2].filter(Boolean).join(', ');
-    if (attyAddr) caseLines.push(`ADDRESS: ${up(attyAddr)}`);
-    if (i.attorney.tel) caseLines.push(`PHONE: ${i.attorney.tel}`);
-    if (i.attorney.email) caseLines.push(`EMAIL: ${i.attorney.email}`);
+    if (attyAddr) packetLines.push(`  ADDRESS           : ${up(attyAddr)}`);
+    if (i.attorney.tel) packetLines.push(`  PHONE             : ${i.attorney.tel}`);
+    if (i.attorney.email) packetLines.push(`  EMAIL             : ${i.attorney.email}`);
   }
-  const caseNote = caseLines.join('\n');
+  const packetNote = packetLines.join('\n');
 
   // ═══════════════════════════════════════════════════════════
-  // NOTE 4: ☕ CASE SUMMARY (the "tea spill" — plain English brief)
+  // NOTE 3 — 👤 SUBJECT & ADDRESS DOSSIER + CLIENT INSTRUCTIONS
+  //   Combines: enrichment intelligence (subject/address/vehicles/
+  //   associates/aliases/prior attempts/premise/trespass/closest unit/
+  //   GPS proximity/open case) + verbatim client instructions + job
+  //   activity history. Single note for "everything else the officer
+  //   needs to know about this person and place".
   // ═══════════════════════════════════════════════════════════
-  const teaLines: string[] = [];
-  teaLines.push('☕ CASE SUMMARY');
-  teaLines.push('═'.repeat(50));
-  // Build a human-readable summary of what this case is about
-  const plaintiffShort = (i.plaintiff || 'The plaintiff').split(',')[0].trim();
-  const serviceDesc = (i.orderingClientRule || '').replace(/\.$/, '').trim();
-  const docDesc = clauses.length > 0
-    ? clauses.map(c => c.toLowerCase()).join(' and ')
-    : 'legal documents';
-  teaLines.push(`${plaintiffShort} is suing and needs ${docDesc} served.`);
-  teaLines.push('');
-  teaLines.push(`The defendant needs to be personally served at their residence.`);
-  if (i.dueDate) {
-    teaLines.push(`Service must be completed by ${i.dueDate} (${i.daysRemaining} days from now).`);
+  const dossierLines: string[] = [];
+  dossierLines.push('SUBJECT & ADDRESS DOSSIER');
+  if (i.enrichmentText) {
+    dossierLines.push(i.enrichmentText);
+    dossierLines.push('');
+  } else {
+    dossierLines.push('(No enrichment data available - defendant not previously in system.)');
   }
-  if (i.responseDeadlineDays) {
-    teaLines.push(`Once served, the defendant has ${i.responseDeadlineDays} days to respond to the court.`);
-  }
-  teaLines.push('');
-  // Service approach summary
-  if (/personal\s+(?:service\s+)?only/i.test(i.instructionsVerbatim)) {
-    teaLines.push('⚠️ PERSONAL SERVICE ONLY — cannot leave with another person on first attempts.');
-  }
-  if (/sub-?serve/i.test(i.instructionsVerbatim)) {
-    teaLines.push('After diligence (3 attempts on different days/times), sub-service to a competent adult (18+) at the residence or workplace is allowed.');
-  }
-  if (/notify.*?immediately|please notify/i.test(i.instructionsVerbatim)) {
-    teaLines.push('📞 If sub-served: CALL THE CLIENT IMMEDIATELY so they can mail an additional copy.');
-  }
-  if (i.court) {
-    teaLines.push(`\nThis case is filed in ${i.court}.`);
-  }
-  teaLines.push(`\n[Auto-generated ${i.timestamp}]`);
-  const teaNote = teaLines.join('\n');
-
-  // ═══════════════════════════════════════════════════════════
-  // NOTE 5: 🕐 CLIENT HISTORY + INSTRUCTIONS (reference)
-  // ═══════════════════════════════════════════════════════════
-  const refLines: string[] = [];
-  refLines.push('🕐 CLIENT HISTORY & INSTRUCTIONS');
-  refLines.push('═'.repeat(50));
+  dossierLines.push('');
+  dossierLines.push('VERBATIM CLIENT INSTRUCTIONS:');
+  dossierLines.push(i.instructionsVerbatim || '(none provided)');
   if (i.jobActivity.length > 0) {
-    refLines.push('JOB ACTIVITY:');
-    i.jobActivity.forEach(e => {
-      refLines.push(`  ${e.when} — ${e.action}${e.detail ? ': ' + e.detail : ''}`);
+    dossierLines.push('');
+    dossierLines.push('JOB ACTIVITY HISTORY:');
+    i.jobActivity.forEach((e) => {
+      dossierLines.push(`   ${e.when} - ${e.action}${e.detail ? ': ' + e.detail : ''}`);
     });
-    refLines.push('');
   }
-  refLines.push('VERBATIM INSTRUCTIONS:');
-  refLines.push(i.instructionsVerbatim || '(none provided)');
-  const refNote = refLines.join('\n');
+  dossierLines.push('');
+  dossierLines.push(`[Auto-generated ${i.timestamp}]`);
+  const dossierNote = dossierLines.join('\n');
 
-  return [
-    { text: alertNote },
-    { text: schedNote },
-    { text: caseNote },
-    { text: teaNote },
-    { text: refNote },
+  // ═══════════════════════════════════════════════════════════
+  // NOTE 4 — 📝 CASE NARRATIVE (detailed Who/What/Where/When/Why)
+  //   Separate, deeper-dive note that reviews the Complaint document
+  //   beyond the elevator-pitch synopsis embedded in the CASE PACKET.
+  //   Only emitted when narrative text is supplied by the route.
+  // ═══════════════════════════════════════════════════════════
+  const notes: NotesEntry[] = [
+    { text: briefingNote },
+    { text: packetNote },
   ];
+  if (i.caseNarrativeText) {
+    notes.push({ text: i.caseNarrativeText });
+  }
+  notes.push({ text: dossierNote });
+  return notes;
 }
 
 export function deriveServiceType(primaryToken: string, fullDocuments?: string): string {
@@ -903,6 +943,15 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   address = address.replace(/\s{3,}.*$/, '').trim();
   const addressParts = parseAddressParts(address);
 
+  // Field sheet structured labels: Case, Court, Plaintiff, Defendant, Documents
+  // These are in a table-like layout that pdftotext renders with spacing.
+  // Hoisted above plaintiff/court extraction (which references fsPlaintiff/fsCourt).
+  const fsCase = fieldSheet.match(/Case\s{2,}([^\s](?:[^\n]*?))\s{2,}Plaintiff/i)?.[1]?.trim() || '';
+  const fsPlaintiff = fieldSheet.match(/Plaintiff\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
+  const fsCourt = fieldSheet.match(/Court\s{2,}([^\s](?:[^\n]*?))\s{2,}Defendant/i)?.[1]?.trim() || '';
+  const fsDefendant = fieldSheet.match(/Defendant\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
+  void fsDefendant; // reserved for future name-conflict checks
+
   // ── Plaintiff extraction (multi-source) ──
   // Priority: field sheet structured → info sheet → court docket caption
   let plaintiff = fsPlaintiff || info.plaintiff;
@@ -957,7 +1006,7 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     || (courtDocket.match(/(\d+\s+\w[^\n]{5,60},\s*[A-Za-z .]+,?\s*(?:UT|Utah|IL|CA|TX|NY|FL|AZ|CO|NV|WA|OR)\s*,?\s*\d{5})/i)?.[1] || '');
   const clerkMatch = courtDocket.match(/(?:call|contact)\s+(?:the\s+)?clerk[\s\S]*?(?:at\s*)?\(?(\d{3})\)?\s*[-.\s]?(\d{3})[-.\s]?(\d{4})/i)
     || courtDocket.match(/Clerk[:\s]*\(?(\d{3})\)?[-.\s]?(\d{3})[-.\s]?(\d{4})/i);
-  const clerkPhone = clerkMatch ? `(${clerkMatch[1]}) ${clerkMatch[2]}-${clerkMatch[3]}` : '';
+  let clerkPhone = clerkMatch ? `(${clerkMatch[1]}) ${clerkMatch[2]}-${clerkMatch[3]}` : '';
 
   // ── Documents list (field sheet → info sheet → court docket) ──
   let documents = (fieldSheet.match(/Documents[:\s]+([^\n]+)/i)?.[1]
@@ -1012,15 +1061,10 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     || (courtDocket.match(/\*S\d+(\d{6})\*/)?.[1] || '')
     || (courtDocket.match(/Case\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?\d+[-A-Z0-9]*)/i)?.[1] || '');
 
-  // Field sheet structured labels: Case, Court, Plaintiff, Defendant, Documents
-  // These are in a table-like layout that pdftotext renders with spacing
-  const fsCase = fieldSheet.match(/Case\s{2,}([^\s](?:[^\n]*?))\s{2,}Plaintiff/i)?.[1]?.trim() || '';
-  const fsPlaintiff = fieldSheet.match(/Plaintiff\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
-  const fsCourt = fieldSheet.match(/Court\s{2,}([^\s](?:[^\n]*?))\s{2,}Defendant/i)?.[1]?.trim() || '';
-  const fsDefendant = fieldSheet.match(/Defendant\s{2,}([^\n]+?)(?:\s{3,}|$)/i)?.[1]?.trim() || '';
+  // (Field sheet structured labels hoisted earlier — see fsCase/fsPlaintiff/fsCourt above.)
 
   // Due date — field sheet, info sheet, or any "Due:" mention
-  const dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
+  let dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
     || infoSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
     || infoSheet.match(/Deadline[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
     || '');
@@ -1054,7 +1098,7 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   const serviceRulesSummary = summarizeRules(instructions);
   const jobActivity = parseJobActivity(infoSheet);
   // Court case number — try multiple patterns across all docs
-  const courtCaseNumber = (
+  let courtCaseNumber = (
     fsCase  // Field sheet "Case  26CU014094N" — most reliable for ICU format
     || courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1]
     || courtDocket.match(/(?:Civil\s+Action|Case)\s+(?:No\.?|Number|#)[:\s]*([A-Z0-9]+-?[:\-]?\d+[-A-Z0-9]*)/i)?.[1]

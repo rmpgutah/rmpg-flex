@@ -254,7 +254,17 @@ async function tryRefreshToken(): Promise<string | null> {
   _refreshPromise = (async () => {
     try {
       const refreshToken = localStorage.getItem('rmpg_refresh_token');
-      if (!refreshToken) return null;
+      if (!refreshToken) {
+        // No refresh token = effectively logged out. Don't silently spin —
+        // clear residual access token and bounce to login so the user can
+        // re-authenticate (only when actually online).
+        localStorage.removeItem('rmpg_token');
+        localStorage.removeItem('rmpg_session_id');
+        if (isLikelyOnline() && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
+        return null;
+      }
 
       // AbortController timeout prevents infinite lock on hung requests
       const controller = new AbortController();

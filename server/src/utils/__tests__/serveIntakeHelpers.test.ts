@@ -132,20 +132,41 @@ describe('parseJobActivity', () => {
 });
 
 describe('computeDiligenceSchedule', () => {
-  it('returns 3 attempts with the required weekend slot across a multi-day window', () => {
-    const now = new Date('2026-04-19T07:30:00-06:00');
-    const due = new Date('2026-04-21T23:59:59-06:00');
+  // Helper: collapse each slot to its local-day string so tests can assert
+  // "3 different days" without dragging timezone math into every assertion.
+  const localDay = (d: Date, offset = -6) =>
+    new Date(d.getTime() + offset * 3600000).toISOString().slice(0, 10);
+
+  it('returns 3 attempts with distinct windows AND distinct days when multi-day window allows', () => {
+    const now = new Date('2026-04-19T07:30:00-06:00'); // Sun
+    const due = new Date('2026-04-21T23:59:59-06:00'); // Tue
     const plan = computeDiligenceSchedule(due, now, -6);
     expect(plan).toHaveLength(3);
     expect(plan.map(p => p.window).sort()).toEqual(['6AM-9AM', '6PM-9PM', '9AM-6PM'].sort());
     expect(plan.some(p => p.weekend)).toBe(true);
+    // BUG REGRESSION GUARD: previously the picker stacked all 3 attempts on
+    // the earliest day. Each attempt must now be on a different calendar day.
+    const days = new Set(plan.map(p => localDay(p.date)));
+    expect(days.size).toBe(3);
   });
 
-  it('fits all 3 attempts into a same-day window if that is all that is left', () => {
-    const now = new Date('2026-04-19T07:00:00-06:00');
-    const due = new Date('2026-04-19T21:00:00-06:00');
+  it('spreads across 3 different days even in a 4-day window (and still picks a weekend)', () => {
+    const now = new Date('2026-04-23T08:00:00-06:00'); // Thu
+    const due = new Date('2026-04-26T23:59:59-06:00'); // Sun
     const plan = computeDiligenceSchedule(due, now, -6);
     expect(plan).toHaveLength(3);
+    const days = new Set(plan.map(p => localDay(p.date)));
+    expect(days.size).toBe(3);
+    expect(plan.some(p => p.weekend)).toBe(true);
+  });
+
+  it('falls back to same-day stacking only when no multi-day option exists', () => {
+    const now = new Date('2026-04-19T07:00:00-06:00');
+    const due = new Date('2026-04-19T21:00:00-06:00'); // single-day window
+    const plan = computeDiligenceSchedule(due, now, -6);
+    expect(plan).toHaveLength(3);
+    const days = new Set(plan.map(p => localDay(p.date)));
+    expect(days.size).toBe(1); // expected: all on the same day, because that's all there is
   });
 });
 
@@ -204,36 +225,79 @@ describe('buildNotesNarrative', () => {
     timestamp: '2026-04-19 07:30:12',
   };
 
-  it('produces 8 entries in the documented order', () => {
+  // buildNotesNarrative defaults to 3 consolidated notes (briefing / case
+  // packet / dossier). When caseNarrativeText is supplied a 4th detailed
+  // narrative note slots between CASE PACKET and DOSSIER. Output is plain
+  // text without emoji or box-drawing characters.
+  it('produces 3 plain-text consolidated sections in order without narrative', () => {
     const notes = buildNotesNarrative(input);
-    expect(notes).toHaveLength(8);
-    expect(notes[0].text).toMatch(/^CASE --/);
-    expect(notes[1].text).toMatch(/^COURT --/);
-    expect(notes[2].text).toMatch(/^ATTORNEY --/);
-    expect(notes[3].text).toMatch(/^SERVICE RULES --/);
-    expect(notes[4].text).toMatch(/^SCHEDULE --/);
-    expect(notes[5].text).toMatch(/^RECOMMENDED SCHEDULE --/);
-    expect(notes[6].text).toMatch(/^CLIENT HISTORY --/);
-    expect(notes[7].text).toMatch(/^INSTRUCTIONS \(VERBATIM\) --/);
+    expect(notes).toHaveLength(3);
+    expect(notes[0].text).toMatch(/^OFFICER BRIEFING/);
+    expect(notes[1].text).toMatch(/^CASE PACKET/);
+    expect(notes[2].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
   });
 
-  it('CASE line contains pipe-delimited plaintiff/client/case#/documents/signed/deadline', () => {
-    const notes = buildNotesNarrative(input);
-    const caseText = notes[0].text;
-    expect(caseText).toContain('PLAINTIFF: CAPITAL ONE');
-    expect(caseText).toContain('CASE #633570');
-    expect(caseText).toContain('2 DOCS');
-    expect(caseText).toContain('11 PAGES');
-    expect(caseText).toContain('BILINGUAL');
-    expect(caseText).toContain('SIGNED/FILED: MARCH 25, 2026');
-    expect(caseText).toContain('RESPONSE DEADLINE: 21 DAYS AFTER SERVICE');
+  it('inserts the 4th CASE NARRATIVE note when caseNarrativeText is supplied', () => {
+    const narrativeText = 'CASE NARRATIVE - Detailed review of the Complaint\nWHO:\nPLAINTIFF: Capital One';
+    const notes = buildNotesNarrative({ ...input, caseNarrativeText: narrativeText });
+    expect(notes).toHaveLength(4);
+    expect(notes[0].text).toMatch(/^OFFICER BRIEFING/);
+    expect(notes[1].text).toMatch(/^CASE PACKET/);
+    expect(notes[2].text).toMatch(/^CASE NARRATIVE/);
+    expect(notes[3].text).toMatch(/^SUBJECT & ADDRESS DOSSIER/);
   });
 
-  it('ATTORNEY line uses Firm parenthetical + BAR#', () => {
+  it('OFFICER BRIEFING contains the 3-day diligence plan with door-approach guidance', () => {
     const notes = buildNotesNarrative(input);
-    expect(notes[2].text).toContain('HEATHER VALERGA (GUGLIELMO & ASSOCIATES) BAR#14431');
-    expect(notes[2].text).toContain('PO BOX 41688, TUCSON, AZ 85717');
-    expect(notes[2].text).toContain('TEL: (877)325-5700');
-    expect(notes[2].text).toContain('EMAIL: UTAH@GUGLIELMOLAW.COM');
+    const brief = notes[0].text;
+    expect(brief).toContain('3-DAY DILIGENCE PLAN');
+    expect(brief).toContain('ATTEMPT 1');
+    expect(brief).toContain('ATTEMPT 2');
+    expect(brief).toContain('ATTEMPT 3');
+    expect(brief).toContain('Knock 3 times');
+    expect(brief).toContain('photograph front door');
+    expect(brief).toContain('Vary the day-of-week');
+    expect(brief).toContain('GPS-tagged photo');
+  });
+
+  it('CASE PACKET embeds caseSynopsisText when supplied', () => {
+    const synopsis = '📖 WHAT YOU ARE SERVING (auto-synopsis)\nDiscover Bank is suing Daisy Doe to collect $14,500.';
+    const notes = buildNotesNarrative({ ...input, caseSynopsisText: synopsis });
+    expect(notes[1].text).toContain('📖 WHAT YOU ARE SERVING');
+    expect(notes[1].text).toContain('Discover Bank is suing Daisy Doe');
+  });
+
+  it('CASE PACKET section contains plaintiff, case #, documents, signed date, deadline', () => {
+    const notes = buildNotesNarrative(input);
+    const caseText = notes[1].text;
+    expect(caseText).toContain('PLAINTIFF         : CAPITAL ONE');
+    expect(caseText).toContain('CASE #            : 633570');
+    expect(caseText).toContain('SUMMONS + COMPLAINT');
+    expect(caseText).toContain('PAGES             : 11');
+    expect(caseText).toContain('(BILINGUAL)');
+    expect(caseText).toContain('SIGNED / FILED    : MARCH 25, 2026');
+    expect(caseText).toContain('RESPONSE DEADLINE : 21 day(s) after service');
+  });
+
+  it('ATTORNEY block in CASE PACKET includes name, firm, bar #, address, phone, email', () => {
+    const notes = buildNotesNarrative(input);
+    const caseText = notes[1].text;
+    expect(caseText).toContain('NAME              : HEATHER VALERGA');
+    expect(caseText).toContain('FIRM              : GUGLIELMO & ASSOCIATES');
+    expect(caseText).toContain('BAR #             : 14431');
+    expect(caseText).toContain('ADDRESS           : PO BOX 41688, TUCSON, AZ 85717');
+    expect(caseText).toContain('PHONE             : (877)325-5700');
+    expect(caseText).toContain('EMAIL             : Utah@guglielmolaw.com');
+  });
+
+  it('DOSSIER folds in enrichmentText + verbatim instructions + job activity', () => {
+    const enrichmentText = '🔍 INTAKE ENRICHMENT\n👤 SUBJECT HISTORY: 3 prior call(s)';
+    const notes = buildNotesNarrative({ ...input, enrichmentText });
+    const dossier = notes[2].text;
+    expect(dossier).toContain('🔍 INTAKE ENRICHMENT');
+    expect(dossier).toContain('SUBJECT HISTORY');
+    expect(dossier).toContain('VERBATIM CLIENT INSTRUCTIONS');
+    expect(dossier).toContain('Sub-serve on 1st attempt');
+    expect(dossier).toContain('JOB ACTIVITY HISTORY');
   });
 });

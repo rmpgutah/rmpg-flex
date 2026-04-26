@@ -237,7 +237,7 @@ export default function RecordsPage() {
 
   // ── Archive / Unarchive ──────────────────────────────
 
-  const handleArchiveRecord = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
+  const handleArchiveRecord = async (type: string, id: string) => {
     try {
       await apiFetch(`/records/${type}/${id}/archive`, { method: 'POST' });
       if (type === 'persons') { await fetchPersons(); }
@@ -250,7 +250,7 @@ export default function RecordsPage() {
     }
   };
 
-  const handleUnarchiveRecord = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
+  const handleUnarchiveRecord = async (type: string, id: string) => {
     try {
       await apiFetch(`/records/${type}/${id}/unarchive`, { method: 'POST' });
       if (type === 'persons') { await fetchPersons(); }

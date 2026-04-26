@@ -2143,4 +2143,108 @@ router.post('/calls/:id/pursuit', validateParamIdMiddleware, requireRole('admin'
   }
 });
 
+// ─────────────────────────────────────────────────────────────────────
+// Dispatch advanced UX endpoints (audit trail, closest unit, pin)
+// ─────────────────────────────────────────────────────────────────────
+
+// GET /api/dispatch/calls/:id/audit-trail — chronological status events for a call
+router.get('/calls/:id/audit-trail', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = paramStr(req.params.id);
+    const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+
+    const rows = db.prepare(`
+      SELECT al.id, al.action, al.entity_type, al.entity_id, al.details,
+             al.created_at, al.user_id, u.full_name AS user_name, u.username
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE (al.entity_type = 'call' AND al.entity_id = ?)
+         OR (al.entity_type = 'call' AND al.entity_id = ?)
+      ORDER BY al.created_at ASC
+      LIMIT 500
+    `).all(String(id), String(call.call_number || ''));
+
+    res.json({ call_id: call.id, call_number: call.call_number, events: rows });
+  } catch (error: any) {
+    console.error('[CallActions] audit-trail error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to load audit trail', code: 'AUDIT_TRAIL_ERROR' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/closest-unit — suggest nearest AVAILABLE unit
+router.get('/calls/:id/closest-unit', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = paramStr(req.params.id);
+    const call = db.prepare('SELECT id, call_number, latitude, longitude FROM calls_for_service WHERE id = ?').get(id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+    if (call.latitude == null || call.longitude == null) {
+      return res.status(400).json({ error: 'Call has no GPS coordinates', code: 'NO_CALL_COORDS' });
+    }
+
+    const units = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude,
+             usr.full_name AS officer_name, usr.id AS officer_id
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status = 'available'
+        AND u.latitude IS NOT NULL
+        AND u.longitude IS NOT NULL
+    `).all() as any[];
+
+    if (units.length === 0) {
+      return res.json({ call_id: call.id, suggestion: null, reason: 'No available units with GPS' });
+    }
+
+    // Haversine distance in miles
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 3958.7613;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    };
+
+    const ranked = units.map(u => ({
+      ...u,
+      distance_miles: haversineMiles(call.latitude, call.longitude, u.latitude, u.longitude),
+    })).sort((a, b) => a.distance_miles - b.distance_miles);
+
+    res.json({
+      call_id: call.id,
+      call_number: call.call_number,
+      suggestion: ranked[0],
+      alternatives: ranked.slice(1, 3),
+    });
+  } catch (error: any) {
+    console.error('[CallActions] closest-unit error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to compute closest unit', code: 'CLOSEST_UNIT_ERROR' });
+  }
+});
+
+// PATCH /api/dispatch/calls/:id/pin — toggle pinned flag
+router.patch('/calls/:id/pin', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = paramStr(req.params.id);
+    const call = db.prepare('SELECT id, call_number, pinned FROM calls_for_service WHERE id = ?').get(id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+
+    const desired = typeof req.body?.pinned === 'boolean' ? req.body.pinned : !call.pinned;
+    const next = desired ? 1 : 0;
+    db.prepare('UPDATE calls_for_service SET pinned = ? WHERE id = ?').run(next, id);
+
+    auditLog(req, 'call_updated', 'call', call.id, { pinned: !!call.pinned }, { pinned: !!next });
+    broadcastDispatchUpdate({ action: 'call_pinned', call_id: call.id, call_number: call.call_number, pinned: !!next });
+
+    res.json({ success: true, id: call.id, pinned: !!next });
+  } catch (error: any) {
+    console.error('[CallActions] pin error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to toggle pin', code: 'PIN_ERROR' });
+  }
+});
+
 export default router;

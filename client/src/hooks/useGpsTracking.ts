@@ -688,13 +688,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           startIpFallbackPoller();
           return;
         }
-        // Cap restart attempts to prevent infinite restart loops
+        // Track restart count for state UI but NEVER stop trying — vehicle CADs
+        // can't be expected to refresh manually, and a quiet GPS hardware reset
+        // (cellular hand-off, ignition cycle, OS power-save) can take many minutes.
         heartbeatRestartCountRef.current++;
         if (heartbeatRestartCountRef.current > MAX_HEARTBEAT_RESTARTS) {
-          console.error('[GPS] Max heartbeat restarts reached, stopping restart attempts');
-          if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
-          setState((prev) => ({ ...prev, error: 'GPS signal lost. Refresh the page to retry.' }));
-          return;
+          // Surface the degradation to UI but keep retrying.
+          setState((prev) => ({ ...prev, error: `GPS signal stale (${Math.round(staleDuration / 1000)}s) — auto-retrying…` }));
         }
         // Clear the stale watch and restart
         navigator.geolocation.clearWatch(watchIdRef.current);
@@ -818,29 +818,44 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       wakeLock = null;
     };
     const requestWakeLock = async () => {
+      // WakeLock requires user-activation context + visible page; otherwise the
+      // browser throws NotAllowedError. Skip silently in those cases instead of
+      // spamming the console — GPS still works without WakeLock.
+      if (!('wakeLock' in navigator)) return;
+      if (document.visibilityState !== 'visible') return;
       try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await (navigator as any).wakeLock.request('screen');
-          wakeLock.addEventListener('release', handleWakeLockRelease);
+        wakeLock = await (navigator as any).wakeLock.request('screen');
+        wakeLock.addEventListener('release', handleWakeLockRelease);
+      } catch (err: any) {
+        // NotAllowedError = no user gesture yet; will retry on first user click below.
+        if (err?.name !== 'NotAllowedError') {
+          console.warn('[useGpsTracking] WakeLock request failed:', err);
         }
-      } catch (err) {
-        console.warn('[useGpsTracking] WakeLock request failed:', err);
       }
     };
 
     requestWakeLock();
 
-    // Re-acquire wake lock when page becomes visible again
+    // Re-acquire wake lock when page becomes visible again, or on first user click.
     const handleVisibility = () => {
       if (document.visibilityState === 'visible') requestWakeLock();
     };
+    const handleFirstClick = () => {
+      requestWakeLock();
+      window.removeEventListener('click', handleFirstClick);
+      window.removeEventListener('keydown', handleFirstClick);
+    };
     document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('click', handleFirstClick, { once: true });
+    window.addEventListener('keydown', handleFirstClick, { once: true });
 
     return () => {
       document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('click', handleFirstClick);
+      window.removeEventListener('keydown', handleFirstClick);
       if (wakeLock) {
         wakeLock.removeEventListener('release', handleWakeLockRelease);
-        wakeLock.release().catch((err: any) => { console.warn('[useGpsTracking] wake lock release failed:', err); });
+        wakeLock.release().catch(() => { /* benign */ });
       }
     };
   }, []);
