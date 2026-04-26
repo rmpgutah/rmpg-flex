@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { synthesizeCaseNarrative } from '../caseNarrative';
+import { synthesizeCaseNarrative, extractAllCausesOfAction } from '../caseNarrative';
 
 const baseInput = {
   plaintiff: 'Capital One, N.A.',
@@ -90,10 +90,10 @@ describe('synthesizeCaseNarrative', () => {
       ...baseInput,
       courtDocket: 'JANE DOE, Plaintiff v. ACME CORP; BAR LLC; FOO INC; QUUX HOLDINGS; XYZ COMPANY; PARTY SIX; PARTY SEVEN; SOMEONE ELSE; DOES 1 through 100, inclusive, Defendants.',
     });
-    expect(r.who).toContain('CO-DEFENDANTS:');
+    expect(r.who).toMatch(/CO-DEFENDANTS\s*\(\d+\+?\):/);
     expect(r.who).toContain('ACME CORP');
     // Cap at 6
-    expect((r.who.match(/CO-DEFENDANTS:.*$/m) || [''])[0].split(';').length).toBeLessThanOrEqual(7);
+    expect((r.who.match(/CO-DEFENDANTS\s*\(\d+\+?\):.*$/m) || [''])[0].split(';').length).toBeLessThanOrEqual(7);
   });
 
   it('degrades gracefully when courtDocket is empty', () => {
@@ -123,5 +123,172 @@ describe('synthesizeCaseNarrative', () => {
       category: 'subpoena',
     });
     expect(r.why).toMatch(/appear|produce|contempt/i);
+  });
+});
+
+describe('synthesizeCaseNarrative — enhanced extractions', () => {
+  const fixtureDocket = `
+SUPERIOR COURT OF THE STATE OF CALIFORNIA, COUNTY OF SAN DIEGO
+Case No.: 26CU014094N
+COMPLAINT FOR DAMAGES
+
+PARTIES
+Plaintiff GILBERTO ROCHA serves as the co-president of the Referees Association.
+Defendant JORDAN ALLEN is an individual and manager of the Youth team.
+
+JURISDICTION AND VENUE
+This Court has jurisdiction pursuant to California Code of Civil Procedure section 410.10.
+
+FACTUAL ALLEGATIONS
+On or about July 21, 2024, at approximately 12:45 p.m., at Surf Sports Park, Plaintiff was
+serving as the referee for a soccer match. DORANTES grabbed Plaintiff by the neck and began
+choking him. One bystander, Jose Robles, sustained a possible broken finger while trying to
+separate the Plaintiff from the mob. Another bystander, Rigoberto Anguino, was struck multiple
+times in the head. Plaintiff suffered injuries to his head, side, and legs.
+
+CAUSES OF ACTION
+FIRST CAUSE OF ACTION
+(Negligence)
+SECOND CAUSE OF ACTION
+(Assault)
+THIRD CAUSE OF ACTION
+(Battery)
+FOURTH CAUSE OF ACTION
+(Intentional Infliction of Emotional Distress)
+FIFTH CAUSE OF ACTION
+(Negligent Hiring, Supervision, and Retention)
+
+Plaintiff contends DEFENDANTS' conduct amounted to malice, oppression and fraud under
+Civil Code section 3294, with a total, willing, and conscious disregard.
+
+PRAYER FOR RELIEF
+WHEREFORE, Plaintiff prays as follows:
+1. For general damages in an amount within the jurisdiction of this court;
+2. For special damages, according to proof;
+3. For any prejudgment interest according to law;
+4. For costs of suit;
+5. Punitive and exemplary damages, in a sum sufficient to punish and deter said Defendants;
+6. Any other and further relief that the Court considers proper.
+
+DATED: March 11, 2026
+
+DEMAND FOR JURY TRIAL
+Plaintiff hereby demands trial by jury.
+`;
+
+  const enhInput = {
+    ...{
+      plaintiff: 'Gilberto Rocha',
+      defendantFirst: 'Jordan',
+      defendantMiddle: '',
+      defendantLast: 'Allen',
+      defendantEntityType: 'individual' as const,
+      attorney: { name: 'Bradley G. Hayes', firm: 'The Hayes Law Firm, APC', barNumber: '287552', addressLine1: '2648 Durfee Ave., Ste. 101', addressLine2: 'El Monte, CA 91732', tel: '(323) 477-1415', fax: '', email: 'e-service@thehayeslawfirmapc.com' },
+      court: 'Superior Court of California, County of San Diego',
+      courtAddress: '325 South Melrose Drive, Vista, CA 92081',
+      county: 'San Diego',
+      courtCaseNumber: '26CU014094N',
+      signedDate: 'March 11, 2026',
+      responseDeadlineDays: 30,
+      documents: 'Summons; Complaint; CCCS',
+      category: 'civil_suit_general' as const,
+      moneyAtStake: null,
+    },
+    courtDocket: fixtureDocket,
+  };
+
+  it('extracts all 5 causes of action and lists them in WHAT', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    expect(r.what).toContain('5 causes of action');
+    expect(r.what).toMatch(/NEGLIGENCE/i);
+    expect(r.what).toMatch(/ASSAULT/i);
+    expect(r.what).toMatch(/BATTERY/i);
+    expect(r.what).toMatch(/INTENTIONAL INFLICTION OF EMOTIONAL DISTRESS/i);
+    expect(r.what).toMatch(/NEGLIGENT HIRING/i);
+  });
+
+  it('extracts plaintiff role and defendant pleaded role', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    expect(r.who).toMatch(/co-president of the Referees Association/i);
+    expect(r.who).toMatch(/manager of the Youth team/i);
+  });
+
+  it('lists witnesses/bystanders named in the Complaint', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    expect(r.who).toContain('Jose Robles');
+    expect(r.who).toContain('Rigoberto Anguino');
+  });
+
+  it('includes the operative facts block from the Factual Allegations section', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    expect(r.what).toMatch(/Operative facts/i);
+    expect(r.what).toMatch(/July 21, 2024/);
+    expect(r.what).toMatch(/Surf Sports Park/);
+  });
+
+  it('extracts injuries when "injuries to his head, side, and legs" appears', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    expect(r.what).toMatch(/Injuries.*head|head.*side|legs/i);
+  });
+
+  it('extracts statutory citations (Civil Code §, CCP §)', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    // Output preserves literal docket spelling: "section" word OR § symbol both accepted.
+    expect(r.what).toMatch(/Civil Code\s+(?:§|section)\s*3294/i);
+    expect(r.what).toMatch(/Code of Civil Procedure\s+(?:§|section)\s*410\.10/i);
+  });
+
+  it('flags VERIFIED, JURY, and PUNITIVE damages when present', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    expect(r.what).toMatch(/JURY TRIAL DEMANDED/);
+    expect(r.what).toMatch(/PUNITIVE DAMAGES PRAYED/);
+    expect(r.why).toMatch(/PUNITIVE DAMAGES/);
+  });
+
+  it('extracts numbered prayer-for-relief items', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    expect(r.what).toMatch(/Plaintiff prays for:/);
+    expect(r.what).toMatch(/general damages/i);
+    expect(r.what).toMatch(/punitive/i);
+  });
+
+  it('computes statute-of-limitations age (~1.6 years here, flags >600 days)', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    expect(r.when).toMatch(/Time from incident to filing/);
+    expect(r.when).toMatch(/approaching typical 2-year personal-injury statute/);
+  });
+
+  it('WHY section names the defendant\'s specific role from the Complaint', () => {
+    const r = synthesizeCaseNarrative(enhInput);
+    expect(r.why).toMatch(/Jordan\s+Allen/);
+    expect(r.why).toMatch(/manager of the Youth team/i);
+  });
+});
+
+describe('extractAllCausesOfAction', () => {
+  it('returns ordered list of all CAUSE OF ACTION headers', () => {
+    const text = `
+FIRST CAUSE OF ACTION
+(Negligence)
+SECOND CAUSE OF ACTION
+(Breach of Contract)
+THIRD CAUSE OF ACTION
+(Conversion)
+`;
+    expect(extractAllCausesOfAction(text)).toEqual(['Negligence', 'Breach of Contract', 'Conversion']);
+  });
+
+  it('falls back to COUNT I/II/III pattern', () => {
+    const text = `
+COUNT I (Fraud)
+COUNT II (Breach of Fiduciary Duty)
+`;
+    const result = extractAllCausesOfAction(text);
+    expect(result).toContain('Fraud');
+    expect(result).toContain('Breach of Fiduciary Duty');
+  });
+
+  it('returns empty array when no causes of action found', () => {
+    expect(extractAllCausesOfAction('Some random text with no causes')).toEqual([]);
   });
 });
