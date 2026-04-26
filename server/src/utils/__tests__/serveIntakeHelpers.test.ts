@@ -132,20 +132,41 @@ describe('parseJobActivity', () => {
 });
 
 describe('computeDiligenceSchedule', () => {
-  it('returns 3 attempts with the required weekend slot across a multi-day window', () => {
-    const now = new Date('2026-04-19T07:30:00-06:00');
-    const due = new Date('2026-04-21T23:59:59-06:00');
+  // Helper: collapse each slot to its local-day string so tests can assert
+  // "3 different days" without dragging timezone math into every assertion.
+  const localDay = (d: Date, offset = -6) =>
+    new Date(d.getTime() + offset * 3600000).toISOString().slice(0, 10);
+
+  it('returns 3 attempts with distinct windows AND distinct days when multi-day window allows', () => {
+    const now = new Date('2026-04-19T07:30:00-06:00'); // Sun
+    const due = new Date('2026-04-21T23:59:59-06:00'); // Tue
     const plan = computeDiligenceSchedule(due, now, -6);
     expect(plan).toHaveLength(3);
     expect(plan.map(p => p.window).sort()).toEqual(['6AM-9AM', '6PM-9PM', '9AM-6PM'].sort());
     expect(plan.some(p => p.weekend)).toBe(true);
+    // BUG REGRESSION GUARD: previously the picker stacked all 3 attempts on
+    // the earliest day. Each attempt must now be on a different calendar day.
+    const days = new Set(plan.map(p => localDay(p.date)));
+    expect(days.size).toBe(3);
   });
 
-  it('fits all 3 attempts into a same-day window if that is all that is left', () => {
-    const now = new Date('2026-04-19T07:00:00-06:00');
-    const due = new Date('2026-04-19T21:00:00-06:00');
+  it('spreads across 3 different days even in a 4-day window (and still picks a weekend)', () => {
+    const now = new Date('2026-04-23T08:00:00-06:00'); // Thu
+    const due = new Date('2026-04-26T23:59:59-06:00'); // Sun
     const plan = computeDiligenceSchedule(due, now, -6);
     expect(plan).toHaveLength(3);
+    const days = new Set(plan.map(p => localDay(p.date)));
+    expect(days.size).toBe(3);
+    expect(plan.some(p => p.weekend)).toBe(true);
+  });
+
+  it('falls back to same-day stacking only when no multi-day option exists', () => {
+    const now = new Date('2026-04-19T07:00:00-06:00');
+    const due = new Date('2026-04-19T21:00:00-06:00'); // single-day window
+    const plan = computeDiligenceSchedule(due, now, -6);
+    expect(plan).toHaveLength(3);
+    const days = new Set(plan.map(p => localDay(p.date)));
+    expect(days.size).toBe(1); // expected: all on the same day, because that's all there is
   });
 });
 

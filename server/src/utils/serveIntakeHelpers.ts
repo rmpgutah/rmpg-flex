@@ -461,36 +461,74 @@ export function computeDiligenceSchedule(
 
   if (candidates.length === 0) return [];
 
-  // Need 3 slots, each with a distinct window, and at least one weekend (if any candidate is weekend)
+  // Need 3 slots, each with a distinct window, on 3 DIFFERENT DAYS where
+  // possible (the diligence rule almost universally requires it), and at
+  // least one weekend slot if any candidate falls on a weekend.
   const hasWeekendCandidate = candidates.some(c => c.weekend);
 
-  // Try: pick one slot per distinct window, spread across days, with a weekend if possible
-  const pickByWindow = (name: DiligenceSlot['window'], preferWeekend: boolean, exclude: DiligenceSlot[]): DiligenceSlot | undefined => {
-    const pool = candidates.filter(c => c.window === name && !exclude.includes(c));
+  // Day key in local-clock space so "Mon" candidates all share one key
+  // regardless of the underlying UTC time.
+  const dayKey = (utcDate: Date) => {
+    const d = toLocal(utcDate);
+    return `${d.getUTCFullYear()}-${d.getUTCMonth()}-${d.getUTCDate()}`;
+  };
+
+  // Pick a slot for the given window:
+  //   1. Prefer a slot on a day NOT yet used (so attempts spread across days)
+  //   2. Within that, prefer weekend if weekend is still required
+  //   3. Otherwise pick the earliest available day for this window
+  //   4. Same-day fallback only if no other day has this window
+  const pickByWindow = (
+    name: DiligenceSlot['window'],
+    preferWeekend: boolean,
+    chosen: DiligenceSlot[],
+    usedDays: Set<string>,
+  ): DiligenceSlot | undefined => {
+    const pool = candidates.filter(c => c.window === name && !chosen.includes(c));
+    const newDayPool = pool.filter(c => !usedDays.has(dayKey(c.date)));
+    // Prefer new day + weekend if both possible
     if (preferWeekend) {
-      const w = pool.find(c => c.weekend);
-      if (w) return w;
+      const wknd = newDayPool.find(c => c.weekend);
+      if (wknd) return wknd;
+    }
+    // Prefer any new day
+    if (newDayPool.length > 0) return newDayPool[0];
+    // Last resort — same day as something already chosen
+    if (preferWeekend) {
+      const wknd = pool.find(c => c.weekend);
+      if (wknd) return wknd;
     }
     return pool[0];
   };
 
   const chosen: DiligenceSlot[] = [];
+  const usedDays = new Set<string>();
   let weekendSatisfied = !hasWeekendCandidate;
 
   for (const w of windows) {
-    const slot = pickByWindow(w.name, !weekendSatisfied, chosen);
+    const slot = pickByWindow(w.name, !weekendSatisfied, chosen, usedDays);
     if (slot) {
       chosen.push(slot);
+      usedDays.add(dayKey(slot.date));
       if (slot.weekend) weekendSatisfied = true;
     }
   }
 
-  // If we still don't have 3 (because one window had no candidates), fall back to taking any remaining candidates in time order
+  // If we still don't have 3 (some window had no candidate), fall back to
+  // any remaining slot — but still prefer a day not already used.
   if (chosen.length < 3) {
-    const remaining = candidates.filter(c => !chosen.includes(c)).sort((a, b) => a.date.getTime() - b.date.getTime());
+    const remaining = candidates
+      .filter(c => !chosen.includes(c))
+      .sort((a, b) => {
+        const aNewDay = usedDays.has(dayKey(a.date)) ? 1 : 0;
+        const bNewDay = usedDays.has(dayKey(b.date)) ? 1 : 0;
+        if (aNewDay !== bNewDay) return aNewDay - bNewDay; // prefer 0 (new day)
+        return a.date.getTime() - b.date.getTime();
+      });
     for (const r of remaining) {
       if (chosen.length >= 3) break;
       chosen.push(r);
+      usedDays.add(dayKey(r.date));
     }
   }
 
