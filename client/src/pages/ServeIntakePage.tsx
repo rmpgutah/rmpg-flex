@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { extractFolderGroups, type FolderGroup } from '../utils/dropFolders';
+import BulkDefendantTable from '../components/serve/BulkDefendantTable';
 import {
   Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin,
   User, Building2, Phone, X, ChevronRight, Edit2, Save, ArrowLeft,
@@ -521,6 +522,10 @@ export default function ServeIntakePage() {
       {/* ═══════ STEP 1: UPLOAD ═══════ */}
       {step === 'upload' && (
         <>
+          {/* Bulk-defendant table — alternative entry path. Each row creates one
+              dispatch CFS without parsing PDFs. PDFs can be attached later. */}
+          <BulkDefendantTable />
+
           {/* Instructions panel */}
           <div className="panel-beveled p-4 bg-surface-sunken">
             <div className="flex items-start gap-3">
@@ -528,7 +533,7 @@ export default function ServeIntakePage() {
                 <Upload className="w-5 h-5 text-brand-400" />
               </div>
               <div>
-                <h3 className="text-xs font-bold text-white mb-1">Upload Service Documents</h3>
+                <h3 className="text-xs font-bold text-white mb-1">Or upload Service Documents (single job)</h3>
                 <p className="text-[10px] text-rmpg-400 leading-relaxed">
                   Upload PDF documents from the process service packet. The system automatically detects document types,
                   extracts defendant information, addresses, court details, and service instructions.

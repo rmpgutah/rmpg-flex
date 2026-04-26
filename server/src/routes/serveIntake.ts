@@ -1004,4 +1004,282 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
   }
 });
 
+// ── Bulk-defendant intake ────────────────────────────────────────────
+// Accepts an array of defendant rows (one row = one CFS / one job) and
+// creates the persons / property / case / CFS records for each row in a
+// single transaction. Used by the bulk-table UI for cases where the
+// dispatcher already has the defendant list (e.g., from a spreadsheet)
+// and wants to batch-create jobs without parsing PDFs first.
+//
+// PDFs can be attached to the resulting CFS records later via the
+// existing /api/uploads endpoint.
+router.post('/bulk', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (req: Request, res: Response) => {
+  const log = getLogger(req);
+  try {
+    const userId = (req as any).user?.userId;
+    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (rows.length === 0) { res.status(400).json({ error: 'No rows provided' }); return; }
+    if (rows.length > 200) { res.status(400).json({ error: 'Max 200 rows per bulk submit' }); return; }
+
+    const db = getDb();
+    const now = localNow();
+    const created: Array<{ rowIndex: number; call_id: number; call_number: string }> = [];
+    const errors: Array<{ rowIndex: number; message: string }> = [];
+    /** Rows that matched an existing person+CFS and were merged instead of duplicated. */
+    const merged: Array<{ rowIndex: number; call_id: number; call_number: string; reason: string }> = [];
+
+    /** Dedup signature for a row — used to collapse duplicates within the same batch. */
+    const sigForRow = (r: any): string => {
+      const kind = (r.kind === 'business' || r.businessName) ? 'business' : 'individual';
+      const addr = String(r.address || '').trim().toLowerCase();
+      if (kind === 'business') return `b|${String(r.businessName || '').trim().toLowerCase()}|${addr}`;
+      const f = String(r.firstName || '').trim().toLowerCase();
+      const l = String(r.lastName || '').trim().toLowerCase();
+      const dob = String(r.dob || '').trim();
+      return `i|${f}|${l}|${dob}|${addr}`;
+    };
+    const seenSigs = new Map<string, { rowIndex: number; call_id: number; call_number: string }>();
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] || {};
+      try {
+        // ── 1. Within-batch dedup: identical row already processed → skip + report.
+        const sig = sigForRow(row);
+        const seen = seenSigs.get(sig);
+        if (seen) {
+          merged.push({ rowIndex: i, call_id: seen.call_id, call_number: seen.call_number, reason: `duplicate of row ${seen.rowIndex + 1} in this batch` });
+          continue;
+        }
+
+        const kind = (row.kind === 'business' || row.businessName) ? 'business' : 'individual';
+        const address = String(row.address || '').trim();
+        if (!address) { errors.push({ rowIndex: i, message: 'address required' }); continue; }
+
+        let firstName = '', middleName = '', lastName = '', businessName = '';
+        if (kind === 'business') {
+          businessName = String(row.businessName || '').trim();
+          if (!businessName) { errors.push({ rowIndex: i, message: 'businessName required' }); continue; }
+          // Store organisation in persons table with last_name = businessName so existing
+          // call_persons join machinery works with no schema change.
+          lastName = businessName;
+        } else {
+          firstName = String(row.firstName || '').trim();
+          middleName = String(row.middleName || '').trim();
+          lastName = String(row.lastName || '').trim();
+          if (!firstName && !lastName) { errors.push({ rowIndex: i, message: 'firstName or lastName required' }); continue; }
+        }
+
+        const dob = String(row.dob || '').trim() || null;
+        const sex = String(row.sex || '').trim() || null;
+        const contractId = String(row.contractId || '').trim() || null;
+
+        // Geocode + beat lookup (best-effort, never blocks intake).
+        let latitude: number | null = null;
+        let longitude: number | null = null;
+        try {
+          const geo = await geocodeAddress(address);
+          if (geo) { latitude = geo.latitude; longitude = geo.longitude; }
+        } catch { /* non-fatal */ }
+        let beatCode: string | null = null;
+        let sectorCode: string | null = null;
+        let zoneCode: string | null = null;
+        let sectorName: string | null = null;
+        let zoneName: string | null = null;
+        let beatName: string | null = null;
+        if (latitude != null && longitude != null) {
+          try {
+            const beat = identifyBeat(latitude, longitude);
+            if (beat) {
+              beatCode = (beat as any).beat_code || null;
+              if (beatCode) {
+                const district = db.prepare(`
+                  SELECT db2.beat_code, db2.name AS beat_name,
+                         dz.zone_code, dz.name AS zone_name,
+                         ds.sector_code, ds.name AS sector_name
+                  FROM dispatch_beats db2
+                  JOIN dispatch_zones dz ON dz.id = db2.zone_id
+                  JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+                  WHERE db2.beat_code = ? LIMIT 1
+                `).get(beatCode) as any;
+                if (district) {
+                  sectorCode = district.sector_code || null;
+                  zoneCode = district.zone_code || null;
+                  beatCode = district.beat_code || beatCode;
+                  sectorName = district.sector_name || null;
+                  zoneName = district.zone_name || null;
+                  beatName = district.beat_name || null;
+                }
+              }
+            }
+          } catch { /* non-fatal */ }
+        }
+
+        // Address parts (suite/apt) for location_room
+        const addrParts = parseAddressParts(address);
+
+        // Upsert defendant person (individual or organisation). upsertPerson
+        // already de-duplicates persons by (first_name, last_name, dob), so a
+        // matching person in the database is reused — no duplicate person is
+        // ever created for the same name+DOB combination.
+        const entityType = kind === 'business' ? 'organization' : 'individual';
+        const defendantId = upsertPerson(db, userId, now, {
+          first: firstName,
+          middle: middleName,
+          last: lastName,
+          dob: dob || undefined,
+          address,
+          role: 'subject',
+          entityType,
+        });
+
+        // ── 2. Cross-database dedup: if this defendant already has an open CFS
+        // at the same address, MERGE this row into the existing CFS rather than
+        // creating a duplicate dispatch job. Append a note recording the merge.
+        const existingCfs = db.prepare(`
+          SELECT cfs.id, cfs.call_number, cfs.notes
+          FROM calls_for_service cfs
+          JOIN call_persons cp ON cp.call_id = cfs.id
+          WHERE cp.person_id = ?
+            AND LOWER(cfs.location_address) = LOWER(?)
+            AND cfs.status IN ('pending','dispatched','enroute','onscene','on_hold')
+          ORDER BY cfs.created_at DESC
+          LIMIT 1
+        `).get(defendantId, address) as any;
+        if (existingCfs) {
+          // Append a merge note to the existing CFS so the dispatcher sees the duplicate attempt.
+          try {
+            const existingNotes = existingCfs.notes ? (() => { try { return JSON.parse(existingCfs.notes); } catch { return []; } })() : [];
+            existingNotes.push({
+              id: String(Date.now() + i),
+              author: 'Bulk Intake',
+              text: `MERGED ROW: bulk intake submitted a duplicate defendant+address row (row ${i + 1} of ${rows.length}). No new CFS created — this existing call already covers it.${row.contractId ? ` Submitted Contract ID: ${String(row.contractId).trim()}.` : ''}`,
+              timestamp: now,
+            });
+            db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?')
+              .run(JSON.stringify(existingNotes), now, existingCfs.id);
+          } catch (err) { log.warn({ err, callId: existingCfs.id }, 'bulk: merge-note append failed'); }
+
+          const mergedEntry = { rowIndex: i, call_id: Number(existingCfs.id), call_number: String(existingCfs.call_number), reason: 'matched existing active CFS for same defendant + address' };
+          merged.push(mergedEntry);
+          seenSigs.set(sig, { rowIndex: i, call_id: mergedEntry.call_id, call_number: mergedEntry.call_number });
+          auditLog(req, 'UPDATE', 'call', existingCfs.id, null, { source: 'bulk_intake', action: 'merge_duplicate' });
+          continue;
+        }
+
+        // Upsert property at the address (no client linkage in bulk mode)
+        let propertyId: number | null = null;
+        try {
+          const existingProp = db.prepare('SELECT id FROM properties WHERE address = ? LIMIT 1').get(address) as any;
+          if (existingProp) {
+            propertyId = existingProp.id;
+          } else {
+            const pr = db.prepare(`
+              INSERT INTO properties (
+                client_id, name, address, city, state, zip, property_type, latitude, longitude, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              null, address.split(',')[0].trim(), address,
+              addrParts.city || null, addrParts.state || 'UT', addrParts.zip || null,
+              kind === 'business' ? 'commercial' : 'residential',
+              latitude, longitude, now, now,
+            );
+            propertyId = Number(pr.lastInsertRowid);
+          }
+        } catch (err) { log.warn({ err }, 'bulk: property upsert failed'); }
+
+        // Sex column on persons table (best-effort; columns vary by deployment).
+        if (sex) {
+          try { db.prepare("UPDATE persons SET gender = COALESCE(NULLIF(gender,''), ?) WHERE id = ?").run(sex, defendantId); } catch { /* column may not exist */ }
+        }
+
+        // Build CFS
+        const callNumber = nextCallNumber(db);
+        const subjectName = kind === 'business' ? businessName : `${firstName}${middleName ? ' ' + middleName : ''} ${lastName}`.trim();
+        const subjectDesc = [
+          subjectName,
+          dob ? `DOB ${dob}` : null,
+          `AT ${address}`,
+        ].filter(Boolean).join(', ');
+        const descLines: string[] = [];
+        descLines.push(`SERVE TO ${subjectName.toUpperCase()}`);
+        descLines.push(`AT ${address.toUpperCase()}`);
+        descLines.push(`TYPE: ${kind === 'business' ? 'BUSINESS ENTITY' : 'INDIVIDUAL'}${contractId ? ` | CONTRACT: ${contractId}` : ''}`);
+        descLines.push(`SOURCE: BULK INTAKE (${rows.length} jobs in batch)`);
+        const description = descLines.join('\n');
+
+        const tagSet: string[] = ['civil_process', 'process_service', 'bulk_intake'];
+        if (kind === 'business') tagSet.push('business_entity');
+        const tagsJson = JSON.stringify(tagSet);
+
+        // Minimal note — bulk rows don't have a Complaint to parse, so the
+        // briefing is minimal until PDFs are attached and re-parsed.
+        const noteText = [
+          'BULK INTAKE - Job created from defendant table.',
+          `SUBJECT: ${subjectName}${dob ? ` (DOB ${dob})` : ''}${sex ? ` (${sex})` : ''}`,
+          `ADDRESS: ${address}`,
+          contractId ? `CONTRACT ID: ${contractId}` : '',
+          '',
+          'NOTE: Court documents have not yet been attached. Run individual intake on this CFS later to populate Case Packet, Case Narrative, and full enrichment.',
+        ].filter(Boolean).join('\n');
+        const notesJson = JSON.stringify([{
+          id: String(Date.now() + i),
+          author: 'Bulk Intake',
+          text: noteText,
+          timestamp: now,
+        }]);
+
+        const callResult = db.prepare(`
+          INSERT INTO calls_for_service (
+            call_number, incident_type, priority, priority_score, status,
+            location_address, location_building, location_floor, location_room,
+            property_id, latitude, longitude,
+            sector_id, zone_id, beat_id, zone_beat,
+            sector_name, zone_name, beat_name,
+            description, notes, source, dispatcher_id, received_at,
+            subject_description, contract_id, tags,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          callNumber, 'pso_client_request', 'P4', 4, 'pending',
+          address, addrParts.building || null, addrParts.floor || null, addrParts.suite || null,
+          propertyId, latitude, longitude,
+          sectorCode, zoneCode, beatCode, beatCode,
+          sectorName, zoneName, beatName,
+          description, notesJson, 'intake', userId, now,
+          subjectDesc, contractId, tagsJson,
+          now, now,
+        );
+        const callId = Number(callResult.lastInsertRowid);
+
+        // Link defendant to call
+        try {
+          db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)')
+            .run(callId, defendantId, 'subject', userId, now);
+        } catch (err) { log.warn({ err, callId }, 'bulk: call_persons insert failed'); }
+
+        auditLog(req, 'CREATE', 'call', callId, null, { source: 'bulk_intake', subject: subjectName });
+        broadcastDispatchUpdate({ action: 'call_created', call_id: callId, call_number: callNumber });
+
+        created.push({ rowIndex: i, call_id: callId, call_number: callNumber });
+        seenSigs.set(sig, { rowIndex: i, call_id: callId, call_number: callNumber });
+      } catch (rowErr: any) {
+        log.warn({ err: rowErr, rowIndex: i }, 'bulk: row failed');
+        errors.push({ rowIndex: i, message: rowErr?.message || 'Row processing failed' });
+      }
+    }
+
+    res.json({
+      success: true,
+      created,
+      merged,
+      errors,
+      summary: { total: rows.length, created: created.length, merged: merged.length, failed: errors.length },
+    });
+  } catch (err: any) {
+    log.error({ err }, 'bulk serve intake failed');
+    res.status(500).json({ error: 'Bulk intake failed: ' + (err?.message || 'Unknown error') });
+  }
+});
+
 export default router;
