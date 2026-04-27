@@ -1385,6 +1385,38 @@ router.get('/businesses', (req: Request, res: Response) => {
   }
 });
 
+// Subject picker / dispatcher search — name prefix, exact phone/EIN, address substring.
+// Open to all authenticated roles. MUST be registered above /businesses/:id so the :id
+// param doesn't shadow /search.
+router.get('/businesses/search',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer', 'client_viewer', 'human_resources', 'contract_manager'),
+  (req: Request, res: Response) => {
+    try {
+      const q = paramStr(req.query.q as string | string[] | undefined, '').trim();
+      const limit = Math.min(parseInt(paramStr(req.query.limit as string | string[] | undefined, '20'), 10) || 20, 100);
+      if (q.length < 2) { res.json([]); return; }
+
+      const db = getDb();
+      const like = `%${q}%`;
+      const exact = q;
+      const prefix = `${q}%`;
+      const rows = db.prepare(`
+        SELECT * FROM businesses
+        WHERE archived_at IS NULL
+          AND (name LIKE ? OR dba_name LIKE ? OR phone = ? OR ein = ? OR address LIKE ?)
+        ORDER BY
+          CASE WHEN name LIKE ? THEN 0 ELSE 1 END,
+          name
+        LIMIT ?
+      `).all(like, like, exact, exact, like, prefix, limit);
+      res.json(rows);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) { res.json([]); return; }
+      res.status(500).json({ error: 'Failed to search businesses' });
+    }
+  }
+);
+
 router.get('/businesses/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
