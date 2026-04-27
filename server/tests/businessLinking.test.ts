@@ -339,3 +339,20 @@ describe('enrichment tables', () => {
   });
 });
 
+describe('businesses table migrations', () => {
+  it('has all 14 new enrichment columns', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = (db.prepare("PRAGMA table_info(businesses)").all() as any[]).map(c => c.name);
+    for (const col of [
+      'alarm_company','alarm_panel_code','alarm_passphrase',
+      'after_hours_contact_name','after_hours_contact_phone',
+      'hours_of_operation','holiday_schedule',
+      'loss_prevention_contact','insurance_carrier','insurance_policy_number',
+      'parent_company','franchise_id','photo_storefront_url','archived_at'
+    ]) {
+      expect(cols).toContain(col);
+    }
+  });
+});
+

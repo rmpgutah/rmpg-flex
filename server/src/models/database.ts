@@ -4940,6 +4940,25 @@ function migrateSchema(): void {
   // ── Feature 27: BOLO photo attachment ──
   addCol('bolos', 'photos', "TEXT DEFAULT '[]'");
 
+  // ── Business enrichment columns (Plan task 1.5, PR 1, 2026-04-26) ──
+  // Premise-alert / dispatch enrichment beyond the base businesses table.
+  // alarm_panel_code + alarm_passphrase are stored encrypted at rest in
+  // task 1.7 — schema is plain TEXT here, encryption is an app-layer concern.
+  addCol('businesses', 'alarm_company', 'TEXT');
+  addCol('businesses', 'alarm_panel_code', 'TEXT');
+  addCol('businesses', 'alarm_passphrase', 'TEXT');
+  addCol('businesses', 'after_hours_contact_name', 'TEXT');
+  addCol('businesses', 'after_hours_contact_phone', 'TEXT');
+  addCol('businesses', 'hours_of_operation', 'TEXT');         // JSON object keyed by weekday
+  addCol('businesses', 'holiday_schedule', 'TEXT');           // JSON array of {date, hours}
+  addCol('businesses', 'loss_prevention_contact', 'TEXT');
+  addCol('businesses', 'insurance_carrier', 'TEXT');
+  addCol('businesses', 'insurance_policy_number', 'TEXT');
+  addCol('businesses', 'parent_company', 'TEXT');
+  addCol('businesses', 'franchise_id', 'TEXT');
+  addCol('businesses', 'photo_storefront_url', 'TEXT');
+  addCol('businesses', 'archived_at', 'TEXT');
+
   // ── Feature 29: Message delivery confirmation ──
   addCol('messages', 'delivered_at', 'TEXT');
   addCol('messages', 'delivery_status', "TEXT DEFAULT 'sent'");
