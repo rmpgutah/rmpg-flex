@@ -116,3 +116,77 @@ describe('incident_businesses table', () => {
     expect(row.role).toBe('involved');
   });
 });
+
+describe('call_businesses table', () => {
+  it('creates the table with expected columns', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = db.prepare("PRAGMA table_info(call_businesses)").all() as any[];
+    const names = cols.map(c => c.name).sort();
+    expect(names).toEqual(['added_by','business_id','call_id','created_at','id','notes','role'].sort());
+  });
+
+  it('enforces UNIQUE(call_id, business_id)', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const callId = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-UNQ-${Date.now()}`, 'disturbance', 'P3', '100 Test St').lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('Acme CB UNIQUE').lastInsertRowid) as number;
+    db.prepare(
+      `INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`
+    ).run(callId, businessId, 'victim');
+    expect(() =>
+      db.prepare(
+        `INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`
+      ).run(callId, businessId, 'witness')
+    ).toThrow(/UNIQUE/);
+  });
+
+  it('cascades on call delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const callId = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-CASC-${Date.now()}`, 'disturbance', 'P3', '200 Test St').lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('CascadeCallBiz1').lastInsertRowid) as number;
+    db.prepare(
+      `INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`
+    ).run(callId, businessId, 'victim');
+    expect(() => db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(callId)).not.toThrow();
+    const remaining = db.prepare('SELECT COUNT(*) as c FROM call_businesses WHERE call_id = ?').get(callId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it('allows duplicate role across different calls (UNIQUE is on the pair, not the role)', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const callId1 = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-DUP1-${Date.now()}`, 'disturbance', 'P3', '300 Test St').lastInsertRowid) as number;
+    const callId2 = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-DUP2-${Date.now()}`, 'disturbance', 'P3', '301 Test St').lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('DupRoleBiz').lastInsertRowid) as number;
+    expect(() => {
+      db.prepare(`INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`)
+        .run(callId1, businessId, 'victim');
+      db.prepare(`INSERT INTO call_businesses (call_id, business_id, role) VALUES (?, ?, ?)`)
+        .run(callId2, businessId, 'victim');
+    }).not.toThrow();
+    const count = db.prepare(
+      `SELECT COUNT(*) as c FROM call_businesses WHERE business_id = ? AND role = 'victim'`
+    ).get(businessId) as { c: number };
+    expect(count.c).toBe(2);
+  });
+});

@@ -4991,6 +4991,25 @@ function migrateSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_call_persons_person ON call_persons(person_id);
   `);
 
+  // ── Junction table for linking businesses to calls (mirrors call_persons) ──
+  // Plan task 1.2 — Business records parity, second junction.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS call_businesses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      business_id INTEGER NOT NULL,
+      role TEXT NOT NULL,
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(call_id, business_id),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_call_businesses_call ON call_businesses(call_id)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_call_businesses_business ON call_businesses(business_id)').run();
+
   // ══════════════════════════════════════════════════════════════
   // Warrant Scanner / Watch Tables
   // ══════════════════════════════════════════════════════════════
