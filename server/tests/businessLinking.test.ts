@@ -206,3 +206,100 @@ describe('call_businesses table', () => {
     expect(row.role).toBe('involved');
   });
 });
+
+describe('business_persons table', () => {
+  // Helper to seed a person row (persons table has many addCol columns; only
+  // first/last name should be required for a minimal insert).
+  const seedPerson = (db: any, suffix: string): number => {
+    return (db.prepare(
+      `INSERT INTO persons (first_name, last_name) VALUES (?, ?)`
+    ).run(`First${suffix}`, `Last${suffix}`).lastInsertRowid) as number;
+  };
+  const seedBusiness = (db: any, name: string): number => {
+    return (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run(name).lastInsertRowid) as number;
+  };
+
+  it('creates the table with expected columns', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = db.prepare("PRAGMA table_info(business_persons)").all() as any[];
+    const names = cols.map(c => c.name).sort();
+    expect(names).toEqual(['added_by','business_id','created_at','end_date','id','notes','person_id','role','start_date'].sort());
+  });
+
+  it('allows the same person+business with different roles', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPDIFF${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPDiffBiz-${suffix}`);
+    expect(() => {
+      db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+        .run(businessId, personId, 'manager');
+      db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+        .run(businessId, personId, 'key_holder');
+    }).not.toThrow();
+    const count = db.prepare(
+      'SELECT COUNT(*) as c FROM business_persons WHERE business_id = ? AND person_id = ?'
+    ).get(businessId, personId) as { c: number };
+    expect(count.c).toBe(2);
+  });
+
+  it('rejects duplicate (business, person, role) triples', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPUNQ${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPUnqBiz-${suffix}`);
+    db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+      .run(businessId, personId, 'employee');
+    expect(() =>
+      db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+        .run(businessId, personId, 'employee')
+    ).toThrow(/UNIQUE/);
+  });
+
+  it('cascades on business delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPCASCB${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPCascBBiz-${suffix}`);
+    db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+      .run(businessId, personId, 'owner');
+    expect(() => db.prepare('DELETE FROM businesses WHERE id = ?').run(businessId)).not.toThrow();
+    const remaining = db.prepare(
+      'SELECT COUNT(*) as c FROM business_persons WHERE business_id = ?'
+    ).get(businessId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it('cascades on person delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPCASCP${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPCascPBiz-${suffix}`);
+    db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+      .run(businessId, personId, 'owner');
+    expect(() => db.prepare('DELETE FROM persons WHERE id = ?').run(personId)).not.toThrow();
+    const remaining = db.prepare(
+      'SELECT COUNT(*) as c FROM business_persons WHERE person_id = ?'
+    ).get(personId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it('enforces role enum CHECK constraint', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BPCHK${Date.now()}`;
+    const personId = seedPerson(db, suffix);
+    const businessId = seedBusiness(db, `BPChkBiz-${suffix}`);
+    expect(() =>
+      db.prepare(`INSERT INTO business_persons (business_id, person_id, role) VALUES (?, ?, ?)`)
+        .run(businessId, personId, 'kingmaker')
+    ).toThrow(/CHECK/);
+  });
+});

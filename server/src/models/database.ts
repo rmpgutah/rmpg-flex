@@ -5010,6 +5010,32 @@ function migrateSchema(): void {
   db.prepare('CREATE INDEX IF NOT EXISTS idx_call_businesses_call ON call_businesses(call_id)').run();
   db.prepare('CREATE INDEX IF NOT EXISTS idx_call_businesses_business ON call_businesses(business_id)').run();
 
+  // ── Junction table for linking persons to businesses with role + dates ──
+  // Plan task 1.3 — Business records parity, third junction. Models
+  // professional relationships (owner, employee, key holder, etc.) so a
+  // person dossier can surface "employee at X with active warrant" and a
+  // business dossier can list current/former associates. No DEFAULT on
+  // role: these are professional links and the role must be explicit.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS business_persons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL,
+      person_id INTEGER NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('owner','officer_director','manager','key_holder','security_contact','employee','vendor','other')),
+      start_date TEXT,
+      end_date TEXT,
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(business_id, person_id, role),
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+      FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_persons_business ON business_persons(business_id)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_persons_person ON business_persons(person_id)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_persons_current ON business_persons(business_id) WHERE end_date IS NULL').run();
+
   // ══════════════════════════════════════════════════════════════
   // Warrant Scanner / Watch Tables
   // ══════════════════════════════════════════════════════════════
