@@ -22,7 +22,20 @@ function deriveKey(): Buffer {
   return crypto.createHash('sha256').update(secret + ':business-alarm').digest();
 }
 
-/** Encrypt a business alarm field for storage. Returns `iv:tag:ciphertext` in base64. */
+/**
+ * Encrypts a string for at-rest storage in the businesses table (alarm
+ * panel codes, passphrases). Uses AES-256-GCM with a key derived from
+ * JWT_SECRET + ':business-alarm' (domain-separated from TOTP).
+ *
+ * **WARNING:** if JWT_SECRET is rotated, all existing alarm-field
+ * ciphertexts become unrecoverable. This mirrors the TOTP secret
+ * behavior documented in CLAUDE.md. Plan rotations accordingly:
+ * decrypt all alarm fields with the old key first, re-encrypt with
+ * the new key, OR document that operators must re-enter alarm codes
+ * after a JWT_SECRET rotation.
+ *
+ * Returns null for null/empty input.
+ */
 export function encryptAlarmField(plaintext: string | null): string | null {
   if (plaintext == null || plaintext === '') return null;
   const iv = crypto.randomBytes(12);

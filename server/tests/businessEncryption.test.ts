@@ -69,4 +69,35 @@ describe('businessEncryption', () => {
     // appears in the implementation).
     expect(decryptAlarmField(ct)).toBe('shared-secret');
   });
+
+  it('rejects tampered ciphertext (auth tag mismatch returns null)', () => {
+    const original = encryptAlarmField('sensitive-passphrase')!;
+    const [iv, tag, data] = original.split(':');
+    // Flip one bit in the auth tag — must fail decrypt
+    const tagBuf = Buffer.from(tag, 'base64');
+    tagBuf[0] ^= 0x01;
+    const tampered = `${iv}:${tagBuf.toString('base64')}:${data}`;
+    expect(decryptAlarmField(tampered)).toBeNull();
+  });
+
+  it('rejects tampered ciphertext payload', () => {
+    const original = encryptAlarmField('sensitive-passphrase')!;
+    const [iv, tag, data] = original.split(':');
+    // Flip one bit in the data segment — must fail decrypt (auth tag covers data)
+    const dataBuf = Buffer.from(data, 'base64');
+    dataBuf[0] ^= 0x01;
+    const tampered = `${iv}:${tag}:${dataBuf.toString('base64')}`;
+    expect(decryptAlarmField(tampered)).toBeNull();
+  });
+
+  it('rejects ciphertext encrypted under a different key', () => {
+    const ct = encryptAlarmField('rotation-test')!;
+    const originalSecret = process.env.JWT_SECRET;
+    process.env.JWT_SECRET = originalSecret + '-rotated';
+    try {
+      expect(decryptAlarmField(ct)).toBeNull();
+    } finally {
+      process.env.JWT_SECRET = originalSecret;
+    }
+  });
 });
