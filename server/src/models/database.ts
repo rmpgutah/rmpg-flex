@@ -781,6 +781,23 @@ function createTables(): void {
       UNIQUE(incident_id, person_id)
     );
 
+    -- Junction table for linking businesses to incidents (mirrors incident_persons).
+    -- Plan task 1.1 — Business records parity, first junction.
+    CREATE TABLE IF NOT EXISTS incident_businesses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_id INTEGER NOT NULL,
+      business_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'involved' CHECK(role IN ('victim','reporting_party','witness','suspect_affiliated','involved','other')),
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(incident_id, business_id),
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_incident_businesses_incident ON incident_businesses(incident_id);
+    CREATE INDEX IF NOT EXISTS idx_incident_businesses_business ON incident_businesses(business_id);
+
     CREATE TABLE IF NOT EXISTS incident_vehicles (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       incident_id INTEGER NOT NULL,
@@ -4923,6 +4940,32 @@ function migrateSchema(): void {
   // ── Feature 27: BOLO photo attachment ──
   addCol('bolos', 'photos', "TEXT DEFAULT '[]'");
 
+  // ── Business enrichment columns (Plan task 1.5, PR 1, 2026-04-26) ──
+  // Premise-alert / dispatch enrichment beyond the base businesses table.
+  // alarm_panel_code + alarm_passphrase are stored encrypted at rest in
+  // task 1.7 — schema is plain TEXT here, encryption is an app-layer concern.
+  addCol('businesses', 'alarm_company', 'TEXT');
+  addCol('businesses', 'alarm_panel_code', 'TEXT');
+  addCol('businesses', 'alarm_passphrase', 'TEXT');
+  addCol('businesses', 'after_hours_contact_name', 'TEXT');
+  addCol('businesses', 'after_hours_contact_phone', 'TEXT');
+  addCol('businesses', 'hours_of_operation', 'TEXT');         // JSON object keyed by weekday
+  addCol('businesses', 'holiday_schedule', 'TEXT');           // JSON array of {date, hours}
+  addCol('businesses', 'loss_prevention_contact', 'TEXT');
+  addCol('businesses', 'insurance_carrier', 'TEXT');
+  addCol('businesses', 'insurance_policy_number', 'TEXT');
+  addCol('businesses', 'parent_company', 'TEXT');
+  addCol('businesses', 'franchise_id', 'TEXT');
+  addCol('businesses', 'photo_storefront_url', 'TEXT');
+  addCol('businesses', 'archived_at', 'TEXT');
+
+  // ── Cross-table business FK columns (Plan task 1.6) ──
+  // Direct single-business links from BOLO and trespass-order records.
+  // Stored as plain INTEGER (no FK enforcement) for parity with other
+  // cross-references in this schema and to keep migration cheap.
+  addCol('bolos', 'linked_business_id', 'INTEGER');
+  addCol('trespass_orders', 'protected_business_id', 'INTEGER');
+
   // ── Feature 29: Message delivery confirmation ──
   addCol('messages', 'delivered_at', 'TEXT');
   addCol('messages', 'delivery_status', "TEXT DEFAULT 'sent'");
@@ -4973,6 +5016,104 @@ function migrateSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_call_persons_call ON call_persons(call_id);
     CREATE INDEX IF NOT EXISTS idx_call_persons_person ON call_persons(person_id);
   `);
+
+  // ── Junction table for linking businesses to calls (mirrors call_persons) ──
+  // Plan task 1.2 — Business records parity, second junction.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS call_businesses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      business_id INTEGER NOT NULL,
+      role TEXT NOT NULL DEFAULT 'involved',
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(call_id, business_id),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_call_businesses_call ON call_businesses(call_id)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_call_businesses_business ON call_businesses(business_id)').run();
+
+  // ── Junction table for linking persons to businesses with role + dates ──
+  // Plan task 1.3 — Business records parity, third junction. Models
+  // professional relationships (owner, employee, key holder, etc.) so a
+  // person dossier can surface "employee at X with active warrant" and a
+  // business dossier can list current/former associates. No DEFAULT on
+  // role: these are professional links and the role must be explicit.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS business_persons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL,
+      person_id INTEGER NOT NULL,
+      role TEXT NOT NULL CHECK(role IN ('owner','officer_director','manager','key_holder','security_contact','employee','vendor','other')),
+      start_date TEXT,
+      end_date TEXT,
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(business_id, person_id, role),
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+      FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_persons_business ON business_persons(business_id)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_persons_person ON business_persons(person_id)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_persons_current ON business_persons(business_id) WHERE end_date IS NULL').run();
+
+  // ── Business enrichment tables (Plan task 1.4) ──
+  // business_vehicles: links a business to vehicles_records (fleet, owner/employee
+  // vehicles, frequent visitors). UNIQUE on (business_id, vehicle_id) — a vehicle
+  // can only be associated with a given business once; relationship type is data,
+  // not part of the key.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS business_vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL,
+      vehicle_id INTEGER NOT NULL,
+      relationship TEXT NOT NULL CHECK(relationship IN ('owner_employee','frequent_visitor','fleet','other')),
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(business_id, vehicle_id),
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+      FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_vehicles_business ON business_vehicles(business_id)').run();
+
+  // business_visits: officer visit log for a business (drop-ins, premise checks).
+  // No uniqueness — multiple visits per officer per business is the norm.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS business_visits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL,
+      officer_id INTEGER NOT NULL,
+      visit_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      latitude REAL,
+      longitude REAL,
+      notes TEXT,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_visits_business_recent ON business_visits(business_id, visit_at DESC)').run();
+
+  // business_photos: storefront/interior/exterior photos with category.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS business_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      caption TEXT,
+      category TEXT CHECK(category IN ('storefront','interior','exterior','parking','other')),
+      uploaded_by INTEGER,
+      uploaded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_photos_business ON business_photos(business_id)').run();
 
   // ══════════════════════════════════════════════════════════════
   // Warrant Scanner / Watch Tables
