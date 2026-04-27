@@ -4998,7 +4998,7 @@ function migrateSchema(): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       call_id INTEGER NOT NULL,
       business_id INTEGER NOT NULL,
-      role TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'involved',
       notes TEXT,
       added_by INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),

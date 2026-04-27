@@ -189,4 +189,20 @@ describe('call_businesses table', () => {
     ).get(businessId) as { c: number };
     expect(count.c).toBe(2);
   });
+
+  it("role defaults to 'involved' when omitted", async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const callId = (db.prepare(
+      `INSERT INTO calls_for_service (call_number, incident_type, priority, location_address)
+       VALUES (?, ?, ?, ?)`
+    ).run(`CB-DEF-${Date.now()}`, 'disturbance', 'P3', '400 Test St').lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('CallDefaultBiz').lastInsertRowid) as number;
+    // Insert without role
+    db.prepare(`INSERT INTO call_businesses (call_id, business_id) VALUES (?, ?)`).run(callId, businessId);
+    const row = db.prepare('SELECT role FROM call_businesses WHERE call_id = ?').get(callId) as { role: string };
+    expect(row.role).toBe('involved');
+  });
 });
