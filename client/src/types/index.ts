@@ -360,6 +360,8 @@ export interface CallForService {
   risk_score?: number;
   // Visit history (PSO calls)
   visit_history?: VisitHistory[];
+  // Pinned-to-top flag (dispatcher sticky)
+  pinned?: number | boolean;
 }
 
 export interface PsoServiceWindows {
@@ -654,7 +656,7 @@ export interface CustodyEntry {
   timestamp: string;
 }
 
-export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident' | 'warrant';
+export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident' | 'warrant' | 'business';
 
 export interface RecordLink {
   id: string;
@@ -1729,6 +1731,11 @@ export interface DashboardStats {
   active_bolos: number;
   officers_on_duty: number;
   calls_by_hour: { hour: number; count: number }[];
+  // Optional dashboard stat-card metrics (added by feature waves)
+  active_warrants?: number;
+  pending_serve?: number;
+  open_cases?: number;
+  total_persons?: number;
 }
 
 // --- API Response ---

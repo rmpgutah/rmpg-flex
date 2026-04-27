@@ -112,31 +112,54 @@ export function displayStatus(status: string): string {
 export interface PdfBranding {
   report_header_text: string;
   report_subheader_text: string;
-  primary_color: string;     // hex — used for case-number box & accents
-  accent_color: string;      // hex — used for separator lines & subtitles
-  header_bg_color: string;   // hex — used for header/footer bars
+  primary_color: string;           // hex — case-number box & accents
+  accent_color: string;            // hex — separator lines & subtitles
+  header_bg_color: string;         // hex — header/footer bars
+  section_accent_color?: string;   // hex — gold accent strip on section headers
+  font_profile?: 'helvetica' | 'courier' | 'times';
+  report_footer_text?: string;
+  show_field_underlines?: string;  // '1' or '0'
+  show_geography_strip?: string;   // '1' or '0'
+  content_density?: 'compact' | 'standard' | 'relaxed';
+  show_classification_bar?: string;
+  default_classification?: string;
+  show_confidential_watermark?: string;
+  watermark_text?: string;
 }
 
 export const DEFAULT_PDF_BRANDING: PdfBranding = {
-  report_header_text: 'RMPG SECURITY SERVICES',
-  report_subheader_text: 'PRIVATE SECURITY',
+  report_header_text: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+  report_subheader_text: 'PRIVATE SECURITY & LAW ENFORCEMENT',
   primary_color: '#888888',
-  accent_color: '#888888',
-  header_bg_color: '#f0f0f0',
+  accent_color: '#d4a017',
+  header_bg_color: '#232832',
+  section_accent_color: '#d4a017',
+  font_profile: 'helvetica',
+  report_footer_text: '',
+  show_field_underlines: '1',
+  show_geography_strip: '1',
+  content_density: 'standard',
+  show_classification_bar: '1',
+  default_classification: 'LES',
+  show_confidential_watermark: '0',
+  watermark_text: 'CONFIDENTIAL',
 };
 
-/** Fetch branding settings from admin config API (gracefully falls back to defaults) */
+/** Fetch branding settings from admin system-settings API.
+ * Branding is stored as a JSON blob under config_key 'branding_settings'
+ * in the system_settings category (saved by Admin > Branding tab).
+ * Falls back to defaults if the API is unreachable or has no branding saved.
+ */
 export async function fetchPdfBranding(): Promise<PdfBranding> {
   try {
     const token = localStorage.getItem('rmpg_token');
     const headers: Record<string, string> = { 'Content-Type': 'application/json' };
     if (token) headers['Authorization'] = `Bearer ${token}`;
-    const res = await fetch('/api/admin/config/branding', { headers });
+    const res = await fetch('/api/admin/system-settings', { headers });
     if (!res.ok) return { ...DEFAULT_PDF_BRANDING };
-    const items = await res.json() as { config_key: string; config_value: string }[];
-    const item = items.find(i => i.config_key === 'branding_settings') || items[0];
-    if (!item) return { ...DEFAULT_PDF_BRANDING };
-    const parsed = JSON.parse(item.config_value);
+    const settings = await res.json() as Record<string, string>;
+    if (!settings.branding_settings) return { ...DEFAULT_PDF_BRANDING };
+    const parsed = JSON.parse(settings.branding_settings);
     return { ...DEFAULT_PDF_BRANDING, ...parsed };
   } catch {
     return { ...DEFAULT_PDF_BRANDING };
@@ -535,22 +558,24 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Section header bar (dark slate) with white text, left-justified.
-  // NOTE: no border around this rect — the fill color itself defines the
-  // visual boundary. This prevents a double-line effect when a nested
-  // table or grid is rendered immediately below at the same x coordinates
-  // (the table's own top border is the only stroke at the shared edge,
-  // so the two elements read as visually flush).
+  // Left-accent strip (brand color — configurable via Admin > Branding)
+  const accentW = BORDER.ACCENT_SECTION;
+  const sectionAccentRgb = activeBranding.section_accent_color
+    ? hexToRgb(activeBranding.section_accent_color) : COLOR.ACCENT_GOLD;
+  doc.setFillColor(sectionAccentRgb[0], sectionAccentRgb[1], sectionAccentRgb[2]);
+  doc.rect(LAYOUT.PAGE_MARGIN, y, accentW, SPACING.SECTION_HEADER_H, 'F');
+
+  // Section header bar (dark charcoal) — offset by accent strip width
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(LAYOUT.PAGE_MARGIN, y, cw, SPACING.SECTION_HEADER_H, 'F');
+  doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
 
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SECTION_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  // Vertically centered in header bar: baseline ≈ top + (barH + capH) / 2
+  // Vertically centered in header bar
   const capH = FONT.SIZE_SECTION_TITLE * 0.35;
   const sectionTextY = y + (SPACING.SECTION_HEADER_H + capH) / 2;
-  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, sectionTextY);
+  doc.text(sanitizePdfText(title.toUpperCase()), LAYOUT.PAGE_MARGIN + accentW + SPACING.CONTENT_INSET + 1, sectionTextY);
 
   // Reset text color to primary (black) — prevents white text leaking into content
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
@@ -573,7 +598,13 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
   if (startPage !== currentPage) {
     doc.setPage(currentPage);
   }
-  // No enclosing section outline — section header bar is sufficient
+
+  // Bottom rule — section accent color line marking section end
+  const closeAccentRgb = activeBranding.section_accent_color
+    ? hexToRgb(activeBranding.section_accent_color) : COLOR.ACCENT_GOLD;
+  doc.setDrawColor(closeAccentRgb[0], closeAccentRgb[1], closeAccentRgb[2]);
+  doc.setLineWidth(0.3);
+  doc.line(LAYOUT.PAGE_MARGIN, contentEndY + padding, LAYOUT.PAGE_MARGIN + cw, contentEndY + padding);
 
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   return contentEndY + padding + SPACING.SECTION_GAP;
@@ -653,10 +684,19 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
     lineY += lineStep;
   }
 
+  // Field underline — subtle rule beneath the value (configurable via Admin > Branding)
+  const fieldBottomY = y + labelH + boxH;
+  const showUnderlines = activeBranding.show_field_underlines !== '0';
+  if (showUnderlines) {
+    doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+    doc.setLineWidth(BORDER.FIELD_UNDERLINE);
+    doc.line(x + innerPad, fieldBottomY, x + width - innerPad, fieldBottomY);
+  }
+
   // Reset text color
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
 
-  return y + labelH + boxH + 0.4; // label + box + row gap
+  return fieldBottomY + 0.6; // field bottom + row gap
 }
 
 /**
@@ -1118,25 +1158,35 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const accentRgb = hexToRgb(brand.accent_color);
   const primaryRgb = hexToRgb(brand.primary_color);
 
-  // Footer text position — pulled up to sit inside the printer SAFE PRINT
-  // ZONE (≥8mm from the bottom edge). Previous position at pageHeight-4
-  // was regularly clipped by older inkjets and some lasers that have a
-  // 6mm+ no-print zone at the bottom.
+  // Footer accent line (section accent color, matches section headers)
   const SAFE_PRINT_EDGE_BOTTOM = 8;
   const textY = pageHeight - SAFE_PRINT_EDGE_BOTTOM;
-
-  // Horizontal anchors also pulled in from the left/right edges.
   const SAFE_PRINT_EDGE_SIDE = 8;
+  const accentLineY = textY - 3;
+  const footerAccentRgb = activeBranding.section_accent_color
+    ? hexToRgb(activeBranding.section_accent_color) : COLOR.ACCENT_GOLD;
+  doc.setDrawColor(footerAccentRgb[0], footerAccentRgb[1], footerAccentRgb[2]);
+  doc.setLineWidth(BORDER.ACCENT_FOOTER);
+  doc.line(SAFE_PRINT_EDGE_SIDE, accentLineY, pageWidth - SAFE_PRINT_EDGE_SIDE, accentLineY);
 
-  // Left: Form # + INTERNAL USE ONLY — bold, readable
+  // Left: Form # + INTERNAL USE ONLY
   doc.setFont(PDF_VALUE_FONT, 'bold');
-  doc.setFontSize(7);
+  doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
   doc.text(leftParts.join('  |  '), SAFE_PRINT_EDGE_SIDE, textY);
 
-  // Right: Page X of Y — bold
-  doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - SAFE_PRINT_EDGE_SIDE, textY, { align: 'right' });
+  // Center: Agency name (subtle branding)
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5);
+  doc.setTextColor(...COLOR.TEXT_MUTED);
+  doc.text(brand.report_header_text || 'ROCKY MOUNTAIN PROTECTIVE GROUP', pageWidth / 2, textY, { align: 'center' });
+
+  // Right: Page X of Y
+  doc.setFont(PDF_VALUE_FONT, 'bold');
+  doc.setFontSize(6);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text(`PAGE ${pageNum} OF ${totalPages}`, pageWidth - SAFE_PRINT_EDGE_SIDE, textY, { align: 'right' });
 }
 
 /**
@@ -1406,7 +1456,7 @@ export function addNarrativeSection(
   const cw = getContentWidth(doc);
   const pageH = doc.internal.pageSize.getHeight();
   const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
-  doc.setFillColor(246, 246, 250);
+  doc.setFillColor(...COLOR.BG_SECTION_TINT);
   doc.rect(LAYOUT.PAGE_MARGIN, y - 1, cw, maxTintH, 'F');
 
   // Page break callback: draw section continuation sub-header + fresh tint
@@ -1429,7 +1479,7 @@ export function addNarrativeSection(
     // Draw fresh background tint for remaining text on this page
     const cw2 = getContentWidth(doc);
     const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
-    doc.setFillColor(246, 246, 250);
+    doc.setFillColor(...COLOR.BG_SECTION_TINT);
     doc.rect(LAYOUT.PAGE_MARGIN, contentStartY - 1, cw2, remainH, 'F');
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -1723,14 +1773,12 @@ export function addTableWithShading(
       doc.setFont('helvetica', 'bold');
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
     } else {
-      // Light slate column header. Border weight MATCHES the inner row
-      // separators and column dividers (BORDER.TABLE_ROW = 0.15) so the
-      // header bar doesn't look "bold on the ends" against thin inner
-      // strokes, and so its extent lands flush with the subsection header
-      // bar above (which has no stroke). All four edges use the same
-      // width + color as the interior breaks for perfect visual uniformity.
+      // Gold accent strip + light slate column header (matches section header accent)
+      const tblAccW = BORDER.ACCENT_SECTION;
+      doc.setFillColor(...COLOR.ACCENT_GOLD);
+      doc.rect(LAYOUT.PAGE_MARGIN, atY, tblAccW, headerRowH, 'F');
       doc.setFillColor(...COLOR.BG_TABLE_HDR_LIGHT);
-      doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH, 'F');
+      doc.rect(LAYOUT.PAGE_MARGIN + tblAccW, atY, cw - tblAccW, headerRowH, 'F');
       doc.setDrawColor(...COLOR.BORDER_TABLE);
       doc.setLineWidth(BORDER.TABLE_ROW);
       doc.rect(LAYOUT.PAGE_MARGIN, atY, cw, headerRowH);

@@ -1369,6 +1369,72 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// BUSINESSES CRUD
+// ═══════════════════════════════════════════════════════════════
+
+router.get('/businesses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const archived = req.query.archived === 'true';
+    const rows = db.prepare(`SELECT * FROM businesses WHERE is_active = ? ORDER BY name`).all(archived ? 0 : 1);
+    res.json(rows);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load businesses' });
+  }
+});
+
+router.get('/businesses/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM businesses WHERE id = ?').get(req.params.id);
+    if (!row) { res.status(404).json({ error: 'Business not found' }); return; }
+    res.json(row);
+  } catch { res.status(500).json({ error: 'Failed to get business' }); }
+});
+
+router.post('/businesses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes } = req.body;
+    if (!name) { res.status(400).json({ error: 'Business name required' }); return; }
+    const now = localNow();
+    const result = db.prepare(`INSERT INTO businesses (name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      name, dba_name || null, business_type || null, ein || null, license_number || null,
+      address || null, city || null, state || null, zip || null,
+      phone || null, email || null, website || null,
+      owner_name || null, owner_phone || null, contact_name || null, contact_phone || null, contact_email || null,
+      industry || null, employee_count || null, annual_revenue || null, notes || null, now, now);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) { res.status(500).json({ error: 'Failed to create business: ' + err.message }); }
+});
+
+router.put('/businesses/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    const fields = ['name', 'dba_name', 'business_type', 'ein', 'license_number', 'address', 'city', 'state', 'zip', 'phone', 'email', 'website', 'owner_name', 'owner_phone', 'contact_name', 'contact_phone', 'contact_email', 'industry', 'employee_count', 'annual_revenue', 'notes', 'status'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]); }
+    }
+    if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    updates.push('updated_at = ?'); values.push(localNow()); values.push(id);
+    db.prepare(`UPDATE businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: 'Failed to update business: ' + err.message }); }
+});
+
+router.delete('/businesses/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM businesses WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to delete business' }); }
+});
+
 // GET /api/records/evidence - List all evidence with incident info
 router.get('/evidence', (req: Request, res: Response) => {
   try {

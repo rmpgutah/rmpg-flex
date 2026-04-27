@@ -3431,6 +3431,60 @@ function migrateSchema(): void {
     db.prepare('DROP TRIGGER IF EXISTS trg_incidents_sector_mirror_upd').run();
   } catch { /* ignore */ }
 
+  // ── Businesses table ──
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS businesses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        dba_name TEXT,
+        business_type TEXT,
+        ein TEXT,
+        license_number TEXT,
+        address TEXT,
+        city TEXT,
+        state TEXT,
+        zip TEXT,
+        phone TEXT,
+        email TEXT,
+        website TEXT,
+        owner_name TEXT,
+        owner_phone TEXT,
+        contact_name TEXT,
+        contact_phone TEXT,
+        contact_email TEXT,
+        industry TEXT,
+        employee_count TEXT,
+        annual_revenue TEXT,
+        status TEXT DEFAULT 'active',
+        notes TEXT,
+        flags TEXT DEFAULT '[]',
+        is_active INTEGER DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )
+    `).run();
+  } catch { /* already exists */ }
+
+  // ── Document Folders (desktop-style file browser hierarchy) ──
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS document_folders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL,
+        parent_id INTEGER REFERENCES document_folders(id) ON DELETE CASCADE,
+        folder_path TEXT NOT NULL,
+        entity_type TEXT,
+        entity_id INTEGER,
+        created_by INTEGER,
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        UNIQUE(folder_path)
+      )
+    `).run();
+  } catch { /* already exists */ }
+  addCol('attachments', 'folder_id', 'INTEGER');
+
   // ── CITATIONS — Spillman Flex enhancements ─────────────────
   addCol('citations', 'section_id', 'TEXT');  // legacy
   addCol('citations', 'sector_id', 'TEXT');
@@ -4729,6 +4783,9 @@ function migrateSchema(): void {
   // column but no migration added it — every call create threw 500 errors.
   addCol('calls_for_service', 'received_at', 'TEXT');
 
+  // ── Dispatch advanced UX: pinned calls (float-to-top sticky flag) ──
+  addCol('calls_for_service', 'pinned', 'INTEGER DEFAULT 0');
+
   // ── Feature 5: Shift handoff notes ──
   // Stored in system_config table with config_key='shift_handoff_notes'
 
@@ -5391,8 +5448,15 @@ function migrateSchema(): void {
     s.run('wy_fremont_warrants', 'WY', 'Fremont', 'https://www.fremontcountywy.org/sheriff/most-wanted', 'Fremont County SO', 'html', 720, 1);
   }
 
-  // Enable ALL warrant scraper sources — circuit breaker auto-disables sources that fail 5 times
-  db.prepare("UPDATE warrant_scraper_config SET enabled = 1 WHERE enabled = 0 AND source_type != 'search_form'").run();
+  // Audit 2026-04-24: REMOVED the blind bulk re-enable of every disabled
+  // source. That UPDATE was undoing per-source auto-disable decisions made
+  // by the HTTP 404 handler in multiStateWarrantScraper.ts. Sources whose
+  // pages had been permanently removed were auto-disabled, re-enabled on
+  // every boot, scraped, 404'd, auto-disabled, re-enabled ad infinitum.
+  // Result: ~700+ failing runs per 24h, wasted bandwidth, polluted
+  // warrant_scraper_runs table, noise in logs. Let per-source auto-disable
+  // decisions stick. Users can re-enable a source manually via the admin
+  // scrapers tab if a page comes back online.
   // ── Radio transcripts — audio recording columns ──
   addCol("radio_transcripts", "audio_file", "TEXT");
   addCol("radio_transcripts", "file_size", "INTEGER");

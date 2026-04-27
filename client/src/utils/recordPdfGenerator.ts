@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import QRCode from 'qrcode';
 import { isPast, isWithinDays } from './dateUtils';
 import {
   addConfidentialWatermark,
@@ -515,6 +516,9 @@ export interface PersonPdfData {
   updated_at?: string;
   id_photo?: PdfImage | null;
   attachment_images?: PdfImage[];
+  // Linked records (from record_links)
+  linked_vehicles?: { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship?: string }[];
+  linked_properties?: { name: string; address?: string; relationship?: string }[];
 }
 
 export interface VehiclePdfData {
@@ -580,6 +584,10 @@ export interface VehiclePdfData {
   created_at?: string;
   updated_at?: string;
   attachment_images?: PdfImage[];
+  // Linked records (from system-history or record_links)
+  incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
+  calls?: { call_number: string; incident_type: string; status: string; location: string; created_at: string }[];
+  citations?: { citation_number: string; type: string; status: string; violation_date: string }[];
 }
 
 export interface WarrantPdfData {
@@ -624,6 +632,28 @@ export interface WarrantPdfData {
   search_date?: string;
   verified_by?: string;
   verification_date?: string;
+  // NEW — Phase 1 enhancement (2026-04-24)
+  oca_number?: string;
+  ori?: string;
+  ncic_entry_number?: string;
+  issue_date?: string;
+  priority_score?: number;
+  statute_text?: string;
+  qr_code_data_url?: string;
+  subject_aliases?: string[];
+  subject_scars_marks_tattoos?: string;
+  subject_distinguishing_features?: string;
+  known_associates?: { name: string; relationship: string }[];
+  known_vehicles?: { plate: string; description: string }[];
+  source_scraper_name?: string;
+  source_state?: string;
+  source_url?: string;
+  source_last_scraped_at?: string;
+  source_verification?: string;
+  rmpg_encounters?: { date: string; context: string; property?: string }[];
+  printed_by_name?: string;
+  printed_by_badge?: string;
+  printed_at?: string;
 }
 
 export interface EvidencePdfData {
@@ -885,9 +915,19 @@ export interface PropertyPdfData {
   access_instructions?: string;
   post_orders?: string;
   hazard_notes?: string;
+  // Contract
+  contract_number?: string;
+  contract_start?: string;
+  contract_end?: string;
+  billing_rate?: string;
+  notes?: string;
   created_at?: string;
   updated_at?: string;
   attachment_images?: PdfImage[];
+  // Linked records
+  incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
+  calls?: { call_number: string; incident_type: string; status: string; created_at: string }[];
+  trespass_orders?: { order_number: string; subject_name: string; status: string; issued_date: string; expires_date: string }[];
 }
 
 export interface CitationPdfData {
@@ -904,11 +944,17 @@ export interface CitationPdfData {
   vehicle_plate?: string;
   vehicle_state?: string;
   vehicle_vin?: string;
+  vehicle_year?: string;
+  vehicle_make?: string;
+  vehicle_model?: string;
+  vehicle_color?: string;
   // Geography
   sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   zone_beat?: string;
+  latitude?: number;
+  longitude?: number;
   // Violation
   statute_citation?: string;
   violation_description?: string;
@@ -917,13 +963,48 @@ export interface CitationPdfData {
   violation_date?: string;
   violation_time?: string;
   location?: string;
+  // Traffic-specific
+  speed_recorded?: number;
+  speed_limit?: number;
+  radar_type?: string;
+  bac_level?: number;
+  // Conditions
+  weather_conditions?: string;
+  road_conditions?: string;
+  // Flags
+  is_warning?: boolean;
+  accident_related?: boolean;
+  dui_related?: boolean;
+  school_zone?: boolean;
+  construction_zone?: boolean;
+  commercial_vehicle?: boolean;
+  hazmat?: boolean;
+  // Bond & Disposition
+  bond_amount?: number;
+  bond_type?: string;
+  plea?: string;
+  verdict?: string;
+  sentence?: string;
+  disposition_date?: string;
+  voided_reason?: string;
   // Officer
   issuing_officer_name?: string;
   badge_number?: string;
   // Court
   court_date?: string;
+  court_time?: string;
+  court_room?: string;
   court_name?: string;
   court_address?: string;
+  appearance_required?: boolean;
+  // Violations table (multiple per citation)
+  violations?: Array<{
+    violation_number: number;
+    statute_citation?: string;
+    violation_description?: string;
+    offense_level?: string;
+    fine_amount?: number;
+  }>;
   // Meta
   notes?: string;
   created_at?: string;
@@ -2322,6 +2403,35 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     );
   }
 
+  // ── 14b. Linked Vehicles ──────────────────────────────────
+  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Vehicles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const vehRows = data.linked_vehicles.map(v => [
+      v.license_plate || 'N/A',
+      [v.year, v.make, v.model].filter(Boolean).join(' ') || 'N/A',
+      (v.color || '').toUpperCase(),
+      titleCase(v.relationship || 'linked'),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'PLATE', x: lx }, { label: 'VEHICLE', x: lx + 35 }, { label: 'COLOR', x: lx + 110 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      vehRows, y, [lx, lx + 35, lx + 110, lx + 140]);
+  }
+
+  // ── 14c. Linked Properties ──────────────────────────────────
+  if (data.linked_properties && data.linked_properties.length > 0) {
+    y = checkPageBreak(doc, y, 25, prio);
+    { const sec = openAutoSection(doc, 'Linked Properties', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const propRows = data.linked_properties.map(p => [
+      p.name || 'N/A',
+      p.address || '',
+      titleCase(p.relationship || 'linked'),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      propRows, y, [lx, lx + 50, lx + 140]);
+  }
+
   // ── 15. Notes ─────────────────────────────────────────────
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
 
@@ -2495,7 +2605,65 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     }
   }
 
+  // ── Incident History ──
+  if (data.incidents && data.incidents.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const incRows = data.incidents.map(inc => [
+      inc.incident_number || 'N/A',
+      (inc.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      titleCase(inc.status || ''),
+      fmtDate(inc.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'INCIDENT #', x: lx }, { label: 'TYPE', x: lx + 35 }, { label: 'STATUS', x: lx + 100 }, { label: 'DATE', x: lx + 140 }],
+      incRows, y, [lx, lx + 35, lx + 100, lx + 140]);
+  }
+
+  // ── Call History ──
+  if (data.calls && data.calls.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const callRows = data.calls.map(c => [
+      c.call_number || 'N/A',
+      (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      displayStatus(c.status || ''),
+      c.location || '',
+      fmtDate(c.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CALL #', x: lx }, { label: 'TYPE', x: lx + 27 }, { label: 'STATUS', x: lx + 69 }, { label: 'LOCATION', x: lx + 97 }, { label: 'DATE', x: lx + 152 }],
+      callRows, y, [lx, lx + 27, lx + 69, lx + 97, lx + 152]);
+  }
+
+  // ── Citation History ──
+  if (data.citations && data.citations.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Citation History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const citRows = data.citations.map(c => [
+      c.citation_number || 'N/A',
+      titleCase(c.type || ''),
+      titleCase(c.status || ''),
+      fmtDate(c.violation_date),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CITATION #', x: lx }, { label: 'TYPE', x: lx + 40 }, { label: 'STATUS', x: lx + 90 }, { label: 'DATE', x: lx + 140 }],
+      citRows, y, [lx, lx + 40, lx + 90, lx + 140]);
+  }
+
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
+
+  // ── Record Metadata ──
+  y = drawFormSection(doc, {
+    sideTab: { label: 'META' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [{ cells: [
+      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+    ]}],
+    y,
+  });
 
   if (data.attachment_images && data.attachment_images.length > 0) {
     y = await addAttachmentsSection(doc, data.attachment_images, y);
@@ -2506,7 +2674,30 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 
 // ── Warrant ──────────────────────────────────────────────────
 
-async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
+async function generateQrDataUrl(text: string): Promise<string | null> {
+  try {
+    return await QRCode.toDataURL(text, { width: 96, margin: 0, errorCorrectionLevel: 'M' });
+  } catch {
+    return null;
+  }
+}
+
+function drawDiagonalWatermark(
+  doc: jsPDF,
+  text: string,
+  color: [number, number, number, number]
+) {
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  doc.setFontSize(72);
+  doc.setTextColor(color[0], color[1], color[2]);
+  (doc as any).setGState?.(new (doc as any).GState({ opacity: color[3] }));
+  doc.text(text, pageW / 2, pageH / 2, { align: 'center', angle: -30 });
+  (doc as any).setGState?.(new (doc as any).GState({ opacity: 1 }));
+  doc.setTextColor(0, 0, 0);
+}
+
+export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Promise<void> {
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -2527,6 +2718,44 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
 
   y = drawDistrictBar(doc, y, data as any);
 
+  // QR code — top-right of page 1 (Phase 1)
+  const qrUrl = data.qr_code_data_url ||
+    (typeof window !== 'undefined' && (data as any).id
+      ? await generateQrDataUrl(`${window.location.origin}/warrants/${(data as any).id}`)
+      : null);
+  if (qrUrl) {
+    doc.addImage(qrUrl, 'PNG', rx - 24, 4, 24, 24);
+  }
+
+  // Priority stamp — below header, right column
+  const bucket = data.priority_score == null ? null :
+    data.priority_score >= 90 ? { label: 'CRITICAL', color: [220, 38, 38] as [number,number,number] } :
+    data.priority_score >= 70 ? { label: 'HIGH',     color: [245, 158, 11] as [number,number,number] } :
+    data.priority_score >= 40 ? { label: 'MEDIUM',   color: [100, 116, 139] as [number,number,number] } :
+    { label: 'LOW', color: [156, 163, 175] as [number,number,number] };
+  if (bucket) {
+    doc.setFillColor(bucket.color[0], bucket.color[1], bucket.color[2]);
+    doc.setTextColor(255, 255, 255);
+    doc.roundedRect(rx - 55, 32, 50, 8, 1, 1, 'F');
+    doc.setFontSize(9);
+    doc.text(`${bucket.label} ${data.priority_score}/100`, rx - 30, 37.5, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+  }
+
+  // NCIC compliance block
+  y = checkPageBreak(doc, y, 14, statusPrio);
+  {
+    const sec = openAutoSection(doc, 'NCIC / ORI', y);
+    y = sec.contentY;
+    const quarterW = ffw / 4;
+    const r1a = addFieldPair(doc, 'ORI',        data.ori        || '—', lx + quarterW * 0, y, quarterW);
+    const r1b = addFieldPair(doc, 'OCA #',      data.oca_number || '—', lx + quarterW * 1, y, quarterW);
+    const r1c = addFieldPair(doc, 'NCIC Entry', data.ncic_entry_number || '—', lx + quarterW * 2, y, quarterW);
+    const r1d = addFieldPair(doc, 'Issue Date', fmtDate(data.issue_date) || '—', lx + quarterW * 3, y, quarterW);
+    y = Math.max(r1a, r1b, r1c, r1d);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   // ── Warrant Information ──
   y = checkPageBreak(doc, y, 18, statusPrio);
   { const sec = openAutoSection(doc, 'Warrant Information', y); y = sec.contentY;
@@ -2544,7 +2773,8 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
   }
 
   // ── Subject Information ──
-  y = checkPageBreak(doc, y, 20, statusPrio);
+  // Reserve enough vertical space (~115pt) to fit the 110pt mugshot without splitting
+  y = checkPageBreak(doc, y, 115, statusPrio);
   { const sec = openAutoSection(doc, 'Subject Information', y); y = sec.contentY;
     const sixthW = ffw / 6;
     // Row 1: Last Name (2/5), First Name (2/5), DOB (1/5)
@@ -2564,6 +2794,21 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     // Row 3: Address (full width, conditional)
     if (data.subject_address) {
       y = addFieldPair(doc, 'Address', data.subject_address, lx, y, ffw);
+    }
+    // Mugshot — 110pt x 110pt (~1.5"), right-aligned within section (Phase 1 review)
+    if (data.subject_photo_url) {
+      try {
+        const photoW = 110;
+        const photoH = 110;
+        const photoX = rx + getHalfFieldWidth(doc) - photoW;
+        const photoY = sec.contentY;
+        doc.addImage(data.subject_photo_url, 'JPEG', photoX, photoY, photoW, photoH);
+        doc.setDrawColor(...COLOR.BORDER_FIELD);
+        doc.rect(photoX, photoY, photoW, photoH, 'S');
+        y = Math.max(y, photoY + photoH + 2);
+      } catch {
+        // photo URL invalid — skip
+      }
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -2598,6 +2843,33 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     }
   }
 
+  // ── Service Attempts History (conditional) ──
+  if (data.service_attempts && data.service_attempts.length > 0) {
+    y = checkPageBreak(doc, y, 25, statusPrio);
+    { const sec = openAutoSection(doc, 'Service Attempts', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const attemptRows = data.service_attempts.map((a, i) => [
+      String(i + 1),
+      fmtTimestamp(a.attempted_at),
+      a.location || '',
+      (a.method || '').toUpperCase(),
+      (a.result || '').toUpperCase(),
+      a.notes || '',
+    ]);
+    y = addTableWithShading(
+      doc,
+      [
+        { label: '#', x: lx },
+        { label: 'DATE/TIME', x: lx + 8 },
+        { label: 'LOCATION', x: lx + 45 },
+        { label: 'METHOD', x: lx + 95 },
+        { label: 'RESULT', x: lx + 120 },
+        { label: 'NOTES', x: lx + 145 },
+      ],
+      attemptRows, y,
+      [lx, lx + 8, lx + 45, lx + 95, lx + 120, lx + 145],
+    );
+  }
+
   // ── Source / Verification (conditional) ──
   if (data.data_source || data.search_date || data.verified_by) {
     y = checkPageBreak(doc, y, 18, statusPrio);
@@ -2624,11 +2896,141 @@ async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
     }
   }
 
+  // ── Subject identification (Phase 1) ──
+  if (data.subject_aliases?.length || data.subject_distinguishing_features || data.subject_scars_marks_tattoos) {
+    y = checkPageBreak(doc, y, 16, statusPrio);
+    const sec = openAutoSection(doc, 'Subject Identification', y);
+    y = sec.contentY;
+    if (data.subject_aliases?.length) {
+      y = addFieldPair(doc, 'AKAs', data.subject_aliases.join(', '), lx, y, ffw);
+    }
+    if (data.subject_scars_marks_tattoos) {
+      y = addFieldPair(doc, 'Scars / Marks / Tattoos', data.subject_scars_marks_tattoos, lx, y, ffw);
+    }
+    if (data.subject_distinguishing_features) {
+      y = addFieldPair(doc, 'Distinguishing', data.subject_distinguishing_features, lx, y, ffw);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Statute text (Phase 1) ──
+  if (data.statute_text) {
+    y = checkPageBreak(doc, y, 14, statusPrio);
+    const sec = openAutoSection(doc, 'Statute', y);
+    y = sec.contentY;
+    doc.setFontSize(9);
+    const lines = doc.splitTextToSize(data.statute_text, ffw);
+    doc.text(lines, lx, y + 4);
+    y += 4 + lines.length * 4;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Known associates (Phase 1) ──
+  if (data.known_associates?.length) {
+    y = checkPageBreak(doc, y, 14, statusPrio);
+    const sec = openAutoSection(doc, 'Known Associates', y);
+    y = sec.contentY;
+    doc.setFontSize(8);
+    const associates = data.known_associates.slice(0, 10);
+    associates.forEach((a, idx) => {
+      doc.text(`${a.name}  (${a.relationship || 'associate'})`, lx + 2, y + 4 + idx * 4);
+    });
+    y += associates.length * 4 + 4;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Known vehicles (Phase 1) ──
+  if (data.known_vehicles?.length) {
+    y = checkPageBreak(doc, y, 14, statusPrio);
+    const sec = openAutoSection(doc, 'Known Vehicles', y);
+    y = sec.contentY;
+    doc.setFontSize(8);
+    const vehicles = data.known_vehicles.slice(0, 10);
+    vehicles.forEach((v, idx) => {
+      doc.text(`${v.plate}  ${v.description}`, lx + 2, y + 4 + idx * 4);
+    });
+    y += vehicles.length * 4 + 4;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Source / provenance (Phase 1) ──
+  y = checkPageBreak(doc, y, 18, statusPrio);
+  {
+    const sec = openAutoSection(doc, 'Source / Provenance', y);
+    y = sec.contentY;
+    const halfW = ffw / 2;
+    if (data.source_scraper_name) {
+      const r1a = addFieldPair(doc, 'Scraper', data.source_scraper_name, lx, y, halfW);
+      const r1b = addFieldPair(doc, 'State',   data.source_state || '—',  lx + halfW, y, halfW);
+      y = Math.max(r1a, r1b);
+    } else {
+      const r1a = addFieldPair(doc, 'Source', 'Manually entered', lx, y, halfW);
+      const r1b = addFieldPair(doc, 'By',     data.entered_by_name || 'Unknown', lx + halfW, y, halfW);
+      y = Math.max(r1a, r1b);
+    }
+    if (data.source_url) {
+      y = addFieldPair(doc, 'URL', data.source_url, lx, y, ffw);
+    }
+    const r3a = addFieldPair(doc, 'Last refreshed', fmtDate(data.source_last_scraped_at) || '—', lx, y, halfW);
+    const r3b = addFieldPair(doc, 'Verification',   data.source_verification || 'auto-scraped', lx + halfW, y, halfW);
+    y = Math.max(r3a, r3b);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── RMPG encounters (Phase 1) ──
+  if (data.rmpg_encounters?.length) {
+    y = checkPageBreak(doc, y, 14, statusPrio);
+    const sec = openAutoSection(doc, 'RMPG Encounters', y);
+    y = sec.contentY;
+    doc.setFontSize(8);
+    const encounters = data.rmpg_encounters.slice(0, 20);
+    encounters.forEach((e, idx) => {
+      doc.text(
+        `${fmtDate(e.date)}  ${e.context}${e.property ? '  —  ' + e.property : ''}`,
+        lx + 2,
+        y + 4 + idx * 4
+      );
+    });
+    y += encounters.length * 4 + 4;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, statusPrio);
 
   // Signature Block — full-width stacked
   y = addStackedSignatures(doc, 'Reporting Officer', '', y, getOfficerSig(), undefined, statusPrio);
+
+  // ── Watermarks (after all content) — stamp every page (Phase 1 review) ──
+  const totalPages = doc.getNumberOfPages();
+  if (data.expires_at && new Date(data.expires_at) < new Date()) {
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      drawDiagonalWatermark(doc, 'EXPIRED', [220, 38, 38, 0.15]);
+    }
+  }
+  if (data.archived_at) {
+    for (let i = 1; i <= totalPages; i++) {
+      doc.setPage(i);
+      drawDiagonalWatermark(doc, 'ARCHIVED', [100, 116, 139, 0.15]);
+    }
+  }
+
+  // ── Print audit footer — stamp every page (Phase 1 review) ──
+  const audit = `Printed by: ${data.printed_by_name || 'Unknown'}${data.printed_by_badge ? ' #' + data.printed_by_badge : ''}  on  ${fmtDate(data.printed_at) || fmtDate(new Date().toISOString())}`;
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(100, 100, 100);
+    doc.text(audit, lx, doc.internal.pageSize.getHeight() - 6);
+    doc.setTextColor(0, 0, 0);
+  }
+}
+
+// Backward-compatible thin wrapper so the rest of the generator (downloadRecordPdf
+// + any other internal callers) keeps working unchanged.
+async function generateWarrantReport(doc: jsPDF, data: WarrantPdfData) {
+  await renderWarrantIntoDoc(doc, data);
 }
 
 // ── Evidence / Property Custody Report ───────────────────────
@@ -3671,6 +4073,65 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
+  // ── Contract Information ──
+  if (data.contract_number || data.contract_start || data.billing_rate) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Contract Information', y); y = sec.contentY;
+    const qw = ffw / 4;
+    const ct1 = addFieldPair(doc, 'Contract #', data.contract_number || '', lx, y, qw);
+    const ct2 = addFieldPair(doc, 'Start Date', fmtDate(data.contract_start), lx + qw, y, qw);
+    const ct3 = addFieldPair(doc, 'End Date', fmtDate(data.contract_end), lx + 2 * qw, y, qw);
+    const ct4 = addFieldPair(doc, 'Billing Rate', data.billing_rate || '', lx + 3 * qw, y, qw);
+    y = Math.max(ct1, ct2, ct3, ct4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Incident History at this property ──
+  if (data.incidents && data.incidents.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const incRows = data.incidents.map(inc => [
+      inc.incident_number || 'N/A',
+      (inc.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      titleCase(inc.status || ''),
+      fmtDate(inc.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'INCIDENT #', x: lx }, { label: 'TYPE', x: lx + 35 }, { label: 'STATUS', x: lx + 100 }, { label: 'DATE', x: lx + 140 }],
+      incRows, y, [lx, lx + 35, lx + 100, lx + 140]);
+  }
+
+  // ── Dispatch Call History at this property ──
+  if (data.calls && data.calls.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const callRows = data.calls.map(c => [
+      c.call_number || 'N/A',
+      (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      displayStatus(c.status || ''),
+      fmtDate(c.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CALL #', x: lx }, { label: 'TYPE', x: lx + 30 }, { label: 'STATUS', x: lx + 95 }, { label: 'DATE', x: lx + 140 }],
+      callRows, y, [lx, lx + 30, lx + 95, lx + 140]);
+  }
+
+  // ── Trespass Orders for this property ──
+  if (data.trespass_orders && data.trespass_orders.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Trespass Orders', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const toRows = data.trespass_orders.map(t => [
+      t.order_number || 'N/A',
+      t.subject_name || '',
+      titleCase(t.status || ''),
+      fmtDate(t.issued_date),
+      fmtDate(t.expires_date),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'ORDER #', x: lx }, { label: 'SUBJECT', x: lx + 30 }, { label: 'STATUS', x: lx + 85 }, { label: 'ISSUED', x: lx + 120 }, { label: 'EXPIRES', x: lx + 150 }],
+      toRows, y, [lx, lx + 30, lx + 85, lx + 120, lx + 150]);
+  }
+
   // Access Instructions
   y = addNarrativeSection(doc, 'Access Instructions', data.access_instructions || '', y);
 
@@ -3679,6 +4140,21 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
 
   // Hazard Notes
   y = addNarrativeSection(doc, 'Hazard Notes', data.hazard_notes || '', y);
+
+  // Notes
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
+
+  // ── Record Metadata ──
+  y = drawFormSection(doc, {
+    sideTab: { label: 'META' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [{ cells: [
+      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+    ]}],
+    y,
+  });
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -3766,18 +4242,86 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Vehicle Information ──
-  if (data.vehicle_description || data.vehicle_plate || data.vehicle_vin) {
+  // ── Traffic Details (speed, radar, BAC) ──
+  if (data.speed_recorded || data.speed_limit || data.radar_type || data.bac_level) {
     y = checkPageBreak(doc, y, 12, prio);
-    { const sec = openAutoSection(doc, 'Vehicle Information', y); y = sec.contentY;
-      const quarterW = ffw / 4;
-      const r1a = addFieldPair(doc, 'Vehicle Description', data.vehicle_description || '', lx, y, hfw);
-      const r1b = addFieldPair(doc, 'Plate', data.vehicle_plate || '', rx, y, quarterW);
-      const r1c = addFieldPair(doc, 'State', data.vehicle_state || '', rx + quarterW, y, quarterW);
-      y = Math.max(r1a, r1b, r1c);
-      if (data.vehicle_vin) y = addFieldPair(doc, 'VIN', data.vehicle_vin, lx, y, ffw);
+    { const sec = openAutoSection(doc, 'Traffic Details', y); y = sec.contentY;
+      const fifthW = ffw / 5;
+      const t1 = addFieldPair(doc, 'Speed Recorded', data.speed_recorded != null ? `${data.speed_recorded} MPH` : '', lx, y, fifthW);
+      const t2 = addFieldPair(doc, 'Speed Limit', data.speed_limit != null ? `${data.speed_limit} MPH` : '', lx + fifthW, y, fifthW);
+      const t3 = addFieldPair(doc, 'Over Limit', data.speed_recorded && data.speed_limit ? `${data.speed_recorded - data.speed_limit} MPH` : '', lx + 2 * fifthW, y, fifthW);
+      const t4 = addFieldPair(doc, 'Radar Type', data.radar_type || '', lx + 3 * fifthW, y, fifthW);
+      const t5 = addFieldPair(doc, 'BAC Level', data.bac_level != null ? `${data.bac_level}%` : '', lx + 4 * fifthW, y, fifthW);
+      y = Math.max(t1, t2, t3, t4, t5);
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
+  }
+
+  // ── Conditions & Flags ──
+  if (data.weather_conditions || data.road_conditions || data.school_zone || data.construction_zone || data.dui_related || data.accident_related) {
+    y = checkPageBreak(doc, y, 14, prio);
+    { const sec = openAutoSection(doc, 'Conditions & Flags', y); y = sec.contentY;
+      const thirdW = ffw / 3;
+      const c1 = addFieldPair(doc, 'Weather', data.weather_conditions || '', lx, y, thirdW);
+      const c2 = addFieldPair(doc, 'Road Conditions', data.road_conditions || '', lx + thirdW, y, thirdW);
+      const c3 = addFieldPair(doc, 'Is Warning', data.is_warning ? 'YES' : 'NO', lx + 2 * thirdW, y, thirdW);
+      y = Math.max(c1, c2, c3);
+      // Flag checkboxes
+      y += 1;
+      let flagX = lx;
+      if (data.school_zone) flagX = addCheckboxField(doc, 'School Zone', true, flagX, y);
+      if (data.construction_zone) flagX = addCheckboxField(doc, 'Construction Zone', true, flagX + 1, y);
+      if (data.dui_related) flagX = addCheckboxField(doc, 'DUI Related', true, flagX + 1, y);
+      if (data.accident_related) flagX = addCheckboxField(doc, 'Accident Related', true, flagX + 1, y);
+      if (data.commercial_vehicle) flagX = addCheckboxField(doc, 'Commercial Vehicle', true, flagX + 1, y);
+      if (data.hazmat) addCheckboxField(doc, 'Hazmat', true, flagX + 1, y);
+      y += 4;
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ── Vehicle Information ──
+  if (data.vehicle_description || data.vehicle_plate || data.vehicle_vin || data.vehicle_year) {
+    y = checkPageBreak(doc, y, 12, prio);
+    { const sec = openAutoSection(doc, 'Vehicle Information', y); y = sec.contentY;
+      const sixthW = ffw / 6;
+      // Row 1: Year, Make, Model, Color, Plate, State
+      const v1 = addFieldPair(doc, 'Year', data.vehicle_year || '', lx, y, sixthW);
+      const v2 = addFieldPair(doc, 'Make', data.vehicle_make || '', lx + sixthW, y, sixthW);
+      const v3 = addFieldPair(doc, 'Model', data.vehicle_model || '', lx + 2 * sixthW, y, sixthW);
+      const v4 = addFieldPair(doc, 'Color', data.vehicle_color || '', lx + 3 * sixthW, y, sixthW);
+      const v5 = addFieldPair(doc, 'Plate', data.vehicle_plate || '', lx + 4 * sixthW, y, sixthW);
+      const v6 = addFieldPair(doc, 'State', data.vehicle_state || '', lx + 5 * sixthW, y, sixthW);
+      y = Math.max(v1, v2, v3, v4, v5, v6);
+      if (data.vehicle_vin) y = addFieldPair(doc, 'VIN', data.vehicle_vin, lx, y, ffw);
+      if (data.vehicle_description) y = addFieldPair(doc, 'Description', data.vehicle_description, lx, y, ffw);
+      y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+    }
+  }
+
+  // ── Violations Table (multiple per citation) ──
+  if (data.violations && data.violations.length > 0) {
+    y = checkPageBreak(doc, y, 20, prio);
+    { const sec = openAutoSection(doc, 'Violations', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const violRows = data.violations.map(v => [
+      String(v.violation_number || ''),
+      v.statute_citation || '',
+      v.violation_description || '',
+      (v.offense_level || '').toUpperCase(),
+      v.fine_amount != null ? fmtCurrency(v.fine_amount) : '',
+    ]);
+    y = addTableWithShading(
+      doc,
+      [
+        { label: '#', x: lx },
+        { label: 'STATUTE', x: lx + 10 },
+        { label: 'DESCRIPTION', x: lx + 50 },
+        { label: 'LEVEL', x: lx + 130 },
+        { label: 'FINE', x: lx + 155 },
+      ],
+      violRows, y,
+      [lx, lx + 10, lx + 50, lx + 130, lx + 155],
+    );
   }
 
   // ── Location / Geography ──
@@ -3803,18 +4347,41 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // ── Court Information ──
-  if (data.court_name || data.court_date) {
+  // ── Court Information (expanded) ──
+  y = checkPageBreak(doc, y, 18, prio);
+  { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
+    const fifthW = ffw / 5;
+    const r1a = addFieldPair(doc, 'Court Name', data.court_name || '', lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'Court Date', fmtDate(data.court_date), lx + fifthW * 2, y, fifthW);
+    const r1c = addFieldPair(doc, 'Court Time', data.court_time || '', lx + fifthW * 3, y, fifthW);
+    const r1d = addFieldPair(doc, 'Court Room', data.court_room || '', lx + fifthW * 4, y, fifthW);
+    y = Math.max(r1a, r1b, r1c, r1d);
+    if (data.court_address) y = addFieldPair(doc, 'Court Address', data.court_address, lx, y, ffw);
+    // Appearance checkbox
+    y += 1;
+    addCheckboxField(doc, 'Appearance Required', !!data.appearance_required, lx, y);
+    y += 4;
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Bond & Disposition ──
+  if (data.bond_amount || data.bond_type || data.plea || data.verdict || data.sentence || data.disposition_date || data.voided_reason) {
     y = checkPageBreak(doc, y, 15, prio);
-    { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
-      const thirdW = ffw / 3;
-      // Row 1: Court Name (2/3), Court Date (1/3)
-      const r1a = addFieldPair(doc, 'Court Name', data.court_name || '', lx, y, thirdW * 2);
-      const r1b = addFieldPair(doc, 'Court Date', fmtDate(data.court_date), lx + thirdW * 2, y, thirdW);
-      y = Math.max(r1a, r1b);
-      // Row 2: Court Address (full width, conditional)
-      if (data.court_address) {
-        y = addFieldPair(doc, 'Court Address', data.court_address, lx, y, ffw);
+    { const sec = openAutoSection(doc, 'Bond & Disposition', y); y = sec.contentY;
+      const quarterW = ffw / 4;
+      const b1 = addFieldPair(doc, 'Bond Amount', data.bond_amount != null ? fmtCurrency(data.bond_amount) : '', lx, y, quarterW);
+      const b2 = addFieldPair(doc, 'Bond Type', (data.bond_type || '').toUpperCase(), lx + quarterW, y, quarterW);
+      const b3 = addFieldPair(doc, 'Plea', (data.plea || '').toUpperCase(), lx + 2 * quarterW, y, quarterW);
+      const b4 = addFieldPair(doc, 'Disposition Date', fmtDate(data.disposition_date), lx + 3 * quarterW, y, quarterW);
+      y = Math.max(b1, b2, b3, b4);
+      if (data.verdict || data.sentence) {
+        const hw2 = ffw / 2;
+        const d1 = addFieldPair(doc, 'Verdict', (data.verdict || '').toUpperCase(), lx, y, hw2);
+        const d2 = addFieldPair(doc, 'Sentence', (data.sentence || '').toUpperCase(), lx + hw2, y, hw2);
+        y = Math.max(d1, d2);
+      }
+      if (data.voided_reason) {
+        y = addFieldPair(doc, 'Voided Reason', data.voided_reason, lx, y, ffw);
       }
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }

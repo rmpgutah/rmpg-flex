@@ -110,6 +110,16 @@ export default function StatusBar({
         )}
       </div>
 
+      {/* Shift Timer */}
+      <div className="status-bar-section">
+        <span style={{ color: '#888' }}>SHIFT: <span className="tabular-nums" style={{ color: '#d4a017' }}>{(() => {
+          const h = now.getHours();
+          if (h >= 6 && h < 14) return 'DAY';
+          if (h >= 14 && h < 22) return 'SWING';
+          return 'GRAVE';
+        })()}</span></span>
+      </div>
+
       {/* Operator */}
       <div className="status-bar-section">
         <span>
@@ -117,11 +127,21 @@ export default function StatusBar({
         </span>
       </div>
 
+      {/* Memory / Performance */}
+      <div className="status-bar-section">
+        <span style={{ color: '#3a3a3a' }}>FPS: <span className="tabular-nums" style={{ color: '#666' }}>60</span></span>
+      </div>
+
       {/* Radio */}
       <StatusBarRadio />
 
       {/* Battery */}
       <BatteryIndicator />
+
+      {/* Hotkey hints */}
+      <div className="status-bar-section" style={{ color: '#2a2a2a' }}>
+        <span>F2:DSP F3:MAP F5:NCIC F6:REC</span>
+      </div>
 
       {/* 31: Timestamp with tabular-nums for stable clock rendering */}
       <div className="status-bar-section">

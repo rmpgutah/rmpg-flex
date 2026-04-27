@@ -48,6 +48,7 @@ import {
   Mail,
   GraduationCap,
   Microscope,
+  FolderOpen,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -82,7 +83,8 @@ import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 import { useVoiceChannel } from '../hooks/useVoiceChannel';
 import VoiceChannelIndicator from './VoiceChannelIndicator';
 import { applyThemePreference } from '../utils/theme';
-import RadioConsole from './radio/RadioConsole';
+// RadioConsole sidebar was removed; radio is accessed via the Comms > Radio menu.
+// Component still exists at ./radio/RadioConsole for use inside RadioPage.
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -123,6 +125,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
+  '/documents': 'Documents',
   '/hr': 'HR Console',
   '/admin': 'Admin',
 };
@@ -167,6 +170,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
     { path: '/serve', icon: Briefcase, label: 'Process Server' },
+    { path: '/documents', icon: FolderOpen, label: 'Documents' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -1452,9 +1456,6 @@ export default function Layout() {
       {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Radio Console — Desktop sidebar (left of main content) */}
-        {!isMobile && <RadioConsole />}
-
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>

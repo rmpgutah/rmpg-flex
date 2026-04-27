@@ -5,7 +5,7 @@
 import { toDisplayLabel } from '../../../utils/formatters';
 
 /** Filter tab type for the dispatch call queue. */
-export type FilterTab = 'all' | 'pending' | 'active' | 'cleared' | 'archived' | 'serve';
+export type FilterTab = 'all' | 'pending' | 'active' | 'cleared' | 'archived' | 'serve' | 'mine';
 
 /**
  * Format a date string to MM/DD/YYYY @ HH:MM:SS (24-hour military time).

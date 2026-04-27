@@ -16,6 +16,7 @@ import {
   DollarSign,
   X,
   Users,
+  Briefcase,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { usePersistedTab } from '../hooks/usePersistedState';
@@ -38,12 +39,13 @@ import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './
 import { useVehiclesTab, VehiclesTabList, VehiclesTabDetail, mapDbVehicle } from './records/VehiclesTab';
 import { usePropertiesTab, PropertiesTabList, PropertiesTabDetail, mapDbProperty } from './records/PropertiesTab';
 import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/EvidenceTab';
+import { useBusinessTab, BusinessTabList, BusinessTabDetail } from './records/BusinessTab';
 
 // ============================================================
 // Constants
 // ============================================================
 
-type TabId = 'persons' | 'vehicles' | 'properties' | 'evidence';
+type TabId = 'persons' | 'vehicles' | 'properties' | 'businesses' | 'evidence';
 
 // ============================================================
 const timeAgo = (date: string): string => {
@@ -67,7 +69,7 @@ export default function RecordsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const [urlParams] = useSearchParams();
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
@@ -76,7 +78,7 @@ export default function RecordsPage() {
   useEffect(() => {
     const tab = urlParams.get('tab');
     const personId = urlParams.get('personId');
-    if (tab && ['persons', 'vehicles', 'properties', 'evidence'].includes(tab)) {
+    if (tab && ['persons', 'vehicles', 'properties', 'businesses', 'evidence'].includes(tab)) {
       setActiveTab(tab as TabId);
     }
     if (personId && tab === 'persons') {
@@ -235,7 +237,7 @@ export default function RecordsPage() {
 
   // ── Archive / Unarchive ──────────────────────────────
 
-  const handleArchiveRecord = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
+  const handleArchiveRecord = async (type: string, id: string) => {
     try {
       await apiFetch(`/records/${type}/${id}/archive`, { method: 'POST' });
       if (type === 'persons') { await fetchPersons(); }
@@ -248,7 +250,7 @@ export default function RecordsPage() {
     }
   };
 
-  const handleUnarchiveRecord = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
+  const handleUnarchiveRecord = async (type: string, id: string) => {
     try {
       await apiFetch(`/records/${type}/${id}/unarchive`, { method: 'POST' });
       if (type === 'persons') { await fetchPersons(); }
@@ -297,6 +299,12 @@ export default function RecordsPage() {
     fetchEvidence, openNewTrigger: newEvidenceTrigger,
   });
 
+  const businessState = useBusinessTab({
+    searchQuery, setSearchQuery, showArchived, setError,
+    setDeleteTarget, linkRefreshKey,
+    openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
+  });
+
   // ── Derived ──────────────────────────────────────────
 
   const isLoading = loadingPersons || loadingVehicles || loadingProperties || loadingEvidence;
@@ -305,6 +313,7 @@ export default function RecordsPage() {
     { id: 'persons', label: 'Persons', icon: UserCircle, count: persons.length },
     { id: 'vehicles', label: 'Vehicles', icon: Car, count: vehicles.length },
     { id: 'properties', label: 'Properties', icon: Building2, count: properties.length },
+    { id: 'businesses', label: 'Business', icon: Briefcase, count: 0 },
     { id: 'evidence', label: 'Evidence', icon: Package, count: evidence.length },
   ];
 
@@ -410,6 +419,15 @@ export default function RecordsPage() {
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Property
+              </button>
+            )}
+          </>
+        )}
+        {activeTab === 'businesses' && (
+          <>
+            {!showArchived && (
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => businessState.setShowFormModal(true)}>
+                <Plus className="w-3.5 h-3.5" /> New Business
               </button>
             )}
           </>
@@ -552,6 +570,7 @@ export default function RecordsPage() {
         {activeTab === 'persons' && !loadingPersons && <PersonsTabList state={personsState} />}
         {activeTab === 'vehicles' && !loadingVehicles && <VehiclesTabList state={vehiclesState} />}
         {activeTab === 'properties' && !loadingProperties && <PropertiesTabList state={propertiesState} />}
+        {activeTab === 'businesses' && <BusinessTabList state={businessState} />}
         {activeTab === 'evidence' && !loadingEvidence && <EvidenceTabList state={evidenceState} />}
       </div>
     </div>
@@ -594,6 +613,7 @@ export default function RecordsPage() {
         {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
         {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
         {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}
+        {activeTab === 'businesses' && <BusinessTabDetail state={businessState} />}
         {activeTab === 'evidence' && <EvidenceTabDetail state={evidenceState} />}
       </div>
     </div>

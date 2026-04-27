@@ -78,6 +78,7 @@ import darRoutes from './routes/dar';
 import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
+import documentFoldersRoutes from './routes/documentFolders';
 import forensicsRoutes from './routes/forensics';
 import ipedRoutes from './routes/iped';
 import clearpathgpsRoutes from './routes/clearpathgps';
@@ -117,6 +118,14 @@ import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
+
+// ─── Reverse-proxy trust ─────────────────────────────
+// In production we sit behind nginx (which sets X-Forwarded-For). Without
+// `trust proxy = 1`, express-rate-limit raises ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and req.ip resolves to 127.0.0.1, defeating per-IP rate-limiting.
+// Value `1` trusts EXACTLY one proxy hop — clients cannot spoof their IP
+// by stuffing X-Forwarded-For (which `true` would allow).
+app.set('trust proxy', 1);
 
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
@@ -376,6 +385,7 @@ app.use('/api/dar', darRoutes);
 app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
+app.use('/api/documents', documentFoldersRoutes);
 app.use('/api/forensic-lab', forensicsRoutes);
 app.use('/api/forensics', forensicsRoutes);
 app.use('/api/iped', ipedRoutes);
