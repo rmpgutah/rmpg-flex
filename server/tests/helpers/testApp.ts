@@ -35,6 +35,7 @@ export async function createTestApp(): Promise<Application> {
   const incidentRoutes = (await import('../../src/routes/incidents')).default;
   const recordsRoutes = (await import('../../src/routes/records')).default;
   const businessVehiclesRoutes = (await import('../../src/routes/businessVehicles')).default;
+  const businessVisitsRoutes = (await import('../../src/routes/businessVisits')).default;
   const citationRoutes = (await import('../../src/routes/citations')).default;
   const personnelRoutes = (await import('../../src/routes/personnel')).default;
   const mapGeofenceRoutes = (await import('../../src/routes/mapGeofences')).default;
@@ -57,6 +58,7 @@ export async function createTestApp(): Promise<Application> {
   app.use('/api/incidents', incidentRoutes);
   app.use('/api/records', recordsRoutes);
   app.use('/api/business-vehicles', businessVehiclesRoutes);
+  app.use('/api/business-visits', businessVisitsRoutes);
   app.use('/api/citations', citationRoutes);
   app.use('/api/personnel', personnelRoutes);
   app.use('/api/map-geofences', mapGeofenceRoutes);
