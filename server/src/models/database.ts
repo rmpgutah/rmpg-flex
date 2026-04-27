@@ -787,13 +787,13 @@ function createTables(): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       incident_id INTEGER NOT NULL,
       business_id INTEGER NOT NULL,
-      role TEXT NOT NULL CHECK(role IN ('victim','reporting_party','witness','suspect_affiliated','involved','other')),
+      role TEXT NOT NULL DEFAULT 'involved' CHECK(role IN ('victim','reporting_party','witness','suspect_affiliated','involved','other')),
       notes TEXT,
       added_by INTEGER,
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
       UNIQUE(incident_id, business_id),
-      FOREIGN KEY (incident_id) REFERENCES incidents(id),
-      FOREIGN KEY (business_id) REFERENCES businesses(id)
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS idx_incident_businesses_incident ON incident_businesses(incident_id);
     CREATE INDEX IF NOT EXISTS idx_incident_businesses_business ON incident_businesses(business_id);

@@ -74,4 +74,45 @@ describe('incident_businesses table', () => {
       ).run(incidentId, businessId, 'not_a_real_role')
     ).toThrow(/CHECK/);
   });
+
+  it('cascades on incident delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const officerId = (db.prepare(
+      `INSERT INTO users (username, password_hash, full_name, email, role, status, must_change_password, password_changed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'officer', 'active', 0, datetime('now'), datetime('now'), datetime('now'))`
+    ).run('cascade_test_officer', 'x', 'Cascade Officer', 'cascade@test.local').lastInsertRowid) as number;
+    const incidentId = (db.prepare(
+      `INSERT INTO incidents (incident_number, incident_type, officer_id) VALUES (?, ?, ?)`
+    ).run('IR-CASC-1', 'TEST', officerId).lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('CascadeBiz1').lastInsertRowid) as number;
+    db.prepare(
+      `INSERT INTO incident_businesses (incident_id, business_id, role) VALUES (?, ?, ?)`
+    ).run(incidentId, businessId, 'victim');
+    // Delete the parent incident — link must vanish, not throw
+    expect(() => db.prepare('DELETE FROM incidents WHERE id = ?').run(incidentId)).not.toThrow();
+    const remaining = db.prepare('SELECT COUNT(*) as c FROM incident_businesses WHERE incident_id = ?').get(incidentId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it("role defaults to 'involved' when omitted", async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const officerId = (db.prepare(
+      `INSERT INTO users (username, password_hash, full_name, email, role, status, must_change_password, password_changed_at, created_at, updated_at)
+       VALUES (?, ?, ?, ?, 'officer', 'active', 0, datetime('now'), datetime('now'), datetime('now'))`
+    ).run('default_test_officer', 'x', 'Default Officer', 'default@test.local').lastInsertRowid) as number;
+    const incidentId = (db.prepare(
+      `INSERT INTO incidents (incident_number, incident_type, officer_id) VALUES (?, ?, ?)`
+    ).run('IR-DEF-1', 'TEST', officerId).lastInsertRowid) as number;
+    const businessId = (db.prepare(
+      `INSERT INTO businesses (name) VALUES (?)`
+    ).run('DefaultBiz1').lastInsertRowid) as number;
+    // Insert without role
+    db.prepare(`INSERT INTO incident_businesses (incident_id, business_id) VALUES (?, ?)`).run(incidentId, businessId);
+    const row = db.prepare('SELECT role FROM incident_businesses WHERE incident_id = ?').get(incidentId) as { role: string };
+    expect(row.role).toBe('involved');
+  });
 });
