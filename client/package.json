@@ -26,7 +26,7 @@
     "@simplewebauthn/browser": "^13.3.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "bwip-js": "^4.9.2",
+    "bwip-js": "^4.10.1",
     "d3-cloud": "^1.2.9",
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",
