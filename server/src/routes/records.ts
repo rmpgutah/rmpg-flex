@@ -3,7 +3,7 @@ import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastRecordUpdate } from '../utils/websocket';
+import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
@@ -1466,6 +1466,117 @@ router.delete('/businesses/:id', requireRole('admin', 'manager'), (req: Request,
     res.json({ success: true });
   } catch { res.status(500).json({ error: 'Failed to delete business' }); }
 });
+
+// ── Business ↔ Person linking endpoints (Task 1.9) ──
+// Manage business_persons table: create / update / delete person-to-business
+// associations with a role + optional dates + notes. Used by the Subject
+// picker and Business detail page.
+const VALID_BIZ_PERSON_ROLES = [
+  'owner', 'officer_director', 'manager', 'key_holder',
+  'security_contact', 'employee', 'vendor', 'other'
+] as const;
+
+router.post('/businesses/:id/persons',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const businessId = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const { person_id, role, start_date, end_date, notes } = req.body;
+      if (!VALID_BIZ_PERSON_ROLES.includes(role)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_BIZ_PERSON_ROLES] });
+        return;
+      }
+      const db = getDb();
+      const biz = db.prepare('SELECT id FROM businesses WHERE id = ?').get(businessId);
+      if (!biz) { res.status(404).json({ error: 'Business not found' }); return; }
+      const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(person_id);
+      if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+      try {
+        const result = db.prepare(`
+          INSERT INTO business_persons (business_id, person_id, role, start_date, end_date, notes, added_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(businessId, person_id, role, start_date || null, end_date || null, notes || null, req.user?.userId ?? null);
+        const row = db.prepare('SELECT * FROM business_persons WHERE id = ?').get(result.lastInsertRowid);
+        auditLog(req, 'CREATE', 'business_person_link', Number(result.lastInsertRowid), null, row);
+        broadcastDispatchUpdate({ action: 'business_persons_updated', business_id: businessId });
+        res.status(201).json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Person already linked to this business with this role' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create business-person link: ' + err.message });
+    }
+  }
+);
+
+router.put('/businesses/:id/persons/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const businessId = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as string | string[] | undefined), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM business_persons WHERE id = ? AND business_id = ?').get(linkId, businessId) as any;
+      if (!existing) { res.status(404).json({ error: 'Business-person link not found' }); return; }
+
+      const { role, start_date, end_date, notes } = req.body;
+      if (role !== undefined && !VALID_BIZ_PERSON_ROLES.includes(role)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_BIZ_PERSON_ROLES] });
+        return;
+      }
+
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role !== undefined)       { updates.push('role = ?');       values.push(role); }
+      if (start_date !== undefined) { updates.push('start_date = ?'); values.push(start_date || null); }
+      if (end_date !== undefined)   { updates.push('end_date = ?');   values.push(end_date || null); }
+      if (notes !== undefined)      { updates.push('notes = ?');      values.push(notes || null); }
+      if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      values.push(linkId);
+
+      try {
+        db.prepare(`UPDATE business_persons SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+        const row = db.prepare('SELECT * FROM business_persons WHERE id = ?').get(linkId);
+        auditLog(req, 'UPDATE', 'business_person_link', linkId, existing, row);
+        broadcastDispatchUpdate({ action: 'business_persons_updated', business_id: businessId });
+        res.json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Person already linked to this business with this role' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update business-person link: ' + err.message });
+    }
+  }
+);
+
+router.delete('/businesses/:id/persons/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const businessId = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as string | string[] | undefined), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM business_persons WHERE id = ? AND business_id = ?').get(linkId, businessId);
+      if (!existing) { res.status(404).json({ error: 'Business-person link not found' }); return; }
+
+      db.prepare('DELETE FROM business_persons WHERE id = ?').run(linkId);
+      auditLog(req, 'DELETE', 'business_person_link', linkId, existing, null);
+      broadcastDispatchUpdate({ action: 'business_persons_updated', business_id: businessId });
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete business-person link: ' + err.message });
+    }
+  }
+);
 
 // GET /api/records/evidence - List all evidence with incident info
 router.get('/evidence', (req: Request, res: Response) => {
