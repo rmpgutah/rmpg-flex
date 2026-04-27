@@ -305,3 +305,66 @@ describe('business_persons linking (Task 1.9)', () => {
     expect(r.status).toBe(404);
   });
 });
+
+describe('business archive/unarchive (Task 1.12)', () => {
+  let archiveBizId: number;
+
+  beforeAll(async () => {
+    const { getDb } = await import('../../src/models/database');
+    const db = getDb();
+    const now = new Date().toISOString();
+    const r = db.prepare('INSERT INTO businesses (name, created_at, updated_at) VALUES (?, ?, ?)')
+      .run('ArchiveTarget LLC', now, now);
+    archiveBizId = Number(r.lastInsertRowid);
+  });
+
+  it('POST /archive sets archived_at', async () => {
+    const r = await request(app)
+      .post(`/api/records/businesses/${archiveBizId}/archive`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.success).toBe(true);
+    expect(r.body.id).toBe(archiveBizId);
+    const { getDb } = await import('../../src/models/database');
+    const row = getDb().prepare('SELECT archived_at FROM businesses WHERE id = ?').get(archiveBizId) as any;
+    expect(row.archived_at).toBeTruthy();
+  });
+
+  it('archived business excluded from /search', async () => {
+    const r = await request(app)
+      .get('/api/records/businesses/search?q=ArchiveTarget')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.find((b: any) => b.id === archiveBizId)).toBeUndefined();
+  });
+
+  it('POST /unarchive clears archived_at', async () => {
+    const r = await request(app)
+      .post(`/api/records/businesses/${archiveBizId}/unarchive`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.success).toBe(true);
+    const { getDb } = await import('../../src/models/database');
+    const row = getDb().prepare('SELECT archived_at FROM businesses WHERE id = ?').get(archiveBizId) as any;
+    expect(row.archived_at).toBeNull();
+  });
+
+  it('archive 401 without auth', async () => {
+    const r = await request(app).post(`/api/records/businesses/${archiveBizId}/archive`);
+    expect(r.status).toBe(401);
+  });
+
+  it('archive 403 for officer role', async () => {
+    const r = await request(app)
+      .post(`/api/records/businesses/${archiveBizId}/archive`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(r.status).toBe(403);
+  });
+
+  it('archive 404 on bad business id', async () => {
+    const r = await request(app)
+      .post(`/api/records/businesses/999999/archive`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(404);
+  });
+});

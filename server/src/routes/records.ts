@@ -1467,6 +1467,46 @@ router.delete('/businesses/:id', requireRole('admin', 'manager'), (req: Request,
   } catch { res.status(500).json({ error: 'Failed to delete business' }); }
 });
 
+// ── Business archive/unarchive (Task 1.12) ──
+// Soft-archive a business. Archived businesses are excluded from
+// /businesses/search but the record (and all linked junction rows) is
+// preserved for historical reporting.
+router.post('/businesses/:id/archive',
+  requireRole('admin', 'manager', 'supervisor'),
+  (req: Request, res: Response) => {
+    try {
+      const id = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const db = getDb();
+      const before = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id) as any;
+      if (!before) { res.status(404).json({ error: 'Business not found' }); return; }
+      db.prepare(`UPDATE businesses SET archived_at = datetime('now','localtime') WHERE id = ?`).run(id);
+      const after = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id);
+      auditLog(req, 'ARCHIVE', 'business', id, before, after);
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to archive business: ' + err.message });
+    }
+  }
+);
+
+router.post('/businesses/:id/unarchive',
+  requireRole('admin', 'manager', 'supervisor'),
+  (req: Request, res: Response) => {
+    try {
+      const id = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const db = getDb();
+      const before = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id) as any;
+      if (!before) { res.status(404).json({ error: 'Business not found' }); return; }
+      db.prepare('UPDATE businesses SET archived_at = NULL WHERE id = ?').run(id);
+      const after = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id);
+      auditLog(req, 'UNARCHIVE', 'business', id, before, after);
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to unarchive business: ' + err.message });
+    }
+  }
+);
+
 // ── Business ↔ Person linking endpoints (Task 1.9) ──
 // Manage business_persons table: create / update / delete person-to-business
 // associations with a role + optional dates + notes. Used by the Subject
