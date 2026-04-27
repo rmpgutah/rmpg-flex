@@ -339,6 +339,22 @@ describe('enrichment tables', () => {
   });
 });
 
+describe('cross-table business FK columns', () => {
+  it('bolos has linked_business_id', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = (db.prepare("PRAGMA table_info(bolos)").all() as any[]).map(c => c.name);
+    expect(cols).toContain('linked_business_id');
+  });
+
+  it('trespass_orders has protected_business_id', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = (db.prepare("PRAGMA table_info(trespass_orders)").all() as any[]).map(c => c.name);
+    expect(cols).toContain('protected_business_id');
+  });
+});
+
 describe('businesses table migrations', () => {
   it('has all 14 new enrichment columns', async () => {
     const { getDb } = await import('../src/models/database');

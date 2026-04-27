@@ -4959,6 +4959,13 @@ function migrateSchema(): void {
   addCol('businesses', 'photo_storefront_url', 'TEXT');
   addCol('businesses', 'archived_at', 'TEXT');
 
+  // ── Cross-table business FK columns (Plan task 1.6) ──
+  // Direct single-business links from BOLO and trespass-order records.
+  // Stored as plain INTEGER (no FK enforcement) for parity with other
+  // cross-references in this schema and to keep migration cheap.
+  addCol('bolos', 'linked_business_id', 'INTEGER');
+  addCol('trespass_orders', 'protected_business_id', 'INTEGER');
+
   // ── Feature 29: Message delivery confirmation ──
   addCol('messages', 'delivered_at', 'TEXT');
   addCol('messages', 'delivery_status', "TEXT DEFAULT 'sent'");
