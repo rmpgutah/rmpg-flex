@@ -35,6 +35,7 @@ export async function createTestApp(): Promise<Application> {
   const incidentRoutes = (await import('../../src/routes/incidents')).default;
   const recordsRoutes = (await import('../../src/routes/records')).default;
   const businessVehiclesRoutes = (await import('../../src/routes/businessVehicles')).default;
+  const subjectSearchRoutes = (await import('../../src/routes/subjectSearch')).default;
   const businessVisitsRoutes = (await import('../../src/routes/businessVisits')).default;
   const businessPhotosRoutes = (await import('../../src/routes/businessPhotos')).default;
   const citationRoutes = (await import('../../src/routes/citations')).default;
@@ -57,6 +58,7 @@ export async function createTestApp(): Promise<Application> {
   app.use('/api/auth', authRoutes);
   app.use('/api/dispatch', dispatchRoutes);
   app.use('/api/incidents', incidentRoutes);
+  app.use('/api/records/subjects', subjectSearchRoutes);
   app.use('/api/records', recordsRoutes);
   app.use('/api/business-vehicles', businessVehiclesRoutes);
   app.use('/api/business-visits', businessVisitsRoutes);
