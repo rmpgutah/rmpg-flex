@@ -303,3 +303,39 @@ describe('business_persons table', () => {
     ).toThrow(/CHECK/);
   });
 });
+
+describe('enrichment tables', () => {
+  it.each([
+    ['business_vehicles', ['added_by','business_id','created_at','id','notes','relationship','vehicle_id']],
+    ['business_visits',   ['business_id','id','latitude','longitude','notes','officer_id','visit_at']],
+    ['business_photos',   ['business_id','caption','category','id','uploaded_at','uploaded_by','url']],
+  ])('table %s exists with expected columns', async (table, expected) => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const cols = (db.prepare(`PRAGMA table_info(${table})`).all() as any[]).map(c => c.name);
+    expect(cols.sort()).toEqual([...expected].sort());
+  });
+
+  it('business_vehicles cascades on business delete', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const suffix = `BVCASC${Date.now()}`;
+    const businessId = (db.prepare(`INSERT INTO businesses (name) VALUES (?)`).run(`BVCascBiz-${suffix}`).lastInsertRowid) as number;
+    const vehicleId = (db.prepare(`INSERT INTO vehicles_records (plate_number) VALUES (?)`).run(`PLT${suffix}`).lastInsertRowid) as number;
+    db.prepare(`INSERT INTO business_vehicles (business_id, vehicle_id, relationship) VALUES (?, ?, ?)`)
+      .run(businessId, vehicleId, 'fleet');
+    expect(() => db.prepare('DELETE FROM businesses WHERE id = ?').run(businessId)).not.toThrow();
+    const remaining = db.prepare('SELECT COUNT(*) as c FROM business_vehicles WHERE business_id = ?').get(businessId) as { c: number };
+    expect(remaining.c).toBe(0);
+  });
+
+  it('business_visits requires officer_id NOT NULL', async () => {
+    const { getDb } = await import('../src/models/database');
+    const db = getDb();
+    const businessId = (db.prepare(`INSERT INTO businesses (name) VALUES (?)`).run(`BVisitNN-${Date.now()}`).lastInsertRowid) as number;
+    expect(() =>
+      db.prepare(`INSERT INTO business_visits (business_id, officer_id) VALUES (?, ?)`).run(businessId, null)
+    ).toThrow(/NOT NULL/);
+  });
+});
+

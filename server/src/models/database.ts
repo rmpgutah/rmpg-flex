@@ -5036,6 +5036,59 @@ function migrateSchema(): void {
   db.prepare('CREATE INDEX IF NOT EXISTS idx_business_persons_person ON business_persons(person_id)').run();
   db.prepare('CREATE INDEX IF NOT EXISTS idx_business_persons_current ON business_persons(business_id) WHERE end_date IS NULL').run();
 
+  // ── Business enrichment tables (Plan task 1.4) ──
+  // business_vehicles: links a business to vehicles_records (fleet, owner/employee
+  // vehicles, frequent visitors). UNIQUE on (business_id, vehicle_id) — a vehicle
+  // can only be associated with a given business once; relationship type is data,
+  // not part of the key.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS business_vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL,
+      vehicle_id INTEGER NOT NULL,
+      relationship TEXT NOT NULL CHECK(relationship IN ('owner_employee','frequent_visitor','fleet','other')),
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      UNIQUE(business_id, vehicle_id),
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+      FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_vehicles_business ON business_vehicles(business_id)').run();
+
+  // business_visits: officer visit log for a business (drop-ins, premise checks).
+  // No uniqueness — multiple visits per officer per business is the norm.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS business_visits (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL,
+      officer_id INTEGER NOT NULL,
+      visit_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      latitude REAL,
+      longitude REAL,
+      notes TEXT,
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE,
+      FOREIGN KEY (officer_id) REFERENCES users(id)
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_visits_business_recent ON business_visits(business_id, visit_at DESC)').run();
+
+  // business_photos: storefront/interior/exterior photos with category.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS business_photos (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      business_id INTEGER NOT NULL,
+      url TEXT NOT NULL,
+      caption TEXT,
+      category TEXT CHECK(category IN ('storefront','interior','exterior','parking','other')),
+      uploaded_by INTEGER,
+      uploaded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (business_id) REFERENCES businesses(id) ON DELETE CASCADE
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_business_photos_business ON business_photos(business_id)').run();
+
   // ══════════════════════════════════════════════════════════════
   // Warrant Scanner / Watch Tables
   // ══════════════════════════════════════════════════════════════
