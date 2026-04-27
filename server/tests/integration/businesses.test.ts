@@ -579,3 +579,98 @@ describe('GET /api/records/businesses/:id/dossier (Task 1.18)', () => {
     expect(r.status).toBe(401);
   });
 });
+
+describe('alarm field encryption on write (Task 1.19)', () => {
+  it('POST encrypts alarm_panel_code at rest', async () => {
+    const r = await request(app)
+      .post('/api/records/businesses')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'EncTest1', alarm_panel_code: '1234' });
+    expect([200, 201]).toContain(r.status);
+    const { getDb } = await import('../../src/models/database');
+    const row = getDb().prepare('SELECT alarm_panel_code FROM businesses WHERE id = ?').get(r.body.id) as any;
+    expect(row.alarm_panel_code).not.toBe('1234');
+    expect(row.alarm_panel_code).toMatch(/^[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/);
+  });
+
+  it('POST encrypts alarm_passphrase at rest', async () => {
+    const r = await request(app)
+      .post('/api/records/businesses')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'EncTest2', alarm_passphrase: 'moonshadow' });
+    expect([200, 201]).toContain(r.status);
+    const { getDb } = await import('../../src/models/database');
+    const row = getDb().prepare('SELECT alarm_passphrase FROM businesses WHERE id = ?').get(r.body.id) as any;
+    expect(row.alarm_passphrase).not.toBe('moonshadow');
+    expect(row.alarm_passphrase).toMatch(/^[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+:[A-Za-z0-9+/=]+$/);
+  });
+
+  it('Dossier returns decrypted values for officer (round-trip)', async () => {
+    const c = await request(app)
+      .post('/api/records/businesses')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'EncTest3', alarm_panel_code: '5555', alarm_passphrase: 'whisper' });
+    expect([200, 201]).toContain(c.status);
+    const d = await request(app)
+      .get(`/api/records/businesses/${c.body.id}/dossier`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(d.status).toBe(200);
+    expect(d.body.alarm_info.panel_code).toBe('5555');
+    expect(d.body.alarm_info.passphrase).toBe('whisper');
+  });
+
+  it('PUT updates and re-encrypts alarm fields', async () => {
+    const c = await request(app)
+      .post('/api/records/businesses')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'EncTest4', alarm_panel_code: 'old-code' });
+    expect([200, 201]).toContain(c.status);
+    const u = await request(app)
+      .put(`/api/records/businesses/${c.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ alarm_panel_code: 'new-code', alarm_passphrase: 'fresh-phrase' });
+    expect(u.status).toBe(200);
+    const { getDb } = await import('../../src/models/database');
+    const row = getDb().prepare('SELECT alarm_panel_code, alarm_passphrase FROM businesses WHERE id = ?').get(c.body.id) as any;
+    expect(row.alarm_panel_code).not.toBe('new-code');
+    expect(row.alarm_passphrase).not.toBe('fresh-phrase');
+    const d = await request(app)
+      .get(`/api/records/businesses/${c.body.id}/dossier`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(d.body.alarm_info.panel_code).toBe('new-code');
+    expect(d.body.alarm_info.passphrase).toBe('fresh-phrase');
+  });
+
+  it('POST with no alarm fields stores null', async () => {
+    const r = await request(app)
+      .post('/api/records/businesses')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'NoAlarmBiz' });
+    expect([200, 201]).toContain(r.status);
+    const { getDb } = await import('../../src/models/database');
+    const row = getDb().prepare('SELECT alarm_panel_code, alarm_passphrase FROM businesses WHERE id = ?').get(r.body.id) as any;
+    expect(row.alarm_panel_code).toBeNull();
+    expect(row.alarm_passphrase).toBeNull();
+  });
+
+  it('PUT with field absent leaves existing encrypted value unchanged', async () => {
+    const c = await request(app)
+      .post('/api/records/businesses')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: 'EncTest5', alarm_panel_code: 'keep-me' });
+    expect([200, 201]).toContain(c.status);
+    const { getDb } = await import('../../src/models/database');
+    const before = getDb().prepare('SELECT alarm_panel_code FROM businesses WHERE id = ?').get(c.body.id) as any;
+    const u = await request(app)
+      .put(`/api/records/businesses/${c.body.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ notes: 'updated notes only' });
+    expect(u.status).toBe(200);
+    const after = getDb().prepare('SELECT alarm_panel_code FROM businesses WHERE id = ?').get(c.body.id) as any;
+    expect(after.alarm_panel_code).toBe(before.alarm_panel_code);
+    const d = await request(app)
+      .get(`/api/records/businesses/${c.body.id}/dossier`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(d.body.alarm_info.panel_code).toBe('keep-me');
+  });
+});

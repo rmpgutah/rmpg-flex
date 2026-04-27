@@ -9,6 +9,7 @@ import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { config } from '../config';
 import { paramStr } from '../utils/reqHelpers';
+import { encryptAlarmField } from '../utils/businessEncryption';
 
 const router = Router();
 
@@ -1447,15 +1448,20 @@ router.get('/businesses/:id', (req: Request, res: Response) => {
 router.post('/businesses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes } = req.body;
+    const { name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes, alarm_panel_code, alarm_passphrase } = req.body;
     if (!name) { res.status(400).json({ error: 'Business name required' }); return; }
     const now = localNow();
-    const result = db.prepare(`INSERT INTO businesses (name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+    // Alarm fields are AES-256-GCM encrypted at rest. encryptAlarmField returns
+    // null for null/empty input — safe to call directly.
+    const encPanel = encryptAlarmField(alarm_panel_code ?? null);
+    const encPass  = encryptAlarmField(alarm_passphrase ?? null);
+    const result = db.prepare(`INSERT INTO businesses (name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes, alarm_panel_code, alarm_passphrase, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       name, dba_name || null, business_type || null, ein || null, license_number || null,
       address || null, city || null, state || null, zip || null,
       phone || null, email || null, website || null,
       owner_name || null, owner_phone || null, contact_name || null, contact_phone || null, contact_email || null,
-      industry || null, employee_count || null, annual_revenue || null, notes || null, now, now);
+      industry || null, employee_count || null, annual_revenue || null, notes || null,
+      encPanel, encPass, now, now);
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) { res.status(500).json({ error: 'Failed to create business: ' + err.message }); }
 });
@@ -1469,6 +1475,16 @@ router.put('/businesses/:id', requireRole('admin', 'manager', 'supervisor', 'off
     const values: any[] = [];
     for (const f of fields) {
       if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]); }
+    }
+    // Alarm fields go through AES-256-GCM encryption. Use `in` rather than
+    // `!== undefined` so an explicit null in the body clears the column.
+    if ('alarm_panel_code' in req.body) {
+      updates.push('alarm_panel_code = ?');
+      values.push(encryptAlarmField(req.body.alarm_panel_code ?? null));
+    }
+    if ('alarm_passphrase' in req.body) {
+      updates.push('alarm_passphrase = ?');
+      values.push(encryptAlarmField(req.body.alarm_passphrase ?? null));
     }
     if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
     updates.push('updated_at = ?'); values.push(localNow()); values.push(id);
