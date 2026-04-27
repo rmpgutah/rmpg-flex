@@ -1417,6 +1417,24 @@ router.get('/businesses/search',
   }
 );
 
+// Business dossier — multi-panel aggregated payload (Task 1.18). MUST be
+// registered before /businesses/:id so the :id route does not shadow it.
+router.get('/businesses/:id/dossier', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(paramStr(req.params.id as any), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+    const db = getDb();
+    const { buildBusinessDossier } = await import('../utils/businessAggregation');
+    const userRole = (req as any).user?.role;
+    const dossier = buildBusinessDossier(db, id, userRole);
+    if (!dossier) { res.status(404).json({ error: 'Business not found' }); return; }
+    auditLog(req, 'VIEW', 'business_dossier', id, null, { sections: Object.keys(dossier) });
+    res.json(dossier);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to build dossier', detail: err?.message });
+  }
+});
+
 router.get('/businesses/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();

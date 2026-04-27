@@ -368,3 +368,214 @@ describe('business archive/unarchive (Task 1.12)', () => {
     expect(r.status).toBe(404);
   });
 });
+
+describe('GET /api/records/businesses/:id/dossier (Task 1.18)', () => {
+  let dossierBizId: number;
+  let alarmBizId: number;
+  let parentBizId: number;
+  let viewerToken: string;
+  let perfBizId: number;
+
+  beforeAll(async () => {
+    const { getDb } = await import('../../src/models/database');
+    const { encryptAlarmField } = await import('../../src/utils/businessEncryption');
+    const db = getDb();
+    const now = new Date().toISOString();
+
+    // ── Business with rich data for the all-keys test ──
+    const bizR = db.prepare(`INSERT INTO businesses (name, parent_company, hours_of_operation, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)`).run(
+      'Dossier Test Inc',
+      'Acme Holdings',
+      JSON.stringify({ mon: { open: '09:00', close: '17:00' }, tue: { open: '09:00', close: '17:00' } }),
+      now, now,
+    );
+    dossierBizId = Number(bizR.lastInsertRowid);
+
+    // Linked persons: a manager and an employee — to test sort order
+    const empR = db.prepare('INSERT INTO persons (first_name, last_name) VALUES (?, ?)').run('Eve', 'Employee');
+    const mgrR = db.prepare('INSERT INTO persons (first_name, last_name) VALUES (?, ?)').run('Mary', 'Manager');
+    const empId = Number(empR.lastInsertRowid);
+    const mgrId = Number(mgrR.lastInsertRowid);
+    db.prepare(`INSERT INTO business_persons (business_id, person_id, role, created_at) VALUES (?, ?, ?, ?)`)
+      .run(dossierBizId, empId, 'employee', now);
+    db.prepare(`INSERT INTO business_persons (business_id, person_id, role, created_at) VALUES (?, ?, ?, ?)`)
+      .run(dossierBizId, mgrId, 'manager', now);
+
+    // Active warrant for manager
+    const adminId = (db.prepare('SELECT id FROM users WHERE username = ?').get('test_admin') as any).id;
+    db.prepare(`INSERT INTO warrants (warrant_number, type, status, subject_person_id, charge_description, entered_by)
+      VALUES (?, ?, ?, ?, ?, ?)`).run('W-DOSS-001', 'arrest', 'active', mgrId, 'Theft', adminId);
+
+    // ── Alarm-fields business ──
+    const alarmR = db.prepare(`INSERT INTO businesses (name, alarm_panel_code, alarm_passphrase, alarm_company, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?)`).run(
+      'Alarm Test LLC',
+      encryptAlarmField('1234'),
+      encryptAlarmField('open-sesame'),
+      'AcmeAlarm',
+      now, now,
+    );
+    alarmBizId = Number(alarmR.lastInsertRowid);
+
+    // ── Sibling businesses sharing parent_company ──
+    db.prepare('INSERT INTO businesses (name, parent_company, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run('Sibling Co', 'Acme Holdings', now, now);
+    const parR = db.prepare('INSERT INTO businesses (name, parent_company, created_at, updated_at) VALUES (?, ?, ?, ?)')
+      .run('Parent Self', 'Acme Holdings', now, now);
+    parentBizId = Number(parR.lastInsertRowid);
+
+    // ── client_viewer user for alarm-strip test ──
+    const bcryptjs = (await import('bcryptjs')).default;
+    const hash = bcryptjs.hashSync('ViewerPass1!', 4);
+    const userR = db.prepare(`
+      INSERT INTO users (username, password_hash, full_name, email, role, status, must_change_password, totp_exempt, password_changed_at, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'active', 0, 1, ?, ?, ?)
+    `).run('test_viewer', hash, 'Test Viewer', 'viewer@example.com', 'client_viewer', now, now, now);
+    void userR;
+    const viewerLogin = await request(app).post('/api/auth/login').send({ username: 'test_viewer', password: 'ViewerPass1!' });
+    viewerToken = viewerLogin.body.token;
+
+    // ── Perf business: 50 incidents + 50 calls ──
+    const perfR = db.prepare('INSERT INTO businesses (name, created_at, updated_at) VALUES (?, ?, ?)')
+      .run('PerfStress Co', now, now);
+    perfBizId = Number(perfR.lastInsertRowid);
+    const insIncident = db.prepare(`INSERT INTO incidents (incident_type, officer_id, created_at) VALUES (?, ?, ?)`);
+    const insIncidentLink = db.prepare(`INSERT INTO incident_businesses (incident_id, business_id) VALUES (?, ?)`);
+    const insCall = db.prepare(`INSERT INTO calls_for_service (incident_type, priority, location_address, created_at) VALUES (?, ?, ?, ?)`);
+    const insCallLink = db.prepare(`INSERT INTO call_businesses (call_id, business_id) VALUES (?, ?)`);
+    db.transaction(() => {
+      for (let i = 0; i < 50; i++) {
+        const incTime = new Date(Date.now() - i * 86400000).toISOString();
+        const inc = insIncident.run('Theft', adminId, incTime);
+        insIncidentLink.run(Number(inc.lastInsertRowid), perfBizId);
+        const c = insCall.run('Disturbance', 'P3', '100 Main St', incTime);
+        insCallLink.run(Number(c.lastInsertRowid), perfBizId);
+      }
+    })();
+  });
+
+  it('returns 404 on unknown business id', async () => {
+    const r = await request(app)
+      .get('/api/records/businesses/999999/dossier')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(404);
+  });
+
+  it('returns 200 with all expected top-level keys', async () => {
+    const r = await request(app)
+      .get(`/api/records/businesses/${dossierBizId}/dossier`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(r.status).toBe(200);
+    const keys = Object.keys(r.body);
+    for (const k of [
+      'business', 'linked_persons', 'active_trespass_orders', 'recent_activity',
+      'alarm_info', 'hours', 'photos', 'vehicles', 'visits',
+      'related_businesses', 'active_bolos', 'heatmap', 'trend', 'risk_score', 'meta',
+    ]) {
+      expect(keys).toContain(k);
+    }
+  });
+
+  it('decrypts alarm_info.panel_code for officer role', async () => {
+    const r = await request(app)
+      .get(`/api/records/businesses/${alarmBizId}/dossier`)
+      .set('Authorization', `Bearer ${officerToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.alarm_info).toBeDefined();
+    expect(r.body.alarm_info.panel_code).toBe('1234');
+    expect(r.body.alarm_info.passphrase).toBe('open-sesame');
+  });
+
+  it('strips alarm_info entirely for client_viewer role', async () => {
+    expect(viewerToken).toBeTruthy();
+    const r = await request(app)
+      .get(`/api/records/businesses/${alarmBizId}/dossier`)
+      .set('Authorization', `Bearer ${viewerToken}`);
+    expect(r.status).toBe(200);
+    expect(r.body.alarm_info).toBeUndefined();
+  });
+
+  it('heatmap is 7×6 even with no events', async () => {
+    const { getDb } = await import('../../src/models/database');
+    const db = getDb();
+    const empty = db.prepare('INSERT INTO businesses (name, created_at, updated_at) VALUES (?, ?, ?)')
+      .run('Empty Biz', new Date().toISOString(), new Date().toISOString());
+    const r = await request(app)
+      .get(`/api/records/businesses/${Number(empty.lastInsertRowid)}/dossier`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body.heatmap)).toBe(true);
+    expect(r.body.heatmap).toHaveLength(7);
+    expect(r.body.heatmap[0]).toHaveLength(6);
+  });
+
+  it('linked_persons sorted by role priority (manager before employee)', async () => {
+    const r = await request(app)
+      .get(`/api/records/businesses/${dossierBizId}/dossier`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(200);
+    const roles = r.body.linked_persons.map((lp: any) => lp.role);
+    const mgrIdx = roles.indexOf('manager');
+    const empIdx = roles.indexOf('employee');
+    expect(mgrIdx).toBeGreaterThanOrEqual(0);
+    expect(empIdx).toBeGreaterThanOrEqual(0);
+    expect(mgrIdx).toBeLessThan(empIdx);
+  });
+
+  it('linked_person.person includes active_warrant_count', async () => {
+    const r = await request(app)
+      .get(`/api/records/businesses/${dossierBizId}/dossier`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const mgr = r.body.linked_persons.find((lp: any) => lp.role === 'manager');
+    expect(mgr).toBeDefined();
+    expect(mgr.person.active_warrant_count).toBe(1);
+    const emp = r.body.linked_persons.find((lp: any) => lp.role === 'employee');
+    expect(emp.person.active_warrant_count).toBe(0);
+  });
+
+  it('hours.is_currently_open is a boolean', async () => {
+    const r = await request(app)
+      .get(`/api/records/businesses/${dossierBizId}/dossier`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(typeof r.body.hours.is_currently_open).toBe('boolean');
+  });
+
+  it('related_businesses populated when parent_company matches', async () => {
+    const r = await request(app)
+      .get(`/api/records/businesses/${parentBizId}/dossier`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(r.status).toBe(200);
+    expect(Array.isArray(r.body.related_businesses)).toBe(true);
+    const names = r.body.related_businesses.map((b: any) => b.name);
+    expect(names).toContain('Sibling Co');
+    expect(names).toContain('Dossier Test Inc');
+    // Self excluded
+    expect(names).not.toContain('Parent Self');
+  });
+
+  it('risk_score.level is one of low/moderate/high/critical', async () => {
+    const r = await request(app)
+      .get(`/api/records/businesses/${dossierBizId}/dossier`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(['low', 'moderate', 'high', 'critical']).toContain(r.body.risk_score.level);
+    expect(typeof r.body.risk_score.score).toBe('number');
+  });
+
+  it('completes in <500ms for 50 incidents + 50 calls', async () => {
+    const t0 = Date.now();
+    const r = await request(app)
+      .get(`/api/records/businesses/${perfBizId}/dossier`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const elapsed = Date.now() - t0;
+    expect(r.status).toBe(200);
+    expect(elapsed).toBeLessThan(500);
+    expect(r.body.recent_activity.counts.incident_count).toBe(50);
+    expect(r.body.recent_activity.counts.call_count).toBe(50);
+  });
+
+  it('returns 401 without auth', async () => {
+    const r = await request(app).get(`/api/records/businesses/${dossierBizId}/dossier`);
+    expect(r.status).toBe(401);
+  });
+});
