@@ -147,6 +147,13 @@ app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
 }));
+// ─── Dashcam-AI webhook routes — MUST mount before express.json() ───
+// HMAC verification needs the raw request body; once express.json()
+// consumes the stream, the bytes are gone. The router brings its own
+// express.raw() middleware scoped to its routes only.
+import { dashcamAiRouter } from './routes/dashcamAi';
+app.use('/api/dashcam-ai', dashcamAiRouter);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
