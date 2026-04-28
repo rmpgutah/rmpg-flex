@@ -14,6 +14,11 @@ const APP_VERSION: string =
 
 interface StatusBarProps {
   isConnected: boolean;
+  /**
+   * True only after the WebSocket has exhausted its reconnect budget
+   * (~25 min). Distinguishes "we're working on it" from "give up".
+   */
+  connectionLost?: boolean;
   user: { first_name: string; last_name: string; role: string; badge_number?: string } | null;
   activeCallCount: number;
   callsByPriority?: { priority: string; count: number }[];
@@ -26,6 +31,7 @@ interface StatusBarProps {
 
 export default function StatusBar({
   isConnected,
+  connectionLost = false,
   user,
   activeCallCount,
   callsByPriority,
@@ -44,12 +50,32 @@ export default function StatusBar({
 
   return (
     <div className="status-bar">
-      {/* 26: Connection Status with uppercase tracking */}
+      {/* 26: Connection Status with uppercase tracking.
+          Three states: CONNECTED (green), RECONNECTING (amber, while
+          WS is auto-retrying), OFFLINE (red, after retries exhausted). */}
       <div className="status-bar-section" style={{ letterSpacing: '0.04em' }}>
-        <span className={`led-dot ${isConnected ? 'led-green' : 'led-red animate-led-blink'}`} />
-        <span style={{ color: isConnected ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
-          {isConnected ? 'CONNECTED' : 'OFFLINE'}
-        </span>
+        {(() => {
+          let label = 'CONNECTED';
+          let color = '#22c55e';
+          let ledClass = 'led-green';
+          if (!isConnected) {
+            if (connectionLost) {
+              label = 'OFFLINE';
+              color = '#ef4444';
+              ledClass = 'led-red animate-led-blink';
+            } else {
+              label = 'RECONNECTING';
+              color = '#f59e0b';
+              ledClass = 'led-amber animate-led-blink';
+            }
+          }
+          return (
+            <>
+              <span className={`led-dot ${ledClass}`} />
+              <span style={{ color, fontWeight: 700 }}>{label}</span>
+            </>
+          );
+        })()}
       </div>
 
       {/* 27: Server version with logo */}

@@ -214,7 +214,7 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 
 export default function Layout() {
   const { user, logout, refreshUser } = useAuth();
-  const { isConnected, subscribe } = useWebSocket();
+  const { isConnected, connectionLost, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -1493,6 +1493,7 @@ export default function Layout() {
       {!isMobile && (
         <StatusBar
           isConnected={isConnected}
+          connectionLost={connectionLost}
           user={user}
           activeCallCount={activeCallCount}
           callsByPriority={callsByPriority}
