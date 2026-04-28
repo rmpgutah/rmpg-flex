@@ -11,6 +11,7 @@
 import { getDb } from '../models/database';
 import { broadcastUnitUpdate } from './websocket';
 import { localNow } from './timeUtils';
+import { insertDrivingEvent, mapClearPathStatusCode } from './drivingEvents';
 import {
   getFleetLatest,
   getDeviceHistory,
@@ -227,6 +228,35 @@ async function pollFleetPositions(): Promise<void> {
           ed.address || null, ed.statusCode || null, ed.statusCodeText || null,
           device?.camera ? 1 : 0,
         );
+
+        // Dual-write to source-agnostic driving_events. Vendor codes map to
+        // a normalized vocabulary; unknown codes land as 'custom' with the
+        // original payload preserved in raw_json for forensic review.
+        const normalized = mapClearPathStatusCode(ed.statusCode) ?? {
+          type: 'custom' as const,
+          severity: 'info' as const,
+        };
+        insertDrivingEvent({
+          source: 'clearpathgps',
+          source_event_id: `${deviceId}:${recordedAt}:${ed.statusCode ?? eventType}`,
+          device_id: deviceId,
+          unit_id: mapping.unit_id,
+          event_type: normalized.type,
+          severity: normalized.severity,
+          event_timestamp: recordedAt,
+          latitude: lat,
+          longitude: lng,
+          heading: ed.heading ?? null,
+          speed_mph: ed.speedMph ?? null,
+          address: ed.address || null,
+          has_video: !!device?.camera,
+          raw_json: JSON.stringify({
+            statusCode: ed.statusCode,
+            statusCodeText: ed.statusCodeText,
+            classifiedAs: eventType,
+            dashcamId: device?.camera?.dashcamId ?? null,
+          }),
+        }, db);
       }
 
       // Update sync time + enriched device data
@@ -365,6 +395,33 @@ async function backfillHistory(
                 0, // video_available unknown from history
               );
               dashcamCount++;
+
+              // Dual-write to source-agnostic driving_events.
+              const normalized = mapClearPathStatusCode(ed.statusCode) ?? {
+                type: 'custom' as const,
+                severity: 'info' as const,
+              };
+              insertDrivingEvent({
+                source: 'clearpathgps',
+                source_event_id: `${mapping.cpg_device_id}:${recordedAt}:${ed.statusCode ?? eventType}`,
+                device_id: mapping.cpg_device_id,
+                unit_id: mapping.unit_id,
+                event_type: normalized.type,
+                severity: normalized.severity,
+                event_timestamp: recordedAt,
+                latitude: lat,
+                longitude: lng,
+                heading: ed.heading ?? null,
+                speed_mph: ed.speedMph ?? null,
+                address: ed.address || ed.streetAddress || null,
+                has_video: false,
+                raw_json: JSON.stringify({
+                  statusCode: ed.statusCode,
+                  statusCodeText: ed.statusCodeText,
+                  classifiedAs: eventType,
+                  fromHistoryBackfill: true,
+                }),
+              }, db);
             }
           }
         }
