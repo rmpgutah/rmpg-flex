@@ -22,6 +22,7 @@ import { handleEventIngest } from '../utils/dashcamAiIngest';
 import { handleHeartbeat } from '../utils/dashcamAiHeartbeat';
 import { createFilesystemStorage, type StorageAdapter } from '../utils/storageAdapter';
 import { logger } from '../utils/logger';
+import { broadcast } from '../utils/websocket';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -71,6 +72,28 @@ dashcamAiRouter.post('/event', rawBodyParser, async (req: Request, res: Response
       storage: getStorage(),
       db: getDb(),
     });
+
+    // Live-push to dashcam-ai console subscribers. Uses the
+    // shared 'dispatch' channel (clients auto-subscribe at login)
+    // with module='dashcam-ai' so useLiveSync('dashcam-ai', ...)
+    // refreshes only those pages, not the whole dispatch board.
+    // Skip on 4xx/5xx and on dedup hits (no new row).
+    if (result.status >= 200 && result.status < 300 && result.body?.deduped !== true) {
+      try {
+        broadcast('dispatch', 'data_changed', {
+          action: 'create',
+          module: 'dashcam-ai',
+          entity: 'event',
+          id: result.body?.event_id ?? null,
+          evidence_id: result.body?.evidence_id ?? null,
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        // Never let broadcast errors break ingest
+        logger.warn({ err }, 'dashcam-ai: broadcast failed (event continues)');
+      }
+    }
+
     res.status(result.status).json(result.body);
   } catch (err: any) {
     logger.error({ err }, 'dashcam-ai: handler crashed');
@@ -97,6 +120,23 @@ dashcamAiRouter.post('/heartbeat', rawBodyParser, async (req: Request, res: Resp
       secret,
       db: getDb(),
     });
+
+    // Live-push fleet-health refresh on successful heartbeat.
+    // Same channel as the event broadcast so the DashcamAiPage's
+    // single useLiveSync('dashcam-ai') call picks up both.
+    if (result.status >= 200 && result.status < 300) {
+      try {
+        broadcast('dispatch', 'data_changed', {
+          action: 'upsert',
+          module: 'dashcam-ai',
+          entity: 'heartbeat',
+          timestamp: new Date().toISOString(),
+        });
+      } catch (err: any) {
+        logger.warn({ err }, 'dashcam-ai-heartbeat: broadcast failed');
+      }
+    }
+
     res.status(result.status).json(result.body);
   } catch (err: any) {
     logger.error({ err }, 'dashcam-ai-heartbeat: handler crashed');
