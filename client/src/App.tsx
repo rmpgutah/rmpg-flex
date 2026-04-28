@@ -66,6 +66,7 @@ const NcicPage = lazyRetry(() => import('./pages/NcicPage'));
 const DlSearchPage = lazyRetry(() => import('./pages/DlSearchPage'));
 const BodyCamerasPage = lazyRetry(() => import('./pages/BodyCamerasPage'));
 const DashCamerasPage = lazyRetry(() => import('./pages/DashCamerasPage'));
+const DashcamAiPage = lazyRetry(() => import('./pages/DashcamAiPage'));
 const TrainingDocsPage = lazyRetry(() => import('./pages/TrainingDocsPage'));
 const TrainingPage = lazyRetry(() => import('./pages/TrainingPage'));
 const ForensicsPage = lazyRetry(() => import('./pages/ForensicsPage'));
@@ -241,6 +242,7 @@ function AppRoutes() {
             <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />
             <Route path="/body-cameras" element={<RouteErrorBoundary><BodyCamerasPage /></RouteErrorBoundary>} />
             <Route path="/dash-cameras" element={<RouteErrorBoundary><DashCamerasPage /></RouteErrorBoundary>} />
+            <Route path="/dashcam-ai" element={<RouteErrorBoundary><DashcamAiPage /></RouteErrorBoundary>} />
             <Route path="/warrants" element={<RouteErrorBoundary><WarrantsPage /></RouteErrorBoundary>} />
             <Route path="/citations" element={<RouteErrorBoundary><CitationsPage /></RouteErrorBoundary>} />
             <Route path="/field-interviews" element={<RouteErrorBoundary><FieldInterviewsPage /></RouteErrorBoundary>} />

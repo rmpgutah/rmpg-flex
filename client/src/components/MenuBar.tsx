@@ -567,6 +567,7 @@ export default function MenuBar({
           { type: 'action', label: 'Fleet', icon: Car, action: () => navigate('/fleet') },
           { type: 'action', label: 'Body Cameras', icon: Video, action: () => navigate('/body-cameras') },
           { type: 'action', label: 'Dash Cameras', icon: Video, action: () => navigate('/dash-cameras') },
+          { type: 'action', label: 'Dashcam AI Console', icon: Video, action: () => navigate('/dashcam-ai') },
           { type: 'action', label: 'Shift Plans', icon: CalendarDays, action: () => navigate('/shift-plans') },
           { type: 'action', label: 'Dispatch Geography', icon: MapPin, action: () => navigate('/geography') },
           { type: 'separator' },
