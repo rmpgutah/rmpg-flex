@@ -11,6 +11,7 @@
 import { getDb } from '../models/database';
 import { broadcastUnitUpdate } from './websocket';
 import { localNow } from './timeUtils';
+import { insertDrivingEvent, mapTraccarAlarm } from './drivingEvents';
 import {
   getPositions,
   getPositionHistory,
@@ -256,6 +257,38 @@ async function pollFleetPositions(): Promise<void> {
         rawData, null, // no video URL
       );
 
+      // ── Dual-write to source-agnostic driving_events ──
+      // Only when Traccar reports an actual event-of-interest (alarm
+      // or event attribute set). Routine position fixes go to
+      // gps_breadcrumbs and dashcam_events but NOT driving_events,
+      // because the latter is meant for surfacing in dispatch / AAR
+      // review and would otherwise drown in position-update noise.
+      const traccarAlarm = pos.attributes?.alarm ?? pos.attributes?.event ?? null;
+      const normalized = mapTraccarAlarm(traccarAlarm);
+      if (normalized) {
+        insertDrivingEvent({
+          source: 'traccar',
+          source_event_id: `${pos.deviceId}:${recordedAt}:${traccarAlarm}`,
+          device_id: mapping.cpg_device_id,
+          unit_id: mapping.unit_id,
+          event_type: normalized.type,
+          severity: normalized.severity,
+          event_timestamp: recordedAt,
+          latitude: lat,
+          longitude: lng,
+          heading,
+          speed_mph: speedMph,
+          address: pos.address || null,
+          has_video: false,
+          raw_json: JSON.stringify({
+            alarm: pos.attributes?.alarm ?? null,
+            event: pos.attributes?.event ?? null,
+            protocol: pos.protocol,
+            classifiedAs: eventType,
+          }),
+        }, db);
+      }
+
       // Update sync time + enriched device data
       updateSyncTime.run(now, now, mapping.id);
 
@@ -382,6 +415,34 @@ async function backfillHistory(
             0, rawData, null,
           );
           eventCount++;
+
+          // Dual-write to driving_events — only on actual events.
+          const traccarAlarm = pos.attributes?.alarm ?? pos.attributes?.event ?? null;
+          const normalized = mapTraccarAlarm(traccarAlarm);
+          if (normalized) {
+            insertDrivingEvent({
+              source: 'traccar',
+              source_event_id: `${pos.deviceId}:${recordedAt}:${traccarAlarm}`,
+              device_id: mapping.cpg_device_id,
+              unit_id: mapping.unit_id,
+              event_type: normalized.type,
+              severity: normalized.severity,
+              event_timestamp: recordedAt,
+              latitude: lat,
+              longitude: lng,
+              heading,
+              speed_mph: speedMph,
+              address: pos.address || null,
+              has_video: false,
+              raw_json: JSON.stringify({
+                alarm: pos.attributes?.alarm ?? null,
+                event: pos.attributes?.event ?? null,
+                protocol: pos.protocol,
+                classifiedAs: eventType,
+                fromHistoryBackfill: true,
+              }),
+            }, db);
+          }
         }
       });
 
