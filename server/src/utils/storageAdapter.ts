@@ -24,6 +24,7 @@ import { promisify } from 'util';
 const writeFile = promisify(fs.writeFile);
 const readFile = promisify(fs.readFile);
 const mkdir = promisify(fs.mkdir);
+const chmod = promisify(fs.chmod);
 
 const MAX_FILENAME_BYTES = 200; // leaves room under 255-byte FS limits
 const DEFAULT_FILENAME = 'clip.bin';
@@ -47,6 +48,15 @@ export interface StoragePutResult {
 export interface StorageAdapter {
   put(input: StoragePutInput): Promise<StoragePutResult>;
   get(storage_uri: string): Promise<Buffer>;
+}
+
+export interface FilesystemStorageOptions {
+  /** When true, chmod 0444 after writing so subsequent rm/edit
+   *  operations require root or chmod first. Approximates MinIO
+   *  Object Lock at the filesystem level for v0. Default: false
+   *  (so dev/test environments don't accumulate read-only files
+   *  that complicate cleanup). */
+  writeOnce?: boolean;
 }
 
 /** Extract YYYY-MM-DD from various captured_at formats. */
@@ -112,8 +122,12 @@ function pathFromFileUri(uri: string): string {
   return uri.slice('file://'.length);
 }
 
-export function createFilesystemStorage(baseDir: string): StorageAdapter {
+export function createFilesystemStorage(
+  baseDir: string,
+  options: FilesystemStorageOptions = {},
+): StorageAdapter {
   const resolvedBase = path.resolve(baseDir);
+  const writeOnce = options.writeOnce ?? (process.env.DASHCAM_AI_WRITE_ONCE === '1' || process.env.DASHCAM_AI_WRITE_ONCE === 'true');
 
   return {
     async put(input: StoragePutInput): Promise<StoragePutResult> {
@@ -132,6 +146,23 @@ export function createFilesystemStorage(baseDir: string): StorageAdapter {
       // Create parent dir; fail if file already exists.
       await mkdir(path.dirname(fullPath), { recursive: true });
       await writeFile(fullPath, input.body, { flag: 'wx' });
+
+      // Optional write-once approximation: chmod 0444. A subsequent
+      // rm requires the user to chmod 0644 first (or be root) — not
+      // a hard guarantee like MinIO Object Lock, but a meaningful
+      // additional step that defeats casual tampering and shows up
+      // in audit logs as deliberate.
+      if (writeOnce) {
+        try {
+          await chmod(fullPath, 0o444);
+        } catch (err: any) {
+          // Best-effort — don't fail the write if chmod fails (e.g.
+          // on a Windows host or weird filesystem). Operators see
+          // the failure in logs and can decide whether to enforce.
+          // eslint-disable-next-line no-console
+          console.warn(`storageAdapter: chmod 0444 failed for ${fullPath}: ${err?.message ?? err}`);
+        }
+      }
 
       return {
         storage_uri: fileUriFromPath(fullPath),
