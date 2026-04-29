@@ -5,6 +5,7 @@ import {
   Radio, Clock, Truck, Camera, History, RefreshCw, Globe,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import AdminTraccarHistoricalSection from './AdminTraccarHistoricalSection';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -694,6 +695,9 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
           )}
         </div>
       )}
+
+      {/* Historical bulk import — preserves all Traccar columns */}
+      {status?.configured && <AdminTraccarHistoricalSection />}
 
       {/* Not configured hint */}
       {!status?.configured && (

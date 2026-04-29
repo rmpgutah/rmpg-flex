@@ -221,6 +221,22 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 - Service Worker (sw.js — bump `CACHE_NAME` version on every deploy) pre-caches tiles for Utah operational area
 - Tile coverage: Utah state Z7-8, Wasatch Front Z9-11, SLC Metro Z12-14, SLC Core Z15
 
+### Traccar GPS — two parallel data planes (introduced 2026-04-29)
+The Traccar integration runs **two coexisting pipelines** that you must not conflate:
+
+- **Live operational plane** — `server/src/utils/traccarPoller.ts` polls `/api/positions` on a short interval and writes into the existing operational tables (`gps_breadcrumbs`, `dashcam_events`). This is what `/dispatch` and `/map` consume for real-time unit tracking. Schema is Flex-native (transformed from Traccar columns).
+- **Historical archive plane** — `server/src/utils/traccarHistoricalSync.ts` does on-demand date-range bulk imports into dedicated `traccar_*` tables (`traccar_devices`, `traccar_positions`, `traccar_events`, `traccar_trips`, `traccar_stops`, `traccar_geofences`, `traccar_sync_jobs`). Every original Traccar column is preserved including a full `raw_json` payload — when Traccar adds a new attribute, it's archived without a schema change. Schema lives in `server/src/models/traccarSchema.ts` (separate from the giant `database.ts`).
+
+**Idempotency**: historical inserts use `ON CONFLICT(traccar_id) DO NOTHING` for positions/events and `ON CONFLICT DO UPDATE` for devices/geofences. Re-running a sync over an overlapping window is safe.
+
+**Vehicle linkage**: `traccar_devices.vehicle_id → fleet_vehicles.id` is the link surface. `POST /api/traccar/historical/link` updates the link AND backfills it onto already-imported positions/events/trips/stops in one transaction. Don't write to `vehicle_id` columns directly — use the endpoint so the backfill happens.
+
+**Routes** (admin/manager): `POST /api/traccar/historical/sync` (start a job), `GET /api/traccar/historical/jobs[/:id]` (status), `POST /api/traccar/historical/jobs/:id/cancel`, `GET /api/traccar/historical/devices`, `GET /api/traccar/historical/positions?deviceId=&from=&to=&limit=`, `GET /api/traccar/historical/stats`.
+
+**UI**: configure + monitor under Admin → Traccar tab (`AdminTraccarHistoricalSection`). Visualize tracks at `/historical-tracks` (`HistoricalTracksPage`) — uses the shared Google Maps loader (do **not** introduce an OpenLayers parallel — see Maps note above).
+
+**Scale**: SQLite handles 10M+ positions if you stick to the indexed query patterns: `(traccar_device_id, fix_time)` and `(vehicle_id, fix_time)`. The sync chunks the date range into 24-hour windows and batches inserts in transactions of 500 rows so a year-long backfill doesn't lock writes. Don't add more indexes during a heavy import — write throughput drops.
+
 ## Development
 
 ```bash
