@@ -349,15 +349,22 @@ app.get('/api/system-status', (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
-// ─── OwnTracks/Traccar GPS webhook — own auth (shared secret), no JWT ───
-// NOTE: Do NOT mount this router at '/api/dispatch/gps' — that prefix shadows
+// ─── Traccar GPS webhook — own auth (shared secret), no JWT ───
+// `/api/traccar` is the canonical endpoint; `/traccar` is the short alias
+// for legacy device configs. Both accept Traccar Client (OsmAnd HTTP),
+// Traccar Server forward-webhook JSON, and generic flat JSON shapes.
+// `/owntracks/*` returns 410 Gone — migration pressure per the
+// 2026-04-29 traccar-gps-replacement design.
+//
+// NOTE: Do NOT mount these under '/api/dispatch/gps' — that prefix shadows
 // the authenticated GPS endpoint in dispatchRoutes (POST /api/dispatch/gps),
 // causing Express to match the webhook's '/' handler first and reject every
 // JWT-authenticated request with 403 "Invalid webhook token".
-// The '/owntracks' mount below is the supported path for the OwnTracks app;
-// internal subpaths like '/owntracks/:user/:device' remain available there.
-import { owntracksWebhookRouter } from './routes/dispatch/gps';
-app.use('/owntracks', owntracksWebhookRouter);
+import { traccarWebhookRouter, owntracksDeprecatedRouter } from './routes/dispatch/gps';
+import { startTraccarPoller } from './utils/traccarServerPoller';
+app.use('/api/traccar', traccarWebhookRouter);
+app.use('/traccar', traccarWebhookRouter);
+app.use('/owntracks', owntracksDeprecatedRouter);
 
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
@@ -723,6 +730,14 @@ try {
       if (nightlyInterval.unref) nightlyInterval.unref();
     } catch (err: any) {
       logger.warn({ err, scheduler: 'scraper-nightly' }, 'failed to schedule');
+    }
+
+    // Traccar Server REST poller — opt-in via system_config (traccar_server_url
+    // + traccar_server_email + traccar_server_password). Idle when config missing.
+    try {
+      startTraccarPoller();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'traccar-poller' }, 'failed to start scheduler');
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s
