@@ -55,7 +55,8 @@
     "ws": "^8.18.0"
   },
   "overrides": {
-    "dompurify": "file:./stubs/dompurify"
+    "dompurify": "file:./stubs/dompurify",
+    "uuid": "$uuid"
   },
   "devDependencies": {
     "@types/bcryptjs": "^3.0.0",
