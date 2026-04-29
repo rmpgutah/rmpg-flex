@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Trash2, RotateCw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop } from 'lucide-react';
-import { open as openPdf } from '../../../lib/rmpg-pdf-engine';
+import { open as openPdf, BackendUnsupportedError } from '../../../lib/rmpg-pdf-engine';
 import IconButton from '../../../components/IconButton';
 import { PageMeta } from '../types';
 
@@ -25,7 +25,18 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
     if (!pdfBytes || pageOrder.length === 0) return;
     let cancelled = false;
     (async () => {
-      const pdf = await openPdf(pdfBytes);
+      // Open via the auto dispatcher first; if that fails (encrypted /
+      // unsupported feature pre-flight catches it), retry with PDF.js.
+      let pdf;
+      try { pdf = await openPdf(pdfBytes); }
+      catch (err) {
+        if (!(err instanceof BackendUnsupportedError)) { console.error('Thumbnail open failed', err); return; }
+        try { pdf = await openPdf(pdfBytes, { backend: 'pdfjs' }); }
+        catch (err2) { console.error('Thumbnail PDF.js fallback also failed', err2); return; }
+      }
+      // Render-time fallback: if a single page render throws, swap the
+      // entire document over to PDF.js for the rest of the thumbnails.
+      let usingFallback = pdf.backend === 'pdfjs';
       try {
         for (let i = 0; i < pageOrder.length; i++) {
           if (cancelled) return;
@@ -36,8 +47,17 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
           try {
             const page = await pdf.getPage(original);
             await page.render({ scale: 0.18, canvas });
-          } catch {
-            // ignore — page deleted/missing/unsupported
+          } catch (renderErr) {
+            if (usingFallback) continue; // PDF.js already failed, give up on this thumb
+            console.warn(`[thumbnails] native render failed on page ${original}, switching to PDF.js`, renderErr);
+            try { await pdf.destroy(); } catch { /* ignore */ }
+            try { pdf = await openPdf(pdfBytes, { backend: 'pdfjs' }); usingFallback = true; }
+            catch { return; }
+            // Retry just this page on the new backend.
+            try {
+              const page = await pdf.getPage(original);
+              await page.render({ scale: 0.18, canvas });
+            } catch { /* PDF.js can't either */ }
           }
         }
       } finally {

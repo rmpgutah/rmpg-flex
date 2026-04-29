@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Map as MapIcon, X } from 'lucide-react';
-import { open as openPdf } from '../../../lib/rmpg-pdf-engine';
+import { open as openPdf, BackendUnsupportedError } from '../../../lib/rmpg-pdf-engine';
 import { PageMeta } from '../types';
 
 // Compact page navigator card — vertical strip of mini thumbnails for the
@@ -35,7 +35,13 @@ export default function MiniMap({ pdfBytes, pages, pageOrder, activePage, onJump
     if (!pdfBytes || pageOrder.length === 0) return;
     let cancelled = false;
     (async () => {
-      const pdf = await openPdf(pdfBytes);
+      let pdf;
+      try { pdf = await openPdf(pdfBytes); }
+      catch (err) {
+        if (!(err instanceof BackendUnsupportedError)) { console.error('Mini-map open failed', err); return; }
+        try { pdf = await openPdf(pdfBytes, { backend: 'pdfjs' }); } catch { return; }
+      }
+      let usingFallback = pdf.backend === 'pdfjs';
       try {
         for (let i = 0; i < pageOrder.length; i++) {
           if (cancelled) return;
@@ -46,8 +52,15 @@ export default function MiniMap({ pdfBytes, pages, pageOrder, activePage, onJump
           try {
             const page = await pdf.getPage(original);
             await page.render({ scale: RENDER_SCALE, canvas });
-          } catch {
-            // unsupported page — leave blank
+          } catch (renderErr) {
+            if (usingFallback) continue;
+            console.warn(`[mini-map] native render failed on page ${original}, switching to PDF.js`, renderErr);
+            try { await pdf.destroy(); } catch { /* ignore */ }
+            try { pdf = await openPdf(pdfBytes, { backend: 'pdfjs' }); usingFallback = true; } catch { return; }
+            try {
+              const page = await pdf.getPage(original);
+              await page.render({ scale: RENDER_SCALE, canvas });
+            } catch { /* give up */ }
           }
         }
       } finally {

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { open as openPdf } from '../../../lib/rmpg-pdf-engine';
+import { openAndRenderPage } from '../../../lib/rmpg-pdf-engine';
 import { Annotation, PageCrop, PageMeta, Point, StampLabel, Tool, DEFAULT_RENDER_SCALE } from '../types';
 
 interface Props {
@@ -63,13 +63,19 @@ export default function PageCanvas(props: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const pdf = await openPdf(pdfBytes);
-        if (cancelled) { await pdf.destroy(); return; }
+        const canvas = canvasRef.current;
+        if (!canvas) return;
+        // openAndRenderPage tries the auto dispatcher first and retries with
+        // PDF.js if anything fails during render — defense in depth so a
+        // native renderer gap can't leave the page silently blank.
+        const pdf = await openAndRenderPage(pdfBytes, {
+          pageNumber: originalPageNumber,
+          scale: DEFAULT_RENDER_SCALE,
+          canvas,
+        });
+        if (!pdf || cancelled) { if (pdf) await pdf.destroy(); return; }
         const page = await pdf.getPage(originalPageNumber);
         const viewport = page.getViewport({ scale: DEFAULT_RENDER_SCALE });
-        const canvas = canvasRef.current;
-        if (!canvas) { await pdf.destroy(); return; }
-        await page.render({ scale: DEFAULT_RENDER_SCALE, canvas });
 
         // Build a transparent text layer so users can select / copy text
         // from the underlying PDF (huge UX win for inspecting witness

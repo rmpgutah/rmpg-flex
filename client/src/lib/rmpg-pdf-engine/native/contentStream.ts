@@ -249,8 +249,51 @@ const KNOWN_NOOPS = new Set([
   'CS', 'cs', 'SC', 'SCN', 'sc', 'scn', // color space + extended fill — we map all colors via RG/rg
   'gs',                                  // ExtGState — opacity etc; ignore for now
   'M', 'd', 'i', 'J', 'j', 'ri',        // line caps/joins/dash etc — ignore for now
-  'EX', 'BX',                            // marked content / compatibility blocks
+  'EX', 'BX',                            // compatibility blocks
 ]);
+
+/** Operators that we *cannot* render meaningfully today — their presence in
+ *  a content stream means we must fall back to PDF.js. The pre-flight scan
+ *  in NativeBackend.open() looks for these and throws BackendUnsupportedError
+ *  so the dispatcher hands the document to PDF.js cleanly, instead of the
+ *  renderer silently producing a blank page mid-stream. */
+const FORCE_FALLBACK_OPS = new Set([
+  'Do',                  // XObject placement (images + form XObjects)
+  'BI', 'ID', 'EI',      // inline image markers
+  'BMC', 'BDC', 'EMC',   // marked-content blocks
+  'MP', 'DP',            // marked-content single-points
+  'sh',                  // shading pattern paint
+]);
+
+const ALL_KNOWN_OPS = new Set([
+  ...KNOWN_NOOPS,
+  // Graphics state + transforms
+  'q', 'Q', 'cm', 'w',
+  // Colors
+  'RG', 'rg', 'G', 'g',
+  // Path construction
+  'm', 'l', 'c', 'v', 'y', 'h', 're',
+  // Path painting
+  'S', 's', 'f', 'F', 'f*', 'B', 'B*', 'b', 'b*', 'n',
+  // Text
+  'BT', 'ET', 'Tf', 'Tc', 'Tw', 'Tz', 'TL', 'Tr', 'Ts',
+  'Td', 'TD', 'Tm', 'T*', 'Tj', 'TJ', "'", '"',
+]);
+
+/** Pre-flight scan: walk every operator token in a content stream and verify
+ *  we know how to handle it. Returns the first operator that would force a
+ *  fallback (or null if every operator is supported). Cheap — just a lex
+ *  pass, no rendering math, no canvas allocation. */
+export function findUnsupportedOperator(streamBytes: Uint8Array): string | null {
+  const lex = new Lexer(streamBytes);
+  while (true) {
+    const t = lex.next();
+    if (t.kind === 'eof') return null;
+    if (t.kind !== 'keyword') continue;
+    if (FORCE_FALLBACK_OPS.has(t.value)) return t.value;
+    if (!ALL_KNOWN_OPS.has(t.value)) return t.value;
+  }
+}
 
 function stroke(ctx: CanvasRenderingContext2D, s: GState) {
   ctx.strokeStyle = `rgb(${s.strokeColor.map(c => Math.round(c * 255)).join(',')})`;

@@ -25,7 +25,7 @@ import {
   TextItem,
 } from '../types';
 import { PdfObjectParser, PdfValue, XrefEntry, decodeStream } from './parser';
-import { renderContentStream } from './contentStream';
+import { renderContentStream, findUnsupportedOperator } from './contentStream';
 import { stdFontFamily } from './fonts';
 import { Lexer, decodeText } from './lexer';
 
@@ -171,6 +171,15 @@ export class NativeBackend implements RmpgPdfBackend {
             streams.push(await decodeStream(s));
           }
         }
+      }
+
+      // Pre-flight: walk operators in every content stream. If any aren't
+      // supported by the renderer, throw so the dispatcher falls back to
+      // PDF.js cleanly instead of the renderer silently producing a blank
+      // page mid-stream.
+      for (const stream of streams) {
+        const bad = findUnsupportedOperator(stream);
+        if (bad) throw new BackendUnsupportedError(`Operator not implemented in native renderer: ${bad}`);
       }
 
       out.push({

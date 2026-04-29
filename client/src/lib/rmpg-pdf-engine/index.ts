@@ -12,6 +12,8 @@ export { BackendUnsupportedError, RmpgPdfError } from './types';
 export { recordOpen, getDiagnostics, subscribeDiagnostics, diagnosticsSummary } from './diagnostics';
 // Writer surface — proprietary PDF byte writer (see native/writer/).
 export { RmpgPdfBuilder, ContentStreamBuilder, type BuilderMetadata } from './native/writer';
+// Defense-in-depth render helper that retries with PDF.js on any failure.
+export { openAndRenderPage } from './safeRender';
 
 import { nativeBackend } from './native';
 import { pdfjsBackend } from './backends/pdfjs';
