@@ -17,6 +17,7 @@ import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
 import PreferencesDialog from './components/PreferencesDialog';
 import CustomStampsGallery, { StampPick } from './components/CustomStampsGallery';
 import MiniMap from './components/MiniMap';
+import AnnotationContextMenu from './components/AnnotationContextMenu';
 import { Annotation, BatesConfig, DocumentMeta, EditorState, EditorPreferences, DEFAULT_PREFERENCES, PageCrop, PageMeta, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
 import { authedImageUrl } from '../../hooks/useApi';
@@ -96,6 +97,11 @@ export default function PdfEditorPage() {
   const [prefsOpen, setPrefsOpen] = useState(false);
   const [stampsOpen, setStampsOpen] = useState(false);
   const [showMiniMap, setShowMiniMap] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; annotationId: string } | null>(null);
+  /** Diagnostic toggle: force every page render through PDF.js. The
+   *  user-facing label is "Use compatibility engine" — exposed in the
+   *  quick-action strip when the native renderer leaves a page blank. */
+  const [forcePdfjs, setForcePdfjs] = useState(false);
   // Persisted preferences — loaded once from localStorage, saved on every change.
   const [prefs, setPrefs] = useState<EditorPreferences>(() => {
     try {
@@ -434,6 +440,35 @@ export default function PdfEditorPage() {
   }, [state.sourceFileId, fileName, state.sourceFolderId]);
 
   // Page operations.
+  /** Move a page from one visual index to another. Used by both the up/down
+   *  arrow buttons (single-step) and the new drag-to-reorder gesture (any
+   *  distance). Annotations on moved pages have their page numbers
+   *  re-indexed so they stay attached to their pages. */
+  const reorderPages = (fromIdx: number, toIdx: number) => {
+    if (fromIdx === toIdx) return;
+    const order = [...state.pageOrder];
+    const pages = [...state.pages];
+    const [movedOrder] = order.splice(fromIdx, 1);
+    const [movedPage] = pages.splice(fromIdx, 1);
+    order.splice(toIdx, 0, movedOrder);
+    pages.splice(toIdx, 0, movedPage);
+    // Build a "old page number → new page number" map so annotations
+    // stay attached to the page they were authored on.
+    const oldToNew = new Map<number, number>();
+    state.pageOrder.forEach((_v, oldIdx) => {
+      let newIdx = oldIdx;
+      if (oldIdx === fromIdx) newIdx = toIdx;
+      else if (fromIdx < toIdx && oldIdx > fromIdx && oldIdx <= toIdx) newIdx = oldIdx - 1;
+      else if (fromIdx > toIdx && oldIdx >= toIdx && oldIdx < fromIdx) newIdx = oldIdx + 1;
+      oldToNew.set(oldIdx + 1, newIdx + 1);
+    });
+    const annotations = state.annotations.map(a => {
+      const newPage = oldToNew.get(a.page);
+      return newPage && newPage !== a.page ? { ...a, page: newPage } : a;
+    });
+    mutate({ pageOrder: order, pages, annotations });
+  };
+
   const movePage = (idx: number, dir: -1 | 1) => {
     const ni = idx + dir; if (ni < 0 || ni >= state.pageOrder.length) return;
     const order = [...state.pageOrder]; const pages = [...state.pages];
@@ -666,6 +701,21 @@ export default function PdfEditorPage() {
       if (e.key === 'Home') { jumpToPage(0); return; }
       if (e.key === 'End') { jumpToPage(state.pageOrder.length - 1); return; }
       if (e.key === '?') { setShortcutsOpen(true); return; }
+      // Arrow-key nudge for selected annotations — Acrobat parity. Shift = 10x.
+      if (e.key.startsWith('Arrow') && (activeId || selectedIds.size > 0)) {
+        e.preventDefault();
+        const step = e.shiftKey ? 10 : 1;
+        let dx = 0, dy = 0;
+        if (e.key === 'ArrowLeft') dx = -step;
+        else if (e.key === 'ArrowRight') dx = step;
+        else if (e.key === 'ArrowUp') dy = -step;
+        else if (e.key === 'ArrowDown') dy = step;
+        const ids = selectedIds.size > 0 ? selectedIds : new Set([activeId!]);
+        const next = state.annotations.map(a =>
+          ids.has(a.id) && !a.locked ? { ...a, x: a.x + dx, y: a.y + dy } as Annotation : a);
+        mutate({ annotations: next });
+        return;
+      }
       const map: Record<string, Tool> = { v: 'select', h: 'hand', t: 'text', y: 'highlight', r: 'rect', e: 'ellipse', l: 'line', a: 'arrow', p: 'pen', n: 'sticky' };
       if (!meta && map[k]) { setTool(map[k]); return; }
     };
@@ -733,6 +783,28 @@ export default function PdfEditorPage() {
       <CustomStampsGallery open={stampsOpen}
         onClose={() => { setStampsOpen(false); if (tool === 'stamp' && !pendingStamp) setTool('select'); }}
         onPick={handleStampPick} />
+
+      {/* Right-click context menu for annotations */}
+      <AnnotationContextMenu
+        open={!!contextMenu}
+        x={contextMenu?.x ?? 0}
+        y={contextMenu?.y ?? 0}
+        annotation={contextMenu ? state.annotations.find(a => a.id === contextMenu.annotationId) ?? null : null}
+        onClose={() => setContextMenu(null)}
+        onDuplicate={() => { if (contextMenu) { setActiveId(contextMenu.annotationId); duplicateSelected(); } }}
+        onDelete={() => { if (contextMenu) { mutate({ annotations: state.annotations.filter(a => a.id !== contextMenu.annotationId) }); setActiveId(null); } }}
+        onToggleLock={() => contextMenu && toggleLock(contextMenu.annotationId)}
+        onBringForward={() => contextMenu && bringForward(contextMenu.annotationId)}
+        onSendBackward={() => contextMenu && sendBackward(contextMenu.annotationId)}
+        onAssignLayer={(layer) => {
+          if (!contextMenu) return;
+          const idx = state.annotations.findIndex(a => a.id === contextMenu.annotationId);
+          if (idx === -1) return;
+          const next = [...state.annotations];
+          next[idx] = { ...next[idx], layer: layer || undefined } as Annotation;
+          mutate({ annotations: next });
+        }}
+      />
 
       {/* Mini-map page navigator — floating bottom-right when toggled. */}
       {hasDocument && showMiniMap && (
@@ -817,6 +889,11 @@ export default function PdfEditorPage() {
             className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showMiniMap ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
             <MapIcon className="w-3 h-3" /> Mini-map
           </button>
+          <button type="button" onClick={() => setForcePdfjs(v => !v)}
+            title="Force the compatibility engine (PDF.js). Use if a page renders blank with the native engine."
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${forcePdfjs ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+            {forcePdfjs ? '✓ Compat engine' : 'Compat engine'}
+          </button>
           <button type="button" onClick={exportJson} title="Export annotations as JSON"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Download className="w-3 h-3" /> Export</button>
           <button type="button" onClick={() => jsonInputRef.current?.click()} title="Import annotations from JSON"
@@ -870,6 +947,7 @@ export default function PdfEditorPage() {
             onInsertBlank={insertBlank}
             onExtract={extractPage}
             onClearCrop={(idx) => setPageCrop(idx, null)}
+            onReorder={reorderPages}
           />
 
           <div ref={scrollerRef} onScroll={onScroll} className="flex-1 overflow-auto bg-[#050505] border border-[#222222] rounded-[2px] p-4 space-y-4">
@@ -892,6 +970,8 @@ export default function PdfEditorPage() {
                 onAddAnnotation={addAnnotation}
                 onUpdateAnnotation={updateAnnotation}
                 onSetCrop={setPageCrop}
+                onAnnotationContextMenu={(id, x, y) => setContextMenu({ annotationId: id, x, y })}
+                forcePdfjs={forcePdfjs}
               />
             ))}
           </div>

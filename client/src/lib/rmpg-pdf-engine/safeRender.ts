@@ -23,6 +23,10 @@ export interface SafeRenderOptions {
   scale: number;
   canvas: HTMLCanvasElement;
   fileName?: string;
+  /** When true, skip native and go straight to PDF.js. Used by the editor's
+   *  "Force PDF.js" diagnostic toggle for documents the native engine
+   *  technically claims to support but renders incorrectly. */
+  forcePdfjs?: boolean;
 }
 
 export async function openAndRenderPage(
@@ -46,6 +50,9 @@ export async function openAndRenderPage(
     }
   };
 
+  if (opts.forcePdfjs) {
+    try { return await tryOnce(true); } catch (err) { console.error('[rmpg-pdf-engine] forced PDF.js failed', err); return null; }
+  }
   try {
     return await tryOnce(false);
   } catch (firstErr) {

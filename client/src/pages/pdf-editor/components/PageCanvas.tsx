@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, cloneElement } from 'react';
 import { openAndRenderPage } from '../../../lib/rmpg-pdf-engine';
 import { Annotation, PageCrop, PageMeta, Point, StampLabel, Tool, DEFAULT_RENDER_SCALE } from '../types';
 
@@ -19,6 +19,10 @@ interface Props {
   onAddAnnotation: (a: Annotation) => void;
   onUpdateAnnotation: (id: string, patch: Partial<Annotation>) => void;
   onSetCrop?: (visualIdx: number, crop: PageCrop | null) => void;
+  onAnnotationContextMenu?: (id: string, x: number, y: number) => void;
+  /** When true, skip the native engine and render via PDF.js directly.
+   *  Wired to a toolbar toggle so users can recover stuck blank pages. */
+  forcePdfjs?: boolean;
 }
 
 function uid(): string { return Math.random().toString(36).slice(2, 10); }
@@ -40,7 +44,7 @@ const HANDLE_POSITIONS: Array<{ id: ResizeHandle; cx: 0 | 0.5 | 1; cy: 0 | 0.5 |
 ];
 
 export default function PageCanvas(props: Props) {
-  const { pdfBytes, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onSetCrop } = props;
+  const { pdfBytes, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onSetCrop, onAnnotationContextMenu, forcePdfjs } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const textLayerRef = useRef<HTMLDivElement>(null);
@@ -56,6 +60,9 @@ export default function PageCanvas(props: Props) {
     originW: number; originH: number;
     pointerStartX: number; pointerStartY: number;
   } | null>(null);
+  // Polygon / polyline draft — captured vertices in absolute page coords
+  // until the user double-clicks (closes/finishes) or hits Escape (cancels).
+  const [polyDraft, setPolyDraft] = useState<{ tool: 'polygon' | 'polyline'; vertices: Point[]; cursor: Point } | null>(null);
 
   // Render PDF page on mount + when bytes change.
   useEffect(() => {
@@ -72,6 +79,7 @@ export default function PageCanvas(props: Props) {
           pageNumber: originalPageNumber,
           scale: DEFAULT_RENDER_SCALE,
           canvas,
+          forcePdfjs,
         });
         if (!pdf || cancelled) { if (pdf) await pdf.destroy(); return; }
         const page = await pdf.getPage(originalPageNumber);
@@ -181,6 +189,14 @@ export default function PageCanvas(props: Props) {
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       return;
     }
+    if (tool === 'polygon' || tool === 'polyline') {
+      // Each click adds a vertex; double-click closes (handled in onDoubleClick
+      // below). Escape clears the draft via the orchestrator's keyboard handler.
+      setPolyDraft(prev => prev && prev.tool === tool
+        ? { ...prev, vertices: [...prev.vertices, p], cursor: p }
+        : { tool, vertices: [p], cursor: p });
+      return;
+    }
     // Drag-create geometry tools.
     setDrawing({ tool, start: p, current: p });
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -188,6 +204,10 @@ export default function PageCanvas(props: Props) {
 
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const p = localCoords(e);
+    if (polyDraft) {
+      setPolyDraft({ ...polyDraft, cursor: p });
+      // Don't return here — allow the rest of move to run if needed.
+    }
     if (drawing) {
       if (drawing.tool === 'pen') {
         const rel = { x: p.x - drawing.start.x, y: p.y - drawing.start.y };
@@ -312,6 +332,23 @@ export default function PageCanvas(props: Props) {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
+        onDoubleClick={(e) => {
+          // Polygon / polyline finish gesture — needs at least 2 vertices.
+          if (!polyDraft || polyDraft.vertices.length < 2) return;
+          e.preventDefault();
+          const xs = polyDraft.vertices.map(v => v.x);
+          const ys = polyDraft.vertices.map(v => v.y);
+          const minX = Math.min(...xs), minY = Math.min(...ys);
+          const maxX = Math.max(...xs), maxY = Math.max(...ys);
+          const points = polyDraft.vertices.map(v => ({ x: v.x - minX, y: v.y - minY }));
+          onAddAnnotation({
+            id: uid(), type: 'polygon', page: visualPageNumber,
+            x: minX, y: minY, w: maxX - minX || 1, h: maxY - minY || 1,
+            points, closed: polyDraft.tool === 'polygon',
+            color, strokeWidth,
+          });
+          setPolyDraft(null);
+        }}
       >
         <canvas
           ref={canvasRef}
@@ -350,9 +387,34 @@ export default function PageCanvas(props: Props) {
               onPointerDown={(e) => startAnnDrag(e, ann)}
               onResizeStart={(e, handle) => startResize(e, ann, handle)}
               showResizeHandles={ann.id === activeId && !ann.locked && tool === 'select'}
+              onContextMenu={(e) => {
+                if (!onAnnotationContextMenu) return;
+                e.preventDefault();
+                e.stopPropagation();
+                onSelectAnnotation(ann.id);
+                onAnnotationContextMenu(ann.id, e.clientX, e.clientY);
+              }}
             />
           ))}
           {drawing && <DrawingPreview drawing={drawing} zoom={zoom} color={color} strokeWidth={strokeWidth} />}
+          {polyDraft && (
+            // Live polygon/polyline preview: solid line through committed
+            // vertices + dashed segment to the cursor for the next vertex.
+            <svg className="absolute inset-0 pointer-events-none" style={{ overflow: 'visible' }}>
+              <path
+                d={polyDraft.vertices.map((v, i) => `${i === 0 ? 'M' : 'L'} ${v.x * zoom} ${v.y * zoom}`).join(' ')
+                    + ` L ${polyDraft.cursor.x * zoom} ${polyDraft.cursor.y * zoom}`
+                    + (polyDraft.tool === 'polygon' ? ' Z' : '')}
+                stroke={color}
+                strokeWidth={strokeWidth * zoom}
+                strokeDasharray={`${4 * zoom} ${3 * zoom}`}
+                fill={polyDraft.tool === 'polygon' ? 'rgba(212, 160, 23, 0.06)' : 'none'}
+              />
+              {polyDraft.vertices.map((v, i) => (
+                <circle key={i} cx={v.x * zoom} cy={v.y * zoom} r={3} fill="#d4a017" stroke="#000" strokeWidth={0.5} />
+              ))}
+            </svg>
+          )}
           {pageMeta.crop && (
             // Render the persisted crop as a translucent overlay to confirm
             // what will be visible in the saved PDF.
@@ -376,13 +438,14 @@ export default function PageCanvas(props: Props) {
   );
 }
 
-function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, showResizeHandles }: {
+function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, showResizeHandles, onContextMenu }: {
   ann: Annotation;
   zoom: number;
   selected: boolean;
   onPointerDown: (e: React.PointerEvent) => void;
   onResizeStart: (e: React.PointerEvent, handle: ResizeHandle) => void;
   showResizeHandles: boolean;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const baseStyle: React.CSSProperties = {
     position: 'absolute',
@@ -453,6 +516,15 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
         <path d={d} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} fill="none" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
+  } else if (ann.type === 'polygon') {
+    const d = ann.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x * zoom} ${p.y * zoom}`).join(' ')
+      + (ann.closed ? ' Z' : '');
+    inner = (
+      <svg onPointerDown={onPointerDown} style={{ ...baseStyle, overflow: 'visible' }}>
+        <path d={d} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom}
+          fill={ann.closed && ann.fillColor ? ann.fillColor : 'none'} strokeLinejoin="round" />
+      </svg>
+    );
   } else if (ann.type === 'image' || ann.type === 'signature') {
     inner = <img onPointerDown={onPointerDown} src={ann.imageData} alt="" style={{ ...baseStyle, objectFit: 'contain' }} />;
   } else if (ann.type === 'sticky') {
@@ -478,7 +550,14 @@ function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, sho
     );
   }
 
-  return <>{inner}{handlesEl}</>;
+  // Inject onContextMenu onto whatever root element the type-specific branch
+  // produced — saves us repeating the prop on every per-kind JSX assignment.
+  // The cast is safe: every `inner` assignment above produces a single root
+  // element that accepts onContextMenu (div / svg / img all accept it).
+  const innerWithContextMenu = inner && onContextMenu
+    ? cloneElement(inner as React.ReactElement<{ onContextMenu?: (e: React.MouseEvent) => void }>, { onContextMenu })
+    : inner;
+  return <>{innerWithContextMenu}{handlesEl}</>;
 }
 
 function ArrowHead({ x, y, dx, dy, color, zoom, stroke }: { x: number; y: number; dx: number; dy: number; color: string; zoom: number; stroke: number }) {

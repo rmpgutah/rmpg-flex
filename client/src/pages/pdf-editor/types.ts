@@ -23,7 +23,9 @@ export type Tool =
   | 'barcode'
   | 'sticky'
   | 'datestamp'
-  | 'eyedropper';
+  | 'eyedropper'
+  | 'polygon'
+  | 'polyline';
 
 export type StampLabel =
   | 'CONFIDENTIAL'
@@ -100,6 +102,15 @@ export interface PenAnnotation extends AnnotationBase {
   points: Point[];          // relative to (x, y)
 }
 
+export interface PolygonAnnotation extends AnnotationBase {
+  type: 'polygon';
+  /** Vertices in screen-pixel coords relative to (x, y). */
+  points: Point[];
+  /** When true, the path closes back to the first vertex (filled polygon).
+   *  When false, render as a polyline (open path). */
+  closed: boolean;
+}
+
 export interface ImageAnnotation extends AnnotationBase {
   type: 'image' | 'signature';
   imageData: string;        // data: URL (png/jpeg)
@@ -134,7 +145,8 @@ export type Annotation =
   | ImageAnnotation
   | StampAnnotation
   | LinkAnnotation
-  | StickyNoteAnnotation;
+  | StickyNoteAnnotation
+  | PolygonAnnotation;
 
 /** Per-page crop rectangle in screen-pixel coordinates at DEFAULT_RENDER_SCALE.
  *  Applied via pdf-lib setMediaBox at save time. */

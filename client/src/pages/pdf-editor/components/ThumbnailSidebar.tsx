@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Trash2, RotateCw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop } from 'lucide-react';
 import { open as openPdf, BackendUnsupportedError } from '../../../lib/rmpg-pdf-engine';
 import IconButton from '../../../components/IconButton';
@@ -16,10 +16,14 @@ interface Props {
   onInsertBlank: (afterVisualIdx: number) => void;
   onExtract?: (visualIdx: number) => void;
   onClearCrop?: (visualIdx: number) => void;
+  /** Reorder via drag-and-drop. Caller maintains the actual page-order state. */
+  onReorder?: (fromIdx: number, toIdx: number) => void;
 }
 
-export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank, onExtract, onClearCrop }: Props) {
+export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank, onExtract, onClearCrop, onReorder }: Props) {
   const refs = useRef<Map<number, HTMLCanvasElement>>(new Map());
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dropIdx, setDropIdx] = useState<number | null>(null);
 
   useEffect(() => {
     if (!pdfBytes || pageOrder.length === 0) return;
@@ -74,8 +78,37 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
         const pageNumber = idx + 1;
         const meta = pages[idx];
         const active = pageNumber === activePage;
+        const isDragSource = dragIdx === idx;
+        const isDropTarget = dropIdx === idx && dragIdx !== idx;
         return (
-          <div key={`thumb-${idx}`} className={`group rounded-sm border ${active ? 'border-[#d4a017]' : 'border-[#222]'} bg-black p-1`}>
+          <div key={`thumb-${idx}`}
+            draggable={!!onReorder}
+            onDragStart={(e) => {
+              if (!onReorder) return;
+              setDragIdx(idx);
+              e.dataTransfer.effectAllowed = 'move';
+              e.dataTransfer.setData('text/plain', String(idx));
+            }}
+            onDragOver={(e) => {
+              if (!onReorder || dragIdx === null || dragIdx === idx) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = 'move';
+              setDropIdx(idx);
+            }}
+            onDragLeave={() => { if (dropIdx === idx) setDropIdx(null); }}
+            onDrop={(e) => {
+              if (!onReorder || dragIdx === null) return;
+              e.preventDefault();
+              if (dragIdx !== idx) onReorder(dragIdx, idx);
+              setDragIdx(null);
+              setDropIdx(null);
+            }}
+            onDragEnd={() => { setDragIdx(null); setDropIdx(null); }}
+            className={`group rounded-sm border ${
+              isDropTarget ? 'border-[#d4a017] border-dashed bg-[#d4a017]/10' :
+              active ? 'border-[#d4a017]' : 'border-[#222]'
+            } bg-black p-1 ${isDragSource ? 'opacity-40' : ''} ${onReorder ? 'cursor-grab active:cursor-grabbing' : ''}`}>
+
             <button
               type="button"
               onClick={() => onJumpTo(idx)}

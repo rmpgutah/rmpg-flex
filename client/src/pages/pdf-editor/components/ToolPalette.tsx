@@ -1,4 +1,4 @@
-import { MousePointer2, Hand, Type, Highlighter, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar } from 'lucide-react';
+import { MousePointer2, Hand, Type, Highlighter, Square, Circle, Minus, MoveUpRight, Pencil, PenTool, Image as ImageIcon, Stamp, EyeOff, Link2, Crop, QrCode, StickyNote, Calendar, Pentagon, Spline } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { Tool } from '../types';
 
@@ -30,6 +30,8 @@ const TOOLS: { id: Tool; icon: typeof MousePointer2; label: string }[] = [
   { id: 'barcode', icon: QrCode, label: 'Barcode / QR' },
   { id: 'sticky', icon: StickyNote, label: 'Sticky note' },
   { id: 'datestamp', icon: Calendar, label: 'Date stamp (today)' },
+  { id: 'polygon', icon: Pentagon, label: 'Polygon (click vertices, double-click to close)' },
+  { id: 'polyline', icon: Spline, label: 'Polyline (click vertices, double-click or Esc to finish)' },
 ];
 
 const PRESETS = ['#0a0a0a', '#d4a017', '#c62828', '#1976d2', '#2e7d32', '#fbc02d', '#ffffff'];
