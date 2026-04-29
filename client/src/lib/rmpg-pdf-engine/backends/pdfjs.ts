@@ -100,7 +100,19 @@ export class PdfJsBackend implements RmpgPdfBackend {
 
   async open(bytes: Uint8Array): Promise<RmpgPdfDocument> {
     try {
-      const inner = await pdfjs.getDocument({ data: bytes.slice() }).promise;
+      // Provide standardFontDataUrl + cMapUrl. PDF.js v5 does NOT bundle the
+      // Standard 14 font fallbacks (Helvetica, Times, Courier, Symbol,
+      // ZapfDingbats) into the worker — they live in pdfjs-dist/standard_fonts/
+      // and must be served at runtime. Without these URLs set, render()
+      // throws on every PDF that references those fonts without embedding.
+      // The assets are copied into client/public/pdfjs/ at build time by
+      // scripts/copy-pdfjs-assets.mjs.
+      const inner = await pdfjs.getDocument({
+        data: bytes.slice(),
+        standardFontDataUrl: '/pdfjs/standard_fonts/',
+        cMapUrl: '/pdfjs/cmaps/',
+        cMapPacked: true,
+      }).promise;
       return new PdfJsDocument(inner, 'pdfjs backend (Mozilla, Apache 2.0)');
     } catch (err) {
       throw new RmpgPdfError(`PDF.js failed to open document: ${err instanceof Error ? err.message : String(err)}`, err);
