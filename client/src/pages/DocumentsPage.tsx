@@ -463,12 +463,29 @@ export default function DocumentsPage() {
                     className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-amber-400 transition-colors" title="File details">
                     <Info className="w-3 h-3" />
                   </button>
-                  {canPreview(file.mime_type) && (
+                  {file.mime_type === 'application/pdf' ? (
+                    /* Route PDF previews through the internal viewer (PDF.js
+                       loaded as a Web Worker, runs locally) instead of the
+                       browser's native viewer (Chrome's PDFium / etc). This
+                       keeps the entire view + edit experience consistent
+                       across browsers and platforms, with no Google
+                       components in the loop. */
+                    <button type="button"
+                      title="View"
+                      onClick={() => {
+                        const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name, view: '1' });
+                        if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+                        navigate(`/pdf-editor?${params.toString()}`);
+                      }}
+                      className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400 transition-colors">
+                      <Eye className="w-3 h-3" />
+                    </button>
+                  ) : canPreview(file.mime_type) ? (
                     <a href={authedImageUrl(`/api/uploads/${file.file_id}`)} target="_blank" rel="noopener noreferrer"
                       className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400 transition-colors" title="View">
                       <Eye className="w-3 h-3" />
                     </a>
-                  )}
+                  ) : null}
                   {file.mime_type === 'application/pdf' && (
                     <button type="button"
                       onClick={() => {

@@ -16,7 +16,16 @@ import { Annotation, BatesConfig, DocumentMeta, EditorState, PageCrop, PageMeta,
 import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
 import { authedImageUrl } from '../../hooks/useApi';
 
-pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+// PDF.js worker — Mozilla's open-source library (Apache 2.0). Runs locally
+// in a Web Worker; no network calls, no Google dependency. The Vite `?url`
+// import resolves the worker to a hashed asset path served from the same
+// origin. If this assignment ever fails, PDF.js falls back to "fake worker"
+// mode which still works but is slower and blocks the main thread.
+try {
+  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+} catch (err) {
+  console.warn('[pdf-editor] Failed to set PDF.js worker URL — falling back to fake worker mode.', err);
+}
 
 // Reducer-based state with simple undo/redo. We snapshot the *editable* parts
 // (annotations + page order/rotation + bates + watermark + meta) but not the
@@ -61,6 +70,9 @@ const EMPTY_STATE: MutableState = { pageOrder: [], pages: [], annotations: [], b
 export default function PdfEditorPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  // View-only mode hides editing tools — used for previewing PDFs from
+  // Documents without giving the operator the full editing surface by default.
+  const viewOnly = searchParams.get('view') === '1';
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [fileName, setFileName] = useState('');
   const [savedNotice, setSavedNotice] = useState<string | null>(null);
@@ -94,10 +106,30 @@ export default function PdfEditorPage() {
   }, [state]);
 
   // Open a PDF (from File object or pre-fetched bytes).
+  // Distinguishes parse failures from worker-load failures so the user gets
+  // a useful message instead of the generic PDF.js "Failed to load PDF document".
   const openBytes = async (arr: Uint8Array, name: string, sourceFileId: string | null = null, sourceFolderId: number | null = null) => {
     setError(null);
     try {
-      const pdf = await pdfjs.getDocument({ data: arr.slice() }).promise;
+      let pdf;
+      try {
+        pdf = await pdfjs.getDocument({ data: arr.slice() }).promise;
+      } catch (parseErr) {
+        const msg = parseErr instanceof Error ? parseErr.message : 'unknown error';
+        // PDF.js throws specific names: PasswordException, InvalidPDFException,
+        // MissingPDFException, UnexpectedResponseException.
+        const name = (parseErr as { name?: string })?.name ?? '';
+        if (name === 'PasswordException') {
+          throw new Error('This PDF is password-protected. Decrypt it in Documents first (the editor doesn\'t prompt for passwords yet).');
+        }
+        if (name === 'InvalidPDFException') {
+          throw new Error('The file is not a valid PDF. It may be truncated or corrupted.');
+        }
+        if (msg.toLowerCase().includes('worker') || msg.toLowerCase().includes('fake worker')) {
+          throw new Error('PDF rendering worker failed to load. Check that /assets/ paths aren\'t blocked by your network. The system uses Mozilla\'s PDF.js (open-source, runs locally — no Google dependency).');
+        }
+        throw new Error(`PDF.js could not parse the file: ${msg}`);
+      }
       const pages: PageMeta[] = [];
       const pageOrder: number[] = [];
       for (let i = 1; i <= pdf.numPages; i++) {
@@ -122,6 +154,10 @@ export default function PdfEditorPage() {
   };
 
   // Auto-load from Documents when ?fileId=... is present in the URL.
+  // Errors are surfaced with a specific reason rather than the generic
+  // "Failed to load PDF document" — viewers can hit any of: auth failure
+  // (HTML/JSON response), wrong MIME type, corrupt PDF bytes, or the
+  // PDF.js worker not loading. Each path produces a distinct message.
   useEffect(() => {
     const fileId = searchParams.get('fileId');
     const folderIdStr = searchParams.get('folderId');
@@ -132,8 +168,28 @@ export default function PdfEditorPage() {
       try {
         const url = authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`);
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        if (!res.ok) {
+          if (res.status === 401 || res.status === 403) throw new Error('Not authorized to read this file. Try signing in again.');
+          if (res.status === 404) throw new Error('File not found in the document store.');
+          throw new Error(`Server returned ${res.status}`);
+        }
+        // Defensive: confirm the server actually sent us a PDF, not a JSON
+        // error wrapper or an HTML login page.
+        const contentType = res.headers.get('Content-Type') ?? '';
+        if (!contentType.toLowerCase().includes('pdf')) {
+          // Try to read a tiny snippet for the error message so the user knows
+          // whether they hit a login redirect or a malformed file.
+          const snippet = (await res.clone().text().catch(() => '')).slice(0, 120);
+          throw new Error(`Server returned non-PDF content (Content-Type: ${contentType}). ${snippet ? `Body: ${snippet}` : ''}`);
+        }
         const buf = await res.arrayBuffer();
+        if (buf.byteLength === 0) throw new Error('File is empty.');
+        // Quick sanity check on the PDF magic header. PDFs always start with %PDF-
+        const head = new Uint8Array(buf.slice(0, 5));
+        const magic = String.fromCharCode(...head);
+        if (magic !== '%PDF-') {
+          throw new Error(`File doesn't look like a PDF (header: "${magic}"). It may be corrupted or stored with the wrong extension.`);
+        }
         await openBytes(new Uint8Array(buf), fileNameParam || `document-${fileId}.pdf`, fileId, folderId);
       } catch (err) {
         setError(`Could not load file: ${err instanceof Error ? err.message : 'unknown error'}`);
@@ -440,9 +496,18 @@ export default function PdfEditorPage() {
     return m;
   }, [state.annotations]);
 
+  // Hand off to the editing experience: clears ?view=1 from the URL and
+  // re-renders with all tools enabled. State (annotations, etc.) persists
+  // because we just toggle a query param.
+  const enableEditing = () => {
+    const next = new URLSearchParams(searchParams);
+    next.delete('view');
+    setSearchParams(next, { replace: true });
+  };
+
   return (
     <div className="p-3 flex flex-col h-[calc(100vh-140px)] min-h-[600px]">
-      <PanelTitleBar title="PDF EDITOR" icon={FileText} />
+      <PanelTitleBar title={viewOnly ? 'PDF VIEWER' : 'PDF EDITOR'} icon={FileText} />
 
       <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleOpenChange} />
       <input ref={mergeInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={handleMergeChange} />
@@ -502,9 +567,19 @@ export default function PdfEditorPage() {
         </div>
       )}
 
+      {hasDocument && viewOnly && (
+        <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] px-3 py-1.5 mb-2 flex items-center gap-2 text-[10px] text-rmpg-400">
+          <span className="text-[#d4a017] font-semibold uppercase tracking-wider">View-only</span>
+          <span>— editing tools are hidden. Click "Edit this PDF" to enable annotation, redaction, signatures, and more.</span>
+          <button type="button" onClick={enableEditing} className="ml-auto btn-secondary text-[10px]">Edit this PDF</button>
+        </div>
+      )}
+
       {hasDocument && (
         <div className="flex-1 flex gap-2 min-h-0">
-          <ToolPalette tool={tool} onTool={setTool} color={color} onColor={setColor} strokeWidth={strokeWidth} onStrokeWidth={setStrokeWidth} />
+          {!viewOnly && (
+            <ToolPalette tool={tool} onTool={setTool} color={color} onColor={setColor} strokeWidth={strokeWidth} onStrokeWidth={setStrokeWidth} />
+          )}
 
           <ThumbnailSidebar
             pdfBytes={bytes}
@@ -544,17 +619,29 @@ export default function PdfEditorPage() {
             ))}
           </div>
 
-          <PropertiesPanel
-            annotation={annotation}
-            onChange={(a) => updateAnnotation(a.id, a)}
-            onDelete={deleteActive}
-            bates={state.bates}
-            onBatesChange={(b) => mutate({ bates: b })}
-            watermark={state.watermark}
-            onWatermarkChange={(w) => mutate({ watermark: w })}
-            meta={state.meta}
-            onMetaChange={(m) => mutate({ meta: m })}
-          />
+          {!viewOnly && (
+            <PropertiesPanel
+              annotation={annotation}
+              onChange={(a) => updateAnnotation(a.id, a)}
+              onDelete={deleteActive}
+              bates={state.bates}
+              onBatesChange={(b) => mutate({ bates: b })}
+              watermark={state.watermark}
+              onWatermarkChange={(w) => mutate({ watermark: w })}
+              meta={state.meta}
+              onMetaChange={(m) => mutate({ meta: m })}
+            />
+          )}
+        </div>
+      )}
+
+      {/* Open-source attribution — explicit so operators know nothing in the
+          PDF stack hits Google. PDF.js is Mozilla, pdf-lib is community,
+          QR/barcode generation is local, encryption is local qpdf. */}
+      {hasDocument && (
+        <div className="text-[9px] text-rmpg-600 mt-2 text-center select-none">
+          Powered by <span className="text-rmpg-500">PDF.js</span> (Mozilla, Apache 2.0) +
+          <span className="text-rmpg-500"> pdf-lib</span> (MIT). Fully internal — runs in your browser, no Google libraries.
         </div>
       )}
 
