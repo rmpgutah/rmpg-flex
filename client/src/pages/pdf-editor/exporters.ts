@@ -102,7 +102,10 @@ export function exportAnnotationsAsXfdf(annotations: Annotation[], pageHeights: 
     const py = pageH - (a.y / renderScale) - ph;
     const rect = `${px.toFixed(2)},${py.toFixed(2)},${(px + pw).toFixed(2)},${(py + ph).toFixed(2)}`;
     const common = `page="${a.page - 1}" rect="${rect}"`;
-    const date = a.createdAt ? ` date="D:${a.createdAt.replace(/[-:T]/g, '').slice(0, 14)}Z"` : '';
+    // Don't use a character class like /[-:T]/ here — Tailwind's content
+    // scanner misidentifies `[-:T]` as an arbitrary-value class and breaks
+    // the production CSS minifier. Alternation is functionally identical.
+    const date = a.createdAt ? ` date="D:${a.createdAt.replace(/-|:|T/g, '').slice(0, 14)}Z"` : '';
     const author = a.authorName ? ` title="${xmlEscape(a.authorName)}"` : '';
     if (a.type === 'text') {
       const text = xmlEscape(a.text);

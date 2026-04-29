@@ -25,7 +25,7 @@ import {
 try {
   pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 } catch (err) {
-  console.warn('[rmpg-pdf:pdfjs] Failed to set worker URL — using fake-worker mode.', err);
+  console.warn('[rmpg-pdf-engine pdfjs] Failed to set worker URL — using fake-worker mode.', err);
 }
 
 class PdfJsPage implements RmpgPdfPage {
