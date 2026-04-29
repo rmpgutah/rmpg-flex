@@ -60,6 +60,10 @@ export default function PageCanvas(props: Props) {
     originW: number; originH: number;
     pointerStartX: number; pointerStartY: number;
   } | null>(null);
+  // Surfaces a visible message in the page area when both engines fail to
+  // render — far better than the previous behavior of a silent black canvas
+  // with no indication anything went wrong.
+  const [renderError, setRenderError] = useState<string | null>(null);
   // Polygon / polyline draft — captured vertices in absolute page coords
   // until the user double-clicks (closes/finishes) or hits Escape (cancels).
   const [polyDraft, setPolyDraft] = useState<{ tool: 'polygon' | 'polyline'; vertices: Point[]; cursor: Point } | null>(null);
@@ -72,6 +76,7 @@ export default function PageCanvas(props: Props) {
       try {
         const canvas = canvasRef.current;
         if (!canvas) return;
+        setRenderError(null);
         // openAndRenderPage tries the auto dispatcher first and retries with
         // PDF.js if anything fails during render — defense in depth so a
         // native renderer gap can't leave the page silently blank.
@@ -81,7 +86,11 @@ export default function PageCanvas(props: Props) {
           canvas,
           forcePdfjs,
         });
-        if (!pdf || cancelled) { if (pdf) await pdf.destroy(); return; }
+        if (!pdf) {
+          setRenderError(`Page ${originalPageNumber} could not be rendered. Both the native engine and the PDF.js fallback failed.`);
+          return;
+        }
+        if (cancelled) { await pdf.destroy(); return; }
         const page = await pdf.getPage(originalPageNumber);
         const viewport = page.getViewport({ scale: DEFAULT_RENDER_SCALE });
 
@@ -119,6 +128,7 @@ export default function PageCanvas(props: Props) {
         try { await pdf.destroy(); } catch { /* ignore */ }
       } catch (err) {
         console.error('Page render failed', err);
+        setRenderError(err instanceof Error ? err.message : 'Render failed (see console)');
       }
     })();
     return () => { cancelled = true; };
@@ -414,6 +424,18 @@ export default function PageCanvas(props: Props) {
                 <circle key={i} cx={v.x * zoom} cy={v.y * zoom} r={3} fill="#d4a017" stroke="#000" strokeWidth={0.5} />
               ))}
             </svg>
+          )}
+          {renderError && (
+            <div className="absolute inset-0 flex items-center justify-center text-center p-4 pointer-events-none"
+              style={{ background: 'rgba(220, 38, 38, 0.08)', border: '1px dashed rgba(220, 38, 38, 0.4)' }}>
+              <div className="bg-[#141414] border border-red-700/40 rounded-sm p-3 max-w-md text-[11px] pointer-events-auto">
+                <div className="text-red-300 font-semibold mb-1">⚠ Page render failed</div>
+                <div className="text-rmpg-300">{renderError}</div>
+                <div className="text-rmpg-500 text-[10px] mt-2">
+                  Try toggling the Compat engine button in the toolbar, or open browser DevTools → Console for more detail.
+                </div>
+              </div>
+            </div>
           )}
           {pageMeta.crop && (
             // Render the persisted crop as a translucent overlay to confirm

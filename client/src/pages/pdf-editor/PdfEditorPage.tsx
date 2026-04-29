@@ -1048,7 +1048,7 @@ function EnginePanel(): React.ReactElement {
         {last && <> · last: <span className="text-rmpg-400">{last.backend}</span> ({last.reason.slice(0, 80)}{last.reason.length > 80 ? '…' : ''})</>}
       </div>
       <div className="mt-0.5">
-        Proprietary RMPG PDF Engine v1.0 — read, render, edit, and write all run on RMPG-owned code. Fallback engine retained for diagnostic purposes only.
+        RMPG PDF Engine v1.0 — proprietary facade + writer; PDF.js (Mozilla, Apache 2.0) handles rendering for the long tail of document features (images, embedded fonts, cross-ref streams). Native renderer covers RMPG-generated PDFs and grows over time.
       </div>
     </div>
   );

@@ -30,18 +30,16 @@ export interface OpenOptions {
 export async function open(bytes: Uint8Array, opts: OpenOptions = {}): Promise<RmpgPdfDocument> {
   const which = opts.backend ?? 'auto';
 
-  // Single-backend modes — caller wants a specific one (e.g. "force PDF.js").
+  // Single-backend modes — caller wants a specific one.
   if (which === 'native') return openWith(bytes, opts, true);
   if (which === 'pdfjs') return openWith(bytes, opts, false);
 
-  // Auto mode: native first, fall back on unsupported feature.
-  try {
-    return await openWith(bytes, opts, true);
-  } catch (err) {
-    if (!(err instanceof BackendUnsupportedError)) throw err;
-    // Fall through to PDF.js — record the reason for telemetry.
-    return openWith(bytes, { ...opts, backend: 'pdfjs' }, false, `native fallback: ${err.reason}`);
-  }
+  // Auto mode: PDF.js (Mozilla, Apache 2.0) is the default reliable engine.
+  // The native backend is OPT-IN via `backend: 'native'` for documents we
+  // know it can handle (jsPDF-generated PDFs etc.) — it's the future, but
+  // its coverage is too narrow today to be the default and the user
+  // experience suffers when it can't render things.
+  return openWith(bytes, opts, false);
 }
 
 async function openWith(

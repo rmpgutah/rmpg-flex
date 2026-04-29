@@ -43,6 +43,12 @@ class PdfJsPage implements RmpgPdfPage {
     canvas.height = viewport.height;
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new RmpgPdfError('2D canvas context unavailable');
+    // Paint a white background BEFORE handing the canvas to PDF.js. Without
+    // this, transparent-background PDFs render with the editor's dark page
+    // surface showing through — operators see "black pages" even though
+    // PDF.js's render call succeeded. NativePage.render does the same fill.
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
     await this.inner.render({ canvasContext: ctx, viewport, canvas }).promise;
     return canvas;
   }
