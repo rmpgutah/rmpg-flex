@@ -1,6 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { Trash2, RotateCw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop } from 'lucide-react';
-import * as pdfjs from 'pdfjs-dist';
+import { open as openPdf } from '../../../lib/rmpg-pdf-engine';
 import IconButton from '../../../components/IconButton';
 import { PageMeta } from '../types';
 
@@ -25,24 +25,23 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
     if (!pdfBytes || pageOrder.length === 0) return;
     let cancelled = false;
     (async () => {
-      const pdf = await pdfjs.getDocument({ data: pdfBytes.slice() }).promise;
-      for (let i = 0; i < pageOrder.length; i++) {
-        if (cancelled) return;
-        const original = pageOrder[i];
-        if (original === 0) continue; // blank inserted page
-        const canvas = refs.current.get(i);
-        if (!canvas) continue;
-        try {
-          const page = await pdf.getPage(original);
-          const viewport = page.getViewport({ scale: 0.18 });
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext('2d');
-          if (!ctx) continue;
-          await page.render({ canvasContext: ctx, viewport, canvas }).promise;
-        } catch {
-          // ignore — page deleted/missing
+      const pdf = await openPdf(pdfBytes);
+      try {
+        for (let i = 0; i < pageOrder.length; i++) {
+          if (cancelled) return;
+          const original = pageOrder[i];
+          if (original === 0) continue; // inserted blank page
+          const canvas = refs.current.get(i);
+          if (!canvas) continue;
+          try {
+            const page = await pdf.getPage(original);
+            await page.render({ scale: 0.18, canvas });
+          } catch {
+            // ignore — page deleted/missing/unsupported
+          }
         }
+      } finally {
+        await pdf.destroy();
       }
     })();
     return () => { cancelled = true; };

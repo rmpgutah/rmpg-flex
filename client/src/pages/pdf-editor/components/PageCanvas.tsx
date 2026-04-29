@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import * as pdfjs from 'pdfjs-dist';
+import { open as openPdf } from '../../../lib/rmpg-pdf-engine';
 import { Annotation, PageCrop, PageMeta, Point, StampLabel, Tool, DEFAULT_RENDER_SCALE } from '../types';
 
 interface Props {
@@ -37,17 +37,13 @@ export default function PageCanvas(props: Props) {
     let cancelled = false;
     (async () => {
       try {
-        const pdf = await pdfjs.getDocument({ data: pdfBytes.slice() }).promise;
-        if (cancelled) return;
+        const pdf = await openPdf(pdfBytes);
+        if (cancelled) { await pdf.destroy(); return; }
         const page = await pdf.getPage(originalPageNumber);
         const viewport = page.getViewport({ scale: DEFAULT_RENDER_SCALE });
         const canvas = canvasRef.current;
-        if (!canvas) return;
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
-        await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+        if (!canvas) { await pdf.destroy(); return; }
+        await page.render({ scale: DEFAULT_RENDER_SCALE, canvas });
 
         // Build a transparent text layer so users can select / copy text
         // from the underlying PDF (huge UX win for inspecting witness
@@ -56,8 +52,8 @@ export default function PageCanvas(props: Props) {
         if (textLayer && !cancelled) {
           textLayer.replaceChildren();
           try {
-            const textContent = await page.getTextContent();
-            for (const item of textContent.items as Array<{ str: string; transform: number[]; width: number; height: number }>) {
+            const items = await page.getTextContent();
+            for (const item of items) {
               if (!item.str) continue;
               const tx = item.transform;
               const x = tx[4];
@@ -79,6 +75,8 @@ export default function PageCanvas(props: Props) {
             // Image-only / scanned PDFs have no text content. That's expected.
           }
         }
+        // Free the document — viewport sizes are already locked into the page record.
+        try { await pdf.destroy(); } catch { /* ignore */ }
       } catch (err) {
         console.error('Page render failed', err);
       }

@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
-import * as pdfjs from 'pdfjs-dist';
-import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import EditorToolbar from './components/EditorToolbar';
 import ToolPalette from './components/ToolPalette';
@@ -16,16 +15,11 @@ import { Annotation, BatesConfig, DocumentMeta, EditorState, PageCrop, PageMeta,
 import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
 import { authedImageUrl } from '../../hooks/useApi';
 
-// PDF.js worker — Mozilla's open-source library (Apache 2.0). Runs locally
-// in a Web Worker; no network calls, no Google dependency. The Vite `?url`
-// import resolves the worker to a hashed asset path served from the same
-// origin. If this assignment ever fails, PDF.js falls back to "fake worker"
-// mode which still works but is slower and blocks the main thread.
-try {
-  pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
-} catch (err) {
-  console.warn('[pdf-editor] Failed to set PDF.js worker URL — falling back to fake worker mode.', err);
-}
+// PDF rendering goes through our company-owned engine facade
+// (client/src/lib/rmpg-pdf-engine). It tries our native backend first and
+// falls back to PDF.js when the document uses features we don't render
+// natively yet. Worker setup + library imports live entirely behind the
+// facade — this file no longer touches pdfjs-dist directly.
 
 // Reducer-based state with simple undo/redo. We snapshot the *editable* parts
 // (annotations + page order/rotation + bates + watermark + meta) but not the
@@ -111,24 +105,22 @@ export default function PdfEditorPage() {
   const openBytes = async (arr: Uint8Array, name: string, sourceFileId: string | null = null, sourceFolderId: number | null = null) => {
     setError(null);
     try {
-      let pdf;
+      let pdf: RmpgPdfDocument;
       try {
-        pdf = await pdfjs.getDocument({ data: arr.slice() }).promise;
+        pdf = await openPdf(arr, { fileName: name });
       } catch (parseErr) {
         const msg = parseErr instanceof Error ? parseErr.message : 'unknown error';
-        // PDF.js throws specific names: PasswordException, InvalidPDFException,
-        // MissingPDFException, UnexpectedResponseException.
-        const name = (parseErr as { name?: string })?.name ?? '';
-        if (name === 'PasswordException') {
+        const errName = (parseErr as { name?: string })?.name ?? '';
+        if (errName === 'PasswordException') {
           throw new Error('This PDF is password-protected. Decrypt it in Documents first (the editor doesn\'t prompt for passwords yet).');
         }
-        if (name === 'InvalidPDFException') {
+        if (errName === 'InvalidPDFException') {
           throw new Error('The file is not a valid PDF. It may be truncated or corrupted.');
         }
-        if (msg.toLowerCase().includes('worker') || msg.toLowerCase().includes('fake worker')) {
-          throw new Error('PDF rendering worker failed to load. Check that /assets/ paths aren\'t blocked by your network. The system uses Mozilla\'s PDF.js (open-source, runs locally — no Google dependency).');
+        if (msg.toLowerCase().includes('worker')) {
+          throw new Error('PDF rendering worker failed to load. The engine uses our native renderer first, then Mozilla\'s PDF.js (open-source, runs locally) as a fallback.');
         }
-        throw new Error(`PDF.js could not parse the file: ${msg}`);
+        throw new Error(`Could not parse the PDF: ${msg}`);
       }
       const pages: PageMeta[] = [];
       const pageOrder: number[] = [];
@@ -635,15 +627,10 @@ export default function PdfEditorPage() {
         </div>
       )}
 
-      {/* Open-source attribution — explicit so operators know nothing in the
-          PDF stack hits Google. PDF.js is Mozilla, pdf-lib is community,
-          QR/barcode generation is local, encryption is local qpdf. */}
-      {hasDocument && (
-        <div className="text-[9px] text-rmpg-600 mt-2 text-center select-none">
-          Powered by <span className="text-rmpg-500">PDF.js</span> (Mozilla, Apache 2.0) +
-          <span className="text-rmpg-500"> pdf-lib</span> (MIT). Fully internal — runs in your browser, no Google libraries.
-        </div>
-      )}
+      {/* Engine attribution — surfaces which backend rendered each document
+          so operators can see when our native renderer covers a doc vs.
+          when we fall back to PDF.js. */}
+      {hasDocument && <EnginePanel />}
 
       <SignaturePad
         open={signatureOpen}
@@ -662,6 +649,28 @@ export default function PdfEditorPage() {
         onClose={() => setEncryptionOpen(false)}
         onConfirm={(cfg) => setEncryption(cfg)}
       />
+    </div>
+  );
+}
+
+// Status panel that subscribes to the engine's diagnostics registry and
+// surfaces which backend rendered each document. Helps operators see when
+// the native engine handles a doc vs. when we fall back to PDF.js.
+function EnginePanel(): React.ReactElement {
+  const [, force] = useState(0);
+  useEffect(() => subscribeDiagnostics(() => force(t => t + 1)), []);
+  const summary = diagnosticsSummary();
+  const last = getDiagnostics()[0];
+  return (
+    <div className="text-[9px] text-rmpg-600 mt-2 text-center select-none">
+      <div>
+        <span className="text-rmpg-500 font-semibold">RMPG PDF Engine</span> ·
+        Native: <span className="text-[#d4a017]">{summary.native}</span> · PDF.js fallback: <span className="text-rmpg-500">{summary.pdfjs}</span>
+        {last && <> · last: <span className="text-rmpg-400">{last.backend}</span> ({last.reason.slice(0, 80)}{last.reason.length > 80 ? '…' : ''})</>}
+      </div>
+      <div className="mt-0.5">
+        Fully internal — native renderer + PDF.js (Mozilla, Apache 2.0) as a swappable fallback engine + pdf-lib (MIT) for byte edits. No Google libraries.
+      </div>
     </div>
   );
 }
