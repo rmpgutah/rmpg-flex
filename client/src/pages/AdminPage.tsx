@@ -43,6 +43,7 @@ import type { User, Client, UserRole } from '../types';
 
 // Tab components
 import AdminUsersTab from './admin/AdminUsersTab';
+import AdminCourtLookupsTab from './admin/AdminCourtLookupsTab';
 import AdminClientsTab from './admin/AdminClientsTab';
 import AdminSystemTab from './admin/AdminSystemTab';
 import AdminAuditTab from './admin/AdminAuditTab';
@@ -234,7 +235,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'dashboard' | 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'evidence';
+type TabId = 'dashboard' | 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'evidence' | 'court_lookups';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -685,6 +686,7 @@ export default function AdminPage() {
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
         { id: 'iped', label: 'IPED', icon: ClipboardList },
         { id: 'evidence', label: 'Evidence Chain', icon: Shield },
+        { id: 'court_lookups', label: 'Court Tracker Lookups', icon: ScrollText },
       ],
     },
     {
@@ -1062,6 +1064,14 @@ export default function AdminPage() {
             auditLog={auditLog}
             loadingAudit={loadingAudit}
             LoadingSpinner={LoadingSpinner}
+          />
+        )}
+
+        {activeTab === 'court_lookups' && (
+          <AdminCourtLookupsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
           />
         )}
       </div>

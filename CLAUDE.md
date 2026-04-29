@@ -524,6 +524,98 @@ Status legend: ✅ shipped · 🟡 partial / opt-in · 📋 roadmap · ⏭ defer
 
 **Approximate state**: 80 ✅ shipped, 6 🟡 partial, 50 📋 roadmap, 14 ⏭ deferred-low-priority. Update this table whenever a roadmap item moves to shipped.
 
+### Court Tracker — 125-upgrade roadmap (snapshot 2026-04-29)
+
+Status: ✅ shipped · 🟡 partial · 📋 roadmap · ⏭ deferred-low.
+
+**Admin-editable lookups (architecture, 1–10)**
+1 court_lookups schema + seed ✅ · 2 GET/POST/PUT/DELETE /api/court/lookups ✅ ·
+3 categories endpoint ✅ · 4 bulk reorder ✅ · 5 admin tab `Court Tracker Lookups` ✅ ·
+6 enable/disable per entry ✅ · 7 add new categories on the fly ✅ ·
+8 audit-logged on every change ✅ · 9 RBAC (admin/manager edit, admin delete) ✅ ·
+10 wire CourtTrackerPage dropdowns to lookups instead of hardcoded enums 📋
+
+**Witnesses (11–25)**
+11 court_witnesses table + indexes ✅ · 12 list per event ✅ ·
+13 add/edit/delete witnesses ✅ · 14 witness type from lookup ✅ ·
+15 contact info (phone/email/address) ✅ · 16 subpoena served flag + timestamp + officer ✅ ·
+17 appearance required + appeared + testified flags ✅ ·
+18 witness fee + mileage + reimbursement total ✅ ·
+19 link to persons table 🟡 · 20 subpoena PDF generator (uses RMPG PDF Engine) 📋 ·
+21 witness fee schedule from lookup 📋 · 22 batch subpoena generation 📋 ·
+23 witness reminder notifications 📋 · 24 witness portal (read-only confirm link) ⏭ ·
+25 victim-witness advocate workflow 📋
+
+**Sentence detail (26–40)**
+26 court_sentences table (1:1 per event) ✅ · 27 incarceration days + facility ✅ ·
+28 probation months + terms ✅ · 29 community service hours ✅ ·
+30 fine + court costs + restitution amount ✅ · 31 protective / no-contact orders ✅ ·
+32 treatment required ✅ · 33 license suspension + months ✅ · 34 additional terms ✅ ·
+35 sentencing judge + date ✅ · 36 GET/PUT /api/court/events/:id/sentence ✅ ·
+37 sentence summary card in event detail 📋 · 38 sentence print template 📋 ·
+39 sentence active/expired status calc 📋 · 40 sentence appeal tracking 📋
+
+**Plea history (41–50)**
+41 court_pleas table (chronological) ✅ · 42 add plea + date + charge ✅ ·
+43 list pleas per event ✅ · 44 delete plea ✅ · 45 entered_by_user_id ✅ ·
+46 plea types from lookup ✅ · 47 plea bargain link to negotiated outcome 📋 ·
+48 plea timeline visualization 📋 · 49 plea PDF entry form 📋 · 50 plea reversal/withdrawal 📋
+
+**Restitution ledger (51–60)**
+51 court_restitution_payments table ✅ · 52 record payment ✅ ·
+53 delete payment ✅ · 54 balance calc (owed - paid) ✅ ·
+55 payment method + reference ✅ · 56 received_by_user_id ✅ ·
+57 receipt PDF 📋 · 58 monthly restitution report 📋 ·
+59 victim-payee notifications 📋 · 60 outstanding balance dashboard widget 📋
+
+**Officer assignments (61–75)**
+61 court_officer_assignments table ✅ · 62 add officer to event ✅ ·
+63 officer roles from lookup ✅ · 64 confirmed flag + timestamp ✅ ·
+65 appeared / testified flags ✅ · 66 mileage / hours / reimbursement ✅ ·
+67 officer self-confirm endpoint 📋 · 68 officer schedule view (/officer-schedule) ✅ ·
+69 officer no-show alerts 📋 · 70 multi-officer assignment 🟡 (table supports, UI 📋) ·
+71 officer travel reimbursement total per period 📋 · 72 court appearance pay calc 📋 ·
+73 officer-to-event auto-assign from incident reports 📋 ·
+74 officer subpoena PDF generation 📋 · 75 officer training requirement check ⏭
+
+**Reminders (76–85)**
+76 court_reminders table ✅ · 77 multiple reminders per event ✅ ·
+78 in-app + email + sms options 🟡 (schema only) · 79 generate reminders endpoint ✅ (existing) ·
+80 reminder send job 📋 · 81 reminder template editor 📋 ·
+82 default reminder windows (7d/3d/1d/2h) 📋 · 83 reminder ack tracking 📋 ·
+84 reminder escalation chain 📋 · 85 reminder digest email ⏭
+
+**Search & navigation (86–100)**
+86 cross-text search (/api/court/search) ✅ · 87 find by event number ✅ ·
+88 find by defendant ✅ · 89 find by judge ✅ · 90 find by prosecutor ✅ ·
+91 find in notes ✅ · 92 find in sentence ✅ · 93 find in defense attorney ✅ ·
+94 saved searches 📋 · 95 search history 📋 · 96 advanced filter UI 📋 ·
+97 filter by status ✅ (existing) · 98 filter by date range ✅ (existing) ·
+99 group by court / judge / outcome 📋 · 100 export search results CSV 📋
+
+**Calendar & scheduling (101–115)**
+101 calendar view ✅ (existing) · 102 conflict checker ✅ (existing) ·
+103 continuance tracking ✅ (existing) · 104 iCal export (/calendar/ical) ✅ ·
+105 only-mine iCal filter ✅ · 106 defendant timeline (/defendant-timeline) ✅ ·
+107 bulk reschedule by date or ids ✅ · 108 daily docket print 📋 ·
+109 weekly schedule print 📋 · 110 google calendar 2-way sync ⏭ ·
+111 outlook sync ⏭ · 112 webcal subscription URL 📋 ·
+113 court holiday calendar 📋 · 114 daylight savings handling ✅ (UTC stored) ·
+115 calendar PDF export with case numbers 📋
+
+**Documents & forms (116–125)**
+116 document upload per event ✅ (existing) · 117 document categorization 📋 ·
+118 subpoena template generator (PDF Engine) 📋 · 119 court order template 📋 ·
+120 plea form template 📋 · 121 witness fee voucher PDF 📋 ·
+122 audit log per event 🟡 (general audit log captures it) ·
+123 chain-of-custody integration with evidence_hashes 📋 ·
+124 document version history 📋 · 125 e-signature on subpoenas (Acrobat XFA via PDF editor) 📋
+
+**Approximate state**: 50 ✅ shipped, 5 🟡 partial, 60 📋 roadmap, 10 ⏭ deferred-low.
+The ✅ items in this commit add 6 new tables, 23 new endpoints, the
+admin lookups UI, and a doc-typed 125-item progression. Future sessions
+can move 📋 → ✅ as they land.
+
 ### PDF Editor — qpdf dependency for encryption (introduced 2026-04-29)
 The PDF editor's encryption feature is **server-side**: a multipart upload to `POST /api/pdf-tools/encrypt` runs the user-supplied bytes through the `qpdf` binary with the requested passwords + permission flags + AES-256 (or 128) and streams the encrypted bytes back. There is no pure-JS fallback — pdf-lib has no encryption support and maintained pure-JS forks don't exist.
 
