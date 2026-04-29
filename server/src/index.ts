@@ -359,6 +359,7 @@ app.use(liveBroadcast);
 // causing Express to match the webhook's '/' handler first and reject every
 // JWT-authenticated request with 403 "Invalid webhook token".
 import { traccarWebhookRouter, owntracksDeprecatedRouter } from './routes/dispatch/gps';
+import { startTraccarPoller } from './utils/traccarServerPoller';
 app.use('/api/traccar', traccarWebhookRouter);
 app.use('/traccar', traccarWebhookRouter);
 app.use('/owntracks', owntracksDeprecatedRouter);
@@ -730,9 +731,6 @@ try {
     // Traccar Server REST poller — opt-in via system_config (traccar_server_url
     // + traccar_server_email + traccar_server_password). Idle when config missing.
     try {
-      // Synchronous static import via require to dodge top-level-await
-      // restrictions in this listen-callback scope.
-      const { startTraccarPoller } = require('./utils/traccarServerPoller');
       startTraccarPoller();
     } catch (err: any) {
       logger.warn({ err, scheduler: 'traccar-poller' }, 'failed to start scheduler');
