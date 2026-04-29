@@ -88,13 +88,17 @@ function readConfig(): { url: string; email: string; password: string; enabled: 
 function setStatus(value: string): void {
   try {
     const db = getDb();
-    db.prepare(`
-      INSERT INTO system_config (config_key, config_value, is_active)
-      VALUES ('traccar_pull_status', ?, 1)
-      ON CONFLICT(config_key, config_value) DO NOTHING
-    `).run(value);
-    // Update existing row(s)
-    db.prepare(`UPDATE system_config SET config_value = ? WHERE config_key = 'traccar_pull_status'`).run(value);
+    // The compound UNIQUE on (config_key, config_value) means every distinct
+    // status string is a fresh row — so neither INSERT-OR-IGNORE nor UPDATE
+    // alone collapses history. Wrap delete+insert in a transaction to keep
+    // exactly one heartbeat row per tick.
+    const tx = db.transaction((v: string) => {
+      db.prepare("DELETE FROM system_config WHERE config_key = 'traccar_pull_status'").run();
+      db.prepare(
+        "INSERT INTO system_config (config_key, config_value, category, is_active) VALUES ('traccar_pull_status', ?, 'integrations', 1)",
+      ).run(v);
+    });
+    tx(value);
   } catch { /* non-critical */ }
 }
 
