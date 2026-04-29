@@ -1902,8 +1902,10 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
   // GPS Webhooks (Traccar replaced OwnTracks 2026-04-29)
   'traccar_webhook_token',
-  // Traccar Server REST API pull mode (optional)
-  'traccar_server_url', 'traccar_server_email', 'traccar_server_password',
+  // Traccar Server REST API pull mode (optional). Names align with the
+  // production schema set up before this slice: traccar_email/password
+  // are encrypted, _url/_enabled/_poll_interval are plain config.
+  'traccar_email', 'traccar_password',
 ];
 
 function encryptValue(plaintext: string): string {

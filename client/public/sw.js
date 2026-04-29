@@ -14,7 +14,10 @@
 //       generic flat JSON. /owntracks/* returns 410 Gone. Optional
 //       Traccar Server REST API pull mode (15-second poll) when
 //       traccar_server_url + email + password configured.
-const CACHE_NAME = 'rmpg-flex-v451';
+// v452: Align Traccar config keys with prod schema (traccar_url/email/
+//       password/enabled/poll_interval). Migrate owntracks_pending_devices
+//       → traccar_pending_devices. Honor traccar_enabled toggle.
+const CACHE_NAME = 'rmpg-flex-v452';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit

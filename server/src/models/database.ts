@@ -5230,7 +5230,35 @@ function migrateSchema(): void {
 
   // ── 2026-04-29: OwnTracks → Traccar migration (one-time) ──
   // Idempotent: only does work if owntracks_device_map still exists.
+  // Also migrates the discovery/staging table owntracks_pending_devices
+  // → traccar_pending_devices (used by the auto-discovery flow that lets
+  // dispatchers see new tracker IDs before mapping them to a unit).
   try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS traccar_pending_devices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tracker_id TEXT NOT NULL UNIQUE,
+        last_lat REAL,
+        last_lng REAL,
+        last_payload TEXT,
+        first_seen_at TEXT DEFAULT (datetime('now','localtime')),
+        last_seen_at TEXT DEFAULT (datetime('now','localtime')),
+        seen_count INTEGER NOT NULL DEFAULT 1
+      )
+    `).run();
+    const pendingTable = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='owntracks_pending_devices'",
+    ).get() as { name?: string } | undefined;
+    if (pendingTable?.name) {
+      db.prepare(`
+        INSERT OR IGNORE INTO traccar_pending_devices
+          (tracker_id, last_lat, last_lng, last_payload, first_seen_at, last_seen_at, seen_count)
+        SELECT tracker_id, last_lat, last_lng, last_payload, first_seen_at, last_seen_at, seen_count
+        FROM owntracks_pending_devices
+      `).run();
+      db.prepare('DROP TABLE owntracks_pending_devices').run();
+      console.log('[migration] Renamed owntracks_pending_devices → traccar_pending_devices');
+    }
     const owntracksTable = db.prepare(
       "SELECT name FROM sqlite_master WHERE type='table' AND name='owntracks_device_map'",
     ).get() as { name?: string } | undefined;

@@ -35,19 +35,23 @@ let deviceUniqueIdCache = new Map<number, string>(); // Traccar device.id → un
  * Read pull-mode config from system_config. Returns null if any of the
  * three fields is missing — the caller skips the tick.
  */
-function readConfig(): { url: string; email: string; password: string } | null {
+function readConfig(): { url: string; email: string; password: string; enabled: boolean; intervalMs: number } | null {
   const db = getDb();
   const rows = db.prepare(`
     SELECT config_key, config_value FROM system_config
-    WHERE config_key IN ('traccar_server_url', 'traccar_server_email', 'traccar_server_password')
+    WHERE config_key IN ('traccar_url','traccar_email','traccar_password','traccar_enabled','traccar_poll_interval')
       AND is_active = 1
   `).all() as Array<{ config_key: string; config_value: string }>;
   const m = new Map(rows.map((r) => [r.config_key, r.config_value]));
-  const url = m.get('traccar_server_url')?.trim();
-  const email = m.get('traccar_server_email')?.trim();
-  const password = m.get('traccar_server_password')?.trim();
+  const url = m.get('traccar_url')?.trim();
+  const email = m.get('traccar_email')?.trim();
+  const password = m.get('traccar_password')?.trim();
   if (!url || !email || !password) return null;
-  return { url: url.replace(/\/$/, ''), email, password };
+  const enabledRaw = (m.get('traccar_enabled') ?? 'true').toLowerCase();
+  const enabled = enabledRaw !== 'false' && enabledRaw !== '0' && enabledRaw !== 'no';
+  if (!enabled) return null;
+  const intervalSec = Math.max(5, Math.min(300, parseInt(m.get('traccar_poll_interval') ?? '15', 10) || 15));
+  return { url: url.replace(/\/$/, ''), email, password, enabled, intervalMs: intervalSec * 1000 };
 }
 
 function setStatus(value: string): void {
