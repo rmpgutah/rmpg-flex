@@ -112,19 +112,18 @@ export class PdfJsBackend implements RmpgPdfBackend {
         standardFontDataUrl: '/pdfjs/standard_fonts/',
         cMapUrl: '/pdfjs/cmaps/',
         cMapPacked: true,
-        // XFA-form support: court-issued process-service PDFs and many
-        // government forms use XFA (XML Forms Architecture) overlays. When
-        // enableXfa is false (the v5 default), PDF.js refuses to render
-        // and throws on getDocument. With it true, PDF.js renders the
-        // static representation alongside the form fields.
+        // For in-memory bytes (which is always our case — files come from
+        // /api/uploads as ArrayBuffer), disableStream + disableAutoFetch
+        // is the documented correct setting. Streaming was causing
+        // RangeError / AbortException issues with merged-pdf-lib output.
+        disableStream: true,
+        disableAutoFetch: true,
+        // XFA: render the static visual layer of court-issued forms.
+        // Safe even on non-XFA documents — PDF.js no-ops the flag.
         enableXfa: true,
-        // Keep streaming on so partial bytes can render — disabling these
-        // would force the full document into memory before any render.
-        disableStream: false,
-        disableAutoFetch: false,
-        // Default verbosity is too quiet (silently swallows useful errors);
-        // ERRORS surfaces real problems via console without flooding logs.
-        verbosity: 1, // 0 = errors, 1 = warnings, 5 = infos
+        // Surface PDF.js warnings/errors at console level so they make
+        // it into the diagnostic logs.
+        verbosity: 1,
       }).promise;
       return new PdfJsDocument(inner, 'pdfjs backend (Mozilla, Apache 2.0)');
     } catch (err) {

@@ -32,7 +32,7 @@ export interface SafeRenderOptions {
 export async function openAndRenderPage(
   bytes: Uint8Array,
   opts: SafeRenderOptions,
-): Promise<RmpgPdfDocument | null> {
+): Promise<RmpgPdfDocument> {
   const tryOnce = async (forceFallback: boolean): Promise<RmpgPdfDocument> => {
     const pdf = await openPdf(bytes, {
       fileName: opts.fileName,

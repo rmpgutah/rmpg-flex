@@ -86,10 +86,10 @@ export default function PageCanvas(props: Props) {
           canvas,
           forcePdfjs,
         });
-        if (!pdf) {
-          setRenderError(`Page ${originalPageNumber} could not be rendered. Both the native engine and the PDF.js fallback failed.`);
-          return;
-        }
+        // safeRender now throws on failure; it never returns null. The dead
+        // null-branch that produced the misleading "Both engines failed"
+        // generic was removed v467. Real errors land in the outer catch
+        // below and become the overlay text.
         if (cancelled) { await pdf.destroy(); return; }
         const page = await pdf.getPage(originalPageNumber);
         const viewport = page.getViewport({ scale: DEFAULT_RENDER_SCALE });
@@ -127,8 +127,13 @@ export default function PageCanvas(props: Props) {
         // Free the document — viewport sizes are already locked into the page record.
         try { await pdf.destroy(); } catch { /* ignore */ }
       } catch (err) {
-        console.error('Page render failed', err);
-        setRenderError(err instanceof Error ? err.message : 'Render failed (see console)');
+        // Surface the FULL error (name + message + page + size) so the
+        // overlay actually tells the user what's wrong without DevTools.
+        console.error('[pdf-editor] page render failed', { page: originalPageNumber, err });
+        const e = err as { name?: string; message?: string };
+        const name = e?.name && e.name !== 'Error' ? `${e.name}: ` : '';
+        const msg = e?.message ?? String(err);
+        setRenderError(`Page ${originalPageNumber} · ${name}${msg}`);
       }
     })();
     return () => { cancelled = true; };
