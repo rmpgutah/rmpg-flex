@@ -7,6 +7,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   FileWarning,
   Plus,
@@ -1533,7 +1534,7 @@ export default function CitationsPage() {
         {/* Notes */}
         <section>
           <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
-          <textarea
+          <RichTextArea
             value={form.notes}
             onChange={e => updateField('notes', e.target.value)}
             placeholder="Additional notes or remarks..."

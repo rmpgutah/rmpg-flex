@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
 import { X, Phone, AlertTriangle, Clock, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
+import RichTextArea from './RichTextArea';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,
@@ -741,7 +742,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Description — moved up for faster tab flow */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
-            <textarea
+            <RichTextArea
               className="textarea-dark"
               rows={mode === 'quick' ? 2 : 4}
               placeholder="Describe the situation..."

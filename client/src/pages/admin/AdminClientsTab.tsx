@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Plus,
   Edit,
@@ -689,7 +690,7 @@ export default function AdminClientsTab({
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Notes</h3>
                   {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</div>}
                 </div>
-                <textarea
+                <RichTextArea
                   className="input-dark text-xs w-full leading-relaxed resize-y min-h-[36px]"
                   style={{ minHeight: '180px' }}
                   value={clientEdit.notes || ''}

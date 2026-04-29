@@ -7,6 +7,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   ClipboardCheck, Search, Plus, Clock, User, FileText,
   X, Save, Loader2, CheckCircle, AlertTriangle, Send, RotateCcw,
@@ -405,15 +406,15 @@ export default function DailyActivityReportsPage() {
                     <div>
                       <label htmlFor="dar-narrative" className="text-[9px] text-rmpg-500">Narrative</label>
                       <p className="text-[8px] text-rmpg-600 mb-0.5">Describe all activities during this shift</p>
-                      <textarea id="dar-narrative" value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                      <RichTextArea id="dar-narrative" value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                     <div>
                       <label htmlFor="dar-highlights" className="text-[9px] text-rmpg-500">Highlights</label>
-                      <textarea id="dar-highlights" value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                      <RichTextArea id="dar-highlights" value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                     <div>
                       <label htmlFor="dar-issues" className="text-[9px] text-rmpg-500">Issues Encountered</label>
-                      <textarea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                      <RichTextArea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                   </div>
                 ) : (

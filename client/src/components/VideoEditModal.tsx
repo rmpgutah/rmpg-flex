@@ -11,6 +11,7 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import type { BodyCamVideo, VideoClassification, VideoRetention } from '../types';
 
+import RichTextArea from './RichTextArea';
 export interface BodyCamVideoEditData {
   title: string;
   classification: VideoClassification;
@@ -156,7 +157,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       {/* Notes */}
       <div>
         <label className="field-label mb-1 block">Notes</label>
-        <textarea
+        <RichTextArea
           className="textarea-dark"
           rows={3}
           value={form.notes}

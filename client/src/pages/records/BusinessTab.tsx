@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Search, Building2, MapPin, Phone, Mail, Globe, Trash2, Pencil,
   ExternalLink, X, Archive, RotateCcw, Users, Briefcase, Hash,
@@ -444,7 +445,7 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
         <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Industry</label><input className="input-dark text-xs w-full" value={form.industry} onChange={e => set('industry', e.target.value)} /></div>
         <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Employees</label><input className="input-dark text-xs w-full" value={form.employee_count} onChange={e => set('employee_count', e.target.value)} /></div>
       </div>
-      <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Notes</label><textarea className="input-dark text-xs w-full min-h-[48px]" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
+      <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Notes</label><RichTextArea className="input-dark text-xs w-full min-h-[48px]" rows={2} value={form.notes} onChange={e => set('notes', e.target.value)} /></div>
       <div className="flex justify-end gap-2 pt-2">
         <button type="button" onClick={onCancel} className="toolbar-btn">Cancel</button>
         <button type="button" onClick={() => onSubmit(form)} disabled={!form.name || submitting} className="toolbar-btn toolbar-btn-primary">

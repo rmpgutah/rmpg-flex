@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, Loader2, Video } from 'lucide-react';
 import type { BodyCamVideo, VideoClassification, BwcInteractionType } from '../types';
 
+import RichTextArea from './RichTextArea';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -212,7 +213,7 @@ export default function BodyCamVideoEditModal({ isOpen, onClose, video, onSave }
           {/* Notes */}
           <div>
             <label className="field-label">Notes</label>
-            <textarea
+            <RichTextArea
               value={notes}
               onChange={e => setNotes(e.target.value)}
               className="input-field w-full h-20 resize-none"

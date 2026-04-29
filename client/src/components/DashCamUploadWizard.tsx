@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
+import RichTextArea from './RichTextArea';
 import {
   Upload, X, ChevronDown, ChevronRight, Check, AlertCircle,
   Film, Plus, ArrowLeft, ArrowRight, Loader2, Trash2, Copy,
@@ -778,7 +779,7 @@ export default function DashCamUploadWizard({
                     <label className="text-[10px] font-bold text-rmpg-400 uppercase tracking-wider">
                       Notes
                     </label>
-                    <textarea
+                    <RichTextArea
                       value={entry.notes}
                       onChange={(e) => updateFile(entry.id, { notes: e.target.value })}
                       rows={2}

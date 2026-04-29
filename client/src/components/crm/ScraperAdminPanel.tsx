@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../RichTextArea';
 import {
   Loader2,
   X,
@@ -110,7 +111,7 @@ function ExtraConfigEditor({
         </button>
         {expanded && (
           <div className="pb-2 space-y-1">
-            <textarea
+            <RichTextArea
               value={value}
               onChange={(e) => setValue(e.target.value)}
               onBlur={() => validateJson(value)}

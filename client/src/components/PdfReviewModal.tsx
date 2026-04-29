@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import RichTextArea from './RichTextArea';
 import type {
   FormSchema, SchemaSection, FieldSpec, LabeledField,
   CheckboxField, NarrativeField, TableField, SignatureField,
@@ -360,7 +361,7 @@ function NarrativeEditor<T extends Record<string, any>>({
           <span className="ml-1 text-amber-500/70" title={field.readOnlyReason}>ⓘ</span>
         )}
       </span>
-      <textarea
+      <RichTextArea
         aria-label={field.label}
         rows={4}
         className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1 disabled:opacity-50"

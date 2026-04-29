@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   GraduationCap, Plus, Search, CheckCircle, AlertTriangle, Clock,
   BookOpen, Loader2, X, Edit2, Trash2, Archive, Users, Shield,
@@ -1461,7 +1462,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           {/* Notes */}
           <div>
             <label className="field-label mb-1 block">Notes</label>
-            <textarea
+            <RichTextArea
               value={form.notes}
               onChange={e => update('notes', e.target.value)}
               className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"
@@ -1622,7 +1623,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           {/* Description */}
           <div>
             <label className="field-label mb-1 block">Description</label>
-            <textarea
+            <RichTextArea
               value={form.description}
               onChange={e => update('description', e.target.value)}
               className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"

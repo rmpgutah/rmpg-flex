@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import RichTextArea from '../components/RichTextArea';
 import {
   Plus,
   Search,
@@ -1593,7 +1594,7 @@ export default function IncidentsPage() {
         <CollapsibleSection title="Narrative" icon={FileText} defaultOpen>
           {isEditing ? (
             <>
-              <textarea
+              <RichTextArea
                 ref={narrativeRef}
                 className="textarea-dark mt-1"
                 rows={8}
@@ -2386,7 +2387,7 @@ export default function IncidentsPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Notes</label>
-                <textarea
+                <RichTextArea
                   value={custodyNotes}
                   onChange={(e) => setCustodyNotes(e.target.value)}
                   placeholder="Optional notes..."
@@ -2458,7 +2459,7 @@ export default function IncidentsPage() {
                 <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Counts</label><input name="counts" type="number" min="1" defaultValue="1" className="input-dark w-full text-xs" /></div>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Weapon / Force Used</label><input name="weapon_force" className="input-dark w-full text-xs" placeholder="e.g., Handgun, Knife, Personal weapons" /></div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><textarea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><RichTextArea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
               <button type="button" onClick={() => setShowAddOffenseModal(false)} className="toolbar-btn">Cancel</button>
@@ -2544,7 +2545,7 @@ export default function IncidentsPage() {
                 <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Departed At</label><input name="departed_at" type="datetime-local" className="input-dark w-full text-xs" /></div>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Action Taken</label><input name="action_taken" className="input-dark w-full text-xs" placeholder="e.g., Perimeter security, witness interview" /></div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><textarea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><RichTextArea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
               <button type="button" onClick={() => setShowAddOfficerModal(false)} className="toolbar-btn">Cancel</button>

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Loader2, Play, GitCompare, Save, Pencil, Trash2, ArrowDownToLine } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface Template {
   id: number;
   name: string;
@@ -172,7 +173,7 @@ export default function AIPromptWorkshopPanel() {
         <div className="space-y-3">
           <div>
             <label className="text-xs text-gray-400 mb-1 block">System Prompt</label>
-            <textarea
+            <RichTextArea
               rows={4}
               value={systemPrompt}
               onChange={e => setSystemPrompt(e.target.value)}
@@ -183,7 +184,7 @@ export default function AIPromptWorkshopPanel() {
 
           <div>
             <label className="text-xs text-gray-400 mb-1 block">User Message</label>
-            <textarea
+            <RichTextArea
               rows={3}
               value={userMessage}
               onChange={e => setUserMessage(e.target.value)}
