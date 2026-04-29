@@ -10,6 +10,8 @@
 export type { RmpgPdfDocument, RmpgPdfPage, PageViewport, RenderOptions, TextItem, BackendName, DiagnosticEntry } from './types';
 export { BackendUnsupportedError, RmpgPdfError } from './types';
 export { recordOpen, getDiagnostics, subscribeDiagnostics, diagnosticsSummary } from './diagnostics';
+// Writer surface — proprietary PDF byte writer (see native/writer/).
+export { RmpgPdfBuilder, ContentStreamBuilder, type BuilderMetadata } from './native/writer';
 
 import { nativeBackend } from './native';
 import { pdfjsBackend } from './backends/pdfjs';

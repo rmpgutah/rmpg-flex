@@ -77,15 +77,44 @@ backend grows, fallbacks should drop toward zero.
 | Low | Annotation rendering (we already render our own annotation layer separately) | — |
 | Low | Encryption (we have qpdf server-side for that) | — |
 
-## Why we keep PDF.js as the fallback
+## Why we keep PDF.js as a fallback (diagnostic-only)
 
-PDF.js (Mozilla, Apache 2.0) is the reference open-source PDF reader.
-Building a complete renderer is multi-person-year work; using PDF.js for
-the long tail while we own the common path is the honest tradeoff.
+PDF.js (Mozilla, Apache 2.0) is the reference open-source PDF reader. Building
+a complete renderer is multi-person-year work; using PDF.js as a *diagnostic*
+fallback for documents the native engine doesn't yet handle lets us measure
+coverage gaps in production without breaking real workflows.
 
-The Apache 2.0 license explicitly permits this kind of integration with
-attribution — the editor footer credits both PDF.js and pdf-lib, and this
-README explains the role of each.
+Roadmap goal: as native coverage grows, the diagnostic panel should report
+zero PDF.js fallbacks in steady-state operation, at which point the dependency
+is removed entirely.
+
+## Writer (RmpgPdfBuilder)
+
+The writer (`native/writer/`) is 100% proprietary and is the only path the
+editor's primary save flow uses. It produces a fresh PDF byte stream from:
+- Source page graph (parsed by the native reader)
+- Per-page annotation overlay content streams
+- JPEG image XObjects (PNGs are re-encoded via `<canvas>.toBlob('image/jpeg')`)
+- Document metadata (`/Info` dict with full Unicode title/author/subject)
+- A standard `xref` table + trailer
+
+What's intentionally outside writer v1:
+- Multi-document merge (still uses pdf-lib transitionally, flagged in save.ts)
+- Encryption (handled server-side by qpdf, see CLAUDE.md)
+- AcroForm field generation
+- Real PDF Link annotations (the editor draws underlined text — TODO)
+
+## Architecture summary
+
+| Layer | Owner | Notes |
+|---|---|---|
+| Reader / parser | RMPG (native) | Classic xref + FlateDecode + Standard 14 |
+| Renderer | RMPG (native) | Canvas 2D, ~25 operators |
+| Writer | RMPG (native) | Object graph → bytes; full xref + trailer |
+| Diagnostic fallback | PDF.js | Only on `BackendUnsupportedError`, surfaced in panel |
+| Multi-doc merge | pdf-lib (transitional) | Next replacement target |
+| Encryption | qpdf binary | Out-of-process, separate concern |
+
 
 ## Adding a new operator to the native renderer
 
