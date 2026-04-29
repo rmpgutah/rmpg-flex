@@ -17,8 +17,37 @@
 //
 // API reference: https://www.traccar.org/api-reference/
 
+import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { ingestTraccarPosition } from '../routes/dispatch/gps';
+import config from '../config';
+
+/**
+ * Decrypt a value stored by admin.ts encryptValue() (AES-256-GCM with
+ * key = SHA-256(JWT_SECRET), 16-byte IV, format `iv:authTag:ciphertext`
+ * as 3 hex strings). Returns the input untouched if it's not in the
+ * encrypted format — that lets URL / enabled / poll_interval be
+ * stored as plaintext while email / password are encrypted.
+ */
+function maybeDecrypt(value: string): string {
+  if (!value) return value;
+  // Encrypted format: 32 hex (IV) + ':' + 32 hex (authTag) + ':' + ciphertext hex
+  if (!/^[0-9a-f]{32}:[0-9a-f]{32}:[0-9a-f]+$/i.test(value)) return value;
+  try {
+    const [ivHex, authTagHex, ctHex] = value.split(':');
+    const key = crypto.createHash('sha256').update(config.jwt.secret).digest();
+    const iv = Buffer.from(ivHex, 'hex');
+    const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+    decipher.setAuthTag(Buffer.from(authTagHex, 'hex'));
+    let plain = decipher.update(ctHex, 'hex', 'utf8');
+    plain += decipher.final('utf8');
+    return plain;
+  } catch {
+    // Bad ciphertext / wrong key — return original so the caller errors out
+    // visibly when the value can't be used.
+    return value;
+  }
+}
 
 const POLL_INTERVAL_MS = 15_000;
 const SESSION_PATH = '/api/session';
@@ -44,8 +73,10 @@ function readConfig(): { url: string; email: string; password: string; enabled: 
   `).all() as Array<{ config_key: string; config_value: string }>;
   const m = new Map(rows.map((r) => [r.config_key, r.config_value]));
   const url = m.get('traccar_url')?.trim();
-  const email = m.get('traccar_email')?.trim();
-  const password = m.get('traccar_password')?.trim();
+  // Email + password are AES-encrypted at rest by the admin route. Plain
+  // values pass through unchanged (maybeDecrypt is a no-op for non-encrypted).
+  const email = maybeDecrypt(m.get('traccar_email') ?? '').trim();
+  const password = maybeDecrypt(m.get('traccar_password') ?? '').trim();
   if (!url || !email || !password) return null;
   const enabledRaw = (m.get('traccar_enabled') ?? 'true').toLowerCase();
   const enabled = enabledRaw !== 'false' && enabledRaw !== '0' && enabledRaw !== 'no';
