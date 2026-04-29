@@ -21,6 +21,7 @@ import {
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import usePersistedState from '../hooks/usePersistedState';
+import useLiveSync from '../hooks/useLiveSync';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -171,9 +172,18 @@ export default function DashcamAiPage(): React.ReactElement {
 
   useEffect(() => {
     refresh();
-    const t = setInterval(refresh, 15_000); // 15s auto-refresh
+    // Background safety net — even if the WebSocket drops, we still
+    // pick up changes within 30s. The interval is longer now that
+    // useLiveSync handles the common case at sub-second latency.
+    const t = setInterval(refresh, 30_000);
     return () => clearInterval(t);
   }, [refresh]);
+
+  // Live push: server broadcasts data_changed{module:'dashcam-ai'}
+  // on every event ingest + heartbeat. useLiveSync filters and
+  // debounces (500ms default) so a burst of heartbeats from a
+  // 15-cruiser fleet doesn't trigger 15 simultaneous refreshes.
+  useLiveSync('dashcam-ai', refresh, { entities: ['event', 'heartbeat'] });
 
   const totalsByStatus = useMemo(() => {
     const acc = { healthy: 0, stale: 0, down: 0 };

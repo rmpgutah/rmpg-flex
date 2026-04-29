@@ -19,6 +19,7 @@ import {
   Activity, Cpu, Hash, Video,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import AarReplayMap from '../components/AarReplayMap';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
 
 interface DrivingEventDetail {
@@ -263,6 +264,18 @@ export default function AarReplayPage(): React.ReactElement {
                 No video clip for this event.
               </div>
             )}
+          </div>
+
+          {/* Live map embed — Google Maps + breadcrumb polyline +
+              event pivot marker + green "@ scrub" cursor that
+              follows the video time. */}
+          <div className="border-b border-[#222]" style={{ height: 360 }}>
+            <AarReplayMap
+              pivot={ev.latitude != null && ev.longitude != null ? { lat: ev.latitude, lng: ev.longitude } : null}
+              breadcrumbs={breadcrumbs}
+              scrubLat={currentBreadcrumb?.latitude ?? null}
+              scrubLng={currentBreadcrumb?.longitude ?? null}
+            />
           </div>
 
           {/* Track summary */}
