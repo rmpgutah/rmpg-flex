@@ -1240,6 +1240,8 @@ const traccarWebhookLimiter = rateLimit({
   message: { error: 'Too many Traccar webhook requests, please try again later.' },
 });
 
+// Auth-free reachability probe — must register BEFORE /:user wildcards.
+traccarWebhookRouter.get('/health', (_req, res) => res.json({ ok: true, primary: 'traccar' }));
 traccarWebhookRouter.post('/', traccarWebhookLimiter, traccarHandler);
 traccarWebhookRouter.post('/:user', traccarWebhookLimiter, traccarHandler);
 traccarWebhookRouter.post('/:user/:device', traccarWebhookLimiter, traccarHandler);
@@ -1247,8 +1249,6 @@ traccarWebhookRouter.post('/:user/:device', traccarWebhookLimiter, traccarHandle
 traccarWebhookRouter.get('/', traccarWebhookLimiter, traccarHandler);
 traccarWebhookRouter.get('/:user', traccarWebhookLimiter, traccarHandler);
 traccarWebhookRouter.get('/:user/:device', traccarWebhookLimiter, traccarHandler);
-// Auth-free reachability probe for the admin tab.
-traccarWebhookRouter.get('/health', (_req, res) => res.json({ ok: true, primary: 'traccar' }));
 
 // ── Deprecation router for /owntracks/* — returns 410 Gone with migration JSON ──
 export const owntracksDeprecatedRouter = Router();

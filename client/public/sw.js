@@ -17,7 +17,8 @@
 // v452: Align Traccar config keys with prod schema (traccar_url/email/
 //       password/enabled/poll_interval). Migrate owntracks_pending_devices
 //       → traccar_pending_devices. Honor traccar_enabled toggle.
-const CACHE_NAME = 'rmpg-flex-v452';
+// v453: /api/traccar/health route order fix (was shadowed by /:user).
+const CACHE_NAME = 'rmpg-flex-v453';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
