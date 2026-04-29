@@ -128,10 +128,16 @@ export default function DocumentsAppsShelf({ currentFolderId }: Props) {
 
 /** Build a minimal valid PDF (single blank A4 page) without any third-party
  *  library. Used as the seed for "New blank PDF" so the writer has a source
- *  to load + extend. ~340 bytes. */
+ *  to load + extend.
+ *
+ *  Important: this body must be **pure ASCII** so JS string length equals
+ *  the encoded byte length, which is what the xref offsets index against.
+ *  We skip the optional `%\xff\xff\xff\xff` binary marker — the writer's
+ *  save() emits it on the actual output document; the seed doesn't need it.
+ */
 function buildBlankSourceBytes(): Uint8Array {
   const enc = new TextEncoder();
-  const header = `%PDF-1.7\n%\xff\xff\xff\xff\n`;
+  const header = `%PDF-1.7\n`;
   const obj1 = `1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n`;
   const obj2 = `2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n`;
   const obj3 = `3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << >> >>\nendobj\n`;
