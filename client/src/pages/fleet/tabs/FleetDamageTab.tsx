@@ -4,6 +4,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { localToday } from '../../../utils/dateUtils';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface DamageReport {
   id: number;
   vehicle_id: number;
@@ -120,7 +121,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
             <input type="number" value={form.repair_estimate} onChange={e => setForm(f => ({ ...f, repair_estimate: e.target.value }))} className="input-field text-xs" placeholder="Repair estimate $" />
             <div />
           </div>
-          <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
+          <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.damage_type.trim() || !form.description.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Submitting...' : 'Submit'}</button>
             <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-[9px]">Cancel</button>

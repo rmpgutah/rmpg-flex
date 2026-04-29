@@ -3,6 +3,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2,
   Edit2, Loader2, X, Upload, Link as LinkIcon, Star, Eye, EyeOff,
@@ -478,7 +479,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
           {/* Description */}
           <div>
             <label className="field-label mb-1 block">Description</label>
-            <textarea
+            <RichTextArea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"

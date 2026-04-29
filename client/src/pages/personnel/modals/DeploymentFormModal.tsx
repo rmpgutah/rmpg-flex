@@ -3,6 +3,7 @@ import { MapPinned } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
 import { useFormDirty } from '../../../hooks/useFormDirty';
 
+import RichTextArea from '../../../components/RichTextArea';
 export interface DeploymentFormData {
   officer_id: string;
   property_id: string;
@@ -134,7 +135,7 @@ export default function DeploymentFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3">
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Deployment notes..." className="textarea-dark" maxLength={3000} />
+        <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Deployment notes..." className="textarea-dark" maxLength={3000} />
         <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
       </div>
     </FormModal>

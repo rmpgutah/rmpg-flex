@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from './RichTextArea';
 import {
   Scale,
   Plus,
@@ -390,7 +391,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div>
                 <label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label>
-                <textarea
+                <RichTextArea
                   value={form.notes}
                   onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))}
                   rows={2}

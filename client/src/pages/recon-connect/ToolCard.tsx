@@ -3,6 +3,7 @@ import { Play, Square, Download, CheckCircle2, AlertCircle, Save, History, X, Fi
 import jsPDF from 'jspdf';
 import { apiFetch } from '../../hooks/useApi';
 
+import RichTextArea from '../../components/RichTextArea';
 export type ToolArg = { name: string; label: string; placeholder?: string; required?: boolean };
 export type ToolDef = {
   id: string;
@@ -389,7 +390,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
             <label className="text-[9px] text-[#888] uppercase tracking-wider">
               {tool.args[0].label} — one per line
             </label>
-            <textarea
+            <RichTextArea
               placeholder={`${tool.args[0].placeholder || 'target1'}\ntarget2\ntarget3`}
               value={bulkTargets}
               onChange={(e) => setBulkTargets(e.target.value)}

@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon,
   Briefcase, Calendar, Route, Navigation, Loader2, X, CheckCircle, Circle,
@@ -1424,7 +1425,7 @@ export default function ServePage() {
           {/* Instructions + notes */}
           <div>
             <label className="block text-[11px] text-rmpg-400 mb-1">Service Instructions</label>
-            <textarea
+            <RichTextArea
               value={formData.service_instructions}
               onChange={e => handleFormChange('service_instructions', e.target.value)}
               rows={2}
@@ -1434,7 +1435,7 @@ export default function ServePage() {
           </div>
           <div>
             <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
-            <textarea
+            <RichTextArea
               value={formData.notes}
               onChange={e => handleFormChange('notes', e.target.value)}
               rows={2}

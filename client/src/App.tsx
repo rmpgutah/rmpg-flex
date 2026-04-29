@@ -40,6 +40,7 @@ const RecordsPage = lazyRetry(() => import('./pages/RecordsPage'));
 const PersonnelPage = lazyRetry(() => import('./pages/personnel'));
 const CommunicationsPage = lazyRetry(() => import('./pages/CommunicationsPage'));
 const ReportsPage = lazyRetry(() => import('./pages/ReportsPage'));
+const PdfEditorPage = lazyRetry(() => import('./pages/pdf-editor'));
 const HistoricalTracksPage = lazyRetry(() => import('./pages/HistoricalTracksPage'));
 const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
@@ -240,6 +241,7 @@ function AppRoutes() {
             <Route path="/communications" element={<RouteErrorBoundary><CommunicationsPage /></RouteErrorBoundary>} />
             <Route path="/radio" element={<RouteErrorBoundary><RadioPage /></RouteErrorBoundary>} />
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
+            <Route path="/pdf-editor" element={<RouteErrorBoundary><PdfEditorPage /></RouteErrorBoundary>} />
             <Route path="/historical-tracks" element={<RouteErrorBoundary><HistoricalTracksPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
             <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />

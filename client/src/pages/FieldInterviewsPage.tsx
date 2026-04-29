@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Plus, Search, ClipboardList, MapPin, User, Clock, FileText,
   ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye, AlertTriangle,
@@ -651,7 +652,7 @@ export default function FieldInterviewsPage() {
 
               {/* Narrative */}
               <div><label className="field-label">Narrative</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
 
               {/* Actions */}
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>

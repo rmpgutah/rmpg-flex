@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   FileText, Plus, ArrowLeft, Send, DollarSign, XCircle, Loader2, Trash2,
   CheckCircle, AlertCircle, Clock, RefreshCw, Download, Printer, Hash,
@@ -407,7 +408,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
         <div>
           <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Notes</label>
-          <textarea
+          <RichTextArea
             className="input-dark w-full text-xs min-h-[36px]"
             rows={2}
             value={createForm.notes}
@@ -698,7 +699,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         {/* Internal Notes */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 block">Internal Notes</span>
-          <textarea
+          <RichTextArea
             className="input-dark w-full text-xs min-h-[36px]"
             rows={3}
             defaultValue={inv.internal_notes || ''}

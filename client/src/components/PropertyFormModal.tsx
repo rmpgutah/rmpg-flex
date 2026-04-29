@@ -6,6 +6,7 @@ import type { Property } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
+import RichTextArea from './RichTextArea';
 interface PropertyFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -507,7 +508,7 @@ export default function PropertyFormModal({
       </div>
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Parking Info</label>
-        <textarea
+        <RichTextArea
           name="parking_info"
           rows={2}
           className="input-dark w-full text-xs"
@@ -682,7 +683,7 @@ export default function PropertyFormModal({
       {/* Row 7: Post Orders */}
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Post Orders</label>
-        <textarea
+        <RichTextArea
           name="post_orders"
           rows={3}
           className="input-dark w-full text-xs"
@@ -697,7 +698,7 @@ export default function PropertyFormModal({
       {/* Row 8: Hazard Notes */}
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Hazard Notes</label>
-        <textarea
+        <RichTextArea
           name="hazard_notes"
           rows={3}
           className="input-dark w-full text-xs"
@@ -712,7 +713,7 @@ export default function PropertyFormModal({
       {/* ── Safety ── */}
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Utility Shutoffs</label>
-        <textarea
+        <RichTextArea
           name="utility_shutoffs"
           rows={2}
           className="input-dark w-full text-xs"
@@ -723,7 +724,7 @@ export default function PropertyFormModal({
       </div>
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Known Hazards</label>
-        <textarea
+        <RichTextArea
           name="known_hazards"
           rows={2}
           className="input-dark w-full text-xs"
@@ -736,7 +737,7 @@ export default function PropertyFormModal({
       {/* Row 9: Access Instructions */}
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Access Instructions</label>
-        <textarea
+        <RichTextArea
           name="access_instructions"
           rows={2}
           className="input-dark w-full text-xs"
@@ -749,7 +750,7 @@ export default function PropertyFormModal({
       {/* Row 10: Notes */}
       <div>
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Notes</label>
-        <textarea
+        <RichTextArea
           name="notes"
           rows={2}
           className="input-dark w-full text-xs"
