@@ -14,7 +14,7 @@ import {
   Gavel, Search, Plus, Calendar, Clock, User, MapPin,
   X, Save, Loader2, AlertTriangle, CheckCircle, FileText, Scale,
   ChevronLeft, ChevronRight, Upload, Shield, DollarSign, BarChart3,
-  BookOpen, AlertCircle, Check, RefreshCw, Users,
+  BookOpen, AlertCircle, Check, RefreshCw, Users, Pencil,
 } from 'lucide-react';
 import type { CourtEvent, CourtEventType, CourtEventStatus, CourtOutcome } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -112,6 +112,56 @@ export default function CourtTrackerPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [formData, setFormData] = useState({ ...EMPTY_FORM });
   const [submitting, setSubmitting] = useState(false);
+
+  // Historical entry flag — when checked in the New form, auto-set
+  // status to 'completed' so the entry shows up under past events
+  // immediately and outcome/sentence can be entered without going through
+  // the live-event flow.
+  const [historicalEntry, setHistoricalEntry] = useState(false);
+
+  // Inline edit state for the detail panel header. When `editingHeader`
+  // is true, every top-level field (event_type, status, event_date,
+  // event_time, court_name, courtroom, judge_name, court_case_number,
+  // defendant_name, prosecutor, defense_attorney) becomes an input;
+  // Save calls PUT /api/court/events/:id with the draft.
+  const [editingHeader, setEditingHeader] = useState(false);
+  const [headerDraft, setHeaderDraft] = useState<Partial<CourtEvent>>({});
+  const [savingHeader, setSavingHeader] = useState(false);
+
+  const startEditHeader = useCallback((evt: CourtEvent | null) => {
+    if (!evt) return;
+    setHeaderDraft({
+      event_type: evt.event_type,
+      status: evt.status,
+      event_date: evt.event_date,
+      event_time: evt.event_time,
+      court_name: evt.court_name,
+      courtroom: evt.courtroom,
+      judge_name: evt.judge_name,
+      court_case_number: evt.court_case_number,
+      defendant_name: evt.defendant_name,
+      prosecutor: evt.prosecutor,
+      defense_attorney: (evt as any).defense_attorney,
+    });
+    setEditingHeader(true);
+  }, []);
+
+  const saveHeader = useCallback(async (evt: CourtEvent | null) => {
+    if (!evt) return;
+    setSavingHeader(true);
+    try {
+      await apiFetch(`/court/events/${evt.id}`, {
+        method: 'PUT',
+        body: JSON.stringify(headerDraft),
+      });
+      setEditingHeader(false);
+      addToast('Event updated', 'success');
+    } catch (err: any) {
+      addToast(err?.message || 'Update failed', 'error');
+    } finally {
+      setSavingHeader(false);
+    }
+  }, [headerDraft, addToast]);
 
   // Outcome modal
   const [outcomeOpen, setOutcomeOpen] = useState(false);
@@ -314,6 +364,33 @@ export default function CourtTrackerPage() {
   useEffect(() => { if (selected?.id) fetchConflicts(selected.id as any); }, [selected?.id, fetchConflicts]);
   useLiveSync('records', () => { fetchEvents({ silent: true }); fetchUpcoming(); });
 
+  // Lookup-backed typeahead values (admin-managed under Admin → Court Tracker Lookups).
+  // Failure is silent — the inputs degrade to free-text. Auth-gated; when the
+  // user isn't logged in, lookups stay empty and the datalists are inert.
+  const [lookups, setLookups] = useState<{ court: string[]; judge: string[]; prosecutor: string[]; defense: string[] }>({ court: [], judge: [], prosecutor: [], defense: [] });
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const cats: Array<keyof typeof lookups> = ['court', 'judge', 'prosecutor', 'defense'];
+        const results = await Promise.all(cats.map(c =>
+          apiFetch<any[]>(`/court/lookups?category=${c}`).catch(() => [])
+        ));
+        if (cancelled) return;
+        const next: any = {};
+        cats.forEach((c, i) => {
+          const rows = Array.isArray(results[i]) ? results[i] : [];
+          next[c] = rows
+            .filter((r: any) => r.is_active !== 0 && r.is_active !== false)
+            .map((r: any) => r.display_label || r.value)
+            .filter(Boolean);
+        });
+        setLookups(next);
+      } catch { /* lookups stay empty — datalists become inert, inputs are free-text */ }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   const handleCreate = async () => {
     const isValid = validateForm(formData, {
       event_date: { required: true, custom: isValidDate, customMessage: 'Valid date required (YYYY-MM-DD)' },
@@ -322,10 +399,16 @@ export default function CourtTrackerPage() {
     if (!isValid) return;
     setSubmitting(true);
     try {
-      await apiFetch('/court/events', { method: 'POST', body: JSON.stringify(formData) });
-      addToast('Court event created', 'success');
+      // Historical entries default status to 'completed' so they land in
+      // past-events views without going through the dispatch/scheduled flow.
+      const payload = historicalEntry
+        ? { ...formData, status: 'completed' as any }
+        : formData;
+      await apiFetch('/court/events', { method: 'POST', body: JSON.stringify(payload) });
+      addToast(historicalEntry ? 'Historical event recorded' : 'Court event created', 'success');
       setFormOpen(false);
       setFormData({ ...EMPTY_FORM });
+      setHistoricalEntry(false);
       fetchEvents({ silent: true }); fetchUpcoming();
     } catch (err: any) { addToast(err?.message || 'Operation failed', 'error'); }
     finally { setSubmitting(false); }
@@ -676,20 +759,37 @@ export default function CourtTrackerPage() {
         {selected ? (
           <>
             <PanelTitleBar title={`${selected.event_number} -- ${EVENT_TYPES.find(t => t.value === selected.event_type)?.label}`} icon={Gavel}>
+              {/* Edit Header — flips the detail grid into an editable form
+                  for every top-level field. Use the existing per-section
+                  Edit buttons (Bail/Bond, Judge Notes, etc.) for those. */}
+              {!editingHeader ? (
+                <button type="button" onClick={() => startEditHeader(selected)} className="toolbar-btn text-[10px]" title="Edit event details">
+                  <Pencil style={{ width: 11, height: 11 }} /> Edit
+                </button>
+              ) : (
+                <>
+                  <button type="button" onClick={() => saveHeader(selected)} disabled={savingHeader} className="toolbar-btn toolbar-btn-primary text-[10px]" title="Save changes">
+                    {savingHeader ? <Loader2 style={{ width: 11, height: 11 }} className="animate-spin" /> : <Save style={{ width: 11, height: 11 }} />} Save
+                  </button>
+                  <button type="button" onClick={() => { setEditingHeader(false); setHeaderDraft({}); }} className="toolbar-btn text-[10px]">
+                    <X style={{ width: 11, height: 11 }} /> Cancel
+                  </button>
+                </>
+              )}
               {/* Feature 5: Confirm attendance */}
-              {selected.status !== 'completed' && (
+              {selected.status !== 'completed' && !editingHeader && (
                 <button type="button" onClick={handleConfirmAttendance} className="toolbar-btn text-[10px]" title="Confirm your attendance">
                   <Check style={{ width: 11, height: 11 }} /> Confirm
                 </button>
               )}
               {/* Feature 3: Continuance */}
-              {selected.status !== 'completed' && (
+              {selected.status !== 'completed' && !editingHeader && (
                 <button type="button" onClick={() => { setContinuanceData({ reason: '', new_date: '', new_time: '' }); setContinuanceOpen(true); }} className="toolbar-btn text-[10px]">
                   <RefreshCw style={{ width: 11, height: 11 }} /> Continuance
                 </button>
               )}
               {/* Feature 4: Outcome */}
-              {selected.status !== 'completed' && (
+              {selected.status !== 'completed' && !editingHeader && (
                 <button type="button" onClick={() => { setOutcomeData({ outcome: '', sentence: '', fine_amount: '' }); setOutcomeOpen(true); }} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <CheckCircle style={{ width: 11, height: 11 }} /> Record Outcome
                 </button>
@@ -744,24 +844,117 @@ export default function CourtTrackerPage() {
                 </div>
               )}
 
-              {/* Detail Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {[
-                  ['Event Date', selected.event_date ? formatDate(selected.event_date) : '--'],
-                  ['Time', selected.event_time || '--'],
-                  ['Court', selected.court_name],
-                  ['Courtroom', selected.courtroom || '--'],
-                  ['Judge', selected.judge_name || '--'],
-                  ['Court Case #', selected.court_case_number || '--'],
-                  ['Defendant', selected.defendant_name || '--'],
-                  ['Prosecutor', selected.prosecutor || '--'],
-                ].map(([label, value]) => (
-                  <div key={label as string}>
-                    <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
-                    <div className="text-xs text-white mt-0.5">{value || '--'}</div>
+              {/* Detail Grid — read-only display OR inline edit form */}
+              {editingHeader ? (
+                <div className="panel-beveled p-3 space-y-3 border-l-2 border-l-[#d4a017]">
+                  <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-1">Edit Event</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Event Type */}
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Event Type</span>
+                      <select value={headerDraft.event_type as any || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, event_type: e.target.value as CourtEventType }))}
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                        {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </label>
+                    {/* Status */}
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Status</span>
+                      <select value={headerDraft.status as any || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, status: e.target.value as CourtEventStatus }))}
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600">
+                        <option value="scheduled">Scheduled</option>
+                        <option value="confirmed">Confirmed</option>
+                        <option value="completed">Completed</option>
+                        <option value="continued">Continued</option>
+                        <option value="cancelled">Cancelled</option>
+                        <option value="warrant_issued">Warrant Issued</option>
+                      </select>
+                    </label>
+                    {/* Date — no min restriction so backfilled / historical dates work */}
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Event Date</span>
+                      <input type="date" value={headerDraft.event_date || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, event_date: e.target.value }))}
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Time</span>
+                      <input type="time" value={headerDraft.event_time || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, event_time: e.target.value }))}
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Court</span>
+                      <input type="text" value={headerDraft.court_name || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, court_name: e.target.value }))}
+                        list="court-lookup-list"
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Courtroom</span>
+                      <input type="text" value={headerDraft.courtroom || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, courtroom: e.target.value }))}
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Judge</span>
+                      <input type="text" value={headerDraft.judge_name || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, judge_name: e.target.value }))}
+                        list="judge-lookup-list"
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Court Case #</span>
+                      <input type="text" value={headerDraft.court_case_number || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, court_case_number: e.target.value }))}
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Defendant</span>
+                      <input type="text" value={headerDraft.defendant_name || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, defendant_name: e.target.value }))}
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                    </label>
+                    <label className="block">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Prosecutor</span>
+                      <input type="text" value={headerDraft.prosecutor || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, prosecutor: e.target.value }))}
+                        list="prosecutor-lookup-list"
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                    </label>
+                    <label className="block sm:col-span-2">
+                      <span className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">Defense Attorney</span>
+                      <input type="text" value={headerDraft.defense_attorney as any || ''}
+                        onChange={e => setHeaderDraft(p => ({ ...p, defense_attorney: e.target.value as any }))}
+                        list="defense-lookup-list"
+                        className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                    </label>
                   </div>
-                ))}
-              </div>
+                  <div className="text-[10px] text-rmpg-500">
+                    Tip: dropdown values for Court / Judge / Prosecutor / Defense Attorney are admin-managed under Admin → Court Tracker Lookups.
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    ['Event Date', selected.event_date ? formatDate(selected.event_date) : '--'],
+                    ['Time', selected.event_time || '--'],
+                    ['Court', selected.court_name],
+                    ['Courtroom', selected.courtroom || '--'],
+                    ['Judge', selected.judge_name || '--'],
+                    ['Court Case #', selected.court_case_number || '--'],
+                    ['Defendant', selected.defendant_name || '--'],
+                    ['Prosecutor', selected.prosecutor || '--'],
+                  ].map(([label, value]) => (
+                    <div key={label as string}>
+                      <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>
+                      <div className="text-xs text-white mt-0.5">{value || '--'}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Feature 6: Bail/Bond Info */}
               <div className="panel-beveled p-3">
@@ -995,6 +1188,17 @@ export default function CourtTrackerPage() {
               <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
+              {/* Historical-entry toggle: backfill past hearings without going
+                  through scheduled / dispatched flow. Auto-sets status to
+                  'completed' on submit; outcome/sentence can be entered after
+                  via Record Outcome on the resulting row. */}
+              <label className="flex items-start gap-2 p-2 border border-rmpg-700 bg-surface-sunken/40 cursor-pointer">
+                <input type="checkbox" checked={historicalEntry} onChange={e => setHistoricalEntry(e.target.checked)} className="mt-0.5" />
+                <div>
+                  <div className="text-[11px] text-white font-medium">Historical entry</div>
+                  <div className="text-[10px] text-rmpg-500">Recording a past hearing for record-keeping. Saves with status = completed; record the outcome afterward.</div>
+                </div>
+              </label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
@@ -1003,7 +1207,7 @@ export default function CourtTrackerPage() {
                   </select>
                 </div>
                 <div>
-                  <label className="field-label">Date *</label>
+                  <label className="field-label">{historicalEntry ? 'Date (past) *' : 'Date *'}</label>
                   <input type="date" value={formData.event_date} onChange={e => setFormData(p => ({ ...p, event_date: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.event_date ? 'border-red-500' : 'border-rmpg-700'}`} />
                   {formErrors.event_date && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.event_date}</p>}
                 </div>
@@ -1015,7 +1219,7 @@ export default function CourtTrackerPage() {
                 </div>
                 <div>
                   <label className="field-label">Court *</label>
-                  <input value={formData.court_name} onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.court_name ? 'border-red-500' : 'border-rmpg-700'}`} />
+                  <input value={formData.court_name} onChange={e => setFormData(p => ({ ...p, court_name: e.target.value }))} list="court-lookup-list" className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${formErrors.court_name ? 'border-red-500' : 'border-rmpg-700'}`} />
                   {formErrors.court_name && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.court_name}</p>}
                 </div>
                 <div>
@@ -1030,15 +1234,15 @@ export default function CourtTrackerPage() {
                 </div>
                 <div>
                   <label className="field-label">Judge</label>
-                  <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} list="judge-lookup-list" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">Prosecutor</label>
-                  <input value={formData.prosecutor} onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input value={formData.prosecutor} onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))} list="prosecutor-lookup-list" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
                 <div>
                   <label className="field-label">Defense Attorney</label>
-                  <input value={formData.defense_attorney} onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                  <input value={formData.defense_attorney} onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))} list="defense-lookup-list" className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
@@ -1318,6 +1522,22 @@ export default function CourtTrackerPage() {
           </div>
         </div>
       )}
+
+      {/* Datalists are document-scoped — referenced by `list=` on inputs in
+          both the inline edit form and the New Event modal. Values come from
+          court_lookups (admin-managed under Admin → Court Tracker Lookups). */}
+      <datalist id="court-lookup-list">
+        {lookups.court.map(v => <option key={v} value={v} />)}
+      </datalist>
+      <datalist id="judge-lookup-list">
+        {lookups.judge.map(v => <option key={v} value={v} />)}
+      </datalist>
+      <datalist id="prosecutor-lookup-list">
+        {lookups.prosecutor.map(v => <option key={v} value={v} />)}
+      </datalist>
+      <datalist id="defense-lookup-list">
+        {lookups.defense.map(v => <option key={v} value={v} />)}
+      </datalist>
     </div>
   );
 }
