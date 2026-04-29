@@ -13,9 +13,10 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Activity, AlertTriangle, ArrowDownToLine, Camera, Cpu,
-  Filter, MapPin, RefreshCw, Shield, Signal, Video, Zap,
+  Filter, MapPin, PlayCircle, RefreshCw, Shield, Signal, Video, Zap,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
@@ -127,6 +128,7 @@ function formatRelative(s: string | null): string {
 // ── Page ────────────────────────────────────────────────────
 
 export default function DashcamAiPage(): React.ReactElement {
+  const navigate = useNavigate();
   const [events, setEvents] = useState<DrivingEvent[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -383,6 +385,17 @@ export default function DashcamAiPage(): React.ReactElement {
                 type="button"
                 aria-label="Close detail"
               >×</button>
+            </div>
+            <div className="px-3 pt-3">
+              <button
+                onClick={() => navigate(`/dashcam-ai/${selected.id}`)}
+                className="w-full px-3 py-2 border border-[#d4a017] text-[#d4a017] hover:bg-[#d4a017] hover:text-black transition-colors text-[11px] uppercase tracking-wider font-semibold inline-flex items-center justify-center gap-2"
+                type="button"
+                aria-label="Open AAR replay for this event"
+              >
+                <PlayCircle className="w-4 h-4" aria-hidden="true" />
+                AAR Replay
+              </button>
             </div>
             <div className="p-3 space-y-2 text-[11px]">
               <DetailRow icon={Shield} label="Source"   value={selected.source} />
