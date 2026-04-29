@@ -51,7 +51,12 @@ export async function openAndRenderPage(
   };
 
   if (opts.forcePdfjs) {
-    try { return await tryOnce(true); } catch (err) { console.error('[rmpg-pdf-engine] forced PDF.js failed', err); return null; }
+    try { return await tryOnce(true); } catch (err) {
+      console.error('[rmpg-pdf-engine] forced PDF.js failed', err);
+      // Re-throw so the caller's overlay can show the real cause instead of
+      // a generic "both engines failed" message.
+      throw err;
+    }
   }
   try {
     return await tryOnce(false);
@@ -61,7 +66,8 @@ export async function openAndRenderPage(
       return await tryOnce(true);
     } catch (secondErr) {
       console.error('[rmpg-pdf-engine] PDF.js fallback also failed', secondErr);
-      return null;
+      // Bubble the real PDF.js error so the page overlay shows what failed.
+      throw secondErr;
     }
   }
 }

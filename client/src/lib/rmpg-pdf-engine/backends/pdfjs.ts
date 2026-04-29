@@ -112,6 +112,19 @@ export class PdfJsBackend implements RmpgPdfBackend {
         standardFontDataUrl: '/pdfjs/standard_fonts/',
         cMapUrl: '/pdfjs/cmaps/',
         cMapPacked: true,
+        // XFA-form support: court-issued process-service PDFs and many
+        // government forms use XFA (XML Forms Architecture) overlays. When
+        // enableXfa is false (the v5 default), PDF.js refuses to render
+        // and throws on getDocument. With it true, PDF.js renders the
+        // static representation alongside the form fields.
+        enableXfa: true,
+        // Keep streaming on so partial bytes can render — disabling these
+        // would force the full document into memory before any render.
+        disableStream: false,
+        disableAutoFetch: false,
+        // Default verbosity is too quiet (silently swallows useful errors);
+        // ERRORS surfaces real problems via console without flooding logs.
+        verbosity: 1, // 0 = errors, 1 = warnings, 5 = infos
       }).promise;
       return new PdfJsDocument(inner, 'pdfjs backend (Mozilla, Apache 2.0)');
     } catch (err) {
