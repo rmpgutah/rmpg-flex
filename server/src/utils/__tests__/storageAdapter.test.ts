@@ -196,6 +196,45 @@ describe('createFilesystemStorage — get()', () => {
   });
 });
 
+describe('createFilesystemStorage — write-once option (Phase 4)', () => {
+  it('chmods the file to 0444 when writeOnce=true', async () => {
+    const storage = createFilesystemStorage(baseDir, { writeOnce: true });
+    const { storage_uri } = await storage.put({
+      body: Buffer.from('lockme'),
+      sha256: 'a'.repeat(64),
+      artifact_type: 'driving_event_clip',
+      artifact_id: 1,
+      unit_id: 5,
+      captured_at: '2026-04-28 12:00:00',
+      filename: 'a.mp4',
+    });
+    const filePath = storage_uri.replace(/^file:\/\//, '');
+    const stat = fs.statSync(filePath);
+    // Mode masks: 0o777 isolates owner+group+other perms; we set 0o444 (read-only).
+    // Some umasks may differ slightly across OS — check the read-only invariant.
+    const mode = stat.mode & 0o777;
+    expect(mode & 0o222).toBe(0); // No write bits set
+    // Cleanup needs chmod first since the test fixture rmSync expects writable
+    fs.chmodSync(filePath, 0o644);
+  });
+
+  it('leaves default 0644 when writeOnce=false (default)', async () => {
+    const storage = createFilesystemStorage(baseDir);
+    const { storage_uri } = await storage.put({
+      body: Buffer.from('writable'),
+      sha256: 'a'.repeat(64),
+      artifact_type: 'driving_event_clip',
+      artifact_id: 1,
+      unit_id: 5,
+      captured_at: '2026-04-28 12:00:00',
+      filename: 'a.mp4',
+    });
+    const filePath = storage_uri.replace(/^file:\/\//, '');
+    const stat = fs.statSync(filePath);
+    expect(stat.mode & 0o200).not.toBe(0); // Owner write bit set
+  });
+});
+
 describe('createFilesystemStorage — idempotency and overwrite', () => {
   it('refuses to overwrite an existing object at the same path', async () => {
     const storage = createFilesystemStorage(baseDir);

@@ -14,6 +14,7 @@ import Database from 'better-sqlite3';
 import {
   insertDrivingEvent,
   mapClearPathStatusCode,
+  mapTraccarAlarm,
 } from '../drivingEvents';
 
 type Db = ReturnType<typeof Database>;
@@ -232,6 +233,39 @@ describe('mapClearPathStatusCode — vendor → normalized', () => {
     expect(mapClearPathStatusCode(null)).toBeNull();
     expect(mapClearPathStatusCode('')).toBeNull();
     expect(mapClearPathStatusCode('SOMETHING_NEW')).toBeNull();
+  });
+});
+
+describe('mapTraccarAlarm — vendor → normalized', () => {
+  it('maps Traccar harsh-driving alarms (camelCase)', () => {
+    expect(mapTraccarAlarm('hardBraking')).toEqual({ type: 'hard_brake', severity: 'warning' });
+    expect(mapTraccarAlarm('hardAcceleration')).toEqual({ type: 'hard_accel', severity: 'warning' });
+    expect(mapTraccarAlarm('hardCornering')).toEqual({ type: 'hard_turn', severity: 'warning' });
+    expect(mapTraccarAlarm('overspeed')).toEqual({ type: 'speeding', severity: 'warning' });
+  });
+
+  it('maps Traccar critical alarms', () => {
+    expect(mapTraccarAlarm('sos')).toEqual({ type: 'sos', severity: 'critical' });
+    expect(mapTraccarAlarm('accident')).toEqual({ type: 'impact', severity: 'critical' });
+    expect(mapTraccarAlarm('shock')).toEqual({ type: 'impact', severity: 'critical' });
+  });
+
+  it('maps Traccar ignition transitions', () => {
+    expect(mapTraccarAlarm('ignitionOn')).toEqual({ type: 'ignition_on', severity: 'info' });
+    expect(mapTraccarAlarm('ignitionOff')).toEqual({ type: 'ignition_off', severity: 'info' });
+  });
+
+  it('maps tampering/power events to custom severity=alert', () => {
+    expect(mapTraccarAlarm('tampering')).toEqual({ type: 'custom', severity: 'alert' });
+    expect(mapTraccarAlarm('powerCut')).toEqual({ type: 'custom', severity: 'alert' });
+  });
+
+  it('returns null for unknown / falsy input', () => {
+    expect(mapTraccarAlarm(null)).toBeNull();
+    expect(mapTraccarAlarm(undefined)).toBeNull();
+    expect(mapTraccarAlarm('')).toBeNull();
+    expect(mapTraccarAlarm('movement')).toBeNull();   // not an event-of-interest
+    expect(mapTraccarAlarm('something_new')).toBeNull();
   });
 });
 

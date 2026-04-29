@@ -21,6 +21,10 @@ import {
   recordEvidence,
   verifyEvidenceChain,
 } from '../evidenceHasher';
+import {
+  generateEd25519Keypair,
+  verifyEvidenceSignature,
+} from '../evidenceSigner';
 
 type Db = ReturnType<typeof Database>;
 
@@ -182,5 +186,98 @@ describe('verifyEvidenceChain', () => {
     const audit = verifyEvidenceChain('driving_event_clip', db as any);
     expect(audit.ok).toBe(true);
     expect(audit.checked).toBe(0);
+  });
+});
+
+describe('recordEvidence — Ed25519 signing (Phase 4)', () => {
+  let db: Db;
+  beforeEach(() => { db = makeDb(); });
+
+  it('writes signer + signature when keypair provided', () => {
+    const kp = generateEd25519Keypair();
+    const result = recordEvidence({
+      artifact_type: 'driving_event_clip',
+      artifact_id: 1,
+      sha256: 'a'.repeat(64),
+      captured_at: '2026-04-28 12:00:00',
+    }, db as any, { keypair: kp });
+
+    const row = db.prepare('SELECT * FROM evidence_hashes WHERE id = ?').get(result.id) as any;
+    expect(row.signer).toBe(kp.publicKey);
+    expect(row.signature).toMatch(/^[A-Za-z0-9+/=]+$/);
+    expect(row.signature.length).toBeGreaterThan(80); // Ed25519 sig in base64 ≈ 88 chars
+  });
+
+  it('produced signature verifies against the same public key', () => {
+    const kp = generateEd25519Keypair();
+    const result = recordEvidence({
+      artifact_type: 'driving_event_clip',
+      artifact_id: 42,
+      sha256: 'd'.repeat(64),
+      captured_at: '2026-04-28 12:00:00',
+    }, db as any, { keypair: kp });
+
+    const row = db.prepare('SELECT * FROM evidence_hashes WHERE id = ?').get(result.id) as any;
+    const ok = verifyEvidenceSignature(kp.publicKey, {
+      artifact_type: row.artifact_type,
+      artifact_id: row.artifact_id,
+      sha256: row.sha256,
+      captured_at: row.captured_at,
+      prev_hash_id: row.prev_hash_id,
+    }, row.signature);
+    expect(ok).toBe(true);
+  });
+
+  it('skips signing when no keypair provided (back-compat)', () => {
+    const result = recordEvidence({
+      artifact_type: 'driving_event_clip',
+      artifact_id: 1,
+      sha256: 'a'.repeat(64),
+      captured_at: '2026-04-28 12:00:00',
+    }, db as any);
+
+    const row = db.prepare('SELECT * FROM evidence_hashes WHERE id = ?').get(result.id) as any;
+    expect(row.signer).toBeNull();
+    expect(row.signature).toBeNull();
+  });
+});
+
+describe('verifyEvidenceChain — signature verification (Phase 4)', () => {
+  let db: Db;
+  beforeEach(() => { db = makeDb(); });
+
+  it('opt-in signature checks pass for properly-signed entries', () => {
+    const kp = generateEd25519Keypair();
+    recordEvidence({ artifact_type: 'driving_event_clip', artifact_id: 1, sha256: 'a'.repeat(64), captured_at: 't' }, db as any, { keypair: kp });
+    recordEvidence({ artifact_type: 'driving_event_clip', artifact_id: 2, sha256: 'b'.repeat(64), captured_at: 't' }, db as any, { keypair: kp });
+
+    const audit = verifyEvidenceChain('driving_event_clip', db as any, { verifySignatures: true, publicKey: kp.publicKey });
+    expect(audit.ok).toBe(true);
+    expect(audit.signatures_verified).toBe(2);
+  });
+
+  it('detects tampered sha256 even when chain links survive', () => {
+    const kp = generateEd25519Keypair();
+    const r1 = recordEvidence({ artifact_type: 'driving_event_clip', artifact_id: 1, sha256: 'a'.repeat(64), captured_at: 't' }, db as any, { keypair: kp });
+    recordEvidence({ artifact_type: 'driving_event_clip', artifact_id: 2, sha256: 'b'.repeat(64), captured_at: 't' }, db as any, { keypair: kp });
+
+    // Tamper: change the sha256 on row 1, but leave the chain intact
+    db.prepare('UPDATE evidence_hashes SET sha256 = ? WHERE id = ?').run('z'.repeat(64), r1.id);
+
+    const audit = verifyEvidenceChain('driving_event_clip', db as any, { verifySignatures: true, publicKey: kp.publicKey });
+    expect(audit.ok).toBe(false);
+    expect(audit.broken_at_id).toBe(r1.id);
+    expect(audit.signature_failure).toBe(true);
+  });
+
+  it('reports unsigned entries when verifySignatures=true', () => {
+    // First entry unsigned (legacy) — chain link is fine but signature missing
+    recordEvidence({ artifact_type: 'driving_event_clip', artifact_id: 1, sha256: 'a'.repeat(64), captured_at: 't' }, db as any);
+    const kp = generateEd25519Keypair();
+    recordEvidence({ artifact_type: 'driving_event_clip', artifact_id: 2, sha256: 'b'.repeat(64), captured_at: 't' }, db as any, { keypair: kp });
+
+    const audit = verifyEvidenceChain('driving_event_clip', db as any, { verifySignatures: true, publicKey: kp.publicKey });
+    expect(audit.ok).toBe(false);
+    expect(audit.unsigned_count).toBe(1);
   });
 });

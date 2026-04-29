@@ -1900,8 +1900,12 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'plaid_api_key', 'clearbit_api_key', 'pipl_api_key', 'towerdata_api_key',
   // RapidAPI & Third-Party
   'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
-  // GPS Webhooks
-  'owntracks_webhook_token', 'traccar_webhook_token',
+  // GPS Webhooks (Traccar replaced OwnTracks 2026-04-29)
+  'traccar_webhook_token',
+  // Traccar Server REST API pull mode (optional). Names align with the
+  // production schema set up before this slice: traccar_email/password
+  // are encrypted, _url/_enabled/_poll_interval are plain config.
+  'traccar_email', 'traccar_password',
 ];
 
 function encryptValue(plaintext: string): string {
@@ -3521,6 +3525,28 @@ router.get('/config/all', requireRole('admin'), (req: Request, res: Response) =>
     const rows = db.prepare('SELECT * FROM system_config ORDER BY category, config_key').all();
     res.json({ configs: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Slice: GET /admin/traccar-pull-status — surface the poller heartbeat
+// for the admin UI without exposing the full system_config table.
+router.get('/traccar-pull-status', requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'traccar_pull_status' AND is_active = 1 LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    const urlRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'traccar_url' AND is_active = 1 LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    const value = row?.config_value ?? '';
+    let kind: 'ok' | 'error' | 'disabled' | 'unknown' = 'unknown';
+    if (value.startsWith('ok:')) kind = 'ok';
+    else if (value.startsWith('error:')) kind = 'error';
+    else if (value.startsWith('disabled:')) kind = 'disabled';
+    res.json({ status: value, kind, serverUrl: urlRow?.config_value ?? null });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'pull_status_failed' });
+  }
 });
 
 // 33. DELETE /admin/config/:key — Delete a config entry
