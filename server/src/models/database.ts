@@ -5216,9 +5216,9 @@ function migrateSchema(): void {
   addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
   addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
 
-  // ── OwnTracks / Traccar device-to-unit mapping table ──
+  // ── Traccar device-to-unit mapping table ──
   db.prepare(`
-    CREATE TABLE IF NOT EXISTS owntracks_device_map (
+    CREATE TABLE IF NOT EXISTS traccar_device_map (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tracker_id TEXT NOT NULL UNIQUE,
       unit_id INTEGER NOT NULL,
@@ -5227,6 +5227,46 @@ function migrateSchema(): void {
       FOREIGN KEY (unit_id) REFERENCES units(id)
     )
   `).run();
+
+  // ── 2026-04-29: OwnTracks → Traccar migration (one-time) ──
+  // Idempotent: only does work if owntracks_device_map still exists.
+  try {
+    const owntracksTable = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='owntracks_device_map'",
+    ).get() as { name?: string } | undefined;
+    if (owntracksTable?.name) {
+      // Copy rows that aren't already in traccar_device_map (UNIQUE on tracker_id)
+      db.prepare(`
+        INSERT OR IGNORE INTO traccar_device_map (tracker_id, unit_id, device_name, created_at)
+        SELECT tracker_id, unit_id, device_name, created_at FROM owntracks_device_map
+      `).run();
+      db.prepare('DROP TABLE owntracks_device_map').run();
+      console.log('[migration] Renamed owntracks_device_map → traccar_device_map');
+    }
+    // Rename config key. INSERT OR REPLACE in case both rows somehow exist.
+    const ot = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'owntracks_webhook_token' LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    if (ot?.config_value) {
+      db.prepare(`
+        INSERT INTO system_config (config_key, config_value, is_active)
+        VALUES ('traccar_webhook_token', ?, 1)
+        ON CONFLICT(config_key, config_value) DO NOTHING
+      `).run(ot.config_value);
+      db.prepare("DELETE FROM system_config WHERE config_key = 'owntracks_webhook_token'").run();
+      console.log('[migration] Renamed owntracks_webhook_token → traccar_webhook_token');
+    }
+    // Live unit gps_source migrate (history rows in gps_breadcrumbs are
+    // intentionally left alone — they're audit history).
+    const updRes = db.prepare(
+      "UPDATE units SET gps_source = 'traccar' WHERE gps_source = 'owntracks'",
+    ).run();
+    if (updRes.changes > 0) {
+      console.log(`[migration] Migrated ${updRes.changes} unit rows from owntracks → traccar gps_source`);
+    }
+  } catch (err) {
+    console.error('[migration] OwnTracks → Traccar migration failed:', err);
+  }
 
   // ── units: add 'out_of_service' to CHECK constraint (production fix) ──
   try {

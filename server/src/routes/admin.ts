@@ -1900,8 +1900,10 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'plaid_api_key', 'clearbit_api_key', 'pipl_api_key', 'towerdata_api_key',
   // RapidAPI & Third-Party
   'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
-  // GPS Webhooks
-  'owntracks_webhook_token', 'traccar_webhook_token',
+  // GPS Webhooks (Traccar replaced OwnTracks 2026-04-29)
+  'traccar_webhook_token',
+  // Traccar Server REST API pull mode (optional)
+  'traccar_server_url', 'traccar_server_email', 'traccar_server_password',
 ];
 
 function encryptValue(plaintext: string): string {

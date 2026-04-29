@@ -116,8 +116,10 @@ const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
 ];
 
 const GPS_WEBHOOK_KEYS: ApiKeyConfig[] = [
-  { key: 'owntracks_webhook_token', label: 'OwnTracks Webhook Token', desc: 'Shared secret for OwnTracks iPhone/Android background GPS → POST /api/dispatch/gps/owntracks' },
-  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'Shared secret for Traccar Client background GPS (same endpoint, auto-detected format)' },
+  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'PRIMARY GPS source (replaced OwnTracks 2026-04-29). Bearer token for Traccar Client app + Traccar Server forward-webhook. Endpoint: POST /api/traccar?token=<TOKEN>. OwnTracks endpoints now return HTTP 410 Gone — devices must reconfigure.' },
+  { key: 'traccar_server_url', label: 'Traccar Server URL (optional pull)', desc: 'If you run a self-hosted Traccar Server, set its base URL (e.g. https://traccar.example.com). RMPG Flex polls /api/positions every 15 s using the credentials below. Leave blank to use webhook-only.' },
+  { key: 'traccar_server_email', label: 'Traccar Server email', desc: 'Login email for the Traccar Server REST API session.' },
+  { key: 'traccar_server_password', label: 'Traccar Server password', desc: 'Password for the Traccar Server REST API session. AES-encrypted at rest.' },
 ];
 
 const FREE_OPEN_APIS: ApiKeyConfig[] = [
@@ -579,7 +581,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       </div>
 
       {/* ── GPS Background Tracking ── */}
-      <ApiKeyPanel title="GPS Background Tracking (OwnTracks / Traccar)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
+      <ApiKeyPanel title="GPS Background Tracking — Traccar (PRIMARY)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
 
       {/* ── Google Cloud Console Keys ── */}
       <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-gray-400" />} keys={GOOGLE_CLOUD_KEYS} />
