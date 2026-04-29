@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import EditorToolbar from './components/EditorToolbar';
@@ -15,6 +15,8 @@ import AnnotationsPanel from './components/AnnotationsPanel';
 import FindDialog from './components/FindDialog';
 import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
 import PreferencesDialog from './components/PreferencesDialog';
+import CustomStampsGallery, { StampPick } from './components/CustomStampsGallery';
+import MiniMap from './components/MiniMap';
 import { Annotation, BatesConfig, DocumentMeta, EditorState, EditorPreferences, DEFAULT_PREFERENCES, PageCrop, PageMeta, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
 import { authedImageUrl } from '../../hooks/useApi';
@@ -92,6 +94,8 @@ export default function PdfEditorPage() {
   const [findOpen, setFindOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [prefsOpen, setPrefsOpen] = useState(false);
+  const [stampsOpen, setStampsOpen] = useState(false);
+  const [showMiniMap, setShowMiniMap] = useState(false);
   // Persisted preferences — loaded once from localStorage, saved on every change.
   const [prefs, setPrefs] = useState<EditorPreferences>(() => {
     try {
@@ -247,7 +251,26 @@ export default function PdfEditorPage() {
     if (tool === 'signature') setSignatureOpen(true);
     if (tool === 'image' && !pendingImage) onPickImage();
     if (tool === 'barcode') setBarcodeOpen(true);
+    if (tool === 'stamp') setStampsOpen(true);
   }, [tool]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // When the user picks from the stamps gallery, prepare the editor for the
+  // next page click: presets seed the stamp label; custom uploads seed the
+  // pendingImage and switch to the image-style stamp annotation kind.
+  const handleStampPick = (pick: StampPick) => {
+    if (pick.kind === 'preset') {
+      setPendingStamp(pick.label);
+      setPendingImage(null);
+      setTool('stamp');
+    } else {
+      setPendingImage(pick.stamp.imageData);
+      setPendingStamp(pick.stamp.name);
+      // Custom stamps render as image annotations so they keep their
+      // bitmap fidelity; PageCanvas already maps the 'barcode' tool to
+      // an 'image' annotation, and we use the same handoff here.
+      setTool('barcode');
+    }
+  };
 
   // Annotation operations.
   const addAnnotation = useCallback((a: Annotation) => {
@@ -707,6 +730,21 @@ export default function PdfEditorPage() {
         onJumpTo={(page) => jumpToPage(page - 1)} />
       <KeyboardShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <PreferencesDialog open={prefsOpen} prefs={prefs} onChange={setPrefs} onClose={() => setPrefsOpen(false)} />
+      <CustomStampsGallery open={stampsOpen}
+        onClose={() => { setStampsOpen(false); if (tool === 'stamp' && !pendingStamp) setTool('select'); }}
+        onPick={handleStampPick} />
+
+      {/* Mini-map page navigator — floating bottom-right when toggled. */}
+      {hasDocument && showMiniMap && (
+        <MiniMap
+          pdfBytes={bytes}
+          pages={state.pages}
+          pageOrder={state.pageOrder}
+          activePage={activePage}
+          onJumpTo={jumpToPage}
+          onClose={() => setShowMiniMap(false)}
+        />
+      )}
 
       <div className="mt-2 mb-2">
         <EditorToolbar
@@ -773,6 +811,11 @@ export default function PdfEditorPage() {
             title="Toggle annotations panel"
             className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showAnnotationsPanel ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
             <Layers className="w-3 h-3" /> Panel ({state.annotations.length})
+          </button>
+          <button type="button" onClick={() => setShowMiniMap(v => !v)}
+            title="Toggle mini-map page navigator"
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${showMiniMap ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+            <MapIcon className="w-3 h-3" /> Mini-map
           </button>
           <button type="button" onClick={exportJson} title="Export annotations as JSON"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Download className="w-3 h-3" /> Export</button>

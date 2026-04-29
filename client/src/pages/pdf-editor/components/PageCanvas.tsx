@@ -23,6 +23,22 @@ interface Props {
 
 function uid(): string { return Math.random().toString(36).slice(2, 10); }
 
+// Names for the 8 resize handles: 4 corners + 4 edge midpoints. Each handle
+// affects different sides of the annotation — see resize math in the
+// onPointerMove handler below.
+type ResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w';
+
+const HANDLE_POSITIONS: Array<{ id: ResizeHandle; cx: 0 | 0.5 | 1; cy: 0 | 0.5 | 1; cursor: string }> = [
+  { id: 'nw', cx: 0, cy: 0, cursor: 'nwse-resize' },
+  { id: 'n',  cx: 0.5, cy: 0, cursor: 'ns-resize' },
+  { id: 'ne', cx: 1, cy: 0, cursor: 'nesw-resize' },
+  { id: 'e',  cx: 1, cy: 0.5, cursor: 'ew-resize' },
+  { id: 'se', cx: 1, cy: 1, cursor: 'nwse-resize' },
+  { id: 's',  cx: 0.5, cy: 1, cursor: 'ns-resize' },
+  { id: 'sw', cx: 0, cy: 1, cursor: 'nesw-resize' },
+  { id: 'w',  cx: 0, cy: 0.5, cursor: 'ew-resize' },
+];
+
 export default function PageCanvas(props: Props) {
   const { pdfBytes, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onSetCrop } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -30,6 +46,16 @@ export default function PageCanvas(props: Props) {
   const textLayerRef = useRef<HTMLDivElement>(null);
   const [drawing, setDrawing] = useState<{ tool: Tool; start: Point; current: Point; pen?: Point[] } | null>(null);
   const [drag, setDrag] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
+  // Active resize: which handle on which annotation, plus the original geometry
+  // we measure deltas against. Capture is on the handle element so leaving it
+  // doesn't end the gesture mid-drag.
+  const [resize, setResize] = useState<{
+    id: string;
+    handle: ResizeHandle;
+    originX: number; originY: number;
+    originW: number; originH: number;
+    pointerStartX: number; pointerStartY: number;
+  } | null>(null);
 
   // Render PDF page on mount + when bytes change.
   useEffect(() => {
@@ -165,6 +191,31 @@ export default function PageCanvas(props: Props) {
       }
       return;
     }
+    if (resize) {
+      // Convert handle id to per-side deltas. dx/dy are in local coords.
+      const dx = p.x - resize.pointerStartX;
+      const dy = p.y - resize.pointerStartY;
+      const h = resize.handle;
+      let newX = resize.originX, newY = resize.originY;
+      let newW = resize.originW, newH = resize.originH;
+      const MIN = 6;
+      if (h === 'nw' || h === 'w' || h === 'sw') { newX = resize.originX + dx; newW = resize.originW - dx; }
+      if (h === 'ne' || h === 'e' || h === 'se') { newW = resize.originW + dx; }
+      if (h === 'nw' || h === 'n' || h === 'ne') { newY = resize.originY + dy; newH = resize.originH - dy; }
+      if (h === 'sw' || h === 's' || h === 'se') { newH = resize.originH + dy; }
+      // Prevent negative or sub-minimum dimensions while keeping the opposite
+      // edge anchored — clamp width/height first, then back out the position.
+      if (newW < MIN) {
+        if (h === 'nw' || h === 'w' || h === 'sw') newX = resize.originX + resize.originW - MIN;
+        newW = MIN;
+      }
+      if (newH < MIN) {
+        if (h === 'nw' || h === 'n' || h === 'ne') newY = resize.originY + resize.originH - MIN;
+        newH = MIN;
+      }
+      onUpdateAnnotation(resize.id, { x: newX, y: newY, w: newW, h: newH });
+      return;
+    }
     if (drag) {
       const ann = annotations.find(a => a.id === drag.id);
       if (!ann) return;
@@ -205,10 +256,34 @@ export default function PageCanvas(props: Props) {
       setDrawing(null);
     }
     if (drag) setDrag(null);
+    if (resize) setResize(null);
+  };
+
+  /** Begin a resize gesture. Captured separately from drag so the handle
+   *  child element gets pointer capture (bubbles wouldn't fire during fast
+   *  drags that exit the small handle rect). */
+  const startResize = (e: React.PointerEvent, ann: Annotation, handle: ResizeHandle) => {
+    if (ann.locked) return;
+    e.stopPropagation();
+    onSelectAnnotation(ann.id);
+    const p = localCoords(e);
+    setResize({
+      id: ann.id, handle,
+      originX: ann.x, originY: ann.y,
+      originW: ann.w, originH: ann.h,
+      pointerStartX: p.x, pointerStartY: p.y,
+    });
+    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   };
 
   const startAnnDrag = (e: React.PointerEvent, ann: Annotation) => {
     if (tool !== 'select') return;
+    if (ann.locked) {
+      // Still allow selection so users can unlock from the panel.
+      e.stopPropagation();
+      onSelectAnnotation(ann.id);
+      return;
+    }
     e.stopPropagation();
     onSelectAnnotation(ann.id);
     const p = localCoords(e);
@@ -267,6 +342,8 @@ export default function PageCanvas(props: Props) {
               zoom={zoom}
               selected={ann.id === activeId}
               onPointerDown={(e) => startAnnDrag(e, ann)}
+              onResizeStart={(e, handle) => startResize(e, ann, handle)}
+              showResizeHandles={ann.id === activeId && !ann.locked && tool === 'select'}
             />
           ))}
           {drawing && <DrawingPreview drawing={drawing} zoom={zoom} color={color} strokeWidth={strokeWidth} />}
@@ -293,7 +370,14 @@ export default function PageCanvas(props: Props) {
   );
 }
 
-function AnnotationView({ ann, zoom, selected, onPointerDown }: { ann: Annotation; zoom: number; selected: boolean; onPointerDown: (e: React.PointerEvent) => void }) {
+function AnnotationView({ ann, zoom, selected, onPointerDown, onResizeStart, showResizeHandles }: {
+  ann: Annotation;
+  zoom: number;
+  selected: boolean;
+  onPointerDown: (e: React.PointerEvent) => void;
+  onResizeStart: (e: React.PointerEvent, handle: ResizeHandle) => void;
+  showResizeHandles: boolean;
+}) {
   const baseStyle: React.CSSProperties = {
     position: 'absolute',
     left: ann.x * zoom,
@@ -304,69 +388,91 @@ function AnnotationView({ ann, zoom, selected, onPointerDown }: { ann: Annotatio
     outline: selected ? '2px solid #d4a017' : 'none',
   };
 
+  // Renders the 8 resize grips on top of the selected annotation. Each grip
+  // is a small gold square at a corner / edge midpoint of the bounding box.
+  // Pointer events are captured on the grip so a fast drag stays attached.
+  const handlesEl = showResizeHandles ? (
+    <>
+      {HANDLE_POSITIONS.map(h => (
+        <div
+          key={h.id}
+          onPointerDown={(e) => onResizeStart(e, h.id)}
+          title={`Resize ${h.id}`}
+          style={{
+            position: 'absolute',
+            left: ann.x * zoom + h.cx * ann.w * zoom - 4,
+            top: ann.y * zoom + h.cy * ann.h * zoom - 4,
+            width: 8, height: 8,
+            background: '#d4a017',
+            border: '1px solid #0a0a0a',
+            borderRadius: 1,
+            cursor: h.cursor,
+            zIndex: 10,
+          }}
+        />
+      ))}
+    </>
+  ) : null;
+
+  // Render the type-specific body once into `inner`, then return the body
+  // alongside the resize handles. Capturing into a variable means handles
+  // co-render with every annotation kind without per-case duplication.
+  let inner: React.ReactNode = null;
+
   if (ann.type === 'text') {
-    return (
+    inner = (
       <div onPointerDown={onPointerDown} style={{ ...baseStyle, color: ann.color ?? '#0a0a0a', fontSize: ann.fontSize * zoom, fontWeight: ann.bold ? 700 : 400, fontStyle: ann.italic ? 'italic' : 'normal', fontFamily: 'Helvetica, Arial, sans-serif', whiteSpace: 'nowrap', userSelect: 'none', padding: 1 }}>
         {ann.text}
       </div>
     );
-  }
-  if (ann.type === 'highlight') {
-    return <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: ann.fillColor ?? '#fff050', opacity: (ann.opacity ?? 1) * 0.4 }} />;
-  }
-  if (ann.type === 'redact') {
-    return <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: '#000' }} />;
-  }
-  if (ann.type === 'rect') {
-    return <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px solid ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent' }} />;
-  }
-  if (ann.type === 'ellipse') {
-    return <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px solid ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent', borderRadius: '50%' }} />;
-  }
-  if (ann.type === 'line') {
-    return (
+  } else if (ann.type === 'highlight') {
+    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: ann.fillColor ?? '#fff050', opacity: (ann.opacity ?? 1) * 0.4 }} />;
+  } else if (ann.type === 'redact') {
+    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, background: '#000' }} />;
+  } else if (ann.type === 'rect') {
+    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px solid ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent' }} />;
+  } else if (ann.type === 'ellipse') {
+    inner = <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${(ann.strokeWidth ?? 1.5) * zoom}px solid ${ann.color ?? '#0a0a0a'}`, background: ann.fillColor ?? 'transparent', borderRadius: '50%' }} />;
+  } else if (ann.type === 'line') {
+    inner = (
       <svg onPointerDown={onPointerDown} style={{ ...baseStyle, overflow: 'visible' }}>
         <line x1={0} y1={0} x2={ann.w * zoom} y2={ann.h * zoom} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} />
         {ann.arrow && <ArrowHead x={ann.w * zoom} y={ann.h * zoom} dx={ann.w} dy={ann.h} color={ann.color ?? '#0a0a0a'} zoom={zoom} stroke={ann.strokeWidth ?? 1.5} />}
       </svg>
     );
-  }
-  if (ann.type === 'pen') {
+  } else if (ann.type === 'pen') {
     const d = ann.points.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x * zoom} ${p.y * zoom}`).join(' ');
-    return (
+    inner = (
       <svg onPointerDown={onPointerDown} style={{ ...baseStyle, overflow: 'visible' }}>
         <path d={d} stroke={ann.color ?? '#0a0a0a'} strokeWidth={(ann.strokeWidth ?? 1.5) * zoom} fill="none" strokeLinecap="round" strokeLinejoin="round" />
       </svg>
     );
-  }
-  if (ann.type === 'image' || ann.type === 'signature') {
-    return <img onPointerDown={onPointerDown} src={ann.imageData} alt="" style={{ ...baseStyle, objectFit: 'contain' }} />;
-  }
-  if (ann.type === 'sticky') {
-    return (
+  } else if (ann.type === 'image' || ann.type === 'signature') {
+    inner = <img onPointerDown={onPointerDown} src={ann.imageData} alt="" style={{ ...baseStyle, objectFit: 'contain' }} />;
+  } else if (ann.type === 'sticky') {
+    inner = (
       <div onPointerDown={onPointerDown} title={ann.text}
         style={{ ...baseStyle, background: ann.fillColor ?? '#fff7c2', color: ann.color ?? '#0a0a0a', border: '1px solid #d4a017', boxShadow: '2px 2px 0 rgba(0,0,0,0.25)', padding: '4px 6px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.18), userSelect: 'none', overflow: 'hidden' }}>
         {ann.text}
       </div>
     );
-  }
-  if (ann.type === 'link') {
-    return (
+  } else if (ann.type === 'link') {
+    inner = (
       <div onPointerDown={onPointerDown} style={{ ...baseStyle, color: '#0046a1', textDecoration: 'underline', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.6), padding: 1, overflow: 'hidden', userSelect: 'none' }}
         title={`Link → ${ann.url}`}>
         {ann.text}
       </div>
     );
-  }
-  if (ann.type === 'stamp') {
+  } else if (ann.type === 'stamp') {
     const fontSize = Math.max(10, ann.h * zoom * 0.45);
-    return (
+    inner = (
       <div onPointerDown={onPointerDown} style={{ ...baseStyle, border: `${2.5 * zoom}px solid ${ann.color ?? '#c62828'}`, color: ann.color ?? '#c62828', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'Helvetica, Arial, sans-serif', fontWeight: 800, fontSize, letterSpacing: '0.05em' }}>
         {String(ann.label).toUpperCase()}
       </div>
     );
   }
-  return null;
+
+  return <>{inner}{handlesEl}</>;
 }
 
 function ArrowHead({ x, y, dx, dy, color, zoom, stroke }: { x: number; y: number; dx: number; dy: number; color: string; zoom: number; stroke: number }) {
