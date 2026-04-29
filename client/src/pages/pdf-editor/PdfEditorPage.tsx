@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import EditorToolbar from './components/EditorToolbar';
@@ -11,7 +11,11 @@ import PropertiesPanel from './components/PropertiesPanel';
 import SignaturePad from './components/SignaturePad';
 import BarcodeDialog from './components/BarcodeDialog';
 import EncryptionDialog, { EncryptionConfig } from './components/EncryptionDialog';
-import { Annotation, BatesConfig, DocumentMeta, EditorState, PageCrop, PageMeta, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import AnnotationsPanel from './components/AnnotationsPanel';
+import FindDialog from './components/FindDialog';
+import KeyboardShortcutsDialog from './components/KeyboardShortcutsDialog';
+import PreferencesDialog from './components/PreferencesDialog';
+import { Annotation, BatesConfig, DocumentMeta, EditorState, EditorPreferences, DEFAULT_PREFERENCES, PageCrop, PageMeta, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
 import { authedImageUrl } from '../../hooks/useApi';
 
@@ -85,6 +89,25 @@ export default function PdfEditorPage() {
   const [barcodeOpen, setBarcodeOpen] = useState(false);
   const [encryptionOpen, setEncryptionOpen] = useState(false);
   const [encryption, setEncryption] = useState<EncryptionConfig | null>(null);
+  const [findOpen, setFindOpen] = useState(false);
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+  const [prefsOpen, setPrefsOpen] = useState(false);
+  // Persisted preferences — loaded once from localStorage, saved on every change.
+  const [prefs, setPrefs] = useState<EditorPreferences>(() => {
+    try {
+      const raw = localStorage.getItem('rmpg-pdf-editor-prefs');
+      if (raw) return { ...DEFAULT_PREFERENCES, ...JSON.parse(raw) };
+    } catch { /* ignore */ }
+    return DEFAULT_PREFERENCES;
+  });
+  useEffect(() => {
+    try { localStorage.setItem('rmpg-pdf-editor-prefs', JSON.stringify(prefs)); } catch { /* ignore */ }
+  }, [prefs]);
+  // Multi-select: most operations still target a single annotation, but
+  // copy/paste/duplicate and the AnnotationsPanel respect the full set.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [clipboard, setClipboard] = useState<Annotation[]>([]);
+  const jsonInputRef = useRef<HTMLInputElement>(null);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingStamp, setPendingStamp] = useState<StampLabel | string | null>('CONFIDENTIAL');
   const [saving, setSaving] = useState(false);
@@ -243,10 +266,149 @@ export default function PdfEditorPage() {
   }, [state.annotations, mutate]);
 
   const deleteActive = () => {
+    if (selectedIds.size > 0) {
+      const drop = selectedIds;
+      mutate({ annotations: state.annotations.filter(a => !drop.has(a.id)) });
+      setSelectedIds(new Set());
+      setActiveId(null);
+      return;
+    }
     if (!activeId) return;
     mutate({ annotations: state.annotations.filter(a => a.id !== activeId) });
     setActiveId(null);
   };
+
+  // ─── Multi-select / clipboard / z-order / lock ────────────────
+  const selectAnnotation = (id: string, additive: boolean) => {
+    setActiveId(id);
+    setSelectedIds(prev => {
+      const next = new Set(additive ? prev : []);
+      if (additive && next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleLock = (id: string) => {
+    const idx = state.annotations.findIndex(a => a.id === id);
+    if (idx === -1) return;
+    const next = [...state.annotations];
+    next[idx] = { ...next[idx], locked: !next[idx].locked } as Annotation;
+    mutate({ annotations: next });
+  };
+
+  const adjustZ = (id: string, delta: number) => {
+    const idx = state.annotations.findIndex(a => a.id === id);
+    if (idx === -1) return;
+    const cur = state.annotations[idx];
+    const targetIdx = Math.max(0, Math.min(state.annotations.length - 1, idx + delta));
+    if (targetIdx === idx) return;
+    const next = [...state.annotations];
+    next.splice(idx, 1);
+    next.splice(targetIdx, 0, cur);
+    // Re-stamp zIndex based on order so renderers can sort cheaply.
+    next.forEach((a, i) => { (a as any).zIndex = i; });
+    mutate({ annotations: next });
+  };
+  const bringForward = (id: string) => adjustZ(id, +1);
+  const sendBackward = (id: string) => adjustZ(id, -1);
+
+  const copySelected = () => {
+    const ids = selectedIds.size > 0 ? selectedIds : (activeId ? new Set([activeId]) : new Set<string>());
+    if (ids.size === 0) return;
+    const copies = state.annotations.filter(a => ids.has(a.id));
+    setClipboard(copies);
+  };
+
+  const pasteFromClipboard = () => {
+    if (clipboard.length === 0) return;
+    const offset = 12; // visible nudge so the paste isn't directly behind the source
+    const next = [...state.annotations];
+    const newIds = new Set<string>();
+    for (const c of clipboard) {
+      const id = Math.random().toString(36).slice(2, 10);
+      const copy = { ...c, id, x: c.x + offset, y: c.y + offset } as Annotation;
+      next.push(copy);
+      newIds.add(id);
+    }
+    mutate({ annotations: next });
+    setSelectedIds(newIds);
+    setActiveId(newIds.size === 1 ? [...newIds][0] : null);
+  };
+
+  const duplicateSelected = () => {
+    copySelected();
+    pasteFromClipboard();
+  };
+
+  const selectAllOnPage = () => {
+    const ids = new Set<string>();
+    for (const a of state.annotations) if (a.page === activePage) ids.add(a.id);
+    setSelectedIds(ids);
+  };
+
+  // ─── Layer visibility ─────────────────────────────────────────
+  const toggleLayer = (layer: string) => {
+    const v = prefs.layerVisibility[layer] !== false;
+    setPrefs({ ...prefs, layerVisibility: { ...prefs.layerVisibility, [layer]: !v } });
+  };
+  const visibleAnnotations = useMemo(() => {
+    return state.annotations.filter(a => !a.layer || prefs.layerVisibility[a.layer] !== false);
+  }, [state.annotations, prefs.layerVisibility]);
+
+  // ─── JSON annotation export / import ──────────────────────────
+  const exportJson = () => {
+    const data = JSON.stringify({
+      version: 1,
+      fileName,
+      meta: state.meta,
+      pageCount: state.pageOrder.length,
+      annotations: state.annotations,
+      bates: state.bates,
+      watermark: state.watermark,
+      exportedAt: new Date().toISOString(),
+    }, null, 2);
+    const blob = new Blob([data], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `${(fileName || 'document').replace(/\.pdf$/i, '')}-annotations.json`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(() => URL.revokeObjectURL(url), 1500);
+  };
+
+  const importJson = (file: File) => {
+    file.text().then(text => {
+      try {
+        const data = JSON.parse(text);
+        if (!Array.isArray(data?.annotations)) throw new Error('Invalid annotation file');
+        mutate({
+          annotations: data.annotations as Annotation[],
+          bates: data.bates ?? state.bates,
+          watermark: data.watermark ?? state.watermark,
+        });
+        setSavedNotice(`Imported ${data.annotations.length} annotations.`);
+      } catch (err) {
+        setError(`Could not import annotations: ${err instanceof Error ? err.message : 'parse error'}`);
+      }
+    });
+  };
+
+  const handlePrint = () => {
+    window.print();
+  };
+
+  // ─── Recent files (localStorage-backed quick-access) ─────────
+  useEffect(() => {
+    if (!state.sourceFileId || !fileName) return;
+    try {
+      const raw = localStorage.getItem('rmpg-pdf-editor-recent') ?? '[]';
+      const list = JSON.parse(raw) as RecentFile[];
+      const entry: RecentFile = { fileId: state.sourceFileId, fileName, folderId: state.sourceFolderId ?? null, openedAt: Date.now() };
+      const filtered = list.filter(r => r.fileId !== entry.fileId);
+      filtered.unshift(entry);
+      localStorage.setItem('rmpg-pdf-editor-recent', JSON.stringify(filtered.slice(0, 10)));
+    } catch { /* ignore */ }
+  }, [state.sourceFileId, fileName, state.sourceFolderId]);
 
   // Page operations.
   const movePage = (idx: number, dir: -1 | 1) => {
@@ -433,27 +595,60 @@ export default function PdfEditorPage() {
     }
   };
 
-  // Keyboard shortcuts.
+  // ─── Zoom presets ───────────────────────────────────────────
+  const fitPage = () => {
+    const root = scrollerRef.current;
+    if (!root || !state.pages[0]) return;
+    const meta = state.pages[0];
+    const availW = root.clientWidth - 32;
+    const availH = root.clientHeight - 80;
+    const z = Math.min(availW / meta.width, availH / meta.height, 3);
+    setZoom(Math.max(0.3, z));
+  };
+  const fitWidth = () => {
+    const root = scrollerRef.current;
+    if (!root || !state.pages[0]) return;
+    const meta = state.pages[0];
+    const availW = root.clientWidth - 32;
+    setZoom(Math.max(0.3, Math.min(availW / meta.width, 3)));
+  };
+
+  // Keyboard shortcuts (full set — see KeyboardShortcutsDialog for the listing).
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Ignore shortcuts when typing in an input, textarea, or contenteditable.
       const t = e.target as HTMLElement;
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
       const meta = e.ctrlKey || e.metaKey;
-      if (meta && e.key.toLowerCase() === 'z' && !e.shiftKey) { e.preventDefault(); dispatch({ type: 'undo' }); return; }
-      if (meta && (e.key.toLowerCase() === 'y' || (e.shiftKey && e.key.toLowerCase() === 'z'))) { e.preventDefault(); dispatch({ type: 'redo' }); return; }
-      if (meta && e.key.toLowerCase() === 's') { e.preventDefault(); onSave(); return; }
-      if (e.key === 'Delete' || e.key === 'Backspace') { if (activeId) { e.preventDefault(); deleteActive(); } return; }
-      if (e.key === 'Escape') { setActiveId(null); setTool('select'); return; }
+      const k = e.key.toLowerCase();
+      if (meta && k === 'z' && !e.shiftKey) { e.preventDefault(); dispatch({ type: 'undo' }); return; }
+      if (meta && (k === 'y' || (e.shiftKey && k === 'z'))) { e.preventDefault(); dispatch({ type: 'redo' }); return; }
+      if (meta && k === 's') { e.preventDefault(); onSave(); return; }
+      if (meta && k === 'f') { e.preventDefault(); setFindOpen(true); return; }
+      if (meta && k === 'c') { e.preventDefault(); copySelected(); return; }
+      if (meta && k === 'v') { e.preventDefault(); pasteFromClipboard(); return; }
+      if (meta && k === 'd') { e.preventDefault(); duplicateSelected(); return; }
+      if (meta && k === 'a') { e.preventDefault(); selectAllOnPage(); return; }
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (activeId || selectedIds.size > 0) { e.preventDefault(); deleteActive(); }
+        return;
+      }
+      if (e.key === 'Escape') { setActiveId(null); setSelectedIds(new Set()); setTool('select'); setFindOpen(false); return; }
       if (e.key === '+' || e.key === '=') { setZoom(z => Math.min(3, z + 0.1)); return; }
       if (e.key === '-') { setZoom(z => Math.max(0.3, z - 0.1)); return; }
-      // Tool keys
-      const map: Record<string, Tool> = { v: 'select', h: 'hand', t: 'text', y: 'highlight', r: 'rect', e: 'ellipse', l: 'line', a: 'arrow', p: 'pen' };
-      if (!meta && map[e.key.toLowerCase()]) { setTool(map[e.key.toLowerCase()]); return; }
+      if (e.key === '0') { setZoom(1); return; }
+      if (e.key === '1') { fitPage(); return; }
+      if (e.key === '2') { fitWidth(); return; }
+      if (e.key === 'PageDown') { jumpToPage(Math.min(state.pageOrder.length - 1, activePage)); return; }
+      if (e.key === 'PageUp') { jumpToPage(Math.max(0, activePage - 2)); return; }
+      if (e.key === 'Home') { jumpToPage(0); return; }
+      if (e.key === 'End') { jumpToPage(state.pageOrder.length - 1); return; }
+      if (e.key === '?') { setShortcutsOpen(true); return; }
+      const map: Record<string, Tool> = { v: 'select', h: 'hand', t: 'text', y: 'highlight', r: 'rect', e: 'ellipse', l: 'line', a: 'arrow', p: 'pen', n: 'sticky' };
+      if (!meta && map[k]) { setTool(map[k]); return; }
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [activeId, state.annotations]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [activeId, selectedIds, state.annotations, activePage]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Track which page is most-visible while scrolling to update activePage.
   const onScroll = () => {
@@ -504,6 +699,14 @@ export default function PdfEditorPage() {
       <input ref={fileInputRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={handleOpenChange} />
       <input ref={mergeInputRef} type="file" accept="application/pdf,.pdf" multiple className="hidden" onChange={handleMergeChange} />
       <input ref={imageInputRef} type="file" accept="image/png,image/jpeg" className="hidden" onChange={handleImageChange} />
+      <input ref={jsonInputRef} type="file" accept="application/json" className="hidden"
+        onChange={(e) => { const f = e.target.files?.[0]; if (f) importJson(f); e.target.value = ''; }} />
+
+      {/* Find / Shortcuts / Preferences dialogs */}
+      <FindDialog open={findOpen} onClose={() => setFindOpen(false)} currentPage={activePage}
+        onJumpTo={(page) => jumpToPage(page - 1)} />
+      <KeyboardShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
+      <PreferencesDialog open={prefsOpen} prefs={prefs} onChange={setPrefs} onClose={() => setPrefsOpen(false)} />
 
       <div className="mt-2 mb-2">
         <EditorToolbar
@@ -559,6 +762,45 @@ export default function PdfEditorPage() {
         </div>
       )}
 
+      {/* Quick-action strip: find / annotations panel toggle / shortcuts /
+          prefs / JSON I/O / print. These are kept out of the main EditorToolbar
+          so that toolbar stays tight; quick actions live just below it. */}
+      {hasDocument && !viewOnly && (
+        <div className="flex items-center gap-1 bg-[#0d0d0d] border border-[#222] rounded-[2px] px-2 py-1 mb-2 text-[10px] text-rmpg-300">
+          <button type="button" onClick={() => setFindOpen(true)} title="Find in document (Ctrl+F)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Search className="w-3 h-3" /> Find</button>
+          <button type="button" onClick={() => setPrefs({ ...prefs, showAnnotationsPanel: !prefs.showAnnotationsPanel })}
+            title="Toggle annotations panel"
+            className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${prefs.showAnnotationsPanel ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
+            <Layers className="w-3 h-3" /> Panel ({state.annotations.length})
+          </button>
+          <button type="button" onClick={exportJson} title="Export annotations as JSON"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Download className="w-3 h-3" /> Export</button>
+          <button type="button" onClick={() => jsonInputRef.current?.click()} title="Import annotations from JSON"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><UploadIcon className="w-3 h-3" /> Import</button>
+          <button type="button" onClick={handlePrint} title="Print"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Printer className="w-3 h-3" /> Print</button>
+          <div className="flex-1" />
+          <select value={prefs.viewMode} onChange={(e) => setPrefs({ ...prefs, viewMode: e.target.value as EditorPreferences['viewMode'] })}
+            className="bg-[#0a0a0a] border border-[#222] text-[10px] text-rmpg-200 px-1.5 py-0.5 rounded-sm">
+            <option value="continuous">Continuous</option>
+            <option value="single">Single page</option>
+            <option value="two-up">Two-up</option>
+          </select>
+          <button type="button" onClick={fitPage} title="Fit page (1)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">Fit page</button>
+          <button type="button" onClick={fitWidth} title="Fit width (2)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">Fit width</button>
+          <button type="button" onClick={() => setShortcutsOpen(true)} title="Keyboard shortcuts (?)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Keyboard className="w-3 h-3" /> ?</button>
+          <button type="button" onClick={() => setPrefsOpen(true)} title="Editor preferences"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Settings className="w-3 h-3" /></button>
+          {selectedIds.size > 0 && (
+            <span className="text-[#d4a017]">{selectedIds.size} selected</span>
+          )}
+        </div>
+      )}
+
       {hasDocument && viewOnly && (
         <div className="bg-[#0d0d0d] border border-[#222222] rounded-[2px] px-3 py-1.5 mb-2 flex items-center gap-2 text-[10px] text-rmpg-400">
           <span className="text-[#d4a017] font-semibold uppercase tracking-wider">View-only</span>
@@ -611,6 +853,20 @@ export default function PdfEditorPage() {
             ))}
           </div>
 
+          {!viewOnly && prefs.showAnnotationsPanel && (
+            <AnnotationsPanel
+              annotations={state.annotations}
+              activeIds={selectedIds.size > 0 ? selectedIds : new Set(activeId ? [activeId] : [])}
+              layerVisibility={prefs.layerVisibility}
+              onSelect={selectAnnotation}
+              onToggleLock={toggleLock}
+              onDelete={(id) => { mutate({ annotations: state.annotations.filter(a => a.id !== id) }); }}
+              onBringForward={bringForward}
+              onSendBackward={sendBackward}
+              onJumpToPage={(p) => jumpToPage(p - 1)}
+              onToggleLayer={toggleLayer}
+            />
+          )}
           {!viewOnly && (
             <PropertiesPanel
               annotation={annotation}

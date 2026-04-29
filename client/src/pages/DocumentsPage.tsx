@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -368,6 +369,13 @@ export default function DocumentsPage() {
               >
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
+            )}
+
+            {/* Apps shelf — integrated tools that operate on the documents
+                in this folder. The PDF Editor is the first integrated app;
+                future apps (image annotator, video reviewer) can drop in here. */}
+            {!searchQuery && (
+              <DocumentsAppsShelf currentFolderId={currentFolderId} />
             )}
 
             {/* Folders */}

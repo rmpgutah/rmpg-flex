@@ -106,6 +106,17 @@ export default function PageCanvas(props: Props) {
       onAddAnnotation({ id: uid(), type: 'text', page: visualPageNumber, x: p.x, y: p.y, w: 0, h: 0, text, fontSize: 14, color });
       return;
     }
+    if (tool === 'sticky') {
+      const text = window.prompt('Sticky note:', '');
+      if (!text) return;
+      onAddAnnotation({ id: uid(), type: 'sticky', page: visualPageNumber, x: p.x, y: p.y, w: 180, h: 60, text, color: '#0a0a0a', fillColor: '#fff7c2', createdAt: new Date().toISOString() });
+      return;
+    }
+    if (tool === 'datestamp') {
+      const text = new Date().toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: '2-digit' });
+      onAddAnnotation({ id: uid(), type: 'text', page: visualPageNumber, x: p.x, y: p.y, w: 0, h: 0, text, fontSize: 12, color });
+      return;
+    }
     if (tool === 'link') {
       // Drag to draw the link bounds; finalize on pointer up via the same flow
       // as rect/highlight (handled below).
@@ -330,6 +341,14 @@ function AnnotationView({ ann, zoom, selected, onPointerDown }: { ann: Annotatio
   }
   if (ann.type === 'image' || ann.type === 'signature') {
     return <img onPointerDown={onPointerDown} src={ann.imageData} alt="" style={{ ...baseStyle, objectFit: 'contain' }} />;
+  }
+  if (ann.type === 'sticky') {
+    return (
+      <div onPointerDown={onPointerDown} title={ann.text}
+        style={{ ...baseStyle, background: ann.fillColor ?? '#fff7c2', color: ann.color ?? '#0a0a0a', border: '1px solid #d4a017', boxShadow: '2px 2px 0 rgba(0,0,0,0.25)', padding: '4px 6px', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.18), userSelect: 'none', overflow: 'hidden' }}>
+        {ann.text}
+      </div>
+    );
   }
   if (ann.type === 'link') {
     return (

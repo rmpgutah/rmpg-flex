@@ -376,6 +376,50 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 ### Maps — Google Maps is the sole map surface
 `/map` is the single production map, backed by the Google Maps JS API with offline CartoDB raster tile fallback. **Do not reintroduce OpenLayers or a parallel `/map-v2` surface.** A parallel OpenLayers map (`/map-v2`) was attempted and retired; all traces were removed 2026-04-23 (route, redirect, `ol` dependency, PDF guide section 15, migration plan). The stale iOS PWA plans (`docs/plans/2026-04-20-ios-mobile-pwa-enhancement-*.md`) still reference non-existent `map-v2` hooks and need Google-Maps-based replacements before execution.
 
+### PDF Editor — 50-upgrade roadmap (snapshot 2026-04-29)
+The editor and viewer now run on the proprietary RMPG PDF Engine v1.0
+(reader + renderer + writer at `client/src/lib/rmpg-pdf-engine/`). The
+following 50 upgrades define the productisation path; **shipped** items are
+in main, **scaffolded** are partial, and **roadmap** are tracked here.
+
+UX & selection (1–10): 1 multi-select via shift-click ✅ shipped · 2 copy/paste
+annotations Ctrl+C/V ✅ · 3 duplicate Ctrl+D ✅ · 4 select-all-on-page Ctrl+A ✅ ·
+5 lock/unlock annotations ✅ · 6 z-order bring-forward / send-backward ✅ ·
+7 layer visibility toggles ✅ · 8 keyboard shortcuts dialog (?) ✅ · 9 escape
+clears selection ✅ · 10 resize handles on selected annotations 🟡 scaffolded
+(via PropertiesPanel inputs; visual handles deferred).
+
+View & navigation (11–20): 11 view modes (single/continuous/two-up) ✅ ·
+12 zoom presets (fit page / fit width / 100%) ✅ · 13 + / – / 0 hotkeys ✅ ·
+14 PageUp / PageDown / Home / End ✅ · 15 thumbnails sidebar ✅ · 16 page
+navigator click-to-jump ✅ · 17 dark page background option 🟡 · 18 mini-map
+overview 📋 roadmap · 19 loupe/magnifier 📋 · 20 dual-pane PDF compare 📋.
+
+Editing tools (21–30): 21 text annotations ✅ · 22 highlight ✅ · 23 visual
+redaction ✅ · 24 rect/ellipse/line/arrow/pen ✅ · 25 hyperlink (visible) ✅ ·
+26 sticky note ✅ · 27 date stamp (auto-fill today) ✅ · 28 signature drawing ✅ ·
+29 image embedding ✅ · 30 9 preset stamps + custom user stamps 🟡.
+
+File operations (31–40): 31 save copy / save to Documents ✅ · 32 extract
+single page ✅ · 33 PDF.js fallback when native parser hits gaps ✅ · 34 print
+from editor ✅ · 35 JSON annotation export/import for audit / templates ✅ ·
+36 server-side qpdf encryption with permission flags ✅ · 37 multi-doc merge ✅
+(transitional via pdf-lib; native merge 📋) · 38 recent files quick-access ✅ ·
+39 new-blank-PDF in Documents ✅ · 40 auto-save drafts to localStorage 🟡.
+
+Documents integration (41–45): 41 Edit-PDF action on every PDF row ✅ ·
+42 Eye/View routes through internal viewer (no browser-native PDFium) ✅ ·
+43 view-only mode `?view=1` with Edit toggle ✅ · 44 **Apps shelf with
+PDF Editor + New blank PDF + Recents** ✅ · 45 Documents file inspection
+(properties / metadata) ✅ via existing Info button.
+
+Power-user / pro (46–50): 46 find-in-document with match highlighting ✅ ·
+47 annotations panel sidebar with per-row controls ✅ · 48 editor preferences
+panel + persistence ✅ · 49 recently-used colors palette ✅ · 50 snap-to-grid
+toggle ✅.
+
+Visible status: every saved file's `/Producer` is `"RMPG PDF Engine v1.0"`.
+
 ### PDF Editor — qpdf dependency for encryption (introduced 2026-04-29)
 The PDF editor's encryption feature is **server-side**: a multipart upload to `POST /api/pdf-tools/encrypt` runs the user-supplied bytes through the `qpdf` binary with the requested passwords + permission flags + AES-256 (or 128) and streams the encrypted bytes back. There is no pure-JS fallback — pdf-lib has no encryption support and maintained pure-JS forks don't exist.
 

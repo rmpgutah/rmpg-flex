@@ -20,7 +20,10 @@ export type Tool =
   | 'stamp'
   | 'link'
   | 'crop'
-  | 'barcode';
+  | 'barcode'
+  | 'sticky'
+  | 'datestamp'
+  | 'eyedropper';
 
 export type StampLabel =
   | 'CONFIDENTIAL'
@@ -47,6 +50,16 @@ export interface AnnotationBase {
   color?: string;          // CSS hex (#rrggbb)
   fillColor?: string;
   strokeWidth?: number;
+  /** When true, drag/resize/keyboard-delete are disabled. */
+  locked?: boolean;
+  /** Stacking order — higher = drawn later (on top). Defaults to insertion order. */
+  zIndex?: number;
+  /** Optional logical layer name (e.g. "Redaction", "Markup", "Signoff").
+   *  The properties panel can toggle layer visibility globally. */
+  layer?: string;
+  /** Free-form note attached to the annotation, surfaced in the
+   *  Annotations panel and on hover. */
+  note?: string;
 }
 
 export interface TextAnnotation extends AnnotationBase {
@@ -103,6 +116,13 @@ export interface LinkAnnotation extends AnnotationBase {
   text: string;            // visible label drawn over the rectangle
 }
 
+export interface StickyNoteAnnotation extends AnnotationBase {
+  type: 'sticky';
+  text: string;
+  authorName?: string;
+  createdAt?: string;
+}
+
 export type Annotation =
   | TextAnnotation
   | HighlightAnnotation
@@ -113,7 +133,8 @@ export type Annotation =
   | PenAnnotation
   | ImageAnnotation
   | StampAnnotation
-  | LinkAnnotation;
+  | LinkAnnotation
+  | StickyNoteAnnotation;
 
 /** Per-page crop rectangle in screen-pixel coordinates at DEFAULT_RENDER_SCALE.
  *  Applied via pdf-lib setMediaBox at save time. */
@@ -178,3 +199,34 @@ export interface EditorState {
 }
 
 export const DEFAULT_RENDER_SCALE = 1.5;
+
+// View / interaction preferences — persisted to localStorage by the editor.
+export interface EditorPreferences {
+  viewMode: 'single' | 'continuous' | 'two-up';
+  snapToGrid: boolean;
+  gridSize: number;            // PDF points
+  defaultTool: Tool;
+  recentColors: string[];      // up to 12
+  layerVisibility: Record<string, boolean>;
+  showAnnotationsPanel: boolean;
+  autoSaveDrafts: boolean;
+}
+
+export const DEFAULT_PREFERENCES: EditorPreferences = {
+  viewMode: 'continuous',
+  snapToGrid: false,
+  gridSize: 6,
+  defaultTool: 'select',
+  recentColors: ['#0a0a0a', '#d4a017', '#c62828', '#1976d2', '#2e7d32'],
+  layerVisibility: {},
+  showAnnotationsPanel: false,
+  autoSaveDrafts: true,
+};
+
+// Recent-files entry for the in-app launcher.
+export interface RecentFile {
+  fileId: string;
+  fileName: string;
+  folderId: number | null;
+  openedAt: number;
+}
