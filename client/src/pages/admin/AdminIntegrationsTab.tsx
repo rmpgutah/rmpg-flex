@@ -584,6 +584,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
 
       {/* ── GPS Background Tracking ── */}
       <ApiKeyPanel title="GPS Background Tracking — Traccar (PRIMARY)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
+      <TraccarPullStatusCard />
 
       {/* ── Google Cloud Console Keys ── */}
       <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-gray-400" />} keys={GOOGLE_CLOUD_KEYS} />
@@ -887,6 +888,72 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Traccar Pull-Mode Status Card ──────────────────────────────────
+// Polls /api/admin/traccar-pull-status every 5s. Renders a coloured
+// status pill so the operator can see at a glance whether the REST
+// poller is logging in successfully.
+
+function TraccarPullStatusCard() {
+  const [status, setStatus] = useState<{ status: string; kind: 'ok' | 'error' | 'disabled' | 'unknown'; serverUrl: string | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const refresh = useCallback(async () => {
+    try {
+      const r = await apiFetch<{ status: string; kind: 'ok' | 'error' | 'disabled' | 'unknown'; serverUrl: string | null }>('/api/admin/traccar-pull-status');
+      setStatus(r);
+    } catch {
+      setStatus({ status: '(could not load)', kind: 'unknown', serverUrl: null });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const t = setInterval(refresh, 5000);
+    return () => clearInterval(t);
+  }, [refresh]);
+
+  const pill = (kind: typeof status extends null ? never : NonNullable<typeof status>['kind']) => {
+    if (kind === 'ok') return 'bg-emerald-900/40 text-emerald-300 border-emerald-700/40';
+    if (kind === 'error') return 'bg-red-900/40 text-red-300 border-red-700/40';
+    if (kind === 'disabled') return 'bg-amber-900/40 text-amber-300 border-amber-700/40';
+    return 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/40';
+  };
+
+  return (
+    <div className="panel-beveled bg-surface-base p-3 mt-2">
+      <div className="flex items-center gap-2 mb-2">
+        <MapPin className="w-3.5 h-3.5 text-emerald-400" />
+        <h3 className="text-[11px] font-bold text-white uppercase tracking-wider">Traccar Server Pull Status</h3>
+        <button type="button" onClick={refresh}
+          className="ml-auto text-[10px] text-rmpg-400 hover:text-white border border-rmpg-700 px-1.5 py-0.5">
+          Refresh
+        </button>
+      </div>
+      {loading && !status ? (
+        <div className="text-[11px] text-rmpg-400">Loading…</div>
+      ) : status ? (
+        <div className="space-y-1.5">
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 border ${pill(status.kind)}`}>
+              {status.kind === 'ok' ? 'OK' : status.kind === 'error' ? 'ERROR' : status.kind === 'disabled' ? 'DISABLED' : 'UNKNOWN'}
+            </span>
+            {status.serverUrl && <span className="text-[10px] text-rmpg-500 font-mono truncate">{status.serverUrl}</span>}
+          </div>
+          <div className="text-[11px] text-rmpg-300 font-mono break-all">{status.status || '(no heartbeat yet — waiting for first poll)'}</div>
+          {status.kind === 'error' && status.status.includes('401') && (
+            <div className="text-[10px] text-amber-300 mt-1">
+              The Traccar Server rejected the login. Check the email + password fields above; password is AES-encrypted at rest, so re-enter it after any rotation.
+            </div>
+          )}
+          <div className="text-[9px] text-rmpg-500">Refreshes every 5 seconds. Poller runs at the configured interval (default 15 s) regardless of this UI.</div>
+        </div>
+      ) : null}
     </div>
   );
 }

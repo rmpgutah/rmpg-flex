@@ -3527,6 +3527,28 @@ router.get('/config/all', requireRole('admin'), (req: Request, res: Response) =>
   } catch (e: any) { res.status(500).json({ error: e.message }); }
 });
 
+// Slice: GET /admin/traccar-pull-status — surface the poller heartbeat
+// for the admin UI without exposing the full system_config table.
+router.get('/traccar-pull-status', requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'traccar_pull_status' AND is_active = 1 LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    const urlRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'traccar_url' AND is_active = 1 LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    const value = row?.config_value ?? '';
+    let kind: 'ok' | 'error' | 'disabled' | 'unknown' = 'unknown';
+    if (value.startsWith('ok:')) kind = 'ok';
+    else if (value.startsWith('error:')) kind = 'error';
+    else if (value.startsWith('disabled:')) kind = 'disabled';
+    res.json({ status: value, kind, serverUrl: urlRow?.config_value ?? null });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'pull_status_failed' });
+  }
+});
+
 // 33. DELETE /admin/config/:key — Delete a config entry
 router.delete('/config/:key', requireRole('admin'), (req: Request, res: Response) => {
   try {
