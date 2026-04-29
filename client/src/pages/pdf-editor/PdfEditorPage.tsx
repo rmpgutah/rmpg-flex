@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'r
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { FileText, AlertTriangle, CheckCircle2, Search, Settings, Keyboard, Layers, Printer, Download, Upload as UploadIcon, Map as MapIcon } from 'lucide-react';
 import { open as openPdf, RmpgPdfDocument, subscribeDiagnostics, diagnosticsSummary, getDiagnostics } from '../../lib/rmpg-pdf-engine';
+import { exportAnnotationsAsCsv, exportAnnotationsAsMarkdown, exportAnnotationsAsXfdf, downloadText } from './exporters';
+import { useAuth } from '../../context/AuthContext';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import EditorToolbar from './components/EditorToolbar';
 import ToolPalette from './components/ToolPalette';
@@ -71,6 +73,15 @@ const EMPTY_STATE: MutableState = { pageOrder: [], pages: [], annotations: [], b
 export default function PdfEditorPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  // Lightweight toast queue for action feedback. Kept in state instead of a
+  // separate provider — only used inside the editor and dies with the page.
+  const [toasts, setToasts] = useState<Array<{ id: string; text: string; kind: 'info' | 'ok' | 'warn' }>>([]);
+  const pushToast = useCallback((text: string, kind: 'info' | 'ok' | 'warn' = 'info') => {
+    const id = Math.random().toString(36).slice(2, 9);
+    setToasts(prev => [...prev, { id, text, kind }]);
+    setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3500);
+  }, []);
   // View-only mode hides editing tools — used for previewing PDFs from
   // Documents without giving the operator the full editing surface by default.
   const viewOnly = searchParams.get('view') === '1';
@@ -280,10 +291,20 @@ export default function PdfEditorPage() {
 
   // Annotation operations.
   const addAnnotation = useCallback((a: Annotation) => {
-    mutate({ annotations: [...state.annotations, a] });
-    setActiveId(a.id);
+    // Auto-stamp every new annotation with author + creation time + a default
+    // 'open' status. These flow through to CSV / XFDF / Markdown exports
+    // and the AnnotationsPanel so reviewers can audit who added what when.
+    const stamped: Annotation = {
+      ...a,
+      authorName: a.authorName ?? user?.full_name ?? user?.username ?? 'unknown',
+      authorId: a.authorId ?? (typeof user?.id === 'number' ? user.id : undefined),
+      createdAt: a.createdAt ?? new Date().toISOString(),
+      status: a.status ?? 'open',
+    };
+    mutate({ annotations: [...state.annotations, stamped] });
+    setActiveId(stamped.id);
     if (tool !== 'pen' && tool !== 'highlight' && tool !== 'redact') setTool('select');
-  }, [state.annotations, mutate, tool]);
+  }, [state.annotations, mutate, tool, user]);
 
   const updateAnnotation = useCallback((id: string, patch: Partial<Annotation>) => {
     const idx = state.annotations.findIndex(a => a.id === id);
@@ -403,6 +424,28 @@ export default function PdfEditorPage() {
     a.href = url; a.download = `${(fileName || 'document').replace(/\.pdf$/i, '')}-annotations.json`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     setTimeout(() => URL.revokeObjectURL(url), 1500);
+    pushToast(`Exported ${state.annotations.length} annotations as JSON`, 'ok');
+  };
+
+  // Three additional export formats — all offline, no network calls.
+  const exportCsv = () => {
+    const csv = exportAnnotationsAsCsv(state.annotations, fileName);
+    const base = (fileName || 'document').replace(/\.pdf$/i, '');
+    downloadText(csv, `${base}-annotations.csv`, 'text/csv');
+    pushToast(`Exported ${state.annotations.length} annotations as CSV`, 'ok');
+  };
+  const exportMarkdown = () => {
+    const md = exportAnnotationsAsMarkdown(state.annotations, fileName, state.meta);
+    const base = (fileName || 'document').replace(/\.pdf$/i, '');
+    downloadText(md, `${base}-annotations.md`, 'text/markdown');
+    pushToast('Exported annotation summary as Markdown', 'ok');
+  };
+  const exportXfdf = () => {
+    const pageHeights = state.pages.map(p => p.height / DEFAULT_RENDER_SCALE);
+    const xfdf = exportAnnotationsAsXfdf(state.annotations, pageHeights, DEFAULT_RENDER_SCALE);
+    const base = (fileName || 'document').replace(/\.pdf$/i, '');
+    downloadText(xfdf, `${base}-annotations.xfdf`, 'application/vnd.adobe.xfdf');
+    pushToast('Exported as XFDF — paste into Acrobat to re-create', 'ok');
   };
 
   const importJson = (file: File) => {
@@ -425,6 +468,66 @@ export default function PdfEditorPage() {
   const handlePrint = () => {
     window.print();
   };
+
+  // ─── Crash recovery (autosave annotation set every 30s) ──────
+  // Persists the current annotation set + bates/watermark/meta to localStorage
+  // keyed by sourceFileId. On next open of the same fileId, the editor offers
+  // to restore the unsaved draft. Capped at 5 most-recent drafts to avoid
+  // bloating localStorage.
+  useEffect(() => {
+    if (!prefs.autoSaveDrafts || !state.sourceFileId) return;
+    const interval = setInterval(() => {
+      try {
+        const key = `rmpg-pdf-editor-draft-${state.sourceFileId}`;
+        const payload = {
+          annotations: state.annotations,
+          bates: state.bates,
+          watermark: state.watermark,
+          meta: state.meta,
+          savedAt: new Date().toISOString(),
+        };
+        localStorage.setItem(key, JSON.stringify(payload));
+      } catch (err) {
+        // Quota — keep going; user just won't have crash recovery this session.
+        console.warn('[pdf-editor] crash-recovery autosave failed', err);
+      }
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [prefs.autoSaveDrafts, state.sourceFileId, state.annotations, state.bates, state.watermark, state.meta]);
+
+  // On document open, look for an unsaved draft and offer to restore it.
+  useEffect(() => {
+    if (!state.sourceFileId || state.annotations.length > 0) return;
+    try {
+      const key = `rmpg-pdf-editor-draft-${state.sourceFileId}`;
+      const raw = localStorage.getItem(key);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { annotations?: Annotation[]; savedAt?: string };
+      if (Array.isArray(parsed.annotations) && parsed.annotations.length > 0) {
+        const ageMin = parsed.savedAt
+          ? Math.round((Date.now() - new Date(parsed.savedAt).getTime()) / 60000)
+          : -1;
+        const restore = window.confirm(
+          `Restore unsaved draft for this PDF? It contains ${parsed.annotations.length} annotation(s)` +
+            (ageMin >= 0 ? ` from ${ageMin} minute(s) ago.` : '.')
+        );
+        if (restore) {
+          mutate({
+            annotations: parsed.annotations,
+            ...(parsed as any).bates ? { bates: (parsed as any).bates } : {},
+            ...(parsed as any).watermark ? { watermark: (parsed as any).watermark } : {},
+          });
+          pushToast(`Restored ${parsed.annotations.length} annotations`, 'ok');
+        } else {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (err) {
+      console.warn('[pdf-editor] crash-recovery restore failed', err);
+    }
+    // Only run once per sourceFileId change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [state.sourceFileId]);
 
   // ─── Recent files (localStorage-backed quick-access) ─────────
   useEffect(() => {
@@ -686,6 +789,19 @@ export default function PdfEditorPage() {
       if (meta && k === 'v') { e.preventDefault(); pasteFromClipboard(); return; }
       if (meta && k === 'd') { e.preventDefault(); duplicateSelected(); return; }
       if (meta && k === 'a') { e.preventDefault(); selectAllOnPage(); return; }
+      if (meta && k === 'g') {
+        e.preventDefault();
+        const target = window.prompt(`Go to page (1–${state.pageOrder.length}):`, String(activePage));
+        const n = target ? parseInt(target, 10) : NaN;
+        if (!Number.isNaN(n) && n >= 1 && n <= state.pageOrder.length) jumpToPage(n - 1);
+        return;
+      }
+      // Stroke width Cmd/Ctrl + ] / [ adjust by 1, clamped 1–20.
+      if (meta && (e.key === ']' || e.key === '[')) {
+        e.preventDefault();
+        setStrokeWidth(w => Math.max(1, Math.min(20, w + (e.key === ']' ? 1 : -1))));
+        return;
+      }
       if (e.key === 'Delete' || e.key === 'Backspace') {
         if (activeId || selectedIds.size > 0) { e.preventDefault(); deleteActive(); }
         return;
@@ -780,6 +896,20 @@ export default function PdfEditorPage() {
         onJumpTo={(page) => jumpToPage(page - 1)} />
       <KeyboardShortcutsDialog open={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
       <PreferencesDialog open={prefsOpen} prefs={prefs} onChange={setPrefs} onClose={() => setPrefsOpen(false)} />
+      {/* Toast queue — bottom-right floating stack */}
+      {toasts.length > 0 && (
+        <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-1.5">
+          {toasts.map(t => (
+            <div key={t.id}
+              className={`px-3 py-2 rounded-sm border text-[11px] shadow-lg max-w-[320px] ${
+                t.kind === 'ok' ? 'bg-green-900/30 border-green-700/50 text-green-200' :
+                t.kind === 'warn' ? 'bg-yellow-900/30 border-yellow-700/50 text-yellow-200' :
+                'bg-[#0d0d0d] border-[#222] text-rmpg-200'
+              }`}>{t.text}</div>
+          ))}
+        </div>
+      )}
+
       <CustomStampsGallery open={stampsOpen}
         onClose={() => { setStampsOpen(false); if (tool === 'stamp' && !pendingStamp) setTool('select'); }}
         onPick={handleStampPick} />
@@ -894,8 +1024,14 @@ export default function PdfEditorPage() {
             className={`px-2 py-0.5 rounded-sm inline-flex items-center gap-1 ${forcePdfjs ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'hover:bg-rmpg-700/40'}`}>
             {forcePdfjs ? '✓ Compat engine' : 'Compat engine'}
           </button>
-          <button type="button" onClick={exportJson} title="Export annotations as JSON"
-            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Download className="w-3 h-3" /> Export</button>
+          <button type="button" onClick={exportJson} title="Export annotations as JSON (full state)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><Download className="w-3 h-3" /> JSON</button>
+          <button type="button" onClick={exportCsv} title="Export annotations as CSV (spreadsheet)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">CSV</button>
+          <button type="button" onClick={exportXfdf} title="Export as XFDF (Acrobat-compatible)"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">XFDF</button>
+          <button type="button" onClick={exportMarkdown} title="Export annotation summary as Markdown"
+            className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm">MD</button>
           <button type="button" onClick={() => jsonInputRef.current?.click()} title="Import annotations from JSON"
             className="px-2 py-0.5 hover:bg-rmpg-700/40 rounded-sm inline-flex items-center gap-1"><UploadIcon className="w-3 h-3" /> Import</button>
           <button type="button" onClick={handlePrint} title="Print"

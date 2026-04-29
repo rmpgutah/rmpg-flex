@@ -25,7 +25,8 @@ export type Tool =
   | 'datestamp'
   | 'eyedropper'
   | 'polygon'
-  | 'polyline';
+  | 'polyline'
+  | 'cloud';
 
 export type StampLabel =
   | 'CONFIDENTIAL'
@@ -52,6 +53,8 @@ export interface AnnotationBase {
   color?: string;          // CSS hex (#rrggbb)
   fillColor?: string;
   strokeWidth?: number;
+  /** Stroke style for shapes / lines: solid (default), dashed, dotted. */
+  strokeStyle?: 'solid' | 'dashed' | 'dotted';
   /** When true, drag/resize/keyboard-delete are disabled. */
   locked?: boolean;
   /** Stacking order — higher = drawn later (on top). Defaults to insertion order. */
@@ -62,6 +65,13 @@ export interface AnnotationBase {
   /** Free-form note attached to the annotation, surfaced in the
    *  Annotations panel and on hover. */
   note?: string;
+  /** Author who created this annotation (auto-set from current user on add). */
+  authorName?: string;
+  authorId?: number;
+  /** ISO timestamp of creation. Used in audit exports. */
+  createdAt?: string;
+  /** Workflow status — useful for review-cycle docs. */
+  status?: 'open' | 'in-review' | 'resolved';
 }
 
 export interface TextAnnotation extends AnnotationBase {
@@ -111,6 +121,12 @@ export interface PolygonAnnotation extends AnnotationBase {
   closed: boolean;
 }
 
+export interface CloudAnnotation extends AnnotationBase {
+  type: 'cloud';
+  /** Number of scallops along each edge — controls cloud "fluffiness". */
+  scallopSize?: number;
+}
+
 export interface ImageAnnotation extends AnnotationBase {
   type: 'image' | 'signature';
   imageData: string;        // data: URL (png/jpeg)
@@ -146,7 +162,8 @@ export type Annotation =
   | StampAnnotation
   | LinkAnnotation
   | StickyNoteAnnotation
-  | PolygonAnnotation;
+  | PolygonAnnotation
+  | CloudAnnotation;
 
 /** Per-page crop rectangle in screen-pixel coordinates at DEFAULT_RENDER_SCALE.
  *  Applied via pdf-lib setMediaBox at save time. */
@@ -222,6 +239,10 @@ export interface EditorPreferences {
   layerVisibility: Record<string, boolean>;
   showAnnotationsPanel: boolean;
   autoSaveDrafts: boolean;
+  readingMode: boolean;        // hide chrome for distraction-free viewing
+  colorBlindPalette: boolean;  // use a CB-friendly default color set
+  showRulers: boolean;
+  showGrid: boolean;
 }
 
 export const DEFAULT_PREFERENCES: EditorPreferences = {
@@ -233,6 +254,10 @@ export const DEFAULT_PREFERENCES: EditorPreferences = {
   layerVisibility: {},
   showAnnotationsPanel: false,
   autoSaveDrafts: true,
+  readingMode: false,
+  colorBlindPalette: false,
+  showRulers: false,
+  showGrid: false,
 };
 
 // Recent-files entry for the in-app launcher.
