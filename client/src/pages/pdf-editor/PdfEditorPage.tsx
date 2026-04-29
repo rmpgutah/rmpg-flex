@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react';
-import { FileText, AlertTriangle } from 'lucide-react';
+import { useSearchParams, useNavigate } from 'react-router-dom';
+import { FileText, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import PanelTitleBar from '../../components/PanelTitleBar';
@@ -9,8 +10,9 @@ import ThumbnailSidebar from './components/ThumbnailSidebar';
 import PageCanvas from './components/PageCanvas';
 import PropertiesPanel from './components/PropertiesPanel';
 import SignaturePad from './components/SignaturePad';
-import { Annotation, BatesConfig, DocumentMeta, EditorState, PageMeta, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
-import { downloadEditedPdf, mergePdfFiles } from './save';
+import { Annotation, BatesConfig, DocumentMeta, EditorState, PageCrop, PageMeta, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import { downloadEditedPdf, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
+import { authedImageUrl } from '../../hooks/useApi';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
@@ -25,6 +27,8 @@ interface MutableState {
   bates: BatesConfig | null;
   watermark: WatermarkConfig | null;
   meta: DocumentMeta;
+  sourceFileId?: string | null;
+  sourceFolderId?: number | null;
 }
 
 interface History {
@@ -50,11 +54,14 @@ function reducer(h: History, a: Action): History {
   }
 }
 
-const EMPTY_STATE: MutableState = { pageOrder: [], pages: [], annotations: [], bates: null, watermark: null, meta: {} };
+const EMPTY_STATE: MutableState = { pageOrder: [], pages: [], annotations: [], bates: null, watermark: null, meta: {}, sourceFileId: null, sourceFolderId: null };
 
 export default function PdfEditorPage() {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const [bytes, setBytes] = useState<Uint8Array | null>(null);
   const [fileName, setFileName] = useState('');
+  const [savedNotice, setSavedNotice] = useState<string | null>(null);
   const [history, dispatch] = useReducer(reducer, { past: [], present: EMPTY_STATE, future: [] });
   const state = history.present;
   const canUndo = history.past.length > 0;
@@ -81,32 +88,53 @@ export default function PdfEditorPage() {
     dispatch({ type: 'mutate', next: { ...state, ...patch } });
   }, [state]);
 
-  // Open a PDF.
+  // Open a PDF (from File object or pre-fetched bytes).
+  const openBytes = async (arr: Uint8Array, name: string, sourceFileId: string | null = null, sourceFolderId: number | null = null) => {
+    setError(null);
+    try {
+      const pdf = await pdfjs.getDocument({ data: arr.slice() }).promise;
+      const pages: PageMeta[] = [];
+      const pageOrder: number[] = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const p = await pdf.getPage(i);
+        const v = p.getViewport({ scale: DEFAULT_RENDER_SCALE });
+        pages.push({ originalIndex: i, width: v.width, height: v.height, rotation: 0, crop: null });
+        pageOrder.push(i);
+      }
+      setBytes(arr);
+      setFileName(name);
+      dispatch({ type: 'reset', next: { pageOrder, pages, annotations: [], bates: null, watermark: null, meta: { title: name.replace(/\.pdf$/i, '') }, sourceFileId, sourceFolderId } });
+      setActivePage(1);
+      setActiveId(null);
+    } catch (e) {
+      setError(`Could not open PDF: ${e instanceof Error ? e.message : 'unknown error'}`);
+    }
+  };
+
   const openFile = (file: File) => {
     if (!file.name.toLowerCase().endsWith('.pdf')) { setError('Please choose a PDF file.'); return; }
-    setError(null);
-    file.arrayBuffer().then(async (buf) => {
-      const arr = new Uint8Array(buf);
-      try {
-        const pdf = await pdfjs.getDocument({ data: arr.slice() }).promise;
-        const pages: PageMeta[] = [];
-        const pageOrder: number[] = [];
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const p = await pdf.getPage(i);
-          const v = p.getViewport({ scale: DEFAULT_RENDER_SCALE });
-          pages.push({ originalIndex: i, width: v.width, height: v.height, rotation: 0 });
-          pageOrder.push(i);
-        }
-        setBytes(arr);
-        setFileName(file.name);
-        dispatch({ type: 'reset', next: { pageOrder, pages, annotations: [], bates: null, watermark: null, meta: { title: file.name.replace(/\.pdf$/i, '') } } });
-        setActivePage(1);
-        setActiveId(null);
-      } catch (e) {
-        setError(`Could not open PDF: ${e instanceof Error ? e.message : 'unknown error'}`);
-      }
-    });
+    file.arrayBuffer().then((buf) => openBytes(new Uint8Array(buf), file.name));
   };
+
+  // Auto-load from Documents when ?fileId=... is present in the URL.
+  useEffect(() => {
+    const fileId = searchParams.get('fileId');
+    const folderIdStr = searchParams.get('folderId');
+    const fileNameParam = searchParams.get('name');
+    if (!fileId || bytes) return;
+    const folderId = folderIdStr ? parseInt(folderIdStr, 10) : null;
+    (async () => {
+      try {
+        const url = authedImageUrl(`/api/uploads/${encodeURIComponent(fileId)}`);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        const buf = await res.arrayBuffer();
+        await openBytes(new Uint8Array(buf), fileNameParam || `document-${fileId}.pdf`, fileId, folderId);
+      } catch (err) {
+        setError(`Could not load file: ${err instanceof Error ? err.message : 'unknown error'}`);
+      }
+    })();
+  }, [searchParams]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // File pickers.
   const onPickFile = () => fileInputRef.current?.click();
@@ -206,7 +234,40 @@ export default function PdfEditorPage() {
     mutate({ pageOrder: order, pages, annotations });
   };
 
-  // Save.
+  // Page-level operations specific to alterations.
+  const setPageCrop = (visualIdx: number, crop: PageCrop | null) => {
+    const pages = [...state.pages];
+    if (!pages[visualIdx]) return;
+    pages[visualIdx] = { ...pages[visualIdx], crop };
+    mutate({ pages });
+    setTool('select');
+  };
+
+  const extractPage = async (visualIdx: number) => {
+    if (!bytes) return;
+    try {
+      setSaving(true);
+      const fullState: EditorState = {
+        bytes, fileName,
+        pageOrder: state.pageOrder, pages: state.pages,
+        annotations: state.annotations, bates: state.bates,
+        watermark: state.watermark, meta: state.meta,
+        sourceFileId: state.sourceFileId, sourceFolderId: state.sourceFolderId,
+      };
+      const out = await extractPagesAsBytes(fullState, [visualIdx + 1]);
+      const blob = new Blob([out as BlobPart], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      a.href = url; a.download = `${base}-page-${visualIdx + 1}.pdf`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+    } catch (err) {
+      setError(`Extract failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally { setSaving(false); }
+  };
+
+  // Save copy to local disk (existing flow).
   const onSave = async () => {
     if (!bytes) return;
     setSaving(true);
@@ -242,6 +303,28 @@ export default function PdfEditorPage() {
       }
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : 'unknown'}`);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  // Save edited copy back into the Documents store as a new file.
+  const onSaveToDocuments = async () => {
+    if (!bytes) return;
+    setSaving(true);
+    try {
+      const fullState: EditorState = {
+        bytes, fileName,
+        pageOrder: state.pageOrder, pages: state.pages,
+        annotations: state.annotations, bates: state.bates,
+        watermark: state.watermark, meta: state.meta,
+        sourceFileId: state.sourceFileId, sourceFolderId: state.sourceFolderId,
+      };
+      const result = await saveToDocuments(fullState, { folderId: state.sourceFolderId });
+      setSavedNotice(`Saved as “${result.original_name}” in Documents.`);
+      setTimeout(() => setSavedNotice(null), 6000);
+    } catch (err) {
+      setError(`Save to Documents failed: ${err instanceof Error ? err.message : 'unknown'}`);
     } finally {
       setSaving(false);
     }
@@ -320,6 +403,7 @@ export default function PdfEditorPage() {
           onOpen={onPickFile}
           onMerge={onPickMerge}
           onSave={onSave}
+          onSaveToDocuments={onSaveToDocuments}
           onUndo={() => dispatch({ type: 'undo' })}
           onRedo={() => dispatch({ type: 'redo' })}
           onZoomIn={() => setZoom(z => Math.min(3, z + 0.1))}
@@ -336,6 +420,12 @@ export default function PdfEditorPage() {
         <div className="bg-yellow-900/20 border border-yellow-700/40 text-yellow-200 text-[11px] px-3 py-1.5 rounded-sm mb-2 flex items-start gap-2">
           <AlertTriangle className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> <div>{error}</div>
           <button type="button" onClick={() => setError(null)} className="ml-auto text-yellow-300 hover:text-white">×</button>
+        </div>
+      )}
+      {savedNotice && (
+        <div className="bg-green-900/20 border border-green-700/40 text-green-200 text-[11px] px-3 py-1.5 rounded-sm mb-2 flex items-start gap-2">
+          <CheckCircle2 className="w-3.5 h-3.5 mt-0.5 flex-shrink-0" /> <div>{savedNotice}</div>
+          <button type="button" onClick={() => navigate('/documents')} className="ml-auto text-green-300 hover:text-white text-[10px]">Open Documents →</button>
         </div>
       )}
 
@@ -368,6 +458,8 @@ export default function PdfEditorPage() {
             onRotate={rotatePage}
             onDelete={deletePage}
             onInsertBlank={insertBlank}
+            onExtract={extractPage}
+            onClearCrop={(idx) => setPageCrop(idx, null)}
           />
 
           <div ref={scrollerRef} onScroll={onScroll} className="flex-1 overflow-auto bg-[#050505] border border-[#222222] rounded-[2px] p-4 space-y-4">
@@ -389,6 +481,7 @@ export default function PdfEditorPage() {
                 onSelectAnnotation={setActiveId}
                 onAddAnnotation={addAnnotation}
                 onUpdateAnnotation={updateAnnotation}
+                onSetCrop={setPageCrop}
               />
             ))}
           </div>

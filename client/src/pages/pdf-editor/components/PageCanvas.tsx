@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjs from 'pdfjs-dist';
-import { Annotation, PageMeta, Point, StampLabel, Tool, DEFAULT_RENDER_SCALE } from '../types';
+import { Annotation, PageCrop, PageMeta, Point, StampLabel, Tool, DEFAULT_RENDER_SCALE } from '../types';
 
 interface Props {
   pdfBytes: Uint8Array | null;
@@ -18,12 +18,13 @@ interface Props {
   onSelectAnnotation: (id: string | null) => void;
   onAddAnnotation: (a: Annotation) => void;
   onUpdateAnnotation: (id: string, patch: Partial<Annotation>) => void;
+  onSetCrop?: (visualIdx: number, crop: PageCrop | null) => void;
 }
 
 function uid(): string { return Math.random().toString(36).slice(2, 10); }
 
 export default function PageCanvas(props: Props) {
-  const { pdfBytes, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation } = props;
+  const { pdfBytes, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onSetCrop } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
   const [drawing, setDrawing] = useState<{ tool: Tool; start: Point; current: Point; pen?: Point[] } | null>(null);
@@ -73,6 +74,18 @@ export default function PageCanvas(props: Props) {
       const text = window.prompt('Annotation text:', '');
       if (!text) return;
       onAddAnnotation({ id: uid(), type: 'text', page: visualPageNumber, x: p.x, y: p.y, w: 0, h: 0, text, fontSize: 14, color });
+      return;
+    }
+    if (tool === 'link') {
+      // Drag to draw the link bounds; finalize on pointer up via the same flow
+      // as rect/highlight (handled below).
+      setDrawing({ tool: 'link' as Tool, start: p, current: p });
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      return;
+    }
+    if (tool === 'crop') {
+      setDrawing({ tool: 'crop' as Tool, start: p, current: p });
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       return;
     }
     if (tool === 'image' || tool === 'signature') {
@@ -135,6 +148,14 @@ export default function PageCanvas(props: Props) {
         else if (t === 'redact') onAddAnnotation({ id: uid(), type: 'redact', page: visualPageNumber, x, y, w, h });
       } else if ((t === 'line' || t === 'arrow') && (Math.abs(current.x - start.x) > 2 || Math.abs(current.y - start.y) > 2)) {
         onAddAnnotation({ id: uid(), type: 'line', page: visualPageNumber, x: start.x, y: start.y, w: current.x - start.x, h: current.y - start.y, color, strokeWidth: sw, arrow: t === 'arrow' });
+      } else if (t === 'link' && w > 4 && h > 4) {
+        const url = window.prompt('Hyperlink URL (e.g. https://...):', 'https://');
+        if (url && /^(https?:|mailto:|tel:)/i.test(url)) {
+          const text = window.prompt('Link label (visible in PDF):', url) || url;
+          onAddAnnotation({ id: uid(), type: 'link', page: visualPageNumber, x, y, w, h, url, text });
+        }
+      } else if (t === 'crop' && w > 8 && h > 8) {
+        onSetCrop?.(visualPageNumber - 1, { x, y, w, h });
       }
       setDrawing(null);
     }
@@ -187,6 +208,23 @@ export default function PageCanvas(props: Props) {
             />
           ))}
           {drawing && <DrawingPreview drawing={drawing} zoom={zoom} color={color} strokeWidth={strokeWidth} />}
+          {pageMeta.crop && (
+            // Render the persisted crop as a translucent overlay to confirm
+            // what will be visible in the saved PDF.
+            <>
+              <div className="absolute inset-0 pointer-events-none" style={{
+                background: `linear-gradient(transparent 0,transparent 0)`,
+                boxShadow: `inset 0 0 0 9999px rgba(0,0,0,0.55)`,
+                clipPath: `polygon(0 0, 100% 0, 100% 100%, 0 100%, 0 ${pageMeta.crop.y * zoom}px, ${pageMeta.crop.x * zoom}px ${pageMeta.crop.y * zoom}px, ${pageMeta.crop.x * zoom}px ${(pageMeta.crop.y + pageMeta.crop.h) * zoom}px, ${(pageMeta.crop.x + pageMeta.crop.w) * zoom}px ${(pageMeta.crop.y + pageMeta.crop.h) * zoom}px, ${(pageMeta.crop.x + pageMeta.crop.w) * zoom}px ${pageMeta.crop.y * zoom}px, 0 ${pageMeta.crop.y * zoom}px)`,
+              }} />
+              <div className="absolute pointer-events-none border border-[#d4a017]" style={{
+                left: pageMeta.crop.x * zoom,
+                top: pageMeta.crop.y * zoom,
+                width: pageMeta.crop.w * zoom,
+                height: pageMeta.crop.h * zoom,
+              }} />
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -242,6 +280,14 @@ function AnnotationView({ ann, zoom, selected, onPointerDown }: { ann: Annotatio
   if (ann.type === 'image' || ann.type === 'signature') {
     return <img onPointerDown={onPointerDown} src={ann.imageData} alt="" style={{ ...baseStyle, objectFit: 'contain' }} />;
   }
+  if (ann.type === 'link') {
+    return (
+      <div onPointerDown={onPointerDown} style={{ ...baseStyle, color: '#0046a1', textDecoration: 'underline', fontFamily: 'Helvetica, Arial, sans-serif', fontSize: Math.max(10, ann.h * zoom * 0.6), padding: 1, overflow: 'hidden', userSelect: 'none' }}
+        title={`Link → ${ann.url}`}>
+        {ann.text}
+      </div>
+    );
+  }
   if (ann.type === 'stamp') {
     const fontSize = Math.max(10, ann.h * zoom * 0.45);
     return (
@@ -288,6 +334,12 @@ function DrawingPreview({ drawing, zoom, color, strokeWidth }: { drawing: { tool
   if (tool === 'pen' && pen) {
     const d = pen.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p.x * zoom} ${p.y * zoom}`).join(' ');
     return <svg style={{ position: 'absolute', left: start.x * zoom, top: start.y * zoom, overflow: 'visible', pointerEvents: 'none' }}><path d={d} stroke={color} strokeWidth={strokeWidth * zoom} fill="none" strokeLinecap="round" /></svg>;
+  }
+  if (tool === 'link') {
+    return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed #1976d2`, background: 'rgba(25,118,210,0.08)' }} />;
+  }
+  if (tool === 'crop') {
+    return <div style={{ ...style, border: `${strokeWidth * zoom}px dashed #d4a017`, background: 'rgba(212,160,23,0.05)' }} />;
   }
   return null;
 }

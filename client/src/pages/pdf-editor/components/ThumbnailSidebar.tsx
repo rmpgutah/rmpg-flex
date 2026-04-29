@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react';
-import { Trash2, RotateCw, ArrowUp, ArrowDown, FilePlus2 } from 'lucide-react';
+import { Trash2, RotateCw, ArrowUp, ArrowDown, FilePlus2, FileOutput, Crop } from 'lucide-react';
 import * as pdfjs from 'pdfjs-dist';
 import IconButton from '../../../components/IconButton';
 import { PageMeta } from '../types';
@@ -14,9 +14,11 @@ interface Props {
   onRotate: (visualIdx: number) => void;
   onDelete: (visualIdx: number) => void;
   onInsertBlank: (afterVisualIdx: number) => void;
+  onExtract?: (visualIdx: number) => void;
+  onClearCrop?: (visualIdx: number) => void;
 }
 
-export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank }: Props) {
+export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePage, onJumpTo, onMove, onRotate, onDelete, onInsertBlank, onExtract, onClearCrop }: Props) {
   const refs = useRef<Map<number, HTMLCanvasElement>>(new Map());
 
   useEffect(() => {
@@ -83,6 +85,14 @@ export default function ThumbnailSidebar({ pdfBytes, pages, pageOrder, activePag
                 className="p-0.5 text-rmpg-400 hover:text-white"><RotateCw className="w-3 h-3" /></IconButton>
               <IconButton onClick={() => onInsertBlank(idx)} aria-label="Insert blank after" title="Insert blank after"
                 className="p-0.5 text-rmpg-400 hover:text-white"><FilePlus2 className="w-3 h-3" /></IconButton>
+              {onExtract && (
+                <IconButton onClick={() => onExtract(idx)} aria-label="Extract page" title="Extract page to new PDF"
+                  className="p-0.5 text-rmpg-400 hover:text-white"><FileOutput className="w-3 h-3" /></IconButton>
+              )}
+              {meta?.crop && onClearCrop && (
+                <IconButton onClick={() => onClearCrop(idx)} aria-label="Clear crop" title="Clear crop"
+                  className="p-0.5 text-[#d4a017] hover:text-white"><Crop className="w-3 h-3" /></IconButton>
+              )}
               <IconButton onClick={() => onDelete(idx)} aria-label="Delete page" title="Delete page"
                 className="p-0.5 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></IconButton>
             </div>

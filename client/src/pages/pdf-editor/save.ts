@@ -1,4 +1,4 @@
-import { PDFDocument, PDFFont, PDFPage, StandardFonts, degrees, rgb } from 'pdf-lib';
+import { PDFDocument, PDFFont, PDFName, PDFPage, PDFString, StandardFonts, degrees, rgb } from 'pdf-lib';
 import { Annotation, BatesConfig, DocumentMeta, EditorState, PageMeta, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 
 // Save pipeline.
@@ -182,6 +182,38 @@ function drawAnnotation(ctx: DrawCtx, ann: Annotation): Promise<void> | void {
       });
       return;
     }
+    case 'link': {
+      // Draw the visible label.
+      const fontSize = Math.max(10, ph * 0.6);
+      page.drawText(ann.text, {
+        x: px + 2,
+        y: py - ph + 4,
+        size: fontSize,
+        font: helv,
+        color: rgb(0, 0.27, 0.55),
+        opacity,
+      });
+      // Underline.
+      page.drawLine({
+        start: { x: px, y: py - ph + 2 },
+        end: { x: px + pw, y: py - ph + 2 },
+        thickness: 0.6,
+        color: rgb(0, 0.27, 0.55),
+      });
+      // Register a Link annotation dict so the URL is clickable in viewers.
+      const linkAnnot = doc.context.register(doc.context.obj({
+        Type: 'Annot',
+        Subtype: 'Link',
+        Rect: [px, py - ph, px + pw, py],
+        Border: [0, 0, 0],
+        A: { Type: 'Action', S: 'URI', URI: PDFString.of(ann.url) },
+      }));
+      const existing = page.node.get(PDFName.of('Annots'));
+      const arr = existing && (existing as any).asArray ? (existing as any) : doc.context.obj([]);
+      arr.push(linkAnnot);
+      page.node.set(PDFName.of('Annots'), arr);
+      return;
+    }
   }
 }
 
@@ -252,6 +284,17 @@ export async function buildPdfFromEditorState(state: EditorState): Promise<Uint8
       page.setRotation(degrees((page.getRotation().angle + pageMeta.rotation) % 360));
     }
 
+    // Apply crop — convert screen-pixel rect to PDF user-space CropBox.
+    if (pageMeta.crop) {
+      const scale = DEFAULT_RENDER_SCALE;
+      const pageH = page.getHeight();
+      const cx = pageMeta.crop.x / scale;
+      const cw = pageMeta.crop.w / scale;
+      const ch = pageMeta.crop.h / scale;
+      const cy = pageH - (pageMeta.crop.y / scale) - ch;
+      page.setCropBox(cx, cy, cw, ch);
+    }
+
     // Annotations whose page === visualIdx + 1.
     const pageAnns = state.annotations.filter(a => a.page === visualIdx + 1);
     for (const ann of pageAnns) {
@@ -287,6 +330,57 @@ export async function downloadEditedPdf(state: EditorState, suffix = '-edited'):
   a.click();
   document.body.removeChild(a);
   setTimeout(() => URL.revokeObjectURL(url), 1500);
+}
+
+/**
+ * Extract a specific subset of pages (1-indexed in the *current* visual order)
+ * to a fresh PDF. Used by the per-page "Extract" action and multi-select.
+ */
+export async function extractPagesAsBytes(state: EditorState, pageNumbers: number[]): Promise<Uint8Array> {
+  if (!state.bytes) throw new Error('No source PDF loaded');
+  const src = await PDFDocument.load(state.bytes.slice());
+  const out = await PDFDocument.create();
+  // Map visual page numbers → original 0-based source indices, skipping blanks.
+  const sourceIndices: number[] = [];
+  for (const n of pageNumbers) {
+    const visualIdx = n - 1;
+    const orig = state.pageOrder[visualIdx];
+    if (orig && orig > 0) sourceIndices.push(orig - 1);
+  }
+  if (sourceIndices.length === 0) throw new Error('No extractable pages selected');
+  const copied = await out.copyPages(src, sourceIndices);
+  for (const p of copied) out.addPage(p);
+  out.setProducer('RMPG Flex PDF Editor');
+  out.setCreationDate(new Date());
+  return out.save();
+}
+
+/**
+ * Save the edited PDF directly into the Documents store via /api/uploads.
+ * Honors permissions + audit logging from the existing endpoint. The new
+ * file is linked to the same folder as the source (if any).
+ */
+export async function saveToDocuments(state: EditorState, opts: { folderId?: number | null; suffix?: string } = {}): Promise<{ fileId: string; original_name: string }> {
+  const bytes = await buildPdfFromEditorState(state);
+  const base = state.fileName.replace(/\.pdf$/i, '') || 'document';
+  const newName = `${base}${opts.suffix ?? '-edited'}.pdf`;
+  const file = new File([bytes as BlobPart], newName, { type: 'application/pdf' });
+  const form = new FormData();
+  form.append('files', file);
+  const folderId = opts.folderId ?? state.sourceFolderId ?? null;
+  if (folderId != null) form.append('folder_id', String(folderId));
+
+  const token = localStorage.getItem('rmpg_token');
+  const headers: Record<string, string> = {};
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const res = await fetch('/api/uploads', { method: 'POST', headers, body: form });
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`Upload failed: ${res.status} ${text.slice(0, 200)}`);
+  }
+  const data = await res.json() as { files: Array<{ file_id: string; original_name: string }> };
+  if (!data.files || data.files.length === 0) throw new Error('Upload did not return file');
+  return { fileId: data.files[0].file_id, original_name: data.files[0].original_name };
 }
 
 export async function mergePdfFiles(files: File[]): Promise<Uint8Array> {

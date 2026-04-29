@@ -17,7 +17,9 @@ export type Tool =
   | 'pen'
   | 'signature'
   | 'image'
-  | 'stamp';
+  | 'stamp'
+  | 'link'
+  | 'crop';
 
 export type StampLabel =
   | 'CONFIDENTIAL'
@@ -94,6 +96,12 @@ export interface StampAnnotation extends AnnotationBase {
   label: StampLabel | string;
 }
 
+export interface LinkAnnotation extends AnnotationBase {
+  type: 'link';
+  url: string;
+  text: string;            // visible label drawn over the rectangle
+}
+
 export type Annotation =
   | TextAnnotation
   | HighlightAnnotation
@@ -103,7 +111,14 @@ export type Annotation =
   | LineAnnotation
   | PenAnnotation
   | ImageAnnotation
-  | StampAnnotation;
+  | StampAnnotation
+  | LinkAnnotation;
+
+/** Per-page crop rectangle in screen-pixel coordinates at DEFAULT_RENDER_SCALE.
+ *  Applied via pdf-lib setMediaBox at save time. */
+export interface PageCrop {
+  x: number; y: number; w: number; h: number;
+}
 
 export interface PageMeta {
   /** Original 1-indexed page number from the loaded PDF. */
@@ -113,6 +128,14 @@ export interface PageMeta {
   height: number;
   /** Visual rotation applied on top of original page rotation. */
   rotation: 0 | 90 | 180 | 270;
+  /** Crop rectangle in screen-pixel coordinates; null = full page. */
+  crop?: PageCrop | null;
+}
+
+export interface CustomStamp {
+  id: string;
+  label: string;
+  imageData: string;       // data: URL
 }
 
 export interface BatesConfig {
@@ -148,6 +171,9 @@ export interface EditorState {
   bates: BatesConfig | null;
   watermark: WatermarkConfig | null;
   meta: DocumentMeta;
+  /** Source file in the Documents store, when the editor was opened from there. */
+  sourceFileId?: string | null;
+  sourceFolderId?: number | null;
 }
 
 export const DEFAULT_RENDER_SCALE = 1.5;

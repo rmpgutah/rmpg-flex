@@ -1,4 +1,4 @@
-import { Upload, Save, FilePlus, Combine, FileText, Settings2, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Stamp } from 'lucide-react';
+import { Upload, Save, FilePlus, Combine, FileText, Settings2, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Stamp, FolderUp } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 
 interface Props {
@@ -18,6 +18,7 @@ interface Props {
   onMetadata: () => void;
   onBates: () => void;
   onWatermark: () => void;
+  onSaveToDocuments?: () => void;
   saving: boolean;
 }
 
@@ -52,9 +53,15 @@ export default function EditorToolbar(p: Props) {
 
       <div className="flex-1" />
 
+      {p.onSaveToDocuments && (
+        <button type="button" onClick={p.onSaveToDocuments} disabled={!p.hasDocument || p.saving} className="btn-secondary inline-flex items-center gap-1 disabled:opacity-50" title="Save edited PDF as a new file in Documents">
+          <FolderUp className="w-3.5 h-3.5" />
+          Save to Documents
+        </button>
+      )}
       <button type="button" onClick={p.onSave} disabled={!p.hasDocument || p.saving} className="btn-primary inline-flex items-center gap-1 disabled:opacity-50">
         {p.saving ? <FilePlus className="w-3.5 h-3.5 animate-pulse" /> : <Save className="w-3.5 h-3.5" />}
-        {p.saving ? 'Building…' : 'Save copy'}
+        {p.saving ? 'Building…' : 'Download copy'}
       </button>
     </div>
   );
