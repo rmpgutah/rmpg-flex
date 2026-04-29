@@ -55,6 +55,10 @@ interface ApiKeyConfig {
   pattern?: RegExp;
   /** Human-readable format hint shown below the input */
   formatHint?: string;
+  /** When false, render the input as type=text instead of type=password —
+   *  for non-secret config like URLs, boolean flags, and intervals.
+   *  Defaults to true (treat unknown keys as secrets). */
+  secret?: boolean;
 }
 
 function validateKey(value: string, config: ApiKeyConfig): string | null {
@@ -116,12 +120,12 @@ const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
 ];
 
 const GPS_WEBHOOK_KEYS: ApiKeyConfig[] = [
-  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'PRIMARY GPS source (replaced OwnTracks 2026-04-29). Bearer token for Traccar Client app + Traccar Server forward-webhook. Endpoint: POST /api/traccar?token=<TOKEN>. OwnTracks endpoints now return HTTP 410 Gone — devices must reconfigure.' },
-  { key: 'traccar_url', label: 'Traccar Server URL (optional pull)', desc: 'If you run a self-hosted Traccar Server, set its base URL (e.g. https://traccar.example.com). RMPG Flex polls /api/positions on the configured interval using the credentials below. Leave blank to use webhook-only.' },
-  { key: 'traccar_email', label: 'Traccar Server email', desc: 'Login email for the Traccar Server REST API session. AES-encrypted at rest.' },
-  { key: 'traccar_password', label: 'Traccar Server password', desc: 'Password for the Traccar Server REST API session. AES-encrypted at rest.' },
-  { key: 'traccar_enabled', label: 'Traccar pull enabled', desc: 'Set to "true" to activate the REST poller, "false" to use webhook-only (default true when URL+email+password are set).' },
-  { key: 'traccar_poll_interval', label: 'Traccar poll interval (sec)', desc: 'Seconds between /api/positions polls. Range 5-300. Default 15.' },
+  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'PRIMARY GPS source (replaced OwnTracks 2026-04-29). Bearer token for Traccar Client app + Traccar Server forward-webhook. Endpoint: POST /api/traccar?token=<TOKEN>. OwnTracks endpoints now return HTTP 410 Gone — devices must reconfigure.', secret: true },
+  { key: 'traccar_url', label: 'Traccar Server URL (optional pull)', desc: 'If you run a self-hosted Traccar Server, set its base URL (e.g. https://traccar.example.com). RMPG Flex polls /api/positions on the configured interval using the credentials below. Leave blank to use webhook-only.', secret: false },
+  { key: 'traccar_email', label: 'Traccar Server email', desc: 'Login email for the Traccar Server REST API session. AES-encrypted at rest.', secret: false },
+  { key: 'traccar_password', label: 'Traccar Server password', desc: 'Password for the Traccar Server REST API session. AES-encrypted at rest.', secret: true },
+  { key: 'traccar_enabled', label: 'Traccar pull enabled', desc: 'Set to "true" to activate the REST poller, "false" to use webhook-only (default true when URL+email+password are set).', secret: false },
+  { key: 'traccar_poll_interval', label: 'Traccar poll interval (sec)', desc: 'Seconds between /api/positions polls. Range 5-300. Default 15.', secret: false },
 ];
 
 const FREE_OPEN_APIS: ApiKeyConfig[] = [
@@ -236,7 +240,12 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
         <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
       </div>
       <div className="p-4 space-y-4">
-        {keyConfigs.map(({ key, label, desc, formatHint }) => (
+        {keyConfigs.map(({ key, label, desc, formatHint, secret }) => {
+          // Default to secret=true for back-compat — every legacy key was
+          // a credential. Only the explicit `secret: false` rows render as
+          // plain text (URLs, boolean flags, numeric intervals).
+          const isSecret = secret !== false;
+          return (
           <div key={key} className="flex flex-col gap-2 p-3 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -258,15 +267,21 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <input
-                  type={showKey[key] ? 'text' : 'password'}
+                  type={!isSecret || showKey[key] ? 'text' : 'password'}
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
-                  placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
+                  placeholder={configured[key]
+                    ? (isSecret ? '••••••••••••••••••••' : '(saved — type to overwrite)')
+                    : (isSecret ? 'Paste API key here...' : 'Type or paste value...')}
+                  autoComplete={isSecret ? 'off' : 'on'}
+                  spellCheck={false}
                   className="w-full px-3 py-2 pr-8 bg-[#141414] border border-[#2b2b2b] rounded-sm text-xs text-white font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
                 />
-                <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
-                  {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
+                {isSecret && (
+                  <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400" aria-label={showKey[key] ? 'Hide value' : 'Show value'}>
+                    {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                )}
               </div>
               <button
                 type="button"
@@ -292,7 +307,8 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
             {formatHint && !errors[key] && <div className="text-[9px] text-rmpg-600 italic">{formatHint}</div>}
             <div className="text-[9px] text-rmpg-700 font-mono">config_key: {key}</div>
           </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
