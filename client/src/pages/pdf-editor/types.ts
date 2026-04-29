@@ -19,7 +19,8 @@ export type Tool =
   | 'image'
   | 'stamp'
   | 'link'
-  | 'crop';
+  | 'crop'
+  | 'barcode';
 
 export type StampLabel =
   | 'CONFIDENTIAL'

@@ -376,6 +376,15 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 ### Maps — Google Maps is the sole map surface
 `/map` is the single production map, backed by the Google Maps JS API with offline CartoDB raster tile fallback. **Do not reintroduce OpenLayers or a parallel `/map-v2` surface.** A parallel OpenLayers map (`/map-v2`) was attempted and retired; all traces were removed 2026-04-23 (route, redirect, `ol` dependency, PDF guide section 15, migration plan). The stale iOS PWA plans (`docs/plans/2026-04-20-ios-mobile-pwa-enhancement-*.md`) still reference non-existent `map-v2` hooks and need Google-Maps-based replacements before execution.
 
+### PDF Editor — qpdf dependency for encryption (introduced 2026-04-29)
+The PDF editor's encryption feature is **server-side**: a multipart upload to `POST /api/pdf-tools/encrypt` runs the user-supplied bytes through the `qpdf` binary with the requested passwords + permission flags + AES-256 (or 128) and streams the encrypted bytes back. There is no pure-JS fallback — pdf-lib has no encryption support and maintained pure-JS forks don't exist.
+
+**Production VPS dependency**: `apt install -y qpdf`. The route returns HTTP 503 with `code: 'QPDF_MISSING'` if the binary isn't on PATH so the client surface a clear error rather than failing silently. Probe via `GET /api/pdf-tools/health`.
+
+The encryption endpoint accepts permission flags matching qpdf's CLI: `permissions.print` (`full`/`low`/`none`), `permissions.modify` (`all`/`annotate`/`form`/`assembly`/`none`), and the boolean flags `extract`, `accessibility`, `fillForms`. An empty `userPassword` allows opening without a prompt while still enforcing the permission flags — common for "view-only / no-copy" PDFs going to public-records requests.
+
+The owner password (which controls *removing* restrictions later) is auto-generated as base64url(24-byte random) when the caller doesn't supply one. The dialog shows a one-time success message reminding the user to record it. Lose the owner password and the restrictions can't be lifted — that's the design.
+
 ## Common Gotchas
 
 1. **JWT_SECRET must be permanent** — random-on-restart breaks TOTP decryption

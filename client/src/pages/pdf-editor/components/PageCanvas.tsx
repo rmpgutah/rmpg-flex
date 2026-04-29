@@ -27,6 +27,7 @@ export default function PageCanvas(props: Props) {
   const { pdfBytes, originalPageNumber, visualPageNumber, pageMeta, zoom, tool, color, strokeWidth, pendingImage, pendingStamp, annotations, activeId, onSelectAnnotation, onAddAnnotation, onUpdateAnnotation, onSetCrop } = props;
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
+  const textLayerRef = useRef<HTMLDivElement>(null);
   const [drawing, setDrawing] = useState<{ tool: Tool; start: Point; current: Point; pen?: Point[] } | null>(null);
   const [drag, setDrag] = useState<{ id: string; offsetX: number; offsetY: number } | null>(null);
 
@@ -47,6 +48,37 @@ export default function PageCanvas(props: Props) {
         const ctx = canvas.getContext('2d');
         if (!ctx) return;
         await page.render({ canvasContext: ctx, viewport, canvas }).promise;
+
+        // Build a transparent text layer so users can select / copy text
+        // from the underlying PDF (huge UX win for inspecting witness
+        // statements, evidence reports, etc.).
+        const textLayer = textLayerRef.current;
+        if (textLayer && !cancelled) {
+          textLayer.replaceChildren();
+          try {
+            const textContent = await page.getTextContent();
+            for (const item of textContent.items as Array<{ str: string; transform: number[]; width: number; height: number }>) {
+              if (!item.str) continue;
+              const tx = item.transform;
+              const x = tx[4];
+              const y = viewport.height - tx[5];
+              const fontSize = Math.hypot(tx[2], tx[3]);
+              const span = document.createElement('span');
+              span.textContent = item.str;
+              span.style.position = 'absolute';
+              span.style.left = `${x}px`;
+              span.style.top = `${y - fontSize}px`;
+              span.style.fontSize = `${fontSize}px`;
+              span.style.color = 'transparent';
+              span.style.whiteSpace = 'pre';
+              span.style.transformOrigin = '0 0';
+              span.className = 'pdf-text-span';
+              textLayer.appendChild(span);
+            }
+          } catch {
+            // Image-only / scanned PDFs have no text content. That's expected.
+          }
+        }
       } catch (err) {
         console.error('Page render failed', err);
       }
@@ -88,10 +120,14 @@ export default function PageCanvas(props: Props) {
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       return;
     }
-    if (tool === 'image' || tool === 'signature') {
+    if (tool === 'image' || tool === 'signature' || tool === 'barcode') {
       if (!pendingImage) return;
-      const w = 180; const h = 80;
-      onAddAnnotation({ id: uid(), type: tool, page: visualPageNumber, x: p.x, y: p.y, w, h, imageData: pendingImage });
+      // Default sizing — barcode tool can override via the editor state below;
+      // for image/signature use the existing fixed defaults.
+      const w = tool === 'image' ? 180 : tool === 'signature' ? 180 : 120;
+      const h = tool === 'image' ? 80 : tool === 'signature' ? 80 : 120;
+      const annType: 'image' | 'signature' = tool === 'barcode' ? 'image' : tool;
+      onAddAnnotation({ id: uid(), type: annType, page: visualPageNumber, x: p.x, y: p.y, w, h, imageData: pendingImage });
       return;
     }
     if (tool === 'stamp') {
@@ -195,6 +231,23 @@ export default function PageCanvas(props: Props) {
             transformOrigin: 'top left',
             top: rotated === 180 ? dispH * zoom : rotated === 90 ? 0 : 0,
             left: rotated === 90 ? dispW * zoom : rotated === 180 ? dispW * zoom : 0,
+          }}
+        />
+        {/* Text layer — transparent text positioned to match the rasterized
+            page so users can select + copy with the native browser selection.
+            Sits beneath the annotation overlay (which captures pointer events
+            for the active drawing tool); only enabled in 'select' / 'hand'. */}
+        <div
+          ref={textLayerRef}
+          aria-hidden="false"
+          style={{
+            position: 'absolute',
+            inset: 0,
+            transform: `scale(${zoom})`,
+            transformOrigin: 'top left',
+            pointerEvents: tool === 'select' || tool === 'hand' ? 'auto' : 'none',
+            userSelect: 'text',
+            color: 'transparent',
           }}
         />
         <div ref={overlayRef} className="absolute inset-0" style={{ width: dispW * zoom, height: dispH * zoom }}>

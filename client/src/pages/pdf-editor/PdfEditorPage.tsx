@@ -10,8 +10,10 @@ import ThumbnailSidebar from './components/ThumbnailSidebar';
 import PageCanvas from './components/PageCanvas';
 import PropertiesPanel from './components/PropertiesPanel';
 import SignaturePad from './components/SignaturePad';
+import BarcodeDialog from './components/BarcodeDialog';
+import EncryptionDialog, { EncryptionConfig } from './components/EncryptionDialog';
 import { Annotation, BatesConfig, DocumentMeta, EditorState, PageCrop, PageMeta, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
-import { downloadEditedPdf, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
+import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
 import { authedImageUrl } from '../../hooks/useApi';
 
 pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
@@ -74,6 +76,9 @@ export default function PdfEditorPage() {
   const [activePage, setActivePage] = useState(1);
   const [activeId, setActiveId] = useState<string | null>(null);
   const [signatureOpen, setSignatureOpen] = useState(false);
+  const [barcodeOpen, setBarcodeOpen] = useState(false);
+  const [encryptionOpen, setEncryptionOpen] = useState(false);
+  const [encryption, setEncryption] = useState<EncryptionConfig | null>(null);
   const [pendingImage, setPendingImage] = useState<string | null>(null);
   const [pendingStamp, setPendingStamp] = useState<StampLabel | string | null>('CONFIDENTIAL');
   const [saving, setSaving] = useState(false);
@@ -170,6 +175,7 @@ export default function PdfEditorPage() {
   useEffect(() => {
     if (tool === 'signature') setSignatureOpen(true);
     if (tool === 'image' && !pendingImage) onPickImage();
+    if (tool === 'barcode') setBarcodeOpen(true);
   }, [tool]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Annotation operations.
@@ -267,40 +273,74 @@ export default function PdfEditorPage() {
     } finally { setSaving(false); }
   };
 
-  // Save copy to local disk (existing flow).
+  // Server-side qpdf encryption pass over a finished PDF byte buffer.
+  // Returns the original bytes if encryption isn't configured.
+  const maybeEncrypt = async (bytesIn: Uint8Array): Promise<Uint8Array> => {
+    if (!encryption) return bytesIn;
+    const form = new FormData();
+    form.append('pdf', new Blob([bytesIn as BlobPart], { type: 'application/pdf' }), 'edited.pdf');
+    form.append('userPassword', encryption.userPassword);
+    form.append('ownerPassword', encryption.ownerPassword);
+    form.append('bitLength', String(encryption.bitLength));
+    form.append('permissions.print', encryption.permissions.print);
+    form.append('permissions.modify', encryption.permissions.modify);
+    form.append('permissions.extract', String(encryption.permissions.extract));
+    form.append('permissions.accessibility', String(encryption.permissions.accessibility));
+    form.append('permissions.fillForms', String(encryption.permissions.fillForms));
+
+    const token = localStorage.getItem('rmpg_token');
+    const headers: Record<string, string> = {};
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+    const res = await fetch('/api/pdf-tools/encrypt', { method: 'POST', headers, body: form });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      let detail = text;
+      try { detail = JSON.parse(text)?.error ?? text; } catch { /* ignore */ }
+      if (res.status === 503) throw new Error(`PDF encryption not available: ${detail}`);
+      throw new Error(`Encryption failed: ${detail.slice(0, 200)}`);
+    }
+    return new Uint8Array(await res.arrayBuffer());
+  };
+
+  // Build the editor state ready for save, with blank pages stripped + page
+  // numbers reindexed. Returns the EditorState and a flag indicating blanks
+  // were dropped (so we can warn the user once).
+  const buildSavableState = (): { state: EditorState; hadBlanks: boolean } => {
+    const fullState: EditorState = {
+      bytes: bytes!, fileName,
+      pageOrder: state.pageOrder, pages: state.pages,
+      annotations: state.annotations, bates: state.bates,
+      watermark: state.watermark, meta: state.meta,
+      sourceFileId: state.sourceFileId, sourceFolderId: state.sourceFolderId,
+    };
+    const hadBlanks = state.pageOrder.some(p => p === 0);
+    if (!hadBlanks) return { state: fullState, hadBlanks };
+    const map: number[] = [];
+    const order = state.pageOrder.filter((p, i) => { if (p !== 0) { map.push(i); return true; } return false; });
+    const pages = map.map(i => state.pages[i]);
+    const annotations = state.annotations
+      .filter(a => state.pageOrder[a.page - 1] !== 0)
+      .map(a => ({ ...a, page: map.indexOf(a.page - 1) + 1 }));
+    return { state: { ...fullState, pageOrder: order, pages, annotations }, hadBlanks };
+  };
+
   const onSave = async () => {
     if (!bytes) return;
     setSaving(true);
     try {
-      const fullState: EditorState = {
-        bytes, fileName,
-        pageOrder: state.pageOrder, pages: state.pages,
-        annotations: state.annotations, bates: state.bates,
-        watermark: state.watermark, meta: state.meta,
-      };
-      // Page-zero (inserted blank) handling: pdf-lib needs us to fabricate them.
-      // The save pipeline copies only original pages, so for blanks we'd need to
-      // pre-process; for the MVP we simply skip blanks in the output if any
-      // exist, and warn the user. This is an honest limitation users see in the UI.
-      const hasBlank = state.pageOrder.some(p => p === 0);
-      if (hasBlank) {
-        setError('Note: inserted blank pages are ignored in this save. Use Insert Blank as a placeholder while reviewing only.');
-      }
-      // Strip blanks from the export.
-      if (hasBlank) {
-        const map: number[] = [];
-        const order = state.pageOrder.filter((p, i) => { if (p !== 0) { map.push(i); return true; } return false; });
-        const pages = map.map(i => state.pages[i]);
-        const annotations = state.annotations
-          .filter(a => state.pageOrder[a.page - 1] !== 0)
-          .map(a => {
-            const newPageIdx = map.indexOf(a.page - 1);
-            return { ...a, page: newPageIdx + 1 };
-          });
-        await downloadEditedPdf({ ...fullState, pageOrder: order, pages, annotations });
-      } else {
-        await downloadEditedPdf(fullState);
-      }
+      const { state: savable, hadBlanks } = buildSavableState();
+      if (hadBlanks) setError('Note: inserted blank pages are ignored in this save.');
+      let outBytes = await buildPdfFromEditorState(savable);
+      outBytes = await maybeEncrypt(outBytes);
+      const blob = new Blob([outBytes as BlobPart], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const base = fileName.replace(/\.pdf$/i, '') || 'document';
+      a.href = url;
+      a.download = `${base}${encryption ? '-encrypted' : '-edited'}.pdf`;
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1500);
+      if (encryption) setSavedNotice('Encrypted PDF downloaded. Owner password is required to remove restrictions later.');
     } catch (err) {
       setError(`Save failed: ${err instanceof Error ? err.message : 'unknown'}`);
     } finally {
@@ -308,21 +348,36 @@ export default function PdfEditorPage() {
     }
   };
 
-  // Save edited copy back into the Documents store as a new file.
+  // Save edited copy back into the Documents store as a new file. If
+  // encryption is configured we encrypt the bytes before uploading so the
+  // ciphertext is what lands in the document store (chain-of-custody intact).
   const onSaveToDocuments = async () => {
     if (!bytes) return;
     setSaving(true);
     try {
-      const fullState: EditorState = {
-        bytes, fileName,
-        pageOrder: state.pageOrder, pages: state.pages,
-        annotations: state.annotations, bates: state.bates,
-        watermark: state.watermark, meta: state.meta,
-        sourceFileId: state.sourceFileId, sourceFolderId: state.sourceFolderId,
-      };
-      const result = await saveToDocuments(fullState, { folderId: state.sourceFolderId });
-      setSavedNotice(`Saved as “${result.original_name}” in Documents.`);
-      setTimeout(() => setSavedNotice(null), 6000);
+      const { state: savable } = buildSavableState();
+      if (encryption) {
+        const built = await buildPdfFromEditorState(savable);
+        const encrypted = await maybeEncrypt(built);
+        // Upload pre-built bytes via FormData (saveToDocuments rebuilds, so we
+        // bypass it here for the encrypted variant).
+        const base = fileName.replace(/\.pdf$/i, '') || 'document';
+        const file = new File([encrypted as BlobPart], `${base}-encrypted.pdf`, { type: 'application/pdf' });
+        const form = new FormData();
+        form.append('files', file);
+        if (savable.sourceFolderId != null) form.append('folder_id', String(savable.sourceFolderId));
+        const token = localStorage.getItem('rmpg_token');
+        const headers: Record<string, string> = {};
+        if (token) headers['Authorization'] = `Bearer ${token}`;
+        const res = await fetch('/api/uploads', { method: 'POST', headers, body: form });
+        if (!res.ok) throw new Error(`Upload failed: ${res.status}`);
+        const data = await res.json();
+        setSavedNotice(`Saved encrypted PDF as “${data.files?.[0]?.original_name}” in Documents.`);
+      } else {
+        const result = await saveToDocuments(savable, { folderId: savable.sourceFolderId });
+        setSavedNotice(`Saved as “${result.original_name}” in Documents.`);
+      }
+      setTimeout(() => setSavedNotice(null), 8000);
     } catch (err) {
       setError(`Save to Documents failed: ${err instanceof Error ? err.message : 'unknown'}`);
     } finally {
@@ -412,6 +467,9 @@ export default function PdfEditorPage() {
           onMetadata={() => {}}
           onBates={() => {}}
           onWatermark={() => {}}
+          onEncrypt={() => setEncryptionOpen(true)}
+          encryptionActive={!!encryption}
+          onClearEncryption={() => setEncryption(null)}
           saving={saving}
         />
       </div>
@@ -504,6 +562,18 @@ export default function PdfEditorPage() {
         open={signatureOpen}
         onClose={() => { setSignatureOpen(false); if (!pendingImage) setTool('select'); }}
         onConfirm={(dataUrl) => { setPendingImage(dataUrl); setTool('signature'); }}
+      />
+
+      <BarcodeDialog
+        open={barcodeOpen}
+        onClose={() => { setBarcodeOpen(false); if (!pendingImage) setTool('select'); }}
+        onConfirm={(dataUrl) => { setPendingImage(dataUrl); setTool('barcode'); }}
+      />
+
+      <EncryptionDialog
+        open={encryptionOpen}
+        onClose={() => setEncryptionOpen(false)}
+        onConfirm={(cfg) => setEncryption(cfg)}
       />
     </div>
   );

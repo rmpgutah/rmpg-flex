@@ -1,4 +1,4 @@
-import { Upload, Save, FilePlus, Combine, FileText, Settings2, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Stamp, FolderUp } from 'lucide-react';
+import { Upload, Save, FilePlus, Combine, FileText, Settings2, Undo2, Redo2, ZoomIn, ZoomOut, Maximize2, Stamp, FolderUp, Lock, LockOpen } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 
 interface Props {
@@ -19,6 +19,9 @@ interface Props {
   onBates: () => void;
   onWatermark: () => void;
   onSaveToDocuments?: () => void;
+  onEncrypt?: () => void;
+  encryptionActive?: boolean;
+  onClearEncryption?: () => void;
   saving: boolean;
 }
 
@@ -50,6 +53,17 @@ export default function EditorToolbar(p: Props) {
       <IconButton onClick={p.onBates} aria-label="Bates numbering" title="Bates numbering" className={btn} disabled={!p.hasDocument}><Stamp className="w-4 h-4" /></IconButton>
       <IconButton onClick={p.onWatermark} aria-label="Watermark" title="Watermark" className={btn} disabled={!p.hasDocument}><FileText className="w-4 h-4" /></IconButton>
       <IconButton onClick={p.onMetadata} aria-label="Document properties" title="Document properties" className={btn} disabled={!p.hasDocument}><Settings2 className="w-4 h-4" /></IconButton>
+      {p.onEncrypt && (
+        <IconButton
+          onClick={p.encryptionActive ? p.onClearEncryption ?? p.onEncrypt : p.onEncrypt}
+          aria-label={p.encryptionActive ? 'Encryption configured (click to clear)' : 'Encrypt PDF on next save'}
+          title={p.encryptionActive ? 'Encryption configured — click to clear' : 'Encrypt PDF on next save'}
+          className={`p-1.5 rounded-sm transition-colors ${p.encryptionActive ? 'bg-[#d4a017]/20 text-[#d4a017]' : 'text-rmpg-300 hover:text-white hover:bg-rmpg-700/60'}`}
+          disabled={!p.hasDocument}
+        >
+          {p.encryptionActive ? <Lock className="w-4 h-4" /> : <LockOpen className="w-4 h-4" />}
+        </IconButton>
+      )}
 
       <div className="flex-1" />
 
