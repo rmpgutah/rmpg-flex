@@ -22,6 +22,7 @@ import type { Database } from 'better-sqlite3';
 import { verifyDashcamSignature } from './dashcamAiHmac';
 import { insertDrivingEvent, type DrivingEventType, type DrivingEventSeverity } from './drivingEvents';
 import { recordEvidence, sha256OfBuffer } from './evidenceHasher';
+import { loadKeypairFromEnv } from './evidenceSigner';
 import type { StorageAdapter } from './storageAdapter';
 import { logger } from './logger';
 
@@ -167,7 +168,9 @@ export async function handleEventIngest(input: EventIngestInput): Promise<EventI
       db.prepare(`UPDATE driving_events SET clip_object_key = ?, video_url = ? WHERE id = ?`)
         .run(storage_uri, storage_uri, insert.id);
 
-      // Append evidence-chain row
+      // Append evidence-chain row, signed if keypair configured.
+      // The keypair lookup happens per-call so a runtime config
+      // change is picked up without a server restart.
       const evidence = recordEvidence({
         artifact_type: 'driving_event_clip',
         artifact_id: insert.id,
@@ -175,7 +178,7 @@ export async function handleEventIngest(input: EventIngestInput): Promise<EventI
         size_bytes: stored.size_bytes,
         storage_uri,
         captured_at: payload.event_timestamp,
-      }, db);
+      }, db, { keypair: loadKeypairFromEnv() ?? undefined });
       evidence_id = evidence.id;
     } catch (err: any) {
       logger.error({ err, eventId: insert.id }, 'dashcam-ai: storage.put failed; row left without clip');
