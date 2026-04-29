@@ -353,8 +353,13 @@ function NarrativeEditor<T extends Record<string, any>>({
 }: { field: NarrativeField<T>; data: T; onChange: (d: T) => void }) {
   const value = String(field.accessor(data) ?? '');
   const disabled = field.editable === false;
+  // Use <div> instead of <label>: a <label> wrapping the RichTextArea would
+  // implicitly associate the label text with every form control inside —
+  // including the toolbar's Bold / Italic / Underline buttons — which makes
+  // RTL's getByLabelText match multiple elements. The textarea has its own
+  // explicit aria-label set below; that's the accessibility surface.
   return (
-    <label className="block mb-2 text-xs">
+    <div className="block mb-2 text-xs">
       <span className="block text-gray-400 uppercase mb-1">
         {field.label}
         {disabled && field.readOnlyReason && (
@@ -372,7 +377,7 @@ function NarrativeEditor<T extends Record<string, any>>({
           onChange(setPath(data, field.path, e.target.value));
         }}
       />
-    </label>
+    </div>
   );
 }
 
