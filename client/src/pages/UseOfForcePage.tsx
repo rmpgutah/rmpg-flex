@@ -144,7 +144,17 @@ export default function UseOfForcePage() {
         {loading && <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" /></div>}
         {!loading && reports.length === 0 && <EmptyState icon={Shield} title="No Reports" description="No use of force reports found" />}
         {reports.map(r => (
-          <div key={r.id} onClick={() => setSelected(r)}
+          <div
+            key={r.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelected(r)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setSelected(r);
+              }
+            }}
             className={`px-3 py-2 border-b border-rmpg-800 cursor-pointer transition-colors ${selected?.id === r.id ? 'bg-surface-raised border-l-2 border-l-red-500' : 'hover:bg-surface-raised'}`}>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 flex-shrink-0" style={{ background: STATUS_COLORS[r.status] || '#888', borderRadius: '1px' }} />

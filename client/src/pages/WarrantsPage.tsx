@@ -1576,7 +1576,18 @@ export default function WarrantsPage() {
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
               </div>
-              <div className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors" onClick={() => { setActiveTab('warrants'); }}>
+              <div
+                role="button"
+                tabIndex={0}
+                className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors"
+                onClick={() => { setActiveTab('warrants'); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveTab('warrants');
+                  }
+                }}
+              >
                 <div className="text-2xl font-bold font-mono tabular-nums text-amber-400">
                   {expiringCount ?? '\u2014'}
                 </div>

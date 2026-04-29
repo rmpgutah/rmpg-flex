@@ -1465,7 +1465,17 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
   if (!expanded) {
     return (
       <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
-        <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded(true);
+              setTimeout(() => inputRef.current?.focus(), 50);
+            }
+          }}
           className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#2b2b2b] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
           <Reply className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
           <span>Click here to reply...</span>
@@ -2439,7 +2449,18 @@ export default function EmailPage() {
                             )}
                           </div>
 
-                          <div className="flex-1 min-w-0" onClick={() => handleSelectMessage(msg)}>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className="flex-1 min-w-0"
+                            onClick={() => handleSelectMessage(msg)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSelectMessage(msg);
+                              }
+                            }}
+                          >
                             <div className="flex items-center gap-1.5 mb-0.5">
                               <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-white font-semibold'}`}>
                                 {msg.fromName || msg.fromAddress}
