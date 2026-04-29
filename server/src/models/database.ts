@@ -9,6 +9,7 @@ import { localNow } from '../utils/timeUtils';
 import { seedUtahStatutes } from '../seeds/utahStatutes';
 // DISPATCH_DISTRICTS legacy constant import removed (Phase 2 of geography rebuild)
 import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
+import { ensureTraccarSchema } from './traccarSchema';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 import { registerSqliteFunctions } from './sqliteFunctions';
@@ -60,6 +61,7 @@ export function initDatabase(): Database.Database {
   createIndexes();
   seedData();
   seedUtahStatutes(db);
+  ensureTraccarSchema(db);
 
   console.log('Database initialized successfully at', DB_PATH);
   return db;

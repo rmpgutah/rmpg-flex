@@ -776,6 +776,7 @@ export default function MenuBar({
           { type: 'separator' },
           { type: 'action', label: 'Reports Dashboard', icon: BarChart3, action: () => navigate('/reports') },
           { type: 'action', label: 'PDF Editor', icon: FileText, action: () => navigate('/pdf-editor') },
+          { type: 'action', label: 'Historical GPS Tracks', icon: BarChart3, action: () => navigate('/historical-tracks') },
         ],
       },
       { type: 'separator' },
