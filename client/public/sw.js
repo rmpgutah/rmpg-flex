@@ -36,7 +36,9 @@
 //       traccar_poll_interval) when saved through admin third-party-keys.
 //       Poller reads them raw; encryption was producing "Failed to parse
 //       URL from <iv:tag:cipher>" errors in the pull-status panel.
-const CACHE_NAME = 'rmpg-flex-v458';
+// v459: Fix second column-name bug in /api/traccar/historical/devices —
+//       fleet_vehicles uses plate_number, not license_plate.
+const CACHE_NAME = 'rmpg-flex-v459';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
