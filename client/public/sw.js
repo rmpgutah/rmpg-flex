@@ -47,7 +47,14 @@
 //       brighter item rows (#b8b8b8) with gold-rail hover indicator. Heatmap
 //       layer collapsed to soft haze (radius 30→14, opacity 0.7→0.28,
 //       maxIntensity capped at 8) so it no longer reads as hard rings.
-const CACHE_NAME = 'rmpg-flex-v473';
+// v474: Call marker info bubble redesigned — 11 dispatcher fields packed
+//       into a tight 280-340px panel: priority pill + call_number +
+//       status pill + age in header; incident type subhead; address +
+//       cross-street + property; beat/sector geography; time received
+//       (relative + absolute); aggregated hazard banner (officer safety,
+//       weapons, felony, domestic, hazmat, mental health, gang) only when
+//       a flag is set; existing assigned/nearest unit sections preserved.
+const CACHE_NAME = 'rmpg-flex-v474';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
