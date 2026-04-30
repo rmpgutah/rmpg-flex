@@ -40,6 +40,7 @@ const RecordsPage = lazyRetry(() => import('./pages/RecordsPage'));
 const PersonnelPage = lazyRetry(() => import('./pages/personnel'));
 const CommunicationsPage = lazyRetry(() => import('./pages/CommunicationsPage'));
 const ReportsPage = lazyRetry(() => import('./pages/ReportsPage'));
+const PdfEditorPage = lazyRetry(() => import('./pages/pdf-editor'));
 const HistoricalTracksPage = lazyRetry(() => import('./pages/HistoricalTracksPage'));
 const AdminPage = lazyRetry(() => import('./pages/AdminPage'));
 const AuditLogPage = lazyRetry(() => import('./pages/AuditLogPage'));
@@ -95,8 +96,29 @@ const MobileHomePage = lazyRetry(() => import('./pages/mobile'));
 const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage'));
 
 
-/** Branded loading splash — matches login page design language */
-function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
+/**
+ * Branded loading splash — matches login page design language.
+ *
+ * If the splash is still up after `slowThresholdMs` (default 20s), an
+ * inline "Taking longer than expected" retry surface appears. This is
+ * the recovery path when the initial /auth/me check or a chunk load
+ * hangs without throwing — without it, the user is stuck staring at
+ * the scan-line forever and has to discover Cmd+R on their own.
+ */
+function LoadingSplash({
+  message = 'Initializing',
+  slowThresholdMs = 20_000,
+}: {
+  message?: string;
+  slowThresholdMs?: number;
+}) {
+  const [showSlowRetry, setShowSlowRetry] = React.useState(false);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => setShowSlowRetry(true), slowThresholdMs);
+    return () => clearTimeout(timer);
+  }, [slowThresholdMs]);
+
   return (
     <div className="flex items-center justify-center bg-surface-base" style={{ height: '100dvh' }}>
       <div className="flex flex-col items-center">
@@ -143,6 +165,30 @@ function LoadingSplash({ message = 'Initializing' }: { message?: string }) {
           </span>
           <div className="h-px w-10" style={{ background: 'linear-gradient(90deg, #2b2b2b, transparent)' }} />
         </div>
+
+        {/* Slow-load recovery surface */}
+        {showSlowRetry && (
+          <div className="mt-6 flex flex-col items-center gap-2" role="status" aria-live="polite">
+            <p className="text-[10px] uppercase tracking-[0.18em]" style={{ color: 'rgba(212, 160, 23, 0.85)' }}>
+              Taking longer than expected
+            </p>
+            <button
+              type="button"
+              onClick={() => window.location.reload()}
+              className="text-[10px] uppercase tracking-[0.18em] font-bold px-4 py-1.5 transition-colors"
+              style={{
+                background: '#d4a017',
+                color: '#000',
+                border: 0,
+                borderRadius: 2,
+                cursor: 'pointer',
+              }}
+              aria-label="Retry loading"
+            >
+              Retry
+            </button>
+          </div>
+        )}
       </div>
 
       {/* CSS animation for the scanning line */}
@@ -240,6 +286,7 @@ function AppRoutes() {
             <Route path="/communications" element={<RouteErrorBoundary><CommunicationsPage /></RouteErrorBoundary>} />
             <Route path="/radio" element={<RouteErrorBoundary><RadioPage /></RouteErrorBoundary>} />
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
+            <Route path="/pdf-editor" element={<RouteErrorBoundary><PdfEditorPage /></RouteErrorBoundary>} />
             <Route path="/historical-tracks" element={<RouteErrorBoundary><HistoricalTracksPage /></RouteErrorBoundary>} />
             <Route path="/patrol" element={<RouteErrorBoundary><PatrolPage /></RouteErrorBoundary>} />
             <Route path="/fleet" element={<RouteErrorBoundary><FleetPage /></RouteErrorBoundary>} />

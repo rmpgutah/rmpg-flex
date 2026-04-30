@@ -6,6 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
   X, Save, Loader2, AlertTriangle, Target, MessageSquare,
@@ -230,11 +231,13 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     apiFetch<any>(`/records/cases/${caseId}/solvability`)
-      .then(d => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then(d => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [caseId]);
 
   if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Analyzing solvability...</div>;
@@ -375,6 +378,7 @@ export default function CaseManagementPage() {
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
+  const [personnelLoading, setPersonnelLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
 
@@ -456,7 +460,10 @@ export default function CaseManagementPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
     let cancelled = false;
-    apiFetch<any>('/personnel').then(r => { if (!cancelled) setUsers(Array.isArray(r) ? r : (r?.data || [])); }).catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); });
+    apiFetch<any>('/personnel')
+      .then(r => { if (!cancelled) setUsers(Array.isArray(r) ? r : (r?.data || [])); })
+      .catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); })
+      .finally(() => { if (!cancelled) setPersonnelLoading(false); });
     return () => { cancelled = true; };
   }, []);
   useLiveSync('records', () => { fetchCases({ silent: true }); fetchStats(); });
@@ -1099,7 +1106,7 @@ export default function CaseManagementPage() {
                 <div className="space-y-3">
                   {/* Add note */}
                   <div className="panel-beveled p-3">
-                    <textarea
+                    <RichTextArea
                       value={newNote}
                       onChange={e => setNewNote(e.target.value)}
                       placeholder="Add a case note..."
@@ -1195,7 +1202,7 @@ export default function CaseManagementPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Return Reason *</label>
-                <textarea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
+                <RichTextArea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
                   placeholder="Explain why this case needs additional work..."
                   className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
@@ -1276,15 +1283,21 @@ export default function CaseManagementPage() {
                 </div>
                 <div>
                   <label className="field-label">Lead Investigator</label>
-                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
-                    <option value="">Unassigned</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none disabled:opacity-60">
+                    {personnelLoading ? (
+                      <option value="">Loading…</option>
+                    ) : (
+                      <>
+                        <option value="">Unassigned</option>
+                        {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
               <div>
                 <label className="field-label">Summary</label>
-                <textarea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <RichTextArea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>

@@ -981,6 +981,17 @@ body.fx-noise::after {
     color: #e0e0e0;
   }
 
+  /* PDF editor find/search match highlighting on the transparent text layer.
+     Background+blend keeps the underlying PDF page raster visible. */
+  .pdf-text-span.pdf-find-match {
+    background: rgba(255, 240, 80, 0.55);
+    color: transparent;
+  }
+  .pdf-text-span.pdf-find-active {
+    background: rgba(212, 160, 23, 0.85);
+    box-shadow: 0 0 0 2px #d4a017;
+  }
+
   .textarea-dark {
     @apply w-full px-3 py-1.5 text-sm text-white placeholder-gray-500 focus:outline-none resize-none;
     background: var(--surface-sunken);

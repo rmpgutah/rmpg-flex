@@ -14,7 +14,6 @@ import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
 import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
-import OfflineMapFallback from './OfflineMapFallback';
 import type { CallForService, Unit } from '../types';
 
 interface DispatchMiniMapProps {
@@ -70,13 +69,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tilesStalled, setTilesStalled] = useState(false);
-  const [retryingGmaps, setRetryingGmaps] = useState(false);
   const [gmapsRetry, setGmapsRetry] = useState(0);
   const tileMonitorRef = useRef<(() => void) | null>(null);
 
   // Classify error: auth/config vs connectivity
-  const isAuthError = error != null && (error.includes('key') || error.includes('configured'));
-  const showLeafletFallback = error != null && !isAuthError;
+  // Google Maps is the sole map surface — every error becomes an auth/config
+  // error placeholder (Leaflet/CartoDB fallback retired 2026-04-29).
+  const isAuthError = error != null;
 
   // Routing (auto-route when a single assigned unit has GPS)
   const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapRef.current });
@@ -273,85 +272,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     };
   }, []);
 
-  // ── Leaflet fallback when Google Maps fails (connectivity) ──
-  if (showLeafletFallback) {
-    // Build assigned unit positions for the fallback
-    const assignedUnits = units
-      .filter(u => call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null)
-      .map(u => ({
-        call_sign: u.call_sign,
-        lat: u.latitude!,
-        lng: u.longitude!,
-        status: u.status,
-      }));
-
-    // Build active call for the fallback
-    const fallbackCalls = call?.latitude != null && call?.longitude != null
-      ? [{
-          id: String(call.id),
-          call_number: call.call_number || 'CALL',
-          incident_type: call.incident_type || '',
-          location_address: call.location || '',
-          latitude: call.latitude,
-          longitude: call.longitude,
-          priority: call.priority || 'P3',
-        }]
-      : [];
-
-    return (
-      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141414' }}>
-        {/* Toolbar (same as online mode) */}
-        <div style={{
-          position: 'absolute', top: 4, left: 4, right: 4, zIndex: 1001,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          pointerEvents: 'none',
-        }}>
-          <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider px-1 py-0.5"
-            style={{ background: 'rgba(0,0,0,0.7)', pointerEvents: 'auto' }}>
-            <MapPin style={{ width: 8, height: 8, display: 'inline', marginRight: 3 }} />
-            Mini-Map
-          </span>
-          <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
-            <button type="button"
-              onClick={() => navigate('/map')}
-              className="text-rmpg-400 hover:text-white"
-              style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
-              title="Open full map"
-            >
-              <Maximize2 style={{ width: 10, height: 10 }} />
-            </button>
-            {onClose && (
-              <button type="button"
-                onClick={onClose}
-                className="text-rmpg-400 hover:text-white"
-                style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
-                title="Close mini-map"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-
-        <OfflineMapFallback
-          className="absolute inset-0"
-          compact
-          unitPositions={assignedUnits}
-          activeCalls={fallbackCalls}
-          onRetry={() => {
-            setRetryingGmaps(true);
-            setError(null);
-            setLoaded(false);
-            setGmapsRetry(n => n + 1);
-            setTimeout(() => setRetryingGmaps(false), 5000);
-          }}
-          retrying={retryingGmaps}
-        />
-      </div>
-    );
-  }
-
-  // ── Auth error (config problem, not connectivity) ──
+  // ── Map error placeholder (sole error surface) ──
   if (isAuthError) {
     return (
       <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0b0b' }}>

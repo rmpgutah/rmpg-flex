@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Plus, Search, ShieldBan, MapPin, User, Clock, Ban, Calendar,
   Archive, RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
@@ -460,7 +461,17 @@ export default function TrespassOrdersPage() {
             />
           ) : (
             orders.map(order => (
-              <div key={order.id} onClick={() => setSelectedOrder(order)}
+              <div
+                key={order.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedOrder(order)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedOrder(order);
+                  }
+                }}
                 className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedOrder?.id === order.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                 style={isMobile ? { minHeight: 56 } : undefined}
               >
@@ -704,13 +715,13 @@ export default function TrespassOrdersPage() {
               </div>
 
               <div><label className="field-label">Reason</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
 
               <div><label className="field-label">Conditions / Exceptions</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
 
               <div><label className="field-label">Notes</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(212,160,23,0.25)', borderColor: 'rgba(212,160,23,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>

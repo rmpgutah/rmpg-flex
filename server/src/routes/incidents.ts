@@ -1076,6 +1076,106 @@ router.delete('/:id/persons/:personId', (req: Request, res: Response) => {
   }
 });
 
+// ─── BUSINESS LINKING (Task 1.10) ────────────────────
+// POST/PUT/DELETE incident_businesses links. Mirrors business_persons
+// pattern (records.ts) — role enum validation, audit + WS broadcast.
+const VALID_INCIDENT_BUSINESS_ROLES = [
+  'victim', 'reporting_party', 'witness', 'suspect_affiliated', 'involved', 'other'
+] as const;
+
+router.post('/:id/businesses',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const incidentId = parseInt(paramStr(req.params.id as any), 10);
+      const { business_id, role, notes } = req.body;
+      const effectiveRole = role ?? 'involved';
+      if (!VALID_INCIDENT_BUSINESS_ROLES.includes(effectiveRole)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_INCIDENT_BUSINESS_ROLES] });
+        return;
+      }
+      const db = getDb();
+      const incident = db.prepare('SELECT id FROM incidents WHERE id = ?').get(incidentId);
+      if (!incident) { res.status(404).json({ error: 'Incident not found' }); return; }
+      const business = db.prepare('SELECT id FROM businesses WHERE id = ?').get(business_id);
+      if (!business) { res.status(404).json({ error: 'Business not found' }); return; }
+
+      try {
+        const result = db.prepare(`
+          INSERT INTO incident_businesses (incident_id, business_id, role, notes, added_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(incidentId, business_id, effectiveRole, notes || null, req.user?.userId ?? null);
+        const row = db.prepare('SELECT * FROM incident_businesses WHERE id = ?').get(result.lastInsertRowid);
+        auditLog(req, 'CREATE', 'incident_business_link', Number(result.lastInsertRowid), null, row);
+        broadcastDispatchUpdate({ action: 'incident_businesses_updated', incident_id: incidentId });
+        res.status(201).json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Business already linked to this incident' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create incident-business link: ' + err.message });
+    }
+  }
+);
+
+router.put('/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const incidentId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM incident_businesses WHERE id = ? AND incident_id = ?').get(linkId, incidentId) as any;
+      if (!existing) { res.status(404).json({ error: 'Incident-business link not found' }); return; }
+
+      const { role, notes } = req.body;
+      if (role !== undefined && !VALID_INCIDENT_BUSINESS_ROLES.includes(role)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_INCIDENT_BUSINESS_ROLES] });
+        return;
+      }
+
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role !== undefined)  { updates.push('role = ?');  values.push(role); }
+      if (notes !== undefined) { updates.push('notes = ?'); values.push(notes || null); }
+      if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      values.push(linkId);
+
+      db.prepare(`UPDATE incident_businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      const row = db.prepare('SELECT * FROM incident_businesses WHERE id = ?').get(linkId);
+      auditLog(req, 'UPDATE', 'incident_business_link', linkId, existing, row);
+      broadcastDispatchUpdate({ action: 'incident_businesses_updated', incident_id: incidentId });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update incident-business link: ' + err.message });
+    }
+  }
+);
+
+router.delete('/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const incidentId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM incident_businesses WHERE id = ? AND incident_id = ?').get(linkId, incidentId);
+      if (!existing) { res.status(404).json({ error: 'Incident-business link not found' }); return; }
+
+      db.prepare('DELETE FROM incident_businesses WHERE id = ?').run(linkId);
+      auditLog(req, 'DELETE', 'incident_business_link', linkId, existing, null);
+      broadcastDispatchUpdate({ action: 'incident_businesses_updated', incident_id: incidentId });
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete incident-business link: ' + err.message });
+    }
+  }
+);
+
 // ─── VEHICLE LINKING ─────────────────────────────────
 
 // POST /api/incidents/:id/vehicles - Link vehicle to incident

@@ -171,6 +171,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
     { path: '/serve', icon: Briefcase, label: 'Process Server' },
     { path: '/documents', icon: FolderOpen, label: 'Documents' },
+    { path: '/pdf-editor', icon: FileText, label: 'PDF Editor' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -214,7 +215,7 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 
 export default function Layout() {
   const { user, logout, refreshUser } = useAuth();
-  const { isConnected, subscribe } = useWebSocket();
+  const { isConnected, connectionLost, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -1493,6 +1494,7 @@ export default function Layout() {
       {!isMobile && (
         <StatusBar
           isConnected={isConnected}
+          connectionLost={connectionLost}
           user={user}
           activeCallCount={activeCallCount}
           callsByPriority={callsByPriority}

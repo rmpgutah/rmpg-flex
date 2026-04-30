@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2,
   Search, Reply, ReplyAll, Forward, Paperclip, X, ChevronLeft,
@@ -112,7 +113,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Email Signature</span>
         <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
-      <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
+      <RichTextArea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
         className="input-dark w-full text-xs font-mono resize-y min-h-[36px]" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
       <div className="flex justify-end gap-1.5">
         <button type="button" onClick={onClose} className="btn-secondary text-[10px] px-2 py-0.5">Cancel</button>
@@ -1227,7 +1228,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
 
         {/* Body */}
         <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
-          <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
+          <RichTextArea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
             className="w-full bg-transparent text-xs text-rmpg-200 resize-none outline-none placeholder:text-rmpg-600 leading-relaxed"
             placeholder="Write your message here...
 
@@ -1465,7 +1466,17 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
   if (!expanded) {
     return (
       <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
-        <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded(true);
+              setTimeout(() => inputRef.current?.focus(), 50);
+            }
+          }}
           className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#2b2b2b] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
           <Reply className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
           <span>Click here to reply...</span>
@@ -1477,7 +1488,7 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
   return (
     <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
       <div className="mx-4 my-3 border border-[#2b2b2b] rounded-sm bg-[#141414] overflow-hidden focus-within:border-brand-500/40 transition-colors">
-        <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
+        <RichTextArea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
           placeholder="Type your reply..." autoFocus />
@@ -2439,7 +2450,18 @@ export default function EmailPage() {
                             )}
                           </div>
 
-                          <div className="flex-1 min-w-0" onClick={() => handleSelectMessage(msg)}>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className="flex-1 min-w-0"
+                            onClick={() => handleSelectMessage(msg)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSelectMessage(msg);
+                              }
+                            }}
+                          >
                             <div className="flex items-center gap-1.5 mb-0.5">
                               <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-white font-semibold'}`}>
                                 {msg.fromName || msg.fromAddress}

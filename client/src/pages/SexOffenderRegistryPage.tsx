@@ -6,6 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Search, Loader2, Plus, ChevronLeft, ChevronRight,
   X, AlertTriangle, Shield, ShieldAlert, ShieldCheck, ShieldOff,
@@ -1122,7 +1123,7 @@ function FormField({
     <div>
       <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">{label}</label>
       {multiline ? (
-        <textarea value={value} onChange={e => onChange(e.target.value)} rows={2}
+        <RichTextArea value={value} onChange={e => onChange(e.target.value)} rows={2}
           className={cls} placeholder={placeholder} />
       ) : (
         <input type={type} value={value} onChange={e => onChange(e.target.value)}
@@ -1179,7 +1180,7 @@ function ImportModal({
           <p className="text-[11px] text-rmpg-400">
             Paste a JSON array of records. Each record must have at least <code className="text-brand-400">first_name</code> and <code className="text-brand-400">last_name</code> fields.
           </p>
-          <textarea
+          <RichTextArea
             value={jsonText}
             onChange={e => { setJsonText(e.target.value); setParsed(null); }}
             rows={8}

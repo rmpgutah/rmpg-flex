@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Palette,
   FileText,
@@ -184,7 +185,7 @@ export default function AdminBrandingTab({ LoadingSpinner, error, setError }: Ad
         </div>
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Report Footer Text</label>
-          <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={config.report_footer_text} onChange={(e) => update('report_footer_text', e.target.value)} placeholder="Footer disclaimer text..." />
+          <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={config.report_footer_text} onChange={(e) => update('report_footer_text', e.target.value)} placeholder="Footer disclaimer text..." />
           <p className="text-[9px] text-rmpg-600 mt-0.5">Appears centered at bottom of every page</p>
         </div>
         <div>

@@ -2718,27 +2718,59 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
 
   y = drawDistrictBar(doc, y, data as any);
 
-  // QR code — top-right of page 1 (Phase 1)
-  const qrUrl = data.qr_code_data_url ||
-    (typeof window !== 'undefined' && (data as any).id
-      ? await generateQrDataUrl(`${window.location.origin}/warrants/${(data as any).id}`)
-      : null);
-  if (qrUrl) {
-    doc.addImage(qrUrl, 'PNG', rx - 24, 4, 24, 24);
-  }
-
-  // Priority stamp — below header, right column
+  // Priority stamp — drawn inline at the running Y, full-width
+  // right-aligned strip BEFORE the first section opens. Previously
+  // hardcoded at y=32 with no Y advancement, which stomped the
+  // OCA # cell of the NCIC/ORI section on warrants whose district
+  // bar landed near y=28. The chip now reserves its own vertical
+  // band and pushes Y down before any section is drawn.
   const bucket = data.priority_score == null ? null :
     data.priority_score >= 90 ? { label: 'CRITICAL', color: [220, 38, 38] as [number,number,number] } :
     data.priority_score >= 70 ? { label: 'HIGH',     color: [245, 158, 11] as [number,number,number] } :
     data.priority_score >= 40 ? { label: 'MEDIUM',   color: [100, 116, 139] as [number,number,number] } :
     { label: 'LOW', color: [156, 163, 175] as [number,number,number] };
   if (bucket) {
+    const pageW = doc.internal.pageSize.getWidth();
+    const chipW = 50;
+    const chipH = 6;
+    const chipX = pageW - 10 /* PAGE_MARGIN */ - chipW;
+    const chipY = y + 1;
     doc.setFillColor(bucket.color[0], bucket.color[1], bucket.color[2]);
     doc.setTextColor(255, 255, 255);
-    doc.roundedRect(rx - 55, 32, 50, 8, 1, 1, 'F');
-    doc.setFontSize(9);
-    doc.text(`${bucket.label} ${data.priority_score}/100`, rx - 30, 37.5, { align: 'center' });
+    doc.roundedRect(chipX, chipY, chipW, chipH, 1, 1, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.text(`${bucket.label} ${data.priority_score}/100`, chipX + chipW / 2, chipY + chipH - 1.7, { align: 'center' });
+    doc.setTextColor(0, 0, 0);
+    y = chipY + chipH + 1; // advance past chip so next section doesn't overlap
+  }
+
+  // QR code — bottom-right of page 1, above the footer (matches
+  // the call-for-service PSO pattern). Previously placed at
+  // (rx - 24, y=4) which centered a 24×24 image directly on top
+  // of the dark header band, obscuring "ROCKY MOUNTAIN PROTECTIVE
+  // GROUP". Bottom-right keeps the QR scannable, gives it a label,
+  // and never collides with form content regardless of how many
+  // sections render above it.
+  const qrUrl = data.qr_code_data_url ||
+    (typeof window !== 'undefined' && (data as any).id
+      ? await generateQrDataUrl(`${window.location.origin}/warrants/${(data as any).id}`)
+      : null);
+  if (qrUrl) {
+    const pageW = doc.internal.pageSize.getWidth();
+    const pageH = doc.internal.pageSize.getHeight();
+    const qrSize = 22;
+    const qrX = pageW - 10 /* PAGE_MARGIN */ - qrSize;
+    const qrY = pageH - 7 /* FOOTER_HEIGHT */ - qrSize - 8;
+    // White card behind the QR for guaranteed scannability over
+    // any background tint that may bleed in from page chrome.
+    doc.setFillColor(255, 255, 255);
+    doc.rect(qrX - 1, qrY - 1, qrSize + 2, qrSize + 2, 'F');
+    doc.addImage(qrUrl, 'PNG', qrX, qrY, qrSize, qrSize);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(80, 80, 80);
+    doc.text('SCAN FOR WARRANT', qrX + qrSize / 2, qrY + qrSize + 2.2, { align: 'center' });
     doc.setTextColor(0, 0, 0);
   }
 

@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect } from 'react';
+import RichTextArea from '../../../components/RichTextArea';
 import {
   AlertTriangle,
   X,
@@ -303,7 +304,7 @@ export default function SafetyAlertModal({
             <label htmlFor="safety-alert-details" className="text-[10px] font-bold uppercase tracking-wider text-rmpg-400 mb-1.5 block">
               Details
             </label>
-            <textarea
+            <RichTextArea
               id="safety-alert-details"
               value={details}
               onChange={(e) => setDetails(e.target.value)}
