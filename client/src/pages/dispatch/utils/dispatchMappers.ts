@@ -145,7 +145,8 @@ export function mapDbCall(row: any): CallForService {
     cleared_at: row.cleared_at || undefined,
     closed_at: row.closed_at || undefined,
     archived_at: row.archived_at || undefined,
-    created_by: row.dispatcher_id ? String(row.dispatcher_id) : '',
+    created_by: row.dispatcher_name || (row.dispatcher_id ? String(row.dispatcher_id) : ''),
+    dispatcher_name: row.dispatcher_name || undefined,
     updated_at: row.updated_at || '',
     // Visit history (PSO calls — attached by GET /calls/:id and redispatch)
     visit_history: row.visit_history || undefined,

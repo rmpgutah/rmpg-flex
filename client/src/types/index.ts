@@ -355,6 +355,7 @@ export interface CallForService {
   archived_at?: string;
   previous_status?: CallStatus;
   created_by: string;
+  dispatcher_name?: string;
   updated_at: string;
   // Risk assessment
   risk_score?: number;

@@ -77,6 +77,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
+import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
@@ -3851,7 +3852,7 @@ export default function DispatchPage() {
                     <PrintRecordButton
                       recordType="call"
                       recordData={{
-                        ...selectedCall,
+                        ...applyCallPdfAutofill(selectedCall),
                         // Enrich with unit detail table for PDF
                         assigned_units_detail: (selectedCall?.assigned_units || []).map((uid: string) => {
                           const u = units.find(unit => String(unit.id) === String(uid));
