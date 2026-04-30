@@ -38,7 +38,11 @@
 //       URL from <iv:tag:cipher>" errors in the pull-status panel.
 // v459: Fix second column-name bug in /api/traccar/historical/devices —
 //       fleet_vehicles uses plate_number, not license_plate.
-const CACHE_NAME = 'rmpg-flex-v459';
+// v460: Historical tracks visual upgrade — speed-bucketed polyline gradient
+//       (6 colors blue→red), direction arrows along the track, distinct
+//       Start (S) and End (E) markers, idle/stop detection (≥2 min) marked
+//       with purple "P" pins, speed legend overlay in bottom-left corner.
+const CACHE_NAME = 'rmpg-flex-v460';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
