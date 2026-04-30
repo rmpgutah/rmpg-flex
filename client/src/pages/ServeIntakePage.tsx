@@ -4,7 +4,7 @@
 // Auto-creates Person, Property, Case, CFS call, Serve Queue.
 // ============================================================
 
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import { extractFolderGroups, type FolderGroup } from '../utils/dropFolders';
 import BulkDefendantTable from '../components/serve/BulkDefendantTable';
 import RichTextArea from '../components/RichTextArea';
@@ -13,6 +13,7 @@ import {
   User, Building2, Phone, X, ChevronRight, Edit2, Save, ArrowLeft,
   Gavel, Calendar, Briefcase, FileWarning, Clock, Shield, Users,
   History, Target, Hash, AlertCircle, Star, Fingerprint, ListChecks, Eye,
+  ScanText,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
@@ -23,8 +24,12 @@ interface UploadedFile {
   name: string;
   type: 'court_docket' | 'field_sheet' | 'info_sheet' | 'unknown';
   text: string;
-  status: 'pending' | 'extracted' | 'error';
+  status: 'pending' | 'extracted' | 'error' | 'ocr_running';
   rawFile: File;  // Keep original File for uploading as attachment after intake
+  // 'ocr' means the server fell back to OCR (scanned/image PDF). 'pdftotext'
+  // means a normal text layer was present. The badge in the file row reads
+  // this so the dispatcher knows when to double-check OCR'd values for typos.
+  extractionMethod?: 'pdftotext' | 'ocr' | 'empty' | 'error';
 }
 
 interface ParsedData {
@@ -180,6 +185,55 @@ export default function ServeIntakePage() {
   // Confidence scores from parse
   const [confidence, setConfidence] = useState<Record<string, { score: number; source: string }>>({});
   const [overallConfidence, setOverallConfidence] = useState(0);
+
+  // ── Critical-field validation ─────────────────────────────
+  // Computes a list of high-impact gaps the dispatcher should fix before
+  // creating records. Severity:
+  //   error  — record creation will fail or silently lose data
+  //   warn   — creation works but the resulting case has known gaps
+  //   info   — quality-of-life nudges (low confidence, OCR'd, etc.)
+  const reviewIssues = useMemo(() => {
+    const issues: { severity: 'error' | 'warn' | 'info'; field: string; message: string }[] = [];
+    if (!editDefendant.first || !editDefendant.last) {
+      issues.push({ severity: 'error', field: 'defendant', message: 'Defendant first and last name are required' });
+    }
+    if (!editAddress || editAddress.length < 6) {
+      issues.push({ severity: 'error', field: 'address', message: 'Service address is required for routing and geofencing' });
+    } else if (geocodeFailed) {
+      issues.push({ severity: 'warn', field: 'address', message: 'Geocoding failed — set lat/lng manually or correct the address' });
+    }
+    if (!editDefendant.dob) {
+      issues.push({ severity: 'warn', field: 'dob', message: 'Date of birth missing — needed for proper service of process and skip-trace matching' });
+    }
+    if (!editCourt) {
+      issues.push({ severity: 'warn', field: 'court', message: 'Court not identified — diligence schedule and case linkage may be incomplete' });
+    }
+    if (!editCourtCaseNumber) {
+      issues.push({ severity: 'warn', field: 'court_case_number', message: 'Court case number missing — affidavit will not link back to the docket' });
+    }
+    if (editDueDate) {
+      const due = new Date(editDueDate);
+      if (!isNaN(due.getTime()) && due.getTime() < Date.now()) {
+        issues.push({ severity: 'error', field: 'due_date', message: 'Due date is in the past — verify or extend before submitting' });
+      }
+    }
+    if (!editPlaintiff) {
+      issues.push({ severity: 'warn', field: 'plaintiff', message: 'Plaintiff missing — affidavit caption will be incomplete' });
+    }
+    if (!editAttorney.name) {
+      issues.push({ severity: 'info', field: 'attorney', message: 'Attorney info missing — billing contact may be unclear' });
+    }
+    // Surface OCR'd files as info — values are extracted but worth a second look
+    const ocrFiles = files.filter(f => f.extractionMethod === 'ocr').map(f => f.name);
+    if (ocrFiles.length > 0) {
+      issues.push({ severity: 'info', field: 'ocr', message: `OCR was used on ${ocrFiles.length} file(s) — recheck names, dates, and case numbers for typos` });
+    }
+    if (overallConfidence > 0 && overallConfidence < 60) {
+      issues.push({ severity: 'warn', field: 'confidence', message: 'Overall extraction confidence is low — verify all fields against the source documents' });
+    }
+    return issues;
+  }, [editDefendant, editAddress, geocodeFailed, editCourt, editCourtCaseNumber, editDueDate, editPlaintiff, editAttorney.name, files, overallConfidence]);
+  const reviewBlockingErrors = reviewIssues.filter(i => i.severity === 'error');
   // Google Maps autocomplete
   const addressAutocompleteRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
@@ -222,10 +276,11 @@ export default function ServeIntakePage() {
     return () => { autocompleteInitialized.current = false; };
   }, [step]);
 
-  const extractPdfText = useCallback(async (file: File): Promise<string> => {
+  const extractPdfText = useCallback(async (file: File, opts?: { forceOcr?: boolean }): Promise<{ text: string; method: UploadedFile['extractionMethod'] }> => {
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const resp = await fetch('/api/serve-intake/extract-text', {
+      const url = `/api/serve-intake/extract-text${opts?.forceOcr ? '?force_ocr=1' : ''}`;
+      const resp = await fetch(url, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${localStorage.getItem('rmpg_token')}`,
@@ -235,26 +290,39 @@ export default function ServeIntakePage() {
       });
       if (resp.ok) {
         const data = await resp.json();
-        return data.text || '';
+        return { text: data.text || '', method: data.method || 'pdftotext' };
       }
     } catch { /* fallback */ }
-    return '';
+    return { text: '', method: 'error' };
   }, []);
 
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {
     const newFiles: UploadedFile[] = [];
     for (const file of Array.from(fileList)) {
       if (file.type !== 'application/pdf') continue;
-      const text = await extractPdfText(file);
+      const { text, method } = await extractPdfText(file);
       const type = file.name.toLowerCase().includes('court') ? 'court_docket' as const
         : file.name.toLowerCase().includes('field') ? 'field_sheet' as const
         : file.name.toLowerCase().includes('info') ? 'info_sheet' as const
         : 'unknown' as const;
-      newFiles.push({ name: file.name, type, text, status: text.length > 50 ? 'extracted' : 'error', rawFile: file });
+      newFiles.push({ name: file.name, type, text, status: text.length > 50 ? 'extracted' : 'error', rawFile: file, extractionMethod: method });
     }
     setFiles(prev => [...prev, ...newFiles]);
     setError(null);
   }, [extractPdfText]);
+
+  // Re-run extraction on a single file with OCR forced. Used when the
+  // initial extraction was empty/short — typically a scanned court docket.
+  const reExtractWithOcr = useCallback(async (idx: number) => {
+    const file = files[idx];
+    if (!file) return;
+    setFiles(prev => prev.map((f, i) => i === idx ? { ...f, status: 'ocr_running' } : f));
+    const { text, method } = await extractPdfText(file.rawFile, { forceOcr: true });
+    setFiles(prev => prev.map((f, i) => i === idx
+      ? { ...f, text, extractionMethod: method, status: text.length > 50 ? 'extracted' : 'error' }
+      : f
+    ));
+  }, [files, extractPdfText]);
 
   const handleDrop = useCallback(async (e: React.DragEvent) => {
     e.preventDefault();
@@ -606,12 +674,30 @@ export default function ServeIntakePage() {
                       {DOC_TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       <option value="unknown">Auto-detect</option>
                     </select>
-                    {f.status === 'extracted' ? (
+                    {f.status === 'ocr_running' ? (
+                      <span title="Running OCR..." className="flex items-center gap-1 text-[9px] text-amber-400">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" /> OCR
+                      </span>
+                    ) : f.status === 'extracted' ? (
                       <CheckCircle className="w-3.5 h-3.5 text-green-500" />
                     ) : (
                       <span title="Extraction may be incomplete"><AlertTriangle className="w-3.5 h-3.5 text-amber-500" /></span>
                     )}
+                    {/* OCR badge — server fell back to OCR for this file */}
+                    {f.extractionMethod === 'ocr' && (
+                      <span className="text-[8px] font-bold px-1 py-0 border border-amber-700/50 bg-amber-900/30 text-amber-300" title="Text was extracted via OCR (image-based PDF). Double-check OCR'd values for typos.">OCR</span>
+                    )}
                     <span className="text-[9px] text-rmpg-500">{f.text.length.toLocaleString()} chars</span>
+                    {/* Re-extract with OCR — useful when the text layer is garbled/empty
+                        (very common for scanned court dockets). Disabled while running. */}
+                    <button type="button"
+                      onClick={(e) => { e.stopPropagation(); reExtractWithOcr(i); }}
+                      disabled={f.status === 'ocr_running'}
+                      className="p-0.5 text-rmpg-500 hover:text-amber-400 transition-colors disabled:opacity-40"
+                      title="Re-extract with OCR (forces image-based extraction)"
+                    >
+                      <ScanText className="w-3 h-3" />
+                    </button>
                     <button type="button" onClick={(e) => { e.stopPropagation(); setExpandedPreview(expandedPreview === i ? null : i); }}
                       className="p-0.5 text-rmpg-500 hover:text-brand-400 transition-colors" title="Preview extracted text">
                       <Eye className="w-3 h-3" />
@@ -728,6 +814,44 @@ export default function ServeIntakePage() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* ── Pre-flight validation panel ──
+              Surfaces critical missing fields and OCR/low-confidence flags
+              before the dispatcher commits to record creation. Errors block
+              the Confirm button; warnings allow override but are logged. */}
+          {reviewIssues.length > 0 && (
+            <div className={`panel-beveled p-3 space-y-1.5 ${reviewBlockingErrors.length > 0 ? 'border-l-4 border-l-red-600 bg-red-950/10' : 'border-l-4 border-l-amber-600 bg-amber-950/10'}`}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {reviewBlockingErrors.length > 0
+                    ? <AlertCircle className="w-3.5 h-3.5 text-red-400" />
+                    : <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />}
+                  <span className={`text-[10px] font-bold uppercase tracking-wider ${reviewBlockingErrors.length > 0 ? 'text-red-300' : 'text-amber-300'}`}>
+                    {reviewBlockingErrors.length > 0
+                      ? `${reviewBlockingErrors.length} blocking issue${reviewBlockingErrors.length === 1 ? '' : 's'} — fix before submitting`
+                      : `${reviewIssues.length} review item${reviewIssues.length === 1 ? '' : 's'}`}
+                  </span>
+                </div>
+                <span className="text-[9px] text-rmpg-500">
+                  {reviewIssues.filter(i => i.severity === 'error').length}E ·
+                  {' '}{reviewIssues.filter(i => i.severity === 'warn').length}W ·
+                  {' '}{reviewIssues.filter(i => i.severity === 'info').length}I
+                </span>
+              </div>
+              <ul className="text-[10px] space-y-0.5">
+                {reviewIssues.map((issue, i) => {
+                  const color = issue.severity === 'error' ? 'text-red-300' : issue.severity === 'warn' ? 'text-amber-300' : 'text-rmpg-300';
+                  const dot = issue.severity === 'error' ? 'bg-red-500' : issue.severity === 'warn' ? 'bg-amber-500' : 'bg-rmpg-400';
+                  return (
+                    <li key={i} className={`flex items-start gap-2 ${color}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 mt-1 ${dot}`} />
+                      <span>{issue.message}</span>
+                    </li>
+                  );
+                })}
+              </ul>
             </div>
           )}
 
@@ -965,8 +1089,10 @@ export default function ServeIntakePage() {
             </div>
           </div>
 
-          {/* Confirm */}
-          <button onClick={handleConfirm} disabled={processing || !editDefendant.last}
+          {/* Confirm — disabled while blocking issues remain */}
+          <button onClick={handleConfirm}
+            disabled={processing || !editDefendant.last || reviewBlockingErrors.length > 0}
+            title={reviewBlockingErrors.length > 0 ? `Fix ${reviewBlockingErrors.length} blocking issue${reviewBlockingErrors.length === 1 ? '' : 's'} above before submitting` : ''}
             className="w-full toolbar-btn toolbar-btn-primary py-3 text-sm font-bold justify-center">
             {processing ? <><Loader2 className="w-4 h-4 animate-spin" /> Creating Records...</> : <><CheckCircle className="w-4 h-4" /> Confirm & Create All Records</>}
           </button>

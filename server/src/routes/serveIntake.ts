@@ -67,42 +67,125 @@ function utcOffsetHoursForZone(date: Date, timeZone: string): number {
   return sign * (hours + minutes / 60);
 }
 
-// ── PDF binary → text (pdftotext) ───────────────────────────
+// ── PDF binary → text (pdftotext, with OCR fallback) ────────
+// Strategy:
+//   1. Run pdftotext in both -layout and raw modes (existing behavior).
+//   2. Score the result for "usefulness" (alpha-char density + total length).
+//   3. If poor, OR if ?force_ocr=1 is set, fall back to ocrmypdf which
+//      rasterizes pages, runs Tesseract, then re-runs pdftotext on the
+//      OCR'd output. This handles scanned court dockets and image-only
+//      field sheets that previously returned empty/garbled text.
+//   4. Return { text, length, method } so the client can show an OCR badge.
+//
+// Production VPS has /usr/bin/ocrmypdf + /usr/bin/tesseract. If absent,
+// we fall through to the best pdftotext result (degraded, not broken).
+const OCR_TIMEOUT_MS = 90_000; // ocrmypdf can take 30-60s on a 10-page scan
+function textUsefulnessScore(s: string): number {
+  if (!s) return 0;
+  const alpha = (s.match(/[a-zA-Z]/g) || []).length;
+  // Score = alpha-char count weighted toward "actual words". Below ~80
+  // typically means a one-liner, blank page, or pure logo; below 30 is junk.
+  return alpha;
+}
+
 router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   const chunks: Buffer[] = [];
   req.on('data', (chunk: Buffer) => chunks.push(chunk));
   req.on('end', async () => {
+    const log = getLogger(req);
+    const forceOcr = String((req.query as any).force_ocr || '') === '1';
+    const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-'));
+    const tmpPdf = join(tmpDir, 'input.pdf');
+    const ocrPdf = join(tmpDir, 'ocr.pdf');
+    const cleanup = () => {
+      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
+      try { unlinkSync(ocrPdf); } catch { /* file may not exist */ }
+      try { require('fs').rmdirSync(tmpDir); } catch { /* ignore */ }
+    };
     try {
       const body = Buffer.concat(chunks);
-      if (body.length < 100) { res.json({ text: '', length: 0 }); return; }
-      const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-'));
-      const tmpPdf = join(tmpDir, 'input.pdf');
+      if (body.length < 100) { res.json({ text: '', length: 0, method: 'empty' }); cleanup(); return; }
       writeFileSync(tmpPdf, body);
-      // Try both pdftotext modes and pick the one with more useful content
+
+      // Phase 1 — pdftotext in both modes
       let layoutText = '';
       let rawText = '';
-      try {
-        const r1 = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
-        layoutText = r1.stdout || '';
-      } catch { /* layout mode failed */ }
-      try {
-        const r2 = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
-        rawText = r2.stdout || '';
-      } catch { /* raw mode failed */ }
+      if (!forceOcr) {
+        try {
+          const r1 = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
+          layoutText = r1.stdout || '';
+        } catch { /* layout mode failed */ }
+        try {
+          const r2 = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
+          rawText = r2.stdout || '';
+        } catch { /* raw mode failed */ }
+      }
 
-      // Pick the better result:
-      // - Layout mode preserves column structure (good for ICU field sheets)
-      // - Raw mode avoids column bleed (good for court dockets)
-      // - Use layout if it has structured labels, otherwise use the longer one
       const hasStructuredLabels = /Party to Serve|Instructions|Documents|Plaintiff|Defendant/i.test(layoutText);
-      const text = hasStructuredLabels ? layoutText : (layoutText.length >= rawText.length ? layoutText : rawText);
-      // Cleanup temp files
-      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
-      try { require('fs').rmdirSync(tmpDir); } catch { /* ignore */ }
-      res.json({ text, length: text.length });
-    } catch {
-      res.status(500).json({ error: 'Text extraction failed', text: '' });
+      const pdftotextResult = hasStructuredLabels
+        ? layoutText
+        : (layoutText.length >= rawText.length ? layoutText : rawText);
+
+      const pdftotextScore = textUsefulnessScore(pdftotextResult);
+      const POOR_THRESHOLD = 80; // alpha-char count below which we OCR
+
+      // Phase 2 — OCR fallback when pdftotext came up empty/garbled, or forced
+      if (forceOcr || pdftotextScore < POOR_THRESHOLD) {
+        try {
+          await execFileAsync(
+            '/usr/bin/ocrmypdf',
+            [
+              '--skip-text',          // don't re-OCR pages that already have a text layer
+              '--optimize', '0',      // skip JBIG2/jpeg2000 — speed > size for transient extraction
+              '--output-type', 'pdf', // plain PDF, no PDF/A pickiness
+              '--quiet',
+              tmpPdf,
+              ocrPdf,
+            ],
+            { timeout: OCR_TIMEOUT_MS, maxBuffer: 16 * 1024 * 1024 },
+          );
+          // Re-run pdftotext against the OCR'd PDF
+          let ocrText = '';
+          try {
+            const r3 = await execFileAsync('/usr/bin/pdftotext', ['-layout', ocrPdf, '-']);
+            ocrText = r3.stdout || '';
+          } catch { /* ignore */ }
+          const ocrScore = textUsefulnessScore(ocrText);
+
+          // Pick whichever is better. force_ocr always returns OCR even if shorter.
+          if (forceOcr || ocrScore > pdftotextScore) {
+            res.json({ text: ocrText, length: ocrText.length, method: 'ocr' });
+            cleanup();
+            return;
+          }
+        } catch (ocrErr: any) {
+          log.warn({ err: ocrErr, code: ocrErr?.code }, 'ocrmypdf fallback failed — returning pdftotext result');
+          // fall through to pdftotext result
+        }
+      }
+
+      res.json({ text: pdftotextResult, length: pdftotextResult.length, method: 'pdftotext' });
+      cleanup();
+    } catch (err: any) {
+      log.error({ err }, 'extract-text failed');
+      cleanup();
+      res.status(500).json({ error: 'Text extraction failed', text: '', method: 'error' });
     }
+  });
+});
+
+// ── OCR availability probe (diagnostic) ───────────────────────
+// Returns whether the server can run OCR. Used by the client to enable/
+// disable the "Re-extract with OCR" button gracefully.
+router.get('/ocr-health', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (_req: Request, res: Response) => {
+  const ocrmypdf = await execFileAsync('/usr/bin/ocrmypdf', ['--version']).then(r => r.stdout.trim()).catch(() => null);
+  const tesseract = await execFileAsync('/usr/bin/tesseract', ['--version']).then(r => (r.stdout || r.stderr).split('\n')[0].trim()).catch(() => null);
+  const pdftotext = await execFileAsync('/usr/bin/pdftotext', ['-v']).then(r => (r.stdout || r.stderr).split('\n')[0].trim()).catch(() => null);
+  res.json({
+    ok: !!ocrmypdf && !!tesseract,
+    ocrmypdf,
+    tesseract,
+    pdftotext,
   });
 });
 
