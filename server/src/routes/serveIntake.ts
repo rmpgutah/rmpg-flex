@@ -27,6 +27,13 @@ import { buildEnrichment } from '../utils/serveIntakeEnrichment';
 import { synthesizeCaseSynopsis } from '../utils/caseSynopsis';
 import { synthesizeCaseNarrative } from '../utils/caseNarrative';
 import { detectCourtForm } from '../utils/courtFormDetector';
+import {
+  isOcrmypdfAvailable,
+  isTesseractAvailable,
+  getPageCount,
+  shouldRunOcr,
+  runOcrFallback,
+} from '../utils/serveIntakeOcr';
 import { execFile } from 'child_process';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
 import { join } from 'path';
@@ -67,42 +74,84 @@ function utcOffsetHoursForZone(date: Date, timeZone: string): number {
   return sign * (hours + minutes / 60);
 }
 
-// ── PDF binary → text (pdftotext) ───────────────────────────
+// ── PDF binary → text (pdftotext, with ocrmypdf fallback) ───
+async function extractTextFromPdf(pdfPath: string): Promise<string> {
+  let layoutText = '';
+  let rawText = '';
+  try {
+    const r1 = await execFileAsync('/usr/bin/pdftotext', ['-layout', pdfPath, '-']);
+    layoutText = r1.stdout || '';
+  } catch { /* layout mode failed */ }
+  try {
+    const r2 = await execFileAsync('/usr/bin/pdftotext', [pdfPath, '-']);
+    rawText = r2.stdout || '';
+  } catch { /* raw mode failed */ }
+  const hasStructuredLabels = /Party to Serve|Instructions|Documents|Plaintiff|Defendant/i.test(layoutText);
+  return hasStructuredLabels ? layoutText : (layoutText.length >= rawText.length ? layoutText : rawText);
+}
+
 router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   const chunks: Buffer[] = [];
   req.on('data', (chunk: Buffer) => chunks.push(chunk));
   req.on('end', async () => {
+    const log = getLogger(req);
     try {
       const body = Buffer.concat(chunks);
-      if (body.length < 100) { res.json({ text: '', length: 0 }); return; }
+      if (body.length < 100) { res.json({ text: '', length: 0, ocrApplied: false, pageCount: 0 }); return; }
+
       const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-'));
       const tmpPdf = join(tmpDir, 'input.pdf');
+      const ocrPdf = join(tmpDir, 'input.ocr.pdf');
       writeFileSync(tmpPdf, body);
-      // Try both pdftotext modes and pick the one with more useful content
-      let layoutText = '';
-      let rawText = '';
-      try {
-        const r1 = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
-        layoutText = r1.stdout || '';
-      } catch { /* layout mode failed */ }
-      try {
-        const r2 = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
-        rawText = r2.stdout || '';
-      } catch { /* raw mode failed */ }
 
-      // Pick the better result:
-      // - Layout mode preserves column structure (good for ICU field sheets)
-      // - Raw mode avoids column bleed (good for court dockets)
-      // - Use layout if it has structured labels, otherwise use the longer one
-      const hasStructuredLabels = /Party to Serve|Instructions|Documents|Plaintiff|Defendant/i.test(layoutText);
-      const text = hasStructuredLabels ? layoutText : (layoutText.length >= rawText.length ? layoutText : rawText);
-      // Cleanup temp files
+      // Phase 1: fast path — pdftotext on the original PDF.
+      let text = await extractTextFromPdf(tmpPdf);
+      const pageCount = await getPageCount(tmpPdf);
+      let ocrApplied = false;
+      let ocrError: string | null = null;
+
+      // Phase 2: OCR fallback when the user-defined heuristic
+      // says the text yield isn't credible for this page count.
+      if (shouldRunOcr(text, pageCount)) {
+        try {
+          const ocrBuf = await runOcrFallback(body);
+          writeFileSync(ocrPdf, ocrBuf);
+          const ocrText = await extractTextFromPdf(ocrPdf);
+          // Only adopt OCR output if it actually produced more
+          // text than the original — otherwise the original
+          // (possibly sparse but accurate) wins.
+          if (ocrText.length > text.length) {
+            text = ocrText;
+            ocrApplied = true;
+          }
+        } catch (err: any) {
+          ocrError = err?.code === 'OCRMYPDF_MISSING' ? 'ocrmypdf-missing' : 'ocr-failed';
+          log.warn({ err, pageCount, originalLength: text.length }, 'serve-intake OCR fallback failed');
+        }
+      }
+
       try { unlinkSync(tmpPdf); } catch { /* ignore */ }
+      try { unlinkSync(ocrPdf); } catch { /* ignore */ }
       try { require('fs').rmdirSync(tmpDir); } catch { /* ignore */ }
-      res.json({ text, length: text.length });
-    } catch {
+      res.json({ text, length: text.length, ocrApplied, pageCount, ocrError });
+    } catch (err) {
+      log.error({ err }, 'serve-intake text extraction failed');
       res.status(500).json({ error: 'Text extraction failed', text: '' });
     }
+  });
+});
+
+// ── Health probe: does this server have the OCR toolchain? ──
+// Same pattern as the qpdf health probe. Lets the client surface
+// a setup-help UI when the VPS hasn't had `apt install ocrmypdf
+// tesseract-ocr` run on it yet.
+router.get('/health', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (_req: Request, res: Response) => {
+  const [ocrmypdf, tesseract] = await Promise.all([isOcrmypdfAvailable(), isTesseractAvailable()]);
+  res.json({
+    pdftotext: true, // pdftotext is a base-image dep; we assume it
+    ocrmypdf,
+    tesseract,
+    ocrReady: ocrmypdf && tesseract,
   });
 });
 
