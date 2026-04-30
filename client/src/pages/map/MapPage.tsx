@@ -1409,18 +1409,84 @@ export default function MapPage() {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;color:#5a6e80;">No units assigned</div>`;
               }
 
+              // ── Time received ("5m ago" / "1h 12m ago" / "now") ──
+              const receivedMs = call.created_at ? new Date(call.created_at).getTime() : NaN;
+              const ageSec = !isNaN(receivedMs) ? Math.max(0, Math.floor((Date.now() - receivedMs) / 1000)) : null;
+              const ageStr = ageSec == null ? '—'
+                : ageSec < 60 ? `${ageSec}s ago`
+                : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m ago`
+                : ageSec < 86400 ? `${Math.floor(ageSec / 3600)}h ${Math.floor((ageSec % 3600) / 60)}m ago`
+                : `${Math.floor(ageSec / 86400)}d ago`;
+              const receivedTime = !isNaN(receivedMs)
+                ? new Date(receivedMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+                : '';
+
+              // ── Hazard / officer-safety flags (aggregate into one red banner) ──
+              const hazardFlags: string[] = [];
+              if (call.officer_safety_caution) hazardFlags.push('OFFICER SAFETY');
+              if (call.weapons_involved) hazardFlags.push(`WEAPONS: ${escapeHtml(String(call.weapons_involved))}`);
+              if (call.felony_in_progress) hazardFlags.push('FELONY IN PROGRESS');
+              if (call.domestic_violence) hazardFlags.push('DOMESTIC');
+              if (call.hazmat) hazardFlags.push('HAZMAT');
+              if (call.mental_health_crisis) hazardFlags.push('MENTAL HEALTH CRISIS');
+              if (call.gang_related) hazardFlags.push('GANG');
+              const hazardHtml = hazardFlags.length > 0
+                ? `<div style="margin-top:8px;padding:6px 8px;background:#7f1d1d33;border-left:3px solid #ef4444;font-size:9px;font-weight:900;color:#fca5a5;letter-spacing:0.5px;">
+                     ⚠ ${hazardFlags.join(' · ')}
+                   </div>`
+                : '';
+
+              // ── Beat / Sector geography ──
+              const geographyHtml = (call.beat_name || call.sector_name)
+                ? `<div style="margin-top:6px;font-size:9px;color:#9ca3af;font-family:monospace;">
+                     ${call.beat_name ? `BEAT <span style="color:#d4a017;font-weight:bold;">${escapeHtml(call.beat_name)}</span>` : ''}
+                     ${call.beat_name && call.sector_name ? '<span style="color:#3a3a3a;margin:0 6px;">|</span>' : ''}
+                     ${call.sector_name ? `SECTOR <span style="color:#d4a017;font-weight:bold;">${escapeHtml(call.sector_name)}</span>` : ''}
+                   </div>`
+                : '';
+
+              // ── Cross-street / notes line ──
+              const crossHtml = call.cross_street
+                ? `<div style="font-size:9px;margin-top:3px;color:#9ca3af;font-family:monospace;">↳ Cross: ${escapeHtml(call.cross_street)}</div>`
+                : '';
+
+              // ── Status pill color ──
+              const statusColors: Record<string, string> = {
+                pending: '#facc15', dispatched: '#06b6d4', enroute: '#06b6d4',
+                onscene: '#10b981', cleared: '#888888', closed: '#5a5a5a',
+              };
+              const statusKey = call.status.toLowerCase().replace(/_/g, '');
+              const statusBg = statusColors[statusKey] || '#888888';
+
               infoWindowRef.current?.setContent(`
-                <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
-                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-                    <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
-                    <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
+                <div style="min-width:280px;max-width:340px;font-family:'JetBrains Mono','Courier New',monospace;background:#0a0a0a;color:#e5e7eb;padding:0;border:1px solid ${pColor}60;border-radius:2px;overflow:hidden;">
+                  <!-- Header row: priority + call number + status + age -->
+                  <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:linear-gradient(180deg,#141414 0%,#0a0a0a 100%);border-bottom:1px solid ${pColor}33;">
+                    <span style="background:${pColor};color:#000;padding:2px 7px;font-size:10px;font-weight:900;letter-spacing:0.5px;border-radius:2px;">${escapeHtml(call.priority)}</span>
+                    <span style="font-size:11px;color:#d4a017;font-weight:bold;flex:1;">${escapeHtml(call.call_number)}</span>
+                    <span style="background:${statusBg}22;border:1px solid ${statusBg}66;color:${statusBg};padding:1px 6px;font-size:8px;font-weight:900;letter-spacing:1px;border-radius:2px;text-transform:uppercase;">${escapeHtml(call.status.replace(/_/g, ' '))}</span>
                   </div>
-                  <div style="font-size:12px;color:#a0a0a0;font-weight:bold;">${escapeHtml(call.call_number)}</div>
-                  <div style="font-size:10px;margin-top:4px;color:#d1d5db;">${escapeHtml(call.location_address)}</div>
-                  ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
-                  <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
-                  ${unitsHtml}
-                  ${nearestHtml}
+                  <div style="padding:8px 10px 4px 10px;">
+                    <!-- Incident type -->
+                    <div style="font-size:12px;font-weight:bold;color:${pColor};margin-bottom:6px;letter-spacing:0.3px;">${escapeHtml(formatIncidentType(call.incident_type))}</div>
+                    <!-- Address + cross-street -->
+                    <div style="font-size:10px;color:#d1d5db;line-height:1.4;">\u{1F4CD} ${escapeHtml(call.location_address)}</div>
+                    ${crossHtml}
+                    ${call.property_name ? `<div style="font-size:9px;margin-top:3px;color:#9ca3af;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
+                    <!-- Beat / Sector -->
+                    ${geographyHtml}
+                    <!-- Time received -->
+                    <div style="margin-top:6px;font-size:9px;color:#9ca3af;font-family:monospace;display:flex;align-items:center;gap:8px;">
+                      <span>\u{23F1} <span style="color:#d4a017;font-weight:bold;">${ageStr}</span></span>
+                      <span style="color:#3a3a3a;">|</span>
+                      <span style="color:#5a6e80;">${receivedTime}</span>
+                    </div>
+                  </div>
+                  ${hazardHtml}
+                  <div style="padding:0 10px 10px 10px;">
+                    ${unitsHtml}
+                    ${nearestHtml}
+                  </div>
                 </div>
               `);
               infoWindowRef.current?.setPosition({ lat: call.latitude!, lng: call.longitude! });
