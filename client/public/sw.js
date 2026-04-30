@@ -8,7 +8,41 @@
 //       area so maps work on vehicle WiFi dead zones.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v469';
+// v451: Traccar replaces OwnTracks as the dominant primary GPS source.
+//       /api/traccar (canonical) + /traccar (alias) accept Traccar
+//       Client (OsmAnd HTTP), Traccar Server forward-webhook, and
+//       generic flat JSON. /owntracks/* returns 410 Gone. Optional
+//       Traccar Server REST API pull mode (15-second poll) when
+//       traccar_server_url + email + password configured.
+// v452: Align Traccar config keys with prod schema (traccar_url/email/
+//       password/enabled/poll_interval). Migrate owntracks_pending_devices
+//       → traccar_pending_devices. Honor traccar_enabled toggle.
+// v453: /api/traccar/health route order fix (was shadowed by /:user).
+// v454: Traccar Server poller decrypts AES-encrypted email/password from
+//       system_config; top-level ESM import for poller; admin pull-status
+//       card with live OK/ERROR pill; non-secret config keys render as
+//       type=text; collapse traccar_pull_status to one row.
+// v455: Traccar historical bulk import — every column preserved, with
+//       map viewer (Historical GPS Tracks page + admin import section).
+// v456: Bug fixes — allow traccar_url/enabled/poll_interval through
+//       admin third-party-keys endpoint (URL save was rejected); fix
+//       fv.unit_number → fv.vehicle_number in /historical/devices.
+// v457: Mount /api/traccar webhook router AFTER admin router so the
+//       /:user/:device wildcard no longer shadows specific endpoints
+//       like /historical/devices, /devices, /mappings, /credentials.
+//       Webhook still receives bare /api/traccar?token= and any unmatched
+//       sub-paths from devices configured with /api/traccar/<u>/<d> URLs.
+// v458: Stop encrypting non-secret keys (traccar_url, traccar_enabled,
+//       traccar_poll_interval) when saved through admin third-party-keys.
+//       Poller reads them raw; encryption was producing "Failed to parse
+//       URL from <iv:tag:cipher>" errors in the pull-status panel.
+// v459: Fix second column-name bug in /api/traccar/historical/devices —
+//       fleet_vehicles uses plate_number, not license_plate.
+// v460: Historical tracks visual upgrade — speed-bucketed polyline gradient
+//       (6 colors blue→red), direction arrows along the track, distinct
+//       Start (S) and End (E) markers, idle/stop detection (≥2 min) marked
+//       with purple "P" pins, speed legend overlay in bottom-left corner.
+const CACHE_NAME = 'rmpg-flex-v460';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
