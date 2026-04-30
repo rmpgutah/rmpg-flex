@@ -871,15 +871,30 @@ router.get('/calls/active', requireRole('admin', 'manager', 'supervisor', 'offic
 router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    // serve_queue holds the legal-side fields (attorney_name, jurisdiction,
+    // deadline, time_window, service_instructions) that the PDF generator
+    // expects but calls_for_service doesn't have its own columns for. We
+    // pull the latest serve_queue row matched by call_id and project the
+    // fields onto the call response so the PDF print path sees them. Also
+    // override client_name from serve_queue when present (process-service
+    // calls don't link to a `clients` row).
     const call = db.prepare(`
       SELECT c.*, p.name as property_name, p.address as property_address,
         p.gate_code, p.alarm_code, p.emergency_contact, p.post_orders, p.hazard_notes,
         u.full_name as dispatcher_name,
-        cl.name as client_name
+        COALESCE(sq.client_name, cl.name) as client_name,
+        sq.attorney_name as attorney_name,
+        sq.jurisdiction as jurisdiction,
+        sq.deadline as deadline,
+        sq.time_window as time_window,
+        sq.service_instructions as service_instructions
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      LEFT JOIN serve_queue sq ON sq.id = (
+        SELECT id FROM serve_queue WHERE call_id = c.id ORDER BY id DESC LIMIT 1
+      )
       WHERE c.id = ?
     `).get(req.params.id) as any;
 

@@ -151,6 +151,23 @@ export function mapDbCall(row: any): CallForService {
     visit_history: row.visit_history || undefined,
     // Pinned-to-top flag (sticky at top of dispatcher's call list)
     pinned: row.pinned ? 1 : 0,
+    // ── PDF-required fields (carried so PrintRecordButton spread sees them) ──
+    // These are user-entered values that previously dropped silently between
+    // the server row and the PDF generator because the mapper only copied
+    // explicitly-listed columns. Cast through `any` because CallForService
+    // doesn't (yet) declare them — PDF generator reads via spread and is
+    // tolerant of extras.
+    ...({
+      attorney_name: row.attorney_name || undefined,
+      jurisdiction: row.jurisdiction || undefined,
+      deadline: row.deadline || undefined,
+      time_window: row.time_window || undefined,
+      service_instructions: row.service_instructions || undefined,
+      pso_72hr_deadline: row.pso_72hr_deadline || undefined,
+      pso_72hr_notified: row.pso_72hr_notified || undefined,
+      dispatcher_name: row.dispatcher_name || undefined,
+      case_id: row.case_id ?? undefined,
+    } as any),
   };
 }
 

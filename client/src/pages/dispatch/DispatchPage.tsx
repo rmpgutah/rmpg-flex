@@ -2153,36 +2153,12 @@ export default function DispatchPage() {
   // NEW DISPATCH FEATURES
   // ═══════════════════════════════════════════════════════════════
 
-  // Feature 1: Auto-escalation timer — check pending calls and auto-escalate
-  const escalatedRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const checkEscalation = () => {
-      const now = Date.now();
-      for (const c of calls) {
-        if (c.status !== 'pending' || escalatedRef.current.has(c.id)) continue;
-        const age = now - new Date(c.created_at).getTime();
-        const ageMins = age / 60000;
-        let shouldEscalate = false;
-        if (c.priority === 'P3' && ageMins >= 15) shouldEscalate = true;
-        if (c.priority === 'P2' && ageMins >= 30) shouldEscalate = true;
-        if (c.priority === 'P4' && ageMins >= 20) shouldEscalate = true;
-        if (shouldEscalate && c.assigned_units.length === 0) {
-          escalatedRef.current.add(c.id);
-          apiFetch(`/dispatch/calls/${c.id}/escalate`, { method: 'POST' })
-            .then((result: any) => {
-              if (result) {
-                const updated = mapDbCall(result);
-                setCalls(prev => prev.map(pc => pc.id === c.id ? updated : pc));
-                addToast(`Call ${c.call_number} auto-escalated from ${c.priority} to ${updated.priority}`, 'warning');
-              }
-            })
-            .catch(() => { escalatedRef.current.delete(c.id); });
-        }
-      }
-    };
-    const interval = setInterval(checkEscalation, 30000); // Check every 30s
-    return () => clearInterval(interval);
-  }, [calls, addToast, handleArchive]);
+  // Auto-escalation timer was removed 2026-04-29 at user request — priority
+  // changes are now exclusively manual (PRI <call#> <level> command, priority
+  // dropdown in the detail pane, or the manual /escalate endpoint). The
+  // server-side POST /dispatch/calls/:id/escalate route is retained for
+  // dispatcher-initiated escalations; only the *automatic* time-based driver
+  // is gone.
 
   // Feature 4: Unit availability counter
   const unitAvailability = useMemo(() => {
