@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../RichTextArea';
 import {
   X, MapPin, FileText, Camera, Send, CheckCircle, AlertTriangle,
   Loader2, Navigation, Trash2,
@@ -583,7 +584,7 @@ export default function ServeAttemptModal({
             {/* Notes */}
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Notes</label>
-              <textarea
+              <RichTextArea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="Observations about the location, people present, etc."

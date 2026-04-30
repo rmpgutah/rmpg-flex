@@ -16,6 +16,74 @@ export class OfflineUnauthorizedError extends Error {
   }
 }
 
+// ─── Request Timeout ─────────────────────────────────────────
+// Default 60s — generous for flaky cellular but bounded so officers
+// don't wait minutes for the browser's default ~120s timeout to fire.
+// Callers can override per-request via apiFetch(url, { timeoutMs }).
+export const DEFAULT_FETCH_TIMEOUT_MS = 60_000;
+
+/**
+ * Thrown by `fetchWithTimeout` (and `apiFetch` / `apiFetchBlob` /
+ * `apiUploadFiles` indirectly) when a request exceeds its allotted
+ * `timeoutMs`. Callers can `instanceof TimeoutError` to surface a
+ * timeout-specific message instead of a generic network error.
+ */
+export class TimeoutError extends Error {
+  public readonly timeoutMs: number;
+  public readonly url: string;
+  constructor(timeoutMs: number, url: string) {
+    super(`Request to ${url} timed out after ${timeoutMs}ms`);
+    this.name = 'TimeoutError';
+    this.timeoutMs = timeoutMs;
+    this.url = url;
+  }
+}
+
+/**
+ * fetch() wrapped with an AbortController-backed timeout. On timeout,
+ * the underlying request is aborted and a TimeoutError is thrown.
+ * If the caller supplied their own `signal` (e.g. component unmount),
+ * we honor it: when their signal aborts we propagate the abort, but
+ * an external AbortError is rethrown unchanged (not as TimeoutError).
+ */
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  const { timeoutMs = DEFAULT_FETCH_TIMEOUT_MS, signal: externalSignal, ...rest } = init;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+
+  // If the caller supplied a signal, abort our controller when theirs fires.
+  let onExternalAbort: (() => void) | null = null;
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timer);
+      // Fast-path: caller already aborted before we started.
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    onExternalAbort = () => controller.abort();
+    externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
+
+  try {
+    return await fetch(url, { ...rest, signal: controller.signal });
+  } catch (err: any) {
+    if (err && err.name === 'AbortError') {
+      if (timedOut) throw new TimeoutError(timeoutMs, url);
+      // External abort (component unmount, etc.) — propagate as-is.
+      throw err;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (externalSignal && onExternalAbort) {
+      externalSignal.removeEventListener('abort', onExternalAbort);
+    }
+  }
+}
+
 // ─── Offline-capable endpoint detection ──────────────────────
 const OFFLINE_GET_PREFIXES = [
   '/api/dispatch/calls', '/api/dispatch/units', '/api/incidents',
@@ -70,7 +138,7 @@ const RETRY_DELAY_MS = 2000; // 2 seconds between retries
 
 async function fetchWithRetry(
   url: string,
-  init: RequestInit,
+  init: RequestInit & { timeoutMs?: number },
   retries = MAX_RETRIES,
 ): Promise<Response> {
   // Skip retries for large bodies (file uploads) — re-sending large payloads is wasteful
@@ -98,7 +166,9 @@ async function fetchWithRetry(
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const res = await fetch(url, init);
+        // Per-attempt timeout (not cumulative across retries) — if a single
+        // attempt hangs for `timeoutMs`, abort it and try again.
+        const res = await fetchWithTimeout(url, init);
         if (RETRY_STATUS_CODES.includes(res.status) && attempt < retries) {
           // Server is restarting — wait with exponential backoff and retry
           const delay = RETRY_DELAY_MS * Math.pow(2, attempt); // 2s → 4s → 8s
@@ -318,7 +388,7 @@ async function tryRefreshToken(): Promise<string | null> {
 // When running in Electron and offline, routes through local SQLite via IPC.
 export async function apiFetch<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
   const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const method = options?.method || 'GET';

@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../RichTextArea';
 import {
   Radar,
   BrainCircuit,
@@ -1256,7 +1257,7 @@ function BrandMonitorPanel() {
             </div>
             <div>
               <label className="block text-[10px] text-rmpg-400 mb-0.5">Competitor URLs (one per line)</label>
-              <textarea
+              <RichTextArea
                 value={formCompetitors} onChange={e => setFormCompetitors(e.target.value)}
                 className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none resize-none"
                 rows={2}
@@ -2075,7 +2076,7 @@ function EnrichPanel({ toolContext, setToolContext, switchTab }: PanelChainProps
       {/* Bulk Input */}
       {bulkMode && (
         <div className="space-y-2">
-          <textarea
+          <RichTextArea
             value={bulkInput}
             onChange={e => setBulkInput(e.target.value)}
             className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono resize-none"
@@ -2328,7 +2329,7 @@ function ResearcherPanel({ toolContext, setToolContext, switchTab }: PanelChainP
             <BookOpen className="w-3 h-3" /> Research
           </SmallBtn>
         </div>
-        <textarea
+        <RichTextArea
           value={questions}
           onChange={e => setQuestions(e.target.value)}
           className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none resize-none"
@@ -3956,7 +3957,7 @@ function ConnectorsPanel() {
           </div>
           <div>
             <label className="block text-[10px] text-rmpg-400 mb-0.5">Transform Prompt</label>
-            <textarea
+            <RichTextArea
               value={formPrompt} onChange={e => setFormPrompt(e.target.value)}
               rows={2}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none resize-none"
@@ -4118,7 +4119,7 @@ function RagEvalPanel() {
       {/* Questions */}
       <div>
         <label className="block text-[10px] text-rmpg-400 mb-0.5">Questions (one per line)</label>
-        <textarea
+        <RichTextArea
           value={questions}
           onChange={e => setQuestions(e.target.value)}
           rows={4}
@@ -4681,7 +4682,7 @@ function QaClusterPanel() {
       {/* Questions Input */}
       <div>
         <label className="block text-[10px] text-rmpg-400 mb-0.5">Questions (one per line)</label>
-        <textarea
+        <RichTextArea
           value={questionsInput}
           onChange={e => setQuestionsInput(e.target.value)}
           rows={6}
@@ -4929,7 +4930,7 @@ function ExtractPanel() {
       {batchMode && (
         <div className="space-y-1">
           <div className="text-[10px] text-rmpg-400">One URL per line (max 50)</div>
-          <textarea
+          <RichTextArea
             value={batchUrls}
             onChange={e => setBatchUrls(e.target.value)}
             className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1.5 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono resize-none"
@@ -5205,7 +5206,7 @@ function HtmlToMdPanel() {
           />
         </div>
       ) : (
-        <textarea
+        <RichTextArea
           value={htmlInput}
           onChange={e => setHtmlInput(e.target.value)}
           rows={5}
@@ -6024,7 +6025,7 @@ function ExamplesPanel() {
           </div>
           <div>
             <label className="block text-[10px] text-rmpg-400 mb-0.5">Config JSON</label>
-            <textarea
+            <RichTextArea
               value={formConfig} onChange={e => setFormConfig(e.target.value)}
               rows={4}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -6400,7 +6401,7 @@ function MendablePanel() {
           </div>
           <div>
             <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URLs * (one per line)</label>
-            <textarea
+            <RichTextArea
               value={formUrls} onChange={e => setFormUrls(e.target.value)}
               rows={3}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -6409,7 +6410,7 @@ function MendablePanel() {
           </div>
           <div>
             <label className="block text-[10px] text-rmpg-400 mb-0.5">System Prompt</label>
-            <textarea
+            <RichTextArea
               value={formPrompt} onChange={e => setFormPrompt(e.target.value)}
               rows={2}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -6605,7 +6606,7 @@ function NewsPanel() {
         </div>
         <div>
           <label className="block text-[10px] text-rmpg-400 mb-0.5">Sources (optional, one per line)</label>
-          <textarea
+          <RichTextArea
             value={sources} onChange={e => setSources(e.target.value)}
             rows={2}
             className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -6786,7 +6787,7 @@ function DraftsPanel() {
         </div>
         <div>
           <label className="block text-[10px] text-rmpg-400 mb-0.5">Source URLs (optional, one per line)</label>
-          <textarea
+          <RichTextArea
             value={sourceUrls} onChange={e => setSourceUrls(e.target.value)}
             rows={2}
             className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -6820,7 +6821,7 @@ function DraftsPanel() {
               <Clipboard className="w-3 h-3" /> Copy
             </SmallBtn>
           </div>
-          <textarea
+          <RichTextArea
             readOnly
             value={result.content}
             rows={12}
@@ -7347,7 +7348,7 @@ function AgentsPanel() {
           </div>
           <div>
             <label className="block text-[10px] text-rmpg-400 mb-0.5">Goal *</label>
-            <textarea
+            <RichTextArea
               value={formGoal} onChange={e => setFormGoal(e.target.value)}
               rows={2}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none"
@@ -9083,7 +9084,7 @@ function MendablePyPanel() {
           </div>
           <div>
             <label className="block text-[10px] text-rmpg-400 mb-0.5">URLs * (one per line)</label>
-            <textarea
+            <RichTextArea
               value={formUrls} onChange={e => setFormUrls(e.target.value)}
               rows={4}
               className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"
@@ -10397,7 +10398,7 @@ function AssistantPanel() {
         </div>
         <div>
           <label className="block text-[10px] text-rmpg-400 mb-0.5">Context URLs (optional, one per line)</label>
-          <textarea
+          <RichTextArea
             value={contextUrls} onChange={e => setContextUrls(e.target.value)}
             rows={3}
             className="w-full bg-surface-sunken border border-rmpg-600 rounded-sm px-2 py-1 text-xs text-white placeholder-rmpg-600 focus:border-orange-500/50 focus:outline-none font-mono"

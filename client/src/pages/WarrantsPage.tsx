@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   AlertTriangle,
   Plus,
@@ -1576,7 +1577,18 @@ export default function WarrantsPage() {
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
               </div>
-              <div className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors" onClick={() => { setActiveTab('warrants'); }}>
+              <div
+                role="button"
+                tabIndex={0}
+                className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors"
+                onClick={() => { setActiveTab('warrants'); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveTab('warrants');
+                  }
+                }}
+              >
                 <div className="text-2xl font-bold font-mono tabular-nums text-amber-400">
                   {expiringCount ?? '\u2014'}
                 </div>
@@ -3682,7 +3694,7 @@ export default function WarrantsPage() {
               {/* Charge Description */}
               <div>
                 <label className="field-label">Charge Description *</label>
-                <textarea
+                <RichTextArea
                   className="input-dark text-xs w-full min-h-[36px]"
                   rows={3}
                   value={formData.charge_description}
@@ -3723,7 +3735,7 @@ export default function WarrantsPage() {
               {/* Notes */}
               <div>
                 <label className="field-label">Notes</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
               </div>
 
               {/* Actions */}

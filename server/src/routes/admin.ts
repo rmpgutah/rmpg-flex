@@ -1900,8 +1900,15 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'plaid_api_key', 'clearbit_api_key', 'pipl_api_key', 'towerdata_api_key',
   // RapidAPI & Third-Party
   'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
-  // GPS Webhooks
-  'owntracks_webhook_token', 'traccar_webhook_token',
+  // GPS Webhooks (Traccar replaced OwnTracks 2026-04-29)
+  'traccar_webhook_token',
+  // Traccar Server REST API pull mode (optional). All four are accepted
+  // through this endpoint so the admin UI's per-field Save buttons work
+  // uniformly. URL/enabled/poll_interval are not secrets but are still
+  // routed through encryptValue() — that's harmless for short non-secret
+  // strings and keeps the storage path single.
+  'traccar_url', 'traccar_email', 'traccar_password',
+  'traccar_enabled', 'traccar_poll_interval',
 ];
 
 function encryptValue(plaintext: string): string {
@@ -1960,16 +1967,24 @@ router.put('/third-party-keys', requireRole('admin'), (req: Request, res: Respon
     }
 
     const db = getDb();
-    const encrypted = encryptValue(value.trim());
+    // Non-secret config keys are stored plain — they're consumed by code
+    // paths (e.g. the Traccar poller) that read raw values without
+    // decryption. Encrypting them would break those readers.
+    const NON_SECRET_KEYS = new Set([
+      'traccar_url',
+      'traccar_enabled',
+      'traccar_poll_interval',
+    ]);
+    const stored = NON_SECRET_KEYS.has(key) ? value.trim() : encryptValue(value.trim());
     const now = localNow();
 
     const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;
     if (existing) {
-      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(encrypted, now, key);
+      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(stored, now, key);
     } else {
       db.prepare(
         "INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 1, ?, ?)"
-      ).run(key, encrypted, now, now);
+      ).run(key, stored, now, now);
     }
 
     res.json({ success: true, message: `${key} saved` });
@@ -3521,6 +3536,28 @@ router.get('/config/all', requireRole('admin'), (req: Request, res: Response) =>
     const rows = db.prepare('SELECT * FROM system_config ORDER BY category, config_key').all();
     res.json({ configs: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Slice: GET /admin/traccar-pull-status — surface the poller heartbeat
+// for the admin UI without exposing the full system_config table.
+router.get('/traccar-pull-status', requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'traccar_pull_status' AND is_active = 1 LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    const urlRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'traccar_url' AND is_active = 1 LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    const value = row?.config_value ?? '';
+    let kind: 'ok' | 'error' | 'disabled' | 'unknown' = 'unknown';
+    if (value.startsWith('ok:')) kind = 'ok';
+    else if (value.startsWith('error:')) kind = 'error';
+    else if (value.startsWith('disabled:')) kind = 'disabled';
+    res.json({ status: value, kind, serverUrl: urlRow?.config_value ?? null });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'pull_status_failed' });
+  }
 });
 
 // 33. DELETE /admin/config/:key — Delete a config entry

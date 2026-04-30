@@ -104,19 +104,36 @@ export default function ShiftPlansPage() {
   const [staffingLevels, setStaffingLevels] = useState<any>(null);
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [shiftNotifs, setShiftNotifs] = useState<any[]>([]);
+  const [overtimeLoading, setOvertimeLoading] = useState(true);
 
   useEffect(() => {
     // Server mounts shiftPlanRoutes at /api/admin (see server/src/index.ts).
     // Legacy paths under /api/shift-plans/* 404 because that prefix is not mounted.
-    apiFetch('/api/admin/shift-swaps?status=pending').then(r => Array.isArray(r) ? setSwapRequests(r) : null).catch(() => {});
-    apiFetch('/api/admin/shift-notifications').then((r: any) => r?.notifications && setShiftNotifs(r.notifications)).catch(() => {});
-  }, []);
+    apiFetch('/api/admin/shift-swaps?status=pending')
+      .then(r => Array.isArray(r) ? setSwapRequests(r) : null)
+      .catch((err: any) => addToast(err?.message || 'Failed to load swap requests', 'error'));
+    apiFetch('/api/admin/shift-notifications')
+      .then((r: any) => r?.notifications && setShiftNotifs(r.notifications))
+      .catch((err: any) => addToast(err?.message || 'Failed to load shift notifications', 'error'));
+  }, [addToast]);
 
   useEffect(() => {
-    apiFetch(`/api/admin/staffing-levels?date=${selectedDate}`).then((r: any) => r && setStaffingLevels(r)).catch(() => {});
-    apiFetch(`/api/admin/shift-plans/conflicts/${selectedDate}`).then((r: any) => r?.conflicts && setConflicts(r.conflicts)).catch(() => {});
-    apiFetch(`/api/admin/shift-overtime?week_start=${selectedDate}`).then((r: any) => r && setOvertimeData(r)).catch(() => {});
-  }, [selectedDate]);
+    setOvertimeLoading(true);
+    let pending = 3;
+    const done = () => { pending -= 1; if (pending === 0) setOvertimeLoading(false); };
+    apiFetch(`/api/admin/staffing-levels?date=${selectedDate}`)
+      .then((r: any) => r && setStaffingLevels(r))
+      .catch((err: any) => addToast(err?.message || 'Failed to load staffing levels', 'error'))
+      .finally(done);
+    apiFetch(`/api/admin/shift-plans/conflicts/${selectedDate}`)
+      .then((r: any) => r?.conflicts && setConflicts(r.conflicts))
+      .catch((err: any) => addToast(err?.message || 'Failed to load conflicts', 'error'))
+      .finally(done);
+    apiFetch(`/api/admin/shift-overtime?week_start=${selectedDate}`)
+      .then((r: any) => r && setOvertimeData(r))
+      .catch((err: any) => addToast(err?.message || 'Failed to load overtime data', 'error'))
+      .finally(done);
+  }, [selectedDate, addToast]);
 
   // ── Computed ──
   const plansForDate = useMemo(() =>
@@ -583,6 +600,17 @@ export default function ShiftPlansPage() {
           </div>
         )}
 
+        {overtimeLoading ? (
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-2" aria-busy="true" aria-label="Loading shift metrics">
+            {[1, 2, 3, 4].map(i => (
+              <div
+                key={i}
+                className="h-[52px] bg-surface-raised animate-pulse"
+                style={{ borderRadius: '2px', border: '1px solid #222222' }}
+              />
+            ))}
+          </div>
+        ) : (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
           {/* Staffing Levels */}
           {staffingLevels?.levels?.map((level: any) => (
@@ -624,6 +652,7 @@ export default function ShiftPlansPage() {
             </div>
           )}
         </div>
+        )}
 
         {/* Conflict Details */}
         {conflicts.length > 0 && (

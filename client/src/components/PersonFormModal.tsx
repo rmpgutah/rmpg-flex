@@ -7,6 +7,7 @@ import { apiUploadFiles } from '../hooks/useApi';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
+import RichTextArea from './RichTextArea';
 interface PersonFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -648,28 +649,28 @@ export default function PersonFormModal({
 
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scars / Marks / Tattoos</label>
-            <textarea name="scars_marks_tattoos" rows={2} className="input-dark mt-1" placeholder="Describe location, type, and detail of any distinguishing marks" value={form.scars_marks_tattoos} onChange={handleChange} />
+            <RichTextArea name="scars_marks_tattoos" rows={2} className="input-dark mt-1" placeholder="Describe location, type, and detail of any distinguishing marks" value={form.scars_marks_tattoos} onChange={handleChange} />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tattoo Description</label>
-              <textarea name="tattoo_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of tattoos — location, design, text, color" value={form.tattoo_description} onChange={handleChange} />
+              <RichTextArea name="tattoo_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of tattoos — location, design, text, color" value={form.tattoo_description} onChange={handleChange} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scar Description</label>
-              <textarea name="scar_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of scars — location, size, type" value={form.scar_description} onChange={handleChange} />
+              <RichTextArea name="scar_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of scars — location, size, type" value={form.scar_description} onChange={handleChange} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Piercing Description</label>
-              <textarea name="piercing_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of piercings — location, type" value={form.piercing_description} onChange={handleChange} />
+              <RichTextArea name="piercing_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of piercings — location, type" value={form.piercing_description} onChange={handleChange} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Distinguishing Features</label>
-              <textarea name="distinguishing_features" rows={2} className="input-dark mt-1" placeholder="Any other distinguishing features — birthmarks, prosthetics, etc." value={form.distinguishing_features} onChange={handleChange} />
+              <RichTextArea name="distinguishing_features" rows={2} className="input-dark mt-1" placeholder="Any other distinguishing features — birthmarks, prosthetics, etc." value={form.distinguishing_features} onChange={handleChange} />
             </div>
           </div>
           <div>
@@ -1032,7 +1033,7 @@ export default function PersonFormModal({
 
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Notes</label>
-            <textarea name="medication_notes" rows={2} className="input-dark mt-1" placeholder="Known medications or medical needs" value={form.medication_notes} onChange={handleChange} />
+            <RichTextArea name="medication_notes" rows={2} className="input-dark mt-1" placeholder="Known medications or medical needs" value={form.medication_notes} onChange={handleChange} />
           </div>
         </>
       )}
@@ -1079,12 +1080,12 @@ export default function PersonFormModal({
 
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Associates</label>
-            <textarea name="known_associates" rows={2} className="input-dark mt-1" placeholder="Names of known associates" value={form.known_associates} onChange={handleChange} />
+            <RichTextArea name="known_associates" rows={2} className="input-dark mt-1" placeholder="Names of known associates" value={form.known_associates} onChange={handleChange} />
           </div>
 
           <div>
             <label className="text-[10px] text-red-400 uppercase font-semibold">Officer Safety / Caution Flags</label>
-            <textarea name="caution_flags" rows={2} className="input-dark mt-1" placeholder="Any officer safety concerns, violent history, weapons, etc." value={form.caution_flags} onChange={handleChange} />
+            <RichTextArea name="caution_flags" rows={2} className="input-dark mt-1" placeholder="Any officer safety concerns, violent history, weapons, etc." value={form.caution_flags} onChange={handleChange} />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1100,7 +1101,7 @@ export default function PersonFormModal({
 
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
-            <textarea name="notes" rows={4} className="input-dark mt-1" value={form.notes} onChange={handleChange} />
+            <RichTextArea name="notes" rows={4} className="input-dark mt-1" value={form.notes} onChange={handleChange} />
           </div>
         </>
       )}

@@ -4,9 +4,11 @@ import {
   ArrowLeft, Loader2, Upload, X, FolderPlus, Home, Search, Eye,
   Info, FileText, HardDrive, Clock, User, Hash, Shield, Film, Image, Music,
   Grid3X3, List, ArrowUpDown, CheckSquare, Square, Copy, Move,
-  BarChart3, Filter,
+  BarChart3, Filter, Pencil,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { apiFetch, authedImageUrl } from '../hooks/useApi';
+import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -34,6 +36,7 @@ interface FileItem {
 export default function DocumentsPage() {
   const { user } = useAuth();
   const { addToast } = useToast();
+  const navigate = useNavigate();
   const [folders, setFolders] = useState<Folder[]>([]);
   const [files, setFiles] = useState<FileItem[]>([]);
   const [breadcrumbs, setBreadcrumbs] = useState<{ id: number; name: string }[]>([]);
@@ -368,6 +371,13 @@ export default function DocumentsPage() {
               </button>
             )}
 
+            {/* Apps shelf — integrated tools that operate on the documents
+                in this folder. The PDF Editor is the first integrated app;
+                future apps (image annotator, video reviewer) can drop in here. */}
+            {!searchQuery && (
+              <DocumentsAppsShelf currentFolderId={currentFolderId} />
+            )}
+
             {/* Folders */}
             {filteredFolders.map(folder => (
               <div key={folder.id}
@@ -429,6 +439,16 @@ export default function DocumentsPage() {
                 {/* Hover actions */}
                 <div className="absolute top-1 right-1 flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
                   <button type="button" onClick={() => setInfoFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-amber-400"><Info className="w-3 h-3" /></button>
+                  {file.mime_type === 'application/pdf' && (
+                    <button type="button"
+                      title="Edit PDF"
+                      onClick={() => {
+                        const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name });
+                        if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+                        navigate(`/pdf-editor?${params.toString()}`);
+                      }}
+                      className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-[#d4a017]"><Pencil className="w-3 h-3" /></button>
+                  )}
                   <a href={authedImageUrl(`/api/uploads/${file.file_id}/download`)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-green-400"><Download className="w-3 h-3" /></a>
                   {isAdmin && <button type="button" onClick={() => deleteFile(file)} className="p-0.5 bg-rmpg-800/80 hover:bg-rmpg-600 text-rmpg-400 hover:text-red-400"><Trash2 className="w-3 h-3" /></button>}
                 </div>
@@ -451,11 +471,39 @@ export default function DocumentsPage() {
                     className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-amber-400 transition-colors" title="File details">
                     <Info className="w-3 h-3" />
                   </button>
-                  {canPreview(file.mime_type) && (
+                  {file.mime_type === 'application/pdf' ? (
+                    /* Route PDF previews through the internal viewer (PDF.js
+                       loaded as a Web Worker, runs locally) instead of the
+                       browser's native viewer (Chrome's PDFium / etc). This
+                       keeps the entire view + edit experience consistent
+                       across browsers and platforms, with no Google
+                       components in the loop. */
+                    <button type="button"
+                      title="View"
+                      onClick={() => {
+                        const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name, view: '1' });
+                        if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+                        navigate(`/pdf-editor?${params.toString()}`);
+                      }}
+                      className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400 transition-colors">
+                      <Eye className="w-3 h-3" />
+                    </button>
+                  ) : canPreview(file.mime_type) ? (
                     <a href={authedImageUrl(`/api/uploads/${file.file_id}`)} target="_blank" rel="noopener noreferrer"
                       className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-brand-400 transition-colors" title="View">
                       <Eye className="w-3 h-3" />
                     </a>
+                  ) : null}
+                  {file.mime_type === 'application/pdf' && (
+                    <button type="button"
+                      onClick={() => {
+                        const params = new URLSearchParams({ fileId: file.file_id, name: file.original_name });
+                        if (currentFolderId != null) params.set('folderId', String(currentFolderId));
+                        navigate(`/pdf-editor?${params.toString()}`);
+                      }}
+                      className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-[#d4a017] transition-colors" title="Edit PDF">
+                      <Pencil className="w-3 h-3" />
+                    </button>
                   )}
                   <a href={authedImageUrl(`/api/uploads/${file.file_id}/download`)}
                     className="p-1 hover:bg-rmpg-600 text-rmpg-400 hover:text-green-400 transition-colors" title="Download">

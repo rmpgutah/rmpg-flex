@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import RichTextArea from '../RichTextArea';
 import {
   Search,
   Plus,
@@ -644,9 +645,15 @@ export default function LeadsTab() {
                   {selectedLead.source_id && <span className="text-[10px] text-rmpg-400 font-mono">#{selectedLead.source_id}</span>}
                 </div>
                 {selectedLead.source_url && (
-                  <a href={/^https?:\/\//i.test(selectedLead.source_url) ? selectedLead.source_url : '#'} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-400 hover:underline flex items-center gap-1">
-                    <ExternalLink className="w-3 h-3" /> View Source
-                  </a>
+                  /^https?:\/\//i.test(selectedLead.source_url) ? (
+                    <a href={selectedLead.source_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-brand-400 hover:underline flex items-center gap-1">
+                      <ExternalLink className="w-3 h-3" /> View Source
+                    </a>
+                  ) : (
+                    <span className="text-[10px] text-rmpg-500 opacity-50 cursor-not-allowed flex items-center gap-1" title="Source URL unavailable">
+                      <ExternalLink className="w-3 h-3" /> View Source (unavailable)
+                    </span>
+                  )
                 )}
               </div>
 
@@ -682,7 +689,7 @@ export default function LeadsTab() {
               {/* Notes */}
               <div className="panel-beveled p-2">
                 <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-1">Notes</div>
-                <textarea
+                <RichTextArea
                   value={editNotes}
                   onChange={e => setEditNotes(e.target.value)}
                   rows={3}
@@ -709,7 +716,7 @@ export default function LeadsTab() {
                   onChange={e => setNewNoteSubject(e.target.value)}
                   className="w-full bg-[#0c0c0c] border border-rmpg-700 text-white text-xs px-2 py-1 rounded-sm focus:border-brand-500 focus:outline-none mb-1"
                 />
-                <textarea
+                <RichTextArea
                   placeholder="Details (optional)"
                   value={newNoteDetails}
                   onChange={e => setNewNoteDetails(e.target.value)}
@@ -905,7 +912,7 @@ export default function LeadsTab() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Notes</label>
-                <textarea
+                <RichTextArea
                   value={createForm.notes}
                   onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
                   rows={3}

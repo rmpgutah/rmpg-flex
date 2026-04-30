@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle,
   Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2, DollarSign, Fuel,
@@ -1196,7 +1197,7 @@ export default function FleetPage() {
                   <span className="ml-auto text-[10px] font-mono">{(pretripForm as any)[item.key] ? 'PASS' : 'FAIL'}</span>
                 </label>
               ))}
-              <textarea
+              <RichTextArea
                 value={pretripForm.notes}
                 onChange={e => setPretripForm(prev => ({ ...prev, notes: e.target.value }))}
                 className="input-dark w-full h-16 text-sm mt-2 min-h-[36px]"

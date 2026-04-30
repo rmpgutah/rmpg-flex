@@ -58,6 +58,7 @@ import AdminRadioTab from './admin/AdminRadioTab';
 import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
+import AdminEvidenceTab from './admin/AdminEvidenceTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
 import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
@@ -233,7 +234,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'dashboard' | 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode';
+type TabId = 'dashboard' | 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'evidence';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -683,6 +684,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
         { id: 'iped', label: 'IPED', icon: ClipboardList },
+        { id: 'evidence', label: 'Evidence Chain', icon: Shield },
       ],
     },
     {
@@ -933,6 +935,14 @@ export default function AdminPage() {
 
         {activeTab === 'clearpathgps' && (
           <AdminClearPathGpsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'evidence' && (
+          <AdminEvidenceTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
