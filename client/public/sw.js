@@ -32,7 +32,11 @@
 //       like /historical/devices, /devices, /mappings, /credentials.
 //       Webhook still receives bare /api/traccar?token= and any unmatched
 //       sub-paths from devices configured with /api/traccar/<u>/<d> URLs.
-const CACHE_NAME = 'rmpg-flex-v457';
+// v458: Stop encrypting non-secret keys (traccar_url, traccar_enabled,
+//       traccar_poll_interval) when saved through admin third-party-keys.
+//       Poller reads them raw; encryption was producing "Failed to parse
+//       URL from <iv:tag:cipher>" errors in the pull-status panel.
+const CACHE_NAME = 'rmpg-flex-v458';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit

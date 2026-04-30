@@ -1967,16 +1967,24 @@ router.put('/third-party-keys', requireRole('admin'), (req: Request, res: Respon
     }
 
     const db = getDb();
-    const encrypted = encryptValue(value.trim());
+    // Non-secret config keys are stored plain — they're consumed by code
+    // paths (e.g. the Traccar poller) that read raw values without
+    // decryption. Encrypting them would break those readers.
+    const NON_SECRET_KEYS = new Set([
+      'traccar_url',
+      'traccar_enabled',
+      'traccar_poll_interval',
+    ]);
+    const stored = NON_SECRET_KEYS.has(key) ? value.trim() : encryptValue(value.trim());
     const now = localNow();
 
     const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;
     if (existing) {
-      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(encrypted, now, key);
+      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(stored, now, key);
     } else {
       db.prepare(
         "INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 1, ?, ?)"
-      ).run(key, encrypted, now, now);
+      ).run(key, stored, now, now);
     }
 
     res.json({ success: true, message: `${key} saved` });
