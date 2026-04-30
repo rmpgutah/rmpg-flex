@@ -1696,13 +1696,18 @@ export default function MapPage() {
         ];
 
     try { // Fix 10: try/catch around heatmap creation
+      // ── Visual: heatmap as soft haze, not hard rings ──
+      // Smaller radius + lower opacity + maxIntensity ceiling collapses the
+      // per-point bright halos that read as "circles" at typical zoom. The
+      // gradient still conveys density; it just doesn't bloom into discs.
       const heatmap = new google.maps.visualization.HeatmapLayer({
         data: weightedData,
         map,
-        radius: 30,
-        opacity: 0.7,
+        radius: 14,
+        opacity: 0.28,
         gradient,
-        dissipating: true, // Fix 13: ensure dissipating is always true
+        dissipating: true,
+        maxIntensity: 8,
       });
 
       heatmapLayerRef.current = heatmap;
@@ -3723,7 +3728,7 @@ export default function MapPage() {
             {/* ── Speed Analytics ── */}
             {showBreadcrumbs && (
               <div className="border-t border-rmpg-700 p-1.5">
-                <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Speed Analytics</div>
+                <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Speed Analytics</div>
 
                 {/* Violations badge */}
                 {speedAnalytics.unacknowledgedCount > 0 && (
@@ -3801,7 +3806,7 @@ export default function MapPage() {
 
             {/* ── Intelligence Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
+              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Intelligence</div>
               {([
                 { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
                 { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
@@ -3826,7 +3831,7 @@ export default function MapPage() {
 
             {/* ── History Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">History</div>
+              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">History</div>
 
               {/* Call History */}
               <button
@@ -3962,7 +3967,7 @@ export default function MapPage() {
 
             {/* ── Analysis ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
+              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Analysis</div>
 
               {/* Predictions */}
               <button
@@ -4038,7 +4043,7 @@ export default function MapPage() {
 
             {/* ── Tactical Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Tactical</div>
+              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Tactical</div>
 
               {/* Patrol Checkpoints */}
               <button
