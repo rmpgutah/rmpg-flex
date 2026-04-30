@@ -7,7 +7,7 @@
 //       is the sole map surface (2026-04-29).
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v451';
+const CACHE_NAME = 'rmpg-flex-v450';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
