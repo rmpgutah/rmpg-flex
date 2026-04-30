@@ -246,3 +246,50 @@ export function mapClearPathStatusCode(statusCode: string | null | undefined): {
       return null;
   }
 }
+
+/**
+ * Map a Traccar `attributes.alarm` string (or `attributes.event`) to
+ * a normalized event_type. Returns null for unknown alarms or
+ * non-events-of-interest (e.g. routine 'movement' / undefined),
+ * which the caller uses as the "skip dual-write" signal — we don't
+ * want every position fix becoming a driving_events row, only the
+ * ones Traccar flagged as something happened.
+ *
+ * Source: Traccar 5.x alarm vocabulary (camelCase). Extend as new
+ * device protocols emit alarms we want to surface.
+ */
+export function mapTraccarAlarm(alarm: string | null | undefined): {
+  type: DrivingEventType;
+  severity: DrivingEventSeverity;
+} | null {
+  if (!alarm) return null;
+  const a = String(alarm);
+
+  switch (a) {
+    case 'hardBraking':
+      return { type: 'hard_brake', severity: 'warning' };
+    case 'hardAcceleration':
+      return { type: 'hard_accel', severity: 'warning' };
+    case 'hardCornering':
+      return { type: 'hard_turn', severity: 'warning' };
+    case 'overspeed':
+      return { type: 'speeding', severity: 'warning' };
+    case 'sos':
+      return { type: 'sos', severity: 'critical' };
+    case 'accident':
+    case 'shock':
+      return { type: 'impact', severity: 'critical' };
+    case 'ignitionOn':
+      return { type: 'ignition_on', severity: 'info' };
+    case 'ignitionOff':
+      return { type: 'ignition_off', severity: 'info' };
+    case 'tampering':
+    case 'powerCut':
+      // Tamper / power-cut on a fleet GPS unit may indicate theft
+      // attempt or device disablement — alert-level so it surfaces
+      // in dispatch but not critical (no immediate officer-safety).
+      return { type: 'custom', severity: 'alert' };
+    default:
+      return null;
+  }
+}

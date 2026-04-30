@@ -4,6 +4,7 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import type { SupplementalReportType } from '../types';
 
+import RichTextArea from './RichTextArea';
 export interface SupplementFormData {
   report_type: SupplementalReportType;
   subject: string;
@@ -98,7 +99,7 @@ export default function SupplementFormModal({
         </div>
         <div>
           <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-1">Narrative *</label>
-          <textarea
+          <RichTextArea
             className="textarea-dark w-full text-[11px]"
             rows={10}
             value={form.narrative}

@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../../components/RichTextArea';
 import {
   Star, Plus, Pencil, Trash2, Loader2, Search, TrendingUp, TrendingDown,
   Minus, Clock, AlertTriangle, BarChart3, MessageSquare, Check,
@@ -341,7 +342,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                 {/* Acknowledge section */}
                 {review.status === 'submitted' && (
                   <div className="border-t border-rmpg-700 pt-3 mt-3 space-y-2">
-                    <textarea
+                    <RichTextArea
                       value={ackComment[review.id] ?? ''}
                       onChange={(e) =>
                         setAckComment((prev) => ({ ...prev, [review.id]: e.target.value }))

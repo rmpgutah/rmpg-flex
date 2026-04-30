@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Building2, Plus, Edit2, Trash2, Users, Loader2, X, Search,
   ChevronRight, UserCircle,
@@ -277,7 +278,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
-                <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[60px] resize-y" placeholder="Department description..." />
+                <RichTextArea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[60px] resize-y" placeholder="Department description..." />
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">

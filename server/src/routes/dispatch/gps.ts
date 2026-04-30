@@ -15,14 +15,14 @@ import { identifyBeat } from '../../utils/geofence';
 const GEOFENCE_BREACH_CD_MS = 3 * 60_000;
 const lastGeofenceBreachAt = new Map<string, number>();
 
-// GPS source priority — higher number wins
+// GPS source priority — higher number wins. Traccar is the dominant
+// primary source as of 2026-04-29 (replaced OwnTracks).
 const GPS_SOURCE_PRIORITY: Record<string, number> = {
   browser_desktop: 1,
   browser: 1,       // legacy fallback
   browser_mobile: 2,
   clearpathgps: 3,
-  owntracks: 4,     // phone background GPS — most reliable, always-on
-  traccar: 4,       // alternative background tracker
+  traccar: 5,       // PRIMARY — Traccar Client / Traccar Server / OsmAnd protocol devices
 };
 const GPS_STALE_MS = 30_000; // 30 seconds — stale source can be overridden by lower priority
 
@@ -1018,222 +1018,250 @@ router.get('/gps/speed-stats', requireRole('admin', 'manager', 'supervisor'), (r
 });
 
 // ═════════════════════════════════════════════════════════════
-// OwnTracks / Traccar Webhook — Background GPS from iPhone/Android
+// Traccar Webhook — primary background GPS ingestion
 // ═════════════════════════════════════════════════════════════
+// Replaced OwnTracks 2026-04-29 (production failures).
+// Accepts THREE Traccar transports on the same endpoint:
+//   1. Traccar Client mobile app (OsmAnd HTTP protocol — query string)
+//   2. Traccar Server forward-webhook (JSON body with device + position)
+//   3. Generic flat-JSON shape (Traccar REST positions style)
 // Separate router mounted WITHOUT JWT auth in index.ts.
-// Uses own bearer token from system_config 'owntracks_webhook_token'.
+// Uses own bearer token from system_config 'traccar_webhook_token'.
 // ═════════════════════════════════════════════════════════════
-export const owntracksWebhookRouter = Router();
+export const traccarWebhookRouter = Router();
 
-// Handle all OwnTracks POST paths:
-//   /api/dispatch/gps/owntracks           (direct)
-//   /owntracks                             (short path)
-//   /owntracks/:user/:device               (OwnTracks appends /{user}/{device})
-const owntracksHandler = (req: Request, res: Response) => {
+/**
+ * Pure helper that ingests one normalized Traccar position. Used by both
+ * the HTTP webhook and the optional Traccar Server REST poller.
+ */
+export function ingestTraccarPosition(input: {
+  trackerId: string; lat: number; lng: number;
+  accuracy?: number | null; heading?: number | null;
+  speedMs?: number | null; timestamp?: string | null;
+}): { unit: any; speedMph: number | null } | { error: string } {
+  if (!isValidCoordinate(input.lat, input.lng)) return { error: 'Invalid coordinates' };
+  if (!input.trackerId) return { error: 'Missing tracker ID' };
+  const db = getDb();
+  let unit = db.prepare(
+    "SELECT id, call_sign, status, officer_id FROM units WHERE call_sign = ? OR call_sign LIKE ?",
+  ).get(input.trackerId, `%${input.trackerId}`) as any;
+  if (!unit) {
+    const mapping = db.prepare(
+      "SELECT unit_id FROM traccar_device_map WHERE tracker_id = ? LIMIT 1",
+    ).get(input.trackerId) as any;
+    if (mapping) {
+      unit = db.prepare(
+        'SELECT id, call_sign, status, officer_id FROM units WHERE id = ?',
+      ).get(mapping.unit_id);
+    }
+  }
+  if (!unit) return { error: `No unit mapped to tracker ID "${input.trackerId}"` };
+  const now = localNow();
+  const incomingPriority = GPS_SOURCE_PRIORITY['traccar'] ?? 5;
+  const currentGps = db.prepare(
+    'SELECT gps_source, gps_updated_at FROM units WHERE id = ?',
+  ).get(unit.id) as any;
+  const currentPriority = GPS_SOURCE_PRIORITY[currentGps?.gps_source] ?? 0;
+  const updatedAtMs = currentGps?.gps_updated_at ? new Date(currentGps.gps_updated_at).getTime() : NaN;
+  const currentAge = !isNaN(updatedAtMs) ? Date.now() - updatedAtMs : Infinity;
+  const shouldUpdateLive = incomingPriority >= currentPriority || currentAge > GPS_STALE_MS;
+  if (shouldUpdateLive) {
+    db.prepare(
+      'UPDATE units SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ? WHERE id = ?',
+    ).run(input.lat, input.lng, 'traccar', now, unit.id);
+  }
+  const updated = db.prepare(`
+    SELECT u.*, usr.full_name as officer_name, usr.badge_number
+    FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
+    WHERE u.id = ?
+  `).get(unit.id) as any;
+  db.prepare(`
+    INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
+      unit_status, call_sign, officer_name, badge_number, gps_source, recorded_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))
+  `).run(
+    unit.id, unit.officer_id, input.lat, input.lng,
+    input.accuracy ?? null, input.heading ?? null, input.speedMs ?? null,
+    updated?.status || unit.status, updated?.call_sign || unit.call_sign,
+    updated?.officer_name || null, updated?.badge_number || null,
+    'traccar', input.timestamp ?? null,
+  );
+  const speedMph = input.speedMs != null && Number.isFinite(input.speedMs)
+    ? Math.round(input.speedMs * 2.23694 * 10) / 10
+    : null;
+  if (shouldUpdateLive) {
+    broadcastUnitUpdate({ action: 'unit_position_update', unit: { ...updated, speed_mph: speedMph } });
+  }
+  if (speedMph != null && speedMph >= 80) {
+    broadcastAlert({
+      type: 'speed:alert',
+      severity: speedMph >= 100 ? 'critical' : 'warning',
+      label: speedMph >= 100 ? 'PURSUIT SPEED' : 'HIGH SPEED',
+      unit: updated?.call_sign || unit.call_sign,
+      unit_id: unit.id, speed_mph: speedMph,
+      latitude: input.lat, longitude: input.lng,
+      officer_name: updated?.officer_name || null,
+    });
+  }
+  return { unit: updated, speedMph };
+}
+
+/**
+ * Normalizes the three Traccar transports into the ingest shape:
+ *   1. OsmAnd HTTP query string (Traccar Client default — speed in knots)
+ *   2. Traccar Server forward-webhook JSON ({device, position})
+ *   3. Generic flat JSON (Traccar REST /api/positions)
+ */
+export function normalizeTraccarPayload(req: Request): {
+  trackerId: string; lat: number; lng: number;
+  accuracy: number | null; heading: number | null; speedMs: number | null;
+  timestamp: string | null;
+} | null {
+  if (typeof req.query.lat === 'string' && typeof req.query.lon === 'string') {
+    const lat = Number(req.query.lat);
+    const lng = Number(req.query.lon);
+    const trackerId = String(req.query.id ?? req.query.deviceid ?? '');
+    const speedKnots = req.query.speed != null ? Number(req.query.speed) : NaN;
+    const speedMs = Number.isFinite(speedKnots) ? speedKnots * 0.514444 : null;
+    const heading = req.query.bearing != null ? Number(req.query.bearing) : null;
+    const accuracy = req.query.accuracy != null ? Number(req.query.accuracy) : null;
+    const tsRaw = req.query.timestamp != null ? Number(req.query.timestamp) : NaN;
+    const timestamp = Number.isFinite(tsRaw) ? new Date(tsRaw * 1000).toISOString() : null;
+    return { trackerId, lat, lng, accuracy, heading, speedMs, timestamp };
+  }
+  const body: any = req.body;
+  if (!body || typeof body !== 'object') return null;
+  if (body.position && typeof body.position === 'object') {
+    const pos = body.position;
+    if (pos.latitude == null || pos.longitude == null) return null;
+    const trackerId = String(body.device?.uniqueId ?? body.device?.id ?? '');
+    const speedKnots = pos.speed != null ? Number(pos.speed) : NaN;
+    return {
+      trackerId,
+      lat: Number(pos.latitude),
+      lng: Number(pos.longitude),
+      accuracy: pos.accuracy != null ? Number(pos.accuracy) : null,
+      heading: pos.course != null ? Number(pos.course) : null,
+      speedMs: Number.isFinite(speedKnots) ? speedKnots * 0.514444 : null,
+      timestamp: pos.fixTime || pos.deviceTime || pos.serverTime || null,
+    };
+  }
+  if (body.latitude != null && body.longitude != null) {
+    const trackerId = String(body.id ?? body.deviceId ?? body.deviceid ?? body.uniqueId ?? '');
+    const speedKnots = body.speed != null ? Number(body.speed) : NaN;
+    return {
+      trackerId,
+      lat: Number(body.latitude),
+      lng: Number(body.longitude),
+      accuracy: body.accuracy != null ? Number(body.accuracy) : null,
+      heading: body.course != null ? Number(body.course)
+        : (body.bearing != null ? Number(body.bearing) : null),
+      speedMs: Number.isFinite(speedKnots) ? speedKnots * 0.514444 : null,
+      timestamp: body.deviceTime || body.fixTime || body.serverTime || null,
+    };
+  }
+  return null;
+}
+
+const traccarHandler = (req: Request, res: Response) => {
   try {
     const db = getDb();
 
-    // ── Auth: accept Bearer token, HTTP Basic Auth (OwnTracks default),
-    //         or ?token= query string (simpler OwnTracks setup) ──
+    // ── Auth: Bearer header, Basic auth password field, or ?token= query string ──
     const authHeader = req.headers.authorization || '';
     let token = '';
     if (authHeader.startsWith('Bearer ')) {
       token = authHeader.slice(7).trim();
     } else if (authHeader.startsWith('Basic ')) {
-      // OwnTracks sends Basic auth — password field is the token
       try {
         const decoded = Buffer.from(authHeader.slice(6), 'base64').toString();
-        // Format: "username:password" — we use the password as the token
         const colonIdx = decoded.indexOf(':');
         token = colonIdx >= 0 ? decoded.slice(colonIdx + 1) : decoded;
       } catch { /* invalid base64 */ }
     } else if (typeof req.query.token === 'string' && req.query.token.length > 0) {
-      // Query-string auth — easier to configure in OwnTracks (just append
-      // ?token=xxx to the URL instead of setting username/password).
       token = req.query.token;
-    } else if (typeof req.headers['x-limit-u'] === 'string' && typeof req.headers['x-limit-d'] === 'string') {
-      // OwnTracks-mode quirk: in HTTP mode without Basic auth, OT may send
-      // X-Limit-U (user) and X-Limit-D (device) headers. We don't trust
-      // these as auth alone — but if a token query is also present, accept.
-      // (Falls through; left as no-op if no token is also present.)
     }
     if (!token) {
       res.status(401).json({
         error: 'Authentication required',
-        hint: 'Set Basic auth in OwnTracks (password = webhook token), use a Bearer header, or append ?token=YOUR_TOKEN to the URL. Get the token from Admin \u2192 Integrations \u2192 OwnTracks.',
+        hint: 'Configure your Traccar URL as https://rmpgutah.us/api/traccar?token=<TOKEN>, or send a Bearer header. Token is in Admin → Integrations → Traccar.',
       });
       return;
     }
 
-    // Check token against system_config
     const storedRow = db.prepare(
-      "SELECT config_value FROM system_config WHERE config_key = 'owntracks_webhook_token' AND is_active = 1 LIMIT 1"
+      "SELECT config_value FROM system_config WHERE config_key = 'traccar_webhook_token' AND is_active = 1 LIMIT 1",
     ).get() as { config_value?: string } | undefined;
     if (!storedRow?.config_value) {
-      res.status(403).json({ error: 'OwnTracks webhook not configured — set token in Admin → Integrations' });
+      res.status(403).json({ error: 'Traccar webhook not configured — set token in Admin → Integrations' });
       return;
     }
-
     if (token !== storedRow.config_value) {
       res.status(403).json({ error: 'Invalid webhook token' });
       return;
     }
 
-    const body = req.body;
-    if (!body || typeof body !== 'object') {
-      res.json([]); // OwnTracks expects empty array on non-location messages
+    // ── Parse + ingest ──
+    const normalized = normalizeTraccarPayload(req);
+    if (!normalized) {
+      // Non-location event (transition, status). Acknowledge + drop.
+      res.json({ ok: true });
       return;
     }
-
-    // ── Determine payload format ──
-    let lat: number, lng: number, accuracy: number | null = null, heading: number | null = null;
-    let speed: number | null = null, battery: number | null = null;
-    let trackerId: string = '', timestamp: string | null = null;
-    let source: string = 'owntracks';
-
-    if (body._type === 'location' || (body.lat && body.lon)) {
-      // OwnTracks format
-      lat = Number(body.lat);
-      lng = Number(body.lon);
-      accuracy = body.acc != null ? Number(body.acc) : null;
-      speed = body.vel != null ? Number(body.vel) / 3.6 : null; // km/h → m/s
-      heading = body.cog != null ? Number(body.cog) : null;
-      battery = body.batt != null ? Number(body.batt) : null;
-      trackerId = body.tid || '';
-      timestamp = body.tst ? new Date(body.tst * 1000).toISOString() : null;
-      source = 'owntracks';
-    } else if (body.latitude != null && body.longitude != null) {
-      // Traccar / generic format
-      lat = Number(body.latitude);
-      lng = Number(body.longitude);
-      accuracy = body.accuracy != null ? Number(body.accuracy) : null;
-      speed = body.speed != null ? Number(body.speed) : null; // already m/s
-      heading = body.course != null ? Number(body.course) : (body.bearing != null ? Number(body.bearing) : null);
-      trackerId = body.id || body.deviceId || '';
-      timestamp = body.deviceTime || body.fixTime || body.serverTime || null;
-      source = 'traccar';
-    } else {
-      // Not a location message — OwnTracks sends transitions, waypoints, etc.
-      res.json([]);
+    const result = ingestTraccarPosition(normalized);
+    if ('error' in result) {
+      const code = result.error.startsWith('No unit mapped') ? 404 : 400;
+      res.status(code).json({ error: result.error });
       return;
     }
-
-    if (!isValidCoordinate(lat, lng)) {
-      res.status(400).json({ error: 'Invalid coordinates' });
-      return;
-    }
-
-    // ── Map tracker ID to unit ──
-    // Look up unit by call_sign matching the tracker ID, or by owntracks_tid column
-    let unit = db.prepare(
-      "SELECT id, call_sign, status, officer_id FROM units WHERE call_sign = ? OR call_sign LIKE ?"
-    ).get(trackerId, `%${trackerId}`) as any;
-
-    if (!unit) {
-      // Try the owntracks_tid mapping table
-      const mapping = db.prepare(
-        "SELECT unit_id FROM owntracks_device_map WHERE tracker_id = ? LIMIT 1"
-      ).get(trackerId) as any;
-      if (mapping) {
-        unit = db.prepare('SELECT id, call_sign, status, officer_id FROM units WHERE id = ?').get(mapping.unit_id);
-      }
-    }
-
-    if (!unit) {
-      res.status(404).json({ error: `No unit mapped to tracker ID "${trackerId}". Add mapping in Admin or set call_sign to match.` });
-      return;
-    }
-
-    const now = localNow();
-    const gpsSource = source;
-    const incomingPriority = GPS_SOURCE_PRIORITY[gpsSource] ?? 4;
-
-    // GPS source priority check
-    const currentGps = db.prepare('SELECT gps_source, gps_updated_at FROM units WHERE id = ?').get(unit.id) as any;
-    const currentPriority = GPS_SOURCE_PRIORITY[currentGps?.gps_source] ?? 0;
-    const updatedAtMs = currentGps?.gps_updated_at ? new Date(currentGps.gps_updated_at).getTime() : NaN;
-    const currentAge = !isNaN(updatedAtMs) ? Date.now() - updatedAtMs : Infinity;
-    const shouldUpdateLive = incomingPriority >= currentPriority || currentAge > GPS_STALE_MS;
-
-    if (shouldUpdateLive) {
-      db.prepare('UPDATE units SET latitude = ?, longitude = ?, gps_source = ?, gps_updated_at = ? WHERE id = ?')
-        .run(lat, lng, gpsSource, now, unit.id);
-    }
-
-    // Fetch full unit for broadcast
-    const updated = db.prepare(`
-      SELECT u.*, usr.full_name as officer_name, usr.badge_number
-      FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
-      WHERE u.id = ?
-    `).get(unit.id) as any;
-
-    // Insert breadcrumb
-    db.prepare(`
-      INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed,
-        unit_status, call_sign, officer_name, badge_number, gps_source, recorded_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))
-    `).run(
-      unit.id, unit.officer_id, lat, lng, accuracy, heading, speed,
-      updated?.status || unit.status, updated?.call_sign || unit.call_sign,
-      updated?.officer_name || null, updated?.badge_number || null,
-      gpsSource, timestamp,
-    );
-
-    // Broadcast
-    const speedMph = speed != null && Number.isFinite(speed) ? Math.round(speed * 2.23694 * 10) / 10 : null;
-    if (shouldUpdateLive) {
-      broadcastUnitUpdate({ action: 'unit_position_update', unit: { ...updated, speed_mph: speedMph } });
-    }
-
-    // Speed alert
-    if (speedMph != null && speedMph >= 80) {
-      broadcastAlert({
-        type: 'speed:alert',
-        severity: speedMph >= 100 ? 'critical' : 'warning',
-        label: speedMph >= 100 ? 'PURSUIT SPEED' : 'HIGH SPEED',
-        unit: updated?.call_sign || unit.call_sign,
-        unit_id: unit.id,
-        speed_mph: speedMph,
-        latitude: lat, longitude: lng,
-        officer_name: updated?.officer_name || null,
-      });
-    }
-
-    // OwnTracks expects empty JSON array response
-    res.json([]);
+    res.json({ ok: true, callSign: result.unit?.call_sign ?? null });
   } catch (error: any) {
-    console.error('[GPS] OwnTracks webhook error:', error?.message || error);
+    console.error('[GPS] Traccar webhook error:', error?.message || error);
     res.status(500).json({ error: 'Webhook processing failed' });
   }
 };
 
-// Rate limit OwnTracks GPS webhook.
-// Key by :user/:device URL params when present so each officer's phone has
-// its own bucket — critical when multiple officers share a corporate NAT/VPN
-// egress IP (naive IP keying would let one noisy device starve the rest).
-// Fall back to IP (IPv6 /64-masked via ipKeyGenerator) for the bare /owntracks
-// path with no params. 300/min = 5 req/sec per device, generous for tactical
-// pursuit streams while still catching runaway devices.
-const owntracksWebhookLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 300,            // 5 req/sec per device
+// Rate limit Traccar webhook. Key by :user/:device URL params when present
+// or by ?id= query param; fall back to IPv6 /64-masked IP. 300/min = 5/sec
+// per device, generous for pursuit streams.
+const traccarWebhookLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 300,
   standardHeaders: true,
   legacyHeaders: false,
   keyGenerator: (req) => {
     const user = typeof req.params.user === 'string' ? req.params.user : '';
     const device = typeof req.params.device === 'string' ? req.params.device : '';
-    if (user || device) return `owntracks:device:${user}/${device}`;
-    return `owntracks:ip:${ipKeyGenerator(req.ip || '')}`;
+    if (user || device) return `traccar:device:${user}/${device}`;
+    const qid = typeof req.query.id === 'string' ? req.query.id : '';
+    if (qid) return `traccar:device:${qid}`;
+    return `traccar:ip:${ipKeyGenerator(req.ip || '')}`;
   },
-  message: { error: 'Too many OwnTracks webhook requests, please try again later.' },
+  message: { error: 'Too many Traccar webhook requests, please try again later.' },
 });
 
-owntracksWebhookRouter.post('/owntracks', owntracksWebhookLimiter, owntracksHandler);
-owntracksWebhookRouter.post('/owntracks/:user', owntracksWebhookLimiter, owntracksHandler);
-owntracksWebhookRouter.post('/owntracks/:user/:device', owntracksWebhookLimiter, owntracksHandler);
-owntracksWebhookRouter.post('/', owntracksWebhookLimiter, owntracksHandler);                    // /owntracks (mounted at /owntracks)
-owntracksWebhookRouter.post('/:user', owntracksWebhookLimiter, owntracksHandler);               // /owntracks/:user
-owntracksWebhookRouter.post('/:user/:device', owntracksWebhookLimiter, owntracksHandler);       // /owntracks/:user/:device
+// Auth-free reachability probe — must register BEFORE /:user wildcards.
+traccarWebhookRouter.get('/health', (_req, res) => res.json({ ok: true, primary: 'traccar' }));
+traccarWebhookRouter.post('/', traccarWebhookLimiter, traccarHandler);
+traccarWebhookRouter.post('/:user', traccarWebhookLimiter, traccarHandler);
+traccarWebhookRouter.post('/:user/:device', traccarWebhookLimiter, traccarHandler);
+// Traccar Client OsmAnd protocol uses GET; accept both verbs.
+traccarWebhookRouter.get('/', traccarWebhookLimiter, traccarHandler);
+traccarWebhookRouter.get('/:user', traccarWebhookLimiter, traccarHandler);
+traccarWebhookRouter.get('/:user/:device', traccarWebhookLimiter, traccarHandler);
+
+// ── Deprecation router for /owntracks/* — returns 410 Gone with migration JSON ──
+export const owntracksDeprecatedRouter = Router();
+const goneHandler = (_req: Request, res: Response) => {
+  res.status(410).json({
+    error: 'OwnTracks endpoint removed',
+    migrateTo: '/api/traccar',
+    hint: 'Reconfigure your tracker to https://rmpgutah.us/api/traccar?token=<TOKEN>. See Admin → Integrations → Traccar.',
+  });
+};
+owntracksDeprecatedRouter.all('/', goneHandler);
+owntracksDeprecatedRouter.all('/:user', goneHandler);
+owntracksDeprecatedRouter.all('/:user/:device', goneHandler);
 // ═══════════════════════════════════════════════════════════════════════
 // SPEED ZONES CRUD
 // ═══════════════════════════════════════════════════════════════════════

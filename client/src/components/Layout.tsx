@@ -171,6 +171,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
     { path: '/serve', icon: Briefcase, label: 'Process Server' },
     { path: '/documents', icon: FolderOpen, label: 'Documents' },
+    { path: '/pdf-editor', icon: FileText, label: 'PDF Editor' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },

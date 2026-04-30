@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 
+import RichTextArea from '../components/RichTextArea';
 interface UofReport {
   id: number; incident_id?: number; officer_id: number; subject_person_id?: number;
   force_type: string; force_level?: string; justification?: string;
@@ -322,7 +323,7 @@ export default function UseOfForcePage() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Justification</label>
-                <textarea className="input-dark text-xs w-full mt-1" rows={3} value={form.justification} onChange={e => setForm(f => ({ ...f, justification: e.target.value }))} placeholder="Legal justification for use of force..." />
+                <RichTextArea className="input-dark text-xs w-full mt-1" rows={3} value={form.justification} onChange={e => setForm(f => ({ ...f, justification: e.target.value }))} placeholder="Legal justification for use of force..." />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -357,12 +358,12 @@ export default function UseOfForcePage() {
               {form.de_escalation_attempted && (
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-semibold">De-escalation Details</label>
-                  <textarea className="input-dark text-xs w-full mt-1" rows={2} value={form.de_escalation_details} onChange={e => setForm(f => ({ ...f, de_escalation_details: e.target.value }))} />
+                  <RichTextArea className="input-dark text-xs w-full mt-1" rows={2} value={form.de_escalation_details} onChange={e => setForm(f => ({ ...f, de_escalation_details: e.target.value }))} />
                 </div>
               )}
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Narrative</label>
-                <textarea className="input-dark text-xs w-full mt-1" rows={4} value={form.narrative} onChange={e => setForm(f => ({ ...f, narrative: e.target.value }))} placeholder="Detailed account of the incident..." />
+                <RichTextArea className="input-dark text-xs w-full mt-1" rows={4} value={form.narrative} onChange={e => setForm(f => ({ ...f, narrative: e.target.value }))} placeholder="Detailed account of the incident..." />
               </div>
               <div className="flex justify-end gap-3 pt-3 border-t border-rmpg-700">
                 <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn" style={{ padding: '4px 12px' }}>Cancel</button>

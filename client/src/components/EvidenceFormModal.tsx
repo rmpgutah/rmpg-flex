@@ -7,6 +7,7 @@ import type { Evidence } from '../types';
 import { localToday } from '../utils/dateUtils';
 import { useFormValidation } from '../hooks/useFormValidation';
 
+import RichTextArea from './RichTextArea';
 interface EvidenceFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -296,7 +297,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
             <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">
               Description <span className="text-red-400">*</span>
             </label>
-            <textarea
+            <RichTextArea
               className={`textarea-dark text-xs ${formErrors.description ? '!border-red-500' : ''}`}
               rows={3}
               placeholder="Describe the evidence item in detail..."
@@ -370,7 +371,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
 
           <div>
             <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes</label>
-            <textarea className="textarea-dark text-xs" rows={2} placeholder="Additional notes..." value={form.notes} onChange={(e) => updateField('notes', e.target.value)} maxLength={3000} />
+            <RichTextArea className="textarea-dark text-xs" rows={2} placeholder="Additional notes..." value={form.notes} onChange={(e) => updateField('notes', e.target.value)} maxLength={3000} />
             <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
           </div>
         </div>

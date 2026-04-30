@@ -9,6 +9,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, X, Video, Loader2, XCircle, CheckCircle2, Zap, Radio } from 'lucide-react';
 import type { BodyCamera, VideoClassification } from '../types';
 
+import RichTextArea from './RichTextArea';
 interface Props {
   isOpen: boolean;
   onClose: () => void;
@@ -471,7 +472,7 @@ export default function VideoUploadModal({
             </div>
             <div>
               <label className="field-label">Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Additional notes..." className="textarea-dark" disabled={isUploading} />
+              <RichTextArea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Additional notes..." className="textarea-dark" disabled={isUploading} />
             </div>
           </div>
 

@@ -4,6 +4,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { localToday } from '../../../utils/dateUtils';
 
+import RichTextArea from '../../../components/RichTextArea';
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '';
   try { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
@@ -155,7 +156,7 @@ export default function FitnessCommendationsTab({ officerId }: { officerId: stri
                 <option value="letter_of_recognition">Letter of Recognition</option>
               </select>
             </div>
-            <textarea value={commForm.description} onChange={e => setCommForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
+            <RichTextArea value={commForm.description} onChange={e => setCommForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
             <div className="flex gap-2">
               <button type="button" onClick={submitComm} disabled={submittingComm || !commForm.description.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-40">{submittingComm ? <><Loader2 className="w-3 h-3 animate-spin" /> Saving...</> : 'Save'}</button>
               <button type="button" onClick={() => setShowCommForm(false)} disabled={submittingComm} className="toolbar-btn text-[9px]">Cancel</button>

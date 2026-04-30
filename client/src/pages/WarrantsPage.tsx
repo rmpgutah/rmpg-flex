@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   AlertTriangle,
   Plus,
@@ -3693,7 +3694,7 @@ export default function WarrantsPage() {
               {/* Charge Description */}
               <div>
                 <label className="field-label">Charge Description *</label>
-                <textarea
+                <RichTextArea
                   className="input-dark text-xs w-full min-h-[36px]"
                   rows={3}
                   value={formData.charge_description}
@@ -3734,7 +3735,7 @@ export default function WarrantsPage() {
               {/* Notes */}
               <div>
                 <label className="field-label">Notes</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
               </div>
 
               {/* Actions */}

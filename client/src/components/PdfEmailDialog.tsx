@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import RichTextArea from './RichTextArea';
 interface Props {
   onSend: (to: string[], cc: string[], subject: string, body: string) => void;
   onCancel: () => void;
@@ -44,7 +45,7 @@ export function PdfEmailDialog({ onSend, onCancel, defaultSubject = '' }: Props)
         </label>
         <label className="block mb-3 text-xs">
           <span className="block text-gray-400 uppercase mb-1">Body</span>
-          <textarea
+          <RichTextArea
             aria-label="Body"
             rows={5}
             className="w-full bg-[#050505] text-white border border-[#2e2e2e] p-1"

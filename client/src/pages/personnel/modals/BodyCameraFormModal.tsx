@@ -4,6 +4,7 @@ import FormModal from '../../../components/FormModal';
 import { useFormDirty } from '../../../hooks/useFormDirty';
 import type { CameraStatus } from '../../../types';
 
+import RichTextArea from '../../../components/RichTextArea';
 export interface BodyCameraFormData {
   officer_id: string;
   camera_id: string;
@@ -183,7 +184,7 @@ export default function BodyCameraFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3">
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." maxLength={3000} className="textarea-dark" />
+        <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." maxLength={3000} className="textarea-dark" />
         <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
       </div>
     </FormModal>
