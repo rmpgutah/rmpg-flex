@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import RichTextArea from '../../../components/RichTextArea';
 import {
   Users, Shield, Clock, Phone, Mail, MapPin, Calendar, Award,
   UserPlus, UserMinus, Plus, Trash2, Radio, Briefcase, ArrowRight,
@@ -427,7 +428,7 @@ export default function FleetPersonnelTab({
         {/* Add note form */}
         <div className="px-3 py-2 border-b border-rmpg-700">
           <div className="flex gap-2">
-            <textarea
+            <RichTextArea
               className="input-dark flex-1 text-[10px] h-14 resize-none min-h-[36px]"
               placeholder="Add a note about this vehicle's personnel..."
               value={noteText}

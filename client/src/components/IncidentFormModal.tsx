@@ -4,6 +4,7 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import type { Incident, CallPriority } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
+import RichTextArea from './RichTextArea';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,
@@ -893,16 +894,16 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Vehicle 1 Info</label>
-              <textarea className="textarea-dark mt-1" rows={3} placeholder="Year, make, model, color, plate, driver info..." value={formData.vehicle_1_info} onChange={(e) => update('vehicle_1_info', e.target.value)} />
+              <RichTextArea className="textarea-dark mt-1" rows={3} placeholder="Year, make, model, color, plate, driver info..." value={formData.vehicle_1_info} onChange={(e) => update('vehicle_1_info', e.target.value)} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Vehicle 2 Info</label>
-              <textarea className="textarea-dark mt-1" rows={3} placeholder="Year, make, model, color, plate, driver info..." value={formData.vehicle_2_info} onChange={(e) => update('vehicle_2_info', e.target.value)} />
+              <RichTextArea className="textarea-dark mt-1" rows={3} placeholder="Year, make, model, color, plate, driver info..." value={formData.vehicle_2_info} onChange={(e) => update('vehicle_2_info', e.target.value)} />
             </div>
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Diagram / Scene Notes</label>
-            <textarea className="textarea-dark mt-1" rows={3} placeholder="Direction of travel, point of impact, lane positions, skid marks..." value={formData.diagram_notes} onChange={(e) => update('diagram_notes', e.target.value)} />
+            <RichTextArea className="textarea-dark mt-1" rows={3} placeholder="Direction of travel, point of impact, lane positions, skid marks..." value={formData.diagram_notes} onChange={(e) => update('diagram_notes', e.target.value)} />
           </div>
         </>
       )}
@@ -939,11 +940,11 @@ export default function IncidentFormModal({
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Patient Vitals / Condition</label>
-            <textarea className="textarea-dark mt-1" rows={3} placeholder="BP, pulse, respiration, temperature, condition observations..." value={formData.patient_vitals} onChange={(e) => update('patient_vitals', e.target.value)} />
+            <RichTextArea className="textarea-dark mt-1" rows={3} placeholder="BP, pulse, respiration, temperature, condition observations..." value={formData.patient_vitals} onChange={(e) => update('patient_vitals', e.target.value)} />
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Treatment Rendered</label>
-            <textarea className="textarea-dark mt-1" rows={3} placeholder="First aid, CPR, AED, bandaging, Narcan administered..." value={formData.treatment_rendered} onChange={(e) => update('treatment_rendered', e.target.value)} />
+            <RichTextArea className="textarea-dark mt-1" rows={3} placeholder="First aid, CPR, AED, bandaging, Narcan administered..." value={formData.treatment_rendered} onChange={(e) => update('treatment_rendered', e.target.value)} />
           </div>
         </>
       )}
@@ -974,7 +975,7 @@ export default function IncidentFormModal({
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Property Boundaries / Description</label>
-            <textarea className="textarea-dark mt-1" rows={3} placeholder="Describe property boundaries, restricted areas, and access points..." value={formData.property_boundaries} onChange={(e) => update('property_boundaries', e.target.value)} />
+            <RichTextArea className="textarea-dark mt-1" rows={3} placeholder="Describe property boundaries, restricted areas, and access points..." value={formData.property_boundaries} onChange={(e) => update('property_boundaries', e.target.value)} />
           </div>
         </>
       )}
@@ -1000,11 +1001,11 @@ export default function IncidentFormModal({
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">De-Escalation Attempts</label>
-            <textarea className="textarea-dark mt-1" rows={3} placeholder="Describe verbal de-escalation, time/distance, crisis intervention techniques used..." value={formData.de_escalation_attempts} onChange={(e) => update('de_escalation_attempts', e.target.value)} />
+            <RichTextArea className="textarea-dark mt-1" rows={3} placeholder="Describe verbal de-escalation, time/distance, crisis intervention techniques used..." value={formData.de_escalation_attempts} onChange={(e) => update('de_escalation_attempts', e.target.value)} />
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Justification</label>
-            <textarea className="textarea-dark mt-1" rows={3} placeholder="Describe the threat/resistance that justified the use of force..." value={formData.force_justification} onChange={(e) => update('force_justification', e.target.value)} />
+            <RichTextArea className="textarea-dark mt-1" rows={3} placeholder="Describe the threat/resistance that justified the use of force..." value={formData.force_justification} onChange={(e) => update('force_justification', e.target.value)} />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
@@ -1211,7 +1212,7 @@ export default function IncidentFormModal({
             <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Initial Contact / Complaint</label>
-                <textarea
+                <RichTextArea
                   className="textarea-dark mt-1"
                   rows={3}
                   placeholder="What brought you to the scene, who reported it, and what was first observed on arrival?"
@@ -1221,7 +1222,7 @@ export default function IncidentFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scene Observations / Conditions</label>
-                <textarea
+                <RichTextArea
                   className="textarea-dark mt-1"
                   rows={3}
                   placeholder="Describe scene layout, weather, lighting, hazards, damage, and anything notable on approach."
@@ -1231,7 +1232,7 @@ export default function IncidentFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Involved Parties / Vehicles / Witnesses</label>
-                <textarea
+                <RichTextArea
                   className="textarea-dark mt-1"
                   rows={3}
                   placeholder="Document subjects, victims, witnesses, vehicles, identifiers, and relevant observations."
@@ -1241,7 +1242,7 @@ export default function IncidentFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Statements / Admissions</label>
-                <textarea
+                <RichTextArea
                   className="textarea-dark mt-1"
                   rows={3}
                   placeholder="Summarize witness statements, spontaneous utterances, admissions, denials, and quote-worthy remarks."
@@ -1251,7 +1252,7 @@ export default function IncidentFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Actions Taken</label>
-                <textarea
+                <RichTextArea
                   className="textarea-dark mt-1"
                   rows={3}
                   placeholder="Describe officer actions, scene handling, interviews, searches, notifications, and resources used."
@@ -1261,7 +1262,7 @@ export default function IncidentFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Evidence / Statements / Follow-Up</label>
-                <textarea
+                <RichTextArea
                   className="textarea-dark mt-1"
                   rows={3}
                   placeholder="Capture evidence collected, property handled, forms served, statements obtained, and next investigative steps."
@@ -1271,7 +1272,7 @@ export default function IncidentFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notifications / Referrals</label>
-                <textarea
+                <RichTextArea
                   className="textarea-dark mt-1"
                   rows={3}
                   placeholder="Document supervisor, LE, EMS, fire, client, CPS, crisis, or other agency notifications and referrals."
@@ -1281,7 +1282,7 @@ export default function IncidentFormModal({
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Follow-Up / Case Status</label>
-                <textarea
+                <RichTextArea
                   className="textarea-dark mt-1"
                   rows={3}
                   placeholder="Record disposition, service result, pending tasks, evidence destination, and who owns the next follow-up."
@@ -1310,7 +1311,7 @@ export default function IncidentFormModal({
               </div>
             ) : null;
           })()}
-          <textarea
+          <RichTextArea
             className="textarea-dark mt-1"
             rows={14}
             placeholder="Describe the incident in detail. Include who, what, when, where, why, and how..."

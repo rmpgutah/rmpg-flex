@@ -4,6 +4,7 @@
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 
+import RichTextArea from '../../components/RichTextArea';
 interface Rule {
   id: number;
   name: string;
@@ -168,13 +169,13 @@ export default function AdminEmailRulesTab() {
             onChange={e => setEditing({ ...editing, priority: Number(e.target.value) })}
             className="w-full bg-black text-white px-2 py-1"
           />
-          <textarea
+          <RichTextArea
             placeholder='Conditions JSON e.g. {"sender_regex":"@ut\\.gov$"}'
             value={editing.conditions_json || ''}
             onChange={e => setEditing({ ...editing, conditions_json: e.target.value })}
             className="w-full bg-black text-white px-2 py-1 h-20 font-mono text-xs"
           />
-          <textarea
+          <RichTextArea
             placeholder='Actions JSON e.g. [{"type":"flag"}]'
             value={editing.actions_json || ''}
             onChange={e => setEditing({ ...editing, actions_json: e.target.value })}

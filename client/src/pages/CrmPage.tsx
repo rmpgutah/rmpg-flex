@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   LayoutDashboard,
   Building2,
@@ -550,7 +551,7 @@ export default function CrmPage() {
               </div>
               <div>
                 <label className="field-label">Description</label>
-                <textarea className="input-dark w-full min-h-[36px]" rows={3} value={taskForm.description || ''} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} />
+                <RichTextArea className="input-dark w-full min-h-[36px]" rows={3} value={taskForm.description || ''} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} />
               </div>
               {editingTask && (
                 <div>
@@ -599,7 +600,7 @@ export default function CrmPage() {
               </div>
               <div>
                 <label className="field-label">Details</label>
-                <textarea className="input-dark w-full min-h-[36px]" rows={3} value={activityForm.details} onChange={e => setActivityForm(p => ({ ...p, details: e.target.value }))} />
+                <RichTextArea className="input-dark w-full min-h-[36px]" rows={3} value={activityForm.details} onChange={e => setActivityForm(p => ({ ...p, details: e.target.value }))} />
               </div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">

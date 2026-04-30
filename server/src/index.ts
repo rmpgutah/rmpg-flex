@@ -83,6 +83,7 @@ import forensicsRoutes from './routes/forensics';
 import ipedRoutes from './routes/iped';
 import clearpathgpsRoutes from './routes/clearpathgps';
 import traccarRoutes from './routes/traccar';
+import pdfToolsRoutes from './routes/pdfTools';
 import integrationsRoutes from './routes/integrations';
 import intakeRoutes from './routes/intake';
 import emailRoutes from './routes/email';

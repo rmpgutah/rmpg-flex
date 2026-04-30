@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import GlobalCatalogSearch from './recon-connect/GlobalCatalogSearch';
 import InstallDashboard from './recon-connect/InstallDashboard';
 
+import RichTextArea from '../components/RichTextArea';
 type Platform = 'linux' | 'macos' | 'windows' | 'unknown';
 type UserRole = 'admin' | 'manager' | 'supervisor' | 'officer' | 'dispatcher' | 'contract_manager' | 'client_viewer' | 'human_resources' | 'investigator';
 
@@ -123,7 +124,7 @@ export default function ReconConnectPage() {
       const id = sessionIdRef.current;
       if (id && api?.reconInput) api.reconInput(id, data);
     });
-    // xterm's input goes through a hidden <textarea>; clicking anywhere on
+    // xterm's input goes through a hidden <RichTextArea>; clicking anywhere on
     // the host should hand focus to that textarea so keystrokes reach onData.
     termHostRef.current.addEventListener('mousedown', () => {
       setTimeout(() => term.focus(), 0);

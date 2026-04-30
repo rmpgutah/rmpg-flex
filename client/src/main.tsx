@@ -1,3 +1,8 @@
+// Polyfills MUST be the first import — pdfjs-dist v5.7+ uses
+// Map.prototype.getOrInsertComputed (TC39 Stage 3) which isn't in older
+// Electron Chromium. Without this, PDF rendering throws
+// `TypeError: this[#t].getOrInsertComputed is not a function`.
+import './utils/jsPolyfills';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

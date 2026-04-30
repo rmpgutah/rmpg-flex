@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Fingerprint, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
   Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight,
@@ -451,7 +452,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
           <div>
             <label className="text-[9px] text-rmpg-400 uppercase">Charges (one per line)</label>
-            <textarea
+            <RichTextArea
               value={form.charges}
               onChange={e => setForm(p => ({ ...p, charges: e.target.value }))}
               placeholder="Theft — Misdemeanor B&#10;DUI — Class A"
@@ -462,7 +463,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
           <div>
             <label className="text-[9px] text-rmpg-400 uppercase">Notes</label>
-            <textarea
+            <RichTextArea
               value={form.notes}
               onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
               placeholder="Additional details..."
@@ -523,7 +524,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             </div>
           </div>
 
-          <textarea
+          <RichTextArea
             value={csvData}
             onChange={e => setCsvData(e.target.value)}
             placeholder={'full_name,booking_date,charges,agency\n"SMITH, JOHN",2026-03-05,"Theft - Misdemeanor B","SLCPD"\n"DOE, JANE",2026-03-04,"DUI","UHP"'}

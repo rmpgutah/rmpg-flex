@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import RichTextArea from './RichTextArea';
 import {
   Radio, AlertTriangle, StickyNote, Shield, MapPin,
   Camera, CheckCircle, UserPlus, X, Zap,
@@ -262,7 +263,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
               <X style={{ width: 12, height: 12 }} />
             </button>
           </div>
-          <textarea
+          <RichTextArea
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
             placeholder="Type your note..."

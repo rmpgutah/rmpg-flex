@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateTimeStr } from '../../utils/dateUtils';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Shield, Database, Users, Bell, Trash2, RefreshCw, Download,
   HardDrive, Activity, UserCheck, AlertTriangle, CheckCircle,
@@ -422,7 +423,7 @@ export default function AdminGodModeTab() {
             placeholder="Notification title..."
             className="w-full bg-[#0c0c0c] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-[11px] text-white placeholder-gray-600"
           />
-          <textarea
+          <RichTextArea
             value={broadcastMessage}
             onChange={e => setBroadcastMessage(e.target.value)}
             placeholder="Message body..."
@@ -555,7 +556,7 @@ export default function AdminGodModeTab() {
           {/* Bulk Reassign */}
           <div className="bg-[#0c0c0c] p-2 rounded-sm space-y-2">
             <div className="text-[10px] text-gray-400 font-bold uppercase">Bulk Reassign Calls</div>
-            <textarea
+            <RichTextArea
               value={reassignCallIds}
               onChange={e => setReassignCallIds(e.target.value)}
               placeholder="Call IDs (comma-separated): 101, 102, 103"
@@ -597,7 +598,7 @@ export default function AdminGodModeTab() {
       <div className="bg-[#141414] border border-[#181818] rounded-sm p-3">
         <h3 className="text-xs font-bold text-red-400 uppercase mb-2 flex items-center gap-1.5"><Terminal size={14} /> SQL Query Console</h3>
         <p className="text-[9px] text-gray-500 mb-2">Direct database access. Use with caution — queries run against the live production database.</p>
-        <textarea
+        <RichTextArea
           value={sqlQuery}
           onChange={e => setSqlQuery(e.target.value)}
           placeholder="SELECT * FROM users LIMIT 10;"

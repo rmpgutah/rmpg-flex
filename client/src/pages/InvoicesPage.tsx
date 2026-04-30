@@ -6,6 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   DollarSign,
   Plus,
@@ -590,7 +591,7 @@ export default function InvoicesPage() {
         {/* Notes */}
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Notes</label>
-          <textarea
+          <RichTextArea
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
             rows={2}
@@ -601,7 +602,7 @@ export default function InvoicesPage() {
         {/* Internal notes */}
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Internal Notes</label>
-          <textarea
+          <RichTextArea
             value={createForm.internal_notes}
             onChange={e => setCreateForm(f => ({ ...f, internal_notes: e.target.value }))}
             rows={2}

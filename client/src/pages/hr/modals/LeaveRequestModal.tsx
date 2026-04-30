@@ -8,6 +8,7 @@ import { CalendarDays } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
 import type { LeaveRequest, LeaveType } from '../../../types';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface LeaveRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -201,7 +202,7 @@ export default function LeaveRequestModal({
       {/* Reason */}
       <div>
         <label className={labelClass}>Reason</label>
-        <textarea
+        <RichTextArea
           value={reason}
           onChange={e => setReason(e.target.value)}
           rows={3}

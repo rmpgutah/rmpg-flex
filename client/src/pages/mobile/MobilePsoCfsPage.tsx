@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 
+import RichTextArea from '../../components/RichTextArea';
 type Call = {
   id: number;
   call_number: string;
@@ -296,7 +297,7 @@ export default function MobilePsoCfsPage() {
 
         <div className="bg-[#141414] border border-[#222] p-3">
           <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-2">Add Narrative</div>
-          <textarea
+          <RichTextArea
             value={narrative}
             onChange={(e) => setNarrative(e.target.value)}
             rows={4}
@@ -326,7 +327,7 @@ export default function MobilePsoCfsPage() {
           <LabeledInput label="Served To" value={psoServedTo} onChange={setPsoServedTo} />
           <div className="mt-2">
             <label className="block text-[9px] font-bold text-gray-500 uppercase tracking-wider">Service Notes</label>
-            <textarea
+            <RichTextArea
               value={psoNotes}
               onChange={(e) => setPsoNotes(e.target.value)}
               rows={3}
