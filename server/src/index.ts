@@ -361,7 +361,13 @@ app.use(liveBroadcast);
 // JWT-authenticated request with 403 "Invalid webhook token".
 import { traccarWebhookRouter, owntracksDeprecatedRouter } from './routes/dispatch/gps';
 import { startTraccarPoller } from './utils/traccarServerPoller';
-app.use('/api/traccar', traccarWebhookRouter);
+// NOTE: webhook router uses /:user/:device wildcards. It MUST be mounted
+// AFTER traccarRoutes (line below) so authenticated admin endpoints like
+// /api/traccar/historical/devices, /devices, /mappings, /credentials,
+// /status, /test-connection match their specific handlers first. Otherwise
+// the wildcard catches them and returns 401/403 "Invalid webhook token".
+// The webhook is also mounted on the bare /traccar prefix below so devices
+// configured with that path keep working.
 app.use('/traccar', traccarWebhookRouter);
 app.use('/owntracks', owntracksDeprecatedRouter);
 
@@ -410,6 +416,10 @@ app.use('/api/forensics', forensicsRoutes);
 app.use('/api/iped', ipedRoutes);
 app.use('/api/clearpathgps', clearpathgpsRoutes);
 app.use('/api/traccar', traccarRoutes);
+// Webhook fallback — only matches paths the admin router didn't claim
+// (bare /api/traccar with ?token=, or /api/traccar/<user>/<device> from
+// devices configured with that style URL). See note above the /traccar mount.
+app.use('/api/traccar', traccarWebhookRouter);
 app.use('/api/integrations', integrationsRoutes);
 app.use('/api/email/rules', emailRulesRoutes);
 app.use('/api/email', emailRoutes);

@@ -27,7 +27,12 @@
 // v456: Bug fixes — allow traccar_url/enabled/poll_interval through
 //       admin third-party-keys endpoint (URL save was rejected); fix
 //       fv.unit_number → fv.vehicle_number in /historical/devices.
-const CACHE_NAME = 'rmpg-flex-v456';
+// v457: Mount /api/traccar webhook router AFTER admin router so the
+//       /:user/:device wildcard no longer shadows specific endpoints
+//       like /historical/devices, /devices, /mappings, /credentials.
+//       Webhook still receives bare /api/traccar?token= and any unmatched
+//       sub-paths from devices configured with /api/traccar/<u>/<d> URLs.
+const CACHE_NAME = 'rmpg-flex-v457';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
