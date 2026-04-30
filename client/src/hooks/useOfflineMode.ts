@@ -256,6 +256,15 @@ export function useOfflineMode() {
     // No callback in monitor.start() — all state updates go through here.
     const monitor = getConnectivityMonitor();
     if (monitor) {
+      // Reconcile any transition that happened between monitor.start() (first
+      // useEffect) and our subscription here (second useEffect, after the
+      // browserInitialized flag flips). Without this, a transition event
+      // emitted in that gap is lost forever — leaving the banner stuck on
+      // an outage that the monitor itself has already cleared.
+      setState(prev => prev.isOffline === !monitor.isOnline
+        ? prev
+        : { ...prev, isOffline: !monitor.isOnline }
+      );
       unsubs.push(monitor.onChange((isOnline) => {
         setState(prev => ({ ...prev, isOffline: !isOnline }));
         if (isOnline) {
