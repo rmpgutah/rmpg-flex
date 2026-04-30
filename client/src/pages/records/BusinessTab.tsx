@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../../components/RichTextArea';
+import { formatPhoneInput } from '../../utils/formatters';
 import {
   Search, Building2, MapPin, Phone, Mail, Globe, Trash2, Pencil,
   ExternalLink, X, Archive, RotateCcw, Users, Briefcase, Hash,
@@ -428,17 +429,17 @@ function BusinessForm({ initial, onSubmit, onCancel, submitting }: {
         <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">ZIP</label><input className="input-dark text-xs w-full" value={form.zip} onChange={e => set('zip', e.target.value)} /></div>
       </div>
       <div className="grid grid-cols-3 gap-2">
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Phone</label><input className="input-dark text-xs w-full" value={form.phone} onChange={e => set('phone', e.target.value)} /></div>
+        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Phone</label><input type="tel" className="input-dark text-xs w-full" value={form.phone} onChange={e => set('phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></div>
         <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Email</label><input className="input-dark text-xs w-full" value={form.email} onChange={e => set('email', e.target.value)} /></div>
         <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Website</label><input className="input-dark text-xs w-full" value={form.website} onChange={e => set('website', e.target.value)} /></div>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Owner Name</label><input className="input-dark text-xs w-full" value={form.owner_name} onChange={e => set('owner_name', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Owner Phone</label><input className="input-dark text-xs w-full" value={form.owner_phone} onChange={e => set('owner_phone', e.target.value)} /></div>
+        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Owner Phone</label><input type="tel" className="input-dark text-xs w-full" value={form.owner_phone} onChange={e => set('owner_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></div>
       </div>
       <div className="grid grid-cols-3 gap-2">
         <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Name</label><input className="input-dark text-xs w-full" value={form.contact_name} onChange={e => set('contact_name', e.target.value)} /></div>
-        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Phone</label><input className="input-dark text-xs w-full" value={form.contact_phone} onChange={e => set('contact_phone', e.target.value)} /></div>
+        <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Phone</label><input type="tel" className="input-dark text-xs w-full" value={form.contact_phone} onChange={e => set('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" /></div>
         <div><label className="text-[10px] text-rmpg-400 uppercase block mb-1">Contact Email</label><input className="input-dark text-xs w-full" value={form.contact_email} onChange={e => set('contact_email', e.target.value)} /></div>
       </div>
       <div className="grid grid-cols-2 gap-2">

@@ -6,6 +6,7 @@ import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { useDistrictIdentify } from '../hooks/useDistrictLookup';
 
 import RichTextArea from './RichTextArea';
+import { formatPhoneInput } from '../utils/formatters';
 interface QuickPsoModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -282,7 +283,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 className="input-dark"
                 placeholder="(801) 555-0100"
                 value={formData.pso_requestor_phone}
-                onChange={(e) => update('pso_requestor_phone', e.target.value)}
+                onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))}
                 style={{ borderColor: '#6b21a8' }}
               />
             </div>

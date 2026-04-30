@@ -6,6 +6,7 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { extractFolderGroups, type FolderGroup } from '../utils/dropFolders';
+import { formatPhoneInput } from '../utils/formatters';
 import BulkDefendantTable from '../components/serve/BulkDefendantTable';
 import RichTextArea from '../components/RichTextArea';
 import {
@@ -852,8 +853,8 @@ export default function ServeIntakePage() {
               <FieldRow label="Bar #" icon={Shield} value={editAttorney.barNumber} onChange={v => setEditAttorney(p => ({ ...p, barNumber: v }))} placeholder="12345" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <FieldRow label="Phone" icon={Phone} value={editAttorney.tel} onChange={v => setEditAttorney(p => ({ ...p, tel: v }))} placeholder="(801) 555-1234" />
-              <FieldRow label="Fax" icon={Phone} value={editAttorney.fax} onChange={v => setEditAttorney(p => ({ ...p, fax: v }))} placeholder="(801) 555-5678" />
+              <FieldRow label="Phone" icon={Phone} value={editAttorney.tel} onChange={v => setEditAttorney(p => ({ ...p, tel: formatPhoneInput(v) }))} placeholder="(801) 555-1234" />
+              <FieldRow label="Fax" icon={Phone} value={editAttorney.fax} onChange={v => setEditAttorney(p => ({ ...p, fax: formatPhoneInput(v) }))} placeholder="(801) 555-5678" />
               <FieldRow label="Email" icon={FileText} value={editAttorney.email} onChange={v => setEditAttorney(p => ({ ...p, email: v }))} placeholder="attorney@firm.com" />
             </div>
           </div>

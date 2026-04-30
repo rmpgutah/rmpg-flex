@@ -13,7 +13,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { toDisplayLabel } from '../../utils/formatters';
+import { toDisplayLabel, formatPhoneInput } from '../../utils/formatters';
 import type { Client } from '../../types';
 import AdminInvoiceTab from './AdminInvoiceTab';
 import { ClientPersonLinks } from '../../components/ClientPersonLinksSection';
@@ -413,7 +413,7 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Phone</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', e.target.value)} placeholder="Phone" />
+                      <input className="input-dark text-xs w-full min-h-[36px]" type="tel" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Address</label>
