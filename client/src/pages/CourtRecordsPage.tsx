@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Gavel,
   Plus,
@@ -702,7 +703,7 @@ export default function CourtRecordsPage() {
               {/* Notes */}
               <div>
                 <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Notes</label>
-                <textarea
+                <RichTextArea
                   value={formData.notes}
                   onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))}
                   rows={3}
@@ -781,7 +782,7 @@ export default function CourtRecordsPage() {
 
               <div>
                 <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Notes</label>
-                <textarea
+                <RichTextArea
                   value={outcomeData.notes}
                   onChange={e => setOutcomeData(p => ({ ...p, notes: e.target.value }))}
                   rows={3}

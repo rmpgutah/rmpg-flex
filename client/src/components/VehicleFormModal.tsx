@@ -6,6 +6,7 @@ import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
+import RichTextArea from './RichTextArea';
 interface VehicleFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -639,18 +640,18 @@ export default function VehicleFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications</label>
-              <textarea name="modifications" rows={2} className="input-dark mt-1" placeholder="Lift kit, exhaust, aftermarket bumper, etc." value={form.modifications} onChange={handleChange} maxLength={2000} />
+              <RichTextArea name="modifications" rows={2} className="input-dark mt-1" placeholder="Lift kit, exhaust, aftermarket bumper, etc." value={form.modifications} onChange={handleChange} maxLength={2000} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes</label>
-              <textarea name="equipment_notes" rows={2} className="input-dark mt-1" placeholder="Aftermarket parts, accessories, etc." value={form.equipment_notes} onChange={handleChange} maxLength={2000} />
+              <RichTextArea name="equipment_notes" rows={2} className="input-dark mt-1" placeholder="Aftermarket parts, accessories, etc." value={form.equipment_notes} onChange={handleChange} maxLength={2000} />
             </div>
           </div>
 
           {/* Notes */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
-            <textarea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
+            <RichTextArea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
             <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </>

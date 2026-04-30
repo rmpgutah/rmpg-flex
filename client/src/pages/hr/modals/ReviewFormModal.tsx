@@ -8,6 +8,7 @@ import { X, Star, Loader2 } from 'lucide-react';
 import { REVIEW_CATEGORIES, RATING_LABELS } from '../utils/hrConstants';
 import type { PerformanceReview, ReviewType } from '../../../types';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface ReviewFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -305,7 +306,7 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Strengths
                 </span>
-                <textarea
+                <RichTextArea
                   value={strengths}
                   onChange={(e) => setStrengths(e.target.value)}
                   rows={3}
@@ -317,7 +318,7 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Areas for Improvement
                 </span>
-                <textarea
+                <RichTextArea
                   value={areasForImprovement}
                   onChange={(e) => setAreasForImprovement(e.target.value)}
                   rows={3}
@@ -327,7 +328,7 @@ export default function ReviewFormModal({
               </label>
               <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">Goals</span>
-                <textarea
+                <RichTextArea
                   value={goals}
                   onChange={(e) => setGoals(e.target.value)}
                   rows={3}

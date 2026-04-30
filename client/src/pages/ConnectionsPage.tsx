@@ -8,6 +8,7 @@ import { apiFetch } from '../hooks/useApi';
 import { svgElementToPngDataUrl, downloadDataUrl } from '../utils/graphToPng';
 import { exportGraphToPdf } from '../utils/graphToPdf';
 
+import RichTextArea from '../components/RichTextArea';
 interface SearchResult { id: number; type: string; label: string; }
 interface Seed { id: number; type: string; label: string; }
 
@@ -741,7 +742,7 @@ export default function ConnectionsPage() {
             <h2 className="text-[#d4a017] text-sm uppercase font-semibold">
               Note for {nodes.find(n => n.id === editingAnnotationFor)?.label}
             </h2>
-            <textarea
+            <RichTextArea
               aria-label={`Note for ${nodes.find(n => n.id === editingAnnotationFor)?.label}`}
               className="w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-28"
               style={{ borderRadius: 2 }}
@@ -816,7 +817,7 @@ export default function ConnectionsPage() {
 
             <label className="block text-xs text-gray-300">
               Description
-              <textarea
+              <RichTextArea
                 className="mt-1 w-full bg-surface-sunken border border-[#222222] px-2 py-1.5 text-sm text-gray-200 focus:border-[#d4a017] focus:outline-none h-20"
                 style={{ borderRadius: 2 }}
                 value={saveDescription}

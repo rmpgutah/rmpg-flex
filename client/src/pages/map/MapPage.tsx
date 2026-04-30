@@ -84,7 +84,6 @@ import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
 import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
 import { useMapKeyboardShortcuts } from '../../hooks/useMapKeyboardShortcuts';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
-import OfflineMapFallback from '../../components/OfflineMapFallback';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
@@ -247,15 +246,12 @@ export default function MapPage() {
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapRetry, setMapRetry] = useState(0); // bump to re-trigger Google Maps init
   const [tilesStalled, setTilesStalled] = useState(false);
-  const [retryingGmaps, setRetryingGmaps] = useState(false);
 
-  // All map errors route to the Leaflet fallback — no blocking config dialog.
-  // "No API key configured" is a normal operating mode for deployments without
-  // Google Maps billing enabled. gm_authFailure and network errors likewise
-  // degrade gracefully to Leaflet + CartoDB tiles. The config dialog was a
-  // holdover from an earlier era when Google Maps was mandatory.
-  const isAuthError = false;
-  const showOfflineFallback = mapError != null;
+  // Google Maps is the sole map surface. Any map load failure surfaces the
+  // configuration-required dialog instead of degrading to a Leaflet/CartoDB
+  // fallback (the offline fallback was retired 2026-04-29 to make Google
+  // failures visible rather than silently masked).
+  const isAuthError = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 
   // Fix 28: restore layer toggle states from localStorage on mount
@@ -1047,28 +1043,13 @@ export default function MapPage() {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
-      // ── CartoDB dark_matter tile overlay ──────────────────────
-      // Overlays free CartoDB tiles on top of Google's base map.
-      // Covers the "For development purposes only" watermark when
-      // Google billing is not active, while keeping all Google Maps
-      // API features (markers, GeoJSON, info windows) working.
-      // Tiles are also cached by the service worker for offline use.
-      const cartoTileLayer = new google.maps.ImageMapType({
-        getTileUrl: (coord, zoom) =>
-          `https://basemaps.cartocdn.com/dark_all/${zoom}/${coord.x}/${coord.y}@2x.png`,
-        tileSize: new google.maps.Size(256, 256),
-        name: 'CartoDB Dark',
-        maxZoom: 20,
-        opacity: 1.0,
-      });
-      map.overlayMapTypes.push(cartoTileLayer);
-
-      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
-      // Without mapId, markers are created but silently never render.
-      // Since we use a raster styled map (no mapId), always use the
-      // OverlayView-based fallback which works reliably on all map types.
+      // Google's native dark-styled basemap is the sole tile source
+      // (no CartoDB raster overlay). AdvancedMarkerElement requires a
+      // cloud mapId; without one, markers are created but never render,
+      // so we keep the OverlayView-based fallback which works on any
+      // map type until a mapId is provisioned.
       useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using CartoDB dark_matter overlay + OverlayView markers');
+      devLog('[MapPage] Using Google base layer + OverlayView markers');
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
@@ -1133,10 +1114,10 @@ export default function MapPage() {
       let apiKey = '';
       try {
         apiKey = await getGoogleMapsApiKey();
-      } catch {
-        // No Google API key — trigger the OfflineMapFallback (Leaflet)
+      } catch (err: any) {
+        // No Google API key — surface the configuration-required dialog.
         if (!cancelled) {
-          setMapError('offline');
+          setMapError(err?.message || 'Google Maps API key is not configured. Set it in Admin → Integrations → Google Cloud Console.');
         }
         return;
       }
@@ -2740,45 +2721,10 @@ export default function MapPage() {
           <RmpgLogo height={20} iconOnly />
         </div>
 
-        {/* Offline fallback: Leaflet map with cached tiles when Google Maps fails
-            due to connectivity (not API key errors). Shows GPS, unit positions, calls. */}
-        {showOfflineFallback && (
-          <OfflineMapFallback
-            className="absolute inset-0 z-[2000]"
-            selfPosition={
-              gps.isTracking && gps.latitude != null && gps.longitude != null
-                ? { lat: gps.latitude, lng: gps.longitude, accuracy: gps.accuracy ?? undefined, heading: gps.heading ?? undefined }
-                : null
-            }
-            unitPositions={unitsWithCoords
-              .map(u => ({
-                call_sign: u.call_sign,
-                lat: u.latitude!,
-                lng: u.longitude!,
-                status: u.status,
-              }))}
-            activeCalls={callsWithCoords}
-            properties={propertiesWithCoords
-              .map(p => ({
-                id: p.id,
-                name: p.name,
-                lat: p.latitude!,
-                lng: p.longitude!,
-                address: p.address,
-                client_name: p.client_name || undefined,
-              }))}
-            onRetry={() => {
-              setRetryingGmaps(true);
-              setMapError(null);
-              setMapRetry((n) => n + 1);
-              // Reset retrying state after a delay (the Google Maps init effect will re-run)
-              setTimeout(() => setRetryingGmaps(false), 5000);
-            }}
-            retrying={retryingGmaps}
-          />
-        )}
+        {/* Offline Leaflet/CartoDB fallback removed 2026-04-29; map errors
+            now surface the configuration-required dialog below. */}
 
-        {/* API key / auth error dialog (only for configuration problems, not connectivity) */}
+        {/* API key / auth error dialog — sole error surface */}
         {isAuthError && (
           <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="bg-surface-overlay/95 border border-red-600 p-8 shadow-xl max-w-lg text-center" style={{ borderRadius: 2 }}>

@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useCallback, useEffect, useRef, useMemo } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Search, User, MapPin, Phone, Mail, Users, Scale, Building2,
   AlertTriangle, ChevronDown, ChevronRight, Copy, CheckCircle2,
@@ -919,7 +920,7 @@ export default function SkipTracerV2Page() {
         {batchOpen && (
           <div className="p-2 bg-[#0c0c0c] border border-[#1a1a1a] rounded-sm space-y-2">
             <div className="text-[9px] text-[#8899aa] uppercase tracking-wider font-bold">Batch Search — one name per line</div>
-            <textarea
+            <RichTextArea
               value={batchText}
               onChange={e => setBatchText(e.target.value)}
               placeholder={"John Smith\nJane Doe\nBob Johnson"}
@@ -1262,7 +1263,7 @@ export default function SkipTracerV2Page() {
                     {notesSaveStatus === 'saved' && <span className="text-green-500 flex items-center gap-1"><CheckCircle2 size={9} /> Saved</span>}
                   </span>
                 </div>
-                <textarea
+                <RichTextArea
                   value={dossierNotes}
                   onChange={e => handleNotesChange(e.target.value, activeDossierId)}
                   placeholder="Add investigative notes..."

@@ -5,6 +5,7 @@ import VehicleFormModal, { type VehicleFormData } from './VehicleFormModal';
 import { apiFetch } from '../hooks/useApi';
 import type { VehicleRole } from '../types';
 
+import RichTextArea from './RichTextArea';
 interface LinkVehicleModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -254,7 +255,7 @@ export default function LinkVehicleModal({ isOpen, onClose, incidentId, onLinked
       {/* Notes */}
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes (Optional)</label>
-        <textarea
+        <RichTextArea
           className="textarea-dark"
           rows={2}
           placeholder="Additional details about this vehicle's involvement..."

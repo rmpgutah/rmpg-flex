@@ -9,6 +9,7 @@ import { localNow } from '../utils/timeUtils';
 import { seedUtahStatutes } from '../seeds/utahStatutes';
 // DISPATCH_DISTRICTS legacy constant import removed (Phase 2 of geography rebuild)
 import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
+import { ensureTraccarSchema } from './traccarSchema';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
 import { registerSqliteFunctions } from './sqliteFunctions';
@@ -60,6 +61,7 @@ export function initDatabase(): Database.Database {
   createIndexes();
   seedData();
   seedUtahStatutes(db);
+  ensureTraccarSchema(db);
 
   console.log('Database initialized successfully at', DB_PATH);
   return db;
@@ -5216,9 +5218,9 @@ function migrateSchema(): void {
   addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
   addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
 
-  // ── OwnTracks / Traccar device-to-unit mapping table ──
+  // ── Traccar device-to-unit mapping table ──
   db.prepare(`
-    CREATE TABLE IF NOT EXISTS owntracks_device_map (
+    CREATE TABLE IF NOT EXISTS traccar_device_map (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       tracker_id TEXT NOT NULL UNIQUE,
       unit_id INTEGER NOT NULL,
@@ -5227,6 +5229,74 @@ function migrateSchema(): void {
       FOREIGN KEY (unit_id) REFERENCES units(id)
     )
   `).run();
+
+  // ── 2026-04-29: OwnTracks → Traccar migration (one-time) ──
+  // Idempotent: only does work if owntracks_device_map still exists.
+  // Also migrates the discovery/staging table owntracks_pending_devices
+  // → traccar_pending_devices (used by the auto-discovery flow that lets
+  // dispatchers see new tracker IDs before mapping them to a unit).
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS traccar_pending_devices (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        tracker_id TEXT NOT NULL UNIQUE,
+        last_lat REAL,
+        last_lng REAL,
+        last_payload TEXT,
+        first_seen_at TEXT DEFAULT (datetime('now','localtime')),
+        last_seen_at TEXT DEFAULT (datetime('now','localtime')),
+        seen_count INTEGER NOT NULL DEFAULT 1
+      )
+    `).run();
+    const pendingTable = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='owntracks_pending_devices'",
+    ).get() as { name?: string } | undefined;
+    if (pendingTable?.name) {
+      db.prepare(`
+        INSERT OR IGNORE INTO traccar_pending_devices
+          (tracker_id, last_lat, last_lng, last_payload, first_seen_at, last_seen_at, seen_count)
+        SELECT tracker_id, last_lat, last_lng, last_payload, first_seen_at, last_seen_at, seen_count
+        FROM owntracks_pending_devices
+      `).run();
+      db.prepare('DROP TABLE owntracks_pending_devices').run();
+      console.log('[migration] Renamed owntracks_pending_devices → traccar_pending_devices');
+    }
+    const owntracksTable = db.prepare(
+      "SELECT name FROM sqlite_master WHERE type='table' AND name='owntracks_device_map'",
+    ).get() as { name?: string } | undefined;
+    if (owntracksTable?.name) {
+      // Copy rows that aren't already in traccar_device_map (UNIQUE on tracker_id)
+      db.prepare(`
+        INSERT OR IGNORE INTO traccar_device_map (tracker_id, unit_id, device_name, created_at)
+        SELECT tracker_id, unit_id, device_name, created_at FROM owntracks_device_map
+      `).run();
+      db.prepare('DROP TABLE owntracks_device_map').run();
+      console.log('[migration] Renamed owntracks_device_map → traccar_device_map');
+    }
+    // Rename config key. INSERT OR REPLACE in case both rows somehow exist.
+    const ot = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'owntracks_webhook_token' LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    if (ot?.config_value) {
+      db.prepare(`
+        INSERT INTO system_config (config_key, config_value, is_active)
+        VALUES ('traccar_webhook_token', ?, 1)
+        ON CONFLICT(config_key, config_value) DO NOTHING
+      `).run(ot.config_value);
+      db.prepare("DELETE FROM system_config WHERE config_key = 'owntracks_webhook_token'").run();
+      console.log('[migration] Renamed owntracks_webhook_token → traccar_webhook_token');
+    }
+    // Live unit gps_source migrate (history rows in gps_breadcrumbs are
+    // intentionally left alone — they're audit history).
+    const updRes = db.prepare(
+      "UPDATE units SET gps_source = 'traccar' WHERE gps_source = 'owntracks'",
+    ).run();
+    if (updRes.changes > 0) {
+      console.log(`[migration] Migrated ${updRes.changes} unit rows from owntracks → traccar gps_source`);
+    }
+  } catch (err) {
+    console.error('[migration] OwnTracks → Traccar migration failed:', err);
+  }
 
   // ── units: add 'out_of_service' to CHECK constraint (production fix) ──
   try {
@@ -5675,6 +5745,161 @@ function migrateSchema(): void {
       FOREIGN KEY (created_by) REFERENCES users(id)
     );
   `);
+
+  // ════════════════════════════════════════════════════════════════
+  // DASHCAM / TELEMATICS — schema for in-house dashcam AI v1
+  // ════════════════════════════════════════════════════════════════
+  // Two tables below (`dashcam_events`, `cpg_device_mappings`) are
+  // already used in production via ad-hoc ALTER. Adding proper
+  // CREATE TABLEs so fresh DBs (dev, CI) don't crash on first
+  // ClearPath/Traccar event. Per gotcha #42 we use prepare().run()
+  // for single-statement DDL rather than the bulk-execute shortcut.
+
+  // ── dashcam_events: legacy ClearPath/Traccar event log (latent fix) ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS dashcam_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpg_device_id TEXT,
+      unit_id INTEGER,
+      dashcam_id TEXT,
+      event_type TEXT NOT NULL,
+      event_timestamp TEXT,
+      latitude REAL,
+      longitude REAL,
+      heading REAL,
+      speed_mph REAL,
+      address TEXT,
+      status_code TEXT,
+      status_code_text TEXT,
+      video_available INTEGER DEFAULT 0,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dashcam_events_unit ON dashcam_events(unit_id, event_timestamp)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dashcam_events_device ON dashcam_events(cpg_device_id, event_timestamp)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dashcam_events_type ON dashcam_events(event_type)`).run();
+
+  // ── cpg_device_mappings: vendor-device → unit binding (latent fix) ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS cpg_device_mappings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      cpg_device_id TEXT NOT NULL UNIQUE,
+      cpg_display_name TEXT,
+      traccar_device_id INTEGER,
+      gts_device_id TEXT,
+      unit_id INTEGER,
+      is_active INTEGER DEFAULT 1,
+      last_synced_at TEXT,
+      vehicle_make TEXT,
+      vehicle_model TEXT,
+      vehicle_vin TEXT,
+      license_plate TEXT,
+      ignition_state TEXT,
+      last_odometer REAL,
+      driver_name TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cpg_device_mappings_unit ON cpg_device_mappings(unit_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cpg_device_mappings_active ON cpg_device_mappings(is_active)`).run();
+
+  // ── driving_events: source-agnostic telematics event table ──
+  // Single normalized event store across ClearPathGPS, Traccar,
+  // Freematics, and Flex Dashcam AI. Vendor-specific tables write
+  // here too so reports/UIs read one shape. event_type is normalized:
+  //   hard_brake | hard_accel | hard_turn | fcw | ldw | drowsy
+  //   distracted | tailgate | speeding | impact | panic | sos
+  //   ignition_on | ignition_off | k9_deploy | weapon_draw | uof
+  //   custom (with detail in raw_json)
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS driving_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      source TEXT NOT NULL,
+      source_event_id TEXT,
+      device_id TEXT,
+      unit_id INTEGER,
+      officer_id INTEGER,
+      event_type TEXT NOT NULL,
+      severity TEXT DEFAULT 'info',
+      event_timestamp TEXT NOT NULL,
+      latitude REAL,
+      longitude REAL,
+      heading REAL,
+      speed_mph REAL,
+      address TEXT,
+      call_id INTEGER,
+      incident_id INTEGER,
+      beat_code TEXT,
+      has_video INTEGER DEFAULT 0,
+      video_url TEXT,
+      clip_object_key TEXT,
+      thumb_object_key TEXT,
+      duration_sec INTEGER,
+      model_version TEXT,
+      confidence REAL,
+      raw_json TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_driving_events_unit_ts ON driving_events(unit_id, event_timestamp)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_driving_events_officer_ts ON driving_events(officer_id, event_timestamp)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_driving_events_type ON driving_events(event_type, event_timestamp)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_driving_events_call ON driving_events(call_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_driving_events_incident ON driving_events(incident_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_driving_events_source_dedup ON driving_events(source, source_event_id)`).run();
+
+  // ── evidence_hashes: chain-of-custody hash log ──
+  // Append-only SHA-256 record for any media artifact captured by
+  // Flex (dashcam clips, audio, photos). prev_hash_id forms a
+  // linked list per artifact_type so tampering with any earlier
+  // entry breaks the chain. signer reserved for HSM-signed entries.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS evidence_hashes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      artifact_type TEXT NOT NULL,
+      artifact_id INTEGER NOT NULL,
+      sha256 TEXT NOT NULL,
+      size_bytes INTEGER,
+      storage_uri TEXT,
+      captured_at TEXT NOT NULL,
+      hashed_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      signer TEXT,
+      signature TEXT,
+      prev_hash_id INTEGER,
+      notes TEXT
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_evidence_hashes_artifact ON evidence_hashes(artifact_type, artifact_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_evidence_hashes_sha ON evidence_hashes(sha256)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_evidence_hashes_chain ON evidence_hashes(prev_hash_id)`).run();
+
+  // ── dashcam_health: per-unit fleet health snapshot ──
+  // One row per unit, upserted by edge-runner heartbeats. Drives
+  // the fleet dashboard health LEDs and feeds gps_stale_alerts'
+  // sister concept "dashcam down" alerts (future).
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS dashcam_health (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      unit_id INTEGER NOT NULL UNIQUE,
+      device_id TEXT,
+      device_kind TEXT,
+      last_heartbeat_at TEXT,
+      firmware_version TEXT,
+      model_version TEXT,
+      gpu_temp_c REAL,
+      cpu_temp_c REAL,
+      disk_used_pct REAL,
+      ram_used_pct REAL,
+      network_status TEXT,
+      lte_rssi_dbm INTEGER,
+      last_error TEXT,
+      uptime_sec INTEGER,
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dashcam_health_kind ON dashcam_health(device_kind)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dashcam_health_status ON dashcam_health(network_status)`).run();
 
   // ── FIELD INTERVIEWS — columns referenced by INSERT but missing from CREATE TABLE ──
   // Route handler (server/src/routes/fieldInterviews.ts) inserts these; production DB

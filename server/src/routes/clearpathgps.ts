@@ -556,9 +556,16 @@ router.get('/sync/status', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════════════
 
 // POST /api/clearpathgps/credentials — Save credentials (alias for /configure)
-router.post('/credentials', requireRole('admin'), (req: Request, res: Response) => {
+// Accept both POST (legacy) and PUT (current client). Client sends
+// { email, password, account_id }; legacy senders may use
+// { account, username, password, base_url }. Honor both shapes.
+const credentialsHandler = (req: Request, res: Response) => {
   try {
-    const { account, username, password, base_url } = req.body;
+    const body = req.body || {};
+    const account = body.account ?? body.account_id;
+    const username = body.username ?? body.email;
+    const password = body.password;
+    const base_url = body.base_url;
     if (!account || !username || !password) {
       res.status(400).json({ error: 'account, username, and password are required', code: 'ACCOUNT_USERNAME_AND_PASSWORD' });
       return;
@@ -579,7 +586,9 @@ router.post('/credentials', requireRole('admin'), (req: Request, res: Response) 
     console.error('ClearPathGPS save credentials error:', error);
     res.status(500).json({ error: 'Failed to clearpathgps save credentials', code: 'CLEARPATHGPS_SAVE_CREDENTIALS_ERROR' });
   }
-});
+};
+router.post('/credentials', requireRole('admin'), credentialsHandler);
+router.put('/credentials', requireRole('admin'), credentialsHandler);
 
 // DELETE /api/clearpathgps/credentials — Remove credentials
 router.delete('/credentials', requireRole('admin'), (req: Request, res: Response) => {
@@ -635,10 +644,11 @@ router.post('/discover-accounts', requireRole('admin'), async (req: Request, res
   }
 });
 
-// POST /api/clearpathgps/enable — Enable/disable integration
-router.post('/enable', requireRole('admin'), (req: Request, res: Response) => {
+// POST/PUT /api/clearpathgps/enable — Enable/disable integration
+// Accepts both methods. Client may also pass `poll_interval_seconds`.
+const enableHandler = (req: Request, res: Response) => {
   try {
-    const { enabled, accountId } = req.body;
+    const { enabled, accountId, poll_interval_seconds } = req.body || {};
     const db = getDb();
 
     const existing = db.prepare(
@@ -655,23 +665,37 @@ router.post('/enable', requireRole('admin'), (req: Request, res: Response) => {
       setConfigValue('clearpathgps_active_account', String(accountId), false);
     }
 
+    // Persist poll interval if provided (matches the existing
+    // clearpathgps_poll_interval system_config key).
+    if (poll_interval_seconds !== undefined && poll_interval_seconds !== null) {
+      const seconds = Math.max(5, parseInt(String(poll_interval_seconds), 10) || 15);
+      setConfigValue('clearpathgps_poll_interval', String(seconds), false);
+    }
+
     res.json({ success: true, enabled });
   } catch (error: any) {
     console.error('ClearPathGPS enable error:', error);
     res.status(500).json({ error: 'Failed to clearpathgps enable', code: 'CLEARPATHGPS_ENABLE_ERROR' });
   }
-});
+};
+router.post('/enable', requireRole('admin'), enableHandler);
+router.put('/enable', requireRole('admin'), enableHandler);
 
 // GET /api/clearpathgps/devices — List ClearPathGPS devices
 router.get('/devices', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    // NOTE: fleet_vehicles has no unit_label column — derive it from the
+    // assigned unit's call_sign instead. The original query selected
+    // `fv.unit_label` directly which 500'd with `no such column` on prod.
     const devices = db.prepare(`
-      SELECT cv.*, fv.vehicle_number as fleet_vehicle_number, fv.unit_label as fleet_unit_label
+      SELECT cv.*,
+             fv.vehicle_number as fleet_vehicle_number,
+             u.call_sign as fleet_unit_label
       FROM cpgps_vehicles cv
       LEFT JOIN fleet_vehicles fv ON cv.vehicle_id = fv.id
+      LEFT JOIN units u ON fv.assigned_unit_id = u.id
       ORDER BY cv.name
-    
       LIMIT 1000
     `).all();
     res.json({ devices });

@@ -6,6 +6,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import RichTextArea from '../components/RichTextArea';
 import {
   Microscope, Plus, Search, Filter, ChevronRight, ChevronDown,
   FileText, Clock, AlertTriangle, CheckCircle, XCircle,
@@ -1450,7 +1451,7 @@ export default function ForensicLabPage() {
                     <option value="positive_control">Positive Control</option>
                     <option value="negative_control">Negative Control</option>
                   </select>
-                  <textarea value={qcForm.reviewer_notes} onChange={e => setQcForm(f => ({ ...f, reviewer_notes: e.target.value }))}
+                  <RichTextArea value={qcForm.reviewer_notes} onChange={e => setQcForm(f => ({ ...f, reviewer_notes: e.target.value }))}
                     className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white h-16 resize-none"
                     placeholder="Reviewer notes..." />
                   <div className="flex items-center gap-4">
@@ -1655,7 +1656,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Methodology</label>
-                <textarea
+                <RichTextArea
                   value={analysisForm.methodology}
                   onChange={e => setAnalysisForm(f => ({ ...f, methodology: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
@@ -1674,7 +1675,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
-                <textarea
+                <RichTextArea
                   value={analysisForm.notes}
                   onChange={e => setAnalysisForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-16"
@@ -1766,7 +1767,7 @@ export default function ForensicLabPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Synopsis</label>
-                <textarea
+                <RichTextArea
                   value={editForm.description}
                   onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
@@ -1775,7 +1776,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Findings</label>
-                <textarea
+                <RichTextArea
                   value={editForm.findings}
                   onChange={e => setEditForm(f => ({ ...f, findings: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
@@ -1784,7 +1785,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Conclusion</label>
-                <textarea
+                <RichTextArea
                   value={editForm.conclusion}
                   onChange={e => setEditForm(f => ({ ...f, conclusion: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
@@ -1802,7 +1803,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
-                <textarea
+                <RichTextArea
                   value={editForm.notes}
                   onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-16"
@@ -1868,7 +1869,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
-                <textarea
+                <RichTextArea
                   value={custodyForm.notes}
                   onChange={e => setCustodyForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-16"
@@ -2215,7 +2216,7 @@ export default function ForensicLabPage() {
 
                 <div>
                   <label className="block text-[11px] text-rmpg-400 mb-1">Synopsis</label>
-                  <textarea
+                  <RichTextArea
                     value={wizardData.synopsis}
                     onChange={e => setWizardData(d => ({ ...d, synopsis: e.target.value }))}
                     className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-24"

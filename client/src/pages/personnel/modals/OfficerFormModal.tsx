@@ -6,6 +6,7 @@ import type { UserRole } from '../../../types';
 import AddressAutocomplete, { type ParsedAddress } from '../../../components/AddressAutocomplete';
 import { formatPhoneInput } from '../../../utils/formatters';
 
+import RichTextArea from '../../../components/RichTextArea';
 export interface OfficerFormData {
   // Account (create only)
   username: string;
@@ -339,7 +340,7 @@ export default function OfficerFormModal({
       {/* Notes */}
       <SectionDivider label="Notes" />
       <div className="panel-inset p-3">
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." maxLength={5000} className="textarea-dark" />
+        <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." maxLength={5000} className="textarea-dark" />
         <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
       </div>
     </FormModal>

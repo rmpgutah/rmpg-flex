@@ -7,6 +7,7 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { extractFolderGroups, type FolderGroup } from '../utils/dropFolders';
 import BulkDefendantTable from '../components/serve/BulkDefendantTable';
+import RichTextArea from '../components/RichTextArea';
 import {
   Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin,
   User, Building2, Phone, X, ChevronRight, Edit2, Save, ArrowLeft,
@@ -106,7 +107,7 @@ function FieldRow({ label, icon: Icon, value, onChange, placeholder, multiline }
         <Icon className="w-3 h-3" /> {label}
       </label>
       {multiline ? (
-        <textarea className="input-dark text-xs w-full min-h-[48px]" rows={3} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
+        <RichTextArea className="input-dark text-xs w-full min-h-[48px]" rows={3} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
       ) : (
         <input className="input-dark text-xs w-full" value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder} />
       )}

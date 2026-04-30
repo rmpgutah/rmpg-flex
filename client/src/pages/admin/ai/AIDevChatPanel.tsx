@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User, Circle, Wifi, WifiOff } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface ChatMessage {
   id?: number;
   role: 'user' | 'assistant';
@@ -750,7 +751,7 @@ export default function AIDevChatPanel() {
             >
               <FileCode className="w-4 h-4" />
             </button>
-            <textarea
+            <RichTextArea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}

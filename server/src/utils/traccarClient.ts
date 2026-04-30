@@ -246,3 +246,86 @@ export function isConfigured(): boolean {
 export function isEnabled(): boolean {
   return getConfigValue(CONFIG_KEYS.enabled) === 'true';
 }
+
+// ============================================================
+// Historical bulk-import endpoints
+// ============================================================
+// These cover the report-style endpoints used to backfill years
+// of historical data with all columns preserved (events, trips,
+// stops, geofences). Each accepts a single deviceId + ISO date
+// range. The historical sync engine chunks long ranges into 24h
+// windows to keep individual responses small and resumable.
+
+export interface TraccarEvent {
+  id: number;
+  type: string;
+  eventTime: string;
+  deviceId: number;
+  positionId?: number;
+  geofenceId?: number;
+  maintenanceId?: number;
+  attributes?: Record<string, any>;
+}
+
+export interface TraccarTripStop {
+  deviceId: number;
+  deviceName?: string;
+  driverUniqueId?: string;
+  driverName?: string;
+  startTime?: string;
+  endTime?: string;
+  startAddress?: string;
+  endAddress?: string;
+  address?: string;
+  startLat?: number;
+  startLon?: number;
+  endLat?: number;
+  endLon?: number;
+  startOdometer?: number;
+  endOdometer?: number;
+  distance?: number;
+  averageSpeed?: number;
+  maxSpeed?: number;
+  duration?: number;
+  spentFuel?: number;
+  odometer?: number;
+  engineHours?: number;
+  latitude?: number;
+  longitude?: number;
+  [key: string]: any;
+}
+
+export interface TraccarGeofence {
+  id: number;
+  name: string;
+  description?: string;
+  area?: string;
+  calendarId?: number;
+  attributes?: Record<string, any>;
+}
+
+/** Fetch events for a device within an ISO date range. */
+export async function getEvents(deviceId: number, fromIso: string, toIso: string): Promise<TraccarEvent[]> {
+  return traccarFetch<TraccarEvent[]>(
+    `/reports/events?deviceId=${deviceId}&from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`
+  );
+}
+
+/** Fetch trip summaries for a device within an ISO date range. */
+export async function getTrips(deviceId: number, fromIso: string, toIso: string): Promise<TraccarTripStop[]> {
+  return traccarFetch<TraccarTripStop[]>(
+    `/reports/trips?deviceId=${deviceId}&from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`
+  );
+}
+
+/** Fetch stop summaries for a device within an ISO date range. */
+export async function getStops(deviceId: number, fromIso: string, toIso: string): Promise<TraccarTripStop[]> {
+  return traccarFetch<TraccarTripStop[]>(
+    `/reports/stops?deviceId=${deviceId}&from=${encodeURIComponent(fromIso)}&to=${encodeURIComponent(toIso)}`
+  );
+}
+
+/** Fetch all geofences (no date range — geofences are persistent definitions). */
+export async function getGeofences(): Promise<TraccarGeofence[]> {
+  return traccarFetch<TraccarGeofence[]>('/geofences');
+}
