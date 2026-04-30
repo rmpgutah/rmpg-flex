@@ -18,7 +18,16 @@
 //       password/enabled/poll_interval). Migrate owntracks_pending_devices
 //       → traccar_pending_devices. Honor traccar_enabled toggle.
 // v453: /api/traccar/health route order fix (was shadowed by /:user).
-const CACHE_NAME = 'rmpg-flex-v453';
+// v454: Traccar Server poller decrypts AES-encrypted email/password from
+//       system_config; top-level ESM import for poller; admin pull-status
+//       card with live OK/ERROR pill; non-secret config keys render as
+//       type=text; collapse traccar_pull_status to one row.
+// v455: Traccar historical bulk import — every column preserved, with
+//       map viewer (Historical GPS Tracks page + admin import section).
+// v456: Bug fixes — allow traccar_url/enabled/poll_interval through
+//       admin third-party-keys endpoint (URL save was rejected); fix
+//       fv.unit_number → fv.vehicle_number in /historical/devices.
+const CACHE_NAME = 'rmpg-flex-v456';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
