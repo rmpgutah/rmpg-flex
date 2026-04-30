@@ -1483,83 +1483,102 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
       ? `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt. Note: ${scheduled_note}`
       : `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt`;
 
-    const initialNotes = JSON.stringify([{
-      id: String(Date.now()),
-      author: req.user?.fullName || 'Dispatch',
-      text: noteText,
-      timestamp: now,
-    }]);
+    // Carry ALL parent notes forward to the revisit. Without this, the
+    // dispatcher loses the case narrative, officer briefing, dossier, and
+    // every dispatcher/officer note from the prior attempt — which has
+    // historically forced PSOs to dig through the parent call to remember
+    // what they're serving. New IDs and "carried over" timestamps preserve
+    // the original chronology while making it clear this note arrived via
+    // re-dispatch (so it doesn't look like brand-new dispatch activity).
+    let parentNotesForCarry: any[] = [];
+    try {
+      const raw = JSON.parse(parentCall.notes || '[]');
+      parentNotesForCarry = Array.isArray(raw) ? raw : [];
+    } catch { parentNotesForCarry = []; }
 
-    // Create the NEW call linked to parent — copy ALL relevant fields
-    const result = db.prepare(`
-      INSERT INTO calls_for_service (
-        call_number, incident_type, priority, status, source,
-        caller_name, caller_phone, caller_relationship, caller_address,
-        location_address, property_id, client_id, latitude, longitude,
-        cross_street, location_building, location_floor, location_room,
-        description, notes, parent_call_id, pso_attempt_number,
-        pso_requestor_name, pso_requestor_phone, pso_requestor_email,
-        pso_service_type, pso_billing_code, pso_authorization,
-        pso_service_windows,
-        process_service_type, process_served_to, process_served_address,
-        dispatch_code, sector_id, sector_name, zone_id, zone_name,
-        beat_id, beat_name, beat_descriptor, contract_id,
-        num_subjects, num_victims, direction_of_travel,
-        subject_description, vehicle_description,
-        scene_safety, weather_conditions, lighting_conditions,
-        injuries_reported, alcohol_involved, domestic_violence, drugs_involved,
-        weapons_involved, mental_health_crisis, juvenile_involved,
-        felony_in_progress, officer_safety_caution, gang_related,
-        k9_requested, ems_requested, fire_requested, hazmat,
-        case_number, le_agency, le_case_number, le_notified,
-        secondary_type, contact_method, tags,
-        dispatcher_id, created_at, updated_at, received_at
-      ) VALUES (
-        ?, ?, ?, 'pending', ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?,
-        ?,
-        ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?,
-        ?, ?, ?, ?
-      )
-    `).run(
-      newCallNumber, parentCall.incident_type, parentCall.priority, parentCall.source || 'dispatch',
-      parentCall.caller_name, parentCall.caller_phone, parentCall.caller_relationship, parentCall.caller_address,
-      parentCall.location_address, parentCall.property_id, parentCall.client_id, parentCall.latitude, parentCall.longitude,
-      parentCall.cross_street, parentCall.location_building, parentCall.location_floor, parentCall.location_room,
-      parentCall.description, initialNotes, rootCallId, newAttempt,
-      parentCall.pso_requestor_name, parentCall.pso_requestor_phone, parentCall.pso_requestor_email,
-      parentCall.pso_service_type, parentCall.pso_billing_code, parentCall.pso_authorization,
-      parentCall.pso_service_windows,
-      parentCall.process_service_type, parentCall.process_served_to, parentCall.process_served_address,
-      parentCall.dispatch_code, parentCall.sector_id, parentCall.sector_name, parentCall.zone_id, parentCall.zone_name,
-      parentCall.beat_id, parentCall.beat_name, parentCall.beat_descriptor, parentCall.contract_id,
-      parentCall.num_subjects, parentCall.num_victims, parentCall.direction_of_travel,
-      parentCall.subject_description, parentCall.vehicle_description,
-      parentCall.scene_safety, parentCall.weather_conditions, parentCall.lighting_conditions,
-      parentCall.injuries_reported, parentCall.alcohol_involved, parentCall.domestic_violence, parentCall.drugs_involved,
-      parentCall.weapons_involved, parentCall.mental_health_crisis, parentCall.juvenile_involved,
-      parentCall.felony_in_progress, parentCall.officer_safety_caution, parentCall.gang_related,
-      parentCall.k9_requested, parentCall.ems_requested, parentCall.fire_requested, parentCall.hazmat,
-      parentCall.case_number, parentCall.le_agency, parentCall.le_case_number, parentCall.le_notified,
-      parentCall.secondary_type, parentCall.contact_method, parentCall.tags,
-      req.user!.userId, now, now, now
-    );
+    const tsBase = Date.now();
+    const carriedNotes = parentNotesForCarry.map((n, idx) => ({
+      id: String(tsBase + idx),
+      author: n.author || 'System',
+      text: n.text || '',
+      timestamp: n.timestamp || now,
+      // Marker fields the client UI can read to render a "carried from prior visit" badge
+      // without changing the visible note text.
+      carried_from_call_number: parentCall.call_number,
+      carried_from_call_id: parentCall.id,
+      original_timestamp: n.timestamp || null,
+    }));
+
+    const allNotes = [
+      ...carriedNotes,
+      {
+        id: String(tsBase + carriedNotes.length),
+        author: req.user?.fullName || 'Dispatch',
+        text: noteText,
+        timestamp: now,
+      },
+    ];
+
+    const initialNotes = JSON.stringify(allNotes);
+
+    // ──────────────────────────────────────────────────────────────
+    // Create the NEW call by schema-driven copy of the parent row.
+    //
+    // Why this isn't a hand-rolled column list anymore: every time a
+    // new column got added to calls_for_service via addCol(), the
+    // hand-rolled INSERT would silently DROP that user-entered value
+    // on every re-dispatch. Now we read the live schema with PRAGMA
+    // table_info and copy every column except `id`, then override
+    // ONLY the per-visit fields (call_number, status reset, attempt
+    // counter, parent_call_id, fresh notes, cleared timestamps,
+    // cleared mileage/vehicle/officer assignments). Anything new
+    // added to the table in the future automatically follows the
+    // re-dispatch chain without touching this code.
+    // ──────────────────────────────────────────────────────────────
+    const cols = (db.prepare("PRAGMA table_info('calls_for_service')").all() as any[])
+      .map(c => String(c.name))
+      .filter(c => c !== 'id');
+    // Per-visit overrides — these reset on every re-dispatch even if
+    // the parent had values for them. Anything NOT in this map is
+    // copied verbatim from the parent row.
+    const overrides: Record<string, any> = {
+      call_number: newCallNumber,
+      status: 'pending',
+      pso_attempt_number: newAttempt,
+      parent_call_id: rootCallId,
+      notes: initialNotes,
+      // Fresh dispatch lifecycle — these get re-stamped as the new visit progresses
+      assigned_unit_ids: null,
+      dispatched_at: null,
+      enroute_at: null,
+      onscene_at: null,
+      cleared_at: null,
+      closed_at: null,
+      archived_at: null,
+      // Per-visit operational fields that should NOT inherit prior outcome
+      disposition: null,
+      action_taken: null,
+      responding_officer: null,
+      responding_vehicle_id: null,
+      starting_mileage: null,
+      ending_mileage: null,
+      // 72-hour PSO timer is reset — it counts from the next clear, not the prior one
+      pso_72hr_deadline: null,
+      pso_72hr_notified: null,
+      // Audit / sticky fields
+      dispatcher_id: req.user!.userId,
+      created_at: now,
+      updated_at: now,
+      received_at: now,
+      pinned: 0,
+      // Source — keep parent value, but ensure not null
+      source: parentCall.source || 'dispatch',
+    };
+
+    const placeholders = cols.map(() => '?').join(', ');
+    const colList = cols.map(c => `"${c}"`).join(', ');
+    const values = cols.map(c => (c in overrides ? overrides[c] : parentCall[c] ?? null));
+    const result = db.prepare(`INSERT INTO calls_for_service (${colList}) VALUES (${placeholders})`).run(...values);
 
     const newCallId = result.lastInsertRowid;
 
@@ -1580,6 +1599,16 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
         try { insertVehicle.run(newCallId, v.vehicle_id, v.role, v.notes); } catch { /* skip duplicates */ }
       }
     } catch (e) { console.error('[Calls] Copy linked vehicles for redispatch:', e instanceof Error ? e.message : e); }
+
+    // Copy linked businesses from parent call — previously dropped on redispatch
+    // because no copy logic existed for the call_businesses junction.
+    try {
+      const parentBusinesses = db.prepare('SELECT business_id, role, notes FROM call_businesses WHERE call_id = ?').all(parentCall.id) as any[];
+      const insertBusiness = db.prepare('INSERT INTO call_businesses (call_id, business_id, role, notes) VALUES (?, ?, ?, ?)');
+      for (const b of parentBusinesses) {
+        try { insertBusiness.run(newCallId, b.business_id, b.role || 'involved', b.notes); } catch { /* skip duplicates */ }
+      }
+    } catch (e) { console.error('[Calls] Copy linked businesses for redispatch:', e instanceof Error ? e.message : e); }
 
     // Mark parent call with a back-link note
     let parentNotes: any[] = [];
