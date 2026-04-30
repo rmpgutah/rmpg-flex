@@ -42,7 +42,12 @@
 //       (6 colors blue→red), direction arrows along the track, distinct
 //       Start (S) and End (E) markers, idle/stop detection (≥2 min) marked
 //       with purple "P" pins, speed legend overlay in bottom-left corner.
-const CACHE_NAME = 'rmpg-flex-v460';
+// v461: Map sidebar A+B hybrid — gold-accented stratified section headers
+//       (text-[#d4a017] uppercase, gold-glow + 0.18em tracking), uniform
+//       brighter item rows (#b8b8b8) with gold-rail hover indicator. Heatmap
+//       layer collapsed to soft haze (radius 30→14, opacity 0.7→0.28,
+//       maxIntensity capped at 8) so it no longer reads as hard rings.
+const CACHE_NAME = 'rmpg-flex-v473';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit

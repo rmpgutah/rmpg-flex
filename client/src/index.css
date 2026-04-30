@@ -5022,3 +5022,27 @@ hr, [class*="divide-"] > * + * {
   /* Prevent iOS rubber-band overscroll on full-page scrollers */
   .no-overscroll { overscroll-behavior: none; }
 }
+
+/* ── Map sidebar visual upgrade (2026-04-30) ──────────────── */
+/* Stratified contrast (gold section headers) + uniform-readable items.
+   Targets any sibling button of the .map-sidebar-section header via
+   :has() — no per-button class changes required. */
+.map-sidebar-section {
+  letter-spacing: 0.18em;
+  text-shadow: 0 0 8px rgba(212, 160, 23, 0.18);
+}
+/* Brighten inactive sidebar items + add gold-rail hover indicator. */
+div:has(> .map-sidebar-section) > button {
+  position: relative;
+  border-left: 2px solid transparent;
+  transition: border-color 0.12s ease, color 0.12s ease, background-color 0.12s ease, padding-left 0.12s ease;
+}
+div:has(> .map-sidebar-section) > button:not([class*="bg-"][class*="-900/"]):not(.panel-inset) {
+  color: #b8b8b8 !important;
+}
+div:has(> .map-sidebar-section) > button:hover {
+  border-left-color: #d4a017;
+  color: #ffffff !important;
+  padding-left: 10px !important;
+  background-color: rgba(212, 160, 23, 0.06) !important;
+}
