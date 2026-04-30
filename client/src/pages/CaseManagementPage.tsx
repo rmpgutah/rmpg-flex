@@ -6,6 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
   X, Save, Loader2, AlertTriangle, Target, MessageSquare,
@@ -1105,7 +1106,7 @@ export default function CaseManagementPage() {
                 <div className="space-y-3">
                   {/* Add note */}
                   <div className="panel-beveled p-3">
-                    <textarea
+                    <RichTextArea
                       value={newNote}
                       onChange={e => setNewNote(e.target.value)}
                       placeholder="Add a case note..."
@@ -1201,7 +1202,7 @@ export default function CaseManagementPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Return Reason *</label>
-                <textarea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
+                <RichTextArea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
                   placeholder="Explain why this case needs additional work..."
                   className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
@@ -1296,7 +1297,7 @@ export default function CaseManagementPage() {
               </div>
               <div>
                 <label className="field-label">Summary</label>
-                <textarea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <RichTextArea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>

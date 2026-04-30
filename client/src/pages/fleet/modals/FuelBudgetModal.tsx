@@ -20,6 +20,7 @@ import { DollarSign, Calendar, AlertTriangle, Save, X as XIcon } from 'lucide-re
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FleetFuelBudget, FuelBudgetPeriod } from '../../../types';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface Props {
   isOpen: boolean;
   mode: 'create' | 'edit';
@@ -170,7 +171,7 @@ export default function FuelBudgetModal({
 
           <div>
             <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-            <textarea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={notes}
+            <RichTextArea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={notes}
               onChange={(e) => setNotes(e.target.value)} maxLength={2000}
               placeholder="Approver, rationale, etc." />
           </div>

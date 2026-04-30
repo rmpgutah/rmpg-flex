@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../RichTextArea';
 import {
   Plus,
   X,
@@ -519,7 +520,7 @@ export default function ProposalsTab() {
               <div className="panel-beveled p-2">
                 <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-1">Scope of Work</div>
                 {editMode ? (
-                  <textarea
+                  <RichTextArea
                     value={editForm.scope_of_work || ''}
                     onChange={e => setEditForm(f => ({ ...f, scope_of_work: e.target.value }))}
                     rows={5}
@@ -534,7 +535,7 @@ export default function ProposalsTab() {
               <div className="panel-beveled p-2">
                 <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-1">Terms</div>
                 {editMode ? (
-                  <textarea
+                  <RichTextArea
                     value={editForm.terms || ''}
                     onChange={e => setEditForm(f => ({ ...f, terms: e.target.value }))}
                     rows={4}
@@ -549,7 +550,7 @@ export default function ProposalsTab() {
               <div className="panel-beveled p-2">
                 <div className="text-[10px] text-rmpg-400 uppercase tracking-wider mb-1">Notes</div>
                 {editMode ? (
-                  <textarea
+                  <RichTextArea
                     value={editForm.notes || ''}
                     onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                     rows={3}
@@ -640,7 +641,7 @@ export default function ProposalsTab() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Scope of Work</label>
-                <textarea
+                <RichTextArea
                   value={form.scope_of_work}
                   onChange={e => setForm(f => ({ ...f, scope_of_work: e.target.value }))}
                   rows={4}
@@ -649,7 +650,7 @@ export default function ProposalsTab() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Terms</label>
-                <textarea
+                <RichTextArea
                   value={form.terms}
                   onChange={e => setForm(f => ({ ...f, terms: e.target.value }))}
                   rows={3}
@@ -731,7 +732,7 @@ export default function ProposalsTab() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase tracking-wider block mb-0.5">Notes</label>
-                <textarea
+                <RichTextArea
                   value={form.notes}
                   onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
                   rows={2}

@@ -4,6 +4,7 @@ import FormModal from './FormModal';
 import { apiFetch } from '../hooks/useApi';
 import type { RecordEntityType } from '../types';
 
+import RichTextArea from './RichTextArea';
 interface LinkRecordModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -264,7 +265,7 @@ export default function LinkRecordModal({
       {/* Notes Textarea */}
       <div>
         <label className={labelClass}>Notes (optional)</label>
-        <textarea
+        <RichTextArea
           className="input-dark w-full text-xs"
           rows={3}
           placeholder="Add any relevant notes about this link..."

@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Globe,
   Search,
@@ -606,7 +607,7 @@ export default function WebResearchPage() {
                 {/* Notes textarea */}
                 <div>
                   {editingNotesId === result.id ? (
-                    <textarea
+                    <RichTextArea
                       className="input-dark w-full text-xs resize-none min-h-[36px]"
                       rows={2}
                       placeholder="Add notes..."

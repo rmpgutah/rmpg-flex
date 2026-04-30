@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   MessageSquare,
   AlertTriangle,
@@ -1045,7 +1046,7 @@ export default function CommunicationsPage() {
                         </span>
                       </div>
                       <div className="flex gap-2">
-                        <textarea
+                        <RichTextArea
                           className="textarea-dark flex-1"
                           rows={2}
                           placeholder="Write your reply..."
@@ -1129,7 +1130,7 @@ export default function CommunicationsPage() {
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Description:</label>
-                    <textarea className="textarea-dark" rows={3} placeholder="Detailed description..." value={boloDescription} onChange={(e) => setBoloDescription(e.target.value)} />
+                    <RichTextArea className="textarea-dark" rows={3} placeholder="Detailed description..." value={boloDescription} onChange={(e) => setBoloDescription(e.target.value)} />
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Photo (optional):</label>
@@ -1373,7 +1374,7 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Message:</label>
-          <textarea className="textarea-dark" rows={5} placeholder="Type your message..." value={composeContent} onChange={(e) => setComposeContent(e.target.value)} required />
+          <RichTextArea className="textarea-dark" rows={5} placeholder="Type your message..." value={composeContent} onChange={(e) => setComposeContent(e.target.value)} required />
         </div>
         {/* Feature 26: Save as Draft button */}
         <button

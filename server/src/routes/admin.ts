@@ -1902,10 +1902,13 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
   // GPS Webhooks (Traccar replaced OwnTracks 2026-04-29)
   'traccar_webhook_token',
-  // Traccar Server REST API pull mode (optional). Names align with the
-  // production schema set up before this slice: traccar_email/password
-  // are encrypted, _url/_enabled/_poll_interval are plain config.
-  'traccar_email', 'traccar_password',
+  // Traccar Server REST API pull mode (optional). All four are accepted
+  // through this endpoint so the admin UI's per-field Save buttons work
+  // uniformly. URL/enabled/poll_interval are not secrets but are still
+  // routed through encryptValue() — that's harmless for short non-secret
+  // strings and keeps the storage path single.
+  'traccar_url', 'traccar_email', 'traccar_password',
+  'traccar_enabled', 'traccar_poll_interval',
 ];
 
 function encryptValue(plaintext: string): string {
@@ -1964,16 +1967,24 @@ router.put('/third-party-keys', requireRole('admin'), (req: Request, res: Respon
     }
 
     const db = getDb();
-    const encrypted = encryptValue(value.trim());
+    // Non-secret config keys are stored plain — they're consumed by code
+    // paths (e.g. the Traccar poller) that read raw values without
+    // decryption. Encrypting them would break those readers.
+    const NON_SECRET_KEYS = new Set([
+      'traccar_url',
+      'traccar_enabled',
+      'traccar_poll_interval',
+    ]);
+    const stored = NON_SECRET_KEYS.has(key) ? value.trim() : encryptValue(value.trim());
     const now = localNow();
 
     const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;
     if (existing) {
-      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(encrypted, now, key);
+      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(stored, now, key);
     } else {
       db.prepare(
         "INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 1, ?, ?)"
-      ).run(key, encrypted, now, now);
+      ).run(key, stored, now, now);
     }
 
     res.json({ success: true, message: `${key} saved` });

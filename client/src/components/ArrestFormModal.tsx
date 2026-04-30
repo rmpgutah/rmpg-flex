@@ -11,6 +11,7 @@ import FormModal from './FormModal';
 import { useFormDirty } from '../hooks/useFormDirty';
 import { localToday } from '../utils/dateUtils';
 
+import RichTextArea from './RichTextArea';
 // ── Types ─────────────────────────────────────────────────
 
 export interface ArrestFormData {
@@ -346,7 +347,7 @@ export default function ArrestFormModal({
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">
               Charges <span className="text-rmpg-500">(one per line)</span>
             </label>
-            <textarea
+            <RichTextArea
               name="charges"
               rows={6}
               className="input-dark mt-1 font-mono text-xs"
@@ -390,7 +391,7 @@ export default function ArrestFormModal({
       {activeSection === 'notes' && (
         <div>
           <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
-          <textarea
+          <RichTextArea
             name="notes"
             rows={8}
             className="input-dark mt-1"

@@ -534,7 +534,7 @@ router.get('/historical/devices', requireRole('admin', 'manager', 'supervisor', 
   try {
     const db = getDb();
     const rows = db.prepare(
-      `SELECT d.*, fv.unit_number AS fleet_unit_number, fv.license_plate AS fleet_plate
+      `SELECT d.*, fv.vehicle_number AS fleet_unit_number, fv.plate_number AS fleet_plate
        FROM traccar_devices d
        LEFT JOIN fleet_vehicles fv ON d.vehicle_id = fv.id
        ORDER BY d.name ASC`

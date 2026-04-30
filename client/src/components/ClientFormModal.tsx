@@ -5,6 +5,7 @@ import { useFormDirty } from '../hooks/useFormDirty';
 import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
+import RichTextArea from './RichTextArea';
 export interface ClientFormData {
   name: string;
   client_code: string;
@@ -308,7 +309,7 @@ export default function ClientFormModal({
             <label className="block text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-1">
               Notes
             </label>
-            <textarea
+            <RichTextArea
               className="input-dark text-xs w-full"
               rows={3}
               value={form.notes}

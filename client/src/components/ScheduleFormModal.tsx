@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Calendar } from 'lucide-react';
 import FormModal from './FormModal';
 
+import RichTextArea from './RichTextArea';
 interface ScheduleFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -151,7 +152,7 @@ export default function ScheduleFormModal({
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Notes
         </label>
-        <textarea
+        <RichTextArea
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           rows={3}

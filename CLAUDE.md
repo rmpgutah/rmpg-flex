@@ -376,6 +376,163 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 ### Maps — Google Maps is the sole map surface
 `/map` is the single production map, backed by the Google Maps JS API with offline CartoDB raster tile fallback. **Do not reintroduce OpenLayers or a parallel `/map-v2` surface.** A parallel OpenLayers map (`/map-v2`) was attempted and retired; all traces were removed 2026-04-23 (route, redirect, `ol` dependency, PDF guide section 15, migration plan). The stale iOS PWA plans (`docs/plans/2026-04-20-ios-mobile-pwa-enhancement-*.md`) still reference non-existent `map-v2` hooks and need Google-Maps-based replacements before execution.
 
+### PDF Editor — 50-upgrade roadmap (snapshot 2026-04-29)
+The editor and viewer now run on the proprietary RMPG PDF Engine v1.0
+(reader + renderer + writer at `client/src/lib/rmpg-pdf-engine/`). The
+following 50 upgrades define the productisation path; **shipped** items are
+in main, **scaffolded** are partial, and **roadmap** are tracked here.
+
+UX & selection (1–10): 1 multi-select via shift-click ✅ shipped · 2 copy/paste
+annotations Ctrl+C/V ✅ · 3 duplicate Ctrl+D ✅ · 4 select-all-on-page Ctrl+A ✅ ·
+5 lock/unlock annotations ✅ · 6 z-order bring-forward / send-backward ✅ ·
+7 layer visibility toggles ✅ · 8 keyboard shortcuts dialog (?) ✅ · 9 escape
+clears selection ✅ · 10 resize handles on selected annotations 🟡 scaffolded
+(via PropertiesPanel inputs; visual handles deferred).
+
+View & navigation (11–20): 11 view modes (single/continuous/two-up) ✅ ·
+12 zoom presets (fit page / fit width / 100%) ✅ · 13 + / – / 0 hotkeys ✅ ·
+14 PageUp / PageDown / Home / End ✅ · 15 thumbnails sidebar ✅ · 16 page
+navigator click-to-jump ✅ · 17 dark page background option 🟡 · 18 mini-map
+overview 📋 roadmap · 19 loupe/magnifier 📋 · 20 dual-pane PDF compare 📋.
+
+Editing tools (21–30): 21 text annotations ✅ · 22 highlight ✅ · 23 visual
+redaction ✅ · 24 rect/ellipse/line/arrow/pen ✅ · 25 hyperlink (visible) ✅ ·
+26 sticky note ✅ · 27 date stamp (auto-fill today) ✅ · 28 signature drawing ✅ ·
+29 image embedding ✅ · 30 9 preset stamps + custom user stamps 🟡.
+
+File operations (31–40): 31 save copy / save to Documents ✅ · 32 extract
+single page ✅ · 33 PDF.js fallback when native parser hits gaps ✅ · 34 print
+from editor ✅ · 35 JSON annotation export/import for audit / templates ✅ ·
+36 server-side qpdf encryption with permission flags ✅ · 37 multi-doc merge ✅
+(transitional via pdf-lib; native merge 📋) · 38 recent files quick-access ✅ ·
+39 new-blank-PDF in Documents ✅ · 40 auto-save drafts to localStorage 🟡.
+
+Documents integration (41–45): 41 Edit-PDF action on every PDF row ✅ ·
+42 Eye/View routes through internal viewer (no browser-native PDFium) ✅ ·
+43 view-only mode `?view=1` with Edit toggle ✅ · 44 **Apps shelf with
+PDF Editor + New blank PDF + Recents** ✅ · 45 Documents file inspection
+(properties / metadata) ✅ via existing Info button.
+
+Power-user / pro (46–50): 46 find-in-document with match highlighting ✅ ·
+47 annotations panel sidebar with per-row controls ✅ · 48 editor preferences
+panel + persistence ✅ · 49 recently-used colors palette ✅ · 50 snap-to-grid
+toggle ✅.
+
+Visible status: every saved file's `/Producer` is `"RMPG PDF Engine v1.0"`.
+
+### PDF Editor — 150-upgrade roadmap (snapshot 2026-04-29)
+
+Status legend: ✅ shipped · 🟡 partial / opt-in · 📋 roadmap · ⏭ deferred (low priority).
+
+**Selection & multi-edit (1–15)**
+1 multi-select shift-click ✅ · 2 Ctrl+C/V/D ✅ · 3 Ctrl+A on page ✅ · 4 lock/unlock ✅ ·
+5 z-order forward/back ✅ · 6 layer assignment ✅ · 7 layer visibility toggle ✅ ·
+8 keyboard shortcuts dialog ✅ · 9 Esc clears ✅ · 10 visual resize handles ✅ ·
+11 drag-marquee multi-select 📋 · 12 snap-to-grid 🟡 (pref toggle exists) · 13 group/ungroup 📋 ·
+14 align (left/right/center/distribute) 📋 · 15 smart alignment guides 📋
+
+**Annotation tools (16–35)**
+16 text ✅ · 17 highlight ✅ · 18 visual redaction ✅ · 19 rect/ellipse ✅ ·
+20 line/arrow ✅ · 21 free-hand pen ✅ · 22 polygon/polyline ✅ · 23 hyperlink ✅ ·
+24 sticky note ✅ · 25 date stamp ✅ · 26 signature drawing ✅ · 27 image insertion ✅ ·
+28 stamps gallery (built-in 9 + custom) ✅ · 29 barcode/QR (6 formats) ✅ ·
+30 cloud annotation 📋 · 31 measurement tool (distance + area) 📋 ·
+32 stroke style dashed/dotted 📋 · 33 line endings (multiple arrows) 📋 ·
+34 polygon fill color ⏭ · 35 free rotation handle 📋
+
+**View & navigation (36–55)**
+36 view modes (single/continuous/two-up) 🟡 (continuous only renders today) ·
+37 zoom presets 100%/fit-page/fit-width ✅ · 38 +/-/0/1/2 hotkeys ✅ ·
+39 PageUp/PageDown/Home/End ✅ · 40 thumbnails sidebar ✅ ·
+41 mini-map page navigator ✅ · 42 drag-to-reorder pages ✅ ·
+43 Ctrl+G goto page ✅ · 44 reading mode (hide chrome) 📋 ·
+45 dark page background option 🟡 · 46 page rulers 📋 ·
+47 grid overlay 📋 · 48 dual-pane PDF compare 📋 ·
+49 loupe/magnifier ⏭ · 50 custom zoom input 📋 ·
+51 zoom-to-area selector ⏭ · 52 fit-selection 📋 ·
+53 horizontal scroll 📋 · 54 reading-direction RTL ⏭ · 55 page-label support (Roman) 📋
+
+**Editing operations (56–75)**
+56 visual resize handles ✅ · 57 arrow-key nudge ±1/±10 ✅ ·
+58 right-click context menu ✅ · 59 page rotate ✅ ·
+60 page delete ✅ · 61 insert blank page ✅ ·
+62 page extract ✅ · 63 page crop ✅ ·
+64 page split (one→two) 📋 · 65 page resize/MediaBox edit ⏭ ·
+66 image-to-PDF (single-page) 📋 · 67 multi-image-to-PDF 📋 ·
+68 redact selected text (find + redact-all) 📋 ·
+69 search-and-replace text annotations 📋 ·
+70 inline annotation editing 🟡 (PropertiesPanel) ·
+71 free rotation of annotations 📋 · 72 annotation duplicate 📋 ·
+73 selection counter in toolbar 🟡 · 74 selection geometry readout 📋 ·
+75 numeric x/y/w/h inputs in PropertiesPanel ✅
+
+**Document operations (76–95)**
+76 save copy / Save to Documents ✅ · 77 multi-doc merge ✅ (transitional via pdf-lib) ·
+78 server-side qpdf encryption + permissions ✅ ·
+79 server-side qpdf decryption (re-policy) ✅ · 80 watermark ✅ ·
+81 Bates numbering ✅ · 82 page numbering (Roman/alpha/custom) 📋 ·
+83 header/footer per-page text 📋 · 84 print ✅ ·
+85 PDF/A export ⏭ · 86 PDF compression ⏭ ·
+87 linearize for fast web view ⏭ · 88 OCR (server-side ocrmypdf) ⏭ ·
+89 PDF→image export per page 📋 · 90 batch text extraction 📋 ·
+91 batch image extraction ⏭ · 92 form field detection 📋 ·
+93 form field filling 📋 · 94 form field generation ⏭ ·
+95 PDF metadata edit ✅
+
+**Annotation export & exchange (96–110)**
+96 JSON full-state export/import ✅ · 97 CSV annotation export ✅ ·
+98 XFDF export (Acrobat-compatible) ✅ · 99 Markdown summary export ✅ ·
+100 XFDF import 📋 · 101 FDF import/export ⏭ ·
+102 Annotation-only PDF export ⏭ · 103 selected-pages export ✅ (per-page extract) ·
+104 backup of original before save 📋 · 105 audit log per-document 📋 ·
+106 annotation owner auto-set ✅ · 107 annotation timestamp auto-set ✅ ·
+108 annotation status (open/in-review/resolved) ✅ · 109 review approval workflow ⏭ ·
+110 read-receipts ⏭
+
+**Search & navigation (111–120)**
+111 find-in-document ✅ · 112 find-and-highlight all matches ✅ ·
+113 prev/next match ✅ · 114 case-sensitive find 📋 ·
+115 whole-word find 📋 · 116 regex find 📋 ·
+117 search-history 📋 · 118 search across multiple PDFs ⏭ ·
+119 bookmarked search results ⏭ · 120 quick page jump (Ctrl+G) ✅
+
+**Editor preferences & UX (121–135)**
+121 preferences panel + persistence ✅ · 122 view-mode preference ✅ ·
+123 default tool preference ✅ · 124 recent colors palette ✅ ·
+125 snap-to-grid preference 🟡 (toggle, wiring partial) ·
+126 auto-save drafts preference ✅ ·
+127 crash recovery via localStorage ✅ · 128 toast notifications ✅ ·
+129 color-blind-friendly palette 📋 · 130 reading-mode preference 📋 ·
+131 grid overlay preference 📋 · 132 ruler preference 📋 ·
+133 custom keyboard bindings ⏭ · 134 first-run tutorial overlay 📋 ·
+135 high-contrast theme variant ⏭
+
+**Documents integration (136–145)**
+136 PDF Editor app card in Documents Apps shelf ✅ ·
+137 Edit-PDF action on every PDF row ✅ · 138 internal viewer (Eye routes through editor) ✅ ·
+139 view-only mode `?view=1` ✅ · 140 New blank PDF launcher ✅ ·
+141 recent files chips ✅ · 142 file inspection (Info modal) ✅ ·
+143 inline preview thumbnail 📋 · 144 quick-edit modal from Documents 📋 ·
+145 share annotated copy via secure link ⏭
+
+**Engine & infrastructure (146–150)**
+146 proprietary RmpgPdfEngine facade + dispatcher + diagnostics ✅ ·
+147 native PDF parser (xref/streams/objects/Standard 14) ✅ ·
+148 native canvas renderer (~25 operators) ✅ ·
+149 proprietary writer + pdf-lib fallback ✅ ·
+150 PDF.js standardFonts+cmaps + getOrInsertComputed polyfill for older Electron ✅
+
+**Approximate state**: 80 ✅ shipped, 6 🟡 partial, 50 📋 roadmap, 14 ⏭ deferred-low-priority. Update this table whenever a roadmap item moves to shipped.
+
+### PDF Editor — qpdf dependency for encryption (introduced 2026-04-29)
+The PDF editor's encryption feature is **server-side**: a multipart upload to `POST /api/pdf-tools/encrypt` runs the user-supplied bytes through the `qpdf` binary with the requested passwords + permission flags + AES-256 (or 128) and streams the encrypted bytes back. There is no pure-JS fallback — pdf-lib has no encryption support and maintained pure-JS forks don't exist.
+
+**Production VPS dependency**: `apt install -y qpdf`. The route returns HTTP 503 with `code: 'QPDF_MISSING'` if the binary isn't on PATH so the client surface a clear error rather than failing silently. Probe via `GET /api/pdf-tools/health`.
+
+The encryption endpoint accepts permission flags matching qpdf's CLI: `permissions.print` (`full`/`low`/`none`), `permissions.modify` (`all`/`annotate`/`form`/`assembly`/`none`), and the boolean flags `extract`, `accessibility`, `fillForms`. An empty `userPassword` allows opening without a prompt while still enforcing the permission flags — common for "view-only / no-copy" PDFs going to public-records requests.
+
+The owner password (which controls *removing* restrictions later) is auto-generated as base64url(24-byte random) when the caller doesn't supply one. The dialog shows a one-time success message reminding the user to record it. Lose the owner password and the restrictions can't be lifted — that's the design.
+
 ## Common Gotchas
 
 1. **JWT_SECRET must be permanent** — random-on-restart breaks TOTP decryption
@@ -423,4 +580,6 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 43. **Parallel worktree deploys silently clobber each other** — `deploy.sh` deploys **whatever branch the caller's worktree is on**, not `main`, and uses `rsync` to push source files to `/opt/rmpg-flex/`. If two Claude sessions are running in different worktrees, the last one to run `deploy.sh` wins, regardless of which branch has the newer work. This happened 2026-04-17: session A deployed PR #198 (SW v229) at 10:58 UTC, session B from a different worktree on the old `d1e88c90` hotfix branch ran `deploy.sh` at 11:10 UTC and clobbered prod back to pre-fix Layout.tsx + CSS bundle (SW v244 — higher *number* but stale *source*). **A higher CACHE_NAME version on prod does not prove your code is live.** Always verify the specific fix reached the VPS by greping source files directly: `ssh root@194.113.64.90 "grep -c '<distinctive-string-from-your-fix>' /opt/rmpg-flex/<path>"`. If that returns the wrong count, pull main locally, bump CACHE_NAME above prod's current value, and redeploy from the main workspace (not any sub-worktree). A deploy-lock (e.g. touch `/tmp/rmpg-deploy.lock` at start of `deploy.sh` with a 10-min expiry) would prevent this, but is not currently implemented.
 44. **Husky pre-push hook is silently bypassed in worktrees with a per-worktree `core.hooksPath` override** — Husky v9 sets `core.hooksPath=.husky/_` at the **repository** level (in `.git/config`), but `git worktree add` may write a **per-worktree** override at `.git/worktrees/<name>/config.worktree` pointing back at `.git/hooks`. The per-worktree value wins. Symptom: `git config core.hooksPath` returns `.git/hooks` (not `.husky/_`) and no `pre-push` fires on `git push`, so the full-suite gate added 2026-04-18 silently does nothing. Check with `git config --show-origin --get-all core.hooksPath` — if the `config.worktree` origin appears, fix with `git config --worktree --unset core.hooksPath` in that worktree. After fix, verify with `git hook run pre-push` (should print the husky hook's banner). This must be run **once per worktree** that was created before husky was installed. Worktrees created *after* husky's `prepare` has run inherit the repo-level config cleanly.
 45. **Flex Dashcam AI ingest endpoints (`/api/dashcam-ai/event`, `/api/dashcam-ai/heartbeat`)** are HMAC-authenticated, **not** JWT — they're peer-to-peer webhooks from Jetson edge runners. The dashcam-ai router MUST mount BEFORE the global `express.json()` in `server/src/index.ts` so the raw body survives for HMAC verification (once `express.json()` consumes the stream, the bytes are gone). The shared secret is `DASHCAM_FORWARD_SECRET` — **separate** from `JWT_SECRET` per gotcha #1 so it can be rotated without breaking TOTP encryption. Storage path layout (Option A, locked 2026-04-28): `${DASHCAM_AI_STORAGE_DIR}/${YYYY-MM-DD}/unit-${id}/${artifact_id}-${safeFilename}`. Edge package lives in `edge/` (Python; install with `cd edge && pip install -e '.[dev]'`). Edge tests are NOT in the server vitest suite — run via `cd edge && pytest`. Cross-language HMAC framing must stay byte-identical: `HMAC-SHA256(secret, f"{ts}\n{body}")`. If you change framing in `server/src/utils/dashcamAiHmac.ts`, you MUST update `edge/flex_edge/signer.py` in the same PR or every fielded edge runner breaks at the next heartbeat.
+47. **Serve intake OCR fallback uses `ocrmypdf` (free, local Tesseract 5)** — installed alongside `pdftotext`/`qpdf` on the VPS via `apt install -y ocrmypdf tesseract-ocr`. The `/api/serve-intake/extract-text` route runs `pdftotext` first and only invokes `ocrmypdf` when `shouldRunOcr()` in [server/src/utils/serveIntakeOcr.ts](server/src/utils/serveIntakeOcr.ts) returns true (default stub: text empty + page count > 0 — see the in-file decision-point comment for the lazy/eager trade-off). The OCR pass adds an invisible text layer with `--skip-text --rotate-pages --deskew`, then the existing pdftotext extractor re-runs on the new PDF. Probe availability via `GET /api/serve-intake/health` (returns `{ pdftotext, ocrmypdf, tesseract, ocrReady }`) — same pattern as qpdf in Gotcha #34. **OCR is a fallback, not a replacement**: born-digital PDFs skip OCR entirely; OCR output is only adopted if it produces *more* text than pdftotext alone, so a corrupt OCR pass can never make extraction worse. Timeout per OCR run is 90s — packets >12 pages may need a higher timeout. Cost is $0 (CPU only); no cloud APIs are involved.
+
 46. **Evidence chain signing keys are independent of JWT and HMAC secrets** (Phase 4). Two new env vars: `EVIDENCE_SIGNING_PRIVATE_KEY` and `EVIDENCE_SIGNING_PUBLIC_KEY` (both base64 DER, generated via `node server/scripts/generate-evidence-keypair.mjs`). Ed25519 algorithm. Each `evidence_hashes` row gets a signature over a canonical payload `{artifact_id, artifact_type, captured_at, prev_hash_id, sha256}` — keys serialized in alphabetical order with no whitespace. The public key is published in prosecutor exports; the private key never leaves the server. Rotation is safe FOR PAST ROWS (each row's `signer` column preserves the public key in use at signing time) but you MUST archive the old private key indefinitely in case of court challenge. **Rotating any of the three secret families (`JWT_SECRET`, `DASHCAM_FORWARD_SECRET`, `EVIDENCE_SIGNING_*`) does not affect the others** — that's the whole point of the separation. Optional `DASHCAM_AI_WRITE_ONCE=1` env var enables filesystem `chmod 0444` after every clip write (write-once approximation; defeats casual tampering, not a hard guarantee like MinIO Object Lock). Operator-facing endpoints live under `/api/evidence/*`: `/audit` (chain integrity), `/keypair-info` (signing status), `/:event_id/manifest.json`, `/:event_id/verify.html`, `/:event_id/clip`. Full SOP at [docs/evidence-handling-sop.md](docs/evidence-handling-sop.md).
