@@ -9,7 +9,7 @@
 //       (2026-04-30). Forces clients onto the new bundle.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v473';
+const CACHE_NAME = 'rmpg-flex-v476';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
