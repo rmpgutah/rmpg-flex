@@ -1378,7 +1378,10 @@ router.get('/businesses', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const archived = req.query.archived === 'true';
-    const rows = db.prepare(`SELECT * FROM businesses WHERE is_active = ? ORDER BY name`).all(archived ? 0 : 1);
+    const sql = archived
+      ? `SELECT * FROM businesses WHERE archived_at IS NOT NULL ORDER BY name`
+      : `SELECT * FROM businesses WHERE archived_at IS NULL AND is_active = 1 ORDER BY name`;
+    const rows = db.prepare(sql).all();
     res.json(rows);
   } catch (err: any) {
     if (err?.message?.includes('no such table')) { res.json([]); return; }

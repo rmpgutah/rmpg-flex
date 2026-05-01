@@ -458,6 +458,7 @@ app.use('/api/voice-persona', voicePersonaRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
+app.use('/api/pdf-tools', pdfToolsRoutes);
 app.use('/api/geocode', geocodeRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
