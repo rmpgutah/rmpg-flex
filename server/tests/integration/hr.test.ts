@@ -39,6 +39,13 @@ beforeAll(async () => {
     .post('/api/auth/login')
     .send({ username: officer.username, password: officer.password });
   officerToken = officerRes.body.token;
+
+  // Warmup request — forces the HTTP listener + middleware stack to finish
+  // initializing before the first real test request. Eliminates the
+  // "socket hang up on first POST" flake under parallel test load (the full
+  // suite spins up 70+ Express apps concurrently, and the first request
+  // could race the listener attachment).
+  await request(app).get('/api/health');
 });
 
 afterAll(() => {

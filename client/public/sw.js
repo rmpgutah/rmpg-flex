@@ -5,9 +5,11 @@
 // Supports automatic updates with client notification.
 // v472: Offline CartoDB tile precaching removed — Google Maps
 //       is the sole map surface (2026-04-29).
+// v473: Offline-mode subscribe-time reconciliation + HR test warmup
+//       (2026-04-30). Forces clients onto the new bundle.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v472';
+const CACHE_NAME = 'rmpg-flex-v473';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
