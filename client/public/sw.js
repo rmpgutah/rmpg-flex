@@ -3,13 +3,63 @@
 // Provides offline caching for static assets while always
 // fetching API data fresh from the network.
 // Supports automatic updates with client notification.
+// v451: Traccar replaces OwnTracks as the dominant primary GPS source.
+//       /api/traccar (canonical) + /traccar (alias) accept Traccar
+//       Client (OsmAnd HTTP), Traccar Server forward-webhook, and
+//       generic flat JSON. /owntracks/* returns 410 Gone. Optional
+//       Traccar Server REST API pull mode (15-second poll) when
+//       traccar_server_url + email + password configured.
+// v452: Align Traccar config keys with prod schema (traccar_url/email/
+//       password/enabled/poll_interval). Migrate owntracks_pending_devices
+//       → traccar_pending_devices. Honor traccar_enabled toggle.
+// v453: /api/traccar/health route order fix (was shadowed by /:user).
+// v454: Traccar Server poller decrypts AES-encrypted email/password from
+//       system_config; top-level ESM import for poller; admin pull-status
+//       card with live OK/ERROR pill; non-secret config keys render as
+//       type=text; collapse traccar_pull_status to one row.
+// v455: Traccar historical bulk import — every column preserved, with
+//       map viewer (Historical GPS Tracks page + admin import section).
+// v456: Bug fixes — allow traccar_url/enabled/poll_interval through
+//       admin third-party-keys endpoint (URL save was rejected); fix
+//       fv.unit_number → fv.vehicle_number in /historical/devices.
+// v457: Mount /api/traccar webhook router AFTER admin router so the
+//       /:user/:device wildcard no longer shadows specific endpoints
+//       like /historical/devices, /devices, /mappings, /credentials.
+//       Webhook still receives bare /api/traccar?token= and any unmatched
+//       sub-paths from devices configured with /api/traccar/<u>/<d> URLs.
+// v458: Stop encrypting non-secret keys (traccar_url, traccar_enabled,
+//       traccar_poll_interval) when saved through admin third-party-keys.
+//       Poller reads them raw; encryption was producing "Failed to parse
+//       URL from <iv:tag:cipher>" errors in the pull-status panel.
+// v459: Fix second column-name bug in /api/traccar/historical/devices —
+//       fleet_vehicles uses plate_number, not license_plate.
+// v460: Historical tracks visual upgrade — speed-bucketed polyline gradient
+//       (6 colors blue→red), direction arrows along the track, distinct
+//       Start (S) and End (E) markers, idle/stop detection (≥2 min) marked
+//       with purple "P" pins, speed legend overlay in bottom-left corner.
+// v461: Map sidebar A+B hybrid — gold-accented stratified section headers
+//       (text-[#d4a017] uppercase, gold-glow + 0.18em tracking), uniform
+//       brighter item rows (#b8b8b8) with gold-rail hover indicator. Heatmap
+//       layer collapsed to soft haze (radius 30→14, opacity 0.7→0.28,
+//       maxIntensity capped at 8) so it no longer reads as hard rings.
 // v472: Offline CartoDB tile precaching removed — Google Maps
-//       is the sole map surface (2026-04-29).
+//       is the sole map surface (2026-04-29). TILE_CACHE_NAME retired.
 // v473: Offline-mode subscribe-time reconciliation + HR test warmup
 //       (2026-04-30). Forces clients onto the new bundle.
+// v474: Call marker info bubble redesigned — 11 dispatcher fields packed
+//       into a tight 280-340px panel: priority pill + call_number +
+//       status pill + age in header; incident type subhead; address +
+//       cross-street + property; beat/sector geography; time received
+//       (relative + absolute); aggregated hazard banner (officer safety,
+//       weapons, felony, domestic, hazmat, mental health, gang) only when
+//       a flag is set; existing assigned/nearest unit sections preserved.
+// v477: Merge origin/main into flamboyant-nobel — bring 42 PRs (business
+//       records, ALPR design, map sidebar visual upgrade, click-target
+//       a11y, loading screens, WebSocket Reconnecting pill, AbortController
+//       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v476';
+const CACHE_NAME = 'rmpg-flex-v477';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
@@ -101,7 +151,7 @@ self.addEventListener('fetch', (event) => {
           caches.match(event.request)
             .then((cached) => cached || caches.match('/'))
             .then((fallback) => fallback || new Response(
-              '<!DOCTYPE html><html><body style="background:#141e2b;color:#e5e7eb;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0"><div style="text-align:center"><h1>Offline</h1><p>No network connection. Please reconnect and try again.</p></div></body></html>',
+              '<!DOCTYPE html><html><head><title>Offline — RMPG Flex</title><meta name="viewport" content="width=device-width,initial-scale=1"><style>html,body{margin:0;padding:0}body{background:#0a0a0a;color:#d4a017;font-family:system-ui,-apple-system,Segoe UI,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh}.card{text-align:center;max-width:420px;padding:32px 28px;border:1px solid #222;background:#141414;border-radius:2px}h1{margin:0 0 12px;font-size:18px;letter-spacing:0.05em;text-transform:uppercase;color:#d4a017}p{margin:0 0 20px;color:#888;font-size:13px;line-height:1.5}button{background:#d4a017;color:#000;border:0;padding:10px 28px;font-size:11px;font-weight:700;letter-spacing:0.18em;text-transform:uppercase;cursor:pointer;border-radius:2px;font-family:inherit}button:hover{background:#f0bf38}</style></head><body><div class="card"><h1>Connection Lost</h1><p>Unable to reach the RMPG Flex server. Check your network connection and retry.</p><button onclick="window.location.reload()" type="button">Retry</button></div></body></html>',
               { status: 503, headers: { 'Content-Type': 'text/html' } }
             ))
         )

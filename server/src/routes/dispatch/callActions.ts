@@ -1257,6 +1257,95 @@ router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRo
 });
 
 // ═══════════════════════════════════════════════════════════
+// CALL BUSINESSES — Link/unlink business records to dispatch calls (Task 1.11)
+// Mirrors call_persons pattern. Schema has no role CHECK — accept arbitrary
+// role strings; schema DEFAULT 'involved' applies if omitted.
+// ═══════════════════════════════════════════════════════════
+
+router.post('/calls/:id/businesses',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  (req: Request, res: Response) => {
+    try {
+      const callId = parseInt(paramStr(req.params.id as any), 10);
+      const { business_id, role, notes } = req.body;
+      const db = getDb();
+      const call = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(callId);
+      if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+      const business = db.prepare('SELECT id FROM businesses WHERE id = ?').get(business_id);
+      if (!business) { res.status(404).json({ error: 'Business not found' }); return; }
+
+      try {
+        const result = db.prepare(`
+          INSERT INTO call_businesses (call_id, business_id, role, notes, added_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(callId, business_id, role ?? 'involved', notes || null, req.user?.userId ?? null);
+        const row = db.prepare('SELECT * FROM call_businesses WHERE id = ?').get(result.lastInsertRowid);
+        auditLog(req, 'CREATE', 'call_business_link', Number(result.lastInsertRowid), null, row);
+        broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+        res.status(201).json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Business already linked to this call' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create call-business link: ' + err.message });
+    }
+  }
+);
+
+router.put('/calls/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  (req: Request, res: Response) => {
+    try {
+      const callId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM call_businesses WHERE id = ? AND call_id = ?').get(linkId, callId) as any;
+      if (!existing) { res.status(404).json({ error: 'Call-business link not found' }); return; }
+
+      const { role, notes } = req.body;
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role !== undefined)  { updates.push('role = ?');  values.push(role); }
+      if (notes !== undefined) { updates.push('notes = ?'); values.push(notes || null); }
+      if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      values.push(linkId);
+
+      db.prepare(`UPDATE call_businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      const row = db.prepare('SELECT * FROM call_businesses WHERE id = ?').get(linkId);
+      auditLog(req, 'UPDATE', 'call_business_link', linkId, existing, row);
+      broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update call-business link: ' + err.message });
+    }
+  }
+);
+
+router.delete('/calls/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  (req: Request, res: Response) => {
+    try {
+      const callId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM call_businesses WHERE id = ? AND call_id = ?').get(linkId, callId);
+      if (!existing) { res.status(404).json({ error: 'Call-business link not found' }); return; }
+
+      db.prepare('DELETE FROM call_businesses WHERE id = ?').run(linkId);
+      auditLog(req, 'DELETE', 'call_business_link', linkId, existing, null);
+      broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete call-business link: ' + err.message });
+    }
+  }
+);
+
+// ═══════════════════════════════════════════════════════════
 // CALL VEHICLES — Link/unlink vehicle records to dispatch calls
 // ═══════════════════════════════════════════════════════════
 
