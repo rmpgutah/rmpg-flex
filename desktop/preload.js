@@ -40,6 +40,12 @@ contextBridge.exposeInMainWorld('electron', {
   // Trigger a manual update check
   checkForUpdates: () => ipcRenderer.send('updater:check'),
 
+  // Force-clear all Chromium caches (HTTP, service workers, cachestorage,
+  // appcache, filesystem) and reload the renderer. Called by the web app's
+  // WebUpdateBanner when a new service worker version is detected, since
+  // the SW skipWaiting+reload alone doesn't clear Electron's HTTP cache.
+  forceRefresh: () => ipcRenderer.invoke('app:force-refresh'),
+
   // ─── Recon Connect ─────────────────────────────────
   // Spawn the locally-installed Recon Connect toolkit in a new terminal window.
   // Returns { ok: boolean, error?: string } — never throws.
