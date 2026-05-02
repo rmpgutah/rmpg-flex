@@ -710,7 +710,16 @@ export default function DispatchPage() {
       // If we had a selected call, update its reference
       setSelectedCall((prev) => {
         if (!prev) return mappedCalls[0] || null;
-        return mappedCalls.find((c: CallForService) => c.id === prev.id) || mappedCalls[0] || null;
+        const found = mappedCalls.find((c: CallForService) => c.id === prev.id);
+        if (found) return found;
+        // Call disappeared from the active list (transient: e.g. WS race,
+        // backend filter hiccup, brief archive-and-unarchive). Don't auto-
+        // substitute a different call when the user is mid-edit — that
+        // change would flip selectedCall.id, fire the cleanup useEffect,
+        // and kill their edit form mid-keystroke. Keep current call until
+        // they explicitly navigate away.
+        if (isEditingRef.current) return prev;
+        return mappedCalls[0] || null;
       });
     } catch (err: any) {
       if (err?.name === 'AbortError') {
