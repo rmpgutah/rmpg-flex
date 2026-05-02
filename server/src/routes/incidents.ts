@@ -1945,7 +1945,7 @@ router.get('/:id/offenses', requireRole('admin', 'manager', 'supervisor', 'offic
     const db = getDb();
     const offenses = db.prepare(`
       SELECT io.*,
-        s.statute_number, s.title as statute_title, s.category as statute_category,
+        s.citation AS statute_number, s.title as statute_title, s.category as statute_category,
         sp.first_name as suspect_first, sp.last_name as suspect_last,
         vp.first_name as victim_first, vp.last_name as victim_last
       FROM incident_offenses io
@@ -2337,7 +2337,7 @@ router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer',
 
     try {
       offenses = db.prepare(`
-        SELECT io.*, s.statute_number, s.title as statute_title,
+        SELECT io.*, s.citation AS statute_number, s.title as statute_title,
           sp.first_name as suspect_first, sp.last_name as suspect_last,
           vp.first_name as victim_first, vp.last_name as victim_last
         FROM incident_offenses io
