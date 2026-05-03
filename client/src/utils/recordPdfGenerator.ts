@@ -1715,7 +1715,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const unitsW = doc.getTextWidth(unitsText);
         doc.text(unitsText, lx + ffw - unitsW, y);
       }
-      y += SPACING.SM;
+      // SPACING.SM (0.5) is a "small gap" token — too small to advance a
+      // full text line. Use FIELD_ROW_ADVANCE (2.8) between visit-history
+      // rows so timestamps / mileage / disposition don't render on top of
+      // each other (regression observed in PSO call PDFs 2026-05-02).
+      y += SPACING.FIELD_ROW_ADVANCE;
 
       // Timestamps row
       const timeFields: string[] = [];
@@ -1730,7 +1734,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(timeFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.SM;
+        y += SPACING.FIELD_ROW_ADVANCE;
       }
 
       // Mileage row (if present)
@@ -1747,7 +1751,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_TERTIARY);
         doc.text(sanitizePdfText(mileageFields.join('    ')), lx + SPACING.MD, y);
-        y += SPACING.SM;
+        y += SPACING.FIELD_ROW_ADVANCE;
       }
 
       // Disposition
@@ -1756,7 +1760,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         doc.setFontSize(FONT.SIZE_TABLE_HEADER);
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.text(sanitizePdfText(`Disposition: ${visit.disposition}`), lx + SPACING.MD, y);
-        y += SPACING.SM;
+        y += SPACING.FIELD_ROW_ADVANCE;
       }
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
