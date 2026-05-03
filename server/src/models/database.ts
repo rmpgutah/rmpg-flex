@@ -2995,8 +2995,105 @@ function migrateSchema(): void {
     setTimeout(() => backfillBreadcrumbRoads(), 10_000);
   }
 
-  // ── Backfill beat/zone/sector for calls & incidents with GPS but no beat ──
+  // ── One-time cleanup of corrupted S/Z/B values from the legacy backfill.
+  //    The pre-fix migration assigned district_letter (often "U") to
+  //    sector_id and a city-name string to zone_id. None of those values
+  //    match canonical dispatch_sectors/dispatch_zones rows, so the
+  //    dropdown can't preselect them and chart-code synthesis fails.
+  //    Strategy: for any call/incident with a non-canonical sector_id,
+  //    re-resolve from lat/lng via dispatch_beats JOIN. If still no match,
+  //    null out S/Z/B so the dispatcher can pick from the dropdown.
+  //    Idempotent — runs on every boot, finds no work after cleanup.
   try {
+    const validSectors = new Set(
+      (db.prepare('SELECT sector_code FROM dispatch_sectors').all() as { sector_code: string }[])
+        .map((r) => r.sector_code),
+    );
+    if (validSectors.size > 0) {
+      const corruptCalls = db.prepare(`
+        SELECT id, latitude, longitude, sector_id FROM calls_for_service
+        WHERE sector_id IS NOT NULL AND sector_id != ''
+      `).all() as { id: number; latitude: number | null; longitude: number | null; sector_id: string }[];
+      const beatLookup = db.prepare(`
+        SELECT db2.beat_code AS beat_code, dz.zone_code AS zone_code, ds.sector_code AS sector_code
+        FROM dispatch_beats db2
+        JOIN dispatch_zones dz ON dz.id = db2.zone_id
+        JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+        WHERE db2.beat_code = ? LIMIT 1
+      `);
+      const updateCall = db.prepare(`
+        UPDATE calls_for_service SET sector_id = ?, zone_id = ?, beat_id = ? WHERE id = ?
+      `);
+      let cleaned = 0;
+      for (const c of corruptCalls) {
+        if (validSectors.has(c.sector_id)) continue;
+        // Try to re-resolve via geofence
+        let resolved: { sector_code: string; zone_code: string; beat_code: string } | null = null;
+        if (c.latitude != null && c.longitude != null) {
+          try {
+            const b = identifyBeat(c.latitude, c.longitude);
+            if (b) {
+              const d = beatLookup.get(b.beat_code) as any;
+              if (d) resolved = d;
+            }
+          } catch { /* skip */ }
+        }
+        if (resolved) {
+          updateCall.run(resolved.sector_code, resolved.zone_code, resolved.beat_code, c.id);
+        } else {
+          updateCall.run(null, null, null, c.id);
+        }
+        cleaned++;
+      }
+      if (cleaned > 0) console.log(`[migrate] Cleaned ${cleaned} calls with non-canonical sector_id`);
+
+      const corruptIncidents = db.prepare(`
+        SELECT id, latitude, longitude, sector_id FROM incidents
+        WHERE sector_id IS NOT NULL AND sector_id != ''
+      `).all() as { id: number; latitude: number | null; longitude: number | null; sector_id: string }[];
+      const updateInc = db.prepare(`
+        UPDATE incidents SET sector_id = ?, zone_id = ?, beat_id = ? WHERE id = ?
+      `);
+      let cleanedInc = 0;
+      for (const inc of corruptIncidents) {
+        if (validSectors.has(inc.sector_id)) continue;
+        let resolved: { sector_code: string; zone_code: string; beat_code: string } | null = null;
+        if (inc.latitude != null && inc.longitude != null) {
+          try {
+            const b = identifyBeat(inc.latitude, inc.longitude);
+            if (b) {
+              const d = beatLookup.get(b.beat_code) as any;
+              if (d) resolved = d;
+            }
+          } catch { /* skip */ }
+        }
+        if (resolved) {
+          updateInc.run(resolved.sector_code, resolved.zone_code, resolved.beat_code, inc.id);
+        } else {
+          updateInc.run(null, null, null, inc.id);
+        }
+        cleanedInc++;
+      }
+      if (cleanedInc > 0) console.log(`[migrate] Cleaned ${cleanedInc} incidents with non-canonical sector_id`);
+    }
+  } catch (err) {
+    console.log('[migrate] S/Z/B cleanup skipped:', (err as Error).message);
+  }
+
+  // ── Backfill beat/zone/sector for calls & incidents with GPS but no beat ──
+  // Joins through dispatch_beats so we write canonical chart-format codes
+  // (sector_code "SL1", zone_code "SL1-SLC", beat_code "SL1-SLC/A") rather
+  // than the raw geofence GeoJSON properties (which include garbage like
+  // district_letter="U" + city-name strings).
+  try {
+    const beatLookup = db.prepare(`
+      SELECT db2.beat_code AS beat_code, dz.zone_code AS zone_code, ds.sector_code AS sector_code
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+      WHERE db2.beat_code = ? LIMIT 1
+    `);
+
     const callsToBackfill = db.prepare(`
       SELECT id, latitude, longitude FROM calls_for_service
       WHERE latitude IS NOT NULL AND longitude IS NOT NULL
@@ -3012,16 +3109,13 @@ function migrateSchema(): void {
       for (const c of callsToBackfill) {
         try {
           const beat = identifyBeat(c.latitude, c.longitude);
-          if (beat) {
-            updateStmt.run(
-              beat.beat_id,
-              `${beat.city} ${beat.district_letter}${beat.beat_number}`,
-              beat.district_letter,
-              beat.beat_code,
-              c.id
-            );
-            filled++;
-          }
+          if (!beat) continue;
+          const district = beatLookup.get(beat.beat_code) as
+            | { beat_code: string; zone_code: string; sector_code: string }
+            | undefined;
+          if (!district) continue; // Skip rather than write garbage
+          updateStmt.run(district.beat_code, district.zone_code, district.sector_code, beat.beat_code, c.id);
+          filled++;
         } catch { /* skip individual failures */ }
       }
       if (filled > 0) console.log(`[migrate] Backfilled beat/zone for ${filled} calls`);
@@ -3042,16 +3136,13 @@ function migrateSchema(): void {
       for (const inc of incidentsToBackfill) {
         try {
           const beat = identifyBeat(inc.latitude, inc.longitude);
-          if (beat) {
-            updateStmt.run(
-              beat.beat_id,
-              `${beat.city} ${beat.district_letter}${beat.beat_number}`,
-              beat.district_letter,
-              beat.beat_code,
-              inc.id
-            );
-            filled++;
-          }
+          if (!beat) continue;
+          const district = beatLookup.get(beat.beat_code) as
+            | { beat_code: string; zone_code: string; sector_code: string }
+            | undefined;
+          if (!district) continue;
+          updateStmt.run(district.beat_code, district.zone_code, district.sector_code, beat.beat_code, inc.id);
+          filled++;
         } catch { /* skip */ }
       }
       if (filled > 0) console.log(`[migrate] Backfilled beat/zone for ${filled} incidents`);

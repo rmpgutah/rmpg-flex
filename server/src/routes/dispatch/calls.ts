@@ -426,18 +426,18 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
             if (!autoSectionId) autoSectionId = district.sector_code;
             if (!autoZoneId) autoZoneId = district.zone_code;
             if (!autoBeatId) autoBeatId = district.beat_code;
-            autoDispatchCode =
-              formatChartDispatchCode(district.sector_code, district.zone_code, district.beat_code) ||
-              district.beat_code;
+            autoDispatchCode = district.beat_code;
             autoSectionName = district.sector_name;
             autoZoneName = district.zone_name;
             autoBeatName = district.beat_name;
             autoBeatDescriptor = district.beat_descriptor;
           } else {
-            // Fallback to raw geofence data
-            if (!autoBeatId) autoBeatId = beat.beat_code;
-            if (!autoZoneId) autoZoneId = beat.city_code;
-            if (!autoSectionId) autoSectionId = beat.district_letter;
+            // Geofence found a polygon but no matching dispatch_beats row
+            // (typically unincorporated areas). Do NOT write district_letter
+            // into sector_id — that produced "U" / city-name garbage. Leave
+            // S/Z/B null and let dispatchers select via dropdown. The raw
+            // beat_code is still preserved as zone_beat for reference.
+            if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
           }
         }
       } catch (geoErr) { console.error('[Calls] Geofence lookup error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
@@ -1059,24 +1059,20 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
             if (autoBeatId === undefined && !call.beat_id) autoBeatId = district.beat_code;
             if (autoZoneId === undefined && !call.zone_id) autoZoneId = district.zone_code;
             if (autoSectionId === undefined && !call.sector_id) autoSectionId = district.sector_code;
-          } else {
-            if (autoBeatId === undefined && !call.beat_id) autoBeatId = beat.beat_code;
-            if (autoZoneId === undefined && !call.zone_id) autoZoneId = beat.city_code;
-            if (autoSectionId === undefined && !call.sector_id) autoSectionId = beat.district_letter;
           }
+          // No else branch: when the geofence polygon has no matching
+          // dispatch_beats row (unincorporated, etc.), don't write garbage
+          // into S/Z/B. Dispatchers pick from dropdown.
 
           // If coords explicitly changed, always update beat data
           if (latitude !== undefined) {
             if (autoZoneBeat === undefined) autoZoneBeat = beat.beat_code;
-            if (!district) {
-              autoBeatId = autoBeatId !== undefined ? autoBeatId : beat.beat_code;
-              autoZoneId = autoZoneId !== undefined ? autoZoneId : beat.city_code;
-              autoSectionId = autoSectionId !== undefined ? autoSectionId : beat.district_letter;
-            } else {
+            if (district) {
               autoBeatId = autoBeatId !== undefined ? autoBeatId : district.beat_code;
               autoZoneId = autoZoneId !== undefined ? autoZoneId : district.zone_code;
               autoSectionId = autoSectionId !== undefined ? autoSectionId : district.sector_code;
             }
+            // No else: see comment above.
           }
         }
       } catch (geoErr) { console.error('[Calls] Geofence lookup error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }

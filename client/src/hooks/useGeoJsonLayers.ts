@@ -486,6 +486,18 @@ export function useGeoJsonLayers({
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Section:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> <span style="color:#ddd;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span></div>`;
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> <span style="color:#ddd;">${escapeForHtml(entry.beatId)}</span></div>`;
+      } else if (cfg.id === 'beat') {
+        // Beat polygon outside the canonical dispatch_beats set
+        // (typically an unincorporated county area). Render a clean
+        // chart-style label instead of leaking raw GeoJSON properties.
+        const cityCode = String(props.city_code || '').toUpperCase();
+        const distLetter = String(props.district_letter || '').toUpperCase();
+        const cityName = String(props.city || '');
+        const isUninc = distLetter === 'U' || /unincorp/i.test(cityName);
+        const chartLabel = cityCode && distLetter ? `${cityCode}/${distLetter}` : (props.beat_code || cityCode || 'Unknown');
+        html += `<div style="font-weight:bold;font-size:13px;color:#d4a017;margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(chartLabel)}</div>`;
+        html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(cityName || 'Beat polygon')}${isUninc ? ' — Unincorporated' : ''}</div>`;
+        html += `<div style="font-size:10px;color:#888;margin-top:2px;font-style:italic;">No canonical dispatch beat — assign manually</div>`;
       } else {
         html += buildDefaultInfoHtml(name, cfg, props);
       }
