@@ -63,12 +63,14 @@ const REFRESH_BUFFER_MS = 60 * 1000;
 
 // Max time (ms) any auth fetch is allowed before aborting — prevents infinite "Initializing..."
 // 15s is generous for field conditions (vehicle WiFi, cell data in dead zones)
-// Auth requests are tiny (~1KB request, ~2KB response). 15s was generous to
-// the point of harmful — on flaky cellular, the splash blocked for 15+15s
-// (initial /me + refresh path) before the user got the RELOAD button. 6s is
-// enough for any real network roundtrip; anything longer is the network
-// being broken and we should fail fast.
-const AUTH_FETCH_TIMEOUT_MS = 6000;
+// Auth requests are tiny (~1KB request, ~2KB response). 6s turned out too
+// aggressive — on slow cellular /auth/me legitimately takes 5-10s and was
+// being aborted with "signal is aborted without reason", breaking login.
+// 12s is long enough for slow cellular but still bounded so a genuinely
+// broken network fails before the browser's default ~120s timeout. The
+// real splash-resolves-faster fix lives in the SW (cache-first /assets/)
+// and nginx (Cache-Control immutable) layers, not in shortening this.
+const AUTH_FETCH_TIMEOUT_MS = 12000;
 
 function parseJwtExpiry(token: string): number | null {
   try {
