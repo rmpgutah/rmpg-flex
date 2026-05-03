@@ -148,13 +148,19 @@ async function fetchWithRetry(
     : 0;
   if (bodySize > 1_000_000) retries = 0; // 1MB threshold
 
-  // Mutation deduplication — return existing in-flight promise for same URL+method
+  // Mutation deduplication — return existing in-flight promise for same URL+method.
+  // Each caller gets a fresh .clone() of the underlying Response so they can each
+  // read the body independently. Without the clone, the first caller's .json()
+  // consumes the body and every subsequent caller throws
+  // "Failed to execute 'json' on 'Response': body stream already read".
+  // (Surfaced in field DevTools 2026-05-02 from useGpsTracking immediate-send +
+  // batch-send racing on the same /api/dispatch/gps/* endpoint.)
   const method = init.method || 'GET';
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
     const dedupKey = `${method}:${url}`;
     const existing = inflightMutations.get(dedupKey);
     if (existing && Date.now() - existing.ts < DEDUP_WINDOW_MS) {
-      return existing.promise;
+      return existing.promise.then((res) => res.clone());
     }
   }
 
