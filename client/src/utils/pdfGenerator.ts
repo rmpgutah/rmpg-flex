@@ -611,17 +611,6 @@ export function closeAutoSection(doc: jsPDF, sectionY: number, contentEndY: numb
 }
 
 /**
- * @deprecated Use openAutoSection/closeAutoSection instead.
- * Kept for backward compatibility — now wraps auto-section internally.
- */
-export function addBoxedSection(doc: jsPDF, title: string, y: number, _height: number): number {
-  const result = openAutoSection(doc, title, y);
-  // NOTE: This still doesn't close the section automatically — callers must
-  // handle the border manually or migrate to openAutoSection/closeAutoSection.
-  return result.contentY;
-}
-
-/**
  * Modern field with floating label above a bordered value box.
  * Label sits above the box in lighter gray; box contains only the value.
  * Auto-expands height for multi-line values (up to 4 lines).

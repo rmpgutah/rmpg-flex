@@ -266,39 +266,6 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     };
     clients.set(clientId, client);
 
-    // URL token auth — DEPRECATED and disabled in production after 2026-04-15
-    // URL tokens are visible in server access logs and browser history, making them
-    // vulnerable to log exfiltration attacks. Use message-based auth instead.
-    const url = req.url || '';
-    const tokenMatch = url.match(/[?&]token=([^&]+)/);
-    if (tokenMatch) {
-      const isProductionMode = process.env.NODE_ENV === 'production';
-      const pastDeadline = Date.now() >= new Date('2026-04-15T07:00:00Z').getTime(); // 00:00 Mountain Time (UTC-7)
-      if (isProductionMode && pastDeadline) {
-        console.warn(`[WS] Rejected URL token auth (deprecated) from ${clientIp}`);
-        safeSend(ws, JSON.stringify({
-          type: 'error',
-          code: 'URL_TOKEN_REJECTED',
-          message: 'URL token authentication has been removed. Update your client.',
-        }));
-        // Decrement IP counter before early return — close handler isn't registered yet
-        const cnt = ipConnectionCounts.get(clientIp) || 1;
-        if (cnt <= 1) ipConnectionCounts.delete(clientIp);
-        else ipConnectionCounts.set(clientIp, cnt - 1);
-        clients.delete(clientId);
-        ws.close(4010, 'URL token auth removed');
-        return;
-      }
-      const token = decodeURIComponent(tokenMatch[1]);
-      console.warn(`[WS] Client authenticating via URL token (deprecated) from ${clientIp}`);
-      authenticateClient(client, token);
-      safeSend(ws, JSON.stringify({
-        type: 'warning',
-        code: 'URL_TOKEN_DEPRECATED',
-        message: 'URL token authentication is deprecated and will be removed on 2026-04-15. Use message-based auth.',
-      }));
-    }
-
     // Auto-disconnect unauthenticated clients after timeout
     const authTimer = setTimeout(() => {
       if (!client.authenticated) {
