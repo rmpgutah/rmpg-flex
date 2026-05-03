@@ -40,6 +40,8 @@ function toCallSlots(call: {
   location?: string;
   location_address?: string;
   apartment?: string;
+  sector_id?: string;
+  sector_code?: string;
   zone_code?: string;
   beat_code?: string;
   suspect_description?: string;
@@ -52,6 +54,8 @@ function toCallSlots(call: {
     incident_type: humanizeType(call.incident_type),
     location_address: call.location_address ?? call.location,
     apartment: call.apartment,
+    // calls_for_service stores `sector_code` as text in the `sector_id` column.
+    sector_code: call.sector_code ?? call.sector_id,
     zone_code: call.zone_code,
     beat_code: call.beat_code,
     suspect_description: call.suspect_description,

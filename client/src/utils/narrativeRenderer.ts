@@ -19,6 +19,8 @@
 // Callers pass `mode` explicitly so we can unit-test each path.
 // ============================================================
 
+import { formatBeatDispatchCode } from './dispatchGeoCode';
+
 export type Terseness = 'narrative' | 'standard' | 'terse';
 
 export interface CallSlots {
@@ -27,6 +29,8 @@ export interface CallSlots {
   incident_type?: string;
   location_address?: string;
   apartment?: string;
+  /** 3-letter sector_code (e.g. "SLC") — formatter trims to chart 2-letter prefix. */
+  sector_code?: string;
   zone_code?: string;
   beat_code?: string;
   suspect_description?: string;
@@ -59,11 +63,21 @@ export function renderCallNarrative(call: CallSlots, mode: Terseness): string {
     return parts.filter(Boolean).join(', ');
   }
 
+  // Chart-format dispatch code (e.g. "SL-SLC/A") when section context is
+  // available; falls back to legacy "{zone}-{beat}" if only zone+beat are
+  // present, then to bare zone.
+  const chartCode = formatBeatDispatchCode({
+    section: call.sector_code,
+    zone: call.zone_code,
+    beat: call.beat_code,
+  });
+
   if (mode === 'standard') {
     const parts: string[] = [];
     if (call.priority) parts.push(`P${call.priority} ${call.incident_type ?? ''}`.trim());
     if (call.location_address) parts.push(shortStreet(call.location_address));
-    if (call.zone_code && call.beat_code) parts.push(`${call.zone_code}-${call.beat_code}`);
+    if (chartCode) parts.push(chartCode);
+    else if (call.zone_code && call.beat_code) parts.push(`${call.zone_code}-${call.beat_code}`);
     else if (call.zone_code) parts.push(call.zone_code);
     if (call.assigned_units?.length) parts.push(call.assigned_units.join(', '));
     return parts.filter(Boolean).join(', ');
@@ -78,7 +92,9 @@ export function renderCallNarrative(call: CallSlots, mode: Terseness): string {
     if (call.apartment) loc += `, apartment ${call.apartment}`;
     parts.push(loc);
   }
-  if (call.zone_code) {
+  if (chartCode) {
+    parts.push(`dispatch code ${chartCode}`);
+  } else if (call.zone_code) {
     let geo = `zone ${call.zone_code}`;
     if (call.beat_code) geo += ` beat ${call.beat_code}`;
     parts.push(geo);

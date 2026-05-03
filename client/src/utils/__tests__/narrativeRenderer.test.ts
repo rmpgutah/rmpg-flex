@@ -65,4 +65,30 @@ describe('renderCallNarrative', () => {
     expect(t).toContain('Alpha-1');
     expect(t).not.toContain('Alpha-1-');
   });
+
+  it('emits chart-format dispatch code when sector_code is present (standard)', () => {
+    const t = renderCallNarrative(
+      { priority: 1, incident_type: 'theft', sector_code: 'SLC', zone_code: 'SLC', beat_code: 'A' },
+      'standard',
+    );
+    expect(t).toContain('SL-SLC/A');
+    expect(t).not.toContain('SLC-SLC');
+  });
+
+  it('emits chart-format dispatch code when sector_code is present (narrative)', () => {
+    const t = renderCallNarrative(
+      { priority: 2, incident_type: 'assault', sector_code: 'UTC', zone_code: 'PRO', beat_code: 'C' },
+      'narrative',
+    );
+    expect(t).toContain('dispatch code UT-PRO/C');
+    expect(t).not.toContain('zone PRO beat C');
+  });
+
+  it('falls back to legacy zone-beat format when sector_code missing', () => {
+    const t = renderCallNarrative(
+      { priority: 1, incident_type: 'fire', zone_code: 'Delta-2', beat_code: '14' },
+      'standard',
+    );
+    expect(t).toContain('Delta-2-14');
+  });
 });
