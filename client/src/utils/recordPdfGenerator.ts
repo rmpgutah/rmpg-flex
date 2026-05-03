@@ -1113,7 +1113,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Priority', value: data.priority },
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: (data.source || '').replace(/_/g, ' ').toUpperCase() },
-      { label: 'Dispatch Code', value: data.dispatch_code || '' },
+      { label: 'Section/Zone/Beat', value: sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '' },
       { label: 'Disposition', value: data.disposition || '' },
       { label: 'Case Number', value: data.case_number || '' },
       { label: 'Incident Number', value: data.incident_number || '' },
@@ -1417,25 +1417,29 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     // Row 1: Address (full width)
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
-    // Row 2: Latitude | Longitude | Dispatch Code (3 columns)
+    // Row 2: Latitude | Longitude | Section/Zone/Beat (3 columns)
+    // The combined cell uses chart slash-form ("SL2/MID/B") rather than
+    // the raw stored dispatch_code which can carry round-2..4 corruption
+    // like "SL2-SL2-MID/SL2-MID/B" if the row predates the cleanup.
     y = addThreeColumnFields(doc, [
       { label: 'Latitude', value: data.latitude != null ? String(data.latitude) : '' },
       { label: 'Longitude', value: data.longitude != null ? String(data.longitude) : '' },
-      { label: 'Dispatch Code', value: data.dispatch_code || data.zone_beat || '' },
+      { label: 'Section/Zone/Beat', value: sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '' },
     ], y);
     // Row 3: Cross Street | Property (2 columns)
     { const yL = addFieldPair(doc, 'Cross Street', data.cross_street || '', lx, y, hfw);
       const yR = addFieldPair(doc, 'Property', data.property_name || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    // Row 4: Building | Floor | Suite/Room | Section ID | Zone ID | Beat ID (6 columns)
+    // Row 4: Building | Floor | Suite/Room | Section | Zone | Beat (6 columns)
+    // Each tier shows only its leaf component to match the strip header.
     { const sixW = ffw / 6;
       const r4Fields = [
         { label: 'Building', value: data.location_building || '' },
         { label: 'Floor', value: data.location_floor || '' },
         { label: 'Suite/Room', value: data.location_room || '' },
-        { label: 'Section ID', value: data.sector_id || '' },
-        { label: 'Zone ID', value: data.zone_id || '' },
-        { label: 'Beat ID', value: data.beat_id || '' },
+        { label: 'Section', value: data.sector_id || '' },
+        { label: 'Zone', value: zoneLeaf(data.zone_id) },
+        { label: 'Beat', value: beatLeaf(data.beat_id) },
       ];
       let maxY = y + SPACING.FIELD_ROW_ADVANCE;
       for (let i = 0; i < 6; i++) {
@@ -4374,10 +4378,10 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     y = checkPageBreak(doc, y, 10, prio);
     const sec = openAutoSection(doc, 'Location / Geography', y); y = sec.contentY;
     const qw = ffw / 4;
-    const g1 = addFieldPair(doc, 'Sector', data.sector_id || '', lx, y, qw);
-    const g2 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + qw, y, qw);
-    const g3 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + 2 * qw, y, qw);
-    const g4 = addFieldPair(doc, 'Zone/Beat', data.zone_beat || '', lx + 3 * qw, y, qw);
+    const g1 = addFieldPair(doc, 'Section', data.sector_id || '', lx, y, qw);
+    const g2 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + qw, y, qw);
+    const g3 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + 2 * qw, y, qw);
+    const g4 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '', lx + 3 * qw, y, qw);
     y = Math.max(g1, g2, g3, g4);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }

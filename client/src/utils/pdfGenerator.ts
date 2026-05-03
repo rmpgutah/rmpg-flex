@@ -12,6 +12,7 @@ void _buildTime;
 
 import jsPDF from 'jspdf';
 import { getTypeCode, formatIncidentType, type PdfReportType } from './caseNumbers';
+import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
@@ -2358,11 +2359,11 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     y = Math.max(fy11, fy12);
     // Row 4: Address (full width)
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
-    // Row 5: Dispatch Code, Section, Zone, Beat, Responding Agency, LE Case #
-    const fy13 = addFieldPair(doc, 'Dispatch Code', data.dispatch_code || '', lx, y, w6);
+    // Row 5: Section/Zone/Beat (combined chart code), Section, Zone, Beat, Responding Agency, LE Case #
+    const fy13 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx, y, w6);
     const fy14 = addFieldPair(doc, 'Section', data.sector_id || '', lx + w6, y, w6);
-    const fy15 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + w6 * 2, y, w6);
-    const fy16 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + w6 * 3, y, w6);
+    const fy15 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + w6 * 2, y, w6);
+    const fy16 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + w6 * 3, y, w6);
     const fy17 = addFieldPair(doc, 'Responding Agency', data.responding_le_agency || '', lx + w6 * 4, y, w6);
     const fy18 = addFieldPair(doc, 'LE Case #', data.le_case_number || '', lx + w6 * 5, y, w6);
     y = Math.max(fy13, fy14, fy15, fy16, fy17, fy18);
@@ -2537,18 +2538,18 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       const fy1 = addFieldPair(doc, 'Full Address', data.location || '', lx, y, hfw);
       const fy2 = addFieldPair(doc, 'Property Name', data.property_name || '', rx, y, hfw);
       y = Math.max(fy1, fy2);
-      // Row 2: Latitude, Longitude, Dispatch Code
+      // Row 2: Latitude, Longitude, Section/Zone/Beat (slash form)
       const w3 = ffw / 3;
       const latStr = data.latitude != null ? Number(data.latitude).toFixed(6) : '';
       const lngStr = data.longitude != null ? Number(data.longitude).toFixed(6) : '';
       const fy3 = addFieldPair(doc, 'Latitude', latStr, lx, y, w3);
       const fy4 = addFieldPair(doc, 'Longitude', lngStr, lx + w3, y, w3);
-      const fy5 = addFieldPair(doc, 'Dispatch Code', data.dispatch_code || '', lx + w3 * 2, y, w3);
+      const fy5 = addFieldPair(doc, 'Section/Zone/Beat', sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '', lx + w3 * 2, y, w3);
       y = Math.max(fy3, fy4, fy5);
-      // Row 3: Section, Zone, Beat
+      // Row 3: Section, Zone, Beat (each as leaf — no parent prefixes)
       const fy6 = addFieldPair(doc, 'Section', data.sector_id || '', lx, y, w3);
-      const fy7 = addFieldPair(doc, 'Zone', data.zone_id || '', lx + w3, y, w3);
-      const fy8 = addFieldPair(doc, 'Beat', data.beat_id || '', lx + w3 * 2, y, w3);
+      const fy7 = addFieldPair(doc, 'Zone', zoneLeaf(data.zone_id), lx + w3, y, w3);
+      const fy8 = addFieldPair(doc, 'Beat', beatLeaf(data.beat_id), lx + w3 * 2, y, w3);
       y = Math.max(fy6, fy7, fy8);
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }

@@ -3159,6 +3159,24 @@ function migrateSchema(): void {
           AND (dispatch_code LIKE '% %' OR dispatch_code LIKE '%Unincorp%')
       `).run();
       if (staleDispatch.changes > 0) console.log(`[migrate] Cleared ${staleDispatch.changes} stale dispatch_code values`);
+
+      // Third pass: round-2..4 produced double-prefixed garbage like
+      // "SL2-SL2-MID/SL2-MID/B" (formatChartDispatchCode synthesis bug).
+      // Canonical beat_code matches /^[A-Z]+\d-[A-Z]+\/[A-Z0-9]+$/ — has
+      // exactly one dash and one slash. Anything with 2+ dashes is corrupt.
+      // Replace with the canonical beat_code if available, else null.
+      const doublePrefixed = db.prepare(`
+        SELECT id, beat_id FROM calls_for_service
+        WHERE dispatch_code IS NOT NULL
+          AND dispatch_code LIKE '%-%-%'
+      `).all() as { id: number; beat_id: string | null }[];
+      let scrubbed = 0;
+      const scrubStmt = db.prepare('UPDATE calls_for_service SET dispatch_code = ? WHERE id = ?');
+      for (const r of doublePrefixed) {
+        scrubStmt.run(r.beat_id || null, r.id);
+        scrubbed++;
+      }
+      if (scrubbed > 0) console.log(`[migrate] Scrubbed ${scrubbed} double-prefixed dispatch_code values`);
     }
   } catch (err) {
     console.log('[migrate] S/Z/B cleanup skipped:', (err as Error).message);
