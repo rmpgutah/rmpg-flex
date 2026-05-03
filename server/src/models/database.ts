@@ -2995,6 +2995,49 @@ function migrateSchema(): void {
     setTimeout(() => backfillBreadcrumbRoads(), 10_000);
   }
 
+  // ── Reconcile dispatch_zones.sector_id with dispatch_sections data.
+  //    Production carries TWO sector tables:
+  //      dispatch_sections — original 22-row chart-format set; FK target of
+  //                          dispatch_zones.section_id (populated)
+  //      dispatch_sectors  — 46-row replacement; FK target of
+  //                          dispatch_zones.sector_id (NULL — broken)
+  //    Every JOIN in routes/calls.ts/incidents.ts/aggregates.ts uses
+  //    `dispatch_sectors ds ON ds.id = dz.sector_id` and silently returns
+  //    zero rows, so /api/dispatch/districts is empty and the dispatch
+  //    panel dropdowns show no options.
+  //    Fix: backfill dz.sector_id by matching sector_code across the two
+  //    tables (sector_code is the canonical chart key).
+  //    Idempotent — only writes where dz.sector_id IS NULL.
+  try {
+    // First: ensure every sector_code present in dispatch_sections also
+    // exists in dispatch_sectors (otherwise the JOIN below has nothing
+    // to match for SL1/SL2/SL3 codes that live only in dispatch_sections).
+    const portMissing = db.prepare(`
+      INSERT OR IGNORE INTO dispatch_sectors (sector_code, sector_name, area_id, color, sort_order, active)
+      SELECT s1.sector_code, s1.sector_name, s1.area_id, COALESCE(s1.color, '#3b82f6'), COALESCE(s1.sort_order, 0), 1
+      FROM dispatch_sections s1
+      LEFT JOIN dispatch_sectors s2 ON s2.sector_code = s1.sector_code
+      WHERE s2.id IS NULL
+    `).run();
+    if (portMissing.changes > 0) console.log(`[migrate] Ported ${portMissing.changes} sectors from dispatch_sections → dispatch_sectors`);
+
+    // Second: backfill dispatch_zones.sector_id by matching sector_code
+    // through dispatch_sections (which the legacy section_id FK points to).
+    const reconcile = db.prepare(`
+      UPDATE dispatch_zones
+      SET sector_id = (
+        SELECT s2.id FROM dispatch_sectors s2
+        JOIN dispatch_sections s1 ON s1.sector_code = s2.sector_code
+        WHERE s1.id = dispatch_zones.section_id
+        LIMIT 1
+      )
+      WHERE sector_id IS NULL AND section_id IS NOT NULL
+    `).run();
+    if (reconcile.changes > 0) console.log(`[migrate] Reconciled ${reconcile.changes} dispatch_zones.sector_id from section_id`);
+  } catch (err) {
+    console.log('[migrate] dispatch_zones FK reconcile skipped:', (err as Error).message);
+  }
+
   // ── One-time cleanup of corrupted S/Z/B values from the legacy backfill.
   //    The pre-fix migration assigned district_letter (often "U") to
   //    sector_id and a city-name string to zone_id. None of those values
