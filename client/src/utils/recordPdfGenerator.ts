@@ -7,6 +7,7 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays } from './dateUtils';
+import { formatBeatDispatchCode } from './dispatchGeoCode';
 import {
   addConfidentialWatermark,
   addClassificationBar,
@@ -101,12 +102,20 @@ function drawDistrictBar(
     const m = dc.match(/^([A-Za-z]+)\d*/);
     return m ? m[1].toUpperCase() : '';
   })();
+  // Chart-format the CODE column when sector/zone/beat parts are present.
+  // Falls back to whatever the server stored on `dispatch_code`.
+  const chartCode = formatBeatDispatchCode({
+    section: data.sector_id,
+    zone: data.zone_id,
+    beat: typeof data.beat_id === 'string' ? data.beat_id : null,
+  });
+  const codeValue = chartCode || data.dispatch_code || 'N/A';
   const distFields = [
     { label: 'SECTION', value: (data.sector_name || data.sector_id || 'N/A') },
     { label: 'ZONE',    value: (data.zone_name   || data.zone_id   || 'N/A') },
     { label: 'BEAT',    value: (data.beat_id     || data.beat_name || 'N/A') },
     { label: 'AREA',    value: (data.area_name   || data.area_id   || areaFallback || data.beat_descriptor || 'N/A') },
-    { label: 'CODE',    value: data.dispatch_code || 'N/A' },
+    { label: 'CODE',    value: codeValue },
     ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
   ];
 

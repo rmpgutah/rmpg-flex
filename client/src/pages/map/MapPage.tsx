@@ -75,6 +75,7 @@ import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
+import { formatBeatDispatchCode, beatLetter } from '../../utils/dispatchGeoCode';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -559,6 +560,11 @@ export default function MapPage() {
       for (const d of districts) {
         if (!d.zone_id || !d.beat_id) continue;
         if (!map.has(d.zone_id)) map.set(d.zone_id, new Map());
+        const chartCode = formatBeatDispatchCode({
+          section: d.sector_id,
+          zone: d.zone_id,
+          beat: beatLetter({ district_letter: null, beat_code: d.beat_id }),
+        });
         map.get(d.zone_id)!.set(d.beat_id, {
           sectionId: d.sector_id || '',
           sectionName: d.sector_name || '',
@@ -567,7 +573,7 @@ export default function MapPage() {
           beatId: d.beat_id,
           beatName: d.beat_name || '',
           beatDescriptor: d.beat_descriptor || '',
-          dispatchCode: d.dispatch_code || '',
+          dispatchCode: chartCode || d.dispatch_code || '',
         });
         if (d.sector_id) sectionSet.set(d.sector_id, d.sector_name || '');
       }

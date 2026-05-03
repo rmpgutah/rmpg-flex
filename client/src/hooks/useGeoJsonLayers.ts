@@ -525,9 +525,12 @@ export function useGeoJsonLayers({
         const entry = beatDistrictMapRef.current
           ? lookupBeatDistrict(beatDistrictMapRef.current, cityCode, distLetter)
           : null;
+        // Chart format: "{Section}-{Zone}/{Beat}" (e.g. "SL-SLC/A").
+        // entry.dispatchCode is now synthesized in chart format upstream;
+        // when the district map misses we fall back to bare GeoJSON props.
         const labelText = entry
           ? (entry.dispatchCode || `${entry.zoneId}/${entry.beatId}`)
-          : (beatCode || `${cityCode}-${distLetter}`);
+          : (distLetter ? `${cityCode}/${distLetter}` : beatCode || cityCode);
 
         // Calculate polygon centroid
         const geom = feature.getGeometry();

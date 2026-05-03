@@ -7,6 +7,7 @@ import { sendCsv } from '../../utils/csvExport';
 import { localNow, localToday } from '../../utils/timeUtils';
 import { geocodeCallIfNeeded } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
+import { formatChartDispatchCode } from '../../utils/dispatchGeoCode';
 import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
@@ -425,7 +426,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
             if (!autoSectionId) autoSectionId = district.sector_code;
             if (!autoZoneId) autoZoneId = district.zone_code;
             if (!autoBeatId) autoBeatId = district.beat_code;
-            autoDispatchCode = district.beat_code;
+            autoDispatchCode =
+              formatChartDispatchCode(district.sector_code, district.zone_code, district.beat_code) ||
+              district.beat_code;
             autoSectionName = district.sector_name;
             autoZoneName = district.zone_name;
             autoBeatName = district.beat_name;
@@ -452,20 +455,31 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
           WHERE ds.sector_code = ? AND dz.zone_code = ? AND db2.beat_code = ? LIMIT 1
         `).get(autoSectionId, autoZoneId, autoBeatId) as any;
         if (districtMatch) {
-          autoDispatchCode = districtMatch.beat_code;
+          autoDispatchCode =
+            formatChartDispatchCode(districtMatch.sector_code, districtMatch.zone_code, districtMatch.beat_code) ||
+            districtMatch.beat_code;
           if (!autoSectionName) autoSectionName = districtMatch.sector_name;
           if (!autoZoneName) autoZoneName = districtMatch.zone_name;
           if (!autoBeatName) autoBeatName = districtMatch.beat_name;
           if (!autoBeatDescriptor) autoBeatDescriptor = districtMatch.beat_descriptor;
         } else {
-          autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
+          autoDispatchCode =
+            formatChartDispatchCode(autoSectionId, autoZoneId, autoBeatId) ||
+            `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
         }
-      } catch { autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`; }
+      } catch {
+        autoDispatchCode =
+          formatChartDispatchCode(autoSectionId, autoZoneId, autoBeatId) ||
+          `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
+      }
     }
 
     // Auto-generate dispatch code if not provided and section/zone/beat are available
     if (!autoDispatchCode && (autoSectionId || autoZoneId)) {
-      autoDispatchCode = [autoSectionId, autoZoneId, autoBeatId].filter(Boolean).join('-') || null;
+      autoDispatchCode =
+        formatChartDispatchCode(autoSectionId, autoZoneId, autoBeatId) ||
+        [autoSectionId, autoZoneId, autoBeatId].filter(Boolean).join('-') ||
+        null;
     }
 
     // Upgrade 10: Calculate priority score for queue sorting
@@ -1178,20 +1192,28 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
           WHERE ds.sector_code = ? AND dz.zone_code = ? AND db2.beat_code = ? LIMIT 1
         `).get(finalSectionId, finalZoneId, finalBeatId) as any;
         if (districtMatch) {
-          addField('dispatch_code', districtMatch.beat_code);
+          addField('dispatch_code',
+            formatChartDispatchCode(districtMatch.sector_code, districtMatch.zone_code, districtMatch.beat_code) ||
+            districtMatch.beat_code);
           addField('sector_name', districtMatch.sector_name);
           addField('zone_name', districtMatch.zone_name);
           addField('beat_name', districtMatch.beat_name);
           addField('beat_descriptor', districtMatch.beat_descriptor);
         } else {
-          addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
+          addField('dispatch_code',
+            formatChartDispatchCode(finalSectionId, finalZoneId, finalBeatId) ||
+            `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
         }
       } catch {
-        addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
+        addField('dispatch_code',
+          formatChartDispatchCode(finalSectionId, finalZoneId, finalBeatId) ||
+          `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
       }
     } else if ((finalSectionId || finalZoneId) && !call.dispatch_code) {
       // Auto-generate dispatch code from available S/Z/B when not all three are present
-      const code = [finalSectionId, finalZoneId, finalBeatId].filter(Boolean).join('-');
+      const code =
+        formatChartDispatchCode(finalSectionId, finalZoneId, finalBeatId) ||
+        [finalSectionId, finalZoneId, finalBeatId].filter(Boolean).join('-');
       if (code) addField('dispatch_code', code);
     }
 

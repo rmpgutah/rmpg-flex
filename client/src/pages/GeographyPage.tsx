@@ -15,6 +15,11 @@ import { apiFetch } from '../hooks/useApi';
 import { useGeographyTree } from '../hooks/useGeographyTree';
 import PanelTitleBar from '../components/PanelTitleBar';
 import type { Area, Beat, Sector, TierId, Zone } from '../types/geography';
+import {
+  beatChartCode,
+  sectionPrefix,
+  zoneChartCode,
+} from '../utils/dispatchGeoCode';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -372,11 +377,14 @@ export default function GeographyPage() {
           onSelect={selectSector}
           onAdd={() => handleAdd('sector')}
           disabled={state.selectedAreaId == null}
-          renderItem={(s) => ({
-            primary: s.sector_name,
-            secondary: s.zone_count != null ? `${s.zone_count} zones` : '',
-            code: s.sector_code,
-          })}
+          renderItem={(s) => {
+            const prefix = sectionPrefix(s.sector_code);
+            return {
+              primary: s.sector_name,
+              secondary: s.zone_count != null ? `${s.zone_count} zones` : '',
+              code: prefix ? `${prefix} · ${s.sector_code}` : s.sector_code,
+            };
+          }}
           width={200}
         />
         <TierColumn<Zone>
@@ -390,7 +398,7 @@ export default function GeographyPage() {
           renderItem={(z) => ({
             primary: z.zone_name,
             secondary: z.zone_type === 'unincorporated' ? 'Unincorp.' : '',
-            code: z.zone_code,
+            code: zoneChartCode(z),
           })}
           width={240}
         />
@@ -404,7 +412,7 @@ export default function GeographyPage() {
           disabled={state.selectedZoneId == null}
           renderItem={(b) => ({
             primary: b.beat_name,
-            secondary: b.dispatch_code || '',
+            secondary: beatChartCode(b),
             code: b.beat_code,
           })}
           width={240}
@@ -537,7 +545,13 @@ function DetailPane({
   const primaryName =
     data.area_name || data.sector_name || data.zone_name || data.beat_name;
   const primaryCode =
-    data.area_code || data.sector_code || data.zone_code || data.beat_code;
+    selected.tier === 'beat'
+      ? beatChartCode(selected.data as Beat)
+      : selected.tier === 'zone'
+        ? zoneChartCode(selected.data as Zone)
+        : selected.tier === 'sector'
+          ? `${sectionPrefix((selected.data as Sector).sector_code) || (selected.data as Sector).sector_code} · ${(selected.data as Sector).sector_code}`
+          : data.area_code;
 
   // Fields to hide (navigation children, timestamps, internal IDs)
   const HIDDEN = new Set([
