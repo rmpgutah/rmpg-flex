@@ -643,12 +643,18 @@ export function drawGeographyStrip(
   doc.setLineWidth(0.2);
   doc.line(margin, y + stripH, margin + contentW, y + stripH);
 
-  const labels = ['AREA', 'SECTOR', 'ZONE', 'BEAT', 'CONTRACT ID'];
+  // Strip parent context from each tier — Section/Zone/Beat each get
+  // their own column, so repeating the parent inside the child is noise.
+  // (zoneLeaf("SL1-HER") → "HER"; beatLeaf("SL1-HER/C") → "C")
+  const sectorVal = data.sector || '—';
+  const zoneVal = data.zone ? (data.zone.indexOf('-') >= 0 ? data.zone.slice(data.zone.indexOf('-') + 1) : data.zone) : '—';
+  const beatVal = data.beat ? (data.beat.lastIndexOf('/') >= 0 ? data.beat.slice(data.beat.lastIndexOf('/') + 1) : data.beat) : '—';
+  const labels = ['AREA', 'SECTION', 'ZONE', 'BEAT', 'CONTRACT ID'];
   const values = [
     data.area || '—',
-    data.sector || '—',
-    data.zone || '—',
-    data.beat || '—',
+    sectorVal,
+    zoneVal,
+    beatVal,
     data.contract_id || '—',
   ];
 

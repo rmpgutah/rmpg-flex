@@ -7,6 +7,7 @@
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
 import { isPast, isWithinDays } from './dateUtils';
+import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import {
   addConfidentialWatermark,
   addClassificationBar,
@@ -101,13 +102,20 @@ function drawDistrictBar(
     const m = dc.match(/^([A-Za-z]+)\d*/);
     return m ? m[1].toUpperCase() : '';
   })();
-  // dispatch_code is already in chart format ("SL1-SLC/A") — use as-is.
+  // Display each tier with parent context stripped — Section/Zone/Beat
+  // get their own columns, so repeating the parent code inside the child
+  // is visual noise. Combined cell uses slashes throughout (chart
+  // dispatch-printout convention: "SL1/HER/C").
+  const sectionDisplay = data.sector_id || data.sector_name || 'N/A';
+  const zoneDisplay = zoneLeaf(data.zone_id) || data.zone_name || 'N/A';
+  const beatDisplay = beatLeaf(data.beat_id) || data.beat_name || 'N/A';
+  const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || 'N/A';
   const distFields = [
-    { label: 'SECTION', value: (data.sector_name || data.sector_id || 'N/A') },
-    { label: 'ZONE',    value: (data.zone_name   || data.zone_id   || 'N/A') },
-    { label: 'BEAT',    value: (data.beat_id     || data.beat_name || 'N/A') },
-    { label: 'AREA',    value: (data.area_name   || data.area_id   || areaFallback || data.beat_descriptor || 'N/A') },
-    { label: 'CODE',    value: data.dispatch_code || 'N/A' },
+    { label: 'SECTION',           value: sectionDisplay },
+    { label: 'ZONE',              value: zoneDisplay },
+    { label: 'BEAT',              value: beatDisplay },
+    { label: 'AREA',              value: (data.area_name || data.area_id || areaFallback || data.beat_descriptor || 'N/A') },
+    { label: 'SECTION/ZONE/BEAT', value: combined },
     ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
   ];
 
