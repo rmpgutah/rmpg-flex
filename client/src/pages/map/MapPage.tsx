@@ -554,14 +554,20 @@ export default function MapPage() {
     let cancelled = false;
     apiFetch<any[]>('/dispatch/districts').then((districts) => {
       if (cancelled || !Array.isArray(districts) || districts.length === 0) return;
+      // Map is keyed by city_code (e.g. "MUR") because GeoJSON beat
+      // properties carry city_code, not the server's zone_id ("SL1-MUR").
+      // Inner map is keyed by district_letter ("A").
       const map = new Map<string, Map<string, BeatDistrictEntry>>();
       const sectionSet = new Map<string, string>();
       for (const d of districts) {
         if (!d.zone_id || !d.beat_id) continue;
-        if (!map.has(d.zone_id)) map.set(d.zone_id, new Map());
-        // Server returns dispatch_code = beat_code which is already chart
-        // format ("SL1-SLC/A"). Use directly — no synthesis needed.
-        map.get(d.zone_id)!.set(d.beat_id, {
+        // Derive GeoJSON-shaped keys from server chart codes:
+        //   zone_id "SL1-MUR" → cityCode "MUR"
+        //   beat_id "SL1-MUR/A" → distLetter "A"
+        const cityCode = String(d.zone_id).split('-').slice(1).join('-') || d.zone_id;
+        const distLetter = String(d.beat_id).split('/').pop() || d.beat_id;
+        if (!map.has(cityCode)) map.set(cityCode, new Map());
+        map.get(cityCode)!.set(distLetter, {
           sectionId: d.sector_id || '',
           sectionName: d.sector_name || '',
           zoneId: d.zone_id,
@@ -569,6 +575,7 @@ export default function MapPage() {
           beatId: d.beat_id,
           beatName: d.beat_name || '',
           beatDescriptor: d.beat_descriptor || '',
+          // dispatch_code = beat_code is already chart format ("SL1-MUR/A").
           dispatchCode: d.dispatch_code || d.beat_id || '',
         });
         if (d.sector_id) sectionSet.set(d.sector_id, d.sector_name || '');

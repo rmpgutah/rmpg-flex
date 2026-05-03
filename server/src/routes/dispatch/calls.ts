@@ -431,11 +431,25 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
             autoBeatName = district.beat_name;
             autoBeatDescriptor = district.beat_descriptor;
           } else {
-            // Geofence found a polygon but no matching dispatch_beats row
-            // (typically unincorporated areas). Do NOT write district_letter
-            // into sector_id — that produced "U" / city-name garbage. Leave
-            // S/Z/B null and let dispatchers select via dropdown. The raw
-            // beat_code is still preserved as zone_beat for reference.
+            // Geofence found a polygon but no exact dispatch_beats row
+            // (typically unincorporated, or beat_code drift). Fall back to
+            // looking up the zone by city_code suffix (e.g. geofence
+            // city_code="MUR" → zone_code "SL1-MUR"). Writes canonical
+            // sector + zone; leaves beat null for dispatcher to pick.
+            try {
+              const zoneMatch = db.prepare(`
+                SELECT dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+                FROM dispatch_zones dz
+                JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+                WHERE dz.zone_code LIKE ? ESCAPE '\\' LIMIT 1
+              `).get(`%-${beat.city_code}`) as any;
+              if (zoneMatch) {
+                if (!autoSectionId) autoSectionId = zoneMatch.sector_code;
+                if (!autoZoneId) autoZoneId = zoneMatch.zone_code;
+                autoSectionName = zoneMatch.sector_name;
+                autoZoneName = zoneMatch.zone_name;
+              }
+            } catch { /* skip */ }
             if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
           }
         }
@@ -1050,10 +1064,21 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
             if (autoBeatId === undefined && !call.beat_id) autoBeatId = district.beat_code;
             if (autoZoneId === undefined && !call.zone_id) autoZoneId = district.zone_code;
             if (autoSectionId === undefined && !call.sector_id) autoSectionId = district.sector_code;
+          } else {
+            // Fallback: look up zone by city_code suffix (see POST path).
+            try {
+              const zoneMatch = db.prepare(`
+                SELECT dz.zone_code, ds.sector_code
+                FROM dispatch_zones dz
+                JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+                WHERE dz.zone_code LIKE ? ESCAPE '\\' LIMIT 1
+              `).get(`%-${beat.city_code}`) as any;
+              if (zoneMatch) {
+                if (autoZoneId === undefined && !call.zone_id) autoZoneId = zoneMatch.zone_code;
+                if (autoSectionId === undefined && !call.sector_id) autoSectionId = zoneMatch.sector_code;
+              }
+            } catch { /* skip */ }
           }
-          // No else branch: when the geofence polygon has no matching
-          // dispatch_beats row (unincorporated, etc.), don't write garbage
-          // into S/Z/B. Dispatchers pick from dropdown.
 
           // If coords explicitly changed, always update beat data
           if (latitude !== undefined) {
@@ -1063,7 +1088,6 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
               autoZoneId = autoZoneId !== undefined ? autoZoneId : district.zone_code;
               autoSectionId = autoSectionId !== undefined ? autoSectionId : district.sector_code;
             }
-            // No else: see comment above.
           }
         }
       } catch (geoErr) { console.error('[Calls] Geofence lookup error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
