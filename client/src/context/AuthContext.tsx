@@ -63,7 +63,12 @@ const REFRESH_BUFFER_MS = 60 * 1000;
 
 // Max time (ms) any auth fetch is allowed before aborting — prevents infinite "Initializing..."
 // 15s is generous for field conditions (vehicle WiFi, cell data in dead zones)
-const AUTH_FETCH_TIMEOUT_MS = 15000;
+// Auth requests are tiny (~1KB request, ~2KB response). 15s was generous to
+// the point of harmful — on flaky cellular, the splash blocked for 15+15s
+// (initial /me + refresh path) before the user got the RELOAD button. 6s is
+// enough for any real network roundtrip; anything longer is the network
+// being broken and we should fail fast.
+const AUTH_FETCH_TIMEOUT_MS = 6000;
 
 function parseJwtExpiry(token: string): number | null {
   try {

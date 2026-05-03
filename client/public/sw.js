@@ -59,7 +59,7 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v477';
+const CACHE_NAME = 'rmpg-flex-v478';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
@@ -159,8 +159,40 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // JS and CSS files — NETWORK FIRST, cache fallback
+  // JS/CSS strategy split by URL shape:
+  // - /assets/<name>-<hash>.<ext>  → CACHE FIRST (hash is the version, content
+  //   is immutable; once cached, never re-fetch unless cache miss). This was
+  //   the load-time killer: every launch spent seconds re-validating already-
+  //   cached vendor + index chunks against the network before falling back.
+  // - Anything else (e.g. /sw.js itself if accessed as a script) → network
+  //   first with cache fallback (preserves the old behavior for non-hashed
+  //   resources that DO change content for the same URL).
   if (url.pathname.match(/\.(js|css)$/)) {
+    const isHashedAsset = url.pathname.startsWith('/assets/');
+
+    if (isHashedAsset) {
+      // Cache-first — return immediately if we have it, only hit network on miss.
+      event.respondWith(
+        caches.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return fetch(event.request)
+            .then((response) => {
+              if (response.ok) {
+                const clone = response.clone();
+                caches.open(CACHE_NAME).then((cache) => {
+                  cache.put(event.request, clone);
+                  trimCache(CACHE_NAME, MAX_CACHE_ENTRIES);
+                });
+              }
+              return response;
+            })
+            .catch(() => new Response('', { status: 503, statusText: 'Offline' }));
+        })
+      );
+      return;
+    }
+
+    // Non-hashed JS/CSS → network first
     event.respondWith(
       fetch(event.request)
         .then((response) => {

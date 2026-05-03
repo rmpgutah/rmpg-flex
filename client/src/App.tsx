@@ -107,7 +107,11 @@ const MobilePsoCfsPage = lazyRetry(() => import('./pages/mobile/MobilePsoCfsPage
  */
 function LoadingSplash({
   message = 'Initializing',
-  slowThresholdMs = 20_000,
+  // Reduced from 20s. With AUTH_FETCH_TIMEOUT_MS at 6s, the worst-case
+  // splash stuck on a healthy-but-slow network is ~12s (auth + refresh).
+  // Surfacing the RELOAD button at 8s gives users a recovery option as
+  // soon as we're past the normal happy-path window.
+  slowThresholdMs = 8_000,
 }: {
   message?: string;
   slowThresholdMs?: number;
