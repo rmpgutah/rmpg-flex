@@ -19,8 +19,6 @@
 // Callers pass `mode` explicitly so we can unit-test each path.
 // ============================================================
 
-import { formatBeatDispatchCode } from './dispatchGeoCode';
-
 export type Terseness = 'narrative' | 'standard' | 'terse';
 
 export interface CallSlots {
@@ -29,10 +27,10 @@ export interface CallSlots {
   incident_type?: string;
   location_address?: string;
   apartment?: string;
-  /** 3-letter sector_code (e.g. "SLC") — formatter trims to chart 2-letter prefix. */
-  sector_code?: string;
   zone_code?: string;
   beat_code?: string;
+  /** Full chart dispatch code ("SL1-SLC/A") when available — preferred for narration. */
+  dispatch_code?: string;
   suspect_description?: string;
   vehicle_description?: string;
   assigned_units?: string[];
@@ -63,20 +61,13 @@ export function renderCallNarrative(call: CallSlots, mode: Terseness): string {
     return parts.filter(Boolean).join(', ');
   }
 
-  // Chart-format dispatch code (e.g. "SL-SLC/A") when section context is
-  // available; falls back to legacy "{zone}-{beat}" if only zone+beat are
-  // present, then to bare zone.
-  const chartCode = formatBeatDispatchCode({
-    section: call.sector_code,
-    zone: call.zone_code,
-    beat: call.beat_code,
-  });
-
+  // dispatch_code is already in chart format ("SL1-SLC/A") when present;
+  // fall back to legacy "{zone}-{beat}" reading otherwise.
   if (mode === 'standard') {
     const parts: string[] = [];
     if (call.priority) parts.push(`P${call.priority} ${call.incident_type ?? ''}`.trim());
     if (call.location_address) parts.push(shortStreet(call.location_address));
-    if (chartCode) parts.push(chartCode);
+    if (call.dispatch_code) parts.push(call.dispatch_code);
     else if (call.zone_code && call.beat_code) parts.push(`${call.zone_code}-${call.beat_code}`);
     else if (call.zone_code) parts.push(call.zone_code);
     if (call.assigned_units?.length) parts.push(call.assigned_units.join(', '));
@@ -92,8 +83,8 @@ export function renderCallNarrative(call: CallSlots, mode: Terseness): string {
     if (call.apartment) loc += `, apartment ${call.apartment}`;
     parts.push(loc);
   }
-  if (chartCode) {
-    parts.push(`dispatch code ${chartCode}`);
+  if (call.dispatch_code) {
+    parts.push(`dispatch code ${call.dispatch_code}`);
   } else if (call.zone_code) {
     let geo = `zone ${call.zone_code}`;
     if (call.beat_code) geo += ` beat ${call.beat_code}`;

@@ -3022,7 +3022,7 @@ function migrateSchema(): void {
         WHERE db2.beat_code = ? LIMIT 1
       `);
       const updateCall = db.prepare(`
-        UPDATE calls_for_service SET sector_id = ?, zone_id = ?, beat_id = ? WHERE id = ?
+        UPDATE calls_for_service SET sector_id = ?, zone_id = ?, beat_id = ?, dispatch_code = ? WHERE id = ?
       `);
       let cleaned = 0;
       for (const c of corruptCalls) {
@@ -3039,9 +3039,9 @@ function migrateSchema(): void {
           } catch { /* skip */ }
         }
         if (resolved) {
-          updateCall.run(resolved.sector_code, resolved.zone_code, resolved.beat_code, c.id);
+          updateCall.run(resolved.sector_code, resolved.zone_code, resolved.beat_code, resolved.beat_code, c.id);
         } else {
-          updateCall.run(null, null, null, c.id);
+          updateCall.run(null, null, null, null, c.id);
         }
         cleaned++;
       }
@@ -3054,6 +3054,7 @@ function migrateSchema(): void {
       const updateInc = db.prepare(`
         UPDATE incidents SET sector_id = ?, zone_id = ?, beat_id = ? WHERE id = ?
       `);
+      // (incidents has no dispatch_code column; only S/Z/B are scrubbed)
       let cleanedInc = 0;
       for (const inc of corruptIncidents) {
         if (validSectors.has(inc.sector_id)) continue;
@@ -3075,6 +3076,18 @@ function migrateSchema(): void {
         cleanedInc++;
       }
       if (cleanedInc > 0) console.log(`[migrate] Cleaned ${cleanedInc} incidents with non-canonical sector_id`);
+
+      // Second pass: rows whose sector_id was already nulled in a previous
+      // boot but whose stale dispatch_code still carries garbage like
+      // "U-Salt Lake Co. Unincorp. U0/SLC-U". Identify by spaces in code
+      // (canonical chart codes have no spaces).
+      const staleDispatch = db.prepare(`
+        UPDATE calls_for_service SET dispatch_code = NULL
+        WHERE (sector_id IS NULL OR sector_id = '')
+          AND dispatch_code IS NOT NULL
+          AND (dispatch_code LIKE '% %' OR dispatch_code LIKE '%Unincorp%')
+      `).run();
+      if (staleDispatch.changes > 0) console.log(`[migrate] Cleared ${staleDispatch.changes} stale dispatch_code values`);
     }
   } catch (err) {
     console.log('[migrate] S/Z/B cleanup skipped:', (err as Error).message);

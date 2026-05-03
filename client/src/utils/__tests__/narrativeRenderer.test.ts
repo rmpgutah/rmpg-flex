@@ -66,25 +66,23 @@ describe('renderCallNarrative', () => {
     expect(t).not.toContain('Alpha-1-');
   });
 
-  it('emits chart-format dispatch code when sector_code is present (standard)', () => {
+  it('uses dispatch_code directly when present (standard)', () => {
     const t = renderCallNarrative(
-      { priority: 1, incident_type: 'theft', sector_code: 'SLC', zone_code: 'SLC', beat_code: 'A' },
+      { priority: 1, incident_type: 'theft', dispatch_code: 'SL1-SLC/A' },
       'standard',
     );
-    expect(t).toContain('SL-SLC/A');
-    expect(t).not.toContain('SLC-SLC');
+    expect(t).toContain('SL1-SLC/A');
   });
 
-  it('emits chart-format dispatch code when sector_code is present (narrative)', () => {
+  it('uses dispatch_code directly when present (narrative)', () => {
     const t = renderCallNarrative(
-      { priority: 2, incident_type: 'assault', sector_code: 'UTC', zone_code: 'PRO', beat_code: 'C' },
+      { priority: 2, incident_type: 'assault', dispatch_code: 'UT1-PRO/C' },
       'narrative',
     );
-    expect(t).toContain('dispatch code UT-PRO/C');
-    expect(t).not.toContain('zone PRO beat C');
+    expect(t).toContain('dispatch code UT1-PRO/C');
   });
 
-  it('falls back to legacy zone-beat format when sector_code missing', () => {
+  it('falls back to zone-beat format when dispatch_code missing', () => {
     const t = renderCallNarrative(
       { priority: 1, incident_type: 'fire', zone_code: 'Delta-2', beat_code: '14' },
       'standard',
