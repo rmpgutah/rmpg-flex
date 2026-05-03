@@ -47,10 +47,6 @@ export async function createTestApp(): Promise<Application> {
   const courtRoutes = (await import('../../src/routes/court')).default;
   const crmRoutes = (await import('../../src/routes/crm')).default;
   const crmLeadsRoutes = (await import('../../src/routes/crmLeads')).default;
-  const pdfEngineRoutes = (await import('../../src/routes/pdfEngine')).default;
-  const auditPdfEngineRoutes = (await import('../../src/routes/auditPdfEngine')).default;
-  const pdfArtifactsRoutes = (await import('../../src/routes/pdfArtifacts')).default;
-  const pdfEmailRoutes = (await import('../../src/routes/pdfEmail')).default;
   const voicePersonaRoutes = (await import('../../src/routes/voicePersona')).default;
   const connectionsRoutes = (await import('../../src/routes/connections')).default;
   const casesRoutes = (await import('../../src/routes/cases')).default;
@@ -72,10 +68,6 @@ export async function createTestApp(): Promise<Application> {
   app.use('/api/court', courtRoutes);
   app.use('/api/crm', crmRoutes);
   app.use('/api/crm-leads', crmLeadsRoutes);
-  app.use('/api/admin/pdf-engine', pdfEngineRoutes);
-  app.use('/api/audit', auditPdfEngineRoutes);
-  app.use('/api/pdf-artifacts', pdfArtifactsRoutes);
-  app.use('/api/pdf-engine', pdfEmailRoutes);
   app.use('/api/voice-persona', voicePersonaRoutes);
   app.use('/api/connections', connectionsRoutes);
   app.use('/api/cases', casesRoutes);

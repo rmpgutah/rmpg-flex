@@ -3,16 +3,16 @@ import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 
-// Endpoint: GET /api/dispatch-messages?limit=5
-// Response shape: { data: [{ id, sender_name, text, channel, created_at, read_at, ... }] }
-// WS event: 'dispatch_message' (broadcast from server/src/routes/dispatchMessages.ts:153)
+// Endpoint: GET /api/comms/messages?limit=5
+// Response shape: { data: [{ id, from_name, body, channel, created_at, read_at, ... }], unreadCount }
+// WS event: 'new_message' (broadcast from comms.ts via broadcastNewMessage)
 
 interface MessageRow {
   id: number;
-  sender_id?: number;
-  sender_name?: string;
-  text?: string;
+  from_user_id?: number;
+  from_name?: string;
   body?: string;
+  text?: string;
   channel?: string;
   created_at?: string;
   read_at?: string | null;
@@ -42,7 +42,7 @@ export default function MessagesCard() {
   const fetchMessages = useCallback(async () => {
     setError(null);
     try {
-      const res = await apiFetch<any>('/api/dispatch-messages?limit=5');
+      const res = await apiFetch<any>('/comms/messages?limit=5');
       const rows: MessageRow[] = Array.isArray(res)
         ? res
         : Array.isArray(res?.data)
@@ -65,7 +65,7 @@ export default function MessagesCard() {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       debounceRef.current = setTimeout(() => { fetchMessages(); }, 250);
     };
-    const unsub = subscribe('dispatch_message' as any, trigger);
+    const unsub = subscribe('new_message', trigger);
     return () => {
       unsub();
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -139,7 +139,7 @@ export default function MessagesCard() {
             return (
               <li key={m.id} className={rowClass}>
                 <div className="flex items-baseline">
-                  <span className="font-bold">{m.sender_name || 'Unknown'}</span>
+                  <span className="font-bold">{m.from_name || m.sender_name || 'Unknown'}</span>
                   <span className="text-gray-500 text-[11px] ml-2">
                     {m.created_at ? relativeTime(m.created_at) : ''}
                   </span>
