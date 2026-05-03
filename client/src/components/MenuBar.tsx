@@ -862,6 +862,41 @@ export default function MenuBar({
         ],
       },
       { type: 'separator' },
+      {
+        type: 'action',
+        label: 'Check for Updates…',
+        icon: RefreshCw,
+        action: () => {
+          const electron = (window as any).electron;
+          if (electron?.checkForUpdates) {
+            // Electron — trigger the in-app updater. The existing
+            // UpdateBanner component will surface progress + restart
+            // prompts via the 'update-status' IPC stream.
+            electron.checkForUpdates();
+          } else {
+            // Web browser — no auto-updater; open the installer page
+            // in a new tab so a Windows user can grab the latest EXE.
+            window.open(
+              'https://rmpgutah.us/downloads/RMPG-Flex-Setup-5.8.1.exe',
+              '_blank',
+              'noopener,noreferrer',
+            );
+          }
+        },
+      },
+      {
+        type: 'action',
+        label: 'Download Installer (Windows)',
+        icon: Download,
+        action: () => {
+          window.open(
+            'https://rmpgutah.us/downloads/RMPG-Flex-Setup-5.8.1.exe',
+            '_blank',
+            'noopener,noreferrer',
+          );
+        },
+      },
+      { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin') },
       { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/help') },
       // Version string with monospace for alignment
