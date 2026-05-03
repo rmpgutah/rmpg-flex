@@ -286,8 +286,17 @@ export function useOfflineMode() {
     if (isElectron && electron?.getOfflineState) {
       try {
         const s = await electron.getOfflineState();
+        // Tiebreaker against Electron's slow connectivity confirmation:
+        // desktop/connectivityMonitor.js initializes isOnline=false and only
+        // flips to true after 3 consecutive successful probes (~30s). During
+        // that window the UI showed an "Offline — Read-only mode" banner on
+        // every launch even when the network was fine. Trust the browser-side
+        // navigator.onLine signal as a tiebreaker — only show offline when
+        // BOTH electron AND browser-side connectivity agree we're offline.
+        const electronSaysOnline = !!s.isOnline;
+        const isOffline = !electronSaysOnline && !isLikelyOnline();
         setState({
-          isOffline: !s.isOnline,
+          isOffline,
           isLocalAuthorized: !!s.isLocalAuthorized,
           pinExpiresAt: s.expiresAt || null,
           syncQueueDepth: s.syncQueueDepth || 0,
@@ -325,7 +334,12 @@ export function useOfflineMode() {
     if (electron.onConnectivityChange) {
       unsubs.push(
         electron.onConnectivityChange((online: boolean) => {
-          setState(prev => ({ ...prev, isOffline: !online }));
+          // Same tiebreaker as refreshState: trust browser-side navigator.onLine
+          // when Electron flips to offline. Prevents the connectivityMonitor's
+          // slow 3-probe confirmation from forcing a false-positive offline UI
+          // on every app launch.
+          const isOffline = !online && !isLikelyOnline();
+          setState(prev => ({ ...prev, isOffline }));
           refreshState();
         })
       );
