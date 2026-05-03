@@ -1144,16 +1144,6 @@ export default function DispatchPage() {
   useEffect(() => {
     if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); setAuditTrail([]); return; }
     let cancelled = false;
-    // [DISPATCH-EDIT-TRACE] If this fires while the user is mid-edit, it
-    // unmounts their edit form (setIsEditing(false) below). The dep array is
-    // [selectedCall?.id, detailTab] — wait, no, this effect's deps are
-    // [selectedCall?.id]; this firing means the SELECTED CALL CHANGED to a
-    // different id. Logging which call we came from and which we're going to
-    // so we can correlate with WS broadcasts in journalctl.
-    if (isEditingRef.current) {
-      // eslint-disable-next-line no-console
-      console.warn(`[DISPATCH-EDIT-TRACE] selectedCall.id changed during edit; will exit edit mode. fromId=${selectedCallRef.current?.id ?? 'null'} toId=${selectedCall.id}`);
-    }
     setIsEditing(false);
     setShowAttachUnitDropdown(false);
     setNewNote('');
@@ -2166,17 +2156,6 @@ export default function DispatchPage() {
   };
 
   const updateEditField = useCallback((field: string, value: any) => {
-    // [DISPATCH-EDIT-TRACE] Diagnostic for the typing-bug hunt — proves the
-    // onChange handler is firing for the user. If officers report typing
-    // doesn't appear and these warnings are NOT in the console, the keystroke
-    // never reached React (focus or event-listener issue, not state-reset).
-    // If these ARE present but typing still fails, the bug is downstream
-    // (form unmounting, value prop overridden, etc.).
-    // Sampled to ~1 per 8 keystrokes to keep the console readable.
-    if (typeof window !== 'undefined' && (Math.random() < 0.125)) {
-      // eslint-disable-next-line no-console
-      console.warn(`[DISPATCH-EDIT-TRACE] updateEditField field=${field} valueLength=${typeof value === 'string' ? value.length : 'non-string'}`);
-    }
     setEditData((prev) => ({ ...prev, [field]: value }));
   }, []);
 

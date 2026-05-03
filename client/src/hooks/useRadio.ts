@@ -147,9 +147,6 @@ function ensureChannelsLoaded(): void {
   }
 }
 
-/** @deprecated — use getRadioChannels() for dynamic channels. Kept for backward compat. */
-export const RADIO_CHANNELS = DEFAULT_RADIO_CHANNELS;
-
 const MAX_LOG_ENTRIES = 50;
 
 /** Check if the browser can access the microphone (requires secure context) */
