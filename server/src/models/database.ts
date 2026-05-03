@@ -3023,17 +3023,29 @@ function migrateSchema(): void {
 
     // Second: backfill dispatch_zones.sector_id by matching sector_code
     // through dispatch_sections (which the legacy section_id FK points to).
-    const reconcile = db.prepare(`
-      UPDATE dispatch_zones
-      SET sector_id = (
-        SELECT s2.id FROM dispatch_sectors s2
-        JOIN dispatch_sections s1 ON s1.sector_code = s2.sector_code
-        WHERE s1.id = dispatch_zones.section_id
-        LIMIT 1
-      )
-      WHERE sector_id IS NULL AND section_id IS NOT NULL
-    `).run();
-    if (reconcile.changes > 0) console.log(`[migrate] Reconciled ${reconcile.changes} dispatch_zones.sector_id from section_id`);
+    //
+    // The dispatch_zones.sector_id column has a FK constraint pointing
+    // at the WRONG table (dispatch_sections, not dispatch_sectors —
+    // legacy from a half-finished rename). Writing the correct
+    // dispatch_sectors.id values trips that constraint, so we disable
+    // FK enforcement for the duration of the UPDATE via the per-connection
+    // PRAGMA. Reads always JOIN the correct table.
+    db.pragma('foreign_keys = OFF');
+    try {
+      const reconcile = db.prepare(`
+        UPDATE dispatch_zones
+        SET sector_id = (
+          SELECT s2.id FROM dispatch_sectors s2
+          JOIN dispatch_sections s1 ON s1.sector_code = s2.sector_code
+          WHERE s1.id = dispatch_zones.section_id
+          LIMIT 1
+        )
+        WHERE sector_id IS NULL AND section_id IS NOT NULL
+      `).run();
+      if (reconcile.changes > 0) console.log(`[migrate] Reconciled ${reconcile.changes} dispatch_zones.sector_id from section_id`);
+    } finally {
+      db.pragma('foreign_keys = ON');
+    }
   } catch (err) {
     console.log('[migrate] dispatch_zones FK reconcile skipped:', (err as Error).message);
   }
