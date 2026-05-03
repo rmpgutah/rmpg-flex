@@ -398,7 +398,16 @@ export async function apiFetch<T>(
     try {
       const offlineState = await electron.getOfflineState();
 
-      if (!offlineState.isOnline && isOfflineCapable(method, url)) {
+      // Tiebreaker: Electron's connectivityMonitor uses 3-consecutive-probe
+      // confirmation with an initial state of false. On flaky cellular, those
+      // probes rarely succeed back-to-back, so Electron can stay isOnline=false
+      // even when the browser-side is reaching the server fine. Field officers
+      // were seeing OfflineUnauthorizedError thrown for every GPS batch send
+      // despite the status bar showing CONNECTED. If the browser side says
+      // we can probably reach the server, skip the offline routing entirely
+      // and let the normal fetch happen — if it fails, the regular network-
+      // error path will surface it.
+      if (!offlineState.isOnline && !isLikelyOnline() && isOfflineCapable(method, url)) {
         // Write operations require PIN authorization (admin always authorized)
         if (method !== 'GET' && !offlineState.isLocalAuthorized) {
           throw new OfflineUnauthorizedError();
