@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-client",
-  "version": "5.8.0",
+  "version": "5.8.2",
   "type": "module",
   "scripts": {
     "predev": "node scripts/copy-pdfjs-assets.mjs",
