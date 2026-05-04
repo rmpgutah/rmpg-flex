@@ -1123,6 +1123,11 @@ function titleCase(str: string): string {
 // ── Call for Service Report ──────────────────────────────────
 
 async function generateCallReport(doc: jsPDF, data: CallPdfData) {
+  // Adopt light-banner style for Call PDF (2026-05-04) — visual cohesion
+  // with the Person PDF tactical-report look. Restored to 'dark' at end
+  // of function so other generators stay unchanged.
+  setActiveSectionStyle('light');
+
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -2028,6 +2033,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       }
     } catch { /* non-fatal — PDF still prints without QR */ }
   }
+
+  // Restore default dark style for any subsequent (non-Call) generation.
+  setActiveSectionStyle('dark');
 }
 
 // ── Person Record ────────────────────────────────────────────

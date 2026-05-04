@@ -546,77 +546,97 @@ export function drawNibrsHeader(
     ? [COLOR.TEXT_SECONDARY[0], COLOR.TEXT_SECONDARY[1], COLOR.TEXT_SECONDARY[2]]
     : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
 
-  // Seal image (left side) — offset slightly more on light mode to clear
-  // the gold accent strip
+  // Seal image — left side on dark mode (legacy), small left-of-center
+  // on light mode so the centered title can breathe.
   const sealSize = LAYOUT.SEAL_SIZE;
-  const sealX = margin + (isLight ? accentW + 2 : 3);
+  const sealX = margin + (isLight ? accentW + 4 : 3);
   if (config.sealBase64) {
     try {
       doc.addImage(config.sealBase64, 'PNG', sealX, y + 3, sealSize, sealSize);
     } catch { /* skip if image fails */ }
   }
 
-  // Left-aligned text block (after seal); same gold-strip offset
-  const textX = config.sealBase64
-    ? sealX + sealSize + 4
-    : margin + (isLight ? accentW + 4 : 4);
   const headerH = LAYOUT.HEADER_HEIGHT;
   const midY = y + headerH / 2; // vertical center of header bar
 
-  // State identifier (small, above center)
-  if (config.stateIdentifier) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_SUBHEADER);
-    doc.setTextColor(...headSubColor);
-    doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
-  }
+  if (isLight) {
+    // ── Light mode — POLICE-DEPARTMENT CENTERED LAYOUT ──
+    // Agency name centered like a real PD letterhead, with state
+    // identifier above and form title below. The case-number /
+    // subject-name box is INTENTIONALLY OMITTED on light mode because
+    // the quick-reference banner directly below already shows the
+    // identifier in larger type — repeating it in the upper-right made
+    // every Person/Call report show the subject name twice (visible in
+    // 2026-05-04 user feedback).
+    const centerX = margin + contentW / 2;
 
-  // Agency name (main title, centered vertically)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_HEADER_TITLE);
-  doc.setTextColor(...headTextColor);
-  doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
-
-  // Form title (below center)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_REPORT_TYPE);
-  doc.setTextColor(...headTextColor);
-  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
-
-  // Case number (right side — frame + label + value).
-  // Frame stroke + text colors flip per mode.
-  if (config.caseNumber) {
-    const caseBoxW = LAYOUT.CASE_BOX_W;
-    const caseBoxH = headerH - 6;
-    const caseBoxX = margin + contentW - caseBoxW - 2;
-    const caseBoxY = y + 3;
-
-    // Border frame (light: dark border / dark: white border)
-    doc.setDrawColor(...headTextColor);
-    doc.setLineWidth(0.5);
-    doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
-
-    // Case number label — configurable per report type
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-    doc.setTextColor(...headSubColor);
-    doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
-
-    // Case number value — auto-scale font down if the text is wider than
-    // the box (e.g. "DONNA MANOR APARTMENTS" overflowing the 42mm box on a
-    // property record). Keeps text inside box edges on every report type.
-    doc.setFont(PDF_VALUE_FONT, 'bold');
-    const caseNumberText = sanitizePdfText(config.caseNumber);
-    const availW = caseBoxW - 3;  // 1.5mm padding each side
-    let caseFontSize: number = FONT.SIZE_CASE_NUMBER;
-    doc.setFontSize(caseFontSize);
-    let measuredW = doc.getTextWidth(caseNumberText);
-    if (measuredW > availW && measuredW > 0) {
-      caseFontSize = Math.max(5, caseFontSize * (availW / measuredW));
-      doc.setFontSize(caseFontSize);
+    if (config.stateIdentifier) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT.SIZE_SUBHEADER);
+      doc.setTextColor(...headSubColor);
+      doc.text(config.stateIdentifier.toUpperCase(), centerX, midY - 5, { align: 'center' });
     }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_HEADER_TITLE);
     doc.setTextColor(...headTextColor);
-    doc.text(caseNumberText, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
+    doc.text((config.agencyName || '').toUpperCase(), centerX, midY + 0.5, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_REPORT_TYPE);
+    doc.setTextColor(...headTextColor);
+    doc.text((config.formTitle || '').toUpperCase(), centerX, midY + 5.5, { align: 'center' });
+  } else {
+    // ── Dark mode (legacy) — left-aligned text + case-number box right ──
+    const textX = config.sealBase64 ? sealX + sealSize + 4 : margin + 4;
+
+    if (config.stateIdentifier) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT.SIZE_SUBHEADER);
+      doc.setTextColor(...headSubColor);
+      doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_HEADER_TITLE);
+    doc.setTextColor(...headTextColor);
+    doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_REPORT_TYPE);
+    doc.setTextColor(...headTextColor);
+    doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
+
+    // Case-number box — only on dark mode; light mode banner below
+    // shows the identifier already.
+    if (config.caseNumber) {
+      const caseBoxW = LAYOUT.CASE_BOX_W;
+      const caseBoxH = headerH - 6;
+      const caseBoxX = margin + contentW - caseBoxW - 2;
+      const caseBoxY = y + 3;
+
+      doc.setDrawColor(...headTextColor);
+      doc.setLineWidth(0.5);
+      doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
+      doc.setTextColor(...headSubColor);
+      doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
+
+      doc.setFont(PDF_VALUE_FONT, 'bold');
+      const caseNumberText = sanitizePdfText(config.caseNumber);
+      const availW = caseBoxW - 3;
+      let caseFontSize: number = FONT.SIZE_CASE_NUMBER;
+      doc.setFontSize(caseFontSize);
+      let measuredW = doc.getTextWidth(caseNumberText);
+      if (measuredW > availW && measuredW > 0) {
+        caseFontSize = Math.max(5, caseFontSize * (availW / measuredW));
+        doc.setFontSize(caseFontSize);
+      }
+      doc.setTextColor(...headTextColor);
+      doc.text(caseNumberText, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
+    }
   }
 
   y += LAYOUT.HEADER_HEIGHT;
