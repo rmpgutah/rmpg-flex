@@ -76,6 +76,25 @@ function getOfficerSig(): PdfSignatureData | undefined {
  * every record PDF. Resolves sector/zone/beat/area with fallbacks and
  * optionally appends CONTRACT ID when present.
  */
+
+/**
+ * Coerce stand-in / typo case-number values to empty so the rendering
+ * layer falls back to the standard placeholder. The `case_number`
+ * column has historically accepted free-text input, accumulating
+ * values like "Not Field" (typo of "Not Filed"), "N/A", "PENDING",
+ * etc. — none of which carry useful information on a printed form.
+ * Real case numbers contain at least one digit (every jurisdiction's
+ * docketing scheme has a numeric portion), so the same digit-presence
+ * invariant used in serveIntakeHelpers.ts:1110 applies here.
+ */
+function normalizeCaseNumber(raw: string | null | undefined): string {
+  if (!raw) return '';
+  const trimmed = String(raw).trim();
+  if (!trimmed) return '';
+  if (!/\d/.test(trimmed)) return '';
+  return trimmed;
+}
+
 function drawDistrictBar(
   doc: jsPDF,
   y: number,
@@ -1317,6 +1336,12 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   y = drawDistrictBar(doc, y, data as any);
 
   // Classification
+  // Section/Zone/Beat is intentionally omitted — the district bar at
+  // the top of page 1 already shows it (and Incident Location was also
+  // displaying it, producing a visible triple-render of the same data).
+  // Case Number is normalized: legacy free-text values like "Not Field"
+  // / "Not Filed" / "N/A" are coerced to empty so the field falls back
+  // to the standard placeholder rendering rather than surfacing typos.
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Call Number', value: data.call_number },
@@ -1324,9 +1349,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Priority', value: formatEnumValue(data.priority) },
       { label: 'Status', value: displayStatus(data.status || '') },
       { label: 'Source', value: formatEnumValue(data.source) },
-      { label: 'Section/Zone/Beat', value: sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '' },
       { label: 'Disposition', value: formatEnumValue(data.disposition) },
-      { label: 'Case Number', value: data.case_number || '' },
+      { label: 'Case Number', value: normalizeCaseNumber(data.case_number) },
       { label: 'Incident Number', value: data.incident_number || '' },
     ], y);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
