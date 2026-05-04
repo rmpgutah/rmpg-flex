@@ -841,7 +841,8 @@ router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer'
     let query = `
       SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
              db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
-             db2.beat_name, db2.beat_descriptor
+             db2.beat_name, db2.beat_descriptor,
+             ds.area_id, ds.color as sector_color, dz.color as zone_color
       FROM dispatch_beats db2
       JOIN dispatch_zones dz ON dz.id = db2.zone_id
       JOIN dispatch_sectors ds ON ds.id = dz.sector_id
