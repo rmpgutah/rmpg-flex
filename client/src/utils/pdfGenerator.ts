@@ -670,8 +670,16 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
     const lastLn = lines[lines.length - 1];
     lines[lines.length - 1] = lastLn.length > 3 ? lastLn.slice(0, -3) + '...' : '...';
   }
-  const extraLines = Math.max(0, lines.length - 1);
-  const boxH = baseBoxH + extraLines * lineStep;
+  // Box height — for multi-line values, size to actual text block plus
+  // padding so subsequent fields' labels don't overlap text that bleeds
+  // below the box. Pre-fix: `baseBoxH + extraLines * lineStep` undersized
+  // every multi-line box by ~0.67mm × (N-1) which compounded into visible
+  // label-on-text overlap on Detailed Identifying Marks (caught from
+  // CZ Record reference 2026-05-04). Single-line fields keep legacy
+  // baseBoxH so existing dense forms aren't disturbed.
+  const boxH = lines.length > 1
+    ? lines.length * lineStep + 0.8
+    : baseBoxH;
 
   // Page break if field won't fit on current page
   const totalFieldH = labelH + boxH + 1;
@@ -3958,33 +3966,42 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData)
   // @ts-expect-error jsPDF GState — safety reset after watermark
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  switch (reportType) {
-    case 'incident':
-      generateGeneralIncident(doc, data);
-      break;
-    case 'trespass':
-      generateTrespassWarning(doc, data);
-      break;
-    case 'accident':
-      generateAccidentReport(doc, data);
-      break;
-    case 'medical':
-      generateMedicalReport(doc, data);
-      break;
-    case 'use_of_force':
-      generateUseOfForceReport(doc, data);
-      break;
-    case 'daily_activity':
-      generateDailyActivityReport(doc, data);
-      break;
-    case 'arrest':
-      generateArrestReport(doc, data);
-      break;
-    case 'process_service':
-      generateProcessServiceReport(doc, data);
-      break;
-    default:
-      generateGeneralIncident(doc, data);
+  // Light-banner cohesive style across all 8 dispatch sub-types — matches
+  // the Person/Call PDF styling so dispatch + records read as one family.
+  // try/finally guarantees we don't leak light-mode into subsequent PDFs
+  // generated from the same module state.
+  setActiveSectionStyle('light');
+  try {
+    switch (reportType) {
+      case 'incident':
+        generateGeneralIncident(doc, data);
+        break;
+      case 'trespass':
+        generateTrespassWarning(doc, data);
+        break;
+      case 'accident':
+        generateAccidentReport(doc, data);
+        break;
+      case 'medical':
+        generateMedicalReport(doc, data);
+        break;
+      case 'use_of_force':
+        generateUseOfForceReport(doc, data);
+        break;
+      case 'daily_activity':
+        generateDailyActivityReport(doc, data);
+        break;
+      case 'arrest':
+        generateArrestReport(doc, data);
+        break;
+      case 'process_service':
+        generateProcessServiceReport(doc, data);
+        break;
+      default:
+        generateGeneralIncident(doc, data);
+    }
+  } finally {
+    setActiveSectionStyle('dark');
   }
 
   // Document integrity trailer page removed 2026-05-04 per user request.
