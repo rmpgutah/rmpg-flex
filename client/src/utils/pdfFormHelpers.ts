@@ -7,7 +7,7 @@
 
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
-import { sanitizePdfText, wordWrapText } from './pdfGenerator';
+import { sanitizePdfText, wordWrapText, getActiveSectionStyle } from './pdfGenerator';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   PDF_VALUE_FONT,
@@ -510,20 +510,56 @@ export function drawNibrsHeader(
   const contentW = pageW - 2 * margin;
   let y = LAYOUT.HEADER_TOP;
 
-  // ── Top accent bar ───────────────────
-  doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(margin, y, contentW, LAYOUT.HEADER_HEIGHT, 'F');
+  // Header style follows the active section style (set per-generator).
+  // Default 'dark' = charcoal bar + white text (legacy NIBRS look).
+  // 'light' = cream tint + gold left strip + dark text (Person PDF
+  // 2026-05-04). Both keep the same layout — just colors flip — so
+  // the case-number box, seal slot, and form-meta sub-row are
+  // pixel-identical between modes.
+  const isLight = getActiveSectionStyle() === 'light';
+  const accentW = BORDER.ACCENT_SECTION;
 
-  // Seal image (left side)
+  // ── Top header bar ───────────────────
+  if (isLight) {
+    // Gold left accent strip + cream tint background + outline.
+    doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
+    doc.rect(margin, y, accentW, LAYOUT.HEADER_HEIGHT, 'F');
+    doc.setFillColor(...COLOR.BG_SECTION_TINT);
+    doc.rect(margin + accentW, y, contentW - accentW, LAYOUT.HEADER_HEIGHT, 'F');
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(margin + accentW, y, contentW - accentW, LAYOUT.HEADER_HEIGHT);
+  } else {
+    // Charcoal full-width header (legacy).
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(margin, y, contentW, LAYOUT.HEADER_HEIGHT, 'F');
+  }
+
+  // Color tokens for text (flip per mode). Copied into mutable tuples
+  // so they can be spread into jsPDF's variadic color setters — TS
+  // narrows readonly tuple literals from a ternary into a union that
+  // can't be spread directly.
+  const headTextColor: [number, number, number] = isLight
+    ? [COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2]]
+    : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
+  const headSubColor: [number, number, number] = isLight
+    ? [COLOR.TEXT_SECONDARY[0], COLOR.TEXT_SECONDARY[1], COLOR.TEXT_SECONDARY[2]]
+    : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
+
+  // Seal image (left side) — offset slightly more on light mode to clear
+  // the gold accent strip
   const sealSize = LAYOUT.SEAL_SIZE;
+  const sealX = margin + (isLight ? accentW + 2 : 3);
   if (config.sealBase64) {
     try {
-      doc.addImage(config.sealBase64, 'PNG', margin + 3, y + 3, sealSize, sealSize);
+      doc.addImage(config.sealBase64, 'PNG', sealX, y + 3, sealSize, sealSize);
     } catch { /* skip if image fails */ }
   }
 
-  // Left-aligned text block (after seal)
-  const textX = margin + (config.sealBase64 ? sealSize + 6 : 4);
+  // Left-aligned text block (after seal); same gold-strip offset
+  const textX = config.sealBase64
+    ? sealX + sealSize + 4
+    : margin + (isLight ? accentW + 4 : 4);
   const headerH = LAYOUT.HEADER_HEIGHT;
   const midY = y + headerH / 2; // vertical center of header bar
 
@@ -531,38 +567,39 @@ export function drawNibrsHeader(
   if (config.stateIdentifier) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_SUBHEADER);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(...headSubColor);
     doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
   }
 
   // Agency name (main title, centered vertically)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(...headTextColor);
   doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
 
   // Form title (below center)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_REPORT_TYPE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  doc.setTextColor(...headTextColor);
   doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
 
-  // Case number (right side — thin white border frame, white text)
+  // Case number (right side — frame + label + value).
+  // Frame stroke + text colors flip per mode.
   if (config.caseNumber) {
     const caseBoxW = LAYOUT.CASE_BOX_W;
     const caseBoxH = headerH - 6;
     const caseBoxX = margin + contentW - caseBoxW - 2;
     const caseBoxY = y + 3;
 
-    // Subtle white border frame (no fill)
-    doc.setDrawColor(...COLOR.TEXT_INVERTED);
+    // Border frame (light: dark border / dark: white border)
+    doc.setDrawColor(...headTextColor);
     doc.setLineWidth(0.5);
     doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
 
     // Case number label — configurable per report type
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(...headSubColor);
     doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
 
     // Case number value — auto-scale font down if the text is wider than
@@ -578,14 +615,18 @@ export function drawNibrsHeader(
       caseFontSize = Math.max(5, caseFontSize * (availW / measuredW));
       doc.setFontSize(caseFontSize);
     }
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setTextColor(...headTextColor);
     doc.text(caseNumberText, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
   }
 
   y += LAYOUT.HEADER_HEIGHT;
 
-  // Accent strip below header
-  doc.setFillColor(...COLOR.BG_TABLE_HDR);
+  // Accent strip below header — gold on light mode, slate on dark.
+  if (isLight) {
+    doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
+  } else {
+    doc.setFillColor(...COLOR.BG_TABLE_HDR);
+  }
   doc.rect(margin, y, contentW, LAYOUT.ACCENT_STRIP_H, 'F');
   y += LAYOUT.ACCENT_STRIP_H;
 

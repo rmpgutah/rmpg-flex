@@ -1892,21 +1892,42 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
 
     const contY = 4;
     const contH = SPACING.SECTION_HEADER_H; // Compact continuation header
-    // Dark gray continuation bar (full width, no accent edge)
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
-    // Bottom border for definition
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.line(LAYOUT.PAGE_MARGIN, contY + contH, LAYOUT.PAGE_MARGIN + cw, contY + contH);
+    // Style flips with the active section style — light mode (Person PDF
+    // 2026-05-04) renders gold accent + cream tint + dark text so it
+    // matches the page-1 company header. Dark mode keeps the legacy
+    // charcoal continuation bar.
+    const contIsLight = activeSectionStyle === 'light';
+    const contAccentW = BORDER.ACCENT_SECTION;
+    if (contIsLight) {
+      doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
+      doc.rect(LAYOUT.PAGE_MARGIN, contY, contAccentW, contH, 'F');
+      doc.setFillColor(...COLOR.BG_SECTION_TINT);
+      doc.rect(LAYOUT.PAGE_MARGIN + contAccentW, contY, cw - contAccentW, contH, 'F');
+      doc.setDrawColor(...COLOR.BORDER_SECTION);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.rect(LAYOUT.PAGE_MARGIN + contAccentW, contY, cw - contAccentW, contH);
+    } else {
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(LAYOUT.PAGE_MARGIN, contY, cw, contH, 'F');
+      // Bottom border for definition
+      doc.setDrawColor(...COLOR.BORDER_SECTION);
+      doc.setLineWidth(BORDER.SECTION_OUTER);
+      doc.line(LAYOUT.PAGE_MARGIN, contY + contH, LAYOUT.PAGE_MARGIN + cw, contY + contH);
+    }
 
     // Text vertically centered in continuation header
     const contCapH = FONT.SIZE_FIELD_LABEL * 0.35;
     const contTextY = contY + (contH + contCapH) / 2;
+    // Mutable tuple so it can be spread into setTextColor (see same
+    // pattern in pdfFormHelpers.ts drawNibrsHeader).
+    const contTextColor: [number, number, number] = contIsLight
+      ? [COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2]]
+      : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
+    doc.setTextColor(...contTextColor);
+    const contInset = (contIsLight ? contAccentW : 0) + SPACING.CONTENT_INSET + 1;
+    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + contInset, contTextY);
 
     // Form number + case number on right (also vertically centered)
     const rightParts: string[] = [];
