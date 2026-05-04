@@ -42,7 +42,6 @@ import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../
 import CallCard from '../../components/CallCard';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
-import MileagePromptModal from '../../components/MileagePromptModal';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -796,13 +795,11 @@ export default function DispatchPage() {
     deleteCallTarget, setDeleteCallTarget,
     isDeletingCall,
     dispositionPromptCallId, setDispositionPromptCallId,
-    mileagePrompt, setMileagePrompt,
     isGenerating,
     isBulkArchiving,
     handleStatusChange,
     handleHoldCall, handleResumeCall, handleRevertStatus,
     handleClearWithDisposition, handleConfirmClear,
-    handleMileageSubmit,
     handleArchive, handleUnarchive, handleBulkArchive,
     handleDeleteAnyCall,
     handlePriorityChange, handleLeNotify, handleGenerateIncident,
@@ -5442,18 +5439,6 @@ export default function DispatchPage() {
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
                 </div>
-              )}
-
-              {/* Mileage Prompt Modal — En Route / On Scene */}
-              {mileagePrompt && (
-                <MileagePromptModal
-                  mode={mileagePrompt.status === 'enroute' ? 'starting' : 'ending'}
-                  callNumber={mileagePrompt.callNumber}
-                  vehicleId={mileagePrompt.vehicleId}
-                  startingMileage={mileagePrompt.startingMileage}
-                  onSubmit={handleMileageSubmit}
-                  onCancel={() => setMileagePrompt(null)}
-                />
               )}
 
               {/* BOLO Alert Banner — matches active BOLOs */}

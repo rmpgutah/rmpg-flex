@@ -9,11 +9,6 @@
 //   Status transitions: handleStatusChange, handleHoldCall, handleResumeCall,
 //                       handleRevertStatus
 //   Disposition flow:   handleClearWithDisposition, handleConfirmClear
-//   Mileage flow:       handleMileageSubmit (NOTE: the trigger that sets
-//                       mileagePrompt non-null appears to be missing — the
-//                       <MileagePromptModal /> in DispatchPage currently
-//                       can't render. Preserving as-is during refactor;
-//                       flagged for separate dead-code cleanup.)
 //   Archive / delete:   handleArchive, handleUnarchive, handleBulkArchive,
 //                       handleDeleteAnyCall
 //   One-shot actions:   handlePriorityChange, handleLeNotify, handleGenerateIncident
@@ -24,7 +19,7 @@
 //
 // State owned here (returned to JSX):
 //   deleteCallTarget, isDeletingCall, dispositionPromptCallId,
-//   mileagePrompt, isGenerating, isBulkArchiving
+//   isGenerating, isBulkArchiving
 
 import { useCallback, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -33,14 +28,6 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { mapDbCall, mapDbUnit } from '../utils/dispatchMappers';
 import { announceLocalAction } from '../../../utils/voiceAlerts';
-
-interface MileagePromptState {
-  callId: string;
-  callNumber: string;
-  status: 'enroute' | 'onscene';
-  vehicleId: string;
-  startingMileage?: number;
-}
 
 export interface UseDispatchCallActionsArgs {
   selectedCall: CallForService | null;
@@ -65,7 +52,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
   const [deleteCallTarget, setDeleteCallTarget] = useState<CallForService | null>(null);
   const [isDeletingCall, setIsDeletingCall] = useState(false);
   const [dispositionPromptCallId, setDispositionPromptCallId] = useState<string | null>(null);
-  const [mileagePrompt, setMileagePrompt] = useState<MileagePromptState | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBulkArchiving, setIsBulkArchiving] = useState(false);
 
@@ -241,21 +227,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
     setDispositionPromptCallId(null);
   }, [dispositionPromptCallId, setCalls, setSelectedCall, refreshUnits, navigate, addToast]);
 
-  // ── Mileage flow (currently unreachable — see header note) ──
-  const handleMileageSubmit = useCallback((mileage: number, vehicleId: string) => {
-    if (!mileagePrompt) return;
-    const body: Record<string, any> = { responding_vehicle_id: vehicleId || undefined };
-    if (mileage > 0) {
-      if (mileagePrompt.status === 'enroute') {
-        body.starting_mileage = mileage;
-      } else {
-        body.ending_mileage = mileage;
-      }
-    }
-    setMileagePrompt(null);
-    handleStatusChange(mileagePrompt.callId, mileagePrompt.status, body);
-  }, [mileagePrompt, handleStatusChange]);
-
   // ── Delete (any call) ─────────────────────────────────────
   const handleDeleteAnyCall = useCallback(async () => {
     if (!deleteCallTarget) return;
@@ -352,7 +323,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
     deleteCallTarget, setDeleteCallTarget,
     isDeletingCall,
     dispositionPromptCallId, setDispositionPromptCallId,
-    mileagePrompt, setMileagePrompt,
     isGenerating,
     isBulkArchiving,
     // Handlers
@@ -362,7 +332,6 @@ export function useDispatchCallActions(args: UseDispatchCallActionsArgs) {
     handleRevertStatus,
     handleClearWithDisposition,
     handleConfirmClear,
-    handleMileageSubmit,
     handleArchive,
     handleUnarchive,
     handleBulkArchive,
