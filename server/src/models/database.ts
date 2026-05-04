@@ -3961,6 +3961,47 @@ function migrateSchema(): void {
   addCol('persons', 'home_phone', 'TEXT');
   addCol('persons', 'work_phone', 'TEXT');
 
+  // F3 advanced-detail fields (jail intake + descriptor expansion).
+  // Religion + dietary_restrictions support custodial chaplaincy /
+  // diet planning. voice_description rounds out the descriptor set
+  // for FI cards / BOLO bulletins where the subject was heard but
+  // not clearly seen. All text-typed; option lists live in
+  // client/src/constants/lawEnforcementEnums.ts.
+  addCol('persons', 'voice_description', 'TEXT');
+  addCol('persons', 'religion', 'TEXT');
+  addCol('persons', 'dietary_restrictions', 'TEXT');
+
+  // F5 advanced-detail field (property alarm architecture).
+  // Distinguishes alarm-system *type* (Self-Monitored, Pro-Monitored,
+  // Smart-Home, Wireless, Wired, Hybrid) from the *vendor* — which is
+  // already captured separately in alarm_company. Important for
+  // dispatch: a self-monitored alarm doesn't trigger a 911 chain on
+  // drop, while a pro-monitored one does.
+  addCol('properties', 'alarm_system', 'TEXT');
+
+  // F6 advanced-detail fields (evidence collection + court hold).
+  // collection_context complements existing `category` (which classifies
+  // WHAT the item is) by capturing HOW it was acquired — Crime Scene,
+  // Search & Seizure, Found Property, Recovered Stolen, Safekeeping,
+  // Court Hold, etc. Together they answer the chain-of-custody questions
+  // a court asks.
+  // court_hold_reference binds an evidence item to a specific court
+  // docket/file when held by judicial order, so future custody actions
+  // can reject release without verifying the hold has lifted.
+  addCol('evidence', 'collection_context', 'TEXT');
+  addCol('evidence', 'court_hold_reference', 'TEXT');
+
+  // F7 advanced-detail field (incident hazard code).
+  // Structured hazard code drives PDF caution-strip rendering and
+  // dispatch-console hazard banner. Distinct from existing boolean
+  // hazmat / officer_safety_caution flags — this is a single-select
+  // categorical (Weapons Present / Mental Health / Officer Down /
+  // Hazmat / etc.) for the PRIMARY hazard. Multi-select multi-hazard
+  // would be a JSON array but a single-most-critical hazard is more
+  // operationally useful for the PDF caution strip (one ribbon, not
+  // a stack). Source list: HAZARD_CODE_OPTIONS in F2 enum module.
+  addCol('incidents', 'hazard_code', 'TEXT');
+
   // Feature 27/37: Report approval and case assignment columns
   addCol('incidents', 'approved_at', 'TEXT');
   addCol('incidents', 'assigned_detective_id', 'INTEGER');

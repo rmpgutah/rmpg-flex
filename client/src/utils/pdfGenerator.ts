@@ -11,9 +11,15 @@ const _buildTime = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
 void _buildTime;
 
 import jsPDF from 'jspdf';
-import { getTypeCode, formatIncidentType, type PdfReportType } from './caseNumbers';
+import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
+import {
+  getActivePayloadHash, getActivePayloadHashShort, formatHashGrouped,
+  computePayloadHash, setActivePayloadHash, clearActivePayloadHash,
+  getActiveSignature, formatSignatureGrouped,
+  fetchPdfSignature, setActiveSignature, clearActiveSignature,
+} from './pdfIntegrity';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth,
@@ -1122,35 +1128,241 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const accentRgb = hexToRgb(brand.accent_color);
   const primaryRgb = hexToRgb(brand.primary_color);
 
-  // Footer accent line (section accent color, matches section headers)
+  // Footer layout — two text rows separated by the accent line:
+  //   Row A (above accent): provenance sub-row — GEN timestamp, INTEG hash prefix.
+  //                         Tiny 4.5pt, muted, only printed if state is set.
+  //   Row B (below accent): main footer — form#, agency name, page X of Y.
   const SAFE_PRINT_EDGE_BOTTOM = 8;
   const textY = pageHeight - SAFE_PRINT_EDGE_BOTTOM;
   const SAFE_PRINT_EDGE_SIDE = 8;
   const accentLineY = textY - 3;
+  const subRowY = accentLineY - 1.4; // tight band above accent line
   const footerAccentRgb = activeBranding.section_accent_color
     ? hexToRgb(activeBranding.section_accent_color) : COLOR.ACCENT_GOLD;
+
+  // ── Sub-row (provenance: gen timestamp + integrity hash prefix) ──
+  const genTs = generationTimestamp;
+  const hashShort = getActivePayloadHashShort();
+  if (genTs || hashShort) {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(4.5);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    if (genTs) {
+      doc.text(`GEN ${sanitizePdfText(genTs)}`, SAFE_PRINT_EDGE_SIDE, subRowY);
+    }
+    if (hashShort) {
+      doc.text(
+        `INTEG H:${hashShort}`,
+        pageWidth - SAFE_PRINT_EDGE_SIDE,
+        subRowY,
+        { align: 'right' },
+      );
+    }
+  }
+
+  // ── Accent line ──────────────────────────────────────
   doc.setDrawColor(footerAccentRgb[0], footerAccentRgb[1], footerAccentRgb[2]);
   doc.setLineWidth(BORDER.ACCENT_FOOTER);
   doc.line(SAFE_PRINT_EDGE_SIDE, accentLineY, pageWidth - SAFE_PRINT_EDGE_SIDE, accentLineY);
 
-  // Left: Form # + INTERNAL USE ONLY
+  // ── Main row (form# | agency | page X of Y) ──────────
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
   doc.text(leftParts.join('  |  '), SAFE_PRINT_EDGE_SIDE, textY);
 
-  // Center: Agency name (subtle branding)
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(5);
   doc.setTextColor(...COLOR.TEXT_MUTED);
   doc.text(brand.report_header_text || 'ROCKY MOUNTAIN PROTECTIVE GROUP', pageWidth / 2, textY, { align: 'center' });
 
-  // Right: Page X of Y
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(`PAGE ${pageNum} OF ${totalPages}`, pageWidth - SAFE_PRINT_EDGE_SIDE, textY, { align: 'right' });
+}
+
+/**
+ * Append a "DOCUMENT INTEGRITY" trailer page with the full payload
+ * SHA-256 hash, generation timestamp, form/case identifiers, and
+ * verification instructions. Intended to be the last page of every
+ * generated record/report PDF.
+ *
+ * The trailer is a self-contained court-ready provenance block —
+ * it documents WHAT was rendered (case#, form, agency), WHEN
+ * (generation timestamp), and that the data the PDF describes
+ * matches a canonical-JSON payload whose SHA-256 is printed.
+ *
+ * Returns the Y position after the trailer content (callers don't
+ * usually need this, but it's useful for testing).
+ */
+export function addDocumentIntegrityTrailer(
+  doc: jsPDF,
+  opts: {
+    formLabel?: string;     // e.g. "GENERAL INCIDENT REPORT"
+    caseNumber?: string;    // e.g. "INC-26-001234"
+    agencyName?: string;    // overrides activeBranding.report_header_text
+  } = {},
+): number {
+  doc.addPage();
+  const pageW = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+  const margin = LAYOUT.PAGE_MARGIN;
+  const cw = pageW - 2 * margin;
+
+  const brand = activeBranding;
+  const accentRgb: [number, number, number] = brand.section_accent_color
+    ? hexToRgb(brand.section_accent_color)
+    : ([COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]]);
+
+  // Centered vertical layout — start ~25% down the page so the
+  // block reads as a "certificate", not header content.
+  let y = pageH * 0.22;
+
+  // ── Title bar (dark with gold accent strip) ─────────────
+  const accentW = BORDER.ACCENT_SECTION;
+  const titleH = 7;
+  doc.setFillColor(accentRgb[0], accentRgb[1], accentRgb[2]);
+  doc.rect(margin, y, accentW, titleH, 'F');
+  doc.setFillColor(...COLOR.BG_SECTION_HDR);
+  doc.rect(margin + accentW, y, cw - accentW, titleH, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(10);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
+  const titleCapH = 10 * 0.35;
+  doc.text(
+    'DOCUMENT INTEGRITY',
+    margin + accentW + SPACING.CONTENT_INSET + 1,
+    y + (titleH + titleCapH) / 2,
+  );
+  y += titleH + 6;
+
+  // ── Identity block (form / case / agency) ────────────────
+  const formLabel = sanitizePdfText(opts.formLabel || activeFormKey.toUpperCase() || 'RECORD');
+  const caseNum = sanitizePdfText(opts.caseNumber || activeCaseNumber || '—');
+  const agency = sanitizePdfText(opts.agencyName || brand.report_header_text || 'ROCKY MOUNTAIN PROTECTIVE GROUP');
+
+  const labelX = margin + 4;
+  const valueX = margin + 38;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  const drawRow = (label: string, value: string): void => {
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(6);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text(label, labelX, y);
+    doc.setFont(PDF_VALUE_FONT, 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(value, valueX, y);
+    y += 5;
+  };
+  drawRow('FORM', formLabel);
+  drawRow('CASE NUMBER', caseNum);
+  drawRow('AGENCY', agency);
+  drawRow('GENERATED', sanitizePdfText(generationTimestamp || '—'));
+
+  y += 3;
+
+  // ── Payload hash block (large, monospaced, grouped) ──────
+  const payloadHash = getActivePayloadHash();
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text('PAYLOAD SHA-256', labelX, y);
+  y += 3.5;
+
+  if (payloadHash) {
+    const lines = formatHashGrouped(payloadHash);
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    for (const line of lines) {
+      doc.text(line, labelX, y);
+      y += 4.2;
+    }
+  } else {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('— hash not computed —', labelX, y);
+    y += 4.2;
+  }
+
+  y += 4;
+
+  // ── Verification disclaimer ──────────────────────────────
+  const explainer = (
+    'This hash is computed over a canonical-JSON form of the record at print-time. ' +
+    'Two PDFs of the same database row produce the same payload hash. ' +
+    'A different hash for the same case number indicates the record was edited after this copy was generated. ' +
+    'The hash does not bind the rendered PDF bytes — that integrity check is provided separately at download time.'
+  );
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setFontSize(7);
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  const explainerLines = wordWrapText(doc, sanitizePdfText(explainer), cw - 8);
+  for (const line of explainerLines) {
+    doc.text(line, labelX, y);
+    y += 3.3;
+  }
+
+  y += 4;
+
+  // ── Ed25519 signature block ──────────────────────────────
+  // Phase D: real signature when activeSignature is set; falls
+  // back to UNSIGNED placeholder when the server has no keypair
+  // configured (loadKeypairFromEnv returned null) or the network
+  // call to /api/pdf-tools/sign-payload failed gracefully.
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(6);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  doc.text('ED25519 SIGNATURE', labelX, y);
+  y += 3.5;
+
+  const sig = getActiveSignature();
+  if (sig) {
+    // Signature value — base64 grouped 4-char × 12-cols × 2 rows
+    doc.setFont('courier', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    for (const line of formatSignatureGrouped(sig.signature)) {
+      doc.text(line, labelX, y);
+      y += 3.2;
+    }
+    y += 1;
+
+    // Signed-at + public-key fingerprint (first 16 chars of base64
+    // — full key is too long for the trailer, but the prefix
+    // disambiguates which keypair was used if the server later
+    // rotates).
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.text('SIGNED AT', labelX, y);
+    doc.text('PUB KEY (PREFIX)', labelX + 38, y);
+    y += 2.6;
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.text(sanitizePdfText(sig.signedAt), labelX, y);
+    const keyPrefix = (sig.publicKey || '').slice(0, 16) + '…';
+    doc.text(keyPrefix, labelX + 38, y);
+    y += 5;
+  } else {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...COLOR.TEXT_TERTIARY);
+    doc.text('UNSIGNED  —  signing not configured on this server', labelX, y);
+    y += 5;
+  }
+
+  // Reset state for caller
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  return y;
 }
 
 /**
@@ -1933,6 +2145,8 @@ interface IncidentData {
   damage_estimate?: string;
   damage_description?: string;
   weapons_involved?: string;
+  // F7 advanced detail — structured hazard code for PDF caution strip
+  hazard_code?: string;
   alcohol_involved?: boolean;
   drugs_involved?: boolean;
   domestic_violence?: boolean;
@@ -2554,9 +2768,9 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
   // ═══════════════════════════════════════════════════════════
   // SECTION 3 — SCENE / CONDITIONS
   // ═══════════════════════════════════════════════════════════
-  { const hasScene = data.scene_safety || data.weather_conditions || data.lighting_conditions || data.weapons_involved || data.direction_of_travel;
+  { const hasScene = data.scene_safety || data.weather_conditions || data.lighting_conditions || data.weapons_involved || data.direction_of_travel || data.hazard_code;
     if (hasScene) {
-      y = checkPageBreak(doc, y, 20);
+      y = checkPageBreak(doc, y, 26);
       const sec = openAutoSection(doc, 'Scene Conditions', y); y = sec.contentY;
       // Row 1: Scene Safety, Weather, Lighting
       const w3 = ffw / 3;
@@ -2568,6 +2782,15 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       const fy4 = addFieldPair(doc, 'Weapons Involved', data.weapons_involved || 'None', lx, y, hfw);
       const fy5 = addFieldPair(doc, 'Direction of Travel', data.direction_of_travel || 'N/A', rx, y, hfw);
       y = Math.max(fy4, fy5);
+      // Row 3 (F7): Hazard Code — structured PRIMARY hazard category.
+      // Renders only when set so existing records don't gain a blank row.
+      // Distinct from boolean hazmat/officer_safety_caution flags above:
+      // this is the categorical "what kind of hazard" answer for caution
+      // strip rendering on subsequent forms.
+      if (data.hazard_code) {
+        const fy6 = addFieldPair(doc, 'Hazard Code', data.hazard_code, lx, y, ffw);
+        y = fy6;
+      }
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
   }
@@ -3709,6 +3932,13 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData)
       generateGeneralIncident(doc, data);
   }
 
+  // Trailer must be appended BEFORE the per-page footer loop so the
+  // footer renders on it too (totalPages snapshot below counts it).
+  addDocumentIntegrityTrailer(doc, {
+    formLabel: PDF_REPORT_LABELS[reportType]?.toUpperCase(),
+    caseNumber: data.incident_number,
+  });
+
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
@@ -3770,12 +4000,21 @@ export async function downloadPdfReport(reportType: PdfReportType, data: Inciden
       setActiveOfficerSig(undefined);
     }
 
+    const payloadHash = await computePayloadHash(data);
+    setActivePayloadHash(payloadHash);
+    setActiveSignature(
+      await fetchPdfSignature(reportType, data.incident_number || '', payloadHash) || undefined
+    );
     const doc = generatePdfReport(reportType, data);
     setActiveOfficerSig(undefined);
+    clearActivePayloadHash();
+    clearActiveSignature();
     const filename = `${data.incident_number || 'report'}_${reportType}.pdf`;
     doc.save(filename);
   } catch (err) {
     setActiveOfficerSig(undefined);
+    clearActivePayloadHash();
+    clearActiveSignature();
     console.error('PDF generation failed:', err);
     throw new Error(`Failed to generate ${reportType} PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
@@ -3800,12 +4039,21 @@ export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: 
       setActiveOfficerSig(undefined);
     }
 
+    const payloadHash = await computePayloadHash(data);
+    setActivePayloadHash(payloadHash);
+    setActiveSignature(
+      await fetchPdfSignature(reportType, data.incident_number || '', payloadHash) || undefined
+    );
     const doc = generatePdfReport(reportType, data);
     setActiveOfficerSig(undefined);
+    clearActivePayloadHash();
+    clearActiveSignature();
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
   } catch (err) {
     setActiveOfficerSig(undefined);
+    clearActivePayloadHash();
+    clearActiveSignature();
     console.error('PDF preview generation failed:', err);
     throw new Error(`Failed to generate ${reportType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }

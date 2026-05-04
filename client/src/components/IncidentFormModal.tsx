@@ -11,6 +11,7 @@ import {
   WEAPONS_OPTIONS,
   LE_AGENCY_OPTIONS,
 } from '../utils/callOptions';
+import { HAZARD_CODE_OPTIONS } from '../constants/lawEnforcementEnums';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
@@ -51,6 +52,8 @@ export interface IncidentFormData {
   damage_estimate: string;
   damage_description: string;
   weapons_involved: string;
+  // F7 advanced detail — structured hazard code for dispatch + PDF caution strip
+  hazard_code: string;
   alcohol_involved: boolean;
   drugs_involved: boolean;
   domestic_violence: boolean;
@@ -271,6 +274,7 @@ const EMPTY_FORM: IncidentFormData = {
   damage_estimate: '',
   damage_description: '',
   weapons_involved: '',
+  hazard_code: '',
   alcohol_involved: false,
   drugs_involved: false,
   domestic_violence: false,
@@ -391,6 +395,7 @@ export default function IncidentFormModal({
           damage_estimate: inc.damage_estimate || '',
           damage_description: inc.damage_description || '',
           weapons_involved: inc.weapons_involved || '',
+          hazard_code: (inc as any).hazard_code || '',
           alcohol_involved: !!inc.alcohol_involved,
           drugs_involved: !!inc.drugs_involved,
           domestic_violence: !!inc.domestic_violence,
@@ -843,17 +848,34 @@ export default function IncidentFormModal({
             </div>
           </div>
 
-          {/* Weapons */}
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Weapons Involved</label>
-            <select
-              className="input-dark mt-1"
-              value={formData.weapons_involved}
-              onChange={(e) => update('weapons_involved', e.target.value)}
-            >
-              <option value="">-- Select --</option>
-              {WEAPONS_OPTIONS.map((w) => <option key={w} value={w}>{w}</option>)}
-            </select>
+          {/* Weapons + Hazard Code (F7 advanced detail) */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Weapons Involved</label>
+              <select
+                className="input-dark mt-1"
+                value={formData.weapons_involved}
+                onChange={(e) => update('weapons_involved', e.target.value)}
+              >
+                <option value="">-- Select --</option>
+                {WEAPONS_OPTIONS.map((w) => <option key={w} value={w}>{w}</option>)}
+              </select>
+            </div>
+            <div>
+              {/* F7: structured hazard code dropdown drives PDF caution
+                  strip rendering + dispatch hazard banner. Uses F2's
+                  HAZARD_CODE_OPTIONS for consistency with dispatch
+                  console hazard tagging. */}
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Hazard Code</label>
+              <select
+                className="input-dark mt-1"
+                value={formData.hazard_code}
+                onChange={(e) => update('hazard_code', e.target.value)}
+              >
+                <option value="">-- Select --</option>
+                {HAZARD_CODE_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+              </select>
+            </div>
           </div>
         </>
       )}

@@ -20,6 +20,10 @@ import type {
   PersonnelPdfData,
   PropertyPdfData,
   CitationPdfData,
+  CasePdfData,
+  FieldInterviewPdfData,
+  CourtEventPdfData,
+  JailBookingPdfData,
   BoloSubject,
   WarrantSummaryData,
 } from '../recordPdfGenerator';
@@ -30,16 +34,26 @@ import {
   setActiveOfficerSignature,
 } from '../recordPdfGenerator';
 
-// Stub the admin-branding endpoint. generateRecordPdf itself doesn't fetch,
-// but the generators call shared helpers (addReportHeader etc.) that read
-// active branding state — keeping fetch stubbed avoids test flakiness if
-// anything in the chain changes to eagerly load.
+// Stub fetch:
+//  - /api/admin/config/branding → 200 [] (branding helper tolerates empty)
+//  - /api/pdf-tools/sign-payload → 503 (graceful UNSIGNED fallback path)
+//  - everything else → 404
+//
+// The 503 simulates a server without EVIDENCE_SIGNING_PRIVATE_KEY env var
+// configured. fetchPdfSignature returns null on 503 and downstream code
+// renders the "UNSIGNED" trailer instead of failing.
 beforeEach(() => {
   vi.stubGlobal(
     'fetch',
     vi.fn(async (url: string) => {
       if (typeof url === 'string' && url.includes('/api/admin/config/branding')) {
         return new Response(JSON.stringify([]), { status: 200 });
+      }
+      if (typeof url === 'string' && url.includes('/api/pdf-tools/sign-payload')) {
+        return new Response(
+          JSON.stringify({ error: 'not configured', code: 'SIGNING_NOT_CONFIGURED' }),
+          { status: 503 },
+        );
       }
       return new Response('', { status: 404 });
     })
@@ -96,6 +110,27 @@ const minCitation: CitationPdfData = {
   citation_number: 'CIT-25-00001',
   type: 'TRAFFIC',
   status: 'ISSUED',
+};
+
+const minCase: CasePdfData = {
+  case_number: 'CSE-25-00001',
+  title: 'Test Case File',
+};
+
+const minFieldInterview: FieldInterviewPdfData = {
+  fi_number: 'FI-25-00001',
+  location: '123 Test St, Salt Lake City, UT',
+  contact_reason: 'suspicious_activity',
+};
+
+const minCourtEvent: CourtEventPdfData = {
+  event_number: 'CRT-25-00001',
+  event_type: 'arraignment',
+  event_date: '2026-06-01',
+};
+
+const minJailBooking: JailBookingPdfData = {
+  full_name: 'JOHN DOE',
 };
 
 const minWarrantSummary: WarrantSummaryData = {
@@ -218,6 +253,119 @@ describe('recordPdfGenerator smoke tests', () => {
   it('generates a citation PDF from minimal data', async () => {
     const doc = await generateRecordPdf('citation', minCitation);
     expect(doc).toBeDefined();
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a case PDF from minimal data', async () => {
+    const doc = await generateRecordPdf('case', minCase);
+    expect(doc).toBeDefined();
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a case PDF with all linked-record appendices populated', async () => {
+    const doc = await generateRecordPdf('case', {
+      ...minCase,
+      case_type: 'theft',
+      status: 'open',
+      priority: 'high',
+      lead_investigator_name: 'Det. Test',
+      assigned_officer_names: ['Officer A', 'Officer B'],
+      solvability_score: 75,
+      summary: 'Multi-victim theft from auto across three properties.',
+      narrative: 'Initial investigation indicates a single perpetrator.',
+      opened_date: '2026-04-01',
+      due_date: '2026-05-01',
+      linked_persons: [{ id: 1, first_name: 'John', last_name: 'Doe', date_of_birth: '1980-01-01', relationship: 'suspect' }],
+      linked_incidents: [{ id: 10, incident_number: 'INC-001', incident_type: 'theft', status: 'open', created_at: '2026-04-01' }],
+      linked_evidence: [{ id: 20, item_number: 'E-001', description: 'broken window', status: 'collected', collected_at: '2026-04-01' }],
+      linked_citations: [{ id: 30, citation_number: 'CIT-001', type: 'traffic', status: 'issued', violation_date: '2026-03-01' }],
+      linked_warrants: [{ id: 40, warrant_number: 'W-001', type: 'arrest', status: 'active', charge_description: 'Theft' }],
+    });
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a field_interview PDF from minimal data', async () => {
+    const doc = await generateRecordPdf('field_interview', minFieldInterview);
+    expect(doc).toBeDefined();
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a field_interview PDF with subject + vehicle + narrative', async () => {
+    const doc = await generateRecordPdf('field_interview', {
+      ...minFieldInterview,
+      subject_first_name: 'Jane',
+      subject_last_name: 'Doe',
+      subject_dob: '1990-05-15',
+      subject_height: '5\'6"',
+      subject_weight: '140',
+      subject_clothing: 'Black hoodie, blue jeans',
+      vehicle_plate: 'ABC123',
+      vehicle_description: '2020 Honda Civic, gray',
+      narrative: 'Subject was observed loitering near loading dock at 2300 hours.',
+      latitude: 40.76,
+      longitude: -111.89,
+      contact_type: 'consensual',
+      action_taken: 'verbal_warning',
+    });
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a court_event PDF from minimal data', async () => {
+    const doc = await generateRecordPdf('court_event', minCourtEvent);
+    expect(doc).toBeDefined();
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a court_event PDF with full hearing + outcome populated', async () => {
+    const doc = await generateRecordPdf('court_event', {
+      ...minCourtEvent,
+      event_type: 'subpoena',
+      status: 'concluded',
+      event_time: '09:30',
+      court_name: 'Salt Lake County Justice Court',
+      courtroom: '3B',
+      judge_name: 'Hon. Smith',
+      court_case_number: '2026-TR-12345',
+      defendant_name: 'John Doe',
+      prosecutor: 'D. Prosecutor',
+      defense_attorney: 'R. Defender',
+      officers_required: ['Officer A', 'Officer B'],
+      citation_number: 'CIT-001',
+      outcome: 'Guilty plea entered',
+      sentence: '6 months probation',
+      fine_amount: 350.00,
+      notes: 'Defendant appeared with counsel.',
+    });
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a jail_booking PDF from minimal data', async () => {
+    const doc = await generateRecordPdf('jail_booking', minJailBooking);
+    expect(doc).toBeDefined();
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a jail_booking PDF with parsed charges from free text', async () => {
+    const doc = await generateRecordPdf('jail_booking', {
+      ...minJailBooking,
+      first_name: 'JOHN',
+      last_name: 'DOE',
+      date_of_birth: '1980-01-01',
+      booking_date: '2026-04-15',
+      county: 'Salt Lake',
+      status: 'in_custody',
+      charges: 'Theft 76-6-404; Assault 76-5-102; Possession 58-37-8',
+      source_name: 'JailBase',
+      source_id: 'jb-12345',
+    });
+    expect(doc.getNumberOfPages()).toBeGreaterThan(0);
+  });
+
+  it('generates a jail_booking PDF using charge_lines array', async () => {
+    const doc = await generateRecordPdf('jail_booking', {
+      ...minJailBooking,
+      charge_lines: ['Theft (Class A Misdemeanor)', 'Failure to Appear', 'Probation Violation'],
+    });
     expect(doc.getNumberOfPages()).toBeGreaterThan(0);
   });
 

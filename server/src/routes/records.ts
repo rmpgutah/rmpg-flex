@@ -428,6 +428,8 @@ router.post('/persons', (req: Request, res: Response) => {
       piercing_description, distinguishing_features,
       email_secondary, date_last_seen, location_last_seen, alias_dob,
       home_phone, work_phone,
+      // F3 advanced detail (jail intake + descriptor)
+      voice_description, religion, dietary_restrictions,
     } = req.body;
 
     if (!first_name || !last_name) {
@@ -456,7 +458,8 @@ router.post('/persons', (req: Request, res: Response) => {
         identifying_marks_location, tattoo_description, scar_description,
         piercing_description, distinguishing_features,
         email_secondary, date_last_seen, location_last_seen, alias_dob,
-        home_phone, work_phone)
+        home_phone, work_phone,
+        voice_description, religion, dietary_restrictions)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?,
@@ -465,7 +468,8 @@ router.post('/persons', (req: Request, res: Response) => {
         ?, ?, ?,
         ?, ?,
         ?, ?, ?, ?,
-        ?, ?)
+        ?, ?,
+        ?, ?, ?)
     `).run(
       first_name, last_name, middle_name || null, alias_nickname || null,
       dob || null, gender || null, race || null,
@@ -492,6 +496,7 @@ router.post('/persons', (req: Request, res: Response) => {
       piercing_description || null, distinguishing_features || null,
       email_secondary || null, date_last_seen || null, location_last_seen || null, alias_dob || null,
       home_phone || null, work_phone || null,
+      voice_description || null, religion || null, dietary_restrictions || null,
     );
 
     db.prepare(`
@@ -603,6 +608,10 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       alias_dob: v => v ?? null,
       home_phone: v => v ?? null,
       work_phone: v => v ?? null,
+      // F3 advanced detail (jail intake + descriptor)
+      voice_description: v => v ?? null,
+      religion: v => v ?? null,
+      dietary_restrictions: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -1225,6 +1234,8 @@ const PROPERTY_FIELD_MAP: Record<string, (v: any) => any> = {
   security_features: v => v ?? null,
   alarm_company: v => v ?? null,
   alarm_account: v => v ?? null,
+  // F5: alarm system architecture (None / Self-Monitored / Pro-Monitored / Smart-Home / Wireless / Wired / Hybrid)
+  alarm_system: v => v ?? null,
   camera_system: v => v ?? null,
   // Key holder
   key_holder_name: v => v ?? null,
@@ -1420,6 +1431,58 @@ router.get('/businesses/search',
     }
   }
 );
+
+// Person dossier — risk-first aggregation across warrants, trespasses,
+// arrests, incidents, calls, citations, and field interviews. Powers the
+// court-packet appendix rendered into person PDFs. MUST be registered
+// before /persons/:id so the :id route does not shadow it.
+router.get('/persons/:id/dossier', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(paramStr(req.params.id as any), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+    const db = getDb();
+    const { buildPersonDossier } = await import('../utils/personDossier');
+    const dossier = buildPersonDossier(db, id);
+    if (!dossier) { res.status(404).json({ error: 'Person not found' }); return; }
+    auditLog(req, 'VIEW', 'person_dossier', id, null, {
+      riskLevel: dossier.summary.riskLevel,
+      sectionCounts: {
+        warrants: dossier.warrants.count,
+        arrests: dossier.arrests.count,
+        incidents: dossier.incidents.count,
+        calls: dossier.calls.count,
+        citations: dossier.citations.count,
+      },
+    });
+    res.json(dossier);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to build person dossier', detail: err?.message });
+  }
+});
+
+// Vehicle dossier — incidents, calls, citations, FIs aggregated for the
+// vehicle PDF appendix. Mirrors person dossier shape.
+router.get('/vehicles/:id/dossier', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(paramStr(req.params.id as any), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+    const db = getDb();
+    const { buildVehicleDossier } = await import('../utils/vehicleDossier');
+    const dossier = buildVehicleDossier(db, id);
+    if (!dossier) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    auditLog(req, 'VIEW', 'vehicle_dossier', id, null, {
+      riskLevel: dossier.summary.riskLevel,
+      sectionCounts: {
+        incidents: dossier.incidents.count,
+        calls: dossier.calls.count,
+        citations: dossier.citations.count,
+      },
+    });
+    res.json(dossier);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to build vehicle dossier', detail: err?.message });
+  }
+});
 
 // Business dossier — multi-panel aggregated payload (Task 1.18). MUST be
 // registered before /businesses/:id so the :id route does not shadow it.
@@ -1734,6 +1797,9 @@ const EVIDENCE_FIELD_MAP: Record<string, (v: any) => any> = {
   is_biological: v => v ? 1 : 0,
   narcotics_flag: v => v ? 1 : 0,
   temperature_sensitive: v => v ? 1 : 0,
+  // F6 advanced detail (chain-of-custody-context fields)
+  collection_context: v => v ?? null,
+  court_hold_reference: v => v ?? null,
 };
 
 router.put('/evidence/:id', (req: Request, res: Response) => {
@@ -2592,6 +2658,8 @@ router.post('/evidence', (req: Request, res: Response) => {
       disposal_method, disposal_date, disposal_authorized_by,
       serial_number, brand, model, estimated_value, category, notes,
       location_found, condition, quantity, is_biological,
+      // F6 advanced detail (collection-context + court hold binding)
+      collection_context, court_hold_reference,
     } = req.body;
 
     if (!req.body.description || !req.body.evidence_type) {
@@ -2619,9 +2687,10 @@ router.post('/evidence', (req: Request, res: Response) => {
         photo_taken, lab_submitted, lab_case_number, lab_name,
         disposal_method, disposal_date, disposal_authorized_by,
         serial_number, brand, model, estimated_value, category, notes,
-        location_found, condition, quantity, is_biological
+        location_found, condition, quantity, is_biological,
+        collection_context, court_hold_reference
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       evidenceNumber, incident_id || null, description, evidence_type,
       storage_location || null, req.user!.userId,
@@ -2630,7 +2699,8 @@ router.post('/evidence', (req: Request, res: Response) => {
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
       serial_number || null, brand || null, model || null, estimated_value || null, category || null,
       notes || null,
-      location_found || null, condition || null, quantity ?? 1, is_biological ? 1 : 0
+      location_found || null, condition || null, quantity ?? 1, is_biological ? 1 : 0,
+      collection_context || null, court_hold_reference || null
     );
 
     db.prepare(`

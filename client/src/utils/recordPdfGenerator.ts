@@ -15,16 +15,41 @@ import {
   addPageFooter, checkPageBreak, setGenerationTimestamp, fetchPdfBranding,
   setActiveBranding, loadPdfAssets, setActiveFormKey, setActiveCaseNumber,
   addAttachmentsSection, addImageToPage, formSectionPageBreak, sanitizePdfText,
-  displayStatus, finalizePoliceReport, type PersonIdPayload,
-  type FormMetadataPayload,
+  displayStatus, finalizePoliceReport, addDocumentIntegrityTrailer,
+  type PersonIdPayload, type FormMetadataPayload,
 } from './pdfGenerator';
+import {
+  computePayloadHash, setActivePayloadHash, clearActivePayloadHash,
+  fetchPdfSignature, setActiveSignature, clearActiveSignature,
+} from './pdfIntegrity';
+import {
+  renderPersonDossierAppendix, renderVehicleDossierAppendix,
+} from './pdfDossierRenderer';
+import {
+  generateCaseReport, generateFieldInterviewReport,
+  generateCourtEventReport, generateJailBookingReport,
+  type CasePdfData, type FieldInterviewPdfData,
+  type CourtEventPdfData, type JailBookingPdfData,
+} from './recordPdfGeneratorExt';
+export type {
+  CasePdfData, FieldInterviewPdfData, CourtEventPdfData, JailBookingPdfData,
+} from './recordPdfGeneratorExt';
+import {
+  addQuickReferenceBanner, addLinkedRecordsStrip, addProvenanceLine,
+  addEmptyStateRow, addSeverityMeter,
+  type QuickRefBannerConfig,
+} from './pdfDetailHelpers';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth,
 } from './pdfTokens';
-import { drawNibrsHeader, drawFormSection } from './pdfFormHelpers';
+import {
+  drawNibrsHeader, drawFormSection, drawCautionFlagStrip,
+  drawDispatchTimelineStrip, drawChainOfCustodyTable,
+  type CautionFlag, type TimelineEvent, type CustodyTransfer,
+} from './pdfFormHelpers';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
 
@@ -159,7 +184,11 @@ export type RecordPdfType =
   | 'fleet'
   | 'personnel'
   | 'property'
-  | 'citation';
+  | 'citation'
+  | 'case'
+  | 'field_interview'
+  | 'court_event'
+  | 'jail_booking';
 
 // ── Data Interfaces ──────────────────────────────────────────
 
@@ -455,6 +484,11 @@ export interface PersonPdfData {
   mental_health_flags?: string;
   substance_abuse?: string;
   medication_notes?: string;
+  // Jail-intake fields (F3 advanced detail)
+  religion?: string;
+  dietary_restrictions?: string;
+  // Physical descriptor — for FI cards / BOLO when subject was heard
+  voice_description?: string;
   // Detailed Marks
   tattoo_description?: string;
   scar_description?: string;
@@ -499,6 +533,11 @@ export interface PersonPdfData {
   // Linked records (from record_links)
   linked_vehicles?: { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship?: string }[];
   linked_properties?: { name: string; address?: string; relationship?: string }[];
+  // Cross-reference dossier appendix payload (Phase B). Caller fetches
+  // /api/records/persons/:id/dossier and stuffs the result here before
+  // calling downloadRecordPdf. Listed in NON_CANONICAL_FIELDS in
+  // pdfIntegrity.ts so it does NOT affect the payload hash.
+  _dossier?: import('./pdfDossierRenderer').PersonDossierData;
 }
 
 export interface VehiclePdfData {
@@ -530,7 +569,15 @@ export interface VehiclePdfData {
   // Insurance
   insurance_company?: string;
   insurance_policy?: string;
+  insurance_expiry?: string;
   registration_expiry?: string;
+  // NCIC (stolen vehicle registry)
+  ncic_entry_number?: string;
+  // Plate aliases — `plate_number` is the form field name; the
+  // canonical PDF field is `license_plate`. The renderer reads
+  // both so legacy callers keep working.
+  plate_number?: string;
+  state?: string;
   // Legal
   stolen_status?: string;
   stolen_date?: string;
@@ -538,6 +585,7 @@ export interface VehiclePdfData {
   tow_status?: string;
   tow_company?: string;
   tow_date?: string;
+  tow_location?: string;
   lien_holder?: string;
   // Condition
   title_status?: string;
@@ -568,6 +616,8 @@ export interface VehiclePdfData {
   incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
   calls?: { call_number: string; incident_type: string; status: string; location: string; created_at: string }[];
   citations?: { citation_number: string; type: string; status: string; violation_date: string }[];
+  // Cross-reference dossier appendix payload (Phase B). See PersonPdfData.
+  _dossier?: import('./pdfDossierRenderer').VehicleDossierData;
 }
 
 export interface WarrantPdfData {
@@ -640,6 +690,9 @@ export interface EvidencePdfData {
   evidence_number: string;
   evidence_type?: string;
   category?: string;
+  // F6 advanced detail — collection context + court hold binding
+  collection_context?: string;
+  court_hold_reference?: string;
   incident_number?: string;
   status?: string;
   description?: string;
@@ -849,7 +902,10 @@ export interface PersonnelPdfData {
 
 export interface PropertyPdfData {
   name: string;
+  client_id?: number | string;
   client_name?: string;
+  secondary_contact_name?: string;
+  secondary_contact_phone?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -876,6 +932,7 @@ export interface PropertyPdfData {
   alarm_code?: string;
   alarm_company?: string;
   alarm_account?: string;
+  alarm_system?: string;
   camera_system?: string;
   security_features?: string;
   emergency_contact?: string;
@@ -1009,16 +1066,6 @@ function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string
   return { mm, dd, yyyy, hh, min: String(mt.getMinutes()).padStart(2, '0'), sec: String(mt.getSeconds()).padStart(2, '0') };
 }
 
-function fmtTimestamp(ts?: string): string {
-  if (!ts) return '';
-  try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
-    if (isNaN(d.getTime())) return ts;
-    const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
-    return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
-  } catch { return ts; }
-}
-
 /** Format: MM/DD/YYYY */
 function fmtDate(ts?: string | null): string {
   if (!ts) return '';
@@ -1030,7 +1077,7 @@ function fmtDate(ts?: string | null): string {
   } catch { return ts; }
 }
 
-/** Format: MM/DD/YYYY @ HH:MM:SS (military time) */
+/** Format: MM/DD/YYYY @ HH:MM:SS (military time, America/Denver). */
 function fmtDateTime(ts?: string | null): string {
   if (!ts) return '';
   try {
@@ -1041,9 +1088,30 @@ function fmtDateTime(ts?: string | null): string {
   } catch { return ts; }
 }
 
+// `fmtTimestamp` was a duplicate of `fmtDateTime` (same output format,
+// same Mountain-Time normalization, same null-safe wrapper). Kept as a
+// thin alias so call sites that still reference it don't break — new
+// code should call `fmtDateTime` directly.
+const fmtTimestamp = fmtDateTime;
+
 function fmtCurrency(val?: number | null): string {
   if (val == null) return 'N/A';
   return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
+}
+
+/**
+ * Format milliseconds as +HH:MM:SS for the dispatch timeline's
+ * elapsed-delta cell. Negative deltas (clock skew between stages)
+ * are clamped to zero so a court reading the timeline never sees
+ * a "-00:00:01" that suggests reverse causality.
+ */
+function formatElapsed(ms: number): string {
+  const totalSec = Math.max(0, Math.floor(ms / 1000));
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  const p2 = (n: number) => String(n).padStart(2, '0');
+  return `+${p2(h)}:${p2(m)}:${p2(s)}`;
 }
 
 /** Capitalize the first letter of each word (e.g., "suspect" → "Suspect", "co owner" → "Co Owner") */
@@ -1072,7 +1140,47 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     reportDate: fmtTimestamp(data.created_at || ''),
   });
 
-  // Incident Report number is shown in Classification section — no separate banner needed
+  // Quick-reference banner — primary identifier in big text immediately
+  // below the form header. Operator scanning a paper file finds the
+  // right document in 0.5s rather than reading three rows.
+  {
+    const prioStr = String(data.priority || '').toUpperCase();
+    const pillTone: 'high' | 'elevated' | 'standard' = (prioStr === 'P1' || prioStr === '1' || prioStr === 'CRITICAL')
+      ? 'high'
+      : (prioStr === 'P2' || prioStr === '2' || prioStr === 'HIGH' || prioStr === 'URGENT')
+        ? 'elevated'
+        : 'standard';
+    y = addQuickReferenceBanner(doc, {
+      primary: (data.incident_type || '').toUpperCase() + (data.call_number ? `   ${data.call_number}` : ''),
+      secondary: data.location || '',
+      pill: prioStr ? { label: `PRI ${prioStr}`, tone: pillTone } : undefined,
+    }, y);
+  }
+
+  // Dispatch timeline strip — only renders when at least one stage
+  // has a timestamp; computes elapsed deltas between consecutive
+  // stages so the strip reads as a court-ready chronology.
+  {
+    const stages: { label: string; iso?: string }[] = [
+      { label: 'RECEIVED',    iso: data.created_at },
+      { label: 'DISPATCHED',  iso: data.dispatched_at },
+      { label: 'EN ROUTE',    iso: data.enroute_at },
+      { label: 'ON SCENE',    iso: data.onscene_at },
+      { label: 'CLEARED',     iso: data.cleared_at || data.closed_at },
+    ];
+    const events: TimelineEvent[] = [];
+    let prevTs: number | null = null;
+    for (const s of stages) {
+      const t = s.iso ? Date.parse(s.iso) : NaN;
+      const time = isFinite(t) ? new Date(t).toLocaleTimeString('en-US', { hour12: false }) : undefined;
+      const elapsed = isFinite(t) && prevTs != null ? formatElapsed(t - prevTs) : undefined;
+      events.push({ label: s.label, time, elapsed });
+      if (isFinite(t)) prevTs = t;
+    }
+    if (events.some(e => e.time)) {
+      y = drawDispatchTimelineStrip(doc, events, y);
+    }
+  }
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -1950,6 +2058,56 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     reportDate: fmtDate(data.created_at),
   });
 
+  // Quick-reference banner — name + DOB + risk pill
+  {
+    const dob = data.date_of_birth ? `DOB ${fmtDate(data.date_of_birth)}` : '';
+    const flagsArr = Array.isArray(data.flags) ? data.flags : [];
+    const isHighRisk = data.bolo_active
+      || flagsArr.some(f => /armed|violent|warrant/i.test(String(f)));
+    const pill: QuickRefBannerConfig['pill'] | undefined = data.bolo_active
+      ? { label: 'BOLO', tone: 'high' }
+      : isHighRisk
+        ? { label: 'CAUTION', tone: 'elevated' }
+        : flagsArr.length > 0
+          ? { label: `${flagsArr.length} FLAG${flagsArr.length === 1 ? '' : 'S'}`, tone: 'elevated' }
+          : undefined;
+    y = addQuickReferenceBanner(doc, {
+      primary: personName,
+      secondary: [dob, data.gender, data.race].filter(Boolean).join(' · '),
+      pill,
+    }, y);
+  }
+
+  // Cross-reference badge bar — only appears when records are linked
+  y = addLinkedRecordsStrip(doc, data, y);
+
+  // Caution-flag strip — synthesized from BOLO state + caution_flags
+  // text + structured flags array. Renders only when at least one
+  // flag is detected; otherwise returns y unchanged.
+  {
+    const flags: CautionFlag[] = [];
+    if (data.bolo_active) flags.push({ label: 'BOLO ACTIVE', kind: 'warrant' });
+    const flagsArr = Array.isArray(data.flags) ? data.flags : [];
+    for (const f of flagsArr) {
+      const fStr = String(f).toUpperCase();
+      if (/ARMED|WEAPON/.test(fStr)) flags.push({ label: fStr, kind: 'armed' });
+      else if (/WARRANT/.test(fStr)) flags.push({ label: fStr, kind: 'warrant' });
+      else if (/GANG/.test(fStr)) flags.push({ label: fStr, kind: 'gang' });
+      else if (/MENTAL/.test(fStr)) flags.push({ label: fStr, kind: 'mental' });
+      else if (/MEDICAL|MEDICATION/.test(fStr)) flags.push({ label: fStr, kind: 'medical' });
+      else if (/VIOLENT/.test(fStr)) flags.push({ label: fStr, kind: 'violent' });
+      else flags.push({ label: fStr, kind: 'default' });
+    }
+    if (data.is_sex_offender) flags.push({ label: 'REGISTERED SEX OFFENDER', kind: 'warrant' });
+    if (data.gang_affiliation) flags.push({ label: `GANG: ${data.gang_affiliation.toUpperCase()}`, kind: 'gang' });
+    if (data.probation_parole && /probation|parole/i.test(data.probation_parole)) {
+      flags.push({ label: data.probation_parole.toUpperCase(), kind: 'default' });
+    }
+    if (flags.length > 0) {
+      y = drawCautionFlagStrip(doc, flags, y);
+    }
+  }
+
   y = drawDistrictBar(doc, y, data as any);
 
   // ── 1. Subject Identification ─────────────────────────────
@@ -2134,6 +2292,22 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     const md3 = addFieldPair(doc, 'Substance Abuse', data.substance_abuse || '', lx, y, hw);
     const md4 = addFieldPair(doc, 'Medication Notes', data.medication_notes || '', lx + hw, y, hw);
     y = Math.max(md3, md4);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── 7d-bis. Jail Intake / Custodial Considerations (F3) ──
+  // Religion + dietary restrictions affect chaplaincy, holiday
+  // observance, and meal planning during custody. Voice description
+  // joins the descriptor set so FI cards / BOLO can describe a
+  // subject heard but not clearly seen.
+  if (data.religion || data.dietary_restrictions || data.voice_description) {
+    y = checkPageBreak(doc, y, 12, prio);
+    const sec = openAutoSection(doc, 'Jail Intake / Custodial', y); y = sec.contentY;
+    const tw = ffw / 3;
+    const ji1 = addFieldPair(doc, 'Religion', data.religion || '', lx, y, tw);
+    const ji2 = addFieldPair(doc, 'Dietary Restrictions', data.dietary_restrictions || '', lx + tw, y, tw);
+    const ji3 = addFieldPair(doc, 'Voice Description', data.voice_description || '', lx + tw * 2, y, tw);
+    y = Math.max(ji1, ji2, ji3);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2442,8 +2616,22 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     y = await addAttachmentsSection(doc, data.attachment_images, y, 'Attachments / Evidence Photos', prio);
   }
 
-  // ── 18. Signature Block — full-width stacked ──────────────
+  // ── 18. Provenance line — last-updated audit trail ────────
+  // Renders a tiny right-aligned line above the signature block:
+  // "Last updated: 04/12/2026 14:23 by S.NESBITT". Returns y
+  // unchanged if neither created_at nor updated_at is set.
+  y = addProvenanceLine(doc, {
+    createdAt: data.created_at,
+    updatedAt: data.updated_at,
+  }, y);
+
+  // ── 19. Signature Block — full-width stacked ──────────────
   y = addStackedSignatures(doc, 'Entering Officer', '', y, getOfficerSig(), undefined, prio);
+
+  // ── 20. Cross-reference dossier appendix (opt-in via _dossier) ──
+  if (data._dossier) {
+    y = renderPersonDossierAppendix(doc, data._dossier, y);
+  }
 }
 
 // ── Vehicle Record ───────────────────────────────────────────
@@ -2460,9 +2648,31 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
     formTitle: 'VEHICLE RECORD',
     formNumber: 'FORM PS-203',
-    caseNumber: data.license_plate || 'N/A',
+    caseNumber: data.license_plate || data.plate_number || 'N/A',
     caseNumberLabel: 'LICENSE PLATE',
   });
+
+  // Quick-reference banner — plate + year/make/model + stolen pill
+  {
+    const plate = data.license_plate || data.plate_number || 'NO PLATE';
+    const ymm = [data.year, data.make, data.model].filter(Boolean).join(' ');
+    const colors = [data.color, data.secondary_color].filter(Boolean).join(' / ');
+    const stolen = (data.stolen_status || '').toLowerCase();
+    const pill: QuickRefBannerConfig['pill'] | undefined = stolen === 'stolen'
+      ? { label: 'STOLEN', tone: 'high' }
+      : stolen === 'recovered'
+        ? { label: 'RECOVERED', tone: 'elevated' }
+        : (data.tow_status && data.tow_status !== 'none')
+          ? { label: 'IMPOUNDED', tone: 'elevated' }
+          : undefined;
+    y = addQuickReferenceBanner(doc, {
+      primary: plate,
+      secondary: [ymm, colors].filter(Boolean).join(' · '),
+      pill,
+    }, y);
+  }
+
+  y = addLinkedRecordsStrip(doc, data, y);
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -2531,18 +2741,24 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   // ── Insurance & Registration ──
-  y = checkPageBreak(doc, y, 12);
+  y = checkPageBreak(doc, y, 18);
   { const sec = openAutoSection(doc, 'Insurance & Registration', y); y = sec.contentY;
     const fifthW = ffw / 5;
+    // Row 1: Insurance Company (2/5), Policy (2/5), Reg. Expiry (1/5)
     const r1a = addFieldPair(doc, 'Insurance Company', data.insurance_company || '', lx, y, fifthW * 2);
     const r1b = addFieldPair(doc, 'Policy Number', data.insurance_policy || '', lx + fifthW * 2, y, fifthW * 2);
     const r1c = addFieldPair(doc, 'Reg. Expiry', fmtDate(data.registration_expiry), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c);
+    // Row 2: Insurance Expiry (2/5), NCIC Entry # (2/5), Reg. State (1/5)
+    const r2a = addFieldPair(doc, 'Insurance Expiry', fmtDate(data.insurance_expiry), lx, y, fifthW * 2);
+    const r2b = addFieldPair(doc, 'NCIC Entry #', data.ncic_entry_number || '', lx + fifthW * 2, y, fifthW * 2);
+    const r2c = addFieldPair(doc, 'Reg. State', data.state || data.registration_state || '', lx + fifthW * 4, y, fifthW);
+    y = Math.max(r2a, r2b, r2c);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Legal Status ──
-  y = checkPageBreak(doc, y, 18);
+  y = checkPageBreak(doc, y, 24);
   { const sec = openAutoSection(doc, 'Legal Status', y); y = sec.contentY;
     const thirdW = ffw / 3;
     // Row 1: Stolen Status, Stolen Date, Recovery Date
@@ -2555,6 +2771,10 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     const r2b = addFieldPair(doc, 'Tow Company', data.tow_company || '', lx + thirdW, y, thirdW);
     const r2c = addFieldPair(doc, 'Tow Date', fmtDate(data.tow_date), lx + thirdW * 2, y, thirdW);
     y = Math.max(r2a, r2b, r2c);
+    // Row 3: Tow Location (full width — common for impound lot addresses)
+    if (data.tow_location) {
+      y = addFieldPair(doc, 'Tow Location', data.tow_location, lx, y, ffw);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2658,6 +2878,11 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
   }
 
   y = addStackedSignatures(doc, 'Entering Officer', '', y, getOfficerSig());
+
+  // Cross-reference dossier appendix (opt-in via _dossier)
+  if (data._dossier) {
+    y = renderVehicleDossierAppendix(doc, data._dossier, y);
+  }
 }
 
 // ── Warrant ──────────────────────────────────────────────────
@@ -2703,6 +2928,54 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     caseNumberLabel: 'WARRANT #',
     reportDate: fmtDate(data.created_at),
   });
+
+  // Quick-reference banner — warrant# + subject + status pill
+  {
+    const subject = [data.subject_last_name, data.subject_first_name]
+      .filter(Boolean).join(', ').toUpperCase();
+    const status = String(data.status || '').toLowerCase();
+    const pill: QuickRefBannerConfig['pill'] | undefined = status === 'active'
+      ? { label: 'ACTIVE', tone: 'high' }
+      : status === 'served' || status === 'cleared' || status === 'recalled'
+        ? { label: status.toUpperCase(), tone: 'inactive' }
+        : status
+          ? { label: status.toUpperCase(), tone: 'elevated' }
+          : undefined;
+    y = addQuickReferenceBanner(doc, {
+      primary: data.warrant_number,
+      secondary: [subject, data.charge_description, data.offense_level].filter(Boolean).join(' · '),
+      pill,
+    }, y);
+  }
+
+  // Severity meter — uses priority_score (0-100) when present
+  if (typeof data.priority_score === 'number') {
+    const x = LAYOUT.PAGE_MARGIN + 4;
+    const w = doc.internal.pageSize.getWidth() - 2 * (LAYOUT.PAGE_MARGIN + 4);
+    y = addSeverityMeter(doc, {
+      label: 'PRIORITY SCORE',
+      value: data.priority_score,
+    }, x, y, w);
+  }
+
+  // Caution-flag strip — warrants always carry "ACTIVE WARRANT"
+  // when active; surface armed/violent flags from subject metadata
+  // if the data shape includes them.
+  {
+    const flags: CautionFlag[] = [];
+    if (String(data.status).toLowerCase() === 'active') {
+      flags.push({ label: 'ACTIVE WARRANT', kind: 'warrant' });
+    }
+    if ((data.offense_level || '').toLowerCase() === 'felony') {
+      flags.push({ label: 'FELONY OFFENSE', kind: 'violent' });
+    }
+    const distinguishing = String(data.subject_distinguishing_features || '').toUpperCase();
+    if (/ARMED|WEAPON/.test(distinguishing)) flags.push({ label: 'ARMED & DANGEROUS', kind: 'armed' });
+    if (/GANG/.test(distinguishing)) flags.push({ label: 'GANG AFFILIATION', kind: 'gang' });
+    if (flags.length > 0) {
+      y = drawCautionFlagStrip(doc, flags, y);
+    }
+  }
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -3071,6 +3344,23 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     caseNumberLabel: 'EVIDENCE #',
   });
 
+  // Quick-reference banner — evidence# + description + status pill
+  {
+    const status = String(data.status || '').toLowerCase();
+    const pill: QuickRefBannerConfig['pill'] | undefined = status === 'sealed' || status === 'court-hold'
+      ? { label: status.toUpperCase(), tone: 'high' }
+      : status === 'destroyed' || status === 'returned' || status === 'released'
+        ? { label: status.toUpperCase(), tone: 'inactive' }
+        : status
+          ? { label: status.toUpperCase(), tone: 'standard' }
+          : undefined;
+    y = addQuickReferenceBanner(doc, {
+      primary: data.evidence_number,
+      secondary: data.description || '',
+      pill,
+    }, y);
+  }
+
   y = drawDistrictBar(doc, y, data as any);
 
   // ── Evidence Identification ──
@@ -3096,6 +3386,15 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     const r3c = addFieldPair(doc, 'Est. Value', fmtCurrency(data.estimated_value), lx + quarterW * 2, y, quarterW);
     const r3d = addFieldPair(doc, 'Quantity', data.quantity != null ? String(data.quantity) : '', lx + quarterW * 3, y, quarterW);
     y = Math.max(r3a, r3b, r3c, r3d);
+    // Row 4 (F6): Collection Context (HOW it was acquired) + Court Hold
+    // Reference (case docket if held by judicial order). Renders only
+    // when at least one is set so existing records don't gain blank cells.
+    if (data.collection_context || data.court_hold_reference) {
+      const hw = ffw / 2;
+      const r4a = addFieldPair(doc, 'Collection Context', data.collection_context || '', lx, y, hw);
+      const r4b = addFieldPair(doc, 'Court Hold Reference', data.court_hold_reference || '', lx + hw, y, hw);
+      y = Math.max(r4a, r4b);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3183,6 +3482,30 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
 
   // Notes
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
+
+  // ── Chain of Custody table ───────────────────────────────────
+  // Pre-printed rows for officers to ink as evidence moves hands.
+  // Pre-populates from data.chain_of_custody (the audit-trail
+  // shape captured by EvidenceLog) by mapping into the helper's
+  // CustodyTransfer shape: from_person → releasedBy, to_person →
+  // receivedBy, reason → purpose, timestamp → dateTime. Pads
+  // empty rows up to a 3-row minimum so paper handoff has space.
+  {
+    const transfers: CustodyTransfer[] = (data.chain_of_custody || []).map(c => ({
+      dateTime: c.timestamp,
+      releasedBy: c.from_person,
+      receivedBy: c.to_person,
+      purpose: [c.action, c.reason].filter(Boolean).join(' — ') || undefined,
+    }));
+    y = checkPageBreak(doc, y, 60); // ~50mm of table needs room
+    const cw = doc.internal.pageSize.getWidth() - 2 * LAYOUT.PAGE_MARGIN;
+    y = drawChainOfCustodyTable(doc, transfers, LAYOUT.PAGE_MARGIN, y, cw, {
+      minRows: 3,
+      itemDescription: data.description,
+      itemNumber: data.evidence_number,
+    });
+    y += SPACING.MD;
+  }
 
   // Attachments
   if (data.attachment_images && data.attachment_images.length > 0) {
@@ -3285,6 +3608,24 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     caseNumber: data.vehicle_number,
     caseNumberLabel: 'UNIT #',
   });
+
+  // Quick-reference banner — unit# + ymm + status pill
+  {
+    const ymm = [data.year, data.make, data.model].filter(Boolean).join(' ');
+    const status = String(data.status || '').toLowerCase();
+    const pill: QuickRefBannerConfig['pill'] | undefined = status === 'out-of-service' || status === 'oos'
+      ? { label: 'OUT OF SERVICE', tone: 'high' }
+      : status === 'maintenance'
+        ? { label: 'MAINTENANCE', tone: 'elevated' }
+        : status === 'active' || status === 'in-service'
+          ? { label: 'IN SERVICE', tone: 'standard' }
+          : undefined;
+    y = addQuickReferenceBanner(doc, {
+      primary: data.vehicle_number || 'NO UNIT',
+      secondary: [ymm, (data as any).license_plate].filter(Boolean).join(' · '),
+      pill,
+    }, y);
+  }
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -3687,6 +4028,24 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     caseNumberLabel: 'BADGE #',
   });
 
+  // Quick-reference banner — name + badge# + active pill
+  {
+    const name = `${data.last_name || 'UNKNOWN'}, ${data.first_name || ''}`.toUpperCase();
+    const status = String((data as any).status || (data as any).employment_status || '').toLowerCase();
+    const pill: QuickRefBannerConfig['pill'] | undefined = status === 'active'
+      ? { label: 'ACTIVE', tone: 'standard' }
+      : status === 'terminated' || status === 'separated' || status === 'inactive'
+        ? { label: status.toUpperCase(), tone: 'inactive' }
+        : status === 'suspended' || status === 'leave'
+          ? { label: status.toUpperCase(), tone: 'elevated' }
+          : undefined;
+    y = addQuickReferenceBanner(doc, {
+      primary: name,
+      secondary: [`Badge ${data.badge_number || ''}`, (data as any).rank, (data as any).assignment].filter(Boolean).join(' · '),
+      pill,
+    }, y);
+  }
+
   y = drawDistrictBar(doc, y, data as any);
 
   // ── Officer Identification (always shown) ──
@@ -3972,6 +4331,21 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     caseNumberLabel: 'PROPERTY NAME',
   });
 
+  // Quick-reference banner — property name + address + active pill
+  {
+    const addr = [data.address, data.city].filter(Boolean).join(', ');
+    const pill: QuickRefBannerConfig['pill'] | undefined = data.is_active
+      ? { label: 'ACTIVE', tone: 'standard' }
+      : { label: 'INACTIVE', tone: 'inactive' };
+    y = addQuickReferenceBanner(doc, {
+      primary: (data.name || 'UNNAMED PROPERTY').toUpperCase(),
+      secondary: [addr, data.client_name].filter(Boolean).join(' · '),
+      pill,
+    }, y);
+  }
+
+  y = addLinkedRecordsStrip(doc, data, y);
+
   y = drawDistrictBar(doc, y, data as any);
 
   // ── Property Information ──
@@ -4041,8 +4415,8 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   }
 
   // ── Owner & Key Holder ──
-  if (data.owner_name || data.key_holder_name) {
-    y = checkPageBreak(doc, y, 12);
+  if (data.owner_name || data.key_holder_name || data.secondary_contact_name) {
+    y = checkPageBreak(doc, y, 18);
     const sec = openAutoSection(doc, 'Owner & Key Holder', y); y = sec.contentY;
     const hw = ffw / 2;
     if (data.owner_name || data.owner_phone) {
@@ -4057,18 +4431,27 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
       const k3 = addFieldPair(doc, 'Relationship', data.key_holder_relationship || '', lx + 2 * tw, y, tw);
       y = Math.max(k1, k2, k3);
     }
+    if (data.secondary_contact_name || data.secondary_contact_phone) {
+      const s1 = addFieldPair(doc, 'Secondary Contact', data.secondary_contact_name || '', lx, y, hw);
+      const s2 = addFieldPair(doc, 'Secondary Phone', data.secondary_contact_phone || '', rx, y, hw);
+      y = Math.max(s1, s2);
+    }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
   // ── Security Systems ──
-  if (data.alarm_company || data.camera_system || data.security_features) {
-    y = checkPageBreak(doc, y, 12);
+  if (data.alarm_company || data.alarm_system || data.camera_system || data.security_features) {
+    y = checkPageBreak(doc, y, 18);
     const sec = openAutoSection(doc, 'Security Systems', y); y = sec.contentY;
-    const tw = ffw / 3;
-    const s1 = addFieldPair(doc, 'Alarm Company', data.alarm_company || '', lx, y, tw);
-    const s2 = addFieldPair(doc, 'Alarm Account', data.alarm_account || '', lx + tw, y, tw);
-    const s3 = addFieldPair(doc, 'Camera System', data.camera_system || '', lx + 2 * tw, y, tw);
-    y = Math.max(s1, s2, s3);
+    // Row 1: Alarm System architecture (F5) + Alarm Company + Alarm Account.
+    // System architecture is the operationally important field for
+    // dispatch — drives whether an alarm drop triggers a 911 chain.
+    const qw = ffw / 4;
+    const s0 = addFieldPair(doc, 'Alarm System', data.alarm_system || '', lx, y, qw);
+    const s1 = addFieldPair(doc, 'Alarm Company', data.alarm_company || '', lx + qw, y, qw);
+    const s2 = addFieldPair(doc, 'Alarm Account', data.alarm_account || '', lx + qw * 2, y, qw);
+    const s3 = addFieldPair(doc, 'Camera System', data.camera_system || '', lx + qw * 3, y, qw);
+    y = Math.max(s0, s1, s2, s3);
     if (data.security_features) y = addNarrativeField(doc, 'Security Features', data.security_features, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -4211,6 +4594,26 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     caseNumber: data.citation_number,
     caseNumberLabel: 'CITATION #',
   });
+
+  // Quick-reference banner — citation# + violation + status pill
+  {
+    const violation = (data as any).violation_description || (data as any).statute_citation || '';
+    const status = String(data.status || '').toLowerCase();
+    const pill: QuickRefBannerConfig['pill'] | undefined = status === 'paid'
+      ? { label: 'PAID', tone: 'inactive' }
+      : status === 'voided' || status === 'dismissed'
+        ? { label: status.toUpperCase(), tone: 'inactive' }
+        : status === 'contested' || status === 'court'
+          ? { label: status.toUpperCase(), tone: 'elevated' }
+          : status === 'issued'
+            ? { label: 'ISSUED', tone: 'standard' }
+            : undefined;
+    y = addQuickReferenceBanner(doc, {
+      primary: data.citation_number,
+      secondary: [data.type?.toUpperCase(), violation].filter(Boolean).join(' · '),
+      pill,
+    }, y);
+  }
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -4426,6 +4829,10 @@ type RecordDataMap = {
   personnel: PersonnelPdfData;
   property: PropertyPdfData;
   citation: CitationPdfData;
+  case: CasePdfData;
+  field_interview: FieldInterviewPdfData;
+  court_event: CourtEventPdfData;
+  jail_booking: JailBookingPdfData;
 };
 
 export async function generateRecordPdf<T extends RecordPdfType>(
@@ -4476,9 +4883,34 @@ export async function generateRecordPdf<T extends RecordPdfType>(
     case 'citation':
       await generateCitationReport(doc, data as CitationPdfData);
       break;
+    case 'case':
+      await generateCaseReport(doc, data as CasePdfData);
+      break;
+    case 'field_interview':
+      await generateFieldInterviewReport(doc, data as FieldInterviewPdfData);
+      break;
+    case 'court_event':
+      await generateCourtEventReport(doc, data as CourtEventPdfData);
+      break;
+    case 'jail_booking':
+      await generateJailBookingReport(doc, data as JailBookingPdfData);
+      break;
     default:
       throw new Error(`Unknown record type: ${recordType}`);
   }
+
+  // Trailer must be appended BEFORE the per-page footer loop so the
+  // footer renders on it too (totalPages snapshot below counts it).
+  const trailerCaseNum = (data as any).call_number
+    || (data as any).warrant_number
+    || (data as any).citation_number
+    || (data as any).case_number
+    || (data as any).id?.toString()
+    || '';
+  addDocumentIntegrityTrailer(doc, {
+    formLabel: recordType.toString().toUpperCase().replace(/_/g, ' ') + ' RECORD',
+    caseNumber: trailerCaseNum,
+  });
 
   // Add page footers and watermarks to all pages
   const totalPages = doc.getNumberOfPages();
@@ -4569,8 +5001,15 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
       date: sigDateStr,
     });
 
+    const payloadHash = await computePayloadHash(data);
+    setActivePayloadHash(payloadHash);
+    setActiveSignature(
+      await fetchPdfSignature(recordType, identifier || '', payloadHash) || undefined
+    );
     const doc = await generateRecordPdf(recordType, data);
     setActiveOfficerSignature(undefined); // clear after generation
+    clearActivePayloadHash();
+    clearActiveSignature();
     const id = identifier || 'record';
     const filename = `${id}_${recordType}.pdf`;
     // Explicit blob download — works on Safari (doc.save uses window.open which strips filename)
@@ -4585,6 +5024,8 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   } catch (err) {
     setActiveOfficerSignature(undefined);
+    clearActivePayloadHash();
+    clearActiveSignature();
     console.error('Record PDF generation failed:', err);
     throw new Error(`Failed to generate ${recordType} PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
@@ -4616,12 +5057,21 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
       date: sigDateStr,
     });
 
+    const payloadHash = await computePayloadHash(data);
+    setActivePayloadHash(payloadHash);
+    setActiveSignature(
+      await fetchPdfSignature(recordType, '', payloadHash) || undefined
+    );
     const doc = await generateRecordPdf(recordType, data);
     setActiveOfficerSignature(undefined); // clear after generation
+    clearActivePayloadHash();
+    clearActiveSignature();
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
   } catch (err) {
     setActiveOfficerSignature(undefined);
+    clearActivePayloadHash();
+    clearActiveSignature();
     console.error('Record PDF preview generation failed:', err);
     throw new Error(`Failed to generate ${recordType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
