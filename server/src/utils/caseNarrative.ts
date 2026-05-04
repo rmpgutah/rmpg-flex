@@ -187,7 +187,13 @@ function extractPlaintiffRole(text: string): string | null {
 function extractDefendantRole(text: string, defendantLast: string): string | null {
   if (!text || !defendantLast) return null;
   const safeLast = defendantLast.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const re = new RegExp(`\\b${safeLast}\\b[^.\\n]{0,80}?(?:is|was)\\s+(?:a|an|the)?\\s*([a-z][^.\\n]{6,140})`, 'i');
+  // Alternation order matters: `(?:a|an|the)` would match the single
+  // letter `a` on the input "an individual…", leaving the orphan `n`
+  // to be captured as the start of the role → "n individual, who
+  // resides at…". Listing `an` BEFORE `a` makes the longer alternative
+  // win, so the article is consumed cleanly and the capture begins at
+  // the actual role token.
+  const re = new RegExp(`\\b${safeLast}\\b[^.\\n]{0,80}?(?:is|was)\\s+(?:an|a|the)?\\s*([a-z][^.\\n]{6,140})`, 'i');
   const m = text.match(re);
   if (m) {
     const role = m[1].replace(/\s+/g, ' ').replace(/[,.;]+$/, '').trim();

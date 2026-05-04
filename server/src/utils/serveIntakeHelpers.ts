@@ -1097,7 +1097,14 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
 
   const serviceRulesSummary = summarizeRules(instructions);
   const jobActivity = parseJobActivity(infoSheet);
-  // Court case number — try multiple patterns across all docs
+  // Court case number — try multiple patterns across all docs.
+  // Court case numbers ALWAYS contain at least one digit (every
+  // jurisdiction's docketing scheme prefixes the year or includes a
+  // sequential numeric portion). We scrub the candidate against that
+  // invariant at the end so a stray name token like "KEVIN" coming
+  // through `info.case` (when the upstream ServeManager API
+  // misreports a defendant first name as the case field) cannot
+  // surface as "Case No. KEVIN" in the synthesized narrative.
   let courtCaseNumber = (
     fsCase  // Field sheet "Case  26CU014094N" — most reliable for ICU format
     || courtDocket.match(/Civil\s+No\.\s*([A-Z0-9-]+)/i)?.[1]
@@ -1107,6 +1114,9 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     || (info as any).case
     || ''
   ).trim();
+  if (courtCaseNumber && !/\d/.test(courtCaseNumber)) {
+    courtCaseNumber = '';
+  }
 
   // County — try info sheet first, then court docket header
   const county = info.county
