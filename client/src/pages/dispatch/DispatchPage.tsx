@@ -79,6 +79,7 @@ import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
+import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
@@ -639,13 +640,26 @@ export default function DispatchPage() {
   // Unit attach dropdown
   const [showAttachUnitDropdown, setShowAttachUnitDropdown] = useState(false);
   const attachUnitDropdownRef = useRef<HTMLDivElement>(null);
-  // Create Unit modal
-  const [showCreateUnitModal, setShowCreateUnitModal] = useState(false);
-  const [newUnitCallSign, setNewUnitCallSign] = useState('');
-  const [newUnitOfficerId, setNewUnitOfficerId] = useState('');
-  const [newUnitStatus, setNewUnitStatus] = useState<string>('available');
-  const [unitCreating, setUnitCreating] = useState(false);
-  const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
+  // Unit-management state + handlers (extracted to keep this component below the
+  // 6,000-line ceiling). The hook owns: create/edit/delete-unit modal state and
+  // the 5 unit API handlers (save, delete, assign, drag-assign, unassign).
+  const {
+    showCreateUnitModal, setShowCreateUnitModal,
+    editingUnit, setEditingUnit,
+    newUnitCallSign, setNewUnitCallSign,
+    newUnitOfficerId, setNewUnitOfficerId,
+    newUnitStatus, setNewUnitStatus,
+    unitCreating,
+    deletingUnit, setDeletingUnit,
+    unitDeleting,
+    openEditUnit,
+    handleSaveUnit, handleDeleteUnit,
+    handleAssignUnit, handleDragAssignUnit, handleUnassignUnit,
+  } = useDispatchUnitActions({
+    selectedCall, setSelectedCall,
+    units, setCalls, setUnits,
+    onAssignSuccess: () => setShowAttachUnitDropdown(false),
+  });
   const [officers, setOfficers] = useState<{ id: string; full_name: string; badge_number?: string }[]>([]);
   // Delete call confirmation (non-archived)
   const [deleteCallTarget, setDeleteCallTarget] = useState<CallForService | null>(null);
@@ -1018,78 +1032,6 @@ export default function DispatchPage() {
     })();
     return () => { cancelled = true; };
   }, []);
-
-  // Create Unit handler
-  // Create or Update Unit handler
-  const handleSaveUnit = async () => {
-    const cs = newUnitCallSign.trim();
-    if (!cs) { addToast('Call sign is required', 'error'); return; }
-    setUnitCreating(true);
-    try {
-      if (editingUnit) {
-        // Update existing unit
-        await apiFetch(`/dispatch/units/${editingUnit.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            call_sign: cs,
-            officer_id: newUnitOfficerId || null,
-            status: newUnitStatus,
-          }),
-        });
-      } else {
-        // Create new unit
-        await apiFetch('/dispatch/units', {
-          method: 'POST',
-          body: JSON.stringify({
-            call_sign: cs,
-            officer_id: newUnitOfficerId || null,
-            status: newUnitStatus || 'available',
-          }),
-        });
-      }
-      // Refresh units
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      // Reset form
-      setNewUnitCallSign('');
-      setNewUnitOfficerId('');
-      setNewUnitStatus('available');
-      setEditingUnit(null);
-      setShowCreateUnitModal(false);
-    } catch (err: any) {
-      addToast(err?.error || err?.message || `Failed to ${editingUnit ? 'update' : 'create'} unit`, 'error');
-    } finally {
-      setUnitCreating(false);
-    }
-  };
-
-  // Open unit modal for editing
-  const openEditUnit = (unit: Unit) => {
-    setEditingUnit(unit);
-    setNewUnitCallSign(unit.call_sign);
-    setNewUnitOfficerId(unit.officer_id || '');
-    setNewUnitStatus(unit.status);
-    setShowCreateUnitModal(true);
-  };
-
-  // Delete unit handler
-  const [deletingUnit, setDeletingUnit] = useState<Unit | null>(null);
-  const [unitDeleting, setUnitDeleting] = useState(false);
-
-  const handleDeleteUnit = async () => {
-    if (!deletingUnit) return;
-    setUnitDeleting(true);
-    try {
-      await apiFetch(`/dispatch/units/${deletingUnit.id}`, { method: 'DELETE' });
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      setDeletingUnit(null);
-    } catch (err: any) {
-      addToast(err?.error || err?.message || 'Failed to delete unit', 'error');
-    } finally {
-      setUnitDeleting(false);
-    }
-  };
 
   // Revert call status to previous step
   const handleRevertStatus = async (callId: string) => {
@@ -1913,70 +1855,6 @@ export default function DispatchPage() {
       addToast('Failed to bulk archive calls', 'error');
     } finally {
       setIsBulkArchiving(false);
-    }
-  };
-
-  // ── Assign / Unassign Unit ─────────────────────────────────
-  const handleAssignUnit = async (unitId: string) => {
-    if (!selectedCall) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/assign-unit`, {
-        method: 'POST',
-        body: JSON.stringify({ unit_id: unitId }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      setShowAttachUnitDropdown(false);
-      // Audible feedback for local unit dispatch
-      const assignedUnit = units.find(u => String(u.id) === String(unitId));
-      if (assignedUnit) {
-        announceLocalAction('unit_dispatched', `Unit ${assignedUnit.call_sign} dispatched to ${selectedCall.call_number}.`);
-      }
-      // Refresh units to reflect the status change
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-    } catch (err: any) {
-      console.error('Failed to assign unit:', err);
-      addToast(err?.message || 'Failed to assign unit', 'error');
-    }
-  };
-
-  // ── Drag-and-Drop Assign Unit (from UnitStatusBoard to CallCard) ──
-  const handleDragAssignUnit = async (callId: string, unitId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/assign-unit`, {
-        method: 'POST',
-        body: JSON.stringify({ unit_id: unitId }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      // Refresh units to reflect the status change
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      addToast(`Unit assigned to call`, 'success');
-    } catch (err: any) {
-      addToast(err?.error || err?.message || 'Failed to assign unit via drag', 'error');
-    }
-  };
-
-  const handleUnassignUnit = async (unitId: string) => {
-    if (!selectedCall) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/unassign-unit`, {
-        method: 'POST',
-        body: JSON.stringify({ unit_id: unitId }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      // Refresh units to reflect the status change
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-    } catch (err: any) {
-      console.error('Failed to unassign unit:', err);
-      addToast(err?.message || 'Failed to unassign unit', 'error');
     }
   };
 
@@ -4497,7 +4375,7 @@ export default function DispatchPage() {
                                   callLat={selectedCall.latitude}
                                   callLng={selectedCall.longitude}
                                   assignedUnitIds={(selectedCall.assigned_units || []).map(String)}
-                                  onAssign={(unitId) => { handleAssignUnit(unitId); setShowAttachUnitDropdown(false); }}
+                                  onAssign={handleAssignUnit}
                                   onCreateUnit={() => { setShowAttachUnitDropdown(false); setShowCreateUnitModal(true); }}
                                   onClose={() => setShowAttachUnitDropdown(false)}
                                 />
