@@ -229,6 +229,14 @@ const statusToColor = (status: string): string => {
 // Main Component
 // ============================================================
 
+// Module-level frozen constant used as a filter default that the UI never
+// updates. Module-level (not inline) so identity stays stable across renders
+// — passing inline `[]` to the useMap*History/IncidentReports hooks would
+// retrigger their useEffect deps every render and cause infinite refetch.
+// Typed as mutable `string[]` (not `readonly`) so it satisfies the hooks'
+// arg types, but Object.freeze gives runtime mutation protection anyway.
+const EMPTY_STRING_FILTER: string[] = Object.freeze([] as string[]) as string[];
+
 export default function MapPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -320,7 +328,6 @@ export default function MapPage() {
   const [advHeatmapRadius, setAdvHeatmapRadius] = useState(30);
   const [advHeatmapShowClusters, setAdvHeatmapShowClusters] = useState(true);
   const [advHeatmapComparisonDays, setAdvHeatmapComparisonDays] = useState(30);
-  const [showAdvHeatmapPanel, setShowAdvHeatmapPanel] = useState(false);
 
   const advHeatmapOptions: HeatmapAdvancedOptions = useMemo(() => ({
     enabled: advancedHeatmapEnabled && showHeatmap,
@@ -674,12 +681,17 @@ export default function MapPage() {
   const [showCallHistory, setShowCallHistory] = useState(false);
   const [callHistoryDays, setCallHistoryDays] = useState(7);
   const [callHistoryStatuses, setCallHistoryStatuses] = useState(['cleared', 'closed']);
-  const [callHistoryTypes, setCallHistoryTypes] = useState<string[]>([]);
+  // callHistoryTypes / incidentStatuses / incidentTypes were useState<string[]>([])
+  // declarations that never got a setter call anywhere — they're effectively
+  // constant filter defaults. Pinned to the module-level frozen constant so
+  // identity stays stable across renders (preventing useEffect dep churn in
+  // the consuming hooks).
+  const callHistoryTypes = EMPTY_STRING_FILTER;
   const [callHistoryPriorities, setCallHistoryPriorities] = useState<string[]>([]);
   const [showIncidentReports, setShowIncidentReports] = usePersistedState<boolean>('rmpg_map_showIncidentReports', false);
   const [incidentDays, setIncidentDays] = useState(30);
-  const [incidentStatuses, setIncidentStatuses] = useState<string[]>([]);
-  const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
+  const incidentStatuses = EMPTY_STRING_FILTER;
+  const incidentTypes = EMPTY_STRING_FILTER;
 
   // Officer Safety System
   const [showSafetyDashboard, setShowSafetyDashboard] = useState(false);
@@ -3155,7 +3167,7 @@ export default function MapPage() {
                   {/* Advanced mode toggle */}
                   <div className="border-t border-rmpg-700/50 pt-1 mt-1">
                     <button
-                      onClick={() => { setAdvancedHeatmapEnabled(!advancedHeatmapEnabled); if (!advancedHeatmapEnabled) setShowAdvHeatmapPanel(true); }}
+                      onClick={() => setAdvancedHeatmapEnabled(!advancedHeatmapEnabled)}
                       className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
                         advancedHeatmapEnabled ? 'text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
