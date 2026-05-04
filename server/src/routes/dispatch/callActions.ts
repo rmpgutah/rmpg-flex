@@ -1634,9 +1634,10 @@ router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervi
   }
 });
 
-// ── Feature 1: Call Priority Escalation Timer ────────────────────
-// POST /api/dispatch/calls/:id/escalate - Auto-escalate call priority
-router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+// ── Manual priority escalation (auto-escalate timer was removed 2026-05-04) ────
+// POST /api/dispatch/calls/:id/escalate - Bump priority by one level (P4→P3→P2→P1).
+// Triggered only by an explicit click in the dispatch console; never by a timer.
+router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
