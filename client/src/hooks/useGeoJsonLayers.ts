@@ -223,6 +223,13 @@ interface UseGeoJsonLayersOptions {
   assignedFeatures?: Set<string>;
   /** Beat-district enrichment: Map<city_code, Map<district_letter, BeatDistrictEntry>> */
   beatDistrictMap?: Map<string, Map<string, BeatDistrictEntry>>;
+  /** Hierarchy color lookups for tier-aware beat polygon styling (Section fill + Zone border). When null, falls back to existing single-color path. */
+  hierarchyColors?: {
+    sectionColors: Map<string, string>;
+    zoneColors: Map<string, string>;
+    areaColors: Map<string | number, string>;
+    beatToArea: Map<string, string | number>;
+  } | null;
 }
 
 export interface GeoLayerState {
@@ -268,6 +275,7 @@ export function useGeoJsonLayers({
   selectedFeatures,
   assignedFeatures,
   beatDistrictMap,
+  hierarchyColors,
 }: UseGeoJsonLayersOptions) {
   // Per-layer visibility state
   const [layerStates, setLayerStates] = useState<Record<string, GeoLayerState>>(() => {
@@ -301,6 +309,12 @@ export function useGeoJsonLayers({
   // Beat-district enrichment ref
   const beatDistrictMapRef = useRef(beatDistrictMap);
   useEffect(() => { beatDistrictMapRef.current = beatDistrictMap; }, [beatDistrictMap]);
+
+  // Hierarchy color lookup ref (Task 6) — when set, beat polygons render
+  // Section fill (30% opacity) + Zone border (1.5px). When null, the existing
+  // single-color path below remains the default.
+  const hierarchyColorsRef = useRef<typeof hierarchyColors>(null);
+  useEffect(() => { hierarchyColorsRef.current = hierarchyColors ?? null; }, [hierarchyColors]);
 
   // Pre-compute flat beat style lookup: "city_code::district_letter" → BeatStyleEntry
   // This avoids per-feature Map traversal + object spread in the hot-path setStyle callback
@@ -364,6 +378,30 @@ export function useGeoJsonLayers({
               strokeOpacity: activeStyle.strokeOpacity,
               strokeWeight: activeStyle.strokeWeight,
             },
+          };
+        }
+
+        // Tier-aware beat styling (Task 6): when hierarchyColors is provided,
+        // encode Section via fill color (30% opacity) and Zone via stroke color
+        // (1.5px). Falls through to the existing single-color path when null
+        // or when the beat can't be resolved to section/zone.
+        if (cfg.id === 'beat' && !isSelected && !isAssigned && hierarchyColorsRef.current) {
+          const hc = hierarchyColorsRef.current;
+          const cityCode = feature.getProperty('city_code') as string | undefined;
+          const distLetter = feature.getProperty('district_letter') as string | undefined;
+          const entry = lookupBeatDistrict(beatDistrictMapRef.current, cityCode, distLetter);
+          const sectorCode = entry?.sectionId;
+          const zoneCode = entry?.zoneId;
+          const fillColor = sectorCode ? (hc.sectionColors.get(sectorCode) ?? '#3a3a3a') : '#3a3a3a';
+          const strokeColor = zoneCode ? (hc.zoneColors.get(zoneCode) ?? '#666') : '#666';
+          return {
+            fillColor,
+            fillOpacity: 0.30,
+            strokeColor,
+            strokeWeight: 1.5,
+            strokeOpacity: 0.85,
+            clickable: true,
+            cursor: (selectionModeRef.current && cfg.selectable) ? 'pointer' : undefined,
           };
         }
 
