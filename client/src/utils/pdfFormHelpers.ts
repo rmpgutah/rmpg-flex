@@ -674,7 +674,7 @@ export function drawNibrsHeader(
     if (isLight) {
       doc.setFont('helvetica', 'italic');
       doc.text(
-        'OFFICIAL POLICE RECORD  ·  Salt Lake City, Utah  ·  ORI UT0180100',
+        'OFFICIAL DOCUMENT OF ROCKY MOUNTAIN PROTECTIVE GROUP  ·  Salt Lake City, Utah  ·  UT0180100',
         margin + contentW / 2,
         y + 3,
         { align: 'center' },
