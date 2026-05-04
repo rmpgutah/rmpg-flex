@@ -143,6 +143,7 @@ import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 import { useSpeedAnalytics } from './hooks/useSpeedAnalytics';
 import SpeedGraphOverlay from './components/SpeedGraphOverlay';
 import CoverageTimeline from './components/CoverageTimeline';
+import { hashToHsl } from '../../utils/colorLookup';
 
 // ============================================================
 // Constants
@@ -549,6 +550,12 @@ export default function MapPage() {
   const [beatDistrictMap, setBeatDistrictMap] = useState<Map<string, Map<string, BeatDistrictEntry>> | undefined>(undefined);
   const [districtSections, setDistrictSections] = useState<{ id: string; name: string }[]>([]);
   const [showDistrictLegend, setShowDistrictLegend] = useState(false);
+  const [hierarchyColors, setHierarchyColors] = useState<{
+    sectionColors: Map<string, string>;
+    zoneColors: Map<string, string>;
+    areaColors: Map<string | number, string>;
+    beatToArea: Map<string, string | number>;
+  } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -559,8 +566,18 @@ export default function MapPage() {
       // Inner map is keyed by district_letter ("A").
       const map = new Map<string, Map<string, BeatDistrictEntry>>();
       const sectionSet = new Map<string, string>();
+      const sectionColors = new Map<string, string>();
+      const zoneColors = new Map<string, string>();
+      const areaColors = new Map<string | number, string>();
+      const beatToArea = new Map<string, string | number>();
       for (const d of districts) {
         if (!d.zone_id || !d.beat_id) continue;
+        if (d.sector_id) sectionColors.set(d.sector_id, d.sector_color || hashToHsl(d.sector_id));
+        if (d.zone_id) zoneColors.set(d.zone_id, d.zone_color || hashToHsl(d.zone_id));
+        if (d.area_id != null) {
+          areaColors.set(d.area_id, hashToHsl(`area-${d.area_id}`));
+          beatToArea.set(d.beat_id, d.area_id);
+        }
         // Derive GeoJSON-shaped keys from server chart codes:
         //   zone_id "SL1-MUR" → cityCode "MUR"
         //   beat_id "SL1-MUR/A" → distLetter "A"
@@ -581,6 +598,7 @@ export default function MapPage() {
         if (d.sector_id) sectionSet.set(d.sector_id, d.sector_name || '');
       }
       setBeatDistrictMap(map);
+      setHierarchyColors({ sectionColors, zoneColors, areaColors, beatToArea });
       setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
     }).catch((err) => { console.warn('[MapPage] fetch districts failed:', err); });
     return () => { cancelled = true; };
