@@ -1187,6 +1187,110 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     }
   }
 
+  // ── Phase β: Call Operational Summary ─────────────────────
+  // Four high-value strips immediately below the timeline that
+  // turn the Call PDF into a court-ready operational snapshot.
+  // Each block is conditionally rendered — invisible when its
+  // underlying data is absent — so existing minimal-data calls
+  // print at the same length as before.
+
+  // β.1 — Hazard chip strip (officer-safety glance)
+  {
+    const flags: CautionFlag[] = [];
+    if (data.officer_safety_caution) flags.push({ label: 'OFFICER SAFETY', kind: 'armed' });
+    if (data.weapons_involved && data.weapons_involved !== '0' && data.weapons_involved.toLowerCase() !== 'n/a') {
+      flags.push({ label: `WEAPONS: ${data.weapons_involved.toUpperCase()}`, kind: 'armed' });
+    }
+    if (data.felony_in_progress) flags.push({ label: 'FELONY IN PROGRESS', kind: 'warrant' });
+    if (data.domestic_violence) flags.push({ label: 'DOMESTIC VIOLENCE', kind: 'violent' });
+    if (data.mental_health_crisis) flags.push({ label: 'MENTAL HEALTH CRISIS', kind: 'mental' });
+    if (data.hazmat) flags.push({ label: 'HAZMAT', kind: 'medical' });
+    if (data.gang_related) flags.push({ label: 'GANG RELATED', kind: 'gang' });
+    if (data.vehicle_pursuit) flags.push({ label: 'VEHICLE PURSUIT', kind: 'violent' });
+    if (data.foot_pursuit) flags.push({ label: 'FOOT PURSUIT', kind: 'violent' });
+    if (flags.length > 0) {
+      y = drawCautionFlagStrip(doc, flags, y);
+    }
+  }
+
+  // β.2 — Cross-reference badge bar (linked persons/vehicles/properties)
+  y = addLinkedRecordsStrip(doc, data, y);
+
+  // β.3 — SLA performance gauge (dispatched → on-scene response time
+  //       vs priority benchmark). Only renders when both timestamps
+  //       exist. Benchmarks: P1 ≤5min, P2 ≤10min, P3+ ≤20min. Score
+  //       inverts so 100 = on-or-under benchmark, 0 = ≥3× benchmark.
+  if (data.dispatched_at && data.onscene_at) {
+    const tDisp = Date.parse(data.dispatched_at);
+    const tArr = Date.parse(data.onscene_at);
+    if (isFinite(tDisp) && isFinite(tArr) && tArr >= tDisp) {
+      const respMin = (tArr - tDisp) / 60000;
+      const prioStr = String(data.priority || '').toUpperCase();
+      const benchMin = (prioStr === 'P1' || prioStr === '1' || prioStr === 'CRITICAL') ? 5
+        : (prioStr === 'P2' || prioStr === '2' || prioStr === 'HIGH' || prioStr === 'URGENT') ? 10
+          : 20;
+      // 100 when respMin ≤ benchMin, 0 when respMin ≥ 3× benchMin, linear in between.
+      const ratio = respMin / benchMin;
+      const score = ratio <= 1 ? 100 : ratio >= 3 ? 0 : Math.round(100 - ((ratio - 1) / 2) * 100);
+      const margin = LAYOUT.PAGE_MARGIN;
+      const cw = getContentWidth(doc);
+      const fmtMin = respMin < 1 ? `${Math.round(respMin * 60)}s` : `${respMin.toFixed(1)}m`;
+      y = addSeverityMeter(doc, {
+        label: `RESPONSE TIME ${fmtMin} (BENCH ${benchMin}m, ${prioStr || 'STD'})`,
+        value: score,
+        invert: true,
+      }, margin, y, cw);
+    }
+  }
+
+  // β.4 — Compliance status dot row (LE / Supervisor / BWC / Photos /
+  //       Evidence). High-density single-line status that lets a
+  //       reviewer confirm at a glance whether procedural steps were
+  //       documented. Rendered only when at least one is true.
+  {
+    const items: { label: string; on: boolean }[] = [
+      { label: 'LE NOTIFIED', on: !!data.le_notified },
+      { label: 'SUPV NOTIFIED', on: !!data.supervisor_notified },
+      { label: 'BWC ACTIVE', on: !!data.body_camera_active },
+      { label: 'PHOTOS', on: !!data.photos_taken },
+      { label: 'EVIDENCE', on: !!data.evidence_collected },
+    ];
+    if (items.some(i => i.on)) {
+      const margin = LAYOUT.PAGE_MARGIN;
+      const cw = getContentWidth(doc);
+      const rowH = 4.5;
+      doc.setFillColor(COLOR.BG_SECTION_TINT[0], COLOR.BG_SECTION_TINT[1], COLOR.BG_SECTION_TINT[2]);
+      doc.rect(margin, y, cw, rowH, 'F');
+      doc.setDrawColor(...COLOR.BORDER_FIELD_RULE);
+      doc.setLineWidth(BORDER.FIELD);
+      doc.rect(margin, y, cw, rowH);
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(7);
+      doc.setTextColor(...COLOR.TEXT_SECONDARY);
+      doc.text('COMPLIANCE:', margin + 2, y + 3);
+      let cx = margin + 2 + doc.getTextWidth('COMPLIANCE:') + 3;
+      for (let i = 0; i < items.length; i++) {
+        const it = items[i];
+        // Status dot
+        if (it.on) {
+          doc.setFillColor(60, 120, 70);
+        } else {
+          doc.setFillColor(180, 180, 180);
+        }
+        doc.circle(cx + 1.2, y + 2.3, 0.9, 'F');
+        cx += 3;
+        doc.setTextColor(it.on ? COLOR.TEXT_PRIMARY[0] : COLOR.TEXT_TERTIARY[0],
+          it.on ? COLOR.TEXT_PRIMARY[1] : COLOR.TEXT_TERTIARY[1],
+          it.on ? COLOR.TEXT_PRIMARY[2] : COLOR.TEXT_TERTIARY[2]);
+        doc.text(it.label, cx, y + 3);
+        cx += doc.getTextWidth(it.label) + 4;
+      }
+      doc.setTextColor(...COLOR.TEXT_PRIMARY);
+      doc.setFont(PDF_VALUE_FONT, 'normal');
+      y += rowH + SPACING.SM;
+    }
+  }
+
   y = drawDistrictBar(doc, y, data as any);
 
   // Classification
