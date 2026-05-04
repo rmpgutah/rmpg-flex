@@ -2232,7 +2232,22 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     if (data.bolo_active) flags.push({ label: 'BOLO ACTIVE', kind: 'warrant' });
     const flagsArr = Array.isArray(data.flags) ? data.flags : [];
     for (const f of flagsArr) {
-      const fStr = String(f).toUpperCase();
+      // Defensive flag-label extraction.
+      // The persons.flags column has been written historically as both
+      // a JSON array of strings AND a JSON array of { label, kind }
+      // objects (legacy migration). Naive String(f).toUpperCase() on
+      // an object gives "[OBJECT OBJECT]" which surfaces on the caution
+      // banner — visible 2026-05-04. Pull whatever label-like string
+      // is available; skip if the entry is empty or still gives garbage.
+      let raw = '';
+      if (typeof f === 'string') {
+        raw = f;
+      } else if (f && typeof f === 'object') {
+        const obj = f as Record<string, unknown>;
+        raw = String(obj.label ?? obj.name ?? obj.value ?? obj.flag ?? '').trim();
+      }
+      const fStr = raw.trim().toUpperCase();
+      if (!fStr || fStr === '[OBJECT OBJECT]') continue;
       if (/ARMED|WEAPON/.test(fStr)) flags.push({ label: fStr, kind: 'armed' });
       else if (/WARRANT/.test(fStr)) flags.push({ label: fStr, kind: 'warrant' });
       else if (/GANG/.test(fStr)) flags.push({ label: fStr, kind: 'gang' });

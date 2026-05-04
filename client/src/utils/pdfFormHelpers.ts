@@ -568,6 +568,12 @@ export function drawNibrsHeader(
     // identifier in larger type — repeating it in the upper-right made
     // every Person/Call report show the subject name twice (visible in
     // 2026-05-04 user feedback).
+    //
+    // Formal letterhead detail (agency address, ORI, classification)
+    // lives in the meta sub-row below the gold accent strip rather
+    // than inside the header bar — the bar's 16mm vertical budget can
+    // only carry 3 stacked text elements before glyph ascenders punch
+    // above the top edge.
     const centerX = margin + contentW / 2;
 
     if (config.stateIdentifier) {
@@ -650,14 +656,30 @@ export function drawNibrsHeader(
   doc.rect(margin, y, contentW, LAYOUT.ACCENT_STRIP_H, 'F');
   y += LAYOUT.ACCENT_STRIP_H;
 
-  // Sub-header row: Form number (left) + Report date (right)
+  // Sub-header row: Form number (left) + Agency letterhead meta
+  // (centered) + Report date (right). The centered letterhead segment
+  // is what makes the header read as a formal PD-issued document
+  // rather than a generic UI-print: agency address + ORI mirror the
+  // top of every real-world police report. Rendered only in light
+  // mode so the legacy dark-mode forms keep their tighter look.
   y += 1;
-  if (config.formNumber || config.reportDate) {
+  const hasMeta = !!(config.formNumber || config.reportDate || isLight);
+  if (hasMeta) {
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_SMALL_META);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     if (config.formNumber) {
       doc.text(config.formNumber, margin + 2, y + 3);
+    }
+    if (isLight) {
+      doc.setFont('helvetica', 'italic');
+      doc.text(
+        'OFFICIAL POLICE RECORD  ·  Salt Lake City, Utah  ·  ORI UT0180100',
+        margin + contentW / 2,
+        y + 3,
+        { align: 'center' },
+      );
+      doc.setFont(PDF_VALUE_FONT, 'bold');
     }
     if (config.reportDate) {
       doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 3, { align: 'right' });
