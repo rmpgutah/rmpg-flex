@@ -1,7 +1,6 @@
-import React, { useMemo } from 'react';
-import { Shield, AlertTriangle, Search, ChevronUp, ChevronDown, AlertCircle, Radio, PhoneOff } from 'lucide-react';
+import { useMemo } from 'react';
+import { Shield, AlertTriangle, Search, ChevronDown, AlertCircle, Radio, PhoneOff } from 'lucide-react';
 import { formatIncidentType } from '../../../utils/caseNumbers';
-import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from '../utils/mapConstants';
 import type { MapUnit as Unit, ActiveCall } from '../utils/mapConstants';
 

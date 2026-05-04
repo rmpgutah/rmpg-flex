@@ -13,7 +13,6 @@ import {
   Play, Pause, Volume2, VolumeX, Map, Shield, FileText,
   Link2, Car, User, Gauge, Copy, Check,
 } from 'lucide-react';
-import type { DashCamVideo } from '../types';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';

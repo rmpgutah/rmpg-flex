@@ -3,8 +3,6 @@
 // Pulse-animated placeholders for content loading states
 // ============================================================
 
-import React from 'react';
-
 interface SkeletonProps {
   className?: string;
   variant?: 'text' | 'rect' | 'circle';

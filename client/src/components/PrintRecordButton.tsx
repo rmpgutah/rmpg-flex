@@ -7,7 +7,7 @@
 // Includes "Sign & Export" flow for in-app digital signing
 // ============================================================
 
-import React, { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect } from 'react';
 import { Printer, Eye, PenLine } from 'lucide-react';
 import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from '../utils/recordPdfGenerator';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';

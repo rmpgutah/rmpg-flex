@@ -49,7 +49,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { formatIncidentType, type PdfReportType } from '../utils/caseNumbers';
+import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
 import { downloadPdfReport, generatePdfReportBlobUrl } from '../utils/pdfGenerator';
@@ -64,7 +64,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
-import { humanizeStatus, humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
+import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
 
 // ============================================================
 // Backend -> Frontend mapping

@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Shield, Skull, Flame, Siren, Heart, UserX, AlertOctagon, Eye } from 'lucide-react';
+import { AlertTriangle, Shield, Skull, Flame, Heart, UserX, AlertOctagon, Eye } from 'lucide-react';
 
 export interface WarningTag {
   type: string;

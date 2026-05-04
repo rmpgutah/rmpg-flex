@@ -9,7 +9,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { toDisplayLabel } from '../../utils/formatters';
 import type { Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client } from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
-import { localToday, dateToLocalYMD, formatDate } from '../../utils/dateUtils';
+import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 
 function fmtShortDate(d: string | null | undefined): string {
   if (!d) return '\u2014';
@@ -59,20 +59,6 @@ function formatCurrency(n: number | undefined | null): string {
 // ============================================================
 // Component
 // ============================================================
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function AdminInvoiceTab({ clientId, clientName, client }: AdminInvoiceTabProps) {
   const [view, setView] = useState<'list' | 'detail' | 'create'>('list');

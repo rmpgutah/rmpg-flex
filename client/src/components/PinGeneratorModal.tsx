@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { X, Key, Copy, Check, Loader2, AlertCircle, Clock } from 'lucide-react';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import { toDisplayLabel } from '../utils/formatters';

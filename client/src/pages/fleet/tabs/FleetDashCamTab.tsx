@@ -3,8 +3,8 @@
 // Shows dash cameras installed on the selected vehicle + videos
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Camera, Video, Loader2, Play, Shield, FileText } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Camera, Video, Loader2, Play, FileText } from 'lucide-react';
 import type { DashCamera, DashCamVideo } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import VideoPlayer from '../../../components/VideoPlayer';

@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface SignalMeterProps {
   latencyMs: number;
   signalBars: number;

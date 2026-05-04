@@ -1,8 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // Feature 25: Linear Progress Bar for long operations
 // ═══════════════════════════════════════════════════════════════
-import React from 'react';
-
 interface ProgressBarProps {
   value?: number;         // 0-100, undefined for indeterminate
   label?: string;

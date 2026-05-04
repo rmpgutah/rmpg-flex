@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel: Equipment Tab (All Equipment)
 // ============================================================
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Package, Plus, Edit3, Trash2, AlertTriangle, Box, ClipboardList, ArrowRightLeft, Loader2,
 } from 'lucide-react';

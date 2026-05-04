@@ -3,7 +3,7 @@
 // Global footer status bar with connection, operator, timestamp
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
 import StatusBarRadio from './StatusBarRadio';

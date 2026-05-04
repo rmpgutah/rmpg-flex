@@ -1,4 +1,4 @@
-import { Search, Globe, Wifi, Lock, Eye, Bug, Server, Cloud, Smartphone, FileSearch, Radio, KeyRound, Database, Users, Zap, GitBranch, Shield, Folder, Sparkles, Terminal, Network, Link2, Hash, ShieldAlert, Mail } from 'lucide-react';
+import { Search, Globe, Wifi, Lock, Eye, Bug, Server, Cloud, Smartphone, FileSearch, Radio, KeyRound, Database, Users, Zap, GitBranch, Shield, Folder, Terminal, Network, Hash, ShieldAlert, Mail } from 'lucide-react';
 import type { ToolDef } from './ToolCard';
 
 export interface Category {

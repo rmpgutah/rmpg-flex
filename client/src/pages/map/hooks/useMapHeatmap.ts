@@ -1,7 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
-import { formatIncidentType } from '../../../utils/caseNumbers';
-import { useToast } from '../../../components/ToastProvider';
 
 // Fix 12: cap heatmap points to prevent performance issues
 const MAX_HEATMAP_POINTS = 10000;

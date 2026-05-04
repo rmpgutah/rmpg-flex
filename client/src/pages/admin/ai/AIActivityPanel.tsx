@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { RefreshCw, Loader2, Activity } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 

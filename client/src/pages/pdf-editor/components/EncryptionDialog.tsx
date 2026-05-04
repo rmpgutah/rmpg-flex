@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { X, Check, Lock, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { X, Lock, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 
 // Configures encryption for the next save. Output of this dialog is consumed
 // by the save flow in PdfEditorPage — server-side qpdf does the work.

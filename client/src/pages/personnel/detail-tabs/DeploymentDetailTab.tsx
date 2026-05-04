@@ -2,7 +2,7 @@
 // RMPG Flex — Officer Detail: Deployment History Tab
 // ============================================================
 
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   MapPinned, Plus, Calendar, Clock, Briefcase, Building2,
   Loader2,

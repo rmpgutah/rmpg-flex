@@ -12,7 +12,7 @@ import {
 } from '../../../utils/googleMapsLoader';
 import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../../../utils/googleMapsApiKey';
 import { devLog, devWarn } from '../../../utils/devLog';
-import { injectKeyframes, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { injectKeyframes } from '../utils/mapMarkerBuilders';
 import type { MapStyleId } from '../utils/mapConstants';
 
 export interface UseMapInitResult {

@@ -1,4 +1,4 @@
-import React, { useId, useEffect } from 'react';
+import { useId, useEffect } from 'react';
 import { Car } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FleetVehicleStatus } from '../../../types';

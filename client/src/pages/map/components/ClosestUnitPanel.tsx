@@ -4,7 +4,7 @@
 // dispatch call. Renders on the right side of the map.
 // ============================================================
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Navigation, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { formatIncidentType } from '../../../utils/caseNumbers';

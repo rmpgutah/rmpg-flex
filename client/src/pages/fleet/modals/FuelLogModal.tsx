@@ -1,4 +1,4 @@
-import React, { useId, useEffect } from 'react';
+import { useId, useEffect } from 'react';
 import { Fuel, DollarSign } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FuelType } from '../../../types';

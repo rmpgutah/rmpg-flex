@@ -2,8 +2,7 @@
 // RMPG Flex — Officer Credentials Detail Tab
 // ============================================================
 
-import React from 'react';
-import { Award, Plus, Edit2, Trash2, Clock, Hash, Building } from 'lucide-react';
+import { Award, Plus, Edit2, Trash2, Clock } from 'lucide-react';
 import type { Credential } from '../../../types';
 import { calcDaysUntilExpiry } from '../utils/personnelFormatters';
 import { CREDENTIAL_STATUS_COLORS } from '../utils/personnelConstants';

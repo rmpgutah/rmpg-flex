@@ -5,7 +5,7 @@ import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
 import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
-import { getTimerState, isActiveStatus, type TimerSeverity } from '../utils/dispatchTimers';
+import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
 
 // Feature 15: Call Source Icons

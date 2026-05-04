@@ -4,7 +4,7 @@
 // Replaces the old Utah Search tab on WarrantsPage
 // ============================================================
 
-import React, { useState, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import {
   Search, Loader2, Shield, AlertTriangle, ChevronDown, ChevronRight,
   Download, User, Scale, FileText, ExternalLink, CheckCircle,

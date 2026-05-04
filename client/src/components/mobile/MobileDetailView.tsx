@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { ArrowLeft, MoreVertical, X } from 'lucide-react';
+import { ArrowLeft, MoreVertical } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────
 interface ActionItem {

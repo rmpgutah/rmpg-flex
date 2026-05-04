@@ -9,7 +9,7 @@
 // they scan the list, press the key, move on.
 // ============================================================
 
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { X } from 'lucide-react';
 import { MAP_SHORTCUT_BINDINGS } from '../../../hooks/useMapKeyboardShortcuts';
 

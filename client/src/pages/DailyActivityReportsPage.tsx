@@ -6,7 +6,7 @@
 // submit → approve/return supervisor workflow.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
   ClipboardCheck, Search, Plus, Clock, User, FileText,
@@ -29,20 +29,6 @@ const STATUS_COLORS: Record<string, string> = {
   approved: 'bg-green-900/50 text-green-400 border-green-700/50',
   returned: 'bg-red-900/50 text-red-400 border-red-700/50',
   archived: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50',
-};
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 };
 
 export default function DailyActivityReportsPage() {

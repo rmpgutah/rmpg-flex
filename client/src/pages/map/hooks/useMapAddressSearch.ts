@@ -1,5 +1,4 @@
-import { useEffect, useRef, useState, useCallback, type MutableRefObject } from 'react';
-import { escapeHtml } from '../../../utils/sanitize';
+import { useEffect, useRef, useState, useCallback } from 'react';
 
 // ── Recent searches localStorage key ──
 const RECENT_SEARCHES_KEY = 'rmpg_map_recent_searches';

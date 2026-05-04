@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import RichTextArea from './RichTextArea';
 import {
   Radio, AlertTriangle, StickyNote, Shield, MapPin,

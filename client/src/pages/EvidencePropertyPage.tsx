@@ -5,7 +5,7 @@
 // storage tracking, disposition pipeline, and BWC footage view.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
   Package, Search, Plus, ChevronDown, MapPin, Clock, User,
@@ -64,20 +64,6 @@ const STATUS_OPTIONS = [
 ];
 
 type DetailTab = 'info' | 'chain' | 'bwc' | 'checkout' | 'custody_audit' | 'links';
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 // ─── Component ─────────────────────────────────────────
 export default function EvidencePropertyPage() {

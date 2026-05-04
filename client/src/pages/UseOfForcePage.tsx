@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, Plus, Search, Loader2, Eye, CheckCircle, XCircle, AlertTriangle, User, FileText, Activity } from 'lucide-react';
+import { Shield, Plus, Search, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import SplitPanel from '../components/SplitPanel';
 import ConfirmDialog from '../components/ConfirmDialog';

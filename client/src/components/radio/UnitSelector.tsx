@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Users, Radio, ChevronDown } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useRadioCheck } from '../../hooks/useRadioCheck';

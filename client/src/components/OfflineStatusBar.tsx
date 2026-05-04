@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { WifiOff, Lock, Unlock, RefreshCw, Check, AlertTriangle } from 'lucide-react';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import PinEntryModal from './PinEntryModal';

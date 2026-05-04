@@ -5,7 +5,6 @@
 // officer safety: lighting, hazards, wind, visibility, alerts.
 // ============================================================
 
-import React from 'react';
 import {
   X,
   Sun,

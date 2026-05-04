@@ -14,8 +14,8 @@
 // payload until the user resolves them.
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useState, useId, useRef } from 'react';
-import { Upload, X, FileText, AlertCircle, Check, Loader2, Car } from 'lucide-react';
+import { useState, useId, useRef } from 'react';
+import { Upload, FileText, AlertCircle, Check, Loader2, Car } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import { apiFetch } from '../../../hooks/useApi';
 

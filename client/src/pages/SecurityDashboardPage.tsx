@@ -1,9 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, Lock, AlertTriangle, Globe, Clock, Users, Key, Loader2, RefreshCw, XCircle, CheckCircle, Monitor, Activity } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { Shield, Lock, AlertTriangle, Globe, Users, Key, Loader2, RefreshCw, XCircle, CheckCircle, Monitor, Activity } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
-import { formatDateTime, formatDate } from '../utils/dateUtils';
+import { formatDateTime } from '../utils/dateUtils';
 
 interface SecurityStatus {
   twoFactorEnabled: boolean; passwordAge: number; trustedDevices: number;

@@ -1,4 +1,3 @@
-import React from 'react';
 import { Brain, Shield, AlertTriangle, Check, X } from 'lucide-react';
 
 interface AIAnalysis {

@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useState, useRef, useCallback, useEffect } from 'react';
-import { X, Terminal, Loader2, Copy, Check } from 'lucide-react';
+import { X, Terminal, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import {
   formatPersonResponse,

@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Plus, Wrench } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertTriangle, Plus } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { localToday } from '../../../utils/dateUtils';
@@ -30,20 +30,6 @@ const SEVERITY_COLORS: Record<string, string> = {
 const REPAIR_COLORS: Record<string, string> = {
   reported: 'text-gray-400', estimated: 'text-amber-400', approved: 'text-purple-400',
   in_repair: 'text-gray-400', completed: 'text-green-400', insurance_claim: 'text-amber-400',
-};
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 };
 
 export default function FleetDamageTab({ vehicleId }: { vehicleId: number | string }) {

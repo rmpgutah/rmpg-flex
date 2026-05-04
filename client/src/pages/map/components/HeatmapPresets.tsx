@@ -7,7 +7,7 @@
 // server sync yet; presets are per-device.
 // ============================================================
 
-import React, { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Bookmark, Plus, X } from 'lucide-react';
 
 export interface HeatmapPresetValue {

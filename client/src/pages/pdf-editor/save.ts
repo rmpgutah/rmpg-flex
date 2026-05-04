@@ -1,6 +1,6 @@
 import { PDFDocument, StandardFonts, rgb, degrees } from 'pdf-lib';
-import { RmpgPdfBuilder, ContentStreamBuilder } from '../../lib/rmpg-pdf-engine';
-import { Annotation, BatesConfig, DocumentMeta, EditorState, PageMeta, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
+import { RmpgPdfBuilder } from '../../lib/rmpg-pdf-engine';
+import { Annotation, BatesConfig, EditorState, PageMeta, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 
 // Save pipeline.
 //

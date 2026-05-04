@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Siren, Check, ChevronDown, ChevronRight, Trash2, Clock, ShieldCheck } from 'lucide-react';
 
 const ALERT_TYPE_COLORS: Record<string, string> = {

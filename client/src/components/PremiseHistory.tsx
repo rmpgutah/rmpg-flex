@@ -4,7 +4,7 @@
 // when hazardous history is found. Used inline in call creation.
 // ============================================================
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Clock, Shield, ShieldBan, MapPin, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';

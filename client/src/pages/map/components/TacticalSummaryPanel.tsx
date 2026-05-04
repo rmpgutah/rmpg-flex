@@ -4,7 +4,6 @@
 // active tactical layers in one compact display.
 // ============================================================
 
-import React from 'react';
 import { X, Layers } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────

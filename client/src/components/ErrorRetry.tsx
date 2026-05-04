@@ -1,4 +1,3 @@
-import React from 'react';
 import { AlertTriangle, RefreshCw, Loader2 } from 'lucide-react';
 
 interface ErrorRetryProps {

@@ -2,7 +2,7 @@
 // Feature 27: Column Visibility Toggle
 // Let users show/hide table columns
 // ═══════════════════════════════════════════════════════════════
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Columns, Eye, EyeOff } from 'lucide-react';
 
 export interface ColumnDef {

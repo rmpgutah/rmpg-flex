@@ -4,7 +4,7 @@
 // Opens documents in an overlay instead of a secondary tab
 // ============================================================
 
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import {
   X,
   Download,

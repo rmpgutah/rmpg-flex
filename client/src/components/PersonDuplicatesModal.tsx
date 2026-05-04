@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { X, Loader2, AlertTriangle, Users, ChevronRight, Merge } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { X, Loader2, Users, ChevronRight, Merge } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 
 interface DuplicatePair {

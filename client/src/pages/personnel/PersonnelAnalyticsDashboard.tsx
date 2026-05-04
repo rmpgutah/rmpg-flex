@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   Users, UserCheck, Clock, Award, AlertTriangle, TrendingUp, GraduationCap, Bell, Shield,
 } from 'lucide-react';
@@ -9,7 +9,6 @@ import {
 } from 'recharts';
 import type { Credential, TimeEntry, TrainingRecord } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
-import { ROLE_COLORS } from './utils/personnelConstants';
 import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {

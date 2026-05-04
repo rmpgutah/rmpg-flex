@@ -6,7 +6,7 @@
 // ============================================================
 
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Map, Radio, Bell, Menu, LayoutList } from 'lucide-react';
+import { LayoutDashboard, Map, Bell, Menu, LayoutList } from 'lucide-react';
 
 const NAV_ITEMS = [
   { id: 'home',     path: '/',          icon: LayoutDashboard, label: 'Home' },

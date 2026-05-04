@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel: Time & Attendance Tab
 // ============================================================
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Clock, LogIn, LogOut, Coffee, Users, BarChart3, Pencil, Trash2 } from 'lucide-react';
 import type { TimeEntry } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';

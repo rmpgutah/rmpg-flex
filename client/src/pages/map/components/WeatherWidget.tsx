@@ -1,4 +1,3 @@
-import React from 'react';
 import type { UseWeatherOverlayResult } from '../hooks/useWeatherOverlay';
 
 // WMO weather code → emoji + label

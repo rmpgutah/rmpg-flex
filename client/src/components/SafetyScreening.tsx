@@ -5,7 +5,7 @@
 // Displays prominent warning banners for officer safety.
 // ============================================================
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { AlertTriangle, Shield, FileWarning, User, Scale, Ban, MapPin } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';

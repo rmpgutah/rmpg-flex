@@ -4,7 +4,6 @@
 // Used in DispatchPage and MdtPage via WebSocket events
 // ============================================================
 
-import React from 'react';
 import { AlertTriangle, X, ExternalLink } from 'lucide-react';
 
 export interface WarrantAlert {

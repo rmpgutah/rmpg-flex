@@ -6,7 +6,7 @@
 // Shows criminal records, court cases, and sex offender registry
 // data in a structured, readable format.
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   X, FileSearch, AlertTriangle, Shield, Gavel,
   Clock, MapPin, Loader2,

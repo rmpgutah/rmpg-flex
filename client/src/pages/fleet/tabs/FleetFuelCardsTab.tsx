@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { CreditCard, Plus, Pencil, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { CreditCard, Plus, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 

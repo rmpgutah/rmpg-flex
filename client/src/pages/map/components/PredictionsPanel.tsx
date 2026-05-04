@@ -4,8 +4,7 @@
 // confidence scores, risk breakdowns, and navigate-to buttons.
 // ============================================================
 
-import React from 'react';
-import { X, Brain, Navigation, Loader2, Crosshair, Swords, Heart, TrendingUp } from 'lucide-react';
+import { X, Brain, Loader2, Crosshair, Swords, Heart, TrendingUp } from 'lucide-react';
 import type { PredictedHotspot } from '../hooks/useMapPredictions';
 
 interface PredictionsPanelProps {

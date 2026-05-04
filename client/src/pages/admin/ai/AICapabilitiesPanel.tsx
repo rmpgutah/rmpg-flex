@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Save, Loader2, Zap } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { AIConfig } from './AISharedComponents';

@@ -15,7 +15,7 @@
 //   Notes               — free text (budget rationale, approver, etc.)
 // ═══════════════════════════════════════════════════════════════
 
-import React, { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import { DollarSign, Calendar, AlertTriangle, Save, X as XIcon } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FleetFuelBudget, FuelBudgetPeriod } from '../../../types';

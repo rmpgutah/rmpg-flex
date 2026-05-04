@@ -3,7 +3,7 @@
 // Firecrawl-powered competitor URL monitoring + change detection
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Eye,
   Plus,

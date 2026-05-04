@@ -4,7 +4,6 @@
 // Read-only — data synced from ClearPathGPS.
 // ============================================================
 
-import React from 'react';
 import {
   Car, Cpu, Zap, AlertTriangle, MapPin, Gauge,
   Video, Clock, Loader2, ExternalLink,
@@ -17,20 +16,6 @@ interface Props {
   deviceMapping: CpgDeviceMapping | null;
   loading: boolean;
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function DashCameraDetailTab({ events, deviceMapping, loading }: Props) {
   if (loading) {

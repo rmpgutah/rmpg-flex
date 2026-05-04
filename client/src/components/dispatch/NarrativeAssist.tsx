@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Brain, Check, X, Loader2 } from 'lucide-react';
 
 interface NarrativeAssistProps {

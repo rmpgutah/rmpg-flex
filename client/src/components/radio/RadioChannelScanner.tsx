@@ -1,4 +1,3 @@
-import React from 'react';
 import { ScanLine, Plus } from 'lucide-react';
 import ChannelCard from './ChannelCard';
 import type { RadioChannel } from '../../hooks/useRadioConsole';

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import RichTextArea from '../../../components/RichTextArea';
 import {
   Users, Shield, Clock, Phone, Mail, MapPin, Calendar, Award,

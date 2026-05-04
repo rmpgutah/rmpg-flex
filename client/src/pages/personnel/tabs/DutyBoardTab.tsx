@@ -2,11 +2,10 @@
 // RMPG Flex — Personnel: Duty Board Tab
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
-import { Radio, Clock, AlertTriangle, Shield } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Radio, Clock, AlertTriangle } from 'lucide-react';
 import type { TimeEntry, Credential } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
-import { calcDaysUntilExpiry } from '../utils/personnelFormatters';
 import OfficerAvatar from '../components/OfficerAvatar';
 
 type DutyFilter = 'all' | 'on_duty' | 'off_duty';

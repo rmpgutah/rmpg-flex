@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { X, Route, Navigation, AlertTriangle, ArrowUp, Loader2, Zap } from 'lucide-react';
 
 interface CorridorAnalysisPanelProps {

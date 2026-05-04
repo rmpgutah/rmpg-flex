@@ -3,7 +3,7 @@
 // File a new grievance (employee-facing)
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { X, FileWarning } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 

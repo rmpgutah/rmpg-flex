@@ -5,14 +5,14 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
-import { FORM_NUMBERS, FORM_REVISION, loadSealBase64 } from './pdfAssets';
+import { FORM_NUMBERS } from './pdfAssets';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getContentWidth, getLeftX, getRightColumnX,
   getHalfFieldWidth, getFullFieldWidth,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
-import { openAutoSection, closeAutoSection, addCheckboxField, addConfidentialWatermark, addPageFooter, sanitizePdfText, setActiveCaseNumber, setActiveFormKey } from './pdfGenerator';
+import { openAutoSection, closeAutoSection, addCheckboxField, addConfidentialWatermark, addPageFooter, setActiveCaseNumber, setActiveFormKey } from './pdfGenerator';
 
 // All blank form definitions
 export interface BlankFormDef {

@@ -2,7 +2,7 @@
 // RMPG Flex — Officer Detail: Training Records Tab
 // ============================================================
 
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import {
   GraduationCap, Plus, CheckCircle, Clock, BookOpen, AlertTriangle,
   Award, Hash, Calendar, Loader2,

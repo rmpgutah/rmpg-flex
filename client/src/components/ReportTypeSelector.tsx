@@ -4,7 +4,7 @@
 // Supports Download, Preview, and Sign & Export modes
 // ============================================================
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { FileDown, ChevronDown, Eye, PenLine } from 'lucide-react';
 import {
   type PdfReportType,

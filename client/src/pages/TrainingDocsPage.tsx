@@ -2,14 +2,14 @@
 // RMPG Flex — Training & Docs: Company Policies, SOPs, Manuals
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
   BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2,
   Edit2, Loader2, X, Upload, Link as LinkIcon, Star, Eye, EyeOff,
   FileVideo, FileSpreadsheet, FileImage, File, Printer,
 } from 'lucide-react';
-import { BLANK_FORMS, downloadBlankForm, type BlankFormDef } from '../utils/blankFormGenerator';
+import { BLANK_FORMS, downloadBlankForm } from '../utils/blankFormGenerator';
 import { useAuth } from '../context/AuthContext';
 import {
   apiFetchCompanyDocuments,
@@ -18,7 +18,6 @@ import {
   apiDeleteCompanyDocument,
   apiUploadFiles,
 } from '../hooks/useApi';
-import { authUrl } from '../components/FileAttachments';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';
 import { useToast } from '../components/ToastProvider';

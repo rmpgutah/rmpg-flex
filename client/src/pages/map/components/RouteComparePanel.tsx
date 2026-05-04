@@ -12,7 +12,6 @@
 // so persistence + keyboard shortcuts can hook in later.
 // ============================================================
 
-import React from 'react';
 import { X } from 'lucide-react';
 import type { UnitTrail } from '../utils/trailStats';
 import { computeTrailStats } from '../utils/trailStats';

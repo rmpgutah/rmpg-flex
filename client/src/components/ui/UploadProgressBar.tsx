@@ -1,7 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // Upload Progress Bar — file upload progress with speed/ETA
 // ═══════════════════════════════════════════════════════════════
-import React from 'react';
 import { Loader2, Check, Zap } from 'lucide-react';
 import type { UploadProgress } from '../../utils/uploadWithProgress';
 import { formatBytes, formatSpeed, formatEta } from '../../utils/uploadWithProgress';

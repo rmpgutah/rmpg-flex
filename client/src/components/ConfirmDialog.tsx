@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useId } from 'react';
+import { useEffect, useRef, useId } from 'react';
 import { AlertTriangle, Info, X, Loader2 } from 'lucide-react';
 
 interface ConfirmDialogProps {

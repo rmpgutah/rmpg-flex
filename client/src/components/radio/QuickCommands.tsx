@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface QuickCommand {
   label: string;
   code: string;

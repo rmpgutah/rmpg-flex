@@ -3,7 +3,7 @@
 // Displays & manages criminal history records for a person
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from './RichTextArea';
 import {
   Scale,

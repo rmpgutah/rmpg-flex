@@ -5,7 +5,7 @@
 // tabbed interface, status workflows, and fine tracking.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
   Construction, Search, Plus, Truck, MapPin, Clock, User,
@@ -69,20 +69,6 @@ const EMPTY_TOW = {
   vehicle_year: '', vehicle_make: '', vehicle_model: '', vehicle_color: '',
   vehicle_plate: '', vehicle_vin: '', tow_from: '', tow_to: '',
   tow_reason: 'parking_violation' as TowReason, tow_company: '', tow_fee: '', storage_fee: '', notes: '',
-};
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 };
 
 export default function CodeEnforcementPage() {

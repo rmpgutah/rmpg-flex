@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { AlertTriangle, ShieldAlert, Radio, X, Check } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 

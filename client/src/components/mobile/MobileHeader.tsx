@@ -4,7 +4,6 @@
 // Optimized for iPhone 17 Pro (393px width)
 // ============================================================
 
-import React from 'react';
 import { Menu } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import PanicButton from '../PanicButton';

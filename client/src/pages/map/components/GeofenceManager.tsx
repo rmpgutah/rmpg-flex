@@ -4,8 +4,8 @@
 // delete, navigate-to, and alert history display.
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
-import { Plus, Trash2, Pencil, Shield, Loader2, MapPin, ChevronDown, ChevronRight, Bell, Navigation } from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { Plus, Trash2, Pencil, Shield, Loader2, MapPin, ChevronRight, Bell, Navigation } from 'lucide-react';
 import type { Geofence, GeofenceAlert } from '../hooks/useMapGeofences';
 
 interface GeofenceManagerProps {

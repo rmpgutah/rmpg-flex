@@ -4,7 +4,6 @@
 //   Left column: Photo + Identity | Center: Employment | Right: Contact
 // ============================================================
 
-import React from 'react';
 import {
   User, Phone, Mail, MapPin, Briefcase, Hash, AlertTriangle,
   Heart, Droplet, FileText, Award, Calendar, Paperclip, Radio, Shield,

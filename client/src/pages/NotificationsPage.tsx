@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Bell, BellOff, Check, CheckCheck, Clock, Filter, Settings,
   Trash2, AlertTriangle, X, Loader2, ChevronDown, RefreshCw,
@@ -8,7 +8,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
-import { formatDateTime, formatShortTime } from '../utils/dateUtils';
+import { formatDateTime } from '../utils/dateUtils';
 
 interface Notification {
   id: number;

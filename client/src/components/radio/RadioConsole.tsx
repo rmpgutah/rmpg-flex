@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Radio, ChevronLeft, ChevronRight } from 'lucide-react';
 import EncryptionIndicator from './EncryptionIndicator';
 import RadioChannelScanner from './RadioChannelScanner';

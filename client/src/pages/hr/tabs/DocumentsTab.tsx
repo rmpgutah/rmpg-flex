@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, Plus, Trash2, CheckCircle, AlertTriangle, Loader2, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { FileText, Plus, Trash2, CheckCircle, Loader2, Search } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
