@@ -2324,14 +2324,42 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   }
 
   // ── 7e. Detailed Identifying Marks ────────────────────────
+  // 2-column layout (2026-05-04) — these 5 narrative fields previously
+  // stacked full-width and consumed half a page when scar/piercing/dist
+  // were short or NONE. Tattoo always renders full-width (long lists);
+  // the four shorter descriptors split into a 2-col grid below it. Each
+  // pair advances independently and the section closes at the max Y.
   if (data.tattoo_description || data.scar_description || data.piercing_description || data.distinguishing_features || data.identifying_marks_location) {
-    y = checkPageBreak(doc, y, 14, prio);
+    y = checkPageBreak(doc, y, 18, prio);
     const sec = openAutoSection(doc, 'Detailed Identifying Marks', y); y = sec.contentY;
-    if (data.tattoo_description) y = addNarrativeField(doc, 'Tattoo Description', data.tattoo_description, lx, y, ffw);
-    if (data.scar_description) y = addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, ffw);
-    if (data.piercing_description) y = addNarrativeField(doc, 'Piercing Description', data.piercing_description, lx, y, ffw);
-    if (data.distinguishing_features) y = addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, ffw);
-    if (data.identifying_marks_location) y = addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, lx, y, ffw);
+
+    // Tattoo description — full-width, often the longest content
+    if (data.tattoo_description) {
+      y = addNarrativeField(doc, 'Tattoo Description', data.tattoo_description, lx, y, ffw);
+    }
+
+    // Scar / Piercing → 2-col row (left + right)
+    if (data.scar_description || data.piercing_description) {
+      const ly = data.scar_description
+        ? addNarrativeField(doc, 'Scar Description', data.scar_description, lx, y, hfw)
+        : y;
+      const ry = data.piercing_description
+        ? addNarrativeField(doc, 'Piercing Description', data.piercing_description, rx, y, hfw)
+        : y;
+      y = Math.max(ly, ry);
+    }
+
+    // Distinguishing Features / Marks Location → 2-col row
+    if (data.distinguishing_features || data.identifying_marks_location) {
+      const ly = data.distinguishing_features
+        ? addNarrativeField(doc, 'Distinguishing Features', data.distinguishing_features, lx, y, hfw)
+        : y;
+      const ry = data.identifying_marks_location
+        ? addNarrativeField(doc, 'Marks Location', data.identifying_marks_location, rx, y, hfw)
+        : y;
+      y = Math.max(ly, ry);
+    }
+
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
