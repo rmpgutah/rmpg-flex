@@ -92,6 +92,7 @@ export default function ConnectionsPage() {
   const [annotations, setAnnotations] = useState<Record<string, string>>({});
   const [editingAnnotationFor, setEditingAnnotationFor] = useState<string | null>(null);
   const [annotationDraft, setAnnotationDraft] = useState('');
+  const [hoveredNodeId, setHoveredNodeId] = useState<string | null>(null);
   const pendingLayoutRef = useRef<Record<string, { x: number; y: number }> | null>(null);
   const debounceRef = useRef<number | null>(null);
   const simRef = useRef<Simulation<SimNode, undefined> | null>(null);
@@ -99,6 +100,7 @@ export default function ConnectionsPage() {
   const gRef = useRef<SVGGElement>(null);
   const zoomRef = useRef<ZoomBehavior<SVGSVGElement, unknown> | null>(null);
   const [transform, setTransform] = useState('translate(0,0) scale(1)');
+  const [zoomScale, setZoomScale] = useState(1);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -183,11 +185,18 @@ export default function ConnectionsPage() {
     if (simRef.current) { simRef.current.stop(); simRef.current = null; }
     if (nodes.length === 0) return;
 
+    // Force parameters scale with node count so dense graphs (depth=3, 100+ nodes)
+    // don't collapse into the central blob seen with the previous fixed values.
+    const n = nodes.length;
+    const chargeStrength = -Math.min(2400, 400 + n * 18);
+    const linkDistance = Math.min(220, 110 + Math.sqrt(n) * 8);
+    const collidePad = n > 60 ? 14 : n > 25 ? 10 : 8;
+
     const sim = forceSimulation<SimNode>(nodes)
-      .force('charge', forceManyBody().strength(-600))
-      .force('link', forceLink<SimNode, SimEdge>(edges as any).id((d: any) => d.id).distance(130))
+      .force('charge', forceManyBody().strength(chargeStrength))
+      .force('link', forceLink<SimNode, SimEdge>(edges as any).id((d: any) => d.id).distance(linkDistance))
       .force('center', forceCenter(VIEW_W / 2, VIEW_H / 2))
-      .force('collide', forceCollide<SimNode>(d => (NODE_RADIUS[d.type] || 16) + 8))
+      .force('collide', forceCollide<SimNode>(d => (NODE_RADIUS[d.type] || 16) + collidePad))
       .alpha(1)
       .on('tick', () => {
         setNodes(prev => [...prev]);
@@ -207,6 +216,7 @@ export default function ConnectionsPage() {
       .on('zoom', (event) => {
         const t = event.transform;
         setTransform(`translate(${t.x},${t.y}) scale(${t.k})`);
+        setZoomScale(t.k);
       });
     svg.call(z as any);
     zoomRef.current = z;
@@ -565,6 +575,7 @@ export default function ConnectionsPage() {
             preserveAspectRatio="xMidYMid meet"
           >
             <g ref={gRef} data-testid="zoom-target" transform={transform}>
+            {/* Pass 1 — edges (bottom layer) */}
             {visibleEdges.map((e, i) => {
               const src = typeof e.source === 'string' ? nodes.find(n => n.id === e.source) : (e.source as SimNode);
               const tgt = typeof e.target === 'string' ? nodes.find(n => n.id === e.target) : (e.target as SimNode);
@@ -574,17 +585,17 @@ export default function ConnectionsPage() {
               const inPath = pathEdges.has(`${srcId}|${tgtId}`) || pathEdges.has(`${tgtId}|${srcId}`);
               const dim = pathNodes.size > 0 && !inPath;
               return (
-                <g key={`edge-${i}`}>
-                  <line
-                    x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
-                    stroke={inPath ? '#22c55e' : '#333'}
-                    strokeWidth={inPath ? 3 : 1.5}
-                    strokeDasharray={inPath ? undefined : '4,3'}
-                    opacity={dim ? 0.2 : 1}
-                  />
-                </g>
+                <line
+                  key={`edge-${i}`}
+                  x1={src.x} y1={src.y} x2={tgt.x} y2={tgt.y}
+                  stroke={inPath ? '#22c55e' : '#333'}
+                  strokeWidth={inPath ? 3 : 1.5}
+                  strokeDasharray={inPath ? undefined : '4,3'}
+                  opacity={dim ? 0.2 : 1}
+                />
               );
             })}
+            {/* Pass 2 — node circles (middle layer) */}
             {visibleNodes.map(n => {
               const r = NODE_RADIUS[n.type] || 16;
               const color = NODE_COLORS[n.type] || '#888';
@@ -595,6 +606,8 @@ export default function ConnectionsPage() {
                 <g
                   key={n.id}
                   onClick={() => handleNodeClick(n)}
+                  onMouseEnter={() => setHoveredNodeId(n.id)}
+                  onMouseLeave={() => setHoveredNodeId(prev => (prev === n.id ? null : prev))}
                   data-has-annotation={annotations[n.id] ? 'true' : 'false'}
                   style={{ cursor: 'pointer', opacity: dim ? 0.25 : 1 }}
                 >
@@ -615,13 +628,6 @@ export default function ConnectionsPage() {
                   >
                     {n.type[0].toUpperCase()}
                   </text>
-                  <text
-                    x={n.x} y={n.y + r + 11} textAnchor="middle"
-                    fontSize={9} fill="#ccc" fontFamily="monospace"
-                    style={{ pointerEvents: 'none' }}
-                  >
-                    {n.label.length > 22 ? n.label.slice(0, 20) + '…' : n.label}
-                  </text>
                   {annotations[n.id] && (
                     <text
                       x={n.x + r - 4} y={n.y - r + 8}
@@ -631,6 +637,62 @@ export default function ConnectionsPage() {
                       ✎
                     </text>
                   )}
+                </g>
+              );
+            })}
+            {/* Pass 3 — labels (top layer, with backdrop rect for legibility against neighbors) */}
+            {visibleNodes.map(n => {
+              const r = NODE_RADIUS[n.type] || 16;
+              const isSeed = !!seed && n.type === seed.type && n.entityId === seed.id;
+              const isSelected = selectedNodeId === n.id;
+              const isHovered = hoveredNodeId === n.id;
+              const inPath = pathNodes.has(n.id);
+              const hasAnnotation = !!annotations[n.id];
+              const dim = pathNodes.size > 0 && !inPath;
+
+              // Density-aware visibility (strategy "D"): always show in small graphs
+              // and when zoomed in; in dense+zoomed-out graphs, only show "important" labels.
+              const dense = visibleNodes.length > 25;
+              const zoomedIn = zoomScale >= 1.5;
+              const important = isSeed || isSelected || isHovered || inPath || hasAnnotation;
+              const showLabel = !dense || zoomedIn || important;
+              if (!showLabel) return null;
+
+              const truncated = n.label.length > 18 ? n.label.slice(0, 16) + '…' : n.label;
+              // Approximate text width for the backdrop rect (monospace ~5.4px/char @ 9px).
+              const textW = truncated.length * 5.4 + 6;
+              const textH = 11;
+              const labelY = n.y + r + 11;
+              return (
+                // Clicking a label is the same as clicking its node — better UX,
+                // and keeps DOM-traversal-based tests working (closest('g') from
+                // the label text reaches a clickable group).
+                <g
+                  key={`label-${n.id}`}
+                  onClick={() => handleNodeClick(n)}
+                  onMouseEnter={() => setHoveredNodeId(n.id)}
+                  onMouseLeave={() => setHoveredNodeId(prev => (prev === n.id ? null : prev))}
+                  style={{ cursor: 'pointer', opacity: dim ? 0.35 : 1 }}
+                >
+                  <rect
+                    x={n.x - textW / 2}
+                    y={labelY - textH + 1}
+                    width={textW}
+                    height={textH + 2}
+                    fill="#0a0a0a"
+                    fillOpacity={0.82}
+                    stroke={important ? '#d4a017' : 'none'}
+                    strokeWidth={important ? 0.5 : 0}
+                  />
+                  <text
+                    x={n.x} y={labelY} textAnchor="middle"
+                    fontSize={9}
+                    fill={isSeed ? '#d4a017' : important ? '#fff' : '#ccc'}
+                    fontWeight={important ? 'bold' : 'normal'}
+                    fontFamily="monospace"
+                  >
+                    {truncated}
+                  </text>
                 </g>
               );
             })}
