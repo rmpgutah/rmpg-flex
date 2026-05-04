@@ -81,6 +81,7 @@ import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
 import { useDispatchNotesActions } from './hooks/useDispatchNotesActions';
+import { useDispatchMultiUnitActions } from './hooks/useDispatchMultiUnitActions';
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
@@ -819,6 +820,17 @@ export default function DispatchPage() {
   } = useDispatchNotesActions({
     selectedCall, setSelectedCall, calls, setCalls, setActivityEntries,
   });
+
+  // Multi-unit dispatch state + handlers (closest-unit lookup, auto-assign,
+  // multi-unit dispatch, call transfer). Cleanest cluster yet — every handler
+  // takes callId as an explicit param so the hook signature stays narrow.
+  const {
+    multiSelectUnits, setMultiSelectUnits,
+    handleSuggestClosestUnit,
+    handleAutoAssign,
+    handleMultiUnitDispatch,
+    handleTransferCall,
+  } = useDispatchMultiUnitActions({ setCalls, setSelectedCall, setUnits });
 
   // ── WebSocket: real-time dispatch updates & panic auto-dispatch ──
   useEffect(() => {
@@ -1768,36 +1780,6 @@ export default function DispatchPage() {
       .map(([type, count]) => ({ type, count }));
   }, [calls]);
 
-  // Feature 11: Auto-assign nearest unit handler
-  const handleSuggestClosestUnit = useCallback(async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/closest-unit`);
-      const sug = result?.suggestion;
-      if (!sug) {
-        addToast(result?.reason || 'No available units with GPS', 'info');
-        return;
-      }
-      const dist = typeof sug.distance_miles === 'number' ? sug.distance_miles.toFixed(2) : '?';
-      addToast(`Closest: ${sug.call_sign} — ${dist} mi (${sug.officer_name || 'unassigned'})`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || err?.error || 'Failed to compute closest unit', 'error');
-    }
-  }, [addToast]);
-
-  const handleAutoAssign = useCallback(async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/auto-assign`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
-      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      addToast(`Auto-assigned ${result.auto_assigned_unit} (${result.distance_miles} mi)`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || err?.error || 'No available units', 'error');
-    }
-  }, [addToast]);
-
   // Feature 13: Unit workload — count active calls per unit
   const unitWorkload = useMemo(() => {
     const workload = new Map<string, number>();
@@ -1835,43 +1817,6 @@ export default function DispatchPage() {
     const interval = setInterval(checkAutoArchive, 60000); // Check every minute
     return () => clearInterval(interval);
   }, [calls]);
-
-  // Feature 18: Multi-unit dispatch
-  const [multiSelectUnits, setMultiSelectUnits] = useState<string[]>([]);
-  const handleMultiUnitDispatch = useCallback(async (callId: string, unitIds: string[]) => {
-    if (unitIds.length === 0) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/dispatch`, {
-        method: 'POST', body: JSON.stringify({ unit_ids: unitIds.map(Number) }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
-      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      setMultiSelectUnits([]);
-      addToast(`${unitIds.length} units dispatched`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to dispatch units', 'error');
-    }
-  }, [addToast]);
-
-  // Feature 19: Call transfer handler
-  const handleTransferCall = useCallback(async (callId: string, fromUnitId: string, toUnitId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/transfer`, {
-        method: 'POST', body: JSON.stringify({ from_unit_id: fromUnitId, to_unit_id: toUnitId }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
-      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      addToast('Call transferred', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Transfer failed', 'error');
-    }
-  }, [addToast]);
 
   // ── Dispatch alarm interval — check overdue calls every 5s ──
   const alarmPlayedRef = useRef<Set<string>>(new Set());
