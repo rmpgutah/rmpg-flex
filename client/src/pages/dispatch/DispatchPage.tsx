@@ -80,6 +80,7 @@ import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
+import { useDispatchCallActions } from './hooks/useDispatchCallActions';
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
@@ -286,7 +287,6 @@ export default function DispatchPage() {
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
   // Quick Dispatch templates
   const [templates, setTemplates] = useState<any[]>([]);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
@@ -661,18 +661,8 @@ export default function DispatchPage() {
     onAssignSuccess: () => setShowAttachUnitDropdown(false),
   });
   const [officers, setOfficers] = useState<{ id: string; full_name: string; badge_number?: string }[]>([]);
-  // Delete call confirmation (non-archived)
-  const [deleteCallTarget, setDeleteCallTarget] = useState<CallForService | null>(null);
-  const [isDeletingCall, setIsDeletingCall] = useState(false);
   // Disposition codes from admin config
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
-  // Disposition prompt — ID of call awaiting disposition before clear
-  const [dispositionPromptCallId, setDispositionPromptCallId] = useState<string | null>(null);
-  // Mileage prompt — shown on En Route / On Scene status transitions
-  const [mileagePrompt, setMileagePrompt] = useState<{
-    callId: string; callNumber: string; status: 'enroute' | 'onscene';
-    vehicleId: string; startingMileage?: number;
-  } | null>(null);
   // Mini-map visibility toggle
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
@@ -796,6 +786,30 @@ export default function DispatchPage() {
   // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI)
   const silentRefresh = useCallback(() => fetchData({ silent: true }), [fetchData]);
   useLiveSync('dispatch', silentRefresh);
+
+  // Call-lifecycle state + handlers (extracted to keep this component below the
+  // 6,500-line ceiling). The hook owns: 6 transient state items (delete/disposition/
+  // mileage prompts, isGenerating, isBulkArchiving) and the 14 call-mutation
+  // handlers (status transitions, hold/resume/revert, clear-with-disposition,
+  // archive/unarchive/bulk-archive, delete, priority, LE-notify, gen-incident).
+  const {
+    deleteCallTarget, setDeleteCallTarget,
+    isDeletingCall,
+    dispositionPromptCallId, setDispositionPromptCallId,
+    mileagePrompt, setMileagePrompt,
+    isGenerating,
+    isBulkArchiving,
+    handleStatusChange,
+    handleHoldCall, handleResumeCall, handleRevertStatus,
+    handleClearWithDisposition, handleConfirmClear,
+    handleMileageSubmit,
+    handleArchive, handleUnarchive, handleBulkArchive,
+    handleDeleteAnyCall,
+    handlePriorityChange, handleLeNotify, handleGenerateIncident,
+  } = useDispatchCallActions({
+    selectedCall, setSelectedCall, setCalls, setArchivedCalls,
+    setUnits, setArchivedLoaded, refetchAll: silentRefresh,
+  });
 
   // ── WebSocket: real-time dispatch updates & panic auto-dispatch ──
   useEffect(() => {
@@ -1032,43 +1046,6 @@ export default function DispatchPage() {
     })();
     return () => { cancelled = true; };
   }, []);
-
-  // Revert call status to previous step
-  const handleRevertStatus = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/revert-status`, {
-        method: 'POST',
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      // Refresh units since reverting from cleared re-dispatches them
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-    } catch (err: any) {
-      console.error('Failed to revert status:', err);
-      addToast('Failed to revert call status', 'error');
-    }
-  };
-
-  // Delete any call (not just archived)
-  const handleDeleteAnyCall = async () => {
-    if (!deleteCallTarget) return;
-    const callNum = deleteCallTarget.call_number;
-    setIsDeletingCall(true);
-    try {
-      await apiFetch(`/dispatch/calls/${deleteCallTarget.id}`, { method: 'DELETE' });
-      setCalls((prev) => prev.filter((c) => c.id !== deleteCallTarget.id));
-      setArchivedCalls((prev) => prev.filter((c) => c.id !== deleteCallTarget.id));
-      setSelectedCall((prev) => prev?.id === deleteCallTarget.id ? null : prev);
-      setDeleteCallTarget(null);
-      addToast(`Call ${callNum} deleted`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || err?.error || 'Failed to delete call', 'error');
-    } finally {
-      setIsDeletingCall(false);
-    }
-  };
 
   // Lazy-fetch audit trail only when the Audit tab opens for this call
   useEffect(() => {
@@ -1464,124 +1441,6 @@ export default function DispatchPage() {
     }
   };
 
-  const handleStatusChange = async (callId: string, newStatus: CallStatus, extraBody?: Record<string, any>) => {
-    // Status changes go through immediately — no mileage prompt blocking
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/status`, {
-        method: 'POST',
-        body: JSON.stringify({ status: newStatus, ...extraBody }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      // Audible feedback for local status change
-      if (newStatus === 'cleared' || newStatus === 'closed') {
-        announceLocalAction('call_closed', `Call ${updatedCall.call_number} ${newStatus}.`);
-      }
-      // Refresh units since clearing/closing/cancelling a call frees assigned units
-      if (newStatus === 'cleared' || newStatus === 'closed' || newStatus === 'cancelled') {
-        const unitsRes = await apiFetch<any[]>('/dispatch/units');
-        setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      }
-      // Auto-archive when closed or cancelled to clear the "All" view
-      if (newStatus === 'closed' || newStatus === 'cancelled') {
-        await handleArchive(callId);
-      }
-    } catch (err) {
-      console.error('Failed to update status:', err);
-      addToast('Failed to update call status', 'error');
-    }
-  };
-
-  const handleMileageSubmit = (mileage: number, vehicleId: string) => {
-    if (!mileagePrompt) return;
-    const body: Record<string, any> = { responding_vehicle_id: vehicleId || undefined };
-    // Only include mileage if user entered a value (skip sends 0)
-    if (mileage > 0) {
-      if (mileagePrompt.status === 'enroute') {
-        body.starting_mileage = mileage;
-      } else {
-        body.ending_mileage = mileage;
-      }
-    }
-    setMileagePrompt(null);
-    handleStatusChange(mileagePrompt.callId, mileagePrompt.status, body);
-  };
-
-  // Clear with disposition — shows prompt first, then clears
-  const handleClearWithDisposition = (callId: string) => {
-    setDispositionPromptCallId(callId);
-  };
-
-  const handleConfirmClear = async (disposition: string, createIncident?: boolean) => {
-    if (!dispositionPromptCallId) return;
-    const callId = dispositionPromptCallId;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/status`, {
-        method: 'POST',
-        body: JSON.stringify({ status: 'cleared', disposition }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-
-      // Auto-create incident report if checkbox was checked
-      if (createIncident) {
-        try {
-          const token = localStorage.getItem('rmpg_token');
-          const incRes = await fetch(`/api/dispatch/calls/${callId}/generate-incident`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          });
-          if (incRes.ok) {
-            navigate('/incidents');
-          } else {
-            const errData = await incRes.json().catch(() => ({}));
-            addToast(errData.error || 'Failed to create incident report', 'error');
-          }
-        } catch (err) {
-          console.error('Failed to promote call to incident:', err);
-          addToast('Failed to create incident report from call', 'error');
-        }
-      }
-    } catch (err: any) {
-      console.error('Failed to clear call:', err);
-      addToast('Failed to clear call', 'error');
-    }
-    setDispositionPromptCallId(null);
-  };
-
-  // Hold / Resume call
-  const handleHoldCall = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/hold`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
-      console.error('Failed to hold call:', err);
-      addToast('Failed to hold call', 'error');
-    }
-  };
-
-  const handleResumeCall = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/resume`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
-      console.error('Failed to resume call:', err);
-      addToast('Failed to resume call', 'error');
-    }
-  };
-
   // ── Admin timeline edit handler ──
   const handleTimelineEdit = useCallback(async (field: string, value: string | null) => {
     if (!selectedCall || !isAdminOrManager) return;
@@ -1725,136 +1584,6 @@ export default function DispatchPage() {
       addToast('Note deleted', 'success');
     } catch {
       addToast('Failed to delete note', 'error');
-    }
-  };
-
-  const handleGenerateIncident = async () => {
-    if (!selectedCall) return;
-    setIsGenerating(true);
-    try {
-      // Direct fetch to preserve full error response (apiFetch wraps errors in plain Error)
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch(`/api/dispatch/calls/${selectedCall.id}/generate-incident`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-
-      if (res.status === 409) {
-        // Incident already exists — navigate to it
-        addToast('An incident report already exists for this call', 'info');
-        navigate('/incidents');
-        return;
-      }
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
-      }
-
-      const incident = await res.json();
-      addToast(`Incident ${incident.incident_number || ''} created`, 'success');
-      navigate('/incidents');
-    } catch (err: any) {
-      console.error('Failed to generate incident:', err);
-      addToast(err?.message || 'Failed to generate incident report', 'error');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // ── LE Notification ─────────────────────────────────────────
-  const handleLeNotify = async (callId: string, agency?: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/le-notification`, {
-        method: 'POST',
-        body: JSON.stringify({ agency: agency || 'Local PD' }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      addToast('Law enforcement notified', 'success');
-    } catch (err) {
-      console.error('Failed to notify LE:', err);
-      addToast('Failed to notify LE', 'error');
-    }
-  };
-
-  // ── Priority Change ────────────────────────────────────────
-  const handlePriorityChange = async (callId: string, priority: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priority }),
-      });
-      if (result) {
-        const updated = mapDbCall(result);
-        setCalls(prev => prev.map(c => c.id === callId ? updated : c));
-        setSelectedCall(prev => prev?.id === callId ? updated : prev);
-        addToast(`Priority changed to ${priority}`, 'success');
-      }
-    } catch (err) {
-      console.error('Failed to change priority:', err);
-      addToast('Failed to change priority', 'error');
-    }
-  };
-
-  // ── Archive / Unarchive ────────────────────────────────────
-  const handleArchive = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/archive`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      // Remove from active calls, add to archived calls
-      setCalls((prev) => prev.filter((c) => c.id !== callId));
-      setArchivedCalls((prev) => [updatedCall, ...prev]);
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
-      console.error('Failed to archive call:', err);
-      addToast('Failed to archive call', 'error');
-    }
-  };
-
-  const handleUnarchive = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/unarchive`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      // Remove from archived calls, add back to active calls
-      setArchivedCalls((prev) => prev.filter((c) => c.id !== callId));
-      setCalls((prev) => [updatedCall, ...prev]);
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
-      console.error('Failed to unarchive call:', err);
-      addToast('Failed to unarchive call', 'error');
-    }
-  };
-
-  // (old archived-only delete removed — superseded by handleDeleteAnyCall)
-
-  const [isBulkArchiving, setIsBulkArchiving] = useState(false);
-
-  const handleBulkArchive = async () => {
-    setIsBulkArchiving(true);
-    try {
-      const result = await apiFetch<any>('/dispatch/calls/archive-bulk', {
-        method: 'POST',
-        body: JSON.stringify({ statuses: ['cleared', 'closed', 'cancelled'] }),
-      });
-      if (result.archived_count > 0) {
-        // Refresh both active and archived calls
-        await fetchData({ silent: true });
-        // Reset archived loaded flag so they get re-fetched when Archive tab is visited
-        setArchivedLoaded(false);
-        setArchivedCalls([]);
-      }
-    } catch (err) {
-      console.error('Failed to bulk archive calls:', err);
-      addToast('Failed to bulk archive calls', 'error');
-    } finally {
-      setIsBulkArchiving(false);
     }
   };
 
