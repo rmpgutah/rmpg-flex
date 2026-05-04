@@ -77,6 +77,25 @@ export function mapDbVehicle(row: Record<string, unknown>): Vehicle {
     stolen_status: row.stolen_status ? String(row.stolen_status) : undefined,
     stolen_date: row.stolen_date ? String(row.stolen_date) : undefined,
     recovery_date: row.recovery_date ? String(row.recovery_date) : undefined,
+    // F4 additions (2026-05-04) — previously dropped on load even though
+    // persisted in DB: insurance_expiry / NCIC stolen-vehicle entry # /
+    // detailed tow_location for impound chain. registration_state +
+    // owner_dl_number + owner_dob round out the registration block.
+    insurance_expiry: row.insurance_expiry ? String(row.insurance_expiry) : undefined,
+    ncic_entry_number: row.ncic_entry_number ? String(row.ncic_entry_number) : undefined,
+    tow_location: row.tow_location ? String(row.tow_location) : undefined,
+    registration_state: row.registration_state ? String(row.registration_state) : undefined,
+    owner_dl_number: row.owner_dl_number ? String(row.owner_dl_number) : undefined,
+    owner_dob: row.owner_dob ? String(row.owner_dob) : undefined,
+    primary_driver_name: row.primary_driver_name ? String(row.primary_driver_name) : undefined,
+    vehicle_use: row.vehicle_use ? String(row.vehicle_use) : undefined,
+    title_status: row.title_status ? String(row.title_status) : undefined,
+    exterior_condition: row.exterior_condition ? String(row.exterior_condition) : undefined,
+    interior_condition: row.interior_condition ? String(row.interior_condition) : undefined,
+    estimated_value: row.estimated_value ? String(row.estimated_value) : undefined,
+    window_tint: row.window_tint ? String(row.window_tint) : undefined,
+    modifications: row.modifications ? String(row.modifications) : undefined,
+    equipment_notes: row.equipment_notes ? String(row.equipment_notes) : undefined,
     flags: parseFlags(row.flags),
     notes: row.notes ? String(row.notes) : undefined,
     incident_ids: [],

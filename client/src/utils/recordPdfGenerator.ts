@@ -2336,7 +2336,10 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
     const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
     const thirdW = ffw / 3;
-    const gangVal = data.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(data.gang_affiliation.toLowerCase().trim()) ? data.gang_affiliation : '';
+    // Render gang_affiliation verbatim — explicit "None" from the dropdown
+    // is a legitimate operator choice that should appear on the PDF, not be
+    // silently filtered to blank (matched mapDbPerson load-side bug 2026-05-04).
+    const gangVal = data.gang_affiliation || '';
     const f1 = addFieldPair(doc, 'Gang Affiliation', gangVal, lx, y, thirdW);
     const f2 = addFieldPair(doc, 'Probation / Parole', probParole, lx + thirdW, y, thirdW * 2);
     y = Math.max(f1, f2);
@@ -2548,19 +2551,23 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       r.disposition || 'N/A',
       fmtDate(r.offense_date),
     ]);
+    // Column widths re-balanced 2026-05-04: LEVEL column was 10% wide
+    // which truncated "MISDEMEANOR" and caused the level text to bleed
+    // into the CASE # column on real records (visible in screenshots).
+    // New split: LEVEL 15%, OFFENSE 30%, DISPOSITION 15%, DATE 14%.
     y = addTableWithShading(
       doc,
       [
-        { label: 'TYPE', x: lx },
-        { label: 'OFFENSE', x: lx + crCw * 0.13 },
-        { label: 'LEVEL', x: lx + crCw * 0.45 },
-        { label: 'CASE #', x: lx + crCw * 0.55 },
-        { label: 'DISPOSITION', x: lx + crCw * 0.70 },
-        { label: 'DATE', x: lx + crCw * 0.87 },
+        { label: 'TYPE',        x: lx },
+        { label: 'OFFENSE',     x: lx + crCw * 0.13 },
+        { label: 'LEVEL',       x: lx + crCw * 0.43 },
+        { label: 'CASE #',      x: lx + crCw * 0.58 },
+        { label: 'DISPOSITION', x: lx + crCw * 0.72 },
+        { label: 'DATE',        x: lx + crCw * 0.87 },
       ],
       crRows,
       y,
-      [lx, lx + crCw * 0.13, lx + crCw * 0.45, lx + crCw * 0.55, lx + crCw * 0.70, lx + crCw * 0.87],
+      [lx, lx + crCw * 0.13, lx + crCw * 0.43, lx + crCw * 0.58, lx + crCw * 0.72, lx + crCw * 0.87],
       { sectionTitle: 'CRIMINAL HISTORY' },
     );
   }

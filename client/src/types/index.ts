@@ -198,6 +198,14 @@ export interface Property {
   utility_shutoffs?: string;
   known_hazards?: string;
   previous_incidents_count?: number;
+  // F5 additions (2026-05-04) — were silently dropped on load
+  alarm_system?: string;
+  secondary_contact_name?: string;
+  secondary_contact_phone?: string;
+  contact_email?: string;
+  opening_hours?: string;
+  closing_hours?: string;
+  patrol_frequency?: string;
 }
 
 // --- CAD / Dispatch ---
@@ -545,6 +553,17 @@ export interface Person {
   scar_description?: string;
   piercing_description?: string;
   distinguishing_features?: string;
+  // Extended contact + activity tracking (jail intake / FI cards)
+  email_secondary?: string;
+  date_last_seen?: string;
+  location_last_seen?: string;
+  alias_dob?: string;
+  home_phone?: string;
+  work_phone?: string;
+  // F3 jail-intake additions (2026-05-04)
+  voice_description?: string;
+  religion?: string;
+  dietary_restrictions?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
   photo_url?: string;
@@ -602,6 +621,14 @@ export interface Vehicle {
   equipment_notes?: string;
   registered_owner?: string;
   registration_state?: string;
+  // F4 additions (2026-05-04) — were silently dropped on load
+  insurance_expiry?: string;
+  ncic_entry_number?: string;
+  tow_location?: string;
+  owner_dl_number?: string;
+  owner_dob?: string;
+  primary_driver_name?: string;
+  vehicle_use?: string;
   flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];

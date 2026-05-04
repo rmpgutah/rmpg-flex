@@ -65,7 +65,15 @@ export function mapDbProperty(row: Record<string, unknown>): Property {
     parking_info: row.parking_info ? String(row.parking_info) : undefined,
     utility_shutoffs: row.utility_shutoffs ? String(row.utility_shutoffs) : undefined,
     known_hazards: row.known_hazards ? String(row.known_hazards) : undefined,
-  };
+    // F5 additions (2026-05-04) — were silently dropped on load
+    alarm_system: row.alarm_system ? String(row.alarm_system) : undefined,
+    secondary_contact_name: row.secondary_contact_name ? String(row.secondary_contact_name) : undefined,
+    secondary_contact_phone: row.secondary_contact_phone ? String(row.secondary_contact_phone) : undefined,
+    contact_email: row.contact_email ? String(row.contact_email) : undefined,
+    opening_hours: row.opening_hours ? String(row.opening_hours) : undefined,
+    closing_hours: row.closing_hours ? String(row.closing_hours) : undefined,
+    patrol_frequency: row.patrol_frequency ? String(row.patrol_frequency) : undefined,
+  } as Property;
 }
 
 // ── Helpers ──────────────────────────────────────
