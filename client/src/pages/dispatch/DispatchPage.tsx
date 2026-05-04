@@ -1,39 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus,
-  Send,
-  Navigation,
-  MapPin,
-  Clock,
-  Phone,
-  User,
-  MessageSquare,
-  Radio,
-  Eye,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Loader2,
-  FileText,
-  ChevronDown,
-  Link,
-  Archive,
-  RotateCcw,
-  Edit3,
-  Trash2,
-  Save,
-  X,
-  PlusCircle,
-  Shield,
-  Thermometer,
-  Undo2,
-  Pencil,
-  Search,
-  Building2,
-  Terminal,
-  Briefcase,
-  Copy,
+  Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
+  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
+  Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
@@ -74,30 +45,38 @@ import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
-import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
+import {
+  formatTime, formatElapsed, formatActivityDetails, type FilterTab,
+} from './utils/dispatchFormatters';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
 import { useDispatchNotesActions } from './hooks/useDispatchNotesActions';
 import { useDispatchMultiUnitActions } from './hooks/useDispatchMultiUnitActions';
-import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
+import {
+  announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent,
+  announceEscalation, announceCallUpdate, announceUnitAssignment,
+  announceCallArchived, announceTime, announceAllClear, announceAcknowledgment,
+  announceStatusChange, announceReturnVisit, announceServeComplete,
+  announceCallStack, announceShiftSummary, announceCourtDeadline,
+  announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
+} from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
 import {
-  WEATHER_OPTIONS,
-  LIGHTING_OPTIONS,
-  WEAPONS_OPTIONS,
-  LE_AGENCY_OPTIONS,
-  SCENE_SAFETY_OPTIONS,
-  DIRECTION_OPTIONS,
+  WEATHER_OPTIONS, LIGHTING_OPTIONS, WEAPONS_OPTIONS, LE_AGENCY_OPTIONS,
+  SCENE_SAFETY_OPTIONS, DIRECTION_OPTIONS,
 } from '../../utils/callOptions';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
-import { humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay, formatAddressDisplay, timeAgo } from '../../utils/statusLabels';
+import {
+  humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
+  formatAddressDisplay, timeAgo,
+} from '../../utils/statusLabels';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {

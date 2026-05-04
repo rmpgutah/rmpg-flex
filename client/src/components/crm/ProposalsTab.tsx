@@ -6,29 +6,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../RichTextArea';
 import {
-  Plus,
-  X,
-  Loader2,
-  FileText,
-  Send,
-  Eye,
-  CheckCircle,
-  XCircle,
-  DollarSign,
-  Calendar,
-  Save,
-  Edit3,
+  Plus, X, Loader2, FileText, Send, Eye, CheckCircle, XCircle, DollarSign,
+  Calendar, Save, Edit3,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
-import type {
-  CrmProposal,
-  CrmProposalTemplate,
-  ProposalStage,
-  CrmLead,
-  Client,
-} from '../../types';
+import type { CrmProposal, CrmProposalTemplate, ProposalStage, CrmLead, Client } from '../../types';
 
 // ── Stage colors ──────────────────────────────────────────
 const PROPOSAL_STAGE_CLASSES: Record<ProposalStage, string> = {

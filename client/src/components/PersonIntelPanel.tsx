@@ -6,17 +6,8 @@
 
 import { useState, useCallback } from 'react';
 import {
-  Search,
-  Loader2,
-  Shield,
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  Download,
-  User,
-  Scale,
-  FileText,
-  CheckCircle,
+  Search, Loader2, Shield, AlertTriangle, ChevronDown, ChevronRight, Download,
+  User, Scale, FileText, CheckCircle,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 

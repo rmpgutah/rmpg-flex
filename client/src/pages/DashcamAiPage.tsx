@@ -15,18 +15,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Activity,
-  AlertTriangle,
-  Camera,
-  Cpu,
-  Filter,
-  MapPin,
-  PlayCircle,
-  RefreshCw,
-  Shield,
-  Signal,
-  Video,
-  Zap,
+  Activity, AlertTriangle, Camera, Cpu, Filter, MapPin, PlayCircle, RefreshCw,
+  Shield, Signal, Video, Zap,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';

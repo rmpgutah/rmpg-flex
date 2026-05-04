@@ -5,34 +5,15 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  BookOpen,
-  Plus,
-  Search,
-  FileText,
-  ExternalLink,
-  Download,
-  Trash2,
-  Edit2,
-  Loader2,
-  X,
-  Upload,
-  Link as LinkIcon,
-  Star,
-  EyeOff,
-  FileVideo,
-  FileSpreadsheet,
-  FileImage,
-  File,
-  Printer,
+  BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2, Edit2,
+  Loader2, X, Upload, Link as LinkIcon, Star, EyeOff, FileVideo, FileSpreadsheet,
+  FileImage, File, Printer,
 } from 'lucide-react';
 import { BLANK_FORMS, downloadBlankForm } from '../utils/blankFormGenerator';
 import { useAuth } from '../context/AuthContext';
 import {
-  apiFetchCompanyDocuments,
-  apiCreateCompanyDocument,
-  apiUpdateCompanyDocument,
-  apiDeleteCompanyDocument,
-  apiUploadFiles,
+  apiFetchCompanyDocuments, apiCreateCompanyDocument, apiUpdateCompanyDocument,
+  apiDeleteCompanyDocument, apiUploadFiles,
 } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';

@@ -3,24 +3,14 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 // ─── Browser offline services (lazy-loaded, tree-shaken if unused) ───
 import { initOfflineDb, getConfig, setConfig, getQueueDepth } from '../services/offlineDb';
 import {
-  createConnectivityMonitor,
-  getConnectivityMonitor,
-  isLikelyOnline,
+  createConnectivityMonitor, getConnectivityMonitor, isLikelyOnline,
 } from '../services/connectivityMonitor';
 import {
-  startSyncSchedule,
-  stopSyncSchedule,
-  pullAll,
-  pushAll,
-  onSyncEvent,
+  startSyncSchedule, stopSyncSchedule, pullAll, pushAll, onSyncEvent,
 } from '../services/offlineSync';
 import {
-  validatePin as browserValidatePin,
-  generatePinForUser as browserGeneratePin,
-  hasActiveSession,
-  startExpiryTimer,
-  stopExpiryTimer,
-  onPinEvent,
+  validatePin as browserValidatePin, generatePinForUser as browserGeneratePin,
+  hasActiveSession, startExpiryTimer, stopExpiryTimer, onPinEvent,
 } from '../services/offlinePin';
 
 // Access window.electron safely (only present in Electron desktop app)

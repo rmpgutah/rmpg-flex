@@ -7,20 +7,8 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Monitor,
-  Navigation,
-  Eye,
-  CheckCircle,
-  MapPin,
-  Clock,
-  Send,
-  AlertTriangle,
-  MessageSquare,
-  Shield,
-  FileText,
-  Loader2,
-  X,
-  ChevronRight,
+  Monitor, Navigation, Eye, CheckCircle, MapPin, Clock, Send, AlertTriangle,
+  MessageSquare, Shield, FileText, Loader2, X, ChevronRight,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus } from '../types';
 import { apiFetch } from '../hooks/useApi';

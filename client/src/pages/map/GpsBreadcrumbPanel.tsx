@@ -1,14 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  History,
-  Play,
-  Pause,
-  SkipForward,
-  SkipBack,
-  Search,
-  X,
-  Loader2,
-  Gauge,
+  History, Play, Pause, SkipForward, SkipBack, Search, X, Loader2, Gauge,
   AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';

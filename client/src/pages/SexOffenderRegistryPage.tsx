@@ -8,32 +8,13 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  Search,
-  Loader2,
-  Plus,
-  ChevronLeft,
-  ChevronRight,
-  X,
-  ShieldAlert,
-  ShieldCheck,
-  ShieldOff,
-  MapPin,
-  Briefcase,
-  Car,
-  FileText,
-  Clock,
-  User,
-  CheckCircle,
-  XCircle,
-  Edit2,
-  Link2,
-  Save,
-  Upload,
-  UserX,
-  Hash,
-  Fingerprint,
+  Search, Loader2, Plus, ChevronLeft, ChevronRight, X, ShieldAlert, ShieldCheck,
+  ShieldOff, MapPin, Briefcase, Car, FileText, Clock, User, CheckCircle, XCircle,
+  Edit2, Link2, Save, Upload, UserX, Hash, Fingerprint,
 } from 'lucide-react';
-import type { SexOffenderRecord, SORAddress, SOROffense, SORVehicle, SORTier, SORStatus } from '../types';
+import type {
+  SexOffenderRecord, SORAddress, SOROffense, SORVehicle, SORTier, SORStatus,
+} from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import SplitPanel from '../components/SplitPanel';

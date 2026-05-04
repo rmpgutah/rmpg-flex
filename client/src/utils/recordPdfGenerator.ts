@@ -9,49 +9,20 @@ import QRCode from 'qrcode';
 import { isPast, isWithinDays } from './dateUtils';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import {
-  addConfidentialWatermark,
-  openAutoSection,
-  closeAutoSection,
-  addFieldPair,
-  addCheckboxField,
-  addStackedSignatures,
-  addFlagBadges,
-  addCautionBlock,
-  addTableWithShading,
-  addThreeColumnFields,
-  addFormattedText,
-  addNarrativeSection,
-  addPageFooter,
-  checkPageBreak,
-  setGenerationTimestamp,
-  fetchPdfBranding,
-  setActiveBranding,
-  loadPdfAssets,
-  setActiveFormKey,
-  setActiveCaseNumber,
-  addAttachmentsSection,
-  addImageToPage,
-  formSectionPageBreak,
-  sanitizePdfText,
-  displayStatus,
-  finalizePoliceReport,
-  type PersonIdPayload,
+  addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
+  addCheckboxField, addStackedSignatures, addFlagBadges, addCautionBlock,
+  addTableWithShading, addThreeColumnFields, addFormattedText, addNarrativeSection,
+  addPageFooter, checkPageBreak, setGenerationTimestamp, fetchPdfBranding,
+  setActiveBranding, loadPdfAssets, setActiveFormKey, setActiveCaseNumber,
+  addAttachmentsSection, addImageToPage, formSectionPageBreak, sanitizePdfText,
+  displayStatus, finalizePoliceReport, type PersonIdPayload,
   type FormMetadataPayload,
 } from './pdfGenerator';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale } from './pdfGenerator';
 import {
-  LAYOUT,
-  SPACING,
-  FONT,
-  COLOR,
-  BORDER,
-  PDF_VALUE_FONT,
-  getContentWidth,
-  getFullFieldWidth,
-  getLeftX,
-  getRightColumnX,
-  getHalfFieldWidth,
+  LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
+  getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth,
 } from './pdfTokens';
 import { drawNibrsHeader, drawFormSection } from './pdfFormHelpers';
 

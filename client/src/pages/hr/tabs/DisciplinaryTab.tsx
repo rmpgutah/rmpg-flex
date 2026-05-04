@@ -6,21 +6,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Shield,
-  Star,
-  Plus,
-  Pencil,
-  Trash2,
-  List,
-  Clock,
-  Loader2,
-  ChevronDown,
-  ChevronUp,
-  AlertTriangle,
+  Shield, Star, Plus, Pencil, Trash2, List, Clock, Loader2, ChevronDown,
+  ChevronUp, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
-import type { DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity, DisciplinaryStatus } from '../../../types';
+import type {
+  DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity, DisciplinaryStatus,
+} from '../../../types';
 import { SEVERITY_COLORS, DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import DisciplinaryFormModal from '../modals/DisciplinaryFormModal';
 import ExportButton from '../../../components/ExportButton';

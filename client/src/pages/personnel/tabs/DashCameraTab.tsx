@@ -6,18 +6,8 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Car,
-  Search,
-  Cpu,
-  Zap,
-  AlertTriangle,
-  MapPin,
-  Gauge,
-  Video,
-  Clock,
-  RefreshCw,
-  ExternalLink,
-  Loader2,
+  Car, Search, Cpu, Zap, AlertTriangle, MapPin, Gauge, Video, Clock, RefreshCw,
+  ExternalLink, Loader2,
 } from 'lucide-react';
 import type { DashcamEvent, CpgDeviceMapping } from '../../../types';
 import { DASHCAM_EVENT_COLORS } from '../utils/personnelConstants';

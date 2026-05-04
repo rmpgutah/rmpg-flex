@@ -6,37 +6,15 @@
 
 import jsPDF from 'jspdf';
 import {
-  hexToRgb,
-  openAutoSection,
-  closeAutoSection,
-  addFieldPair,
-  addPageFooter,
-  addConfidentialWatermark,
-  addWrappedText,
-  addTableWithShading,
-  checkPageBreak,
-  setGenerationTimestamp,
-  fetchPdfBranding,
-  setActiveBranding,
-  setActiveFormKey,
-  setActiveCaseNumber,
-  getActiveBranding,
-  loadPdfAssets,
-  sanitizePdfText,
-  addSignatureBlock,
-  wordWrapText,
+  hexToRgb, openAutoSection, closeAutoSection, addFieldPair, addPageFooter,
+  addConfidentialWatermark, addWrappedText, addTableWithShading, checkPageBreak,
+  setGenerationTimestamp, fetchPdfBranding, setActiveBranding, setActiveFormKey,
+  setActiveCaseNumber, getActiveBranding, loadPdfAssets, sanitizePdfText,
+  addSignatureBlock, wordWrapText,
 } from './pdfGenerator';
 import {
-  LAYOUT,
-  SPACING,
-  FONT,
-  COLOR,
-  BORDER,
-  getContentWidth,
-  getFullFieldWidth,
-  getLeftX,
-  getRightColumnX,
-  getHalfFieldWidth,
+  LAYOUT, SPACING, FONT, COLOR, BORDER, getContentWidth, getFullFieldWidth,
+  getLeftX, getRightColumnX, getHalfFieldWidth,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { FORM_NUMBERS } from './pdfAssets';

@@ -1,23 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
-  Car,
-  Shield,
-  MapPin,
-  Loader2,
-  Trash2,
-  Pencil,
-  FileText,
-  ExternalLink,
-  X,
-  Phone,
-  AlertTriangle,
-  Hash,
-  Calendar,
-  Archive,
-  RotateCcw,
-  ArrowUpDown,
-  Filter,
+  Search, Car, Shield, MapPin, Loader2, Trash2, Pencil, FileText, ExternalLink,
+  X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -31,7 +15,10 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 import type { VehicleFormData } from '../../components/VehicleFormModal';
-import { titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType, cleanDisplay } from '../../utils/statusLabels';
+import {
+  titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType,
+  cleanDisplay,
+} from '../../utils/statusLabels';
 
 // ── DB Mapper ──────────────────────────────────────
 

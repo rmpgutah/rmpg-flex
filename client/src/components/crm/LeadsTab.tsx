@@ -6,27 +6,9 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../RichTextArea';
 import {
-  Search,
-  Plus,
-  RefreshCw,
-  X,
-  ExternalLink,
-  Save,
-  Loader2,
-  CheckSquare,
-  Square,
-  ArrowRight,
-  UserPlus,
-  XCircle,
-  FileText,
-  Phone,
-  Mail,
-  MapPin,
-  Building2,
-  Clock,
-  DollarSign,
-  Target,
-  Send,
+  Search, Plus, RefreshCw, X, ExternalLink, Save, Loader2, CheckSquare, Square,
+  ArrowRight, UserPlus, XCircle, FileText, Phone, Mail, MapPin, Building2, Clock,
+  DollarSign, Target, Send,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { formatPhoneInput } from '../../utils/formatters';
@@ -34,11 +16,7 @@ import { useToast } from '../ToastProvider';
 import PanelTitleBar from '../PanelTitleBar';
 import ScraperAdminPanel from './ScraperAdminPanel';
 import type {
-  CrmLead,
-  CrmLeadActivity,
-  PipelineSummary,
-  LeadScrapeSource,
-  PipelineStage,
+  CrmLead, CrmLeadActivity, PipelineSummary, LeadScrapeSource, PipelineStage,
   LeadSource,
 } from '../../types';
 

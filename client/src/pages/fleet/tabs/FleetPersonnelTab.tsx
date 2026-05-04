@@ -1,23 +1,8 @@
 import { useState, useEffect } from 'react';
 import RichTextArea from '../../../components/RichTextArea';
 import {
-  Users,
-  Shield,
-  Clock,
-  Phone,
-  Mail,
-  MapPin,
-  Calendar,
-  Award,
-  UserPlus,
-  UserMinus,
-  Plus,
-  Trash2,
-  Radio,
-  Briefcase,
-  ArrowRight,
-  FileText,
-  RefreshCw,
+  Users, Shield, Clock, Phone, Mail, MapPin, Calendar, Award, UserPlus,
+  UserMinus, Plus, Trash2, Radio, Briefcase, ArrowRight, FileText, RefreshCw,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetPersonnelData, FleetPersonnelNote, FleetAssignment, Unit } from '../../../types';

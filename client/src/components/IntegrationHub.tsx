@@ -5,14 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  MapPin,
-  Briefcase,
-  Shield,
-  Microscope,
-  Wifi,
-  RefreshCw,
-  ArrowRight,
-  Settings,
+  MapPin, Briefcase, Shield, Microscope, Wifi, RefreshCw, ArrowRight, Settings,
 } from 'lucide-react';
 import type { IntegrationStatus } from '../types';
 import PanelTitleBar from './PanelTitleBar';

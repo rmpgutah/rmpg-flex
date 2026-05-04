@@ -1,18 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  Plus,
-  Search,
-  ClipboardList,
-  MapPin,
-  User,
-  FileText,
-  Archive,
-  RotateCcw,
-  X,
-  Save,
-  Loader2,
-  AlertTriangle,
+  Plus, Search, ClipboardList, MapPin, User, FileText, Archive, RotateCcw, X,
+  Save, Loader2, AlertTriangle,
 } from 'lucide-react';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';

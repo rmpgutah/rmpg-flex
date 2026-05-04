@@ -12,28 +12,9 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import { formatPhoneInput } from '../utils/formatters';
 import {
-  Gavel,
-  Search,
-  Plus,
-  Calendar,
-  Clock,
-  User,
-  X,
-  Save,
-  Loader2,
-  AlertTriangle,
-  CheckCircle,
-  FileText,
-  Scale,
-  ChevronLeft,
-  ChevronRight,
-  Shield,
-  DollarSign,
-  BookOpen,
-  AlertCircle,
-  Check,
-  RefreshCw,
-  Users,
+  Gavel, Search, Plus, Calendar, Clock, User, X, Save, Loader2, AlertTriangle,
+  CheckCircle, FileText, Scale, ChevronLeft, ChevronRight, Shield, DollarSign,
+  BookOpen, AlertCircle, Check, RefreshCw, Users,
 } from 'lucide-react';
 import type { CourtEvent, CourtEventType, CourtEventStatus, CourtOutcome } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';

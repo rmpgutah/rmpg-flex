@@ -8,14 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  TrendingUp,
-  BarChart3,
-  Clock,
-  MapPin,
-  Users,
-  AlertTriangle,
-  RefreshCw,
-  Loader2,
+  TrendingUp, BarChart3, Clock, MapPin, Users, AlertTriangle, RefreshCw, Loader2,
   Calendar,
 } from 'lucide-react';
 import {

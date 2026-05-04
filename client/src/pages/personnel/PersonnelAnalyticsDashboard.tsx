@@ -1,18 +1,13 @@
 import { useMemo, useState, useEffect } from 'react';
 import {
-  Users,
-  UserCheck,
-  Clock,
-  Award,
-  AlertTriangle,
-  TrendingUp,
-  GraduationCap,
+  Users, UserCheck, Clock, Award, AlertTriangle, TrendingUp, GraduationCap,
   Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { dateToLocalYMD } from '../../utils/dateUtils';
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area,
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  AreaChart, Area,
 } from 'recharts';
 import type { Credential, TimeEntry, TrainingRecord } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';

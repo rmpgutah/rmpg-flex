@@ -7,22 +7,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
-  ShieldAlert,
-  ShieldCheck,
-  Lock,
-  Key,
-  Clock,
-  ToggleLeft,
-  ToggleRight,
-  Save,
-  AlertTriangle,
-  CheckCircle,
-  Shield,
-  Eye,
-  Ban,
-  Loader2,
-  Fingerprint,
-  MapPin,
+  ShieldAlert, ShieldCheck, Lock, Key, Clock, ToggleLeft, ToggleRight, Save,
+  AlertTriangle, CheckCircle, Shield, Eye, Ban, Loader2, Fingerprint, MapPin,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 

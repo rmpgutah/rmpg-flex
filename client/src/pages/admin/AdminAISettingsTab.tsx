@@ -1,15 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Brain,
-  Server,
-  Zap,
-  Activity,
-  Shield,
-  LayoutDashboard,
-  MessageSquareCode,
-  SlidersHorizontal,
-  FlaskConical,
-  Settings2,
+  Brain, Server, Zap, Activity, Shield, LayoutDashboard, MessageSquareCode,
+  SlidersHorizontal, FlaskConical, Settings2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { AIConfig, ProviderInfo, UsageStats } from './ai/AISharedComponents';

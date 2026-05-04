@@ -6,15 +6,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from './RichTextArea';
 import {
-  Plus,
-  Trash2,
-  Pencil,
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  Save,
-  X,
-  Gavel,
+  Plus, Trash2, Pencil, ChevronDown, ChevronRight, Loader2, Save, X, Gavel,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';

@@ -5,24 +5,10 @@
 // Uses the useShiftPlanning() hook for all state/CRUD.
 // ============================================================
 
-import {useState, useMemo, useEffect} from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
-  Calendar,
-  Plus,
-  Trash2,
-  Copy,
-  Play,
-  CheckCircle,
-  Archive,
-  Users,
-  MapPin,
-  ChevronRight,
-  X,
-  Shield,
-  BarChart3,
-  Save,
-  AlertTriangle,
-  ArrowRightLeft,
+  Calendar, Plus, Trash2, Copy, Play, CheckCircle, Archive, Users, MapPin,
+  ChevronRight, X, Shield, BarChart3, Save, AlertTriangle, ArrowRightLeft,
   TrendingUp,
 } from 'lucide-react';
 import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';

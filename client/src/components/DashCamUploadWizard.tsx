@@ -7,18 +7,8 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import RichTextArea from './RichTextArea';
 import {
-  Upload,
-  X,
-  ChevronDown,
-  ChevronRight,
-  Check,
-  AlertCircle,
-  Film,
-  Plus,
-  ArrowLeft,
-  ArrowRight,
-  Loader2,
-  Copy,
+  Upload, X, ChevronDown, ChevronRight, Check, AlertCircle, Film, Plus,
+  ArrowLeft, ArrowRight, Loader2, Copy,
 } from 'lucide-react';
 
 // ── Types ───────────────────────────────────────────────────

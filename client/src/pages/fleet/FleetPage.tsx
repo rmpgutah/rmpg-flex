@@ -1,20 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
-  Car,
-  Plus,
-  Wrench,
-  Search,
-  Gauge,
-  AlertTriangle,
-  CheckCircle,
-  Calendar,
-  Shield,
-  Tag,
-  Radio,
-  Archive,
-  DollarSign,
-  Fuel,
+  Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
+  Tag, Radio, Archive, DollarSign, Fuel,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
@@ -38,8 +26,8 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import ExportButton from '../../components/ExportButton';
 import MaintenanceMonitor from './components/MaintenanceMonitor';
 import type {
-  FleetVehicle, FleetMaintenance, FleetVehicleStatus,
-  FleetFuelLog, FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
+  FleetVehicle, FleetMaintenance, FleetVehicleStatus, FleetFuelLog,
+  FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
   FleetPersonnelData,
 } from '../../types';
 

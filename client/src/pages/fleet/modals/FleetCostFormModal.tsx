@@ -14,15 +14,7 @@
 
 import React, { useEffect, useId, useState } from 'react';
 import RichTextArea from '../../../components/RichTextArea';
-import {
-  Save,
-  X as XIcon,
-  AlertTriangle,
-  CreditCard,
-  Shield,
-  Wrench,
-  Zap,
-} from 'lucide-react';
+import { Save, X as XIcon, AlertTriangle, CreditCard, Shield, Wrench, Zap } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 
 export type CostCategory = 'loan' | 'insurance' | 'accessory' | 'utility';

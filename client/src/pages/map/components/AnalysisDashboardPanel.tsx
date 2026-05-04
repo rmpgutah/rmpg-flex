@@ -7,16 +7,8 @@
 
 import React from 'react';
 import {
-  X,
-  Brain,
-  RefreshCw,
-  AlertTriangle,
-  MapPin,
-  Scale,
-  TrendingUp,
-  TrendingDown,
-  Loader2,
-  ChevronRight,
+  X, Brain, RefreshCw, AlertTriangle, MapPin, Scale, TrendingUp, TrendingDown,
+  Loader2, ChevronRight,
 } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────

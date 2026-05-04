@@ -1,33 +1,9 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  AlertTriangle,
-  Plus,
-  Search,
-  Edit,
-  Trash2,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Loader2,
-  Archive,
-  RotateCcw,
-  MapPin,
-  User,
-  Gavel,
-  ChevronDown,
-  X,
-  Scale,
-  Radar,
-  PlayCircle,
-  History,
-  Globe,
-  Shield,
-  FileText,
-  Activity,
-  Zap,
-  Printer,
-  Download,
+  AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
+  Loader2, Archive, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
+  PlayCircle, History, Globe, Shield, FileText, Activity, Zap, Printer, Download,
   UserCheck,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -47,15 +23,13 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import EmptyState from '../components/EmptyState';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
-import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
+import {
+  downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf,
+} from '../utils/recordPdfGenerator';
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
 import CollapsibleSection from '../components/CollapsibleSection';
 import {
-  priorityBucket,
-  priorityChipClass,
-  formatAge,
-  freshnessClass,
-  freshnessIcon,
+  priorityBucket, priorityChipClass, formatAge, freshnessClass, freshnessIcon,
   stateFromSource,
 } from '../utils/warrantListHelpers';
 import { buildWarrantPacketPdf } from '../utils/warrantPacket';

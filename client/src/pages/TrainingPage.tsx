@@ -7,33 +7,18 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  GraduationCap,
-  Plus,
-  Search,
-  CheckCircle,
-  AlertTriangle,
-  Clock,
-  BookOpen,
-  Loader2,
-  X,
-  Edit2,
-  Trash2,
-  Archive,
-  Users,
-  Shield,
-  Calendar,
-  BarChart3,
-  Target,
-  FileText,
-  ChevronRight,
-  RefreshCw,
+  GraduationCap, Plus, Search, CheckCircle, AlertTriangle, Clock, BookOpen,
+  Loader2, X, Edit2, Trash2, Archive, Users, Shield, Calendar, BarChart3, Target,
+  FileText, ChevronRight, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { formatDate, parseTimestamp } from '../utils/dateUtils';
-import type { TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus } from '../types';
+import type {
+  TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus,
+} from '../types';
 
 // ── Constants ──────────────────────────────────────────────
 const CATEGORIES: TrainingCategory[] = [

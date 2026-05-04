@@ -1,22 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  Gavel,
-  Plus,
-  Search,
-  Loader2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  User,
-  FileText,
-  Scale,
-  X,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  XCircle,
+  Gavel, Plus, Search, Loader2, ChevronDown, ChevronLeft, ChevronRight, Calendar,
+  User, FileText, Scale, X, AlertTriangle, CheckCircle, Clock, XCircle,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
