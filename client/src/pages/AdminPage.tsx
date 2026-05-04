@@ -29,6 +29,7 @@ import {
   ClipboardList,
   Brain,
   BarChart3,
+  Trophy,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -70,6 +71,7 @@ import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 import AdminAISettingsTab from './admin/AdminAISettingsTab';
 import AdminGodModeTab from './admin/AdminGodModeTab';
 import AdminDashboardTab from './admin/AdminDashboardTab';
+import AdminCompetitiveTab from './admin/AdminCompetitiveTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -234,7 +236,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'dashboard' | 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'evidence';
+type TabId = 'dashboard' | 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'evidence' | 'competitive';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -248,7 +250,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['dashboard', 'users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode'];
+  const VALID_TABS = ['dashboard', 'users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'competitive'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -688,6 +690,12 @@ export default function AdminPage() {
       ],
     },
     {
+      category: 'Reference',
+      tabs: [
+        { id: 'competitive', label: 'Competitive Analysis', icon: Trophy },
+      ],
+    },
+    {
       category: 'God Mode',
       tabs: [
         { id: 'godmode', label: 'God Mode', icon: Shield },
@@ -1055,6 +1063,10 @@ export default function AdminPage() {
 
         {activeTab === 'godmode' && (
           <AdminGodModeTab />
+        )}
+
+        {activeTab === 'competitive' && (
+          <AdminCompetitiveTab />
         )}
 
         {activeTab === 'audit' && (
