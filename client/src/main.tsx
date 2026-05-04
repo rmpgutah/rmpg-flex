@@ -9,8 +9,10 @@ import { BrowserRouter } from 'react-router-dom';
 import App from './App';
 import './index.css';
 import { bootstrapThemePreference } from './utils/theme';
+import { setupNativeAppShell } from './utils/nativeAppShell';
 
 bootstrapThemePreference();
+setupNativeAppShell();
 
 // Signals that the main entry bundle executed successfully.
 (window as any).__RMPG_BOOTSTRAPPED__ = true;
