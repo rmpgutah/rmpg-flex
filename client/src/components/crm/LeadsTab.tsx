@@ -9,12 +9,10 @@ import {
   Search,
   Plus,
   RefreshCw,
-  Filter,
   X,
   ExternalLink,
   Save,
   Loader2,
-  ChevronRight,
   CheckSquare,
   Square,
   ArrowRight,
@@ -28,9 +26,7 @@ import {
   Clock,
   DollarSign,
   Target,
-  MessageSquare,
   Send,
-  AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { formatPhoneInput } from '../../utils/formatters';

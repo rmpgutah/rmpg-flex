@@ -7,9 +7,22 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Video, Plus, Edit3, Trash2, AlertTriangle, Camera, Search,
-  Play, HardDrive, Film, Shield, Clock, Eye, CheckSquare, Square,
-  Upload, Loader2,
+  Video,
+  Plus,
+  Edit3,
+  Trash2,
+  AlertTriangle,
+  Camera,
+  Search,
+  Play,
+  HardDrive,
+  Film,
+  Shield,
+  Clock,
+  CheckSquare,
+  Square,
+  Upload,
+  Loader2,
 } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo, CameraStatus, VideoClassification } from '../../../types';
 import { CAMERA_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS, VIDEO_CLASSIFICATION_COLORS } from '../utils/personnelConstants';

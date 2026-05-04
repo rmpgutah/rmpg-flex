@@ -9,9 +9,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  ClipboardCheck, Search, Plus, Clock, User, FileText,
-  X, Save, Loader2, CheckCircle, AlertTriangle, Send, RotateCcw,
-  Zap, Calendar, RefreshCw,
+  ClipboardCheck,
+  Search,
+  Plus,
+  User,
+  X,
+  Save,
+  Loader2,
+  CheckCircle,
+  AlertTriangle,
+  Send,
+  RotateCcw,
+  Zap,
+  Calendar,
+  RefreshCw,
 } from 'lucide-react';
 import type { DailyActivityReport, DARStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';

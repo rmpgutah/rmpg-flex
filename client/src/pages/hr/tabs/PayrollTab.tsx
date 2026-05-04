@@ -5,9 +5,23 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  DollarSign, Calendar, Plus, RefreshCw, Loader2, Users, Clock,
-  ChevronDown, ChevronRight, Edit3, Trash2, Check, X, AlertTriangle,
-  Banknote, TrendingUp, FileText, Download,
+  DollarSign,
+  Calendar,
+  Plus,
+  RefreshCw,
+  Loader2,
+  Users,
+  Clock,
+  ChevronRight,
+  Edit3,
+  Trash2,
+  Check,
+  X,
+  AlertTriangle,
+  Banknote,
+  TrendingUp,
+  FileText,
+  Download,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import IconButton from '../../../components/IconButton';

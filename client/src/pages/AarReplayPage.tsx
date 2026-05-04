@@ -15,8 +15,16 @@
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  ArrowLeft, Camera, Clock, FileText, MapPin, Shield, AlertTriangle,
-  Activity, Cpu, Hash, Video,
+  ArrowLeft,
+  Clock,
+  FileText,
+  MapPin,
+  Shield,
+  AlertTriangle,
+  Activity,
+  Cpu,
+  Hash,
+  Video,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import AarReplayMap from '../components/AarReplayMap';

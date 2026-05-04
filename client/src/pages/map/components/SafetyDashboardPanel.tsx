@@ -7,7 +7,6 @@
 import React, { useState } from 'react';
 import {
   X,
-  ChevronDown,
   ChevronRight,
   TrendingUp,
   TrendingDown,

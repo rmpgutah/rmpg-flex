@@ -15,11 +15,20 @@ import { getTypeCode, formatIncidentType, type PdfReportType } from './caseNumbe
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import {
-  COLOR, FONT, BORDER, SPACING, LAYOUT,
+  COLOR,
+  FONT,
+  BORDER,
+  SPACING,
+  LAYOUT,
   PDF_VALUE_FONT,
-  getContentWidth, getHalfWidth, getFullFieldWidth,
-  getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth, getQuarterWidth,
-  getGridStartX, getGridContentWidth,
+  getContentWidth,
+  getFullFieldWidth,
+  getLeftX,
+  getRightColumnX,
+  getHalfFieldWidth,
+  getThirdWidth,
+  getGridStartX,
+  getGridContentWidth,
 } from './pdfTokens';
 import {
   drawNibrsHeader,

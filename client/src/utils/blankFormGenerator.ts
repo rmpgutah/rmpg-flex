@@ -7,9 +7,15 @@
 import jsPDF from 'jspdf';
 import { FORM_NUMBERS } from './pdfAssets';
 import {
-  COLOR, FONT, BORDER, SPACING, LAYOUT,
-  getContentWidth, getLeftX, getRightColumnX,
-  getHalfFieldWidth, getFullFieldWidth,
+  COLOR,
+  FONT,
+  BORDER,
+  LAYOUT,
+  getContentWidth,
+  getLeftX,
+  getRightColumnX,
+  getHalfFieldWidth,
+  getFullFieldWidth,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { openAutoSection, closeAutoSection, addCheckboxField, addConfidentialWatermark, addPageFooter, setActiveCaseNumber, setActiveFormKey } from './pdfGenerator';

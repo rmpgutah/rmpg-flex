@@ -3,10 +3,7 @@
 // ============================================================
 
 import { useState, useMemo } from 'react';
-import {
-  MapPinned, Plus, AlertTriangle, Users, Calendar, CheckCircle,
-  Loader2,
-} from 'lucide-react';
+import { MapPinned, Plus, AlertTriangle, Loader2 } from 'lucide-react';
 import type { Deployment, CoverageGap, DeploymentStatus } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';

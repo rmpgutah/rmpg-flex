@@ -1,15 +1,4 @@
-import {
-  Phone,
-  Radio,
-  MapPin,
-  CheckCircle,
-  XCircle,
-  FileText,
-  User,
-  Clock,
-  MessageSquare,
-  AlertTriangle,
-} from 'lucide-react';
+import { Clock } from 'lucide-react';
 import type { TimelineEntry } from '../types';
 
 interface CallTimelineProps {

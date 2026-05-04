@@ -15,8 +15,13 @@
 import React, { useEffect, useId, useState } from 'react';
 import RichTextArea from '../../../components/RichTextArea';
 import {
-  DollarSign, Calendar, Save, X as XIcon, AlertTriangle,
-  CreditCard, Shield, Wrench, Zap,
+  Save,
+  X as XIcon,
+  AlertTriangle,
+  CreditCard,
+  Shield,
+  Wrench,
+  Zap,
 } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 

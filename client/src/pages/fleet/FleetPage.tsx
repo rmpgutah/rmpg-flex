@@ -1,8 +1,20 @@
 import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
-  Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle,
-  Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2, DollarSign, Fuel,
+  Car,
+  Plus,
+  Wrench,
+  Search,
+  Gauge,
+  AlertTriangle,
+  CheckCircle,
+  Calendar,
+  Shield,
+  Tag,
+  Radio,
+  Archive,
+  DollarSign,
+  Fuel,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';

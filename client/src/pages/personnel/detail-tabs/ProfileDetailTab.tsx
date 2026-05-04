@@ -5,8 +5,13 @@
 // ============================================================
 
 import {
-  User, Phone, Mail, MapPin, Briefcase, Hash, AlertTriangle,
-  Heart, Droplet, FileText, Award, Calendar, Paperclip, Radio, Shield,
+  User,
+  Phone,
+  Briefcase,
+  AlertTriangle,
+  Heart,
+  Award,
+  Paperclip,
   Car,
 } from 'lucide-react';
 import type { Credential } from '../../../types';

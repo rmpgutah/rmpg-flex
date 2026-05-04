@@ -4,8 +4,13 @@
 
 import { useMemo } from 'react';
 import {
-  GraduationCap, Plus, CheckCircle, Clock, BookOpen, AlertTriangle,
-  Award, Hash, Calendar, Loader2,
+  GraduationCap,
+  Plus,
+  CheckCircle,
+  Clock,
+  BookOpen,
+  AlertTriangle,
+  Loader2,
 } from 'lucide-react';
 import type { TrainingRecord } from '../../../types';
 import { TRAINING_CATEGORY_COLORS } from '../utils/personnelConstants';

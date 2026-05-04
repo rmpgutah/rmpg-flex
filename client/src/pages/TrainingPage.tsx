@@ -7,10 +7,26 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  GraduationCap, Plus, Search, CheckCircle, AlertTriangle, Clock,
-  BookOpen, Loader2, X, Edit2, Trash2, Archive, Users, Shield,
-  Calendar, BarChart3, Target, Award, FileText, ChevronDown,
-  ChevronRight, RefreshCw, Filter,
+  GraduationCap,
+  Plus,
+  Search,
+  CheckCircle,
+  AlertTriangle,
+  Clock,
+  BookOpen,
+  Loader2,
+  X,
+  Edit2,
+  Trash2,
+  Archive,
+  Users,
+  Shield,
+  Calendar,
+  BarChart3,
+  Target,
+  FileText,
+  ChevronRight,
+  RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import IconButton from '../components/IconButton';

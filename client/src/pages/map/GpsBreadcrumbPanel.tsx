@@ -8,11 +8,7 @@ import {
   Search,
   X,
   Loader2,
-  ChevronDown,
-  ChevronUp,
-  MapPin,
   Gauge,
-  Navigation2,
   AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';

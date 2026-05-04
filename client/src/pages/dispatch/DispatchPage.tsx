@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 
 import { useNavigate } from 'react-router-dom';
 import {
   Plus,
-  Filter,
   Send,
   Navigation,
   MapPin,
@@ -11,7 +10,6 @@ import {
   User,
   MessageSquare,
   Radio,
-  ArrowRight,
   Eye,
   CheckCircle,
   XCircle,
@@ -30,7 +28,6 @@ import {
   Shield,
   Thermometer,
   Undo2,
-  Edit,
   Pencil,
   Search,
   Building2,

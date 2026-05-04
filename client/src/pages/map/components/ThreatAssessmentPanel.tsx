@@ -14,7 +14,6 @@ import {
   Navigation,
   Shield,
   Loader2,
-  ChevronDown,
   ChevronRight,
 } from 'lucide-react';
 

@@ -2,9 +2,19 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import { formatPhoneInput } from '../../utils/formatters';
 import {
-  Search, Building2, MapPin, Phone, Mail, Globe, Trash2, Pencil,
-  ExternalLink, X, Archive, RotateCcw, Users, Briefcase, Hash,
-  ArrowUpDown, Filter, Shield,
+  Search,
+  MapPin,
+  Phone,
+  Mail,
+  Globe,
+  Trash2,
+  Pencil,
+  X,
+  Users,
+  Briefcase,
+  ArrowUpDown,
+  Filter,
+  Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';

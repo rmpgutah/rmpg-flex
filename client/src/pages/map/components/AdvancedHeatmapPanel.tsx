@@ -19,7 +19,6 @@ import {
   Pause,
   RotateCw,
   Check,
-  Minus,
   Zap,
 } from 'lucide-react';
 import type {

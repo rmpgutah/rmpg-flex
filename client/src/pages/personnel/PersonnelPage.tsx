@@ -1,6 +1,13 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Users, Search, X, Clock, AlertTriangle, BarChart3, Loader2, Plus, Archive, RotateCcw,
+  Users,
+  Search,
+  X,
+  Clock,
+  AlertTriangle,
+  Loader2,
+  Plus,
+  Archive,
 } from 'lucide-react';
 import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';
 import PanelTitleBar from '../../components/PanelTitleBar';

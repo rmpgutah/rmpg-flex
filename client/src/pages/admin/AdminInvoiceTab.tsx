@@ -1,9 +1,25 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../../components/RichTextArea';
 import {
-  FileText, Plus, ArrowLeft, Send, DollarSign, XCircle, Loader2, Trash2,
-  CheckCircle, AlertCircle, Clock, RefreshCw, Download, Printer, Hash,
-  CreditCard, Calendar, ChevronRight, Edit, Zap, Eye,
+  FileText,
+  Plus,
+  ArrowLeft,
+  Send,
+  DollarSign,
+  XCircle,
+  Loader2,
+  Trash2,
+  CheckCircle,
+  AlertCircle,
+  Clock,
+  RefreshCw,
+  Download,
+  Printer,
+  Hash,
+  CreditCard,
+  Edit,
+  Zap,
+  Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { toDisplayLabel } from '../../utils/formatters';

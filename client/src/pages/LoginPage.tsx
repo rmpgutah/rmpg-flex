@@ -6,8 +6,18 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock,
-  KeyRound, Usb, Fingerprint, Monitor, Server, Wifi, Clock,
+  Eye,
+  EyeOff,
+  AlertCircle,
+  ShieldCheck,
+  ArrowLeft,
+  Lock,
+  KeyRound,
+  Usb,
+  Monitor,
+  Server,
+  Wifi,
+  Clock,
 } from 'lucide-react';
 import { useAuth, type LoginStep } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';

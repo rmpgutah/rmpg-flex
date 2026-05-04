@@ -1,13 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 
 // ─── Browser offline services (lazy-loaded, tree-shaken if unused) ───
-import {
-  initOfflineDb,
-  isOfflineDbReady,
-  getConfig,
-  setConfig,
-  getQueueDepth,
-} from '../services/offlineDb';
+import { initOfflineDb, getConfig, setConfig, getQueueDepth } from '../services/offlineDb';
 import {
   createConnectivityMonitor,
   getConnectivityMonitor,
@@ -16,11 +10,9 @@ import {
 import {
   startSyncSchedule,
   stopSyncSchedule,
-  updateAuthToken,
   pullAll,
   pushAll,
   onSyncEvent,
-  getSyncState,
 } from '../services/offlineSync';
 import {
   validatePin as browserValidatePin,

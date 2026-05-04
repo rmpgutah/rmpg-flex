@@ -10,19 +10,15 @@ import { isPast, isWithinDays } from './dateUtils';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import {
   addConfidentialWatermark,
-  addClassificationBar,
-  addReportHeader,
   openAutoSection,
   closeAutoSection,
   addFieldPair,
   addCheckboxField,
-  addSignatureBlock,
   addStackedSignatures,
   addFlagBadges,
   addCautionBlock,
   addTableWithShading,
   addThreeColumnFields,
-  addWrappedText,
   addFormattedText,
   addNarrativeSection,
   addPageFooter,
@@ -45,15 +41,19 @@ import {
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale } from './pdfGenerator';
 import {
-  LAYOUT, SPACING, FONT, COLOR, BORDER,
+  LAYOUT,
+  SPACING,
+  FONT,
+  COLOR,
+  BORDER,
   PDF_VALUE_FONT,
-  getContentWidth, getHalfWidth, getFullFieldWidth,
-  getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
+  getContentWidth,
+  getFullFieldWidth,
+  getLeftX,
+  getRightColumnX,
+  getHalfFieldWidth,
 } from './pdfTokens';
-import {
-  drawCheckboxGrid, drawNibrsHeader, drawFormSection,
-  type CheckboxItem, type FormRow,
-} from './pdfFormHelpers';
+import { drawNibrsHeader, drawFormSection } from './pdfFormHelpers';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
 

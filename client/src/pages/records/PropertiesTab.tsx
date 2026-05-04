@@ -21,8 +21,6 @@ import {
   Camera,
   ArrowUpDown,
   Filter,
-  Navigation,
-  ExternalLink,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';

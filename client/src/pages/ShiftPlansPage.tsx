@@ -16,7 +16,6 @@ import {
   Archive,
   Users,
   MapPin,
-  Clock,
   ChevronRight,
   X,
   Shield,
@@ -24,7 +23,6 @@ import {
   Save,
   AlertTriangle,
   ArrowRightLeft,
-  Bell,
   TrendingUp,
 } from 'lucide-react';
 import { useShiftPlanning, SHIFT_TYPES } from '../hooks/useShiftPlanning';

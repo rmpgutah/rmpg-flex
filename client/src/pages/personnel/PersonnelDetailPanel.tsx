@@ -1,7 +1,19 @@
 import { useRef, useState, useEffect, useCallback } from 'react';
 import {
-  X, Zap, Star, Shield, Clock, Award, Calendar, User, Activity, GraduationCap, MapPinned,
-  Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw, Coffee, Printer, ChevronDown, Radio,
+  X,
+  Zap,
+  Star,
+  Shield,
+  Pencil,
+  Trash2,
+  LogIn,
+  LogOut,
+  Archive,
+  RotateCcw,
+  Coffee,
+  Printer,
+  ChevronDown,
+  Radio,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';

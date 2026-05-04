@@ -4,12 +4,7 @@
 // generation and validation using the Web Crypto API.
 // ============================================================
 
-import {
-  getOfflineDb,
-  getConfig,
-  type PinSession,
-  type PinAttempt,
-} from './offlineDb';
+import { getOfflineDb, getConfig } from './offlineDb';
 
 // ─── Constants ───────────────────────────────────────────────
 

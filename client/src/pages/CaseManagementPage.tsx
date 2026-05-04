@@ -8,9 +8,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
-  X, Save, Loader2, AlertTriangle, Target, MessageSquare,
-  ArrowRight, CheckCircle, Pause, Hash, FolderOpen, ShieldCheck, RotateCcw, Send, Link,
+  Briefcase,
+  Search,
+  Plus,
+  User,
+  X,
+  Save,
+  Loader2,
+  AlertTriangle,
+  Target,
+  MessageSquare,
+  ArrowRight,
+  CheckCircle,
+  FolderOpen,
+  ShieldCheck,
+  RotateCcw,
+  Send,
+  Link,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';

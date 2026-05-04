@@ -10,9 +10,7 @@ import {
   Shield,
   Microscope,
   Wifi,
-  WifiOff,
   RefreshCw,
-  Loader2,
   ArrowRight,
   Settings,
 } from 'lucide-react';

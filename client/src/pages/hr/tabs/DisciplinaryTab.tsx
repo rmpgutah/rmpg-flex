@@ -6,8 +6,17 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Shield, Star, Plus, Pencil, Trash2, List, Clock, Loader2,
-  ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Scale,
+  Shield,
+  Star,
+  Plus,
+  Pencil,
+  Trash2,
+  List,
+  Clock,
+  Loader2,
+  ChevronDown,
+  ChevronUp,
+  AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';

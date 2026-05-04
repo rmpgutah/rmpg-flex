@@ -10,7 +10,6 @@ import {
   ChevronRight,
   Calendar,
   User,
-  MapPin,
   FileText,
   Scale,
   X,
@@ -18,7 +17,6 @@ import {
   CheckCircle,
   Clock,
   XCircle,
-  Briefcase,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';

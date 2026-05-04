@@ -8,8 +8,19 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  UserX, Search, Plus, AlertTriangle, Shield, MapPin, Clock, User,
-  X, Save, Loader2, Eye, Ban, ShieldAlert, ShieldCheck,
+  UserX,
+  Search,
+  Plus,
+  AlertTriangle,
+  Shield,
+  MapPin,
+  User,
+  X,
+  Save,
+  Loader2,
+  Ban,
+  ShieldAlert,
+  ShieldCheck,
 } from 'lucide-react';
 import type { OffenderAlert, OffenderAlertType, AlertSeverity } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';

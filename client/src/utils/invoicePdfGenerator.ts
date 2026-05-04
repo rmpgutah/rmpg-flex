@@ -7,7 +7,6 @@
 import jsPDF from 'jspdf';
 import {
   hexToRgb,
-  addReportHeader,
   openAutoSection,
   closeAutoSection,
   addFieldPair,
@@ -23,15 +22,21 @@ import {
   setActiveCaseNumber,
   getActiveBranding,
   loadPdfAssets,
-  formSectionPageBreak,
   sanitizePdfText,
   addSignatureBlock,
   wordWrapText,
 } from './pdfGenerator';
 import {
-  LAYOUT, SPACING, FONT, COLOR, BORDER,
-  getContentWidth, getHalfWidth, getFullFieldWidth,
-  getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
+  LAYOUT,
+  SPACING,
+  FONT,
+  COLOR,
+  BORDER,
+  getContentWidth,
+  getFullFieldWidth,
+  getLeftX,
+  getRightColumnX,
+  getHalfFieldWidth,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
 import { FORM_NUMBERS } from './pdfAssets';

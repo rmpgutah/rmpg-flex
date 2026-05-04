@@ -5,8 +5,15 @@
 // ============================================================
 
 import {
-  Car, Cpu, Zap, AlertTriangle, MapPin, Gauge,
-  Video, Clock, Loader2, ExternalLink,
+  Car,
+  Cpu,
+  Zap,
+  AlertTriangle,
+  MapPin,
+  Video,
+  Clock,
+  Loader2,
+  ExternalLink,
 } from 'lucide-react';
 import type { DashcamEvent, CpgDeviceMapping } from '../../../types';
 import { DASHCAM_EVENT_COLORS } from '../utils/personnelConstants';

@@ -7,8 +7,19 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  Plus, RefreshCw, MapPin, BarChart3, List, Map as MapIcon,
-  Briefcase, Calendar, Route, Navigation, Loader2, X, CheckCircle, Circle,
+  Plus,
+  RefreshCw,
+  MapPin,
+  BarChart3,
+  List,
+  Map as MapIcon,
+  Briefcase,
+  Calendar,
+  Route,
+  Navigation,
+  Loader2,
+  CheckCircle,
+  Circle,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';

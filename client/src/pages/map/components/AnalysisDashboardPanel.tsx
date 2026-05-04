@@ -15,8 +15,6 @@ import {
   Scale,
   TrendingUp,
   TrendingDown,
-  Shield,
-  Radar,
   Loader2,
   ChevronRight,
 } from 'lucide-react';

@@ -7,7 +7,6 @@ import {
   Clock,
   AlertTriangle,
   Plus,
-  LogIn,
   Activity,
   Shield,
   Loader2,

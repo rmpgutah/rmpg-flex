@@ -6,7 +6,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from './RichTextArea';
 import {
-  Scale,
   Plus,
   Trash2,
   Pencil,
@@ -15,7 +14,6 @@ import {
   Loader2,
   Save,
   X,
-  AlertTriangle,
   Gavel,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';

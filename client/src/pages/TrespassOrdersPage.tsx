@@ -1,8 +1,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  Plus, Search, ShieldBan, MapPin, User, Clock, Ban, Calendar,
-  Archive, RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
+  Plus,
+  Search,
+  ShieldBan,
+  MapPin,
+  User,
+  Ban,
+  Calendar,
+  RotateCcw,
+  X,
+  Save,
+  Loader2,
+  CheckCircle,
+  AlertTriangle,
 } from 'lucide-react';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';

@@ -8,9 +8,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import RichTextArea from '../components/RichTextArea';
 import {
-  Construction, Search, Plus, Truck, MapPin, Clock, User,
-  X, Save, Loader2, AlertTriangle, DollarSign, FileText,
-  ChevronDown, Eye, Hash, CheckCircle, Calendar,
+  Construction,
+  Search,
+  Plus,
+  Truck,
+  MapPin,
+  X,
+  Save,
+  Loader2,
+  AlertTriangle,
+  Calendar,
 } from 'lucide-react';
 import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus, TowReason } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';

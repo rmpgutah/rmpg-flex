@@ -7,10 +7,29 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Camera, Video, Upload, Search, Loader2, Trash2, Edit2, Link2,
-  Filter, MapPin, Gauge, Clock, FileText, AlertTriangle,
-  ChevronLeft, ChevronRight, Plus, Grid, List, Film,
-  HardDrive, Maximize2, X, Zap, Car, Play,
+  Camera,
+  Video,
+  Upload,
+  Search,
+  Loader2,
+  Trash2,
+  Edit2,
+  Link2,
+  Filter,
+  MapPin,
+  FileText,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
+  Grid,
+  List,
+  Film,
+  HardDrive,
+  Maximize2,
+  X,
+  Zap,
+  Car,
+  Play,
 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';

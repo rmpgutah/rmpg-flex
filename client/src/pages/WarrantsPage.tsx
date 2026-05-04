@@ -25,7 +25,6 @@ import {
   Shield,
   FileText,
   Activity,
-  ChevronRight,
   Zap,
   Printer,
   Download,
