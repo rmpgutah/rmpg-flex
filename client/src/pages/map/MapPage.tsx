@@ -556,6 +556,12 @@ export default function MapPage() {
     areaColors: Map<string | number, string>;
     beatToArea: Map<string, string | number>;
   } | null>(null);
+  const [tierColorsOn, setTierColorsOn] = useState<boolean>(() => {
+    return localStorage.getItem('rmpg.map.hierarchyColors') !== 'off'; // default ON
+  });
+  useEffect(() => {
+    localStorage.setItem('rmpg.map.hierarchyColors', tierColorsOn ? 'on' : 'off');
+  }, [tierColorsOn]);
 
   useEffect(() => {
     let cancelled = false;
@@ -613,6 +619,7 @@ export default function MapPage() {
     selectedFeatures: shiftPlanning.selectedAreas,
     assignedFeatures: shiftPlanning.assignedFeatures,
     beatDistrictMap,
+    hierarchyColors: tierColorsOn ? hierarchyColors : null,
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
@@ -4495,6 +4502,21 @@ export default function MapPage() {
                       </button>
                     );
                   })}
+                  <label className="flex items-center gap-2 px-2 py-1 text-[10px] cursor-pointer hover:bg-[#1a1a1a]">
+                    <input
+                      type="checkbox"
+                      checked={tierColorsOn}
+                      onChange={(e) => setTierColorsOn(e.target.checked)}
+                      disabled={!hierarchyColors}
+                      className="accent-[#d4a017]"
+                    />
+                    <span className={hierarchyColors ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}>
+                      Hierarchy Colors
+                    </span>
+                    {!hierarchyColors && (
+                      <span className="text-[8px] text-[var(--text-muted)] ml-auto" title="Districts unavailable offline">⚠</span>
+                    )}
+                  </label>
                 </div>
               )}
             </div>
