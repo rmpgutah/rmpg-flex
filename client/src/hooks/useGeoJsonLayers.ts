@@ -8,6 +8,7 @@
 // ============================================================
 
 import { useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { dissolveBeatsByArea } from '../utils/dissolveAreas';
 
 // ── Layer Configuration ──────────────────────────────────────
 
@@ -294,6 +295,12 @@ export function useGeoJsonLayers({
   const listenersRef = useRef<google.maps.MapsEventListener[]>([]);
   // Label markers for beat/zone text overlays
   const labelMarkersRef = useRef<Record<string, google.maps.Marker[]>>({});
+  // Area-boundary overlay (Task 7): dissolved 3px lines drawn above beats
+  const areaBoundaryLayerRef = useRef<google.maps.Data | null>(null);
+  // Cached beat features extracted from the data layer — populated on first
+  // beat-layer load so the late-arrival rebuild effect (below) doesn't have
+  // to re-walk the data layer when hierarchyColors resolves after beats.
+  const beatFeaturesCacheRef = useRef<import('geojson').Feature<import('geojson').Polygon>[] | null>(null);
 
   // Refs for latest callback/selection state (avoids re-creating data layers)
   const selectionModeRef = useRef(selectionMode);
@@ -315,6 +322,34 @@ export function useGeoJsonLayers({
   // single-color path below remains the default.
   const hierarchyColorsRef = useRef<typeof hierarchyColors>(null);
   useEffect(() => { hierarchyColorsRef.current = hierarchyColors ?? null; }, [hierarchyColors]);
+
+  // Rebuild area-boundary overlay when hierarchyColors arrives after the
+  // beat layer has already loaded (race between /dispatch/districts and
+  // the beat geojson fetch). Idempotent: tears down any stale overlay
+  // before rebuild, bails if no cached beat features.
+  useEffect(() => {
+    if (!hierarchyColors || !beatFeaturesCacheRef.current || !map) return;
+    if (areaBoundaryLayerRef.current) {
+      areaBoundaryLayerRef.current.setMap(null);
+      areaBoundaryLayerRef.current = null;
+    }
+    const lines = dissolveBeatsByArea(beatFeaturesCacheRef.current, hierarchyColors.beatToArea);
+    if (lines.length === 0) return;
+    const overlay = new google.maps.Data({ map });
+    overlay.addGeoJson({ type: 'FeatureCollection', features: lines });
+    overlay.setStyle((feat) => {
+      const areaId = feat.getProperty('area_id') as string | number;
+      return {
+        strokeColor: hierarchyColors.areaColors.get(areaId) ?? '#fff',
+        strokeWeight: 3,
+        strokeOpacity: 0.85,
+        fillOpacity: 0,
+        clickable: false,
+        zIndex: 5,
+      };
+    });
+    areaBoundaryLayerRef.current = overlay;
+  }, [hierarchyColors, map]);
 
   // Pre-compute flat beat style lookup: "city_code::district_letter" → BeatStyleEntry
   // This avoids per-feature Map traversal + object spread in the hot-path setStyle callback
@@ -615,6 +650,53 @@ export function useGeoJsonLayers({
         if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
         labelMarkersRef.current[cfg.id].push(marker);
       });
+
+      // ── Area-boundary overlay (Task 7) ──
+      // Cache beat features once on first beat-layer load — used by both
+      // the initial overlay build below AND the late-arrival rebuild effect
+      // when hierarchyColors resolves after the beat layer has already
+      // loaded. Populated regardless of hierarchyColors so the rebuild
+      // effect has data to work with.
+      if (!beatFeaturesCacheRef.current) {
+        const beatFeatures: import('geojson').Feature<import('geojson').Polygon>[] = [];
+        dataLayer.forEach((f) => {
+          const geom = f.getGeometry();
+          if (!geom || geom.getType() !== 'Polygon') return;
+          const coords: number[][][] = [];
+          (geom as any).getArray().forEach((linear: google.maps.Data.LinearRing) => {
+            coords.push(linear.getArray().map((ll) => [ll.lng(), ll.lat()]));
+          });
+          beatFeatures.push({
+            type: 'Feature',
+            properties: { beat_code: f.getProperty('beat_code') },
+            geometry: { type: 'Polygon', coordinates: coords },
+          });
+        });
+        beatFeaturesCacheRef.current = beatFeatures;
+      }
+
+      // Dissolve beat polygons by area_id and draw a 3px line above all
+      // beats. Idempotent on areaBoundaryLayerRef — runs once per layer
+      // load when hierarchyColors is provided.
+      if (hierarchyColorsRef.current && !areaBoundaryLayerRef.current && beatFeaturesCacheRef.current) {
+        const lines = dissolveBeatsByArea(beatFeaturesCacheRef.current, hierarchyColorsRef.current.beatToArea);
+        if (lines.length > 0) {
+          const overlay = new google.maps.Data({ map });
+          overlay.addGeoJson({ type: 'FeatureCollection', features: lines });
+          overlay.setStyle((feat) => {
+            const areaId = feat.getProperty('area_id') as string | number;
+            return {
+              strokeColor: hierarchyColorsRef.current!.areaColors.get(areaId) ?? '#fff',
+              strokeWeight: 3,
+              strokeOpacity: 0.85,
+              fillOpacity: 0,
+              clickable: false,
+              zIndex: 5,
+            };
+          });
+          areaBoundaryLayerRef.current = overlay;
+        }
+      }
     }
 
     // ── County label overlays — show county names at polygon centroids ──
@@ -775,6 +857,9 @@ export function useGeoJsonLayers({
       dataLayersRef.current = {};
       listenersRef.current = [];
       labelMarkersRef.current = {};
+      areaBoundaryLayerRef.current?.setMap(null);
+      areaBoundaryLayerRef.current = null;
+      beatFeaturesCacheRef.current = null;
     };
   }, []);
 
