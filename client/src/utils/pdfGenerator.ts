@@ -206,6 +206,18 @@ export function getActiveBranding(): PdfBranding { return activeBranding; }
 export function sanitizePdfText(text: string): string {
   if (!text) return text;
   return text
+    // HTML entity decode — narrative text occasionally arrives still
+    // escaped from upstream rich-text editors / scrapers (e.g.
+    // "BANKRUPTCY -&GT;" surfacing as literal "&GT;" in serve-intake
+    // notes, caught 2026-05-04). Decoding common entities before the
+    // toUpperCase() pass keeps rendered output clean.
+    .replace(/&amp;/gi, '&')
+    .replace(/&lt;/gi, '<')
+    .replace(/&gt;/gi, '>')
+    .replace(/&quot;/gi, '"')
+    .replace(/&#39;/g,  "'")
+    .replace(/&apos;/gi, "'")
+    .replace(/&nbsp;/gi, ' ')
     .replace(/\u2192/g, '->')    // → right arrow
     .replace(/\u2190/g, '<-')    // ← left arrow
     .replace(/\u2194/g, '<->')   // ↔ left-right arrow

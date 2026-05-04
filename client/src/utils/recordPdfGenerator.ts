@@ -133,19 +133,24 @@ function drawDistrictBar(
   // produced visually duplicative noise like SECTION=SL1, AREA=SL.
   // CONTRACT ID was geographically misplaced; it now lives in the
   // PSO Client Request Details section where it belongs.
-  const sectionDisplay = data.sector_id || data.sector_name || 'N/A';
-  const zoneDisplay = zoneLeaf(data.zone_id) || data.zone_name || 'N/A';
-  const beatDisplay = beatLeaf(data.beat_id) || data.beat_name || 'N/A';
-  const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || 'N/A';
+  const sectionRaw = data.sector_id || data.sector_name || '';
+  const zoneRaw = zoneLeaf(data.zone_id) || data.zone_name || '';
+  const beatRaw = beatLeaf(data.beat_id) || data.beat_name || '';
+  const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '';
   const hasRealArea = !!(data.area_name || data.area_id);
   const distFields: { label: string; value: string }[] = [];
   if (hasRealArea) distFields.push({ label: 'AREA', value: data.area_name || data.area_id });
-  distFields.push(
-    { label: 'SECTION', value: sectionDisplay },
-    { label: 'ZONE',    value: zoneDisplay },
-    { label: 'BEAT',    value: beatDisplay },
-    { label: 'CODE',    value: combined },
-  );
+  // Suppress empty SECTION / ZONE / BEAT cells rather than padding them
+  // with "N/A" — when only the beat is set (e.g. SLC-UNINC for an
+  // un-sectored unincorporated address), the bar previously showed
+  // SECTION N/A · ZONE N/A · BEAT SLC-UNINC · CODE SLC/UNINC, with
+  // the two empty columns just diluting the readable cells. Empty
+  // cells now collapse, and the remaining cells expand to fill width.
+  if (sectionRaw) distFields.push({ label: 'SECTION', value: sectionRaw });
+  if (zoneRaw)    distFields.push({ label: 'ZONE',    value: zoneRaw });
+  if (beatRaw)    distFields.push({ label: 'BEAT',    value: beatRaw });
+  if (combined)   distFields.push({ label: 'CODE',    value: combined });
+  if (distFields.length === 0) return barY; // safety: nothing to draw
 
   // ── Cell layout ───────────────────────────────────────────
   // Equal-width cells with thin vertical separators between them so
@@ -1236,10 +1241,17 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // underlying data is absent — so existing minimal-data calls
   // print at the same length as before.
 
-  // β.1 — Hazard chip strip (officer-safety glance)
+  // β.1 — Hazard chip strip (officer-safety glance).
+  // The officer_safety_caution flag is rendered as "REVIEW BEFORE
+  // APPROACH" rather than "OFFICER SAFETY" — the strip's own banner
+  // literal already reads "CAUTION -- OFFICER SAFETY", so a matching
+  // "OFFICER SAFETY" chip on the right side was visibly duplicative
+  // (caught 2026-05-04). The new label adds operational guidance
+  // instead of repeating the banner words while still ensuring the
+  // strip renders when officer_safety is the sole hazard flag.
   {
     const flags: CautionFlag[] = [];
-    if (data.officer_safety_caution) flags.push({ label: 'OFFICER SAFETY', kind: 'armed' });
+    if (data.officer_safety_caution) flags.push({ label: 'REVIEW BEFORE APPROACH', kind: 'armed' });
     if (data.weapons_involved && data.weapons_involved !== '0' && data.weapons_involved.toLowerCase() !== 'n/a') {
       flags.push({ label: `WEAPONS: ${data.weapons_involved.toUpperCase()}`, kind: 'armed' });
     }
@@ -1665,10 +1677,21 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'Cross Street', value: data.cross_street || '' },
     ], y);
     // Row 3: Property | Building | Floor | Suite/Room (4 columns)
+    // Suppress property_name when it duplicates the address — operators
+    // routinely type the street address into both fields, producing
+    // "1421 EAST FORT UNION BOULEVARD" wrapping across 3 lines in a
+    // ~37mm column while the Address row above shows the same string
+    // (caught 2026-05-04). Heuristic: if the first 8 alphanumeric chars
+    // of property_name match the start of data.location, treat it as a
+    // duplicate and hide.
     {
       const quarterW = ffw / 4;
+      const propRaw = (data.property_name || '').trim();
+      const addrRaw = (data.location || '').trim();
+      const norm = (s: string) => s.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+      const propIsAddrDuplicate = !!propRaw && !!addrRaw && norm(propRaw) === norm(addrRaw);
       const r3Fields = [
-        { label: 'Property', value: data.property_name || '' },
+        { label: 'Property', value: propIsAddrDuplicate ? '' : propRaw },
         { label: 'Building', value: data.location_building || '' },
         { label: 'Floor', value: data.location_floor || '' },
         { label: 'Suite/Room', value: data.location_room || '' },
@@ -2151,7 +2174,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Signatures — full-width stacked (one on top of the other)
   y = addStackedSignatures(doc, 'Reporting Officer', 'Supervisor Review', y, getOfficerSig(), undefined, prio);
 
-  // PSO Client Request: QR code on last page for mobile quick-login
+  // PSO Client Request: QR code for mobile quick-login.
+  // Renders into the COMPANY SEAL slot on the last content page (the
+  // signature block's right cell) so it doesn't push to a new sheet
+  // — pre-fix this was triggering doc.addPage() and producing a near
+  // empty page-5 with only the QR (caught 2026-05-04). The seal slot
+  // is ~22mm wide; we render the QR slightly smaller and stack the
+  // caption below.
   if (data.incident_type === 'pso_client_request' && data.id) {
     try {
       const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
@@ -2162,27 +2191,20 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         },
       });
       if (resp.ok) {
-        const { qr_png_base64, url } = await resp.json();
+        const { qr_png_base64 } = await resp.json();
         const pageW = doc.internal.pageSize.getWidth();
-        const pageH = doc.internal.pageSize.getHeight();
-        const qrSize = 30; // mm
-        // Reserve the bottom-right corner above the footer
-        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize;
-        const qrY = pageH - LAYOUT.FOOTER_HEIGHT - qrSize - 22;
-        // If the running Y is already below the QR's top edge, push to a new page
-        if (y > qrY - 5) {
-          doc.addPage();
-        }
+        const qrSize = 18; // mm — fits inside the seal slot
+        // Place at bottom-right above the footer on the CURRENT page
+        // (which already has the signature block). Position centered
+        // horizontally inside the seal slot (~25mm wide cell at right
+        // edge of the signature row).
+        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 4;
+        const qrY = y - 28;  // sit inside the seal slot, above any tail
         doc.addImage(qr_png_base64, 'PNG', qrX, qrY, qrSize, qrSize);
-        // Label under the QR
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(6.5);
-        doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        doc.text('SCAN FOR MOBILE PSO ACCESS', qrX + qrSize / 2, qrY + qrSize + 2.5, { align: 'center' });
-        doc.setFont(PDF_VALUE_FONT, 'normal');
         doc.setFontSize(5.5);
-        doc.setTextColor(...COLOR.TEXT_MUTED);
-        doc.text(url, qrX + qrSize / 2, qrY + qrSize + 5, { align: 'center', maxWidth: qrSize + 10 });
+        doc.setTextColor(...COLOR.TEXT_SECONDARY);
+        doc.text('SCAN FOR MOBILE PSO', qrX + qrSize / 2, qrY + qrSize + 2, { align: 'center' });
       }
     } catch { /* non-fatal — PDF still prints without QR */ }
   }

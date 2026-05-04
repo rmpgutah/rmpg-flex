@@ -65,19 +65,15 @@ export function addQuickReferenceBanner(
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.text(sanitizePdfText(cfg.primary || ''), textX, startY + 5.5);
 
-  // Secondary identifier — small, muted, right of center
-  if (cfg.secondary) {
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(8);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
-    doc.text(
-      sanitizePdfText(cfg.secondary),
-      textX + cw * 0.5,
-      startY + 5.5,
-    );
-  }
-
-  // Pill — top right
+  // Pre-compute pill geometry so the secondary text can be width-clipped
+  // to avoid running underneath the pill. Previously secondary text was
+  // drawn unbounded from `textX + cw*0.5` onward, and on calls with a
+  // long address (e.g. "1421 EAST FORT UNION BLVD, COTTONWOOD HEIGHTS,
+  // UT 84121, USA") the address ran straight under the PRI pill on the
+  // right edge — visible 2026-05-04. Compute pill bounds first; if a
+  // pill is present, clip the secondary text to end before its left
+  // edge with a 2mm gap.
+  let pillLeftEdge = margin + cw;  // sentinel: no pill → use full width
   if (cfg.pill && cfg.pill.label) {
     const pillBg: [number, number, number] = cfg.pill.tone === 'high'
       ? [180, 25, 25]
@@ -90,11 +86,24 @@ export function addQuickReferenceBanner(
     doc.setFontSize(7);
     const labelW = doc.getTextWidth(cfg.pill.label) + 4;
     const pillX = margin + cw - labelW - 2;
+    pillLeftEdge = pillX;
     const pillY = startY + (bannerH - 4) / 2;
     doc.setFillColor(pillBg[0], pillBg[1], pillBg[2]);
     doc.roundedRect(pillX, pillY, labelW, 4, 0.5, 0.5, 'F');
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text(cfg.pill.label, pillX + labelW / 2, pillY + 2.8, { align: 'center' });
+  }
+
+  // Secondary identifier — small, muted, right of center, clipped to
+  // not overlap the pill on the right edge.
+  if (cfg.secondary) {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    const secondaryX = textX + cw * 0.5;
+    const maxSecondaryW = Math.max(20, pillLeftEdge - secondaryX - 2);
+    const lines = doc.splitTextToSize(sanitizePdfText(cfg.secondary), maxSecondaryW) as string[];
+    doc.text(lines[0] || '', secondaryX, startY + 5.5);
   }
 
   // Reset state
