@@ -43,7 +43,7 @@ import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
-  getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth,
+  getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, formatEnumValue,
 } from './pdfTokens';
 import {
   drawNibrsHeader, drawFormSection, drawCautionFlagStrip,
@@ -1179,7 +1179,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         ? 'elevated'
         : 'standard';
     y = addQuickReferenceBanner(doc, {
-      primary: (data.incident_type || '').toUpperCase() + (data.call_number ? `   ${data.call_number}` : ''),
+      primary: formatEnumValue(data.incident_type) + (data.call_number ? `   ${data.call_number}` : ''),
       secondary: data.location || '',
       pill: prioStr ? { label: `PRI ${prioStr}`, tone: pillTone } : undefined,
     }, y);
@@ -1320,12 +1320,12 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   { const sec = openAutoSection(doc, 'Classification', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Call Number', value: data.call_number },
-      { label: 'Incident Type', value: (data.incident_type || '').replace(/_/g, ' ').toUpperCase() },
-      { label: 'Priority', value: data.priority },
+      { label: 'Incident Type', value: formatEnumValue(data.incident_type) },
+      { label: 'Priority', value: formatEnumValue(data.priority) },
       { label: 'Status', value: displayStatus(data.status || '') },
-      { label: 'Source', value: (data.source || '').replace(/_/g, ' ').toUpperCase() },
+      { label: 'Source', value: formatEnumValue(data.source) },
       { label: 'Section/Zone/Beat', value: sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || '' },
-      { label: 'Disposition', value: data.disposition || '' },
+      { label: 'Disposition', value: formatEnumValue(data.disposition) },
       { label: 'Case Number', value: data.case_number || '' },
       { label: 'Incident Number', value: data.incident_number || '' },
     ], y);
@@ -1478,7 +1478,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
     // Row 1: Service Type / Authorization / Billing Code
     y = addThreeColumnFields(doc, [
-      { label: 'Service Type', value: (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase() },
+      { label: 'Service Type', value: formatEnumValue(data.pso_service_type) },
       { label: 'Authorization / PO#', value: data.pso_authorization || '' },
       { label: 'Billing Code', value: data.pso_billing_code || '' },
     ], y);
@@ -1607,14 +1607,14 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       y = checkPageBreak(doc, y, 18, prio);
       const psSec = openAutoSection(doc, 'Process Service Details', y); y = psSec.contentY;
       y = addThreeColumnFields(doc, [
-        { label: 'Document Type', value: (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() },
+        { label: 'Document Type', value: formatEnumValue(data.process_service_type) },
         { label: 'Serve To', value: data.process_served_to || '' },
         { label: 'Attempts', value: String(data.process_attempts || 0) },
       ], y);
       y = addThreeColumnFields(doc, [
         { label: 'Service Address', value: data.process_served_address || '' },
         { label: 'Served At', value: fmtTimestamp(data.process_served_at) },
-        { label: 'Result', value: (data.process_service_result || '').replace(/_/g, ' ').toUpperCase() },
+        { label: 'Result', value: formatEnumValue(data.process_service_result) },
       ], y);
       if (data.deadline) {
         y = addFieldPair(doc, 'Court / Statute Deadline', fmtTimestamp(data.deadline), lx, y, ffw);
@@ -1801,7 +1801,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       .map((label, i) => ({ label, x: pColPos[i] }));
     const pRows = data.linked_persons.map(p => [
       `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
-      (p.role || '').replace(/_/g, ' ').toUpperCase() || '—',
+      formatEnumValue(p.role) || '—',
       (p.dob || '—').toUpperCase(),
       [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
       (p.phone || '—').toUpperCase(),
@@ -1821,10 +1821,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       .map((label, i) => ({ label, x: vColPos[i] }));
     const vRows = data.linked_vehicles.map(v => {
       const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase())
-        ? ` [${v.stolen_status.replace(/_/g, ' ').toUpperCase()}]`
+        ? ` [${formatEnumValue(v.stolen_status)}]`
         : '';
       return [
-        (v.role || '').replace(/_/g, ' ').toUpperCase() || '—',
+        formatEnumValue(v.role) || '—',
         [v.year, v.make, v.model].filter(Boolean).join(' ').toUpperCase() || '—',
         (v.color || '—').toUpperCase(),
         ((v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '')).toUpperCase() || '—',
@@ -2008,7 +2008,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   { const sec = openAutoSection(doc, 'Resolution Details', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Disposition', data.disposition || '', rx, y, hfw);
+      const yR = addFieldPair(doc, 'Disposition', formatEnumValue(data.disposition), rx, y, hfw);
       y = Math.max(yL, yR); }
     y = addFieldPair(doc, 'Action Taken', data.action_taken || 'N/A', lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -2698,7 +2698,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
       c.call_number || 'N/A',
-      (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      formatEnumValue(c.incident_type),
       displayStatus(c.status || ''),
       c.location || 'N/A',
       fmtDate(c.created_at),
@@ -2725,7 +2725,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     { const sec = openAutoSection(doc, 'Criminal History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const crCw = getContentWidth(doc);
     const crRows = data.criminal_records.map(r => [
-      (r.record_type || '').replace(/_/g, ' ').toUpperCase(),
+      formatEnumValue(r.record_type),
       r.offense || 'N/A',
       (r.offense_level || '').toUpperCase() || 'N/A',
       r.case_number || 'N/A',
@@ -3011,7 +3011,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incRows = data.incidents.map(inc => [
       inc.incident_number || 'N/A',
-      (inc.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      formatEnumValue(inc.incident_type),
       titleCase(inc.status || ''),
       fmtDate(inc.created_at),
     ]);
@@ -3026,7 +3026,7 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
       c.call_number || 'N/A',
-      (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      formatEnumValue(c.incident_type),
       displayStatus(c.status || ''),
       c.location || '',
       fmtDate(c.created_at),
@@ -3248,7 +3248,7 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     // Row 1: Warrant Number (2/5), Type (1/5), Status (1/5), Offense Level (1/5)
     const fifthW = ffw / 5;
     const r1a = addFieldPair(doc, 'Warrant Number', data.warrant_number || '', lx, y, fifthW * 2);
-    const r1b = addFieldPair(doc, 'Type', (data.type || '').toUpperCase(), lx + fifthW * 2, y, fifthW);
+    const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.type), lx + fifthW * 2, y, fifthW);
     const r1c = addFieldPair(doc, 'Status', displayStatus(data.status || ''), lx + fifthW * 3, y, fifthW);
     const r1d = addFieldPair(doc, 'Offense Level', (data.offense_level || '').toUpperCase(), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
@@ -3336,7 +3336,7 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
       String(i + 1),
       fmtTimestamp(a.attempted_at),
       a.location || '',
-      (a.method || '').toUpperCase(),
+      formatEnumValue(a.method),
       (a.result || '').toUpperCase(),
       a.notes || '',
     ]);
@@ -3562,7 +3562,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     // Row 1: Evidence Number (2/5), Type (1/5), Category (1/5), Status (1/5)
     const fifthW = ffw / 5;
     const r1a = addFieldPair(doc, 'Evidence Number', data.evidence_number || '', lx, y, fifthW * 2);
-    const r1b = addFieldPair(doc, 'Type', (data.evidence_type || '').replace(/_/g, ' ').toUpperCase(), lx + fifthW * 2, y, fifthW);
+    const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.evidence_type), lx + fifthW * 2, y, fifthW);
     const r1c = addFieldPair(doc, 'Category', data.category || '', lx + fifthW * 3, y, fifthW);
     const r1d = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
@@ -4253,7 +4253,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
     const r2a = addFieldPair(doc, 'Badge Number', data.badge_number || '', lx, y, fifthW);
     const r2b = addFieldPair(doc, 'Employee ID', data.employee_id || '', lx + fifthW, y, fifthW);
     const r2c = addFieldPair(doc, 'Rank', data.rank || '', lx + fifthW * 2, y, fifthW);
-    const r2d = addFieldPair(doc, 'Role', (data.role || '').toUpperCase(), lx + fifthW * 3, y, fifthW);
+    const r2d = addFieldPair(doc, 'Role', formatEnumValue(data.role), lx + fifthW * 3, y, fifthW);
     const r2e = addFieldPair(doc, 'Department', data.department || '', lx + fifthW * 4, y, fifthW);
     y = Math.max(r2a, r2b, r2c, r2d, r2e);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -4349,7 +4349,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
       (c.issuing_authority || '').substring(0, 28),
       fmtDate(c.issued_date),
       fmtDate(c.expiry_date),
-      (c.status || '').toUpperCase(),
+      formatEnumValue(c.status),
     ]);
     y = addTableWithShading(doc, credHeaders, credRows, y, credColPos);
   }
@@ -4383,7 +4383,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
       fmtDate(t.completed_date),
       fmtDate(t.expiry_date),
       String(t.hours || 0),
-      (t.status || '').toUpperCase().substring(0, 10),
+      formatEnumValue(t.status).substring(0, 10),
     ]);
     y = addTableWithShading(doc, trainHeaders, trainRows, y, trainColPos);
   }
@@ -4406,8 +4406,8 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
       (eq.equipment_type || '').substring(0, 24),
       (eq.serial_number || '').substring(0, 22),
       [eq.make, eq.model].filter(Boolean).join(' ').substring(0, 22),
-      (eq.condition || '').toUpperCase(),
-      (eq.status || '').toUpperCase(),
+      formatEnumValue(eq.condition),
+      formatEnumValue(eq.status),
       fmtDate(eq.issued_date),
     ]);
     y = addTableWithShading(doc, equipHeaders, equipRows, y, equipColPos);
@@ -4431,8 +4431,8 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
       (cam.camera_id || '').substring(0, 22),
       (cam.make || '').substring(0, 24),
       (cam.model || '').substring(0, 24),
-      (cam.status || '').toUpperCase(),
-      (cam.condition || '').toUpperCase(),
+      formatEnumValue(cam.status),
+      formatEnumValue(cam.condition),
       fmtDate(cam.assigned_at),
     ]);
     y = addTableWithShading(doc, camHeaders, camRows, y, camColPos);
@@ -4458,7 +4458,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
       fmtDate(d.start_date),
       fmtDate(d.end_date),
       d.hours_per_week != null ? String(d.hours_per_week) : '',
-      (d.status || '').toUpperCase(),
+      formatEnumValue(d.status),
     ]);
     y = addTableWithShading(doc, depHeaders, depRows, y, depColPos);
   }
@@ -4485,7 +4485,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
       fmtDateTime(t.clock_in),
       t.clock_out ? fmtDateTime(t.clock_out) : 'Active',
       t.total_hours != null ? t.total_hours.toFixed(2) : '-',
-      (t.status || '').toUpperCase(),
+      formatEnumValue(t.status),
     ]);
     y = addTableWithShading(doc, timeHeaders, timeRows, y, timeColPos);
   }
@@ -4687,7 +4687,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const incRows = data.incidents.map(inc => [
       inc.incident_number || 'N/A',
-      (inc.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      formatEnumValue(inc.incident_type),
       titleCase(inc.status || ''),
       fmtDate(inc.created_at),
     ]);
@@ -4702,7 +4702,7 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
     const callRows = data.calls.map(c => [
       c.call_number || 'N/A',
-      (c.incident_type || '').replace(/_/g, ' ').toUpperCase(),
+      formatEnumValue(c.incident_type),
       displayStatus(c.status || ''),
       fmtDate(c.created_at),
     ]);
@@ -4815,7 +4815,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     const quarterW = ffw / 4;
     // Row 1: Citation Number (2/4), Type (1/4), Status (1/4)
     const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, quarterW * 2);
-    const r1b = addFieldPair(doc, 'Type', (data.type || '').replace(/_/g, ' ').toUpperCase(), lx + quarterW * 2, y, quarterW);
+    const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.type), lx + quarterW * 2, y, quarterW);
     const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + quarterW * 3, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Date of Violation, Time, Location
@@ -4832,7 +4832,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     const quarterW = ffw / 4;
     // Row 1: Statute/Code (half), Offense Level (quarter), Fine Amount (quarter)
     const r1a = addFieldPair(doc, 'Statute / Code', data.statute_citation || '', lx, y, hfw);
-    const r1b = addFieldPair(doc, 'Offense Level', (data.offense_level || '').replace(/_/g, ' ').toUpperCase(), rx, y, quarterW);
+    const r1b = addFieldPair(doc, 'Offense Level', formatEnumValue(data.offense_level), rx, y, quarterW);
     const r1c = addFieldPair(doc, 'Fine Amount', data.fine_amount != null ? fmtCurrency(data.fine_amount) : 'N/A', rx + quarterW, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Violation Description (full width, conditional)
@@ -5432,7 +5432,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
           y = LAYOUT.PAGE_MARGIN + 5;
         }
         doc.text(w.warrant_number || '', margin + 4, y + 3);
-        doc.text((w.type || '').toUpperCase(), margin + 40, y + 3);
+        doc.text(formatEnumValue(w.type), margin + 40, y + 3);
         // Truncate charge if too long
         const charge = (w.charge_description || '').substring(0, 50);
         doc.text(charge, margin + 60, y + 3);

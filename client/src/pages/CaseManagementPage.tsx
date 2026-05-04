@@ -6,6 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
   Briefcase, Search, Plus, User, X, Save, Loader2, AlertTriangle, Target,
@@ -700,7 +701,7 @@ export default function CaseManagementPage() {
                 </div>
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{c.title}</div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
-                  <span className={`font-bold ${getPriorityColor(c.priority)}`}>{c.priority.toUpperCase()}</span>
+                  <span className={`font-bold ${getPriorityColor(c.priority)}`}>{formatEnumValue(c.priority)}</span>
                   <span>{humanizeCaseType(c.case_type)}</span>
                   {c.solvability_score != null && (
                     <span className="flex items-center gap-0.5">
@@ -760,7 +761,7 @@ export default function CaseManagementPage() {
                       {selected.status.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[10px] px-2 py-1 border bg-rmpg-700/30 border-rmpg-600/50 font-bold ${getPriorityColor(selected.priority)}`}>
-                      {selected.priority.toUpperCase()}
+                      {formatEnumValue(selected.priority)}
                     </span>
                     {selected.solvability_score != null && (
                       <span className="text-[10px] px-2 py-1 border bg-amber-900/30 text-amber-400 border-amber-700/50 font-bold">

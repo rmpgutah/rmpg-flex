@@ -28,7 +28,7 @@ import {
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, getThirdWidth,
-  getGridStartX, getGridContentWidth,
+  getGridStartX, getGridContentWidth, formatEnumValue,
 } from './pdfTokens';
 import {
   drawNibrsHeader, drawEnhancedNibrsHeader, drawClassificationBar,
@@ -1725,7 +1725,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
   for (let si = 0; si < supplements.length; si++) {
     const sup = supplements[si];
     y = checkPageBreak(doc, y, 18, data.priority);
-    const supTitle = `Supplement #${si + 1}: ${sup.report_number || ''}${sup.report_type ? ' -- ' + sup.report_type.replace(/_/g, ' ').toUpperCase() : ''}`;
+    const supTitle = `Supplement #${si + 1}: ${sup.report_number || ''}${sup.report_type ? ' -- ' + formatEnumValue(sup.report_type) : ''}`;
 
     // Render as CFS-style section with metadata fields + narrative
     const sec = openAutoSection(doc, supTitle, y); y = sec.contentY;
@@ -2572,10 +2572,10 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     { label: 'Incident Number', value: data.incident_number || '' },
     { label: 'Incident Type', value: formatIncidentType(data.incident_type) },
     { label: 'Status', value: displayStatus(data.status || '') },
-    { label: 'Priority', value: data.priority || '' },
+    { label: 'Priority', value: formatEnumValue(data.priority) },
     { label: 'Reporting Officer', value: data.officer_name || '' },
     { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
-    { label: 'Disposition', value: data.disposition || '' },
+    { label: 'Disposition', value: formatEnumValue(data.disposition) },
     { label: 'Location', value: data.location || '' },
   ], y, data.priority);
   y = addIncidentAlertBadges(doc, 'TACTICAL ALERTS', incidentAlertFlags, y, data.priority);
@@ -2773,7 +2773,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       y = Math.max(fy1, fy2, fy3);
       const fy4 = addFieldPair(doc, 'Service Address', data.process_served_address || data.location || '', lx, y, thirdW);
       const fy5 = addFieldPair(doc, 'Served At', data.process_served_at || '', lx + thirdW, y, thirdW);
-      const fy6 = addFieldPair(doc, 'Result', data.process_service_result ? data.process_service_result.replace(/_/g, ' ').toUpperCase() : '', lx + thirdW * 2, y, thirdW);
+      const fy6 = addFieldPair(doc, 'Result', data.process_service_result ? formatEnumValue(data.process_service_result) : '', lx + thirdW * 2, y, thirdW);
       y = Math.max(fy4, fy5, fy6);
       y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
     }
@@ -3025,7 +3025,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
       // Row 1: CFS Call #, Call Type, Dispatched
       const r1Fields: { label: string; value: string }[] = [];
       if (data.call_number) r1Fields.push({ label: 'CFS Call #', value: data.call_number });
-      if (data.call_type) r1Fields.push({ label: 'Call Type', value: data.call_type.replace(/_/g, ' ').toUpperCase() });
+      if (data.call_type) r1Fields.push({ label: 'Call Type', value: formatEnumValue(data.call_type) });
       if (data.call_created_at) r1Fields.push({ label: 'Dispatched', value: data.call_created_at });
       if (r1Fields.length > 0) {
         const colW = ffw / r1Fields.length;
@@ -3371,10 +3371,10 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
 
   y = addIncidentOverviewSection(doc, 'Medical Overview', [
     { label: 'Incident Number', value: data.incident_number || '' },
-    { label: 'Priority', value: data.priority || '' },
+    { label: 'Priority', value: formatEnumValue(data.priority) },
     { label: 'Officer', value: data.officer_name || '' },
     { label: 'Patient', value: `${patient.last_name}, ${patient.first_name}`.replace(/^,\s*/, '') },
-    { label: 'Patient Status', value: data.patient_status || '' },
+    { label: 'Patient Status', value: formatEnumValue(data.patient_status) },
     { label: 'EMS Transport', value: data.ems_transport || '' },
     { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
     { label: 'Location', value: data.location || '' },
@@ -3388,7 +3388,7 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
   { const sec = openAutoSection(doc, 'Response Overview', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Type', value: formatIncidentType(data.incident_type) },
-      { label: 'Priority', value: data.priority },
+      { label: 'Priority', value: formatEnumValue(data.priority) },
       { label: 'Officer', value: data.officer_name },
     ], y);
     y = addFieldPair(doc, 'Location', data.location, lx, y, ffw);
@@ -3403,13 +3403,13 @@ function generateMedicalReport(doc: jsPDF, data: IncidentData) {
       y = addThreeColumnFields(doc, [
         { label: 'Name', value: `${patient.last_name}, ${patient.first_name}` },
         { label: 'DOB', value: patient.dob || '' },
-        { label: 'Patient Status', value: data.patient_status || '' },
+        { label: 'Patient Status', value: formatEnumValue(data.patient_status) },
       ], y);
     } else {
       y = addThreeColumnFields(doc, [
         { label: 'Name', value: '' },
         { label: 'DOB', value: '' },
-        { label: 'Patient Status', value: data.patient_status || '' },
+        { label: 'Patient Status', value: formatEnumValue(data.patient_status) },
       ], y);
     }
     y = addFieldPair(doc, 'EMS Transport', data.ems_transport || '', lx, y, hfw);
@@ -3479,9 +3479,9 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
 
   y = addIncidentOverviewSection(doc, 'Force Overview', [
     { label: 'Incident Number', value: data.incident_number || '' },
-    { label: 'Priority', value: data.priority || '' },
+    { label: 'Priority', value: formatEnumValue(data.priority) },
     { label: 'Officer', value: data.officer_name || '' },
-    { label: 'Force Type', value: data.force_type || '' },
+    { label: 'Force Type', value: formatEnumValue(data.force_type) },
     { label: 'Subject', value: `${subj.last_name}, ${subj.first_name}`.replace(/^,\s*/, '') },
     { label: 'Occurred', value: [data.occurred_date, data.occurred_time].filter(Boolean).join(' @ ') },
     { label: 'Location', value: data.location || '' },
@@ -3510,13 +3510,13 @@ function generateUseOfForceReport(doc: jsPDF, data: IncidentData) {
       y = addThreeColumnFields(doc, [
         { label: 'Name', value: `${subj.last_name}, ${subj.first_name}` },
         { label: 'DOB', value: subj.dob || '' },
-        { label: 'Force Type / Level', value: data.force_type || '' },
+        { label: 'Force Type / Level', value: formatEnumValue(data.force_type) },
       ], y);
     } else {
       y = addThreeColumnFields(doc, [
         { label: 'Name', value: '' },
         { label: 'DOB', value: '' },
-        { label: 'Force Type / Level', value: data.force_type || '' },
+        { label: 'Force Type / Level', value: formatEnumValue(data.force_type) },
       ], y);
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
@@ -3672,7 +3672,7 @@ function generateArrestReport(doc: jsPDF, data: IncidentData) {
     { label: 'Location', value: data.location || '' },
     { label: 'Arrestee', value: `${subj.last_name}, ${subj.first_name}`.replace(/^,\s*/, '') },
     { label: 'DOB', value: subj.dob || '' },
-    { label: 'Disposition', value: data.disposition || '' },
+    { label: 'Disposition', value: formatEnumValue(data.disposition) },
   ], y, data.priority);
   y = addIncidentAlertBadges(doc, 'CUSTODY ALERTS', arrestAlertFlags, y, data.priority);
   if (arrestCautionText) {
@@ -3782,10 +3782,10 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   const gridX = getGridStartX();
   const gridW = getGridContentWidth(doc);
 
-  const serviceTypeLabel = (data.process_service_type || '').replace(/_/g, ' ').toUpperCase() || 'GENERAL';
+  const serviceTypeLabel = formatEnumValue(data.process_service_type) || 'GENERAL';
   const processAlertFlags = buildIncidentAlertFlags(data, [
     'PROCESS SERVICE',
-    data.process_service_result ? data.process_service_result.replace(/_/g, ' ').toUpperCase() : '',
+    data.process_service_result ? formatEnumValue(data.process_service_result) : '',
   ]);
   const processCautionText = buildIncidentCautionText(data, [
     data.process_served_address ? `Service address: ${data.process_served_address}.` : '',
@@ -3805,7 +3805,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     { label: 'Incident Number', value: data.incident_number || '' },
     { label: 'Service Type', value: serviceTypeLabel },
     { label: 'Status', value: displayStatus(data.status || '') },
-    { label: 'Disposition', value: data.disposition || '' },
+    { label: 'Disposition', value: formatEnumValue(data.disposition) },
     { label: 'Serve To', value: data.process_served_to || '' },
     { label: 'Attempts', value: String(data.process_attempts || 0) },
     { label: 'Served At', value: data.process_served_at || '' },
@@ -3820,9 +3820,9 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   { const sec = openAutoSection(doc, 'Case Linkage', y); y = sec.contentY;
     y = addThreeColumnFields(doc, [
       { label: 'Incident Number', value: data.incident_number },
-      { label: 'Priority', value: data.priority },
+      { label: 'Priority', value: formatEnumValue(data.priority) },
       { label: 'Status', value: displayStatus(data.status || '') },
-      { label: 'Disposition', value: data.disposition || '' },
+      { label: 'Disposition', value: formatEnumValue(data.disposition) },
       { label: 'Service Type', value: serviceTypeLabel },
       { label: 'Contract ID', value: data.contract_id || '' },
     ], y);
@@ -3839,7 +3839,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
       const yR = addFieldPair(doc, 'Billing Code', data.pso_billing_code || '', rx, y, hfw);
       y = Math.max(yL, yR); }
     { const yL = addFieldPair(doc, 'Authorization / PO#', data.pso_authorization || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'PSO Service Type', (data.pso_service_type || '').replace(/_/g, ' ').toUpperCase(), rx, y, hfw);
+      const yR = addFieldPair(doc, 'PSO Service Type', formatEnumValue(data.pso_service_type), rx, y, hfw);
       y = Math.max(yL, yR); }
     if (data.attorney_name || data.client_name || data.jurisdiction) {
       const tw = ffw / 3;
@@ -3869,7 +3869,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
     { const yL = addFieldPair(doc, 'Attempts Made', String(data.process_attempts || 0), lx, y, hfw);
       const yR = addFieldPair(doc, 'Served At', data.process_served_at || '', rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Service Result', (data.process_service_result || '').replace(/_/g, ' ').toUpperCase(), lx, y, ffw);
+    y = addFieldPair(doc, 'Service Result', formatEnumValue(data.process_service_result), lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 

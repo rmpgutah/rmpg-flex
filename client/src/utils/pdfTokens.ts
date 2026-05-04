@@ -335,6 +335,31 @@ export function getCapHeight(fontSizePt: number): number {
   return fontSizePt * 0.3528 * 0.7;
 }
 
+/**
+ * Normalize an enum-like value for display.
+ *
+ * Database stores enum values as snake_case lowercase tokens
+ * (`pso_client_request`, `in_progress`, `not_filed`). The PDF/UI
+ * surface expects them rendered as "PSO CLIENT REQUEST", "IN PROGRESS",
+ * etc. — readable, professional, and consistent across the system.
+ *
+ * Free-form text (names, addresses, narratives) passes through
+ * untouched so we don't accidentally uppercase user-entered names
+ * like "Christopher Zamora" into "CHRISTOPHER ZAMORA". The heuristic:
+ * a value is enum-like if it's a single token of lowercase letters /
+ * digits / underscores, OR if it contains an underscore at all.
+ *
+ * Returns '' for null/undefined/empty so callers can chain it with
+ * `|| ''` fallbacks.
+ */
+export function formatEnumValue(s: string | null | undefined): string {
+  if (s == null) return '';
+  const trimmed = String(s).trim();
+  if (!trimmed) return '';
+  const isEnumLike = /^[a-z][a-z0-9_]*$/.test(trimmed) || /_/.test(trimmed);
+  return isEnumLike ? trimmed.replace(/_/g, ' ').toUpperCase() : trimmed;
+}
+
 /** Generate proportional column X positions from ratio array */
 export function getProportionalColumns(doc: jsPDF, ratios: number[]): number[] {
   if (!ratios || ratios.length === 0) return [getLeftX()];

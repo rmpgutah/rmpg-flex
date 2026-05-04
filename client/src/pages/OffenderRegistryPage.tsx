@@ -6,6 +6,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
   UserX, Search, Plus, AlertTriangle, Shield, MapPin, User, X, Save, Loader2,
@@ -133,7 +134,7 @@ function CdocSearchPanel() {
                     selectedOffender.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                     'bg-gray-900/40 text-gray-400 border-gray-700/40'
                   }`}>
-                    {selectedOffender.status.toUpperCase()}
+                    {formatEnumValue(selectedOffender.status)}
                   </span>
                 )}
               </div>
@@ -175,7 +176,7 @@ function CdocSearchPanel() {
                     r.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                     'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                   }`}>
-                    {r.status.toUpperCase()}
+                    {formatEnumValue(r.status)}
                   </span>
                 )}
               </div>
@@ -451,7 +452,7 @@ export default function OffenderRegistryPage() {
                     </span>
                   </div>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${SEVERITY_COLORS[alert.severity] || ''}`}>
-                    {alert.severity.toUpperCase()}
+                    {formatEnumValue(alert.severity)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
@@ -488,7 +489,7 @@ export default function OffenderRegistryPage() {
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${SEVERITY_COLORS[selected.severity] || ''}`}>
-                  {selected.severity.toUpperCase()}
+                  {formatEnumValue(selected.severity)}
                 </span>
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${TYPE_COLORS[selected.alert_type] || ''}`}>
                   {selected.alert_type.replace(/_/g, ' ').toUpperCase()}

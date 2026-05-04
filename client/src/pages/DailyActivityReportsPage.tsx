@@ -7,6 +7,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
+import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
   ClipboardCheck, Search, Plus, User, X, Save, Loader2, CheckCircle,
@@ -262,7 +263,7 @@ export default function DailyActivityReportsPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-mono font-bold text-white">{dar.dar_number}</span>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${STATUS_COLORS[dar.status] || ''}`}>
-                    {dar.status.toUpperCase()}
+                    {formatEnumValue(dar.status)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
@@ -315,7 +316,7 @@ export default function DailyActivityReportsPage() {
               {/* Status + Info */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${STATUS_COLORS[selected.status] || ''}`}>
-                  {selected.status.toUpperCase()}
+                  {formatEnumValue(selected.status)}
                 </span>
                 {selected.officer_name && (
                   <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50">

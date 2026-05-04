@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
   LayoutDashboard,
@@ -1193,7 +1194,7 @@ export default function CrmPage() {
                       <span className={`text-xs font-medium ${task.status === 'completed' ? 'text-rmpg-400 line-through' : 'text-rmpg-200'}`}>
                         {task.title}
                       </span>
-                      <span className={`px-1 py-0.5 text-[8px] font-bold border ${priorityColor(task.priority)}`}>{task.priority.toUpperCase()}</span>
+                      <span className={`px-1 py-0.5 text-[8px] font-bold border ${priorityColor(task.priority)}`}>{formatEnumValue(task.priority)}</span>
                       <span className={`px-1 py-0.5 text-[8px] font-bold border ${statusColor(task.status)}`}>{toDisplayLabel(task.status)}</span>
                       <span className="px-1 py-0.5 text-[8px] font-bold border border-rmpg-600 text-rmpg-400 bg-rmpg-800/20">{toDisplayLabel(task.task_type)}</span>
                     </div>

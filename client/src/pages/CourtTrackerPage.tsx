@@ -10,7 +10,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../components/RichTextArea';
-import { formatPhoneInput } from '../utils/formatters';
+import { formatPhoneInput, formatEnumValue} from '../utils/formatters';
 import {
   Gavel, Search, Plus, Calendar, Clock, User, X, Save, Loader2, AlertTriangle,
   CheckCircle, FileText, Scale, ChevronLeft, ChevronRight, Shield, DollarSign,
@@ -689,7 +689,7 @@ export default function CourtTrackerPage() {
                   {selected.event_type.toUpperCase()}
                 </span>
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${STATUS_COLORS[selected.status] || ''}`}>
-                  {selected.status.toUpperCase()}
+                  {formatEnumValue(selected.status)}
                 </span>
                 {selected.outcome && (
                   <span className="text-[10px] px-2 py-1 border rounded-sm bg-purple-900/50 text-purple-400 border-purple-700/50 font-bold">

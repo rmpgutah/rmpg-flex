@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
+import { formatEnumValue } from '../utils/formatters';
 import RichTextArea from '../components/RichTextArea';
 import {
   AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
@@ -1873,7 +1874,7 @@ export default function WarrantsPage() {
                             {w.type.toUpperCase()}
                           </span>
                           <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
-                            {w.status.toUpperCase()}
+                            {formatEnumValue(w.status)}
                           </span>
                         </div>
                       </div>
@@ -1953,7 +1954,7 @@ export default function WarrantsPage() {
                         <td className="text-xs font-mono text-rmpg-300">{stateFromSource(w.source)}</td>
                         <td>
                           <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
-                            {w.status.toUpperCase()}
+                            {formatEnumValue(w.status)}
                           </span>
                           {w.expires_at && w.status === 'active' && (() => {
                             const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -2080,7 +2081,7 @@ export default function WarrantsPage() {
                           {selectedWarrant.type.toUpperCase()} WARRANT
                         </span>
                         <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[selectedWarrant.status] || ''}`}>
-                          {selectedWarrant.status.toUpperCase()}
+                          {formatEnumValue(selectedWarrant.status)}
                         </span>
                         {selectedWarrant.offense_level && (
                           <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${SEVERITY_COLORS[selectedWarrant.offense_level] || 'bg-rmpg-700/40 text-rmpg-200 border-rmpg-600/50'}`}>
@@ -3335,7 +3336,7 @@ export default function WarrantsPage() {
                           <span className={`led-dot ${
                             run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-gray animate-led-pulse' : 'led-red'
                           }`} />
-                          {run.status.toUpperCase()}
+                          {formatEnumValue(run.status)}
                         </span>
                         <span className="ml-auto text-[10px] text-rmpg-500 font-mono">
                           {computeDuration(run.started_at, run.completed_at)}
@@ -3494,7 +3495,7 @@ export default function WarrantsPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-mono text-xs text-white font-bold">{w.warrant_number}</span>
                             <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
-                              {w.status.toUpperCase()}
+                              {formatEnumValue(w.status)}
                             </span>
                             <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
                               {w.type.toUpperCase()}

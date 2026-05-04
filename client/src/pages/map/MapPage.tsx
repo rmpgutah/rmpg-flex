@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { formatEnumValue } from '../../utils/formatters';
 import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading } from '../../utils/googleMapsLoader';
 import { getGoogleMapsApiKey } from '../../utils/googleMapsApiKey';
 import { devLog, devWarn } from '../../utils/devLog';
@@ -4610,7 +4611,7 @@ export default function MapPage() {
                               plan.status === 'draft' ? 'bg-rmpg-700/30 text-rmpg-400' :
                               'bg-rmpg-800/30 text-rmpg-500'
                             }`}>
-                              {plan.status.toUpperCase()}
+                              {formatEnumValue(plan.status)}
                             </span>
                             <span className="text-[8px] text-rmpg-500 font-mono">{plan.assignments.length}</span>
                             <button

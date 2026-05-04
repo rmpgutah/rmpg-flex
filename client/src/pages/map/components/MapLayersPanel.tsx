@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { formatEnumValue } from '../../../utils/formatters';
 import {
   Layers, Eye, EyeOff, Shield, AlertTriangle, Building2, Thermometer,
   Navigation2, Route, MapPin, Pencil, Square, Type, Trash2, Plus, X, Check,
@@ -851,7 +852,7 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                         plan.status === 'draft' ? 'bg-rmpg-700/30 text-rmpg-400' :
                         'bg-rmpg-800/30 text-rmpg-500'
                       }`}>
-                        {plan.status.toUpperCase()}
+                        {formatEnumValue(plan.status)}
                       </span>
                       <span className="text-[8px] text-rmpg-500 font-mono">{plan.assignments.length}</span>
                       <button type="button"

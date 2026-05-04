@@ -7,6 +7,7 @@
 // data in a structured, readable format.
 
 import { useState, useEffect } from 'react';
+import { formatEnumValue } from '../utils/formatters';
 import {
   X, FileSearch, AlertTriangle, Shield, Gavel,
   Clock, MapPin, Loader2,
@@ -154,7 +155,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                                 ? 'bg-red-900/30 text-red-400 border border-red-800/30'
                                 : 'bg-rmpg-700/30 text-rmpg-400 border border-rmpg-600/30'
                             }`}>
-                              {r.status.toUpperCase()}
+                              {formatEnumValue(r.status)}
                             </span>
                           )}
                         </div>
