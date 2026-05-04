@@ -38,6 +38,61 @@ let splashWindow = null;
 let tray = null;
 let isQuitting = false;
 let appReady = false;
+
+// ─── Last-resort error guards ────────────────────────────────
+// Without these, an unhandled rejection (e.g. loadURL rejecting
+// with net::ERR_CONNECTION_CLOSED when nginx RSTs an in-flight
+// connection during a `systemctl restart rmpg-flex`) crashes the
+// whole desktop app and shows the Electron error dialog.
+//
+// TODO(you): implement isTransientNetworkError() below. Decide:
+//   - swallow `net::*` codes (most are transient — server restart,
+//     flaky WiFi, captive portal redirects) so dispatchers stay up
+//   - re-throw everything else so real bugs (null deref, type
+//     errors) still surface in dev/staging instead of rotting
+// Reference: Chromium net error list — net::ERR_CONNECTION_CLOSED,
+// net::ERR_NETWORK_CHANGED, net::ERR_INTERNET_DISCONNECTED, etc.
+// All have message strings starting with "net::ERR_".
+// Chromium net errors that indicate a real misconfiguration or
+// active threat — dispatchers MUST be told about these, never swallow.
+// (Expired/invalid certs could be a MITM; auth failures suggest the
+// VPS is misconfigured after a deploy.)
+const NON_TRANSIENT_NET_CODES = [
+  'CERT_',           // any cert error: AUTHORITY_INVALID, DATE_INVALID, COMMON_NAME_INVALID, REVOKED, etc.
+  'SSL_',            // SSL_PROTOCOL_ERROR, SSL_VERSION_OR_CIPHER_MISMATCH
+  'BAD_SSL_',
+  'INSECURE_RESPONSE',
+  'BLOCKED_BY_',     // BLOCKED_BY_CLIENT (extension/firewall) — surface so operator knows
+];
+
+function isTransientNetworkError(err) {
+  const msg = err && (err.message || String(err)) || '';
+  if (!msg.includes('net::ERR_')) return false;
+  for (const bad of NON_TRANSIENT_NET_CODES) {
+    if (msg.includes(`net::ERR_${bad}`)) return false;
+  }
+  return true;
+}
+
+process.on('unhandledRejection', (reason) => {
+  if (isTransientNetworkError(reason)) {
+    console.warn('[APP] Swallowed transient network error:', reason && reason.message);
+    return;
+  }
+  console.error('[APP] Unhandled rejection:', reason);
+  throw reason;
+});
+
+process.on('uncaughtException', (err) => {
+  if (isTransientNetworkError(err)) {
+    console.warn('[APP] Swallowed transient network error:', err && err.message);
+    return;
+  }
+  console.error('[APP] Uncaught exception:', err);
+  // Re-throw on next tick so Electron's default crash dialog still
+  // fires for real bugs, but our log line lands first.
+  setImmediate(() => { throw err; });
+});
 const appUpdater = new AppUpdater();
 let connectivityMonitor = null;
 
@@ -166,7 +221,9 @@ function createSplashWindow() {
     </html>
   `)}`;
 
-  splashWindow.loadURL(splashHTML);
+  splashWindow.loadURL(splashHTML).catch((err) => {
+    console.warn('[SPLASH] loadURL failed:', err && err.message);
+  });
 }
 
 function closeSplash() {
@@ -350,7 +407,12 @@ async function createMainWindow() {
 
   // Load the remote web application
   console.log('[APP] Loading:', REMOTE_SERVER_URL);
-  mainWindow.loadURL(REMOTE_SERVER_URL);
+  // Promise rejection here is handled by the did-fail-load listener
+  // below, which shows the offline page. Catch so the rejection
+  // doesn't escape to the global unhandledRejection guard.
+  mainWindow.loadURL(REMOTE_SERVER_URL).catch((err) => {
+    console.warn('[APP] loadURL failed (did-fail-load will recover):', err && err.message);
+  });
 
   // Show window when ready, close splash
   mainWindow.once('ready-to-show', () => {
@@ -363,7 +425,9 @@ async function createMainWindow() {
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error(`[APP] Page load failed: ${errorDescription} (code ${errorCode})`);
     // Show the offline page with a retry button
-    mainWindow.loadURL(getOfflineHTML());
+    mainWindow.loadURL(getOfflineHTML()).catch((err) => {
+      console.warn('[APP] Offline page loadURL failed:', err && err.message);
+    });
   });
 
   // Extract the server's hostname for link filtering
