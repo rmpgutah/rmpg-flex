@@ -80,6 +80,7 @@ import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
 import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
 import { useDispatchCallActions } from './hooks/useDispatchCallActions';
+import { useDispatchNotesActions } from './hooks/useDispatchNotesActions';
 import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
@@ -280,9 +281,6 @@ export default function DispatchPage() {
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [newNote, setNewNote] = useState('');
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [editingNoteText, setEditingNoteText] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
@@ -530,10 +528,6 @@ export default function DispatchPage() {
     }
   }, [selectedCall, linkVehicleToCall, linkVehicleRole, addToast]);
 
-  // Timeline editing
-  const [editingTimelineId, setEditingTimelineId] = useState<string | null>(null);
-  const [editTimelineText, setEditTimelineText] = useState('');
-
   // Navigation guard — warn when editing unsaved changes
   useUnsavedChanges(isEditing);
 
@@ -633,8 +627,6 @@ export default function DispatchPage() {
     };
   }, []);
 
-  const [newTimelineText, setNewTimelineText] = useState('');
-  const [showAddTimeline, setShowAddTimeline] = useState(false);
   const templateDropdownRef = useRef<HTMLDivElement>(null);
   // Unit attach dropdown
   const [showAttachUnitDropdown, setShowAttachUnitDropdown] = useState(false);
@@ -806,6 +798,26 @@ export default function DispatchPage() {
   } = useDispatchCallActions({
     selectedCall, setSelectedCall, setCalls, setArchivedCalls,
     setUnits, setArchivedLoaded, refetchAll: silentRefresh,
+  });
+
+  // Notes + timeline state + handlers (extracted alongside the unit/call
+  // hooks). Owns 9 state items (note input + inline-edit, timeline input
+  // + inline-edit, broadcast composer) and 8 handlers.
+  const {
+    newNote, setNewNote,
+    editingNoteId, setEditingNoteId,
+    editingNoteText, setEditingNoteText,
+    newTimelineText, setNewTimelineText,
+    showAddTimeline, setShowAddTimeline,
+    editingTimelineId, setEditingTimelineId,
+    editTimelineText, setEditTimelineText,
+    broadcastNoteText, setBroadcastNoteText,
+    isBroadcasting,
+    handleAddNote, handleEditNote, handleDeleteNote,
+    handleQuickNote, handleBroadcastNote,
+    handleAddTimeline, handleEditTimeline, handleDeleteTimeline,
+  } = useDispatchNotesActions({
+    selectedCall, setSelectedCall, calls, setCalls, setActivityEntries,
   });
 
   // ── WebSocket: real-time dispatch updates & panic auto-dispatch ──
@@ -1514,76 +1526,6 @@ export default function DispatchPage() {
     }
   }, [newNote]);
 
-  const handleAddNote = async () => {
-    if (!selectedCall || !newNote.trim()) return;
-    const trimmedNote = newNote.trim();
-    if (trimmedNote.length > 2000) {
-      addToast('Note is too long (max 2000 characters)', 'error');
-      return;
-    }
-    if (trimmedNote.length < 2) {
-      addToast('Note must be at least 2 characters', 'error');
-      return;
-    }
-    try {
-      // Build notes array with the new note appended
-      const existingNotes = Array.isArray(selectedCall.notes) ? selectedCall.notes : [];
-      const note: CallNote = {
-        id: `n-${Date.now()}`,
-        author: 'Dispatch',
-        text: trimmedNote,
-        timestamp: new Date().toISOString(),
-      };
-      const allNotes = [...existingNotes, note];
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      setNewNote('');
-      // Audible feedback for local note action
-      announceLocalAction('note_added', `Note added to ${selectedCall.call_number}.`);
-    } catch (err) {
-      console.error('Failed to add note:', err);
-      addToast('Failed to save note', 'error');
-    }
-  };
-
-  const handleEditNote = async (noteId: string, text: string) => {
-    if (!selectedCall || !text.trim()) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ text: text.trim() }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      setEditingNoteId(null);
-      setEditingNoteText('');
-      addToast('Note updated', 'success');
-    } catch {
-      addToast('Failed to edit note', 'error');
-    }
-  };
-
-  const handleDeleteNote = async (noteId: string) => {
-    if (!selectedCall) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
-        method: 'DELETE',
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      addToast('Note deleted', 'success');
-    } catch {
-      addToast('Failed to delete note', 'error');
-    }
-  };
-
   // ── Inline Editing ────────────────────────────────────────
   // Refetch the full call fresh from /dispatch/calls/:id before populating
   // the edit form. Guards against stale in-memory data from list-endpoint
@@ -1794,24 +1736,6 @@ export default function DispatchPage() {
     return counts;
   }, [calls]);
 
-  // Feature 6: Quick note add handler (from CallCard)
-  const handleQuickNote = useCallback(async (callId: string, noteText: string) => {
-    if (!noteText.trim()) return;
-    const call = calls.find(c => c.id === callId);
-    if (!call) return;
-    try {
-      const existingNotes = Array.isArray(call.notes) ? call.notes : [];
-      const note = { id: `qn-${Date.now()}`, author: 'Dispatch', text: noteText, timestamp: new Date().toISOString() };
-      const allNotes = [...existingNotes, note];
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
-        method: 'PUT', body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
-      if (selectedCall?.id === callId) setSelectedCall(updatedCall);
-    } catch { addToast('Failed to add note', 'error'); }
-  }, [calls, selectedCall, addToast]);
-
   // Toggle pinned-to-top flag on a call
   const handleTogglePin = useCallback(async (callId: string, currentlyPinned: boolean) => {
     const next = !currentlyPinned;
@@ -1949,28 +1873,6 @@ export default function DispatchPage() {
     }
   }, [addToast]);
 
-  // Feature 20: Broadcast note handler
-  const [broadcastNoteText, setBroadcastNoteText] = useState('');
-  const [isBroadcasting, setIsBroadcasting] = useState(false);
-  const handleBroadcastNote = useCallback(async () => {
-    if (!selectedCall || !broadcastNoteText.trim() || isBroadcasting) return;
-    setIsBroadcasting(true);
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/broadcast-note`, {
-        method: 'POST', body: JSON.stringify({ message: broadcastNoteText.trim() }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      setBroadcastNoteText('');
-      addToast('Note broadcast to all units', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Broadcast failed', 'error');
-    } finally {
-      setIsBroadcasting(false);
-    }
-  }, [selectedCall, broadcastNoteText, addToast, isBroadcasting]);
-
   // ── Dispatch alarm interval — check overdue calls every 5s ──
   const alarmPlayedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -1995,49 +1897,6 @@ export default function DispatchPage() {
     return () => clearInterval(interval);
   }, [calls]);
 
-  // ── Timeline CRUD ─────────────────────────────────────────
-  const handleEditTimeline = async (entryId: string) => {
-    if (!selectedCall || !editTimelineText.trim()) return;
-    try {
-      await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/timeline/${entryId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ details: editTimelineText.trim() }),
-      });
-      setActivityEntries((prev) => prev.map((e) => e.id === entryId ? { ...e, details: editTimelineText.trim() } : e));
-      setEditingTimelineId(null);
-      setEditTimelineText('');
-    } catch (err) {
-      console.error('Failed to edit timeline entry:', err);
-      addToast('Failed to edit timeline entry', 'error');
-    }
-  };
-
-  const handleDeleteTimeline = async (entryId: string) => {
-    if (!selectedCall) return;
-    try {
-      await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/timeline/${entryId}`, { method: 'DELETE' });
-      setActivityEntries((prev) => prev.filter((e) => String(e.id) !== String(entryId)));
-    } catch (err) {
-      console.error('Failed to delete timeline entry:', err);
-      addToast('Failed to delete timeline entry', 'error');
-    }
-  };
-
-  const handleAddTimeline = async () => {
-    if (!selectedCall || !newTimelineText.trim()) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/timeline`, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'note_added', details: newTimelineText.trim() }),
-      });
-      setActivityEntries((prev) => [result, ...prev]);
-      setNewTimelineText('');
-      setShowAddTimeline(false);
-    } catch (err) {
-      console.error('Failed to add timeline entry:', err);
-      addToast('Failed to add timeline entry', 'error');
-    }
-  };
 
   const tabCounts = useMemo(() => {
     const pending = calls.filter((c) => c.status === 'pending').length;
