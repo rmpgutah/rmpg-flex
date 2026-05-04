@@ -15,7 +15,7 @@ import {
   addPageFooter, checkPageBreak, setGenerationTimestamp, fetchPdfBranding,
   setActiveBranding, loadPdfAssets, setActiveFormKey, setActiveCaseNumber,
   addAttachmentsSection, addImageToPage, formSectionPageBreak, sanitizePdfText,
-  displayStatus, finalizePoliceReport, addDocumentIntegrityTrailer,
+  displayStatus, finalizePoliceReport, setActiveSectionStyle,
   type PersonIdPayload, type FormMetadataPayload,
 } from './pdfGenerator';
 import {
@@ -2033,6 +2033,12 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 // ── Person Record ────────────────────────────────────────────
 
 async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
+  // Adopt light-banner section style for the entire Person PDF (2026-05-04
+  // user request — visual cohesion with the top quick-reference banner).
+  // Restored to 'dark' at end of function so other generators stay
+  // unchanged.
+  setActiveSectionStyle('light');
+
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
   const hfw = getHalfFieldWidth(doc);
@@ -2099,7 +2105,13 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       else flags.push({ label: fStr, kind: 'default' });
     }
     if (data.is_sex_offender) flags.push({ label: 'REGISTERED SEX OFFENDER', kind: 'warrant' });
-    if (data.gang_affiliation) flags.push({ label: `GANG: ${data.gang_affiliation.toUpperCase()}`, kind: 'gang' });
+    // Only raise the GANG caution chip when gang_affiliation is an
+    // operationally significant value — explicit "None" / "N/A" / "0"
+    // selections must NOT trigger an officer-safety chip.
+    if (data.gang_affiliation
+        && !['none', '0', 'n/a', 'na', ''].includes(data.gang_affiliation.toLowerCase().trim())) {
+      flags.push({ label: `GANG: ${data.gang_affiliation.toUpperCase()}`, kind: 'gang' });
+    }
     if (data.probation_parole && /probation|parole/i.test(data.probation_parole)) {
       flags.push({ label: data.probation_parole.toUpperCase(), kind: 'default' });
     }
@@ -2391,7 +2403,13 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       alreadyShown.add(normalize('Active BOLO'));
       alreadyShown.add(normalize('Be On Lookout'));
     }
-    if (data.gang_affiliation) alreadyShown.add(normalize('Gang Member'));
+    // Only mark "Gang Member" as already-shown when gang_affiliation is
+    // operationally significant — explicit "None" must not trigger flag
+    // dedup that would hide a separately-listed gang flag.
+    if (data.gang_affiliation
+        && !['none', '0', 'n/a', 'na', ''].includes(data.gang_affiliation.toLowerCase().trim())) {
+      alreadyShown.add(normalize('Gang Member'));
+    }
     // Also dedup the list itself against re-listed entries
     const seen = new Set<string>();
     flagList = flagList.filter(f => {
@@ -2639,6 +2657,10 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   if (data._dossier) {
     y = renderPersonDossierAppendix(doc, data._dossier, y);
   }
+
+  // Restore default section style so the next PDF (which may be a
+  // different record type with the dark style) renders unchanged.
+  setActiveSectionStyle('dark');
 }
 
 // ── Vehicle Record ───────────────────────────────────────────
@@ -4906,18 +4928,13 @@ export async function generateRecordPdf<T extends RecordPdfType>(
       throw new Error(`Unknown record type: ${recordType}`);
   }
 
-  // Trailer must be appended BEFORE the per-page footer loop so the
-  // footer renders on it too (totalPages snapshot below counts it).
-  const trailerCaseNum = (data as any).call_number
-    || (data as any).warrant_number
-    || (data as any).citation_number
-    || (data as any).case_number
-    || (data as any).id?.toString()
-    || '';
-  addDocumentIntegrityTrailer(doc, {
-    formLabel: recordType.toString().toUpperCase().replace(/_/g, ' ') + ' RECORD',
-    caseNumber: trailerCaseNum,
-  });
+  // Document integrity trailer page removed 2026-05-04 per user request.
+  // The trailer used to print the canonical-JSON SHA-256 of the record
+  // payload + an Ed25519 signature placeholder so prosecutors could
+  // verify a printed PDF tied back to a specific DB row state. The
+  // hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts, the server
+  // /api/pdf-tools/sign-payload + /verify-signature endpoints) is left
+  // in place but dormant — re-enable by restoring the call below.
 
   // Add page footers and watermarks to all pages
   const totalPages = doc.getNumberOfPages();

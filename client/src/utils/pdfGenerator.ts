@@ -14,11 +14,16 @@ import jsPDF from 'jspdf';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
+// Document hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts) is
+// dormant as of 2026-05-04 per user request. The trailer page +
+// per-page footer hash prefix are removed; payload-hash computation +
+// Ed25519 signing endpoints stay implemented but unused. To re-enable,
+// restore: trailer call in generateRecordPdf + this generator,
+// per-page hash sub-row in addPageFooter, and the wrapper-side hash
+// compute + signature fetch.
 import {
-  getActivePayloadHash, getActivePayloadHashShort, formatHashGrouped,
-  computePayloadHash, setActivePayloadHash, clearActivePayloadHash,
-  getActiveSignature, formatSignatureGrouped,
-  fetchPdfSignature, setActiveSignature, clearActiveSignature,
+  getActivePayloadHash, formatHashGrouped, getActiveSignature,
+  formatSignatureGrouped,
 } from './pdfIntegrity';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, getContentWidth,
@@ -173,6 +178,18 @@ export const PRIORITY_COLORS: Record<string, { bg: [number, number, number]; tex
 // Generation timestamp captured once per report
 export let generationTimestamp = '';
 export function setGenerationTimestamp(ts: string) { generationTimestamp = ts; }
+
+// Section header visual style — 'dark' is the original charcoal-bar style
+// shipped across all forms; 'light' is the cream/gold banner style
+// adopted for the Person PDF (2026-05-04) at user request, modeled on
+// the `addQuickReferenceBanner` aesthetic. Active style is module-level
+// (parallel to setActiveCaseNumber / setActiveBranding) — generators
+// flip to 'light' on entry and restore 'dark' on exit so other forms
+// keep their existing look.
+export type SectionHeaderStyle = 'dark' | 'light';
+let activeSectionStyle: SectionHeaderStyle = 'dark';
+export function setActiveSectionStyle(s: SectionHeaderStyle) { activeSectionStyle = s; }
+export function getActiveSectionStyle(): SectionHeaderStyle { return activeSectionStyle; }
 
 // Active branding (set before each report generation)
 let activeBranding: PdfBranding = { ...DEFAULT_PDF_BRANDING };
@@ -531,6 +548,12 @@ export function addReportHeader(
 /**
  * Auto-sizing section with clean header bar (no numbering, no accent stripes).
  * Call `closeAutoSection(doc, sectionStartY, contentEndY)` when done.
+ *
+ * Renders in either 'dark' (default — charcoal bar, white text) or
+ * 'light' (cream banner with gold accent strip + dark text) per the
+ * active section style. Light mode matches the quick-reference banner
+ * aesthetic used at the top of records and was adopted Person-wide
+ * 2026-05-04. Switch with setActiveSectionStyle().
  */
 export function openAutoSection(doc: jsPDF, title: string, y: number): { contentY: number; sectionY: number; sectionPage: number } {
   const cw = getContentWidth(doc);
@@ -546,13 +569,28 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.setFillColor(sectionAccentRgb[0], sectionAccentRgb[1], sectionAccentRgb[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, y, accentW, SPACING.SECTION_HEADER_H, 'F');
 
-  // Section header bar (dark charcoal) — offset by accent strip width
-  doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
+  if (activeSectionStyle === 'light') {
+    // Light banner: cream tint background + outline + dark bold text.
+    // Matches the addQuickReferenceBanner aesthetic for visual cohesion.
+    doc.setFillColor(...COLOR.BG_SECTION_TINT);
+    doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H);
 
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  } else {
+    // Dark default: charcoal fill + white text (original style).
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_SECTION_TITLE);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
+  }
+
   // Vertically centered in header bar
   const capH = FONT.SIZE_SECTION_TITLE * 0.35;
   const sectionTextY = y + (SPACING.SECTION_HEADER_H + capH) / 2;
@@ -1140,25 +1178,21 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const footerAccentRgb = activeBranding.section_accent_color
     ? hexToRgb(activeBranding.section_accent_color) : COLOR.ACCENT_GOLD;
 
-  // ── Sub-row (provenance: gen timestamp + integrity hash prefix) ──
+  // ── Sub-row (gen timestamp only; integrity hash removed 2026-05-04) ──
+  // Integrity-hash short prefix used to render here next to the timestamp
+  // but was removed per user request along with the trailer page. The
+  // generation timestamp stays — it's useful provenance regardless of
+  // whether the document is hashed.
   const genTs = generationTimestamp;
-  const hashShort = getActivePayloadHashShort();
-  if (genTs || hashShort) {
+  if (genTs) {
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(4.5);
     doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    if (genTs) {
-      doc.text(`GEN ${sanitizePdfText(genTs)}`, SAFE_PRINT_EDGE_SIDE, subRowY);
-    }
-    if (hashShort) {
-      doc.text(
-        `INTEG H:${hashShort}`,
-        pageWidth - SAFE_PRINT_EDGE_SIDE,
-        subRowY,
-        { align: 'right' },
-      );
-    }
+    doc.text(`GEN ${sanitizePdfText(genTs)}`, SAFE_PRINT_EDGE_SIDE, subRowY);
   }
+  // subRowY referenced for layout above; explicit void keeps lint quiet
+  // when the conditional render skips it.
+  void subRowY;
 
   // ── Accent line ──────────────────────────────────────
   doc.setDrawColor(footerAccentRgb[0], footerAccentRgb[1], footerAccentRgb[2]);
@@ -3932,12 +3966,9 @@ export function generatePdfReport(reportType: PdfReportType, data: IncidentData)
       generateGeneralIncident(doc, data);
   }
 
-  // Trailer must be appended BEFORE the per-page footer loop so the
-  // footer renders on it too (totalPages snapshot below counts it).
-  addDocumentIntegrityTrailer(doc, {
-    formLabel: PDF_REPORT_LABELS[reportType]?.toUpperCase(),
-    caseNumber: data.incident_number,
-  });
+  // Document integrity trailer page removed 2026-05-04 per user request.
+  // See generateRecordPdf in recordPdfGenerator.ts for the full
+  // rationale + dormant infrastructure note.
 
   const totalPages = doc.getNumberOfPages();
   for (let i = 1; i <= totalPages; i++) {
@@ -4000,21 +4031,13 @@ export async function downloadPdfReport(reportType: PdfReportType, data: Inciden
       setActiveOfficerSig(undefined);
     }
 
-    const payloadHash = await computePayloadHash(data);
-    setActivePayloadHash(payloadHash);
-    setActiveSignature(
-      await fetchPdfSignature(reportType, data.incident_number || '', payloadHash) || undefined
-    );
+    // Document hashing + signing removed 2026-05-04 per user request.
     const doc = generatePdfReport(reportType, data);
     setActiveOfficerSig(undefined);
-    clearActivePayloadHash();
-    clearActiveSignature();
     const filename = `${data.incident_number || 'report'}_${reportType}.pdf`;
     doc.save(filename);
   } catch (err) {
     setActiveOfficerSig(undefined);
-    clearActivePayloadHash();
-    clearActiveSignature();
     console.error('PDF generation failed:', err);
     throw new Error(`Failed to generate ${reportType} PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
@@ -4039,21 +4062,13 @@ export async function generatePdfReportBlobUrl(reportType: PdfReportType, data: 
       setActiveOfficerSig(undefined);
     }
 
-    const payloadHash = await computePayloadHash(data);
-    setActivePayloadHash(payloadHash);
-    setActiveSignature(
-      await fetchPdfSignature(reportType, data.incident_number || '', payloadHash) || undefined
-    );
+    // Document hashing + signing removed 2026-05-04 per user request.
     const doc = generatePdfReport(reportType, data);
     setActiveOfficerSig(undefined);
-    clearActivePayloadHash();
-    clearActiveSignature();
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
   } catch (err) {
     setActiveOfficerSig(undefined);
-    clearActivePayloadHash();
-    clearActiveSignature();
     console.error('PDF preview generation failed:', err);
     throw new Error(`Failed to generate ${reportType} PDF preview: ${err instanceof Error ? err.message : 'Unknown error'}`);
   }
@@ -4288,7 +4303,10 @@ export function buildCautionFlags(subject: {
   if (subject.violent_history) {
     flags.push({ kind: 'violent', label: 'VIOLENT HISTORY' });
   }
-  if (subject.gang_affiliation) {
+  // Only raise the GANG chip on a BOLO when gang_affiliation is an
+  // operationally significant value. "None" / "N/A" / "0" must not fire.
+  if (subject.gang_affiliation
+      && !['none', '0', 'n/a', 'na', ''].includes(subject.gang_affiliation.toLowerCase().trim())) {
     flags.push({
       kind: 'gang',
       label: `GANG: ${subject.gang_affiliation.toUpperCase()}`,
