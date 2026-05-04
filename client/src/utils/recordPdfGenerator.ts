@@ -40,7 +40,7 @@ import {
   type QuickRefBannerConfig,
 } from './pdfDetailHelpers';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
-import { convertToGrayscale } from './pdfGenerator';
+import { convertToGrayscale, getActiveSectionStyle } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth,
@@ -81,72 +81,95 @@ function drawDistrictBar(
   y: number,
   data: Record<string, any>,
 ): number {
-  // Skip entirely when we have no geography data at all — avoids empty black bar.
+  // Skip entirely when we have no geography data at all — avoids empty bar.
   const hasAnyGeo = !!(data.sector_id || data.zone_id || data.beat_id || data.sector_name || data.zone_name || data.beat_name || data.area_id || data.area_name || data.dispatch_code);
   if (!hasAnyGeo) return y;
 
   const cw = getContentWidth(doc);
   const barY = y;
-  const hasContract = !!data.contract_id;
-  const barH = 8;
-  doc.setFillColor(...COLOR.TEXT_PRIMARY);
-  doc.rect(LAYOUT.PAGE_MARGIN, barY, cw, barH, 'F');
+  const barH = 9;
+  const accentW = BORDER.ACCENT_SECTION;
+  const isLight = getActiveSectionStyle() === 'light';
 
-  const areaFallback = (() => {
-    const dc = String(data.dispatch_code || '').trim();
-    if (!dc) return '';
-    const m = dc.match(/^([A-Za-z]+)\d*/);
-    return m ? m[1].toUpperCase() : '';
-  })();
-  // Display each tier with parent context stripped — Section/Zone/Beat
-  // get their own columns, so repeating the parent code inside the child
-  // is visual noise. Combined cell uses slashes throughout (chart
-  // dispatch-printout convention: "SL1/HER/C").
+  // ── Backdrop ──────────────────────────────────────────────
+  // Gold accent strip + cream tint (light) or charcoal (dark) so the
+  // bar reads as part of the same banner family as section headers,
+  // not as a foreign black slab from a different visual era.
+  doc.setFillColor(...COLOR.ACCENT_GOLD);
+  doc.rect(LAYOUT.PAGE_MARGIN, barY, accentW, barH, 'F');
+  if (isLight) {
+    doc.setFillColor(...COLOR.BG_SECTION_TINT);
+    doc.rect(LAYOUT.PAGE_MARGIN + accentW, barY, cw - accentW, barH, 'F');
+    doc.setDrawColor(...COLOR.BORDER_SECTION);
+    doc.setLineWidth(BORDER.SECTION_OUTER);
+    doc.rect(LAYOUT.PAGE_MARGIN + accentW, barY, cw - accentW, barH);
+  } else {
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(LAYOUT.PAGE_MARGIN + accentW, barY, cw - accentW, barH, 'F');
+  }
+
+  // ── Field assembly ────────────────────────────────────────
+  // Suppress the AREA column when no real area_name/area_id is set —
+  // the previous regex fallback (leading letters of dispatch_code)
+  // produced visually duplicative noise like SECTION=SL1, AREA=SL.
+  // CONTRACT ID was geographically misplaced; it now lives in the
+  // PSO Client Request Details section where it belongs.
   const sectionDisplay = data.sector_id || data.sector_name || 'N/A';
   const zoneDisplay = zoneLeaf(data.zone_id) || data.zone_name || 'N/A';
   const beatDisplay = beatLeaf(data.beat_id) || data.beat_name || 'N/A';
   const combined = sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.dispatch_code || 'N/A';
-  const distFields = [
-    { label: 'SECTION',           value: sectionDisplay },
-    { label: 'ZONE',              value: zoneDisplay },
-    { label: 'BEAT',              value: beatDisplay },
-    { label: 'AREA',              value: (data.area_name || data.area_id || areaFallback || data.beat_descriptor || 'N/A') },
-    { label: 'SECTION/ZONE/BEAT', value: combined },
-    ...(hasContract ? [{ label: 'CONTRACT ID', value: data.contract_id || 'N/A' }] : []),
-  ];
+  const hasRealArea = !!(data.area_name || data.area_id);
+  const distFields: { label: string; value: string }[] = [];
+  if (hasRealArea) distFields.push({ label: 'AREA', value: data.area_name || data.area_id });
+  distFields.push(
+    { label: 'SECTION', value: sectionDisplay },
+    { label: 'ZONE',    value: zoneDisplay },
+    { label: 'BEAT',    value: beatDisplay },
+    { label: 'CODE',    value: combined },
+  );
 
-  const dValSize = 6;
-  const dPad = 3;
-  const naturalWidths = distFields.map((f) => {
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    const labelW = doc.getTextWidth(f.label);
-    doc.setFont(PDF_VALUE_FONT, 'normal');
-    doc.setFontSize(dValSize);
-    const valW = doc.getTextWidth(sanitizePdfText(String(f.value)));
-    return Math.max(labelW, valW) + dPad;
-  });
-  const totalNat = naturalWidths.reduce((a, b) => a + b, 0);
-  const finalWidths = naturalWidths.map(w => (w / totalNat) * cw);
+  // ── Cell layout ───────────────────────────────────────────
+  // Equal-width cells with thin vertical separators between them so
+  // the bar reads as a structured grid instead of a free-flowing run
+  // of text. Width is divided evenly across the geography content
+  // area (right of the gold accent strip).
+  const labelSize = FONT.SIZE_FIELD_LABEL;
+  const valSize = 7;
+  const contentX = LAYOUT.PAGE_MARGIN + accentW;
+  const contentW = cw - accentW;
+  const cellW = contentW / distFields.length;
+  const labelColor: [number, number, number] = isLight
+    ? [COLOR.TEXT_SECONDARY[0], COLOR.TEXT_SECONDARY[1], COLOR.TEXT_SECONDARY[2]]
+    : [200, 200, 200];
+  const valueColor: [number, number, number] = isLight
+    ? [COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2]]
+    : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
+  const sepColor: [number, number, number] = isLight
+    ? [COLOR.BORDER_SECTION[0], COLOR.BORDER_SECTION[1], COLOR.BORDER_SECTION[2]]
+    : [60, 60, 60];
 
-  let colX = LAYOUT.PAGE_MARGIN;
-  distFields.forEach((f, i) => {
-    const fw = finalWidths[i];
-    const fx = colX + 1.5;
+  for (let i = 0; i < distFields.length; i++) {
+    const f = distFields[i];
+    const cellX = contentX + i * cellW;
+    if (i > 0) {
+      doc.setDrawColor(...sepColor);
+      doc.setLineWidth(BORDER.FIELD);
+      doc.line(cellX, barY + 1, cellX, barY + barH - 1);
+    }
+    const fx = cellX + 2;
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(255, 255, 255);
-    doc.text(f.label, fx, barY + 2.8);
+    doc.setFontSize(labelSize);
+    doc.setTextColor(...labelColor);
+    doc.text(f.label, fx, barY + 3);
     doc.setFont(PDF_VALUE_FONT, 'bold');
-    doc.setFontSize(dValSize);
-    doc.setTextColor(255, 255, 255);
-    doc.text(sanitizePdfText(String(f.value)).toUpperCase(), fx, barY + 6.5);
-    colX += fw;
-  });
+    doc.setFontSize(valSize);
+    doc.setTextColor(...valueColor);
+    doc.text(sanitizePdfText(String(f.value)).toUpperCase(), fx, barY + 7);
+  }
 
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setFont(PDF_VALUE_FONT, 'normal');
-  return barY + barH + 1.5;
+  return barY + barH + SPACING.SM;
 }
 
 function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, y: number, width: number): number {
