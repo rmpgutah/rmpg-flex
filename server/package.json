@@ -36,7 +36,7 @@
     "jsonwebtoken": "^9.0.2",
     "jspdf": "^4.2.0",
     "luxon": "^3.7.2",
-    "marked": "^18.0.2",
+    "marked": "^18.0.3",
     "multer": "^2.1.1",
     "natural": "^8.1.1",
     "nodemailer": "^8.0.7",
