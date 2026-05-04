@@ -1624,37 +1624,34 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Location
+  // Section/Zone/Beat is intentionally OMITTED from this block — it's
+  // already shown in the district strip at the top of page 1 and was
+  // previously appearing THREE times on the same page (district bar +
+  // row-2 combined cell + row-4 split columns). Building/Floor/Suite
+  // get a dedicated row alongside the property name so structured-
+  // address detail still has a home.
   y = checkPageBreak(doc, y, 18, prio);
   { const sec = openAutoSection(doc, 'Incident Location', y); y = sec.contentY;
     // Row 1: Address (full width)
     y = addFieldPair(doc, 'Address', data.location || '', lx, y, ffw);
-    // Row 2: Latitude | Longitude | Section/Zone/Beat (3 columns)
-    // The combined cell uses chart slash-form ("SL2/MID/B") rather than
-    // the raw stored dispatch_code which can carry round-2..4 corruption
-    // like "SL2-SL2-MID/SL2-MID/B" if the row predates the cleanup.
+    // Row 2: Latitude | Longitude | Cross Street (3 columns)
     y = addThreeColumnFields(doc, [
       { label: 'Latitude', value: data.latitude != null ? String(data.latitude) : '' },
       { label: 'Longitude', value: data.longitude != null ? String(data.longitude) : '' },
-      { label: 'Section/Zone/Beat', value: sectionZoneBeatCombined(data.sector_id, data.zone_id, data.beat_id) || data.zone_beat || '' },
+      { label: 'Cross Street', value: data.cross_street || '' },
     ], y);
-    // Row 3: Cross Street | Property (2 columns)
-    { const yL = addFieldPair(doc, 'Cross Street', data.cross_street || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Property', data.property_name || '', rx, y, hfw);
-      y = Math.max(yL, yR); }
-    // Row 4: Building | Floor | Suite/Room | Section | Zone | Beat (6 columns)
-    // Each tier shows only its leaf component to match the strip header.
-    { const sixW = ffw / 6;
-      const r4Fields = [
+    // Row 3: Property | Building | Floor | Suite/Room (4 columns)
+    {
+      const quarterW = ffw / 4;
+      const r3Fields = [
+        { label: 'Property', value: data.property_name || '' },
         { label: 'Building', value: data.location_building || '' },
         { label: 'Floor', value: data.location_floor || '' },
         { label: 'Suite/Room', value: data.location_room || '' },
-        { label: 'Section', value: data.sector_id || '' },
-        { label: 'Zone', value: zoneLeaf(data.zone_id) },
-        { label: 'Beat', value: beatLeaf(data.beat_id) },
       ];
       let maxY = y + SPACING.FIELD_ROW_ADVANCE;
-      for (let i = 0; i < 6; i++) {
-        const fy = addFieldPair(doc, r4Fields[i].label, r4Fields[i].value, lx + i * sixW, y, sixW);
+      for (let i = 0; i < 4; i++) {
+        const fy = addFieldPair(doc, r3Fields[i].label, r3Fields[i].value, lx + i * quarterW, y, quarterW);
         if (fy > maxY) maxY = fy;
       }
       y = maxY;
@@ -1663,7 +1660,12 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   }
 
   // Flags — before Scene Conditions
-  y = checkPageBreak(doc, y, 15, prio);
+  // Need: section header (~5mm) + 4 checkbox rows × 3.5mm (14mm) + section
+  // pad (~3mm) ≈ 22mm. Previous reserve of 15mm let row 4 (SUPVR NOTIFIED,
+  // LE NOTIFIED, TRESPASS) bleed into the bottom-strip PDF417 barcode on
+  // page 1. checkPageBreak's BARCODE_CLEARANCE handles the lower bound;
+  // we just have to pass an honest `needed` so it fires when warranted.
+  y = checkPageBreak(doc, y, 22, prio);
   { const flagSec = openAutoSection(doc, 'Flags', y);
     // Checkboxes draw at y-1.5, so need extra offset to clear header bar
     y = flagSec.contentY + 2;
