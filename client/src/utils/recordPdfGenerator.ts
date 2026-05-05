@@ -2193,13 +2193,23 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (resp.ok) {
         const { qr_png_base64 } = await resp.json();
         const pageW = doc.internal.pageSize.getWidth();
-        const qrSize = 12; // mm — compact, tucks into the seal-slot corner
-        // Bottom-right corner of the seal slot. The slot's outer edge
-        // sits at pageW - PAGE_MARGIN; we inset by 3mm for visual
-        // breathing room. Vertical: 3mm above the bottom of the
-        // signature block so the QR doesn't kiss the bottom border.
-        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 3;
-        const qrY = y - qrSize - 5;
+        const pageH = doc.internal.pageSize.getHeight();
+        const qrSize = 12; // mm — compact corner badge
+        // Anchored to the absolute bottom-right corner of the page,
+        // NOT the signature block's seal slot (which it was previously
+        // sharing and visually overlapping — caught 2026-05-04). Sits
+        // in the empty band between the signature block and the
+        // bottom-strip PDF417 barcode + footer text. The seal slot
+        // stays clean for an agency seal stamp; the QR gets a
+        // stationary, predictable corner location regardless of what
+        // content sits above it.
+        //
+        // Vertical: bottom of QR sits at pageH-23 — 3mm above the top
+        // of the bottom-strip PDF417 barcode (which lives at y∈
+        // [pageH-20, pageH-12]). Horizontal: 1mm in from the page
+        // right margin so it visually mirrors the barcode at left.
+        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 1;
+        const qrY = pageH - 23 - qrSize;
         doc.addImage(qr_png_base64, 'PNG', qrX, qrY, qrSize, qrSize);
         doc.setFont('helvetica', 'bold');
         doc.setFontSize(4.5);
