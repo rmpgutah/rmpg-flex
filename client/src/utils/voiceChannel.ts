@@ -445,6 +445,9 @@ export class VoiceChannel {
 
   // Radio PTT cross-integration
   private radioActive = false;
+  // Push-to-talk hold mode: when true, the auto-listen window timer is
+  // suppressed and the mic stays open until endHoldToTalk() fires.
+  private holdMode = false;
 
   // Track the latest transcript from Web Speech API
   private lastTranscript = '';
@@ -516,6 +519,63 @@ export class VoiceChannel {
     }
 
     await this.runAlert(narrative, severity);
+  }
+
+  /**
+   * Push-to-talk: open the mic and KEEP it open until endHoldToTalk()
+   * is called. Bypasses the auto-listen timer entirely. Used by the
+   * V-button hold gesture and the V-key keydown→keyup pattern.
+   */
+  async startHoldToTalk(): Promise<void> {
+    if (this.destroyed) return;
+    if (!this.config.enabled) return;
+    if (this.state === 'alerting') return;
+    if (this.state === 'processing' || this.state === 'responding') return;
+    if (this.state === 'listening') {
+      // Already listening from a tap — convert to hold mode (cancel auto-end timer).
+      this.clearListenTimer();
+      this.holdMode = true;
+      return;
+    }
+    this.holdMode = true;
+    await this.startListening();
+    // startListening() sets a normal listen-window timer; cancel it for hold mode.
+    this.clearListenTimer();
+  }
+
+  /**
+   * End the push-to-talk hold and process whatever was captured.
+   * Safe to call when not in hold mode (no-op).
+   */
+  endHoldToTalk(): void {
+    if (!this.holdMode) return;
+    this.holdMode = false;
+    if (this.state !== 'listening') return;
+    void this.processTranscript();
+  }
+
+  /**
+   * Submit a typed transcript directly to the dialogue pipeline.
+   * Skips the mic / STT path entirely — used by the text-input box
+   * in the enveloped voice panel for environments where speech is
+   * unavailable (noisy, mic broken, dispatcher prefers typing).
+   */
+  async submitText(text: string): Promise<void> {
+    if (this.destroyed) return;
+    if (!this.config.enabled) return;
+    const trimmed = (text ?? '').trim();
+    if (!trimmed) return;
+    if (this.state === 'alerting' || this.state === 'processing' || this.state === 'responding') {
+      return;
+    }
+    // Stop any active listen — the typed text supersedes mic input.
+    if (this.state === 'listening') this.stopListening();
+
+    // Mirror the transcript into the channel state so the UI shows it.
+    this.lastTranscript = trimmed;
+    this.audioChunks = [];
+    this.callbacks.onTranscript(trimmed, true);
+    await this.processTranscript();
   }
 
   /**
