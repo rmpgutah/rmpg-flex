@@ -11,7 +11,8 @@ import { useMemo, useState } from 'react';
 import { Check, Download, RotateCcw, Save, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from './ToastProvider';
-import { getSaveBuilder, hasSaveHandler } from '../utils/documentIntakeSaveHandlers';
+import { getSaveBuilder, hasSaveHandler, requiresIncident } from '../utils/documentIntakeSaveHandlers';
+import IncidentPicker, { type IncidentSummary } from './IncidentPicker';
 
 export interface ExtractedField {
   key: string;
@@ -62,14 +63,23 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
   );
 
   const canSaveDirect = hasSaveHandler(extraction.kind);
+  const needsIncident = requiresIncident(extraction.kind);
+  const [selectedIncident, setSelectedIncident] = useState<IncidentSummary | null>(null);
   const summaryColor = confidenceColor(extraction.confidence);
 
   async function handleSave() {
     const builder = getSaveBuilder(extraction.kind);
     if (!builder) return;
-    const { endpoint, payload, label } = builder(edits);
+    if (needsIncident && !selectedIncident) {
+      toast.addToast('Pick an incident to attach this to before saving', 'warning');
+      return;
+    }
     setSaving(true);
     try {
+      const ctx = selectedIncident
+        ? { incidentId: selectedIncident.id, incidentNumber: selectedIncident.incident_number }
+        : {};
+      const { endpoint, payload, label } = builder(edits, ctx);
       const resp = await apiFetch<any>(endpoint, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -195,18 +205,29 @@ export default function DocumentIntakeReviewer({ extraction, onReset }: Props) {
         </div>
       </div>
 
+      {/* Incident picker — only when the kind attaches to an existing incident */}
+      {canSaveDirect && needsIncident && (
+        <IncidentPicker
+          selectedId={selectedIncident?.id ?? null}
+          onSelect={setSelectedIncident}
+        />
+      )}
+
       {/* Action bar */}
       <div className="bg-[#141414] border border-[#222] p-3 panel-beveled flex items-center gap-2 flex-wrap" style={{ borderRadius: 2 }}>
         {canSaveDirect ? (
           <button
             type="button"
             onClick={handleSave}
-            disabled={saving}
-            className="px-3 py-1.5 text-[11px] font-semibold uppercase border border-[#d4a017] text-[#d4a017] hover:bg-[#d4a017] hover:text-black disabled:opacity-50 flex items-center gap-1.5"
+            disabled={saving || (needsIncident && !selectedIncident)}
+            title={needsIncident && !selectedIncident ? 'Pick an incident above to enable save' : undefined}
+            className="px-3 py-1.5 text-[11px] font-semibold uppercase border border-[#d4a017] text-[#d4a017] hover:bg-[#d4a017] hover:text-black disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
             style={{ borderRadius: 2 }}
           >
             {saving ? <Save className="w-3.5 h-3.5 animate-pulse" /> : <Check className="w-3.5 h-3.5" />}
-            Save to Records as {extraction.kind}
+            {needsIncident
+              ? `Attach to ${selectedIncident?.incident_number ?? 'incident…'}`
+              : `Save to Records as ${extraction.kind}`}
           </button>
         ) : (
           <div className="flex items-center gap-1.5 text-[11px] text-[#eab308]">

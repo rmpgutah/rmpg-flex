@@ -140,20 +140,129 @@ export function buildFiPayload(bag: FieldBag): SaveResult {
   };
 }
 
+// ── Supplement builders (attach to existing incident) ───────
+// witness_statement and info_form/supplemental_report don't have
+// their own destination tables — they're filed as supplemental
+// reports against an existing incident the clerk picks. Server
+// route: POST /api/incidents/:id/supplements with
+// { report_type, subject, narrative }.
+
+export interface SaveContext {
+  /** Required for kinds where requiresIncident is true. */
+  incidentId?: number;
+  /** Optional human label for the toast (e.g. "INC-2024-0123"). */
+  incidentNumber?: string;
+}
+
+export function buildWitnessStatementSupplement(bag: FieldBag, ctx: SaveContext): SaveResult {
+  if (!ctx.incidentId) {
+    throw new Error('witness_statement requires an incidentId');
+  }
+  const witness = get(bag, 'witness_name') || 'Unknown Witness';
+  const dob = get(bag, 'witness_dob');
+  const address = get(bag, 'witness_address');
+  const phone = get(bag, 'witness_phone');
+  const officer = get(bag, 'interviewing_officer');
+  const statement = get(bag, 'statement_body');
+  const incidentDate = get(bag, 'incident_date');
+  const incidentLocation = get(bag, 'incident_location');
+
+  // Compose a narrative that preserves the OCR'd identity block
+  // ABOVE the statement body so a reviewer can audit who the
+  // witness is alongside what they said.
+  const lines: string[] = [];
+  lines.push(`Witness: ${witness}`);
+  if (dob) lines.push(`DOB: ${dob}`);
+  if (address) lines.push(`Address: ${address}`);
+  if (phone) lines.push(`Phone: ${phone}`);
+  if (officer) lines.push(`Interviewing Officer: ${officer}`);
+  if (incidentDate) lines.push(`Incident Date: ${incidentDate}`);
+  if (incidentLocation) lines.push(`Incident Location: ${incidentLocation}`);
+  if (statement) {
+    lines.push('');
+    lines.push('--- STATEMENT ---');
+    lines.push(statement);
+  }
+
+  return {
+    endpoint: `/incidents/${ctx.incidentId}/supplements`,
+    label: `Witness Statement attached to ${ctx.incidentNumber ?? `incident #${ctx.incidentId}`}`,
+    payload: {
+      report_type: 'witness_statement',
+      subject: `Statement of ${witness}`,
+      narrative: lines.join('\n'),
+    },
+  };
+}
+
+export function buildInfoFormSupplement(bag: FieldBag, ctx: SaveContext): SaveResult {
+  if (!ctx.incidentId) {
+    throw new Error('info_form requires an incidentId');
+  }
+  const ref = get(bag, 'reference_number');
+  const subject = get(bag, 'subject_name') || 'Unknown Subject';
+  const dob = get(bag, 'subject_dob');
+  const address = get(bag, 'subject_address');
+  const phone = get(bag, 'subject_phone');
+  const occurrenceDate = get(bag, 'occurrence_date');
+  const occurrenceLocation = get(bag, 'occurrence_location');
+  const reportingParty = get(bag, 'reporting_party');
+  const reportingOfficer = get(bag, 'reporting_officer');
+  const narrative = get(bag, 'narrative');
+
+  const lines: string[] = [];
+  if (ref) lines.push(`Reference #: ${ref}`);
+  lines.push(`Subject: ${subject}`);
+  if (dob) lines.push(`Subject DOB: ${dob}`);
+  if (address) lines.push(`Subject Address: ${address}`);
+  if (phone) lines.push(`Subject Phone: ${phone}`);
+  if (occurrenceDate) lines.push(`Occurrence Date: ${occurrenceDate}`);
+  if (occurrenceLocation) lines.push(`Occurrence Location: ${occurrenceLocation}`);
+  if (reportingParty) lines.push(`Reporting Party: ${reportingParty}`);
+  if (reportingOfficer) lines.push(`Reporting Officer: ${reportingOfficer}`);
+  if (narrative) {
+    lines.push('');
+    lines.push('--- NARRATIVE ---');
+    lines.push(narrative);
+  }
+
+  return {
+    endpoint: `/incidents/${ctx.incidentId}/supplements`,
+    label: `Information Report attached to ${ctx.incidentNumber ?? `incident #${ctx.incidentId}`}`,
+    payload: {
+      report_type: 'supplemental',
+      subject: ref ? `Info Report ${ref}` : `Info Report — ${subject}`,
+      narrative: lines.join('\n'),
+    },
+  };
+}
+
 // ── Registry ────────────────────────────────────────────────
-// Kinds NOT in this map use the JSON download fallback in the UI;
-// they require a destination-record pick (e.g. "attach to which
-// incident?") that's out of scope for the v1 reviewer.
-type Builder = (bag: FieldBag) => SaveResult;
-const BUILDERS: Partial<Record<string, Builder>> = {
-  court_warrant: buildWarrantPayload,
-  fi_card: buildFiPayload,
+// Kinds NOT in this map use the JSON download fallback in the UI.
+// `requiresIncident` flag tells the reviewer to render the
+// IncidentPicker as a save-prerequisite for that kind.
+type Builder = (bag: FieldBag, ctx: SaveContext) => SaveResult;
+interface Registration {
+  build: Builder;
+  requiresIncident: boolean;
+}
+
+const REGISTRY: Partial<Record<string, Registration>> = {
+  court_warrant: { build: (bag) => buildWarrantPayload(bag), requiresIncident: false },
+  fi_card: { build: (bag) => buildFiPayload(bag), requiresIncident: false },
+  witness_statement: { build: buildWitnessStatementSupplement, requiresIncident: true },
+  info_form: { build: buildInfoFormSupplement, requiresIncident: true },
+  supplemental_report: { build: buildInfoFormSupplement, requiresIncident: true },
 };
 
 export function getSaveBuilder(kind: string): Builder | null {
-  return BUILDERS[kind] ?? null;
+  return REGISTRY[kind]?.build ?? null;
 }
 
 export function hasSaveHandler(kind: string): boolean {
-  return kind in BUILDERS;
+  return kind in REGISTRY;
+}
+
+export function requiresIncident(kind: string): boolean {
+  return REGISTRY[kind]?.requiresIncident ?? false;
 }

@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   splitPersonName, parseMoney, normalizeDate,
   buildWarrantPayload, buildFiPayload,
-  getSaveBuilder, hasSaveHandler,
+  buildWitnessStatementSupplement, buildInfoFormSupplement,
+  getSaveBuilder, hasSaveHandler, requiresIncident,
 } from '../documentIntakeSaveHandlers';
 
 describe('splitPersonName', () => {
@@ -144,17 +145,107 @@ describe('buildFiPayload', () => {
   });
 });
 
+describe('buildWitnessStatementSupplement', () => {
+  it('builds /incidents/:id/supplements payload with composed narrative', () => {
+    const result = buildWitnessStatementSupplement(
+      {
+        witness_name: 'ROE, RICHARD',
+        witness_dob: '7/4/1970',
+        witness_address: '321 Pine St',
+        witness_phone: '801-555-7777',
+        interviewing_officer: 'Detective Cruz',
+        statement_body: 'On June 1st I observed two males approach the victim.',
+        incident_date: '06/01/2024',
+        incident_location: '100 Main St',
+      },
+      { incidentId: 42, incidentNumber: 'INC-2024-0123' },
+    );
+    expect(result.endpoint).toBe('/incidents/42/supplements');
+    expect((result.payload as any).report_type).toBe('witness_statement');
+    expect((result.payload as any).subject).toBe('Statement of ROE, RICHARD');
+    expect((result.payload as any).narrative).toContain('Witness: ROE, RICHARD');
+    expect((result.payload as any).narrative).toContain('DOB: 7/4/1970');
+    expect((result.payload as any).narrative).toContain('--- STATEMENT ---');
+    expect((result.payload as any).narrative).toContain('two males');
+    expect(result.label).toContain('INC-2024-0123');
+  });
+
+  it('throws when incidentId is missing', () => {
+    expect(() => buildWitnessStatementSupplement({ witness_name: 'X' }, {})).toThrow(/incidentId/);
+  });
+
+  it('uses "Unknown Witness" subject when name is blank', () => {
+    const result = buildWitnessStatementSupplement({}, { incidentId: 1 });
+    expect((result.payload as any).subject).toBe('Statement of Unknown Witness');
+  });
+});
+
+describe('buildInfoFormSupplement', () => {
+  it('builds payload with reference number in subject when present', () => {
+    const result = buildInfoFormSupplement(
+      {
+        reference_number: 'INFO-2024-0042',
+        subject_name: 'BROWN, ALICE',
+        subject_dob: '12/31/1972',
+        occurrence_date: '02/14/2024',
+        reporting_party: 'NEIGHBOR, BOB',
+        narrative: 'RP states he heard yelling next door at 0200.',
+      },
+      { incidentId: 7, incidentNumber: 'INC-2024-0007' },
+    );
+    expect(result.endpoint).toBe('/incidents/7/supplements');
+    expect((result.payload as any).report_type).toBe('supplemental');
+    expect((result.payload as any).subject).toBe('Info Report INFO-2024-0042');
+    expect((result.payload as any).narrative).toContain('Reference #: INFO-2024-0042');
+    expect((result.payload as any).narrative).toContain('Reporting Party: NEIGHBOR, BOB');
+    expect((result.payload as any).narrative).toContain('--- NARRATIVE ---');
+  });
+
+  it('falls back to subject-name in label when no reference number', () => {
+    const result = buildInfoFormSupplement(
+      { subject_name: 'BROWN, ALICE' },
+      { incidentId: 7 },
+    );
+    expect((result.payload as any).subject).toBe('Info Report — BROWN, ALICE');
+  });
+
+  it('throws when incidentId is missing', () => {
+    expect(() => buildInfoFormSupplement({ subject_name: 'X' }, {})).toThrow(/incidentId/);
+  });
+});
+
 describe('registry', () => {
-  it('hasSaveHandler returns true for registered kinds', () => {
+  it('hasSaveHandler returns true for all registered kinds', () => {
     expect(hasSaveHandler('court_warrant')).toBe(true);
     expect(hasSaveHandler('fi_card')).toBe(true);
+    expect(hasSaveHandler('witness_statement')).toBe(true);
+    expect(hasSaveHandler('info_form')).toBe(true);
+    expect(hasSaveHandler('supplemental_report')).toBe(true);
   });
   it('hasSaveHandler returns false for unregistered kinds', () => {
-    expect(hasSaveHandler('witness_statement')).toBe(false);
     expect(hasSaveHandler('court_order')).toBe(false);
+    expect(hasSaveHandler('trespass_order')).toBe(false);
     expect(hasSaveHandler('unknown')).toBe(false);
   });
-  it('getSaveBuilder returns null for unregistered', () => {
-    expect(getSaveBuilder('info_form')).toBeNull();
+
+  it('requiresIncident is true for witness_statement / info_form / supplemental_report', () => {
+    expect(requiresIncident('witness_statement')).toBe(true);
+    expect(requiresIncident('info_form')).toBe(true);
+    expect(requiresIncident('supplemental_report')).toBe(true);
+  });
+  it('requiresIncident is false for direct-save kinds', () => {
+    expect(requiresIncident('court_warrant')).toBe(false);
+    expect(requiresIncident('fi_card')).toBe(false);
+  });
+  it('requiresIncident is false for unregistered kinds', () => {
+    expect(requiresIncident('court_order')).toBe(false);
+    expect(requiresIncident('unknown')).toBe(false);
+  });
+
+  it('getSaveBuilder returns the right builder for each kind', () => {
+    expect(getSaveBuilder('witness_statement')).toBe(buildWitnessStatementSupplement);
+    expect(getSaveBuilder('info_form')).toBe(buildInfoFormSupplement);
+    expect(getSaveBuilder('supplemental_report')).toBe(buildInfoFormSupplement);
+    expect(getSaveBuilder('court_order')).toBeNull();
   });
 });
