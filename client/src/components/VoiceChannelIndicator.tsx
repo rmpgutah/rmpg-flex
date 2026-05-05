@@ -26,6 +26,7 @@ export default function VoiceChannelIndicator() {
   const {
     state,
     transcript,
+    transcriptFinal,
     lastCommand,
     error,
     activateManualListen,
@@ -357,9 +358,14 @@ export default function VoiceChannelIndicator() {
           {(transcript || lastCommand || error) && (
             <div className="flex flex-col gap-1 p-2" style={{ background: '#0a0a0a', borderBottom: '1px solid #2a2a2a' }}>
               {transcript && (
-                <div className="text-[11px] font-mono text-green-400 break-words">
+                <div
+                  className={`text-[11px] font-mono break-words ${
+                    transcriptFinal ? 'text-green-400' : 'text-green-300/60 italic'
+                  }`}
+                >
                   <span className="text-[9px] uppercase tracking-wider text-gray-600 mr-1.5">YOU</span>
                   {transcript}
+                  {!transcriptFinal && <span className="text-green-300/40 ml-0.5">…</span>}
                 </div>
               )}
               {lastCommand && (
@@ -404,8 +410,9 @@ export default function VoiceChannelIndicator() {
               <ul className="space-y-0.5 text-gray-400">
                 <li><span className="text-gray-100">Hold V {drive.active ? '1s' : '3s'}</span> — opens panel + starts listening</li>
                 <li><span className="text-gray-100">In-panel V button</span> — hold to talk · tap for a listen window</li>
-                <li><span className="text-gray-100">Type + Enter</span> — text query (hidden while driving)</li>
-                <li><span className="text-gray-100">🔊 / 🔇</span> — dispatch voice on/off (default ON)</li>
+                <li><span className="text-gray-100">Type + Enter</span> — text query (still gets spoken reply)</li>
+                <li><span className="text-gray-100">🔊 / 🔇</span> — dispatch voice on/off for both spoken AND typed input (default ON)</li>
+                <li><span className="text-gray-100">Speak during a reply</span> — barge-in: dispatch stops, listens to you</li>
                 <li><span className="text-gray-100">Esc</span> — close panel</li>
                 <li className="pt-1 text-gray-500">Drive mode auto-engages above 30 mph and re-opens the mic after every reply</li>
                 <li className="text-gray-500">Try: "who's nearest?", "10-97", "run plate ABC123"</li>

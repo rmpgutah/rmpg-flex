@@ -539,8 +539,14 @@ export async function speak(
   text: string,
   severity?: AlertSeverity,
   voiceMode: VoiceMode = 'conversational',
+  force = false,
 ): Promise<void> {
-  if (!isSoundEnabled()) return;
+  // `force` bypasses the global voice-alerts master mute. The dialogue
+  // agent's replies are intentional, user-initiated feedback (a direct
+  // answer to a typed or spoken query) — they should always be audible
+  // unless the user explicitly mutes the panel via 🔇 (confirmMode).
+  // Passive alerts still respect the global mute.
+  if (!force && !isSoundEnabled()) return;
   if (severity && !shouldPlayAudio(severity)) return;
 
   // Mirror every spoken line into the transcript buffer so the

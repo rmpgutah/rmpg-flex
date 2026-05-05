@@ -18,6 +18,9 @@ import { useWebSocket } from '../context/WebSocketContext';
 export interface UseVoiceChannelResult {
   state: VoiceChannelState;
   transcript: string;
+  /** True once the STT engine has committed the transcript as final.
+   *  False while the officer is still mid-sentence (interim partial). */
+  transcriptFinal: boolean;
   lastCommand: CommandResult | null;
   error: string | null;
   activateManualListen: () => void;
@@ -35,6 +38,7 @@ export interface UseVoiceChannelResult {
 export function useVoiceChannel(): UseVoiceChannelResult {
   const [state, setState] = useState<VoiceChannelState>('idle');
   const [transcript, setTranscript] = useState('');
+  const [transcriptFinal, setTranscriptFinal] = useState(true);
   const [lastCommand, setLastCommand] = useState<CommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enabled] = useState(() => isVoiceChannelEnabled());
@@ -54,10 +58,13 @@ export function useVoiceChannel(): UseVoiceChannelResult {
       onStateChange: (s) => setState(s),
       onTranscript: (text, isFinal) => {
         setTranscript(text);
-        // Clear transcript after 3s if final
+        setTranscriptFinal(isFinal);
         if (isFinal) {
           if (transcriptTimerRef.current) clearTimeout(transcriptTimerRef.current);
-          transcriptTimerRef.current = setTimeout(() => setTranscript(''), 3000);
+          transcriptTimerRef.current = setTimeout(() => {
+            setTranscript('');
+            setTranscriptFinal(true);
+          }, 3000);
         }
       },
       onCommandResult: (result) => {
@@ -139,6 +146,7 @@ export function useVoiceChannel(): UseVoiceChannelResult {
   return {
     state,
     transcript,
+    transcriptFinal,
     lastCommand,
     error,
     activateManualListen,
