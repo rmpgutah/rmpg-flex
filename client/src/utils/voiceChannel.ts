@@ -455,6 +455,24 @@ export class VoiceChannel {
   // automatically after each dialogue reply for continuous turn-taking
   // — "who's nearest?" → reply → "send them my 20" with no second hold.
   private driveMode = false;
+  // Stand-by filler timer (C): scheduled in processTranscript, cleared
+  // when respond() fires the real reply. Never both — TTS queue would
+  // serialize anyway, but cancelling early avoids wasted Edge-TTS calls.
+  private standbyFillerTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Barge-in watcher (B): keeps a separate mic stream open while dispatch
+  // TTS is playing. Watches RMS volume; if sustained loud audio is
+  // detected for ≥600ms, aborts the TTS queue and starts a fresh listen.
+  // Independent from the main mic capture so it doesn't fight the active
+  // SpeechRecognition session, and uses echoCancellation + a high
+  // threshold to reject TTS bleeding back through the speakers.
+  private bargeInStream: MediaStream | null = null;
+  private bargeInAudioContext: AudioContext | null = null;
+  private bargeInRafId: number | null = null;
+  private bargeInAboveSinceMs: number | null = null;
+  // Set by fireBargeIn so respond()'s tail logic short-circuits — the
+  // mic is already reopened and we don't want to override that state.
+  private bargedIn = false;
 
   // Track the latest transcript from Web Speech API
   private lastTranscript = '';
@@ -561,6 +579,111 @@ export class VoiceChannel {
     void this.processTranscript();
   }
 
+  // ─── Barge-in watcher (B) ────────────────────────────────
+  // Listen to the mic in parallel with TTS playback. When the officer
+  // speaks loudly enough for long enough, abort the reply and reopen
+  // the listen window — like real radio half-duplex with PTT priority,
+  // but driven by voice activity rather than a key.
+  //
+  // Tunables (TODO(chris): tunable after a real cab test):
+  //   THRESHOLD: RMS amplitude (0..1) above which we count "speech".
+  //              Higher = more TTS bleed-through tolerance, less sensitive.
+  //   SUSTAIN_MS: how long the volume must stay above threshold to fire.
+  //              Longer = fewer false-positives from coughs/road noise.
+  private async startBargeInWatcher(): Promise<void> {
+    if (this.bargeInStream) return;       // already running
+    if (this.destroyed) return;
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+
+    const THRESHOLD = 0.06;     // RMS amplitude (0..1)
+    const SUSTAIN_MS = 600;     // continuous time above threshold to trigger
+
+    try {
+      this.bargeInStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,    // critical — rejects TTS bleed-through
+          noiseSuppression: true,
+          autoGainControl: false,    // AGC would amplify silence — keep off
+        },
+      });
+    } catch {
+      // User denied permission, mic in use, etc. — barge-in unavailable; not fatal.
+      this.bargeInStream = null;
+      return;
+    }
+
+    if (this.destroyed || this.state !== 'responding') {
+      // Race: state changed while we awaited getUserMedia
+      this.bargeInStream.getTracks().forEach((t) => t.stop());
+      this.bargeInStream = null;
+      return;
+    }
+
+    const AudioCtxCtor: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+    this.bargeInAudioContext = new AudioCtxCtor();
+    const source = this.bargeInAudioContext.createMediaStreamSource(this.bargeInStream);
+    const analyser = this.bargeInAudioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+
+    const buf = new Float32Array(analyser.fftSize);
+    this.bargeInAboveSinceMs = null;
+
+    const tick = () => {
+      if (this.destroyed) return;
+      if (this.state !== 'responding') return;
+      analyser.getFloatTimeDomainData(buf);
+
+      // Compute RMS volume — root-mean-square over the time-domain buffer.
+      let sumSq = 0;
+      for (let i = 0; i < buf.length; i++) sumSq += buf[i] * buf[i];
+      const rms = Math.sqrt(sumSq / buf.length);
+
+      const now = Date.now();
+      if (rms >= THRESHOLD) {
+        if (this.bargeInAboveSinceMs == null) this.bargeInAboveSinceMs = now;
+        if (now - this.bargeInAboveSinceMs >= SUSTAIN_MS) {
+          // Sustained speech detected — barge in.
+          this.fireBargeIn();
+          return;
+        }
+      } else {
+        this.bargeInAboveSinceMs = null;
+      }
+
+      this.bargeInRafId = requestAnimationFrame(tick);
+    };
+    this.bargeInRafId = requestAnimationFrame(tick);
+  }
+
+  private stopBargeInWatcher(): void {
+    if (this.bargeInRafId != null) {
+      cancelAnimationFrame(this.bargeInRafId);
+      this.bargeInRafId = null;
+    }
+    if (this.bargeInStream) {
+      this.bargeInStream.getTracks().forEach((t) => t.stop());
+      this.bargeInStream = null;
+    }
+    if (this.bargeInAudioContext) {
+      this.bargeInAudioContext.close().catch(() => { /* ignore */ });
+      this.bargeInAudioContext = null;
+    }
+    this.bargeInAboveSinceMs = null;
+  }
+
+  private fireBargeIn(): void {
+    // Abort the TTS queue — current playback stops, queued items drop.
+    this.bargedIn = true;
+    try { clearQueue(); } catch { /* ignore */ }
+    this.stopBargeInWatcher();
+    if (this.destroyed) return;
+    // Reopen the mic for the officer to speak. setState('idle') first
+    // so activateManualListen's guards pass.
+    this.setState('idle');
+    void this.activateManualListen();
+  }
+
   /**
    * Submit a typed transcript directly to the dialogue pipeline.
    * Skips the mic / STT path entirely — used by the text-input box
@@ -615,6 +738,11 @@ export class VoiceChannel {
     this.destroyed = true;
     this.stopListening();
     this.clearListenTimer();
+    if (this.standbyFillerTimer) {
+      clearTimeout(this.standbyFillerTimer);
+      this.standbyFillerTimer = null;
+    }
+    this.stopBargeInWatcher();
     // Clean up stress analyzer
     this.stressAnalyzer?.disconnect();
     this.stressAnalyzer = null;
@@ -885,6 +1013,26 @@ export class VoiceChannel {
     this.stopListening();
     this.setState('processing');
 
+    // ── C: Stand-by filler ──
+    // If the dialogue agent takes longer than 1200ms (slow LLM, retry,
+    // network hiccup), speak a brief "Stand by." so the officer hears
+    // *something* and knows the system is working — fills the silence
+    // with warmth instead of dead air. Cleared by respond() before its
+    // own speak() fires, so the filler doesn't queue ahead of the real
+    // reply if the agent comes back fast. The TTS queue serializes if
+    // it does fire, so there's never overlap.
+    this.standbyFillerTimer = setTimeout(() => {
+      if (this.destroyed) return;
+      if (this.state !== 'processing') return;
+      // Use the same TTS pipeline as replies — uses confirmMode='speak'
+      // gating, voice persona, P25 chirp, etc. Silent if user has muted.
+      if (this.config.confirmMode === 'speak') {
+        // force=true: same rationale as the main reply — fillers are
+        // intentional dialogue feedback, not passive alerts.
+        speak('Stand by.', undefined, 'conversational', true).catch(() => { /* best-effort */ });
+      }
+    }, 1200);
+
     if (this.destroyed) return;
 
     // Check stress level from audio analysis
@@ -1019,6 +1167,12 @@ export class VoiceChannel {
 
   private async respond(result: CommandResult): Promise<void> {
     if (this.destroyed) return;
+    // Cancel the "stand by" filler — the real reply is about to play.
+    if (this.standbyFillerTimer) {
+      clearTimeout(this.standbyFillerTimer);
+      this.standbyFillerTimer = null;
+    }
+    this.bargedIn = false;
     this.setState('responding');
 
     // Dialogue agent results carry a voice_mode hint:
@@ -1027,10 +1181,22 @@ export class VoiceChannel {
     const voiceMode: 'spillman_flat' | 'conversational' =
       (result as any).voice_mode === 'spillman_flat' ? 'spillman_flat' : 'conversational';
 
+    // ── B: Barge-in watcher ──
+    // Spin up a parallel mic listener so the officer can interrupt this
+    // reply by speaking. Only meaningful when we're actually playing
+    // speech (confirmMode === 'speak'). Skipped in silent/beep modes.
+    if (this.config.confirmMode === 'speak') {
+      void this.startBargeInWatcher();
+    }
+
     try {
       switch (this.config.confirmMode) {
         case 'speak':
-          await speak(result.message, undefined, voiceMode);
+          // force=true: dialogue replies bypass the global voice-alerts
+          // master mute. Typed AND spoken inputs both receive audible
+          // feedback when confirmMode is 'speak'. Mute via the panel
+          // 🔊/🔇 toggle, not via the global alerts switch.
+          await speak(result.message, undefined, voiceMode, true);
           break;
         case 'beep':
           await playRogerBeep();
@@ -1041,9 +1207,19 @@ export class VoiceChannel {
       }
     } catch {
       // Confirmation audio failed — not critical
+    } finally {
+      // Always tear down the barge-in watcher when speech ends naturally.
+      // If barge-in fired, this is a no-op (already stopped).
+      this.stopBargeInWatcher();
     }
 
     if (this.destroyed) return;
+    // If barge-in fired, fireBargeIn already reopened the mic — don't
+    // step on it with the auto-loop or pending-alert tail below.
+    if (this.bargedIn) {
+      this.bargedIn = false;
+      return;
+    }
 
     // Check for pending alert
     if (this.pendingAlert) {
