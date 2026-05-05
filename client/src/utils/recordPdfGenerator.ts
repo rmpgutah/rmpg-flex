@@ -2208,9 +2208,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const offW = doc.getTextWidth(officerSuffix);
         doc.text(officerSuffix, tagX - 2 - offW, strip_y + headerH - 1.6);
       }
-      // Header→body gap of 3.0mm: previous 1.5mm let body's first line
-      // ascender clip into the dark header strip (caught 2026-05-05).
-      return strip_y + headerH + 3.0;
+      // Header→body gap of 4.0mm: 1.5mm let body's first line ascender
+      // clip into the dark header strip (caught 2026-05-05); 3.0mm
+      // still showed visual proximity at certain zoom levels. 4.0mm
+      // produces a consistently visible breathing line.
+      return strip_y + headerH + 4.0;
     };
 
     for (let ni = 0; ni < noteCount; ni++) {

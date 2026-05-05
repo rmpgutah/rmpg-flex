@@ -1674,28 +1674,14 @@ export function addFormattedText(doc: jsPDF, rawText: string, x: number, y: numb
         const lineSeg = hardLine.slice(segStart, i);
         charIdx = i;
 
-        // For lines without formatting markers, use justified word spacing
-        // Only justify if enough words AND line fills >60% of width AND gap is small
-        if (!hasMarkers(lineSeg) && !isLastLine && wrappedLine.trim().length > 0) {
-          const words = wrappedLine.split(/\s+/).filter(w => w.length > 0);
-          if (words.length > 3) {
-            doc.setFont(PDF_VALUE_FONT, 'normal'); doc.setFontSize(fontSize); doc.setTextColor(...COLOR.TEXT_PRIMARY);
-            const textWidth = doc.getTextWidth(words.join(''));
-            const extraSpace = (maxWidth - textWidth) / (words.length - 1);
-            const fillRatio = textWidth / maxWidth;
-            // Only justify if line fills >60% of width AND extra space per gap <= 1.5mm
-            if (extraSpace <= 1.5 && fillRatio > 0.6) {
-              let cx = x;
-              for (let wi = 0; wi < words.length; wi++) {
-                doc.text(words[wi], cx, y);
-                cx += doc.getTextWidth(words[wi]) + (wi < words.length - 1 ? extraSpace : 0);
-              }
-              y += lineH;
-              while (charIdx < hardLine.length && hardLine[charIdx] === ' ') charIdx++;
-              continue;
-            }
-          }
-        }
+        // Justification disabled 2026-05-05 — the per-line word-spacing
+        // adjustment was making narrative text appear visually denser
+        // than the surrounding left-aligned field values, which the
+        // user perceived as a font-size mismatch (the actual font size
+        // is identical, but justified text reads as more compressed
+        // than left-aligned text at the same size). Plain left-aligned
+        // rendering keeps the narrative tonally consistent with
+        // addFieldPair's wrapped values everywhere else.
 
         // Lines with formatting markers or last line: render with formatting
         let cursorX = x;
