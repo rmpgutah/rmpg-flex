@@ -1,7 +1,11 @@
 import { useEffect, useState, useCallback } from 'react';
 
 // How often to poll for SW updates (2 minutes — forced updates)
-const UPDATE_CHECK_INTERVAL = 2 * 60 * 1000;
+// Bumped 2min → 15min 2026-05-05. The aggressive 2-minute interval
+// was generating periodic reg.update() pings every two minutes per
+// open tab — fine on browser, but Electron felt sluggish from the
+// constant SW chatter. 15 minutes is plenty for production deploys.
+const UPDATE_CHECK_INTERVAL = 15 * 60 * 1000;
 
 /**
  * Service Worker registration + automatic update detection.

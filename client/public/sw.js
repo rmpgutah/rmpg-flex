@@ -59,7 +59,7 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v540';
+const CACHE_NAME = 'rmpg-flex-v541';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
@@ -103,26 +103,17 @@ self.addEventListener('activate', (event) => {
       const oldKeys = keys.filter((k) => k !== CACHE_NAME);
       return Promise.all(oldKeys.map((k) => caches.delete(k))).then(() => {
         if (oldKeys.length > 0) {
-          // 1. Tell any v539+ client that supports auto-reload to refresh.
-          // 2. SW-side fallback: directly navigate every open window
-          //    client to its current URL — this force-reloads the page,
-          //    which fetches the new HTML referencing the new bundle
-          //    hashes. Backwards-compatible: works even when the page
-          //    is running pre-v539 code with no message handler.
-          //    Skipped if the user is mid-edit (focused INPUT/TEXTAREA
-          //    on the current document) — checked via a postMessage
-          //    round-trip that asks the client; if no reply within
-          //    600ms the SW assumes idle and reloads.
+          // Notify v539+ clients that have an auto-reload handler.
+          // The SW-side force-reload (client.navigate) was REMOVED
+          // 2026-05-05 because it was causing perceived slowness on
+          // Electron — the cache eviction + navigation triggered a
+          // full bundle re-fetch every time a new SW activated. The
+          // v539+ client-side auto-reload (1.5s after SW_UPDATED with
+          // input-focus guard) is enough; pre-v539 sessions can do a
+          // one-time manual reload.
           self.clients.matchAll({ type: 'window' }).then((clients) => {
             clients.forEach((client) => {
               client.postMessage({ type: 'SW_UPDATED', cacheName: CACHE_NAME });
-              // Force-reload after a short delay so the postMessage
-              // and any client-side auto-reload have a chance to fire
-              // first (avoids double-reloads on v539+ clients where
-              // both paths would trigger).
-              setTimeout(() => {
-                try { client.navigate(client.url); } catch (e) { /* navigate may fail in some browsers — fall back to message */ }
-              }, 2000);
             });
           });
         }
