@@ -17,8 +17,13 @@ export function applyAnchors(text: string, anchors: FieldAnchor[]): ExtractedFie
     for (const pattern of anchor.patterns) {
       const m = text.match(pattern);
       if (m && m[1]) {
-        const raw = collapseWs(m[1]);
-        const value = anchor.postProcess ? anchor.postProcess(raw) : raw;
+        // When the anchor declares a postProcess, hand it the RAW match
+        // (newlines preserved) so line-aware filtering can run. Without
+        // a custom post-process, collapse whitespace as the safe default
+        // — single-line anchors (DOB, case#, phone) want the trim.
+        const value = anchor.postProcess
+          ? anchor.postProcess(m[1])
+          : collapseWs(m[1]);
         out.push({
           key: anchor.key,
           value,

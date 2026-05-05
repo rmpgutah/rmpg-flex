@@ -201,6 +201,118 @@ describe('extractFromText — preview cap', () => {
   });
 });
 
+describe('extractFromText — court_summons real-sample regression fixtures', () => {
+  // Synthetic versions of the three real-world layouts encountered
+  // during calibration on 2026-05-05. If any regex change breaks one
+  // of these, the user-visible extraction quality regresses for that
+  // entire format family.
+
+  it('Utah Guglielmo (3rd District / column-aligned with caption bleed)', () => {
+    const text = `GUGLIELMO & ASSOCIATES
+Heather Valerga, (Utah Attorney Bar# 14431)
+PO Box 41688
+Tucson, AZ 85717
+Tel: (877)325-5700
+FAX: (520)325-2480
+Utah@guglielmolaw.com
+Attorney for Plaintiff
+
+                  IN THE THIRD JUDICIAL DISTRICT COURT, STATE OF UTAH
+                           SALT LAKE COUNTY, Salt Lake City Department
+Capital One, N.A., successor by merger to Discover
+Bank ,
+                Plaintiff,                          SUMMONS
+
+         vs.
+                                                            Civil No.
+Abbey Armstrong, an individual,
+              Defendant                                     Judge:
+
+                                                                                      *S10000633570*
+`;
+    const result = extractFromText(text);
+    const byKey = Object.fromEntries(result.fields.map((f) => [f.key, f.value]));
+    expect(result.kind).toBe('court_summons');
+    // Caption bleed must be stripped — plaintiff is JUST the corporate name.
+    expect(byKey.plaintiff).toBe('Capital One, N.A., successor by merger to Discover Bank');
+    expect(byKey.defendant).toBe('Abbey Armstrong');
+    expect(byKey.attorney_bar_number).toBe('14431');
+    expect(byKey.attorney_phone).toBe('877-325-5700');
+    expect(byKey.attorney_email).toBe('Utah@guglielmolaw.com');
+    expect(byKey.document_subtype).toBe('SUMMONS');
+    // Utah AOC barcode tracker as fallback when visible Civil No. is blank.
+    expect(byKey.civil_case_number).toBe('S10000633570');
+    expect(result.confidence).toBeGreaterThanOrEqual(0.9);
+  });
+
+  it('Florida 2-column (Miami-Dade County Court)', () => {
+    const text = `Filing # 246663928 E-Filed 04/23/2026 11:02:20 AM
+
+
+         MCKENZIE CAPITAL LLC,                        IN THE COUNTY COURT OF THE
+             Plaintiff,                               11TH JUDICIAL CIRCUIT, IN AND
+         vs.                                          FOR    MIAMI-DADE     COUNTY,
+                                                      FLORIDA.
+         ARK CONTRACTORS LLC, a
+         Utah Limited Liability Company,              COUNTY CIVIL DIVISION
+            Defendant(s).                             CASE NO. 2026-053140-CC-05
+
+         _________________________________/
+
+
+
+                                            CORPORATE SUMMONS
+
+Telephone: (800)768-3119
+legal@mckcap.com
+Bar No. 121600
+`;
+    const result = extractFromText(text);
+    const byKey = Object.fromEntries(result.fields.map((f) => [f.key, f.value]));
+    expect(result.kind).toBe('court_summons');
+    expect(byKey.civil_case_number).toBe('2026-053140-CC-05');
+    expect(byKey.plaintiff).toBe('MCKENZIE CAPITAL LLC');
+    expect(byKey.defendant).toBe('ARK CONTRACTORS LLC');
+    expect(byKey.attorney_bar_number).toBe('121600');
+    expect(byKey.attorney_phone).toBe('800-768-3119');
+    expect(byKey.attorney_email).toBe('legal@mckcap.com');
+    expect(byKey.document_subtype).toBe('CORPORATE SUMMONS');
+  });
+
+  it('Utah Juab County (firm letterhead with parenthesized bar #)', () => {
+    const text = `RESNICK & LOUIS, P.C.
+GARY R. GUELKER (8474)
+K. TAYLOR SORENSEN (17323)
+3191 S Valley St
+Salt Lake City, UT 84109
+Telephone: 801.960.3655
+Facsimile: 801.877.8576
+gguelker@rlattorneys.com
+Attorneys for Plaintiff
+
+
+                      IN THE FOURTH JUDICIAL DISTRICT COURT
+                      IN AND FOR JUAB COUNTY, STATE OF UTAH
+
+
+                                                                  SUMMONS
+
+                                                      Civil No. 260600001 MI
+                                                      Judge ANTHONY HOWELL
+                                                      Tier 3
+`;
+    const result = extractFromText(text);
+    const byKey = Object.fromEntries(result.fields.map((f) => [f.key, f.value]));
+    expect(result.kind).toBe('court_summons');
+    expect(byKey.civil_case_number).toBe('260600001');
+    expect(byKey.attorney_name).toBe('Gary R. Guelker'); // re-cased from ALLCAPS
+    expect(byKey.attorney_bar_number).toBe('8474');
+    expect(byKey.attorney_phone).toBe('801-960-3655');
+    expect(byKey.attorney_email).toBe('gguelker@rlattorneys.com');
+    expect(byKey.document_subtype).toBe('SUMMONS');
+  });
+});
+
 describe('extractFromText — court_summons (Utah district court)', () => {
   // Calibrated against the Capital One v. defendant pattern from
   // Guglielmo & Associates seen 2026-05-05.
