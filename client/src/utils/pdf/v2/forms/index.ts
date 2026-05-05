@@ -29,3 +29,6 @@ registerV2Schema('citation_blank', citationBlankSchema);
 
 import { fieldInterviewBlankSchema } from '../blankForms/fieldInterviewBlank';
 registerV2Schema('field_interview_blank', fieldInterviewBlankSchema);
+
+import { citationSchema } from './citation';
+registerV2Schema('citation', citationSchema);
