@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
+import AdminCustomIntegrationsSection from './AdminCustomIntegrationsSection';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -817,6 +818,11 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
         )}
       </div>
+
+      {/* ── Custom External Integrations ── */}
+      {/* Outbound HTTP credentials for calling other software FROM Flex.
+          Distinct from the inbound API keys above. Added 2026-05-05. */}
+      <AdminCustomIntegrationsSection />
 
       {/* ── Create Key Modal ── */}
       {showCreateModal && (

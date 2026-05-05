@@ -452,6 +452,31 @@ function createTables(): void {
     );
     CREATE UNIQUE INDEX IF NOT EXISTS idx_system_config_key_value ON system_config(config_key, config_value);
 
+    -- External API integrations — admin-configured outbound calls to other
+    -- internal/external software (added 2026-05-05). Each row is a single
+    -- integration: a base URL + auth method + encrypted credential. The
+    -- app uses these to make HTTP calls FROM Flex TO that other system.
+    -- Distinct from /admin/api-keys which manages keys for systems
+    -- calling INTO Flex (inbound).
+    CREATE TABLE IF NOT EXISTS external_integrations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      base_url TEXT NOT NULL,
+      auth_type TEXT NOT NULL DEFAULT 'none',
+      auth_header_name TEXT,
+      auth_value_encrypted TEXT,
+      default_headers_json TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_tested_at TEXT,
+      last_test_status TEXT,
+      last_test_message TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_by TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_ext_integrations_enabled ON external_integrations(enabled);
+
     -- OFAC SDN (Specially Designated Nationals) — scraped from U.S. Treasury
     CREATE TABLE IF NOT EXISTS ofac_sdn_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
