@@ -10,6 +10,7 @@
 import { useCallback, useState, useEffect } from 'react';
 import { Printer, Eye, PenLine } from 'lucide-react';
 import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from '../utils/recordPdfGenerator';
+import { tryV2Dispatch } from '../utils/pdf/v2DispatchAdapter';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -242,7 +243,10 @@ export default function PrintRecordButton({
     try {
       setLoading(true);
       const enrichedData = await enrichWithImages(recordData);
-      await downloadRecordPdf(recordType, enrichedData, identifier);
+      // v2 sidecar engine handles migrated types (citation today);
+      // returns false for everything still on the legacy generator.
+      const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
+      if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
     } catch (err) {
       console.error('[PrintRecordButton] PDF generation failed:', err);
     } finally {
@@ -275,7 +279,8 @@ export default function PrintRecordButton({
       try {
         setLoading(true);
         const enrichedData = await enrichWithImages(recordData, savedSignature);
-        await downloadRecordPdf(recordType, enrichedData, identifier);
+        const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
+        if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
       } catch (err) {
         console.error('[PrintRecordButton] Signed PDF generation failed:', err);
       } finally {
@@ -305,7 +310,8 @@ export default function PrintRecordButton({
     try {
       setLoading(true);
       const enrichedData = await enrichWithImages(recordData, dataUrl);
-      await downloadRecordPdf(recordType, enrichedData, identifier);
+      const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
+      if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
     } catch (err) {
       console.error('[PrintRecordButton] Signed PDF generation failed:', err);
     } finally {
