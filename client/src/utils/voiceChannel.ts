@@ -451,6 +451,10 @@ export class VoiceChannel {
   // Push-to-talk hold mode: when true, the auto-listen window timer is
   // suppressed and the mic stays open until endHoldToTalk() fires.
   private holdMode = false;
+  // Drive mode (Option A): when active, the channel re-opens the mic
+  // automatically after each dialogue reply for continuous turn-taking
+  // — "who's nearest?" → reply → "send them my 20" with no second hold.
+  private driveMode = false;
 
   // Track the latest transcript from Web Speech API
   private lastTranscript = '';
@@ -1049,7 +1053,38 @@ export class VoiceChannel {
       return;
     }
 
+    // ── Drive-mode auto-loop ──
+    // When the officer is moving in a vehicle, re-open the mic right
+    // after a reply so the conversation can flow without another hold
+    // gesture. Skipped if the radio is currently keyed (avoid catching
+    // unrelated radio traffic) or hold-mode is engaged on the V button.
+    if (this.driveMode && !this.radioActive && !this.holdMode) {
+      this.setState('idle');
+      // Defer to next tick so the responding state finalizes cleanly
+      // before the listen path tears down/spins up the mic.
+      setTimeout(() => {
+        if (this.destroyed) return;
+        if (this.state !== 'idle') return;
+        void this.activateManualListen();
+      }, 50);
+      return;
+    }
+
     this.setState('idle');
+  }
+
+  /**
+   * Tell the channel whether the officer is currently driving.
+   * Drives the auto-loop behavior in respond() and is read by the
+   * indicator UI to morph the V pill / hold-to-open threshold.
+   */
+  setDriveMode(active: boolean): void {
+    this.driveMode = active;
+  }
+
+  /** Read the channel's current drive-mode flag. */
+  isDriveMode(): boolean {
+    return this.driveMode;
   }
 }
 

@@ -24,6 +24,8 @@ export interface UseVoiceChannelResult {
   startHoldToTalk: () => void;
   endHoldToTalk: () => void;
   submitText: (text: string) => void;
+  setDriveMode: (active: boolean) => void;
+  refreshConfig: () => void;
   alert: (narrative: string, severity: AlertSeverity) => void;
   enabled: boolean;
   stressDetected: boolean;
@@ -120,6 +122,14 @@ export function useVoiceChannel(): UseVoiceChannelResult {
     channelRef.current?.submitText(text);
   }, []);
 
+  const setDriveMode = useCallback((active: boolean) => {
+    channelRef.current?.setDriveMode(active);
+  }, []);
+
+  const refreshConfig = useCallback(() => {
+    channelRef.current?.refreshConfig();
+  }, []);
+
   const alert = useCallback((narrative: string, severity: AlertSeverity) => {
     channelRef.current?.alert(narrative, severity);
   }, []);
@@ -135,6 +145,8 @@ export function useVoiceChannel(): UseVoiceChannelResult {
     startHoldToTalk,
     endHoldToTalk,
     submitText,
+    setDriveMode,
+    refreshConfig,
     alert,
     enabled,
     stressDetected,
