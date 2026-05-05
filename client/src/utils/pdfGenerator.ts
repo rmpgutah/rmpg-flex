@@ -611,24 +611,27 @@ export function addReportHeader(
  * 2026-05-04. Switch with setActiveSectionStyle().
  */
 /**
- * Resolve the thematic accent color for a section based on its title.
+ * Resolve the section accent shade for a section based on its title.
  *
- * Police reports benefit from a restrained but recognizable color
- * vocabulary so a reviewer skimming the page can tell at a glance
- * whether they're looking at officer-safety information, evidence,
- * narrative, or routine classification fields. We use five families:
+ * Pivoted from a 5-color thematic palette to a 5-shade grayscale
+ * vocabulary (2026-05-04 user request). Real police reports are
+ * routinely printed in monochrome for cost / archive reasons, and
+ * a grayscale palette photocopies cleanly without producing the
+ * muddy mid-tones that thematic colors generate on a standard
+ * office printer. Visual hierarchy is preserved by varying the
+ * shade — darker = more critical:
  *
- *   - BURGUNDY  — caution / hazards / officer-safety / alerts
- *   - GREEN     — compliance / resolution / disposition / cleared
- *   - NAVY      — persons / subjects / vehicles / linked records
- *   - INDIGO    — notes / narrative / incident details / description
- *   - GOLD      — everything else (default — classification, time,
- *                 caller info, location, PSO/service, scene conditions)
+ *   - 35   — caution / hazards / officer-safety / flags  (near-black)
+ *   - 70   — persons / vehicles / linked records          (charcoal)
+ *   - 100  — notes / narrative / incident details         (slate)
+ *   - 130  — compliance / resolution                      (mid gray)
+ *   - 165  — everything else (default)                    (warm gray)
  *
- * Branding override (admin-configured `section_accent_color`) wins over
- * everything because operators may want a single agency color across
- * all sections — they opt INTO the thematic palette by leaving the
- * branding field unset.
+ * Safety-critical chip colors (FLAG_ARMED, BOLO red, etc.) stay
+ * colored — those are functional warnings, not decorative accents.
+ *
+ * Branding override (admin-configured `section_accent_color`) wins
+ * when the agency wants a single color across all sections.
  */
 function resolveSectionAccentColor(title: string): readonly [number, number, number] {
   if (activeBranding.section_accent_color) {
@@ -636,18 +639,18 @@ function resolveSectionAccentColor(title: string): readonly [number, number, num
   }
   const t = title.toUpperCase();
   if (/CAUTION|HAZARD|OFFICER SAFETY|WARNING|ALERT|FLAG/.test(t)) {
-    return [140, 30, 30];   // burgundy
-  }
-  if (/COMPLIANCE|RESOLUTION|CLEARED|DISPOSITION|REVIEW/.test(t)) {
-    return [60, 110, 70];   // green
+    return [35, 35, 35];     // near-black — highest emphasis
   }
   if (/PERSON|SUBJECT|VEHICLE|PROPERT|LINKED|IDENTIFICATION|MNI|DOSSIER/.test(t)) {
-    return [40, 70, 110];   // navy
+    return [70, 70, 70];     // charcoal
   }
   if (/NOTES|NARRATIVE|DESCRIPTION|REMARK|INCIDENT DETAIL|ATTACHMENT|PHOTO/.test(t)) {
-    return [90, 70, 130];   // indigo
+    return [100, 100, 100];  // slate
   }
-  return COLOR.ACCENT_GOLD as readonly [number, number, number];
+  if (/COMPLIANCE|RESOLUTION|CLEARED|DISPOSITION|REVIEW/.test(t)) {
+    return [130, 130, 130];  // mid gray
+  }
+  return [165, 165, 165];    // warm gray — default
 }
 
 export function openAutoSection(doc: jsPDF, title: string, y: number): { contentY: number; sectionY: number; sectionPage: number } {

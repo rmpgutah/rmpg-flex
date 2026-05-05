@@ -34,8 +34,14 @@ export const COLOR = {
   BG_TABLE_HDR_LIGHT: [220, 225, 234] as const, // Nested table header (light slate)
   TEXT_TABLE_HDR_LIGHT: [45, 55, 72]  as const,  // Dark slate text on light hdr
 
-  // Brand accent (gold) — used for section header accents + visual anchoring
-  ACCENT_GOLD:     [212, 160, 23]   as const,  // #d4a017 — matches UI brand gold
+  // Brand accent — pivoted to grayscale 2026-05-04 (user request).
+  // Token name retained for backwards compatibility with existing call
+  // sites; the underlying value is now a dark charcoal so every site
+  // that previously rendered a gold accent (agency header strip,
+  // quick-reference banner left rule, district bar accent, notes entry
+  // left rule, horizontal section dividers) automatically becomes
+  // grayscale via this single point of change.
+  ACCENT_GOLD:     [60, 60, 60]     as const,  // dark charcoal accent
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
@@ -61,7 +67,7 @@ export const COLOR = {
   BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
 
   // Police-form furniture (added 2026-04-17 for enhanced LE styling)
-  RULE_GOLD:           [212, 160, 23]   as const,  // Brand gold accent rule
+  RULE_GOLD:           [80, 80, 80]     as const,  // Dark gray accent rule (was gold; grayscale 2026-05-04)
   RULE_STRONG:         [30, 30, 30]     as const,  // Heavy black rule for top/bottom
   BATES_STAMP:         [90, 50, 50]     as const,  // Muted burgundy for Bates sequence
   BARCODE_BAR:         [0, 0, 0]        as const,  // Code 39 black bars
