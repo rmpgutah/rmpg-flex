@@ -239,6 +239,23 @@ export function sanitizePdfText(text: string): string {
     .replace(/&#39;/g,  "'")
     .replace(/&apos;/gi, "'")
     .replace(/&nbsp;/gi, ' ')
+    // Backslash escape decoding — narrative text imported from upstream
+    // JSON / scraper output sometimes carries literal "\\n" / "\\t"
+    // sequences that should have been actual whitespace. Once
+    // .toUpperCase() runs, "\\n\\n" surfaces as "\\N\\N" in rendered
+    // output (caught 2026-05-04 on 26-CFS00232's INCIDENT DETAILS
+    // DESCRIPTION). Decode BEFORE the upper-case pass so the result
+    // is real whitespace, not corrupted ASCII.
+    .replace(/\\n/g, '\n')
+    .replace(/\\t/g, ' ')
+    .replace(/\\r/g, '')
+    // Strip JSON key-leaks — when upstream serializers dump a field
+    // value mid-string we get fragments like `"service_instructions":
+    // "SUB-SERVE ON..."`. Keep the value, drop the `"key": "` and
+    // dangling `"` so the prose reads cleanly. Conservative pattern
+    // (require an upper-cased snake_case_key prefix) to avoid
+    // false-positive matches against legitimate dialogue.
+    .replace(/"([a-z][a-z0-9_]{3,40})":\s*"/gi, '')
     .replace(/\u2192/g, '->')    // → right arrow
     .replace(/\u2190/g, '<-')    // ← left arrow
     .replace(/\u2194/g, '<->')   // ↔ left-right arrow

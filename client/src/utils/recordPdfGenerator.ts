@@ -2202,7 +2202,12 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const offW = doc.getTextWidth(officerSuffix);
         doc.text(officerSuffix, tagX - 2 - offW, headerY + headerH - 1.6);
       }
-      y = headerY + headerH + 1.2;
+      // Body starts ~2.5mm below the header strip — increased from
+       // 1.2mm so the first line of body text doesn't visually kiss
+      // the dark header bar (caught 2026-05-04 on 26-CFS00232 v524
+      // render: body's first line was overlapping the header's bottom
+      // edge with no breathing room).
+      y = headerY + headerH + 2.5;
 
       // ── Body block with gold left-rule ────────────────────────
       // Capture the body's start Y so we can draw a single vertical
