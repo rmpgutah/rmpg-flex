@@ -103,10 +103,13 @@ export function setVoiceChannelConfig(partial: Partial<VoiceChannelConfig>): voi
 }
 
 export function isVoiceChannelEnabled(): boolean {
+  // Default ON: the V dispatch panel is the primary natural-language
+  // surface and should be discoverable to every user. Only an explicit
+  // 'false' in localStorage disables it; an unset key returns true.
   try {
-    return localStorage.getItem(LS_ENABLED) === 'true';
+    return localStorage.getItem(LS_ENABLED) !== 'false';
   } catch {
-    return false;
+    return true;
   }
 }
 
