@@ -481,16 +481,28 @@ app.use('/api', apiRouter);
 // ─── Serve static files in production ─────────────────
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
 
-// No-cache for sw.js and index.html — browser must always check server
+// No-cache for sw.js and index.html — browser must always check server.
+// Pass `sendFile`'s error callback so a missing client/dist (i.e. dev mode
+// where vite serves from 5173) returns a clean 404 instead of bubbling up
+// as `unhandled express error` — that error channel is reserved for real
+// problems, and dev noise there teaches operators to ignore it.
 app.get('/sw.js', (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
-  res.sendFile(path.join(clientDistPath, 'sw.js'));
+  res.sendFile(path.join(clientDistPath, 'sw.js'), (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).type('text/plain').send('sw.js not built (dev mode — Vite serves the SW from /sw.js on port 5173)');
+    }
+  });
 });
 app.get('/index.html', (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.sendFile(path.join(clientDistPath, 'index.html'));
+  res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).type('text/plain').send('index.html not built (dev mode — open http://localhost:5173 instead)');
+    }
+  });
 });
 
 // Hashed assets (/assets/*) — long cache (immutable, hash changes on content change)
