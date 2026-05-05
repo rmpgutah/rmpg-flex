@@ -244,6 +244,22 @@ export function sanitizePdfText(text: string): string {
     .replace(/&#39;/g,  "'")
     .replace(/&apos;/gi, "'")
     .replace(/&nbsp;/gi, ' ')
+    // Strip unmatched markdown emphasis markers — narrative text from
+    // upstream rich-text editors / serve-intake imports occasionally
+    // contains opening "**" with no closing pair (e.g. "**DUE DATE:
+    // 04/29/2026" caught 2026-05-05 on CFS00237). The paired-marker
+    // strip in addFormattedText's stripMarkers requires both ends, so
+    // bare openers slip through. We strip ALL ** and __ here as a
+    // safety net before the paired-strip runs downstream.
+    .replace(/\*\*/g, '')
+    .replace(/__/g, '')
+    // Render-side patch for known concatenated-word artifacts in stored
+    // case-narrative text (legacy generator bug from before the source
+    // was fixed; existing dispatch_messages rows have the bad text
+    // baked in). Specific phrases caught from CFS00204 / CFS00237:
+    .replace(/\bSTATEDON\b/g, 'STATED ON')
+    .replace(/\bLAST-KNOWNADDRESS\b/g, 'LAST-KNOWN ADDRESS')
+    .replace(/\bSTATEDIN\b/g, 'STATED IN')
     // Backslash escape decoding — narrative text imported from upstream
     // JSON / scraper output sometimes carries literal "\\n" / "\\t"
     // sequences that should have been actual whitespace. Once
