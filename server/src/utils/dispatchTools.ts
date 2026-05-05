@@ -27,7 +27,11 @@ export const DISPATCH_TOOLS: ToolSchema[] = [
   { name: 'mark_evidence', description: 'Drop an evidence marker at officer current GPS.', params: {} },
   { name: 'code_4', description: 'Mark scene as code 4 (no further assistance needed). Cancels any pending welfare check.', params: {} },
   { name: 'sitrep', description: 'Generate a situation report: current status, assigned call, queue depth, on-duty count, threat level.', params: {} },
-  { name: 'officer_down', description: 'EMERGENCY. Officer down / shots fired / panic / emergency traffic.', params: {} },
+  // officer_down REMOVED from voice-plannable tools. Panic alarms must
+  // only fire from a deliberate manual press of the physical panic
+  // button (PanicButton.tsx → POST /api/dispatch/panic). Voice-driven
+  // triggering produced phantom alarms in normal radio traffic.
+  // { name: 'officer_down', description: 'EMERGENCY...', params: {} },
   { name: 'area_check', description: 'Recent activity and hazards near the officer GPS in the last 24 hours.', params: {} },
   { name: 'nearest_units', description: 'List the nearest available units to the officer GPS.', params: {} },
   { name: 'threat_check', description: 'Threat assessment for the location of the officer current call.', params: {} },
