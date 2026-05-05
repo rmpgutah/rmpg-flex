@@ -198,6 +198,27 @@ export function getActiveBranding(): PdfBranding { return activeBranding; }
 
 // Section counter removed — section headers now display clean titles without numbering
 
+// Field auto-numbering — the most distinctive visual cue of a real
+// police-form layout: every box has a small sequential number in its
+// label ("1. CALL NUMBER", "2. INCIDENT TYPE", "3. PRIORITY", …) so
+// officers can refer to "box 14" in narratives. Disabled by default
+// so existing dark-mode generators keep their unnumbered look; the
+// Call/Person generators enable it on entry and reset to 0.
+let fieldNumberingEnabled = false;
+let activeFieldCounter = 0;
+export function setFieldNumberingEnabled(enabled: boolean): void {
+  fieldNumberingEnabled = enabled;
+}
+export function resetActiveFieldCounter(): void {
+  activeFieldCounter = 0;
+}
+/** Returns the prefixed label when numbering is on, else the bare label. */
+export function applyFieldNumber(label: string): string {
+  if (!fieldNumberingEnabled || !label) return label;
+  activeFieldCounter += 1;
+  return `${activeFieldCounter}. ${label}`;
+}
+
 /**
  * Sanitize Unicode characters that jsPDF's built-in Courier/Helvetica can't render.
  * These fonts only support Latin-1 (ISO-8859-1). Unicode arrows, em-dashes, curly quotes,
@@ -662,11 +683,15 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const isLongText = (value || '').length > 200 || width > 160;
   const maxLines = maxLinesOverride ?? (isLongText ? 20 : 8);
 
-  // Floating label above the box
+  // Floating label above the box. When field-numbering is enabled,
+  // applyFieldNumber prepends a sequential "N." prefix so the form
+  // reads like a real police-form box grid ("1. CALL NUMBER",
+  // "2. INCIDENT TYPE", …). Counter increments per visible field
+  // call so 3-column rows naturally get sequential numbers.
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(label.toUpperCase(), x + innerPad, y + 2);
+  doc.text(applyFieldNumber(label).toUpperCase(), x + innerPad, y + 2);
 
   const sanitized = sanitizePdfText(value);
   const isEmpty = !sanitized || sanitized.trim() === '';

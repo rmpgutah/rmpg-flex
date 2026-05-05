@@ -40,7 +40,7 @@ import {
   type QuickRefBannerConfig,
 } from './pdfDetailHelpers';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
-import { convertToGrayscale, getActiveSectionStyle } from './pdfGenerator';
+import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, formatEnumValue,
@@ -1174,6 +1174,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // with the Person PDF tactical-report look. Restored to 'dark' at end
   // of function so other generators stay unchanged.
   setActiveSectionStyle('light');
+  // Field auto-numbering — distinctive police-form aesthetic. Counter
+  // increments per addFieldPair / addThreeColumnFields call so every
+  // box on the report carries a sequential number ("1. CALL NUMBER",
+  // "2. INCIDENT TYPE", …). Reset to 0 at function entry so each
+  // generated PDF starts at 1 regardless of prior generator state.
+  setFieldNumberingEnabled(true);
+  resetActiveFieldCounter();
 
   const lx = getLeftX();
   const rx = getRightColumnX(doc);
@@ -2219,8 +2226,10 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     } catch { /* non-fatal — PDF still prints without QR */ }
   }
 
-  // Restore default dark style for any subsequent (non-Call) generation.
+  // Restore default dark style + disable field numbering for any
+  // subsequent (non-Call) generation that shares module state.
   setActiveSectionStyle('dark');
+  setFieldNumberingEnabled(false);
 }
 
 // ── Person Record ────────────────────────────────────────────
