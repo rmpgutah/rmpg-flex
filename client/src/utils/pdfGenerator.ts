@@ -250,9 +250,15 @@ export function sanitizePdfText(text: string): string {
     // 04/29/2026" caught 2026-05-05 on CFS00237). The paired-marker
     // strip in addFormattedText's stripMarkers requires both ends, so
     // bare openers slip through. We strip ALL ** and __ here as a
-    // safety net before the paired-strip runs downstream.
+    // safety net before the paired-strip runs downstream. Also strip
+    // single-asterisk italic markers when they appear adjacent to
+    // word characters (e.g. "*urgent*" or "*Note:") — bare standalone
+    // asterisks (e.g. "list bullet *") are kept since stripping them
+    // would mangle real bullet content.
     .replace(/\*\*/g, '')
     .replace(/__/g, '')
+    .replace(/\*(?=\w)/g, '')
+    .replace(/(?<=\w)\*/g, '')
     // Render-side patch for known concatenated-word artifacts in stored
     // case-narrative text (legacy generator bug from before the source
     // was fixed; existing dispatch_messages rows have the bad text

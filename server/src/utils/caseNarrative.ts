@@ -193,11 +193,27 @@ function extractDefendantRole(text: string, defendantLast: string): string | nul
   // resides at…". Listing `an` BEFORE `a` makes the longer alternative
   // win, so the article is consumed cleanly and the capture begins at
   // the actual role token.
-  const re = new RegExp(`\\b${safeLast}\\b[^.\\n]{0,80}?(?:is|was)\\s+(?:an|a|the)?\\s*([a-z][^.\\n]{6,140})`, 'i');
+  //
+  // Also: the article alternation needs a trailing \b so `an` won't
+  // match the first 2 chars of "and" — that bug surfaced as "PLEADED
+  // ROLE: AND WAS CO-DEFENDANTS" on CFS00204 (caught 2026-05-05),
+  // where the regex saw "vasquez was and was co-defendants" and
+  // either consumed "an" partially (leaving "d was…") or skipped the
+  // article entirely (capturing "and was…").
+  const re = new RegExp(`\\b${safeLast}\\b[^.\\n]{0,80}?(?:is|was)\\s+(?:(?:an|a|the)\\b\\s+)?([a-z][^.\\n]{6,140})`, 'i');
   const m = text.match(re);
   if (m) {
     const role = m[1].replace(/\s+/g, ' ').replace(/[,.;]+$/, '').trim();
     if (/(?:individual|defendant|plaintiff)$/i.test(role)) return null;
+    // Garbage-rejection: roles that are just conjunctions or
+    // sentence-fragment glue ("and was", "or were", "as and was")
+    // produce nonsense theory-of-liability sentences like
+    // "specific theory of liability against X (per complaint): as
+    // and was." (caught 2026-05-05 on CFS00204). Reject any capture
+    // that starts with or consists primarily of these tokens.
+    if (/^(?:and|or|but|nor|so|yet|as|of|at|in|on|to|by|for)\s+(?:was|is|were|are|had|has|had|been)\b/i.test(role)) {
+      return null;
+    }
     return role.slice(0, 140);
   }
   return null;

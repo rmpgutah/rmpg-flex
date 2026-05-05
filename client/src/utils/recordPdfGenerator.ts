@@ -2052,8 +2052,17 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // Assigned Units — already rendered above (after Scene Conditions)
 
-  // Damage Assessment (conditional)
-  if (data.damage_estimate || data.damage_description) {
+  // Damage Assessment (conditional).
+  // Suppressed entirely for PSO Client Request calls — the
+  // amount-in-controversy from a service-of-process job lands in
+  // damage_estimate during intake, but on the printed Call PDF this
+  // gets rendered as "Damage Assessment: ESTIMATE $35,000.00 /
+  // DESCRIPTION VEROS CREDIT, LLC." which reads as a damage claim
+  // rather than a debt-collection lawsuit amount (caught 2026-05-05
+  // on CFS00237). The PSO Client Request Details section already
+  // shows the case number, plaintiff, and other relevant
+  // service-of-process info.
+  if (data.incident_type !== 'pso_client_request' && (data.damage_estimate || data.damage_description)) {
     y = checkPageBreak(doc, y, 18, prio);
     const sec = openAutoSection(doc, 'Damage Assessment', y); y = sec.contentY;
     { const yL = addFieldPair(doc, 'Estimate', fmtCurrency(data.damage_estimate), lx, y, hfw);
