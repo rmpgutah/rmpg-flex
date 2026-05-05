@@ -21,6 +21,9 @@ export interface UseVoiceChannelResult {
   lastCommand: CommandResult | null;
   error: string | null;
   activateManualListen: () => void;
+  startHoldToTalk: () => void;
+  endHoldToTalk: () => void;
+  submitText: (text: string) => void;
   alert: (narrative: string, severity: AlertSeverity) => void;
   enabled: boolean;
   stressDetected: boolean;
@@ -96,32 +99,25 @@ export function useVoiceChannel(): UseVoiceChannelResult {
     };
   }, [enabled, subscribe]);
 
-  // V-key listener for manual listen activation
-  useEffect(() => {
-    if (!enabled) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in a form element
-      const target = e.target as HTMLElement;
-      const tagName = target.tagName;
-      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return;
-      if (target.isContentEditable) return;
-
-      // Don't trigger with modifier keys
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-
-      if (e.key === 'v' || e.key === 'V') {
-        e.preventDefault();
-        channelRef.current?.activateManualListen();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [enabled]);
+  // The global V-key handler is owned by VoiceChannelIndicator now —
+  // V held for 3 seconds opens the dispatch panel + auto-starts listening.
+  // Casual taps deliberately do nothing to prevent accidental opens.
+  // Push-to-talk inside the panel uses pointer events on the V button.
 
   const activateManualListen = useCallback(() => {
     channelRef.current?.activateManualListen();
+  }, []);
+
+  const startHoldToTalk = useCallback(() => {
+    channelRef.current?.startHoldToTalk();
+  }, []);
+
+  const endHoldToTalk = useCallback(() => {
+    channelRef.current?.endHoldToTalk();
+  }, []);
+
+  const submitText = useCallback((text: string) => {
+    channelRef.current?.submitText(text);
   }, []);
 
   const alert = useCallback((narrative: string, severity: AlertSeverity) => {
@@ -136,6 +132,9 @@ export function useVoiceChannel(): UseVoiceChannelResult {
     lastCommand,
     error,
     activateManualListen,
+    startHoldToTalk,
+    endHoldToTalk,
+    submitText,
     alert,
     enabled,
     stressDetected,
