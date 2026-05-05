@@ -20,10 +20,13 @@ import type { ToneType } from './dispatchTones';
 
 // ─── Types ──────────────────────────────────────────────────
 
+export type VoiceMode = 'conversational' | 'spillman_flat';
+
 interface QueueEntry {
   text: string;
   severity: AlertSeverity;
   urgent: boolean;
+  voiceMode: VoiceMode;
   resolve: () => void;
 }
 
@@ -57,8 +60,17 @@ function safeNum(raw: string | null, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
-export function getEdgeTTSPayload(text: string, urgent: boolean = false): EdgeTTSPayload {
-  const voice = localStorage.getItem('rmpg-voice-persona') || 'en-US-JennyNeural';
+export function getEdgeTTSPayload(
+  text: string,
+  urgent: boolean = false,
+  voiceMode: VoiceMode = 'conversational',
+): EdgeTTSPayload {
+  // Spillman flat = clipped CAD-terminal voice. Use a more neutral male
+  // voice at slightly faster rate with flat pitch — mimics the Motorola
+  // Premier CAD announcer cadence. Conversational uses the user's persona.
+  const voice = voiceMode === 'spillman_flat'
+    ? (localStorage.getItem('rmpg-voice-spillman') || 'en-US-GuyNeural')
+    : (localStorage.getItem('rmpg-voice-persona') || 'en-US-JennyNeural');
   const rateNum = safeNum(localStorage.getItem('rmpg-voice-rate'), 1.0);
   const pitchNum = safeNum(localStorage.getItem('rmpg-voice-pitch'), 0);
 
@@ -67,6 +79,10 @@ export function getEdgeTTSPayload(text: string, urgent: boolean = false): EdgeTT
   if (urgent) {
     ratePct += 10;
     pitchHz += 5;
+  }
+  if (voiceMode === 'spillman_flat') {
+    ratePct += 5;     // slightly clipped
+    pitchHz = 0;      // flat — no expressive pitch movement
   }
 
   const rate = `${ratePct >= 0 ? '+' : ''}${ratePct}%`;
@@ -250,6 +266,38 @@ function playP25KeyUp(ctx: AudioContext, startTime: number): void {
 const P25_KEYUP_DURATION = 0.035 * 3 + 0.025 * 2; // 0.155s
 
 /**
+ * Spillman classic CAD announcer chime — two-tone descending "bing-bong"
+ * (1100Hz → 880Hz, ~120ms each, 30ms gap), the signature Motorola/Spillman
+ * Premier CAD attention tone played before terminal target-announcer
+ * readbacks. Triangle waves give it the slightly metallic plastic-speaker
+ * timbre, distinct from the P25 trunked talk-permit chirps.
+ */
+function playSpillmanChime(ctx: AudioContext, startTime: number): void {
+  const tones: Array<[number, number]> = [[1100, 0.12], [880, 0.13]];
+  let t = startTime;
+  for (const [freq, dur] of tones) {
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.setValueAtTime(freq, t);
+
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.22, t + 0.008);
+    g.gain.setValueAtTime(0.22, t + dur - 0.012);
+    g.gain.linearRampToValueAtTime(0, t + dur);
+
+    osc.connect(g);
+    g.connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + dur + 0.005);
+    t += dur + 0.03; // 30ms gap between tones
+  }
+}
+
+/** Total duration of playSpillmanChime — used to align voice start. */
+const SPILLMAN_CHIME_DURATION = 0.12 + 0.13 + 0.03; // 0.28s
+
+/**
  * P25 end-of-transmission courtesy beep — a single soft 600Hz sine
  * pip (~80ms) signaling "over" to other units. Common on Motorola
  * profiles where the system is configured to emit an audible EOT
@@ -276,7 +324,11 @@ function playP25KeyDown(ctx: AudioContext, startTime: number): void {
 
 // ─── Edge-TTS Fetch + Radio Processing ──────────────────────
 
-async function fetchAndPlay(text: string, urgent: boolean = false): Promise<void> {
+async function fetchAndPlay(
+  text: string,
+  urgent: boolean = false,
+  voiceMode: VoiceMode = 'conversational',
+): Promise<void> {
   const token = localStorage.getItem('rmpg_token');
   const ctx = getAudioContext();
 
@@ -289,7 +341,7 @@ async function fetchAndPlay(text: string, urgent: boolean = false): Promise<void
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
     },
-    body: JSON.stringify(getEdgeTTSPayload(text, urgent)),
+    body: JSON.stringify(getEdgeTTSPayload(text, urgent, voiceMode)),
   });
 
   if (!res.ok) throw new Error(`TTS request failed: ${res.status}`);
@@ -303,13 +355,21 @@ async function fetchAndPlay(text: string, urgent: boolean = false): Promise<void
     currentSource = source;
 
     const now = ctx.currentTime;
-    // Voice starts right after the 155ms P25 talk-permit triple-chirp,
-    // plus a tiny 20ms gap so the last chirp doesn't bleed into speech.
-    const voiceDelay = P25_KEYUP_DURATION + 0.02;
+    // Spillman terminal announcer uses the classic 2-tone chime (~280ms);
+    // conversational/officer-speech path uses the P25 trunked talk-permit
+    // triple-chirp (~155ms). Voice starts after a 20ms gap.
+    const introDuration = voiceMode === 'spillman_flat'
+      ? SPILLMAN_CHIME_DURATION
+      : P25_KEYUP_DURATION;
+    const voiceDelay = introDuration + 0.02;
     const voiceDuration = audioBuffer.duration;
 
-    // ── 1. P25 TALK-PERMIT (KEY-UP) ───────────────────────
-    playP25KeyUp(ctx, now);
+    // ── 1. INTRO TONE ─────────────────────────────────────
+    if (voiceMode === 'spillman_flat') {
+      playSpillmanChime(ctx, now);
+    } else {
+      playP25KeyUp(ctx, now);
+    }
 
     // ── 2. P25 VOCODER FREQUENCY PROCESSING ───────────────
     // IMBE/AMBE vocoder band: ~300Hz–3400Hz, with a characteristic
@@ -419,8 +479,12 @@ async function fetchAndPlay(text: string, urgent: boolean = false): Promise<void
     }
 
     // ── 5. P25 SQUELCH TAIL (KEY-DOWN / un-key) ───────────
-    const closeTime = now + voiceDelay + voiceDuration + 0.05;
-    playP25KeyDown(ctx, closeTime);
+    // Only for the conversational / radio-channel path. Terminal
+    // announcers don't carry a P25 un-key tail.
+    if (voiceMode !== 'spillman_flat') {
+      const closeTime = now + voiceDelay + voiceDuration + 0.05;
+      playP25KeyDown(ctx, closeTime);
+    }
 
     source.onended = () => {
       currentSource = null;
@@ -446,7 +510,7 @@ async function processQueue(): Promise<void> {
     const entry = queue.shift()!;
     try {
       if (isEdgeTTSEnabled()) {
-        await fetchAndPlay(entry.text, entry.urgent);
+        await fetchAndPlay(entry.text, entry.urgent, entry.voiceMode);
       } else {
         await speakFallback(entry.text);
       }
@@ -471,7 +535,11 @@ async function processQueue(): Promise<void> {
  * Respects sound/voice-alert toggles and severity minimum tier.
  * Major severity interrupts lower-priority queued items.
  */
-export async function speak(text: string, severity?: AlertSeverity): Promise<void> {
+export async function speak(
+  text: string,
+  severity?: AlertSeverity,
+  voiceMode: VoiceMode = 'conversational',
+): Promise<void> {
   if (!isSoundEnabled()) return;
   if (severity && !shouldPlayAudio(severity)) return;
 
@@ -505,7 +573,7 @@ export async function speak(text: string, severity?: AlertSeverity): Promise<voi
   }
 
   return new Promise<void>((resolve) => {
-    queue.push({ text, severity: severity || 'minor', urgent, resolve });
+    queue.push({ text, severity: severity || 'minor', urgent, voiceMode, resolve });
     processQueue();
   });
 }

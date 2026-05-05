@@ -950,10 +950,16 @@ export class VoiceChannel {
     if (this.destroyed) return;
     this.setState('responding');
 
+    // Dialogue agent results carry a voice_mode hint:
+    //   spillman_flat → terminal announcer voice + classic 2-tone chime
+    //   conversational → human dispatcher voice + P25 trunked chirp
+    const voiceMode: 'spillman_flat' | 'conversational' =
+      (result as any).voice_mode === 'spillman_flat' ? 'spillman_flat' : 'conversational';
+
     try {
       switch (this.config.confirmMode) {
         case 'speak':
-          await speak(result.message);
+          await speak(result.message, undefined, voiceMode);
           break;
         case 'beep':
           await playRogerBeep();
@@ -978,4 +984,39 @@ export class VoiceChannel {
 
     this.setState('idle');
   }
+}
+
+// ─── Terminal Target Announcer ──────────────────────────────
+//
+// Public helper for any UI that performs a target lookup from the CAD
+// terminal (plate query, name search, person dossier, beat lookup, etc.)
+// and wants the result spoken back in the Spillman flat voice with the
+// classic CAD chime — distinct from the conversational voice used when
+// an officer talks to dispatch over the radio.
+//
+// Usage from a search result handler:
+//   import { announceTarget } from '../utils/voiceChannel';
+//   await announceTarget(`run plate ${plate}`);
+//
+// The transcript is sent to /api/voice/dialogue with source='announcer',
+// the agent fetches live data via the appropriate tool, the synthesized
+// reply comes back with voice_mode='spillman_flat', and the chime + flat
+// voice render automatically.
+
+/** Announce a target lookup via the dialogue agent in Spillman flat voice. */
+export async function announceTarget(transcript: string): Promise<{
+  reply: string;
+  voice_mode: 'spillman_flat' | 'conversational';
+} | null> {
+  if (!transcript || !transcript.trim()) return null;
+  const result = await sendDialogueToServer(transcript.trim(), 'announcer');
+  if (!result.success || !result.message) return null;
+
+  const voiceMode = result.voice_mode === 'conversational' ? 'conversational' : 'spillman_flat';
+  try {
+    await speak(result.message, undefined, voiceMode);
+  } catch {
+    /* TTS failed — caller still gets the text reply for a screen render */
+  }
+  return { reply: result.message, voice_mode: voiceMode };
 }

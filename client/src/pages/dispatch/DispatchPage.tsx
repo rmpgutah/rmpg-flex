@@ -40,6 +40,7 @@ import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
 import type { CommandAction } from '../../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
+import { announceTarget } from '../../utils/voiceChannel';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
@@ -5737,14 +5738,17 @@ export default function DispatchPage() {
               case 'query_person':
                 setNcicInitialQuery({ type: 'person', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run name ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'query_vehicle':
                 setNcicInitialQuery({ type: 'vehicle', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run plate ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'query_warrant':
                 setNcicInitialQuery({ type: 'warrant', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run name ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'assign_unit':
               case 'set_status':
