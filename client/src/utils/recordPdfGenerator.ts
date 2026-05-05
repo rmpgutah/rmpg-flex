@@ -2166,10 +2166,59 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const ruleW = 1.2;  // mm — width of the gold left-rule
     const bodyIndent = ruleW + 2.5;  // body text starts after rule + breathing room
     const headerH = 5;  // charcoal header strip height
+    // Helper to draw the entry header strip — used both for the initial
+    // entry (top of body) AND for the continuation header on each page
+    // break (so a body that spans pages always carries its entry chip
+    // forward instead of orphaning the text on a header-less page).
+    const drawEntryHeaderStrip = (
+      strip_y: number,
+      entryNum: number,
+      total: number,
+      timestamp: string,
+      entryType: string,
+      tagBg: [number, number, number],
+      officerSuffix: string,
+      continued: boolean,
+    ): number => {
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(lx, strip_y, ffw, headerH, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      const entryLead = continued
+        ? `ENTRY ${entryNum} OF ${total} -- CONTINUED`
+        : `ENTRY ${entryNum} OF ${total}  .  ${timestamp}`;
+      doc.text(entryLead, lx + 2, strip_y + headerH - 1.5);
+      doc.setFontSize(6);
+      const tagW = doc.getTextWidth(entryType) + 3;
+      const tagX = lx + ffw - tagW - 1.5;
+      const tagY = strip_y + 1;
+      doc.setFillColor(tagBg[0], tagBg[1], tagBg[2]);
+      doc.roundedRect(tagX, tagY, tagW, headerH - 2, 0.4, 0.4, 'F');
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      doc.text(entryType, tagX + tagW / 2, tagY + headerH - 3.2, { align: 'center' });
+      if (officerSuffix && !continued) {
+        doc.setFont(PDF_VALUE_FONT, 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(220, 220, 220);
+        const offW = doc.getTextWidth(officerSuffix);
+        doc.text(officerSuffix, tagX - 2 - offW, strip_y + headerH - 1.6);
+      }
+      return strip_y + headerH + 1.5;  // tighter than before — was 2.5
+    };
+
     for (let ni = 0; ni < noteCount; ni++) {
       const n = data.notes[ni];
-      // Reserve vertical budget for at least header + 2 lines of body
-      y = checkPageBreak(doc, y, headerH + 8, prio);
+      // Reserve only enough space for the header + 1 body line. Was 13mm
+      // (header + 2 body lines) which was over-conservative and forced
+      // page breaks too early — long entries that could have started at
+      // the bottom of one page and flowed naturally were jumping to a
+      // fresh page entirely, leaving big gaps (caught 2026-05-05 on
+      // CFS00237 page 3 where ENTRY 2 had ~80mm empty below it before
+      // ENTRY 3 started). With 8mm reserve the header + first line of
+      // body fits, and addFormattedText's per-line page-breaks handle
+      // the rest cleanly.
+      y = checkPageBreak(doc, y, headerH + 3, prio);
 
       // Resolve entry-type tag from author. System-generated authors
       // (SERVE INTAKE / DISPATCH / SYSTEM) become the chip; named
@@ -2187,76 +2236,77 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         : !isSystemTag ? [60, 80, 60]
         : [70, 70, 70];
 
-      // ── Entry header strip ────────────────────────────────────
-      // Charcoal bar: "ENTRY N OF M  ·  DATE/TIME"  +  TYPE pill on right.
-      const headerY = y;
-      doc.setFillColor(...COLOR.BG_SECTION_HDR);
-      doc.rect(lx, headerY, ffw, headerH, 'F');
-      doc.setFont('helvetica', 'bold');
-      doc.setFontSize(6.5);
-      doc.setTextColor(...COLOR.TEXT_INVERTED);
-      const entryLead = `ENTRY ${ni + 1} OF ${noteCount}  .  ${fmtTimestamp(n.created_at).toUpperCase()}`;
-      doc.text(entryLead, lx + 2, headerY + headerH - 1.5);
-      // Type chip on right edge — small filled rect with white text.
-      doc.setFontSize(6);
-      const tagText = entryType;
-      const tagW = doc.getTextWidth(tagText) + 3;
-      const tagX = lx + ffw - tagW - 1.5;
-      const tagY = headerY + 1;
-      doc.setFillColor(tagBg[0], tagBg[1], tagBg[2]);
-      doc.roundedRect(tagX, tagY, tagW, headerH - 2, 0.4, 0.4, 'F');
-      doc.text(tagText, tagX + tagW / 2, tagY + headerH - 3.2, { align: 'center' });
-      // Officer name (when not a system entry) renders just left of
-      // the chip, smaller and muted.
-      if (officerSuffix) {
-        doc.setFont(PDF_VALUE_FONT, 'normal');
-        doc.setFontSize(5.5);
-        doc.setTextColor(220, 220, 220);
-        const offW = doc.getTextWidth(officerSuffix);
-        doc.text(officerSuffix, tagX - 2 - offW, headerY + headerH - 1.6);
-      }
-      // Body starts ~2.5mm below the header strip — increased from
-       // 1.2mm so the first line of body text doesn't visually kiss
-      // the dark header bar (caught 2026-05-04 on 26-CFS00232 v524
-      // render: body's first line was overlapping the header's bottom
-      // edge with no breathing room).
-      y = headerY + headerH + 2.5;
+      // Initial entry header strip (top of this note).
+      y = drawEntryHeaderStrip(
+        y, ni + 1, noteCount, fmtTimestamp(n.created_at).toUpperCase(),
+        entryType, tagBg, officerSuffix, false,
+      );
 
-      // ── Body block with gold left-rule ────────────────────────
-      // Capture the body's start Y so we can draw a single vertical
-      // rule of the exact body height after the text renders. Render
-      // the text first into a "sandbox" area, then paint the rule.
+      // Capture starting page so we know whether the body spilled.
+      const bodyStartPage = doc.getNumberOfPages();
       const bodyStartY = y;
+
+      // Body — now with a per-page-break callback that draws an
+      // "ENTRY N OF M -- CONTINUED" header at the top of each new
+      // page, so the reader always knows which entry they're inside.
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
+      const onEntryPageBreak = (newY: number): number => {
+        return drawEntryHeaderStrip(
+          newY, ni + 1, noteCount, fmtTimestamp(n.created_at).toUpperCase(),
+          entryType, tagBg, '', true,  // continued=true; suppress officer suffix
+        );
+      };
       const bodyEndY = addFormattedText(
         doc,
         (n.content || '').toUpperCase(),
         lx + bodyIndent,
         y,
         ffw - bodyIndent,
+        FONT.SIZE_FIELD_VALUE,
+        onEntryPageBreak,
       );
-      // Vertical gold accent rule down the LEFT edge of the body —
-      // the visual signature of a quoted entry block. Height tracks
-      // the actual rendered text so multi-line entries get a tall
-      // rule and one-liners get a short one.
-      const ruleH = Math.max(3, bodyEndY - bodyStartY - 0.5);
-      doc.setFillColor(...COLOR.ACCENT_GOLD);
-      doc.rect(lx, bodyStartY - 1, ruleW, ruleH, 'F');
+      // Gold left-rule: only valid when the body did NOT span pages.
+      // When the body crossed a page boundary, bodyStartY refers to
+      // the previous page's coordinates while doc is now on the new
+      // page — drawing a rect with that mismatched coord would
+      // mis-place the rule (caught 2026-05-05). On span, draw a
+      // bottom-anchored stub on the start page only.
+      const bodyEndPage = doc.getNumberOfPages();
+      if (bodyEndPage === bodyStartPage) {
+        const ruleH = Math.max(3, bodyEndY - bodyStartY - 0.5);
+        doc.setFillColor(...COLOR.ACCENT_GOLD);
+        doc.rect(lx, bodyStartY - 1, ruleW, ruleH, 'F');
+      } else {
+        // Stub-rule on the original page (full available height from
+        // bodyStartY down to a safe lower bound).
+        doc.setPage(bodyStartPage);
+        const pageH = doc.internal.pageSize.getHeight();
+        const stubH = Math.max(3, pageH - LAYOUT.FOOTER_HEIGHT - 15 - bodyStartY);
+        doc.setFillColor(...COLOR.ACCENT_GOLD);
+        doc.rect(lx, bodyStartY - 1, ruleW, stubH, 'F');
+        doc.setPage(bodyEndPage);
+        // Continuation pages: short rule beside the continuation header
+        // body — drawn from page top down to bodyEndY.
+        const contRuleTop = doc.getNumberOfPages() === bodyEndPage ? 24 : 24;
+        doc.setFillColor(...COLOR.ACCENT_GOLD);
+        doc.rect(lx, contRuleTop, ruleW, Math.max(3, bodyEndY - contRuleTop - 0.5), 'F');
+      }
       y = bodyEndY;
 
-      // ── Inter-entry divider ───────────────────────────────────
-      // Heavier rule + extra vertical breathing room than a plain
-      // tick line so chronological breaks are obvious to a reader
-      // skimming the report.
+      // Inter-entry divider — tightened from 5.5mm total to 3mm so
+      // a 5-entry intake doesn't accumulate ~25mm of dead vertical
+      // space across the section. Visual hierarchy is preserved by
+      // keeping the BORDER_SECTION rule + the dark entry header strip
+      // on the next entry, both of which already bracket each entry.
       if (ni < noteCount - 1) {
-        y += 2.5;
+        y += 1.2;
         doc.setDrawColor(...COLOR.BORDER_SECTION);
         doc.setLineWidth(BORDER.SECTION_OUTER);
         doc.line(lx, y, lx + ffw, y);
-        y += 3;
+        y += 1.8;
       }
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
