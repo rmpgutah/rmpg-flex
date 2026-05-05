@@ -195,17 +195,19 @@ function drawDistrictBar(
 
 function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, y: number, width: number): number {
   if (!value || !value.trim()) return y;
-  // Label line
+  // Label line — sized 0.5pt larger than the standard FIELD_LABEL so
+  // narrative-section labels (TATTOO DESCRIPTION, SCAR DESCRIPTION,
+  // etc.) read with stronger weight than three-column-grid labels.
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(label.toUpperCase(), x, y + 1.8);
-  y += 3.0;
+  y += 3.4;  // was 3.0 — +0.4mm cushion between label baseline and value top
   // Body text — word-wrapped Courier
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  const lineH = 3.2;
+  const lineH = 3.4;  // was 3.2 — +0.2mm vertical rhythm so wrapped lines breathe
   const raw = sanitizePdfText(value);
   const lines = doc.splitTextToSize(raw, width - 1) as string[];
   for (const line of lines) {
@@ -214,7 +216,12 @@ function addNarrativeField(doc: jsPDF, label: string, value: string, x: number, 
     y += lineH;
   }
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
-  return y + 1;
+  // Bottom padding 1mm → 2.5mm so the next narrative field's label
+  // doesn't visually crowd this field's last line — fixes the visible
+  // tightness in the Detailed Identifying Marks section where the
+  // SCAR DESCRIPTION label appeared to kiss the bottom of multi-line
+  // tattoo content (caught 2026-05-05).
+  return y + 2.5;
 }
 
 // ── Type Aliases for Record Types ────────────────────────────
@@ -2626,6 +2633,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     // Tattoo description — full-width, often the longest content
     if (data.tattoo_description) {
       y = addNarrativeField(doc, 'Tattoo Description', data.tattoo_description, lx, y, ffw);
+      y += 1.5;  // explicit row-gap before the 2-col Scar/Piercing row
     }
 
     // Scar / Piercing → 2-col row (left + right)
@@ -2636,7 +2644,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       const ry = data.piercing_description
         ? addNarrativeField(doc, 'Piercing Description', data.piercing_description, rx, y, hfw)
         : y;
-      y = Math.max(ly, ry);
+      y = Math.max(ly, ry) + 1.5;  // explicit row-gap before next 2-col row
     }
 
     // Distinguishing Features / Marks Location → 2-col row
