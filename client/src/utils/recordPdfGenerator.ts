@@ -2163,8 +2163,12 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
     y += 1.5;
     const noteCount = data.notes.length;
-    const ruleW = 1.2;  // mm — width of the gold left-rule
-    const bodyIndent = ruleW + 2.5;  // body text starts after rule + breathing room
+    // Left-rule removed 2026-05-05 per user feedback — the small grey
+    // tabs that previously rendered down the left edge of each entry
+    // body were visually distracting. Body text now flows directly
+    // beneath the entry header strip with a small horizontal indent
+    // so it doesn't hug the page margin.
+    const bodyIndent = 1;
     const headerH = 5;  // charcoal header strip height
     // Helper to draw the entry header strip — used both for the initial
     // entry (top of body) AND for the continuation header on each page
@@ -2204,7 +2208,9 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const offW = doc.getTextWidth(officerSuffix);
         doc.text(officerSuffix, tagX - 2 - offW, strip_y + headerH - 1.6);
       }
-      return strip_y + headerH + 1.5;  // tighter than before — was 2.5
+      // Header→body gap of 3.0mm: previous 1.5mm let body's first line
+      // ascender clip into the dark header strip (caught 2026-05-05).
+      return strip_y + headerH + 3.0;
     };
 
     for (let ni = 0; ni < noteCount; ni++) {
@@ -2242,11 +2248,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         entryType, tagBg, officerSuffix, false,
       );
 
-      // Capture starting page so we know whether the body spilled.
-      const bodyStartPage = doc.getNumberOfPages();
-      const bodyStartY = y;
-
-      // Body — now with a per-page-break callback that draws an
+      // Body — with a per-page-break callback that draws an
       // "ENTRY N OF M -- CONTINUED" header at the top of each new
       // page, so the reader always knows which entry they're inside.
       doc.setFont(PDF_VALUE_FONT, 'normal');
@@ -2268,32 +2270,6 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         FONT.SIZE_FIELD_VALUE,
         onEntryPageBreak,
       );
-      // Gold left-rule: only valid when the body did NOT span pages.
-      // When the body crossed a page boundary, bodyStartY refers to
-      // the previous page's coordinates while doc is now on the new
-      // page — drawing a rect with that mismatched coord would
-      // mis-place the rule (caught 2026-05-05). On span, draw a
-      // bottom-anchored stub on the start page only.
-      const bodyEndPage = doc.getNumberOfPages();
-      if (bodyEndPage === bodyStartPage) {
-        const ruleH = Math.max(3, bodyEndY - bodyStartY - 0.5);
-        doc.setFillColor(...COLOR.ACCENT_GOLD);
-        doc.rect(lx, bodyStartY - 1, ruleW, ruleH, 'F');
-      } else {
-        // Stub-rule on the original page (full available height from
-        // bodyStartY down to a safe lower bound).
-        doc.setPage(bodyStartPage);
-        const pageH = doc.internal.pageSize.getHeight();
-        const stubH = Math.max(3, pageH - LAYOUT.FOOTER_HEIGHT - 15 - bodyStartY);
-        doc.setFillColor(...COLOR.ACCENT_GOLD);
-        doc.rect(lx, bodyStartY - 1, ruleW, stubH, 'F');
-        doc.setPage(bodyEndPage);
-        // Continuation pages: short rule beside the continuation header
-        // body — drawn from page top down to bodyEndY.
-        const contRuleTop = doc.getNumberOfPages() === bodyEndPage ? 24 : 24;
-        doc.setFillColor(...COLOR.ACCENT_GOLD);
-        doc.rect(lx, contRuleTop, ruleW, Math.max(3, bodyEndY - contRuleTop - 0.5), 'F');
-      }
       y = bodyEndY;
 
       // Inter-entry divider — tightened from 5.5mm total to 3mm so
