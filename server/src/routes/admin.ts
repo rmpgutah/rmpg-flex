@@ -2689,8 +2689,12 @@ router.get('/users/presence', requireRole('admin'), (req: Request, res: Response
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+    // u.call_sign was referenced here previously but lives on the `units`
+    // table (per-unit assignment), not `users`. Removed 2026-05-05 after
+    // surfacing as `SqliteError: no such column: u.call_sign` in prod.
+    // badge_number is the correct per-user identifier for the admin view.
     const users = db.prepare(`
-      SELECT u.id, u.username, u.full_name, u.role, u.call_sign, u.badge_number,
+      SELECT u.id, u.username, u.full_name, u.role, u.badge_number,
         (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) as last_activity,
         (SELECT COUNT(*) FROM sessions rt WHERE rt.user_id = u.id AND rt.expires_at > datetime('now')) as active_sessions,
         CASE
@@ -2764,8 +2768,9 @@ router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response)
     const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '50'), 10)) || 100000));
     const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+    // u.call_sign removed 2026-05-05 — see /api/admin/users/presence note above.
     const rows = db.prepare(`
-      SELECT al.*, u.username, u.full_name, u.role, u.call_sign
+      SELECT al.*, u.username, u.full_name, u.role, u.badge_number
       FROM activity_log al
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.created_at > ?

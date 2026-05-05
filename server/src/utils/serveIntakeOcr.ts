@@ -101,14 +101,25 @@ export async function getPageCount(pdfPath: string): Promise<number> {
 // Return true to trigger ocrmypdf, false to keep the original
 // pdftotext output.
 //
-// TODO(you): Implement the decision. 5-10 lines.
+// Decision rule (implemented 2026-05-05, replaces the original
+// "empty text only" stub). Three cases:
+//
+//   1. pageCount === 0  → pdfinfo failed; don't OCR a malformed PDF.
+//   2. text empty       → unambiguous scan; OCR always.
+//   3. text present but <200 chars/page → mixed content; OCR catches
+//      the scanned exhibits a born-digital cover-sheet hides.
+//
+// 200 chars/page is the threshold the comment block above describes:
+// born-digital documents typically run >2000 chars/page; scans have
+// 0-50; the 10× gap makes 200 a safe boundary that doesn't false-
+// positive on cover-page-only documents.
 // ─────────────────────────────────────────────────────────────
 export function shouldRunOcr(extractedText: string, pageCount: number): boolean {
-  // Replace this stub with your decision rule.
-  // Default below = "OCR only when extraction is empty",
-  // which is the LAZY end of the spectrum and will miss the
-  // mixed-content scan case described above.
-  return extractedText.trim().length === 0 && pageCount > 0;
+  if (pageCount === 0) return false;
+  const textLen = extractedText.trim().length;
+  if (textLen === 0) return true;
+  const charsPerPage = textLen / pageCount;
+  return charsPerPage < 200;
 }
 
 // Run ocrmypdf on a PDF buffer and return the OCR'd PDF bytes.

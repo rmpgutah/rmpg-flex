@@ -2695,7 +2695,15 @@ router.post('/national-search', async (req: Request, res: Response) => {
           WHERE ${manualConditions.join(' AND ')}
           LIMIT 100
         `).all(...manualParams) as any[];
-      } catch (e) { /* warrants table may not have these columns */ }
+      } catch (e: any) {
+        // The legacy comment said "warrants table may not have these columns"
+        // but swallowing all errors hid genuine query bugs. Distinguish:
+        // missing-column = expected pre-migration; everything else = log warn.
+        const msg = e?.message || '';
+        if (!/no such column/i.test(msg)) {
+          console.warn('[Warrants] manual-search query error (non-blocking):', msg);
+        }
+      }
     }
 
     // ── Combine all results ──

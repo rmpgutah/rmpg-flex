@@ -460,8 +460,8 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     if (autoSectionId && autoZoneId && autoBeatId && !autoDispatchCode) {
       try {
         const districtMatch = db.prepare(`
-          SELECT db2.beat_code, db2.name as beat_name, db2.descriptor as beat_descriptor,
-                 dz.zone_code, dz.name as zone_name, ds.sector_code, ds.name as sector_name
+          SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                 dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
           FROM dispatch_beats db2
           JOIN dispatch_zones dz ON dz.id = db2.zone_id
           JOIN dispatch_sectors ds ON ds.id = dz.sector_id
@@ -1195,8 +1195,8 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     if (finalSectionId && finalZoneId && finalBeatId) {
       try {
         const districtMatch = db.prepare(`
-          SELECT db2.beat_code, db2.name as beat_name, db2.descriptor as beat_descriptor,
-                 dz.zone_code, dz.name as zone_name, ds.sector_code, ds.name as sector_name
+          SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                 dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
           FROM dispatch_beats db2
           JOIN dispatch_zones dz ON dz.id = db2.zone_id
           JOIN dispatch_sectors ds ON ds.id = dz.sector_id
