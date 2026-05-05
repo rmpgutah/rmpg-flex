@@ -119,7 +119,12 @@ export const DEFAULT_PDF_BRANDING: PdfBranding = {
   primary_color: '#888888',
   accent_color: '#d4a017',
   header_bg_color: '#232832',
-  section_accent_color: '#d4a017',
+  // section_accent_color is intentionally LEFT UNSET so the
+  // thematic per-section palette in resolveSectionAccentColor
+  // becomes the default (burgundy for hazards, green for resolution,
+  // navy for persons, indigo for narrative, gold for the rest).
+  // Admins can override to a single agency color via the Branding
+  // panel; setting it there wins over the thematic palette.
   font_profile: 'helvetica',
   report_footer_text: '',
   show_field_underlines: '1',
@@ -605,6 +610,46 @@ export function addReportHeader(
  * aesthetic used at the top of records and was adopted Person-wide
  * 2026-05-04. Switch with setActiveSectionStyle().
  */
+/**
+ * Resolve the thematic accent color for a section based on its title.
+ *
+ * Police reports benefit from a restrained but recognizable color
+ * vocabulary so a reviewer skimming the page can tell at a glance
+ * whether they're looking at officer-safety information, evidence,
+ * narrative, or routine classification fields. We use five families:
+ *
+ *   - BURGUNDY  — caution / hazards / officer-safety / alerts
+ *   - GREEN     — compliance / resolution / disposition / cleared
+ *   - NAVY      — persons / subjects / vehicles / linked records
+ *   - INDIGO    — notes / narrative / incident details / description
+ *   - GOLD      — everything else (default — classification, time,
+ *                 caller info, location, PSO/service, scene conditions)
+ *
+ * Branding override (admin-configured `section_accent_color`) wins over
+ * everything because operators may want a single agency color across
+ * all sections — they opt INTO the thematic palette by leaving the
+ * branding field unset.
+ */
+function resolveSectionAccentColor(title: string): readonly [number, number, number] {
+  if (activeBranding.section_accent_color) {
+    return hexToRgb(activeBranding.section_accent_color) as readonly [number, number, number];
+  }
+  const t = title.toUpperCase();
+  if (/CAUTION|HAZARD|OFFICER SAFETY|WARNING|ALERT|FLAG/.test(t)) {
+    return [140, 30, 30];   // burgundy
+  }
+  if (/COMPLIANCE|RESOLUTION|CLEARED|DISPOSITION|REVIEW/.test(t)) {
+    return [60, 110, 70];   // green
+  }
+  if (/PERSON|SUBJECT|VEHICLE|PROPERT|LINKED|IDENTIFICATION|MNI|DOSSIER/.test(t)) {
+    return [40, 70, 110];   // navy
+  }
+  if (/NOTES|NARRATIVE|DESCRIPTION|REMARK|INCIDENT DETAIL|ATTACHMENT|PHOTO/.test(t)) {
+    return [90, 70, 130];   // indigo
+  }
+  return COLOR.ACCENT_GOLD as readonly [number, number, number];
+}
+
 export function openAutoSection(doc: jsPDF, title: string, y: number): { contentY: number; sectionY: number; sectionPage: number } {
   const cw = getContentWidth(doc);
 
@@ -612,10 +657,11 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Left-accent strip (brand color — configurable via Admin > Branding)
+  // Left-accent strip — thematic per-section color (see
+  // resolveSectionAccentColor for palette rationale). Branding override
+  // wins; otherwise the title keyword maps to one of five colors.
   const accentW = BORDER.ACCENT_SECTION;
-  const sectionAccentRgb = activeBranding.section_accent_color
-    ? hexToRgb(activeBranding.section_accent_color) : COLOR.ACCENT_GOLD;
+  const sectionAccentRgb = resolveSectionAccentColor(title);
   doc.setFillColor(sectionAccentRgb[0], sectionAccentRgb[1], sectionAccentRgb[2]);
   doc.rect(LAYOUT.PAGE_MARGIN, y, accentW, SPACING.SECTION_HEADER_H, 'F');
 
