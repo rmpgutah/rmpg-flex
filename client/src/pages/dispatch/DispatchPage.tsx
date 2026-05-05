@@ -40,6 +40,7 @@ import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
 import type { CommandAction } from '../../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
+import { announceTarget } from '../../utils/voiceChannel';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
@@ -5737,14 +5738,17 @@ export default function DispatchPage() {
               case 'query_person':
                 setNcicInitialQuery({ type: 'person', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run name ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'query_vehicle':
                 setNcicInitialQuery({ type: 'vehicle', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run plate ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'query_warrant':
                 setNcicInitialQuery({ type: 'warrant', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run name ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'assign_unit':
               case 'set_status':
@@ -5758,19 +5762,30 @@ export default function DispatchPage() {
                 fetchData();
                 break;
               case 'unit_status_check':
-                // Info-only — output is shown in the command line
+                // Info-only — also speak it via the announcer
+                if (action.callSign) {
+                  announceTarget(`status of ${action.callSign}`).catch(() => { /* announcer best-effort */ });
+                } else {
+                  announceTarget('sitrep').catch(() => { /* announcer best-effort */ });
+                }
                 break;
               case 'query_bolo':
-                // Navigate to communications page (BOLO section)
                 navigate('/communications');
+                announceTarget(`BOLO ${action.query}`).catch(() => { /* announcer best-effort */ });
                 break;
               case 'new_fi':
                 // Navigate to field interviews page
                 navigate('/field-interviews');
                 break;
               case 'query_trespass':
-                // Navigate to trespass orders page
                 navigate('/trespass-orders');
+                announceTarget(`trespass ${action.query}`).catch(() => { /* announcer best-effort */ });
+                break;
+              case 'premise_history':
+                announceTarget(`area check ${action.address}`).catch(() => { /* announcer best-effort */ });
+                break;
+              case 'premise_alert':
+                announceTarget(`premise alert ${action.address}`).catch(() => { /* announcer best-effort */ });
                 break;
               case 'hold_call':
                 // Already executed via API in cadCommandParser. Refresh data.

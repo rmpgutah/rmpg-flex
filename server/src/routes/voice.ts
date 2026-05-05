@@ -84,7 +84,7 @@ async function transcribeAudio(audioBuffer: Buffer): Promise<string | null> {
 }
 
 // ─── Command types ───────────────────────────────────
-interface ParsedCommand {
+export interface ParsedCommand {
   action: string;
   params: Record<string, string>;
   raw: string;
@@ -308,7 +308,7 @@ function composeAreaCheckNarrative(lat: number, lng: number): string {
 }
 
 // ─── Command executors ───────────────────────────────
-async function executeCommand(
+export async function executeCommand(
   cmd: ParsedCommand,
   req: Request,
 ): Promise<{ success: boolean; response: string }> {

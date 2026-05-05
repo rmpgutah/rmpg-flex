@@ -6189,6 +6189,29 @@ function migrateSchema(): void {
   addCol('field_interviews', 'zone_beat', 'TEXT');
   addCol('field_interviews', 'updated_at', 'TEXT');
 
+  // ── Voice dialogue agent session memory (one row per officer) ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS voice_dialogue_sessions (
+      user_id INTEGER PRIMARY KEY,
+      recent_turns_json TEXT NOT NULL DEFAULT '[]',
+      pending_json TEXT,
+      refusal_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `).run();
+
+  // Mileage capture columns on the unit table used by voice.ts. The legacy
+  // codebase queries 'dispatch_units' but the canonical table is 'units';
+  // try both — addCol is idempotent and silently skips a missing table.
+  for (const tbl of ['dispatch_units', 'units']) {
+    try {
+      addCol(tbl, 'last_starting_mileage', 'INTEGER');
+      addCol(tbl, 'last_starting_mileage_at', 'TEXT');
+      addCol(tbl, 'last_ending_mileage', 'INTEGER');
+      addCol(tbl, 'last_ending_mileage_at', 'TEXT');
+    } catch { /* table may not exist on this deployment */ }
+  }
+
   console.log('Schema migration completed.');
 }
 

@@ -349,7 +349,48 @@ async function sendAudioToServer(audioBlob: Blob): Promise<CommandResult> {
 }
 
 /**
- * Send transcript text to the server for NLP command parsing.
+ * Send transcript text to the dialogue agent. Primary path for natural-language
+ * voice: the agent plans + executes actions and returns a synthesized reply
+ * along with a voice_mode the TTS layer should use.
+ *
+ * Endpoint: POST /api/voice/dialogue
+ *
+ * source='announcer' is for terminal-triggered target announcers (Spillman flat
+ * voice + classic chime). source='speech' is for free-form officer speech to
+ * dispatch (conversational human voice). Defaults to 'speech'.
+ */
+export async function sendDialogueToServer(
+  text: string,
+  source: 'announcer' | 'speech' = 'speech',
+): Promise<CommandResult & { voice_mode?: 'spillman_flat' | 'conversational'; pending_followup?: { kind: string; prompt: string } | null }> {
+  try {
+    const res = await fetch('/api/voice/dialogue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ transcript: text, source }),
+    });
+
+    if (!res.ok) {
+      // 404 = endpoint not deployed yet; let caller fall back to /parse.
+      return { success: false, action: 'error', message: '' };
+    }
+
+    const data = await res.json();
+    return {
+      success: true,
+      action: 'dialogue',
+      message: data.reply || '',
+      data: { actions: data.actions, off_topic: data.off_topic, latency_ms: data.latency_ms },
+      voice_mode: data.voice_mode,
+      pending_followup: data.pending_followup,
+    };
+  } catch {
+    return { success: false, action: 'error', message: '' };
+  }
+}
+
+/**
+ * Send transcript text to the legacy regex/NLU parser.
  * Endpoint: POST /api/voice/parse
  */
 async function sendTextToServer(text: string): Promise<CommandResult> {
@@ -860,13 +901,21 @@ export class VoiceChannel {
     }
 
     if (!result) {
-      // 2. Try server text parsing — use the resolver's output so
-      // pronouns/deictics resolve before NLU, not after.
+      // 2. Try the natural-language dialogue agent first — handles free-form
+      // questions, 10-codes with mileage prompts, and tool-calling.
       if (effectiveTranscript) {
+        const dlg = await sendDialogueToServer(effectiveTranscript, 'speech');
+        if (dlg.success && dlg.message) {
+          result = dlg;
+        }
+      }
+
+      // 3. Legacy regex/NLU parser fallback (if dialogue endpoint missing or empty)
+      if ((!result || !result.success) && effectiveTranscript) {
         result = await sendTextToServer(effectiveTranscript);
       }
 
-      // 3. If text parse failed and we have audio, try audio endpoint
+      // 4. If text path failed and we have audio, try audio endpoint
       if ((!result || !result.success) && audioBlob && audioBlob.size > 1000) {
         const audioResult = await sendAudioToServer(audioBlob);
         if (audioResult.success) {
@@ -901,10 +950,16 @@ export class VoiceChannel {
     if (this.destroyed) return;
     this.setState('responding');
 
+    // Dialogue agent results carry a voice_mode hint:
+    //   spillman_flat → terminal announcer voice + classic 2-tone chime
+    //   conversational → human dispatcher voice + P25 trunked chirp
+    const voiceMode: 'spillman_flat' | 'conversational' =
+      (result as any).voice_mode === 'spillman_flat' ? 'spillman_flat' : 'conversational';
+
     try {
       switch (this.config.confirmMode) {
         case 'speak':
-          await speak(result.message);
+          await speak(result.message, undefined, voiceMode);
           break;
         case 'beep':
           await playRogerBeep();
@@ -929,4 +984,39 @@ export class VoiceChannel {
 
     this.setState('idle');
   }
+}
+
+// ─── Terminal Target Announcer ──────────────────────────────
+//
+// Public helper for any UI that performs a target lookup from the CAD
+// terminal (plate query, name search, person dossier, beat lookup, etc.)
+// and wants the result spoken back in the Spillman flat voice with the
+// classic CAD chime — distinct from the conversational voice used when
+// an officer talks to dispatch over the radio.
+//
+// Usage from a search result handler:
+//   import { announceTarget } from '../utils/voiceChannel';
+//   await announceTarget(`run plate ${plate}`);
+//
+// The transcript is sent to /api/voice/dialogue with source='announcer',
+// the agent fetches live data via the appropriate tool, the synthesized
+// reply comes back with voice_mode='spillman_flat', and the chime + flat
+// voice render automatically.
+
+/** Announce a target lookup via the dialogue agent in Spillman flat voice. */
+export async function announceTarget(transcript: string): Promise<{
+  reply: string;
+  voice_mode: 'spillman_flat' | 'conversational';
+} | null> {
+  if (!transcript || !transcript.trim()) return null;
+  const result = await sendDialogueToServer(transcript.trim(), 'announcer');
+  if (!result.success || !result.message) return null;
+
+  const voiceMode = result.voice_mode === 'conversational' ? 'conversational' : 'spillman_flat';
+  try {
+    await speak(result.message, undefined, voiceMode);
+  } catch {
+    /* TTS failed — caller still gets the text reply for a screen render */
+  }
+  return { reply: result.message, voice_mode: voiceMode };
 }
