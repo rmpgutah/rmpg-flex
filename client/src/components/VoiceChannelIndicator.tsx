@@ -13,11 +13,14 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useVoiceChannel } from '../hooks/useVoiceChannel';
+import { useDriveMode } from '../hooks/useDriveMode';
 import { isRecording as isStatementRecording, getStatementState } from '../utils/statementRecorder';
+import { getVoiceChannelConfig, setVoiceChannelConfig } from '../utils/voiceChannel';
 
 const HOLD_THRESHOLD_MS = 250;
 const AUTO_COLLAPSE_MS = 6000;
-const OPEN_HOLD_MS = 3000; // V key must be held this long to open the panel
+const OPEN_HOLD_MS_NORMAL = 3000;       // standing/parked
+const OPEN_HOLD_MS_DRIVING = 1000;      // moving — gesture must be quick & easy
 
 export default function VoiceChannelIndicator() {
   const {
@@ -29,10 +32,34 @@ export default function VoiceChannelIndicator() {
     startHoldToTalk,
     endHoldToTalk,
     submitText,
+    setDriveMode,
+    refreshConfig,
     enabled,
     stressDetected,
     isRadioBusy,
   } = useVoiceChannel();
+
+  const drive = useDriveMode();
+  const OPEN_HOLD_MS = drive.active ? OPEN_HOLD_MS_DRIVING : OPEN_HOLD_MS_NORMAL;
+
+  // Voice-output mode: 'speak' (TTS — default), 'beep', or 'silent'.
+  // Backed by localStorage via setVoiceChannelConfig so it persists across
+  // sessions and is shared with the MenuBar voice settings.
+  const [confirmMode, setConfirmMode] = useState<'speak' | 'beep' | 'silent'>(
+    () => getVoiceChannelConfig().confirmMode,
+  );
+
+  // ── Push the drive flag down to the channel so respond() auto-loops ──
+  useEffect(() => {
+    setDriveMode(drive.active);
+  }, [drive.active, setDriveMode]);
+
+  const cycleConfirmMode = useCallback(() => {
+    const next = confirmMode === 'speak' ? 'silent' : 'speak';
+    setConfirmMode(next);
+    setVoiceChannelConfig({ confirmMode: next });
+    refreshConfig(); // tell the channel to re-read its config immediately
+  }, [confirmMode, refreshConfig]);
 
   const [open, setOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -192,7 +219,7 @@ export default function VoiceChannelIndicator() {
       window.removeEventListener('blur', onBlur);
       cancelHold();
     };
-  }, [enabled, open, activateManualListen]);
+  }, [enabled, open, activateManualListen, OPEN_HOLD_MS]);
 
   // ── Focus the text input when the panel opens ──
   useEffect(() => {
@@ -241,24 +268,47 @@ export default function VoiceChannelIndicator() {
   const stateLabel = STATE_LABELS[state] ?? '';
   const stateColor = STATE_COLORS[state] ?? '#888888';
 
+  // Drive-mode positioning: bottom-CENTER and large so the V pill is
+  // thumb-accessible without taking eyes off the road. Otherwise the
+  // pill sits in the discreet bottom-right corner.
+  const containerStyle: React.CSSProperties = drive.active
+    ? {
+        bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))',
+        left: '50%',
+        transform: 'translateX(-50%)',
+      }
+    : {
+        bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))',
+        right: '1rem',
+      };
+
   return (
     <div
       ref={rootRef}
-      className="fixed right-4 z-[9999]"
-      style={{ bottom: 'max(2rem, env(safe-area-inset-bottom, 2rem))' }}
+      className="fixed z-[9999]"
+      style={containerStyle}
     >
-      {/* Closed: small corner V pill. Hold-V progress fills the bottom
-          edge as the user holds — visual confirmation of the 3s commit. */}
+      {/* Closed: V pill. In drive mode it's an oversized thumb-target. */}
       {!open && (
         <button
           type="button"
           onClick={() => { setOpen(true); activateManualListen(); }}
-          className="relative flex items-center gap-1.5 px-2.5 py-1.5 bg-[#181818] border border-[#373737] rounded text-gray-400 hover:border-[#d4a017] hover:text-[#d4a017] transition-colors text-xs font-mono overflow-hidden"
-          title="Voice dispatch — hold V for 3 seconds, or click to open"
+          className={`relative flex items-center justify-center bg-[#181818] border rounded font-mono overflow-hidden transition-colors ${
+            drive.active
+              ? 'gap-2 px-5 py-3 text-base text-[#d4a017] border-[#d4a017] shadow-lg'
+              : 'gap-1.5 px-2.5 py-1.5 text-xs text-gray-400 border-[#373737] hover:border-[#d4a017] hover:text-[#d4a017]'
+          }`}
+          style={drive.active ? { minWidth: 96, minHeight: 56 } : undefined}
+          title={drive.active
+            ? `DRIVING — hold V for 1 second to talk · ${drive.speedMph ?? '?'} mph`
+            : 'Voice dispatch — hold V for 3 seconds, or click to open'}
           aria-label="Open voice dispatch panel"
         >
-          <MicIcon />
-          <span>V</span>
+          <MicIcon big={drive.active} />
+          <span className={drive.active ? 'text-lg font-bold tracking-widest' : ''}>V</span>
+          {drive.active && (
+            <span className="text-[9px] uppercase tracking-widest text-[#d4a017]/70 ml-1">DRIVE</span>
+          )}
           {holdProgress > 0 && (
             <span
               aria-hidden="true"
@@ -269,16 +319,40 @@ export default function VoiceChannelIndicator() {
         </button>
       )}
 
-      {/* Open: compact dispatch panel */}
+      {/* Open: compact dispatch panel. Wider in drive mode for legibility. */}
       {open && (
         <div
           className="bg-[#141414] border rounded shadow-lg overflow-hidden flex flex-col"
           style={{
-            width: 280,
+            width: drive.active ? 360 : 280,
             maxWidth: 'calc(100vw - 2rem)',
-            borderColor: state === 'listening' ? '#22c55e' : '#373737',
+            borderColor: state === 'listening' ? '#22c55e' : drive.active ? '#d4a017' : '#373737',
           }}
         >
+          {/* DRIVING chip header — manual override + speed readout */}
+          {drive.active && (
+            <div
+              className="flex items-center justify-between px-2.5 py-1 text-[10px] font-mono uppercase tracking-widest"
+              style={{ background: '#1a1408', borderBottom: '1px solid #2a200a', color: '#d4a017' }}
+            >
+              <span className="flex items-center gap-1.5">
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-[#d4a017] animate-pulse" />
+                DRIVE MODE
+                {drive.speedMph != null && <span className="text-[#d4a017]/70 ml-1">{drive.speedMph} MPH</span>}
+              </span>
+              <span className="flex items-center gap-2">
+                <span className="text-[9px] text-[#d4a017]/60">VOICE-LOOP ON</span>
+                <button
+                  type="button"
+                  onClick={() => drive.forceOff()}
+                  className="text-[9px] text-[#d4a017]/70 hover:text-[#d4a017] underline"
+                  title="Disengage drive mode (manual override)"
+                >
+                  EXIT
+                </button>
+              </span>
+            </div>
+          )}
           {/* Conversation stack — most recent at top */}
           {(transcript || lastCommand || error) && (
             <div className="flex flex-col gap-1 p-2" style={{ background: '#0a0a0a', borderBottom: '1px solid #2a2a2a' }}>
@@ -328,11 +402,13 @@ export default function VoiceChannelIndicator() {
             <div className="p-2.5 text-[10px] font-mono text-gray-300 leading-relaxed" style={{ background: '#0a0a0a', borderBottom: '1px solid #2a2a2a' }}>
               <div className="text-[#d4a017] uppercase tracking-wider mb-1">Help</div>
               <ul className="space-y-0.5 text-gray-400">
-                <li><span className="text-gray-100">Hold V</span> — push-to-talk (mic stays open)</li>
-                <li><span className="text-gray-100">Tap V</span> — listen for a few seconds</li>
-                <li><span className="text-gray-100">Type + Enter</span> — text query to dispatch</li>
+                <li><span className="text-gray-100">Hold V {drive.active ? '1s' : '3s'}</span> — opens panel + starts listening</li>
+                <li><span className="text-gray-100">In-panel V button</span> — hold to talk · tap for a listen window</li>
+                <li><span className="text-gray-100">Type + Enter</span> — text query (hidden while driving)</li>
+                <li><span className="text-gray-100">🔊 / 🔇</span> — dispatch voice on/off (default ON)</li>
                 <li><span className="text-gray-100">Esc</span> — close panel</li>
-                <li className="pt-1 text-gray-500">Try: "who's nearest?", "10-97", "run plate ABC123"</li>
+                <li className="pt-1 text-gray-500">Drive mode auto-engages above 30 mph and re-opens the mic after every reply</li>
+                <li className="text-gray-500">Try: "who's nearest?", "10-97", "run plate ABC123"</li>
               </ul>
             </div>
           )}
@@ -366,33 +442,58 @@ export default function VoiceChannelIndicator() {
               <span className="text-[10px] font-mono font-bold tracking-widest mt-0.5">V</span>
             </button>
 
-            <form onSubmit={handleTextSubmit} className="flex-1 flex items-center min-w-0">
-              <input
-                ref={inputRef}
-                type="text"
-                value={textInput}
-                onChange={(e) => setTextInput(e.target.value)}
-                placeholder={
-                  state === 'listening' ? 'Listening…' :
-                  state === 'processing' ? 'Working…' :
-                  state === 'responding' ? 'Responding…' :
-                  'Type or hold V…'
-                }
-                disabled={state === 'alerting' || state === 'processing' || state === 'responding'}
-                className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-gray-100 placeholder-gray-600"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              {textInput.trim() && (
-                <button
-                  type="submit"
-                  className="px-2 py-2 text-[10px] font-mono font-bold uppercase tracking-wider text-[#d4a017] hover:bg-[#1a1a1a] transition-colors"
-                  title="Send (Enter)"
-                >
-                  SEND
-                </button>
-              )}
-            </form>
+            {/* Text input — voice-only in drive mode (no typing while moving) */}
+            {!drive.active ? (
+              <form onSubmit={handleTextSubmit} className="flex-1 flex items-center min-w-0">
+                <input
+                  ref={inputRef}
+                  type="text"
+                  value={textInput}
+                  onChange={(e) => setTextInput(e.target.value)}
+                  placeholder={
+                    state === 'listening' ? 'Listening…' :
+                    state === 'processing' ? 'Working…' :
+                    state === 'responding' ? 'Responding…' :
+                    'Type or hold V…'
+                  }
+                  disabled={state === 'alerting' || state === 'processing' || state === 'responding'}
+                  className="flex-1 min-w-0 bg-transparent border-0 outline-none px-2.5 py-2 text-xs font-mono text-gray-100 placeholder-gray-600"
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                {textInput.trim() && (
+                  <button
+                    type="submit"
+                    className="px-2 py-2 text-[10px] font-mono font-bold uppercase tracking-wider text-[#d4a017] hover:bg-[#1a1a1a] transition-colors"
+                    title="Send (Enter)"
+                  >
+                    SEND
+                  </button>
+                )}
+              </form>
+            ) : (
+              <div className="flex-1 flex items-center justify-center px-3 text-[11px] font-mono text-[#d4a017]/70 uppercase tracking-widest">
+                {state === 'listening' ? 'LISTENING…' :
+                 state === 'processing' ? 'WORKING…' :
+                 state === 'responding' ? 'RESPONDING…' :
+                 'HOLD V TO TALK'}
+              </div>
+            )}
+
+            {/* Voice on/off — flips dispatch between speak and silent.
+                Default 'speak' so dispatch always talks back; user can
+                mute on the fly without leaving the panel. */}
+            <button
+              type="button"
+              onClick={cycleConfirmMode}
+              className={`px-2 text-[11px] font-mono transition-colors ${
+                confirmMode === 'speak' ? 'text-[#d4a017]' : 'text-gray-600 hover:text-gray-300'
+              }`}
+              title={confirmMode === 'speak' ? 'Voice ON — tap to mute (text only)' : 'Voice MUTED — tap to enable speech'}
+              aria-label={confirmMode === 'speak' ? 'Mute dispatch voice' : 'Enable dispatch voice'}
+            >
+              {confirmMode === 'speak' ? '🔊' : '🔇'}
+            </button>
 
             <button
               type="button"
