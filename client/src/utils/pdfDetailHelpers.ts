@@ -47,22 +47,21 @@ export function addQuickReferenceBanner(
   const bannerH = 8;
   const accentW = BORDER.ACCENT_SECTION;
 
-  // Gold accent strip + light tinted background — distinct from
-  // the dark section headers so the banner doesn't get confused
-  // with section #1.
+  // Dark slate banner with white text (2026-05-05 darker-shading
+  // pass). The accent strip stays gray (ACCENT_GOLD token, now
+  // dark-charcoal value); the banner body is the deep section-header
+  // color so the primary identifier reads bold-white against a strong
+  // dark base — the visual signature of a real police-form subheader.
   doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
   doc.rect(margin, startY, accentW, bannerH, 'F');
-  doc.setFillColor(COLOR.BG_SECTION_TINT[0], COLOR.BG_SECTION_TINT[1], COLOR.BG_SECTION_TINT[2]);
+  doc.setFillColor(COLOR.BG_SECTION_HDR[0], COLOR.BG_SECTION_HDR[1], COLOR.BG_SECTION_HDR[2]);
   doc.rect(margin + accentW, startY, cw - accentW, bannerH, 'F');
-  doc.setDrawColor(COLOR.BORDER_SECTION[0], COLOR.BORDER_SECTION[1], COLOR.BORDER_SECTION[2]);
-  doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(margin + accentW, startY, cw - accentW, bannerH);
 
-  // Primary text — large, bold, dark
+  // Primary text — large, bold, white on dark
   const textX = margin + accentW + SPACING.CONTENT_INSET + 1;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setTextColor(...COLOR.TEXT_INVERTED);
   doc.text(sanitizePdfText(cfg.primary || ''), textX, startY + 5.5);
 
   // Pre-compute pill geometry so the secondary text can be width-clipped
@@ -95,11 +94,13 @@ export function addQuickReferenceBanner(
   }
 
   // Secondary identifier — small, muted, right of center, clipped to
-  // not overlap the pill on the right edge.
+  // not overlap the pill on the right edge. Light-gray text sits on
+  // the dark banner body so it reads as muted-white rather than
+  // black-on-cream (which the previous palette emitted).
   if (cfg.secondary) {
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(8);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setTextColor(200, 200, 200);
     const secondaryX = textX + cw * 0.5;
     const maxSecondaryW = Math.max(20, pillLeftEdge - secondaryX - 2);
     const lines = doc.splitTextToSize(sanitizePdfText(cfg.secondary), maxSecondaryW) as string[];

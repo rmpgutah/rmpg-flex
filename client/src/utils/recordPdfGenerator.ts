@@ -116,16 +116,13 @@ function drawDistrictBar(
   // not as a foreign black slab from a different visual era.
   doc.setFillColor(...COLOR.ACCENT_GOLD);
   doc.rect(LAYOUT.PAGE_MARGIN, barY, accentW, barH, 'F');
-  if (isLight) {
-    doc.setFillColor(...COLOR.BG_SECTION_TINT);
-    doc.rect(LAYOUT.PAGE_MARGIN + accentW, barY, cw - accentW, barH, 'F');
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN + accentW, barY, cw - accentW, barH);
-  } else {
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(LAYOUT.PAGE_MARGIN + accentW, barY, cw - accentW, barH, 'F');
-  }
+  // Dark slate fill in BOTH modes (2026-05-05 darker-shading pass).
+  // Previously light mode used a cream tint with dark text; we now
+  // unify to a deep charcoal body with white text in both modes so
+  // the geography strip reads as a strong structural element rather
+  // than a faint header tint.
+  doc.setFillColor(...COLOR.BG_SECTION_HDR);
+  doc.rect(LAYOUT.PAGE_MARGIN + accentW, barY, cw - accentW, barH, 'F');
 
   // ── Field assembly ────────────────────────────────────────
   // Suppress the AREA column when no real area_name/area_id is set —
@@ -162,15 +159,15 @@ function drawDistrictBar(
   const contentX = LAYOUT.PAGE_MARGIN + accentW;
   const contentW = cw - accentW;
   const cellW = contentW / distFields.length;
-  const labelColor: [number, number, number] = isLight
-    ? [COLOR.TEXT_SECONDARY[0], COLOR.TEXT_SECONDARY[1], COLOR.TEXT_SECONDARY[2]]
-    : [200, 200, 200];
-  const valueColor: [number, number, number] = isLight
-    ? [COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2]]
-    : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
-  const sepColor: [number, number, number] = isLight
-    ? [COLOR.BORDER_SECTION[0], COLOR.BORDER_SECTION[1], COLOR.BORDER_SECTION[2]]
-    : [60, 60, 60];
+  // District bar is now dark-fill in both modes (see backdrop above);
+  // labels render as muted-white and values as full-white regardless
+  // of activeSectionStyle so the bar always reads as a unified
+  // dark-slate strip with high text contrast.
+  const labelColor: [number, number, number] = [200, 200, 200];
+  const valueColor: [number, number, number] = [
+    COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
+  ];
+  const sepColor: [number, number, number] = [80, 80, 85];
 
   for (let i = 0; i < distFields.length; i++) {
     const f = distFields[i];

@@ -520,31 +520,22 @@ export function drawNibrsHeader(
   const accentW = BORDER.ACCENT_SECTION;
 
   // ── Top header bar ───────────────────
-  if (isLight) {
-    // Gold left accent strip + cream tint background + outline.
-    doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
-    doc.rect(margin, y, accentW, LAYOUT.HEADER_HEIGHT, 'F');
-    doc.setFillColor(...COLOR.BG_SECTION_TINT);
-    doc.rect(margin + accentW, y, contentW - accentW, LAYOUT.HEADER_HEIGHT, 'F');
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(margin + accentW, y, contentW - accentW, LAYOUT.HEADER_HEIGHT);
-  } else {
-    // Charcoal full-width header (legacy).
-    doc.setFillColor(...COLOR.BG_SECTION_HDR);
-    doc.rect(margin, y, contentW, LAYOUT.HEADER_HEIGHT, 'F');
-  }
+  // Dark slate fill in BOTH modes (2026-05-05 darker-shading pass).
+  // The light-mode cream tint was making the agency name read faint;
+  // unifying to a deep charcoal with a left accent strip gives the
+  // agency identity the visual weight of a real PD letterhead.
+  doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
+  doc.rect(margin, y, accentW, LAYOUT.HEADER_HEIGHT, 'F');
+  doc.setFillColor(...COLOR.BG_SECTION_HDR);
+  doc.rect(margin + accentW, y, contentW - accentW, LAYOUT.HEADER_HEIGHT, 'F');
 
-  // Color tokens for text (flip per mode). Copied into mutable tuples
-  // so they can be spread into jsPDF's variadic color setters — TS
-  // narrows readonly tuple literals from a ternary into a union that
-  // can't be spread directly.
-  const headTextColor: [number, number, number] = isLight
-    ? [COLOR.TEXT_PRIMARY[0], COLOR.TEXT_PRIMARY[1], COLOR.TEXT_PRIMARY[2]]
-    : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
-  const headSubColor: [number, number, number] = isLight
-    ? [COLOR.TEXT_SECONDARY[0], COLOR.TEXT_SECONDARY[1], COLOR.TEXT_SECONDARY[2]]
-    : [COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2]];
+  // Header text is white in both modes now that the fill is unified
+  // dark. Sub-text (state identifier / address line) renders as a
+  // muted light-gray so it sits a tier below the agency name.
+  const headTextColor: [number, number, number] = [
+    COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
+  ];
+  const headSubColor: [number, number, number] = [200, 200, 200];
 
   // Seal image — left side on dark mode (legacy), small left-of-center
   // on light mode so the centered title can breathe.
@@ -647,44 +638,44 @@ export function drawNibrsHeader(
 
   y += LAYOUT.HEADER_HEIGHT;
 
-  // Accent strip below header — gold on light mode, slate on dark.
-  if (isLight) {
-    doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
-  } else {
-    doc.setFillColor(...COLOR.BG_TABLE_HDR);
-  }
+  // Accent strip below header — gray (matches the agency-header
+  // gray-charcoal accent strip token). Was gold/slate previously.
+  doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
   doc.rect(margin, y, contentW, LAYOUT.ACCENT_STRIP_H, 'F');
   y += LAYOUT.ACCENT_STRIP_H;
 
   // Sub-header row: Form number (left) + Agency letterhead meta
-  // (centered) + Report date (right). The centered letterhead segment
-  // is what makes the header read as a formal PD-issued document
-  // rather than a generic UI-print: agency address + ORI mirror the
-  // top of every real-world police report. Rendered only in light
-  // mode so the legacy dark-mode forms keep their tighter look.
-  y += 1;
+  // (centered) + Report date (right). Now a DARK-FILLED sub-bar
+  // with white text in both modes (2026-05-05 darker-shading pass)
+  // so the agency letterhead reads as a continuous strong banner
+  // beneath the agency name rather than a faint gray meta row.
   const hasMeta = !!(config.formNumber || config.reportDate || isLight);
   if (hasMeta) {
+    const metaH = 6;  // mm — slightly taller than original 5mm so the bar reads as a deliberate banner
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(margin, y, contentW, metaH, 'F');
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_SMALL_META);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
     if (config.formNumber) {
-      doc.text(config.formNumber, margin + 2, y + 3);
+      doc.text(config.formNumber, margin + 2, y + 4);
     }
     if (isLight) {
       doc.setFont('helvetica', 'italic');
+      doc.setTextColor(220, 220, 220);
       doc.text(
         'OFFICIAL DOCUMENT OF ROCKY MOUNTAIN PROTECTIVE GROUP  ·  SALT LAKE CITY, UTAH  ·  UT0180100',
         margin + contentW / 2,
-        y + 3,
+        y + 4,
         { align: 'center' },
       );
       doc.setFont(PDF_VALUE_FONT, 'bold');
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
     }
     if (config.reportDate) {
-      doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 3, { align: 'right' });
+      doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 4, { align: 'right' });
     }
-    y += 5;
+    y += metaH;
   }
 
   return y;

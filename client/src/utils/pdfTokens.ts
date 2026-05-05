@@ -26,11 +26,13 @@ export const COLOR = {
   BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
   BORDER_FIELD_RULE: [200, 200, 208] as const, // Subtle field underline rule
 
-  // Backgrounds — lighter, modern government-form style
+  // Backgrounds — page stays white; structural elements (headers,
+  // banners) deepen to true charcoal for strong contrast against
+  // white field bodies (2026-05-05 darker-shading pass).
   BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [35, 40, 50]     as const,  // Section header bar (dark charcoal)
-  BG_TABLE_HDR:    [55, 60, 72]     as const,  // Table column header (slate)
-  BG_SECTION_TINT: [248, 248, 252]  as const,  // Light background tint inside section content
+  BG_SECTION_HDR:  [22, 26, 34]     as const,  // Section header bar (was 35/40/50 — deeper)
+  BG_TABLE_HDR:    [40, 46, 58]     as const,  // Table column header (was 55/60/72)
+  BG_SECTION_TINT: [248, 248, 252]  as const,  // Field-body tint (kept near-white for readability)
   BG_TABLE_HDR_LIGHT: [220, 225, 234] as const, // Nested table header (light slate)
   TEXT_TABLE_HDR_LIGHT: [45, 55, 72]  as const,  // Dark slate text on light hdr
 

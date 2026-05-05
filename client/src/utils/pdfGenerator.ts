@@ -669,17 +669,17 @@ export function openAutoSection(doc: jsPDF, title: string, y: number): { content
   doc.rect(LAYOUT.PAGE_MARGIN, y, accentW, SPACING.SECTION_HEADER_H, 'F');
 
   if (activeSectionStyle === 'light') {
-    // Light banner: cream tint background + outline + dark bold text.
-    // Matches the addQuickReferenceBanner aesthetic for visual cohesion.
-    doc.setFillColor(...COLOR.BG_SECTION_TINT);
+    // Dark header bar with white text (2026-05-05 darker-shading pass).
+    // Field bodies BELOW the header stay white; only the header BAR
+    // itself goes dark for strong contrast that scans like a real
+    // police-form section divider. Previously this branch used a
+    // cream tint with dark text.
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
     doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H, 'F');
-    doc.setDrawColor(...COLOR.BORDER_SECTION);
-    doc.setLineWidth(BORDER.SECTION_OUTER);
-    doc.rect(LAYOUT.PAGE_MARGIN + accentW, y, cw - accentW, SPACING.SECTION_HEADER_H);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_SECTION_TITLE);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
   } else {
     // Dark default: charcoal fill + white text (original style).
     doc.setFillColor(...COLOR.BG_SECTION_HDR);
