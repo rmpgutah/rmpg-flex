@@ -2135,39 +2135,110 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Notes
+  // Notes — police-report entry-log style.
+  // Each note becomes a numbered "ENTRY N OF M" block with a charcoal
+  // header strip carrying the entry # / timestamp / type tag, and the
+  // body text indented behind a vertical gold rule so each entry reads
+  // as a discrete chronological log entry rather than free-floating
+  // paragraphs (2026-05-04 redesign — was: plain timestamp on left,
+  // author on right, body free-flow). The author field — when it
+  // already contains a system tag like "SERVE INTAKE" or "DISPATCH"
+  // — surfaces as the colored entry-type chip on the right of the
+  // header strip; otherwise falls back to "OFFICER NOTE".
   if (data.notes && data.notes.length > 0) {
     y = checkPageBreak(doc, y, 25, prio);
     const sec = openAutoSection(doc, 'Notes / Narrative', y); y = sec.contentY;
-    // Render notes: DATE/TIME on left, AUTHOR on right, content below
-    y += 1.5;  // Space after header bar
-    for (let ni = 0; ni < data.notes.length; ni++) {
+    y += 1.5;
+    const noteCount = data.notes.length;
+    const ruleW = 1.2;  // mm — width of the gold left-rule
+    const bodyIndent = ruleW + 2.5;  // body text starts after rule + breathing room
+    const headerH = 5;  // charcoal header strip height
+    for (let ni = 0; ni < noteCount; ni++) {
       const n = data.notes[ni];
-      y = checkPageBreak(doc, y, 10, prio);
-      // Date/time on far left, author on far right — same line
-      doc.setFont(PDF_VALUE_FONT, 'bold');
+      // Reserve vertical budget for at least header + 2 lines of body
+      y = checkPageBreak(doc, y, headerH + 8, prio);
+
+      // Resolve entry-type tag from author. System-generated authors
+      // (SERVE INTAKE / DISPATCH / SYSTEM) become the chip; named
+      // officer authors fall under a generic "OFFICER NOTE" tag with
+      // the name floating to the right.
+      const authorRaw = (n.author || '').trim();
+      const upper = authorRaw.toUpperCase();
+      const isSystemTag = /^(SERVE INTAKE|DISPATCH|SYSTEM|INTAKE|AUTO|NCIC|ALERT)$/i.test(authorRaw)
+        || upper === '' || upper === 'SYSTEM';
+      const entryType = isSystemTag ? (authorRaw.toUpperCase() || 'SYSTEM') : 'OFFICER NOTE';
+      const officerSuffix = isSystemTag ? '' : authorRaw.toUpperCase();
+      const tagBg: [number, number, number] = upper === 'DISPATCH' ? [50, 75, 110]
+        : upper === 'SERVE INTAKE' || upper === 'INTAKE' ? [120, 90, 20]
+        : upper === 'NCIC' || upper === 'ALERT' ? [180, 25, 25]
+        : !isSystemTag ? [60, 80, 60]
+        : [70, 70, 70];
+
+      // ── Entry header strip ────────────────────────────────────
+      // Charcoal bar: "ENTRY N OF M  ·  DATE/TIME"  +  TYPE pill on right.
+      const headerY = y;
+      doc.setFillColor(...COLOR.BG_SECTION_HDR);
+      doc.rect(lx, headerY, ffw, headerH, 'F');
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(6.5);
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
+      const entryLead = `ENTRY ${ni + 1} OF ${noteCount}  .  ${fmtTimestamp(n.created_at).toUpperCase()}`;
+      doc.text(entryLead, lx + 2, headerY + headerH - 1.5);
+      // Type chip on right edge — small filled rect with white text.
       doc.setFontSize(6);
-      doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      const tsText = fmtTimestamp(n.created_at).toUpperCase();
-      doc.text(tsText, lx, y);
-      const authorName = (n.author || 'System').toUpperCase();
-      const authorW = doc.getTextWidth(authorName);
-      doc.text(authorName, lx + ffw - authorW, y);
-      y += 3.5;  // More space between timestamp and content
-      // Note content
+      const tagText = entryType;
+      const tagW = doc.getTextWidth(tagText) + 3;
+      const tagX = lx + ffw - tagW - 1.5;
+      const tagY = headerY + 1;
+      doc.setFillColor(tagBg[0], tagBg[1], tagBg[2]);
+      doc.roundedRect(tagX, tagY, tagW, headerH - 2, 0.4, 0.4, 'F');
+      doc.text(tagText, tagX + tagW / 2, tagY + headerH - 3.2, { align: 'center' });
+      // Officer name (when not a system entry) renders just left of
+      // the chip, smaller and muted.
+      if (officerSuffix) {
+        doc.setFont(PDF_VALUE_FONT, 'normal');
+        doc.setFontSize(5.5);
+        doc.setTextColor(220, 220, 220);
+        const offW = doc.getTextWidth(officerSuffix);
+        doc.text(officerSuffix, tagX - 2 - offW, headerY + headerH - 1.6);
+      }
+      y = headerY + headerH + 1.2;
+
+      // ── Body block with gold left-rule ────────────────────────
+      // Capture the body's start Y so we can draw a single vertical
+      // rule of the exact body height after the text renders. Render
+      // the text first into a "sandbox" area, then paint the rule.
+      const bodyStartY = y;
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_FIELD_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
       doc.setDrawColor(...COLOR.TEXT_PRIMARY);
-      y = addFormattedText(doc, (n.content || '').toUpperCase(), lx, y, ffw);
-      // Visible gap between entries (matching Resolution Details spacing)
-      if (ni < data.notes.length - 1) {
-        y += 2;
-        // Light separator line between notes
-        doc.setDrawColor(...COLOR.BORDER_TABLE);
-        doc.setLineWidth(BORDER.TABLE_ROW);
-        doc.line(lx, y, lx + ffw, y);
+      const bodyEndY = addFormattedText(
+        doc,
+        (n.content || '').toUpperCase(),
+        lx + bodyIndent,
+        y,
+        ffw - bodyIndent,
+      );
+      // Vertical gold accent rule down the LEFT edge of the body —
+      // the visual signature of a quoted entry block. Height tracks
+      // the actual rendered text so multi-line entries get a tall
+      // rule and one-liners get a short one.
+      const ruleH = Math.max(3, bodyEndY - bodyStartY - 0.5);
+      doc.setFillColor(...COLOR.ACCENT_GOLD);
+      doc.rect(lx, bodyStartY - 1, ruleW, ruleH, 'F');
+      y = bodyEndY;
+
+      // ── Inter-entry divider ───────────────────────────────────
+      // Heavier rule + extra vertical breathing room than a plain
+      // tick line so chronological breaks are obvious to a reader
+      // skimming the report.
+      if (ni < noteCount - 1) {
         y += 2.5;
+        doc.setDrawColor(...COLOR.BORDER_SECTION);
+        doc.setLineWidth(BORDER.SECTION_OUTER);
+        doc.line(lx, y, lx + ffw, y);
+        y += 3;
       }
     }
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
