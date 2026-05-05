@@ -23,6 +23,8 @@ export type DocumentKind =
   | 'court_order'
   | 'trespass_order'
   | 'court_summons'
+  | 'court_complaint'
+  | 'court_subpoena'
   | 'protective_order'
   // ICU Investigations
   | 'witness_statement'
@@ -32,6 +34,7 @@ export type DocumentKind =
   // Information Forms
   | 'info_form'
   | 'supplemental_report'
+  | 'servemanager_job'
   // Field Sheets
   | 'fi_card'
   | 'field_contact_report'

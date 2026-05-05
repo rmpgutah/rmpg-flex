@@ -200,3 +200,144 @@ describe('extractFromText — preview cap', () => {
     expect(result.rawTextPreview.length).toBeLessThanOrEqual(50_000);
   });
 });
+
+describe('extractFromText — court_summons (Utah district court)', () => {
+  // Calibrated against the Capital One v. defendant pattern from
+  // Guglielmo & Associates seen 2026-05-05.
+  const sample = `GUGLIELMO & ASSOCIATES, PLLC
+Heather Valerga, (Utah Attorney Bar# 14431)
+PO Box 41688
+Tucson, AZ 85717
+Tel: (877) 325-5700
+Utah@guglielmolaw.com
+Attorney for Plaintiff
+
+IN THE THIRD JUDICIAL DISTRICT COURT, STATE OF UTAH
+SALT LAKE COUNTY, Salt Lake City Department
+
+Capital One, N.A., successor by merger to Discover Bank,
+Plaintiff,
+
+SUMMONS
+
+vs.
+
+Darelis Montilla,
+Defendant
+
+Civil No. 240901234`;
+
+  it('classifies as court_summons', () => {
+    expect(detectKind(sample).kind).toBe('court_summons');
+  });
+
+  it('extracts core caption fields', () => {
+    const result = extractFromText(sample);
+    const byKey = Object.fromEntries(result.fields.map((f) => [f.key, f.value]));
+    expect(result.kind).toBe('court_summons');
+    expect(byKey.civil_case_number).toBe('240901234');
+    expect(byKey.court_state).toBe('UTAH');
+    expect(byKey.attorney_bar_number).toBe('14431');
+    expect(byKey.attorney_email).toBe('Utah@guglielmolaw.com');
+    expect(byKey.attorney_for).toBe('plaintiff');
+    expect(byKey.document_subtype).toContain('SUMMONS');
+  });
+});
+
+describe('extractFromText — servemanager_job (Information Form)', () => {
+  // Calibrated against the Guglielmo → ICU Investigations job
+  // export seen 2026-05-05.
+  const sample = `JOB
+15821690     634308     5/7/26                              Archive   Edit
+
+CLIENT
+Guglielmo & Associates, PLLC
+
+SERVER
+ICU Investigations, LLC
+Christopher Zamora
+435-986-1200
+
+Job Type    G&A Service Type
+Status      Pending
+Attempt Due May 7, 2026
+Due         May 7, 2026
+
+Service Attempts                          Field Sheet   New Attempt
+
+Recipient
+
+Recipient: Darelis Montilla
+
+DOB: 11/29/1993
+
+No Service Attempts`;
+
+  it('classifies as servemanager_job', () => {
+    expect(detectKind(sample).kind).toBe('servemanager_job');
+  });
+
+  it('extracts client/server/recipient/dates', () => {
+    const result = extractFromText(sample);
+    const byKey = Object.fromEntries(result.fields.map((f) => [f.key, f.value]));
+    expect(result.kind).toBe('servemanager_job');
+    expect(byKey.job_number).toBe('15821690');
+    expect(byKey.client_firm).toContain('Guglielmo');
+    expect(byKey.server_firm).toContain('ICU Investigations');
+    expect(byKey.server_individual).toBe('Christopher Zamora');
+    expect(byKey.recipient_name).toContain('Darelis Montilla');
+    expect(byKey.recipient_dob).toBe('11/29/1993');
+    expect(byKey.job_due_date).toContain('May 7');
+  });
+});
+
+describe('detectKind — courtFormDetector bridge', () => {
+  it('bridges complaint via courtFormDetector when our extractors miss', () => {
+    // A complaint that doesn't trigger our court_warrant or summons
+    // detectors but that courtFormDetector recognises.
+    const text = `IN THE FOURTH JUDICIAL DISTRICT COURT, STATE OF UTAH
+
+COMPLAINT FOR BREACH OF CONTRACT
+
+Plaintiff Capital One files this complaint against the defendant
+for breach of contract dated June 1, 2024.`;
+    const result = detectKind(text);
+    // Either our court_summons detector picks it up (also acceptable),
+    // OR the bridge catches it as 'court_complaint'. Both routes
+    // beat 'unknown'.
+    expect(['court_summons', 'court_complaint']).toContain(result.kind);
+  });
+});
+
+describe('extractFromText — generic discovery fallback', () => {
+  it('appends discovered entities when extractor finds nothing', () => {
+    // Generic policy text with names, phones, dates — no anchors match.
+    const text = `OFFICE MEMO
+Please contact John Smith at (801) 555-0100 to confirm the
+appointment on 06/15/2024. Email: jsmith@example.com.`;
+    const result = extractFromText(text);
+    // Should have at least a discovered_phone, discovered_email, discovered_date.
+    const keys = result.fields.map((f) => f.key);
+    expect(keys.some((k) => k.startsWith('discovered_phone_'))).toBe(true);
+    expect(keys.some((k) => k.startsWith('discovered_email_'))).toBe(true);
+    expect(keys.some((k) => k.startsWith('discovered_date_'))).toBe(true);
+    // Discovered fields should all be capped at 0.5 confidence.
+    const discovered = result.fields.filter((f) => f.key.startsWith('discovered_'));
+    for (const f of discovered) expect(f.confidence).toBeLessThanOrEqual(0.5);
+  });
+
+  it('does NOT append discovery when an extractor already matched', () => {
+    const text = `FIELD INTERVIEW CARD
+Subject Name: SMITH, JANE
+DOB: 03/15/1985
+Reason for Contact: loitering
+Action Taken: warned
+Officer: ROE, J.
+Badge #: 9876`;
+    const result = extractFromText(text);
+    expect(result.kind).toBe('fi_card');
+    // No discovered_* fields when anchors matched.
+    const hasDiscovered = result.fields.some((f) => f.key.startsWith('discovered_'));
+    expect(hasDiscovered).toBe(false);
+  });
+});
