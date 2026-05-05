@@ -20,6 +20,17 @@ export default defineConfig({
     },
   },
   build: {
+    // Disable Vite's automatic <link rel="modulepreload"> emission for
+    // every dynamic import. By default Vite eagerly preloads EVERY
+    // chunk reachable from the entry point, which on this app means
+    // ~3MB of JS (vendor-pdf, vendor-barcode, vendor-charts, etc.)
+    // gets downloaded on every page load even when the user isn't
+    // generating PDFs or viewing charts. Caught 2026-05-05 on a slow
+    // Electron desktop session — disabling the auto-preload cuts the
+    // initial network payload to the critical-path bundle (index +
+    // vendor-react + a few small chunks); heavy chunks load on demand
+    // when their first dynamic import fires (e.g. PDF generation).
+    modulePreload: { polyfill: true, resolveDependencies: () => [] },
     rollupOptions: {
       output: {
         // Vendor chunking: libraries that don't change between deploys are
