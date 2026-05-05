@@ -27,6 +27,10 @@ import type { CallForService } from '../../../types';
  */
 export function applyCallPdfAutofill(call: CallForService): CallForService {
   const filled: CallForService = { ...call };
+  // Fields not in the strict CallForService type but commonly attached
+  // server-side via JOINs (property_address, client_phone, etc.) — read
+  // through `any` so this helper can use them as fallback sources.
+  const c = call as any;
 
   // PSO calls: the requestor IS the contracting client (e.g., "ICU Investigations, LLC").
   // If the requestor block was left blank, fall back to the linked client record.
@@ -34,9 +38,25 @@ export function applyCallPdfAutofill(call: CallForService): CallForService {
     if (!filled.pso_requestor_name && filled.client_name) {
       filled.pso_requestor_name = filled.client_name;
     }
+    // Requestor phone/email fallbacks from the linked client record (when
+    // the client is hydrated server-side via JOIN, those columns ride along
+    // on the call response).
+    if (!filled.pso_requestor_phone && c.client_phone)  filled.pso_requestor_phone = c.client_phone;
+    if (!filled.pso_requestor_email && c.client_email)  filled.pso_requestor_email = c.client_email;
+
     // Caller block on PSO calls represents the same contracting party.
-    if (!filled.caller_name)  filled.caller_name  = filled.pso_requestor_name;
-    if (!filled.caller_phone) filled.caller_phone = filled.pso_requestor_phone;
+    if (!filled.caller_name)         filled.caller_name         = filled.pso_requestor_name;
+    if (!filled.caller_phone)        filled.caller_phone        = filled.pso_requestor_phone;
+    if (!filled.caller_address && c.client_address) {
+      filled.caller_address = c.client_address;
+    }
+    // Default relationship for PSO contracting parties — "Authorized Agent"
+    // is the operationally accurate label for a contract-services requestor.
+    // We only fill when blank AND a recognized contracting party is present;
+    // we never overwrite an explicit relationship the dispatcher entered.
+    if (!filled.caller_relationship && (filled.client_name || filled.pso_requestor_name)) {
+      filled.caller_relationship = 'Authorized Agent';
+    }
   }
 
   // Process service: service address defaults to the incident address when not
@@ -44,6 +64,16 @@ export function applyCallPdfAutofill(call: CallForService): CallForService {
   // autofilled — those must reflect a real attempt.
   if (filled.process_service_type && !filled.process_served_address) {
     filled.process_served_address = filled.location;
+  }
+
+  // PROPERTY field on the printed Call Record: the legacy generator reads
+  // `data.property_name` (line 1700 of recordPdfGenerator.ts). When the
+  // server JOINs the properties table, both `property_name` AND
+  // `property_address` ride along; if `property_name` is blank but the
+  // address is set, surface the address as the property label so the
+  // PDF doesn't emit "N/A" for a row that clearly has property linkage.
+  if (!c.property_name && c.property_address) {
+    (filled as any).property_name = c.property_address;
   }
 
   return filled;

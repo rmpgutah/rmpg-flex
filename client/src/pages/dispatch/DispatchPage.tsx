@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
@@ -3216,6 +3216,20 @@ export default function DispatchPage() {
                 </div>
                 {/* Row 2: Action buttons — separate row to prevent cramping */}
                 <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#2b2b2b] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#050505' }}>
+                  {isEditing ? (
+                    // While editing, the in-form values aren't yet on selectedCall,
+                    // so a print right now would generate a PDF missing whatever
+                    // the dispatcher just typed. Block printing until SAVE so
+                    // operators get a clear cue rather than a silently-incomplete PDF.
+                    <button
+                      type="button"
+                      disabled
+                      className="toolbar-btn opacity-50 cursor-not-allowed"
+                      title="Save your edits before printing — the PDF reads from the saved record, not the in-progress form"
+                    >
+                      <Printer style={{ width: 10, height: 10 }} /> Print (save first)
+                    </button>
+                  ) : (
                     <PrintRecordButton
                       recordType="call"
                       recordData={{
@@ -3271,6 +3285,7 @@ export default function DispatchPage() {
                       entityId={selectedCall?.id}
                       label="Print"
                     />
+                  )}
                     {/* Edit toggle */}
                     {!isEditing && (
                       <button type="button" onClick={startEditing} className="toolbar-btn" title="Edit call details">
