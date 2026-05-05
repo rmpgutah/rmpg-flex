@@ -7,6 +7,7 @@ import {
   ChevronDown, Shield, X, Calendar, Briefcase, Package, TrendingUp, Construction,
   ClipboardCheck, UserX, Gavel, Terminal, ExternalLink, CreditCard, Network,
   Camera, ChevronLeft, ChevronRight, Mail, GraduationCap, Microscope, FolderOpen,
+  Upload,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -59,6 +60,7 @@ const PAGE_TITLES: Record<string, string> = {
   '/warrants': 'Warrants',
   '/citations': 'Citations',
   '/field-interviews': 'Field Interviews',
+  '/document-intake': 'Document Intake',
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
   '/ncic': 'NCIC Terminal',
@@ -112,6 +114,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
+    { path: '/document-intake', icon: Upload, label: 'Document Intake' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
     { path: '/microbilt', icon: Search, label: 'MicroBilt' },
