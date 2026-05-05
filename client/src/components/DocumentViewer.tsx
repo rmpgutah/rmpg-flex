@@ -34,7 +34,7 @@ export default function DocumentViewer({
   type = 'auto',
 }: DocumentViewerProps) {
   // Validate src protocol to prevent javascript:/data: XSS
-  const safeSrc = src && /^(https?:|blob:|data:image\/|data:application\/pdf|\/)/i.test(src) ? src : '';
+  const safeSrcRaw = src && /^(https?:|blob:|data:image\/|data:application\/pdf|\/)/i.test(src) ? src : '';
 
   const [zoom, setZoom] = useState(100);
   const [rotation, setRotation] = useState(0);
@@ -81,6 +81,24 @@ export default function DocumentViewer({
           if (lower.startsWith('blob:')) return 'pdf' as const;
           return 'pdf' as const; // default to PDF
         })();
+
+  // Append PDF Open Parameters fragment to suppress Chrome PDFium's
+  // built-in chrome (left thumbnails / navigation pane). User feedback
+  // 2026-05-05: the side panel was redundant since the viewer has its
+  // own page navigation in the header. We pass a fragment because PDF
+  // Open Parameters are read by PDFium directly off the URL hash;
+  // they are inert on browsers that ignore them, so this is safe to
+  // apply unconditionally to the PDF branch only. Param glossary:
+  //   navpanes=0  — hide thumbnails / bookmarks pane
+  //   toolbar=1   — keep top page-nav toolbar visible
+  //   scrollbar=1 — keep page scrollbar
+  //   view=FitH   — fit page horizontally on initial load
+  const safeSrc = (() => {
+    if (!safeSrcRaw) return '';
+    if (detectedType !== 'pdf') return safeSrcRaw;
+    if (safeSrcRaw.includes('#')) return safeSrcRaw;
+    return `${safeSrcRaw}#toolbar=1&navpanes=0&scrollbar=1&view=FitH`;
+  })();
 
   const handleDownload = useCallback(() => {
     const a = document.createElement('a');
