@@ -19,12 +19,18 @@ export const COLOR = {
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
   // Borders — clean, professional lines
-  BORDER_FIELD:    [113, 128, 150]  as const,  // Field box borders (#718096)
-  BORDER_TABLE:    [180, 180, 185]  as const,  // Row separator lines
-  BORDER_COLUMN:   [170, 170, 175]  as const,  // Vertical column separators
-  BORDER_OUTER:    [80, 80, 85]     as const,  // Table outer border
-  BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
-  BORDER_FIELD_RULE: [200, 200, 208] as const, // Subtle field underline rule
+  // Border palette — darkened 2026-05-05 design-definition pass.
+  // The previous values produced a soft, government-form-faded look;
+  // sharper, darker rule colors give the report the crisp visual
+  // structure of a real PD form where every cell is bounded by a
+  // visible line. Field bodies stay white; only the rule colors
+  // change.
+  BORDER_FIELD:    [80, 92, 110]    as const,  // Field box borders (was 113/128/150)
+  BORDER_TABLE:    [120, 122, 130]  as const,  // Row separator lines (was 180/180/185)
+  BORDER_COLUMN:   [110, 112, 122]  as const,  // Vertical column separators (was 170/170/175)
+  BORDER_OUTER:    [40, 44, 55]     as const,  // Table outer border (was 80/80/85)
+  BORDER_SECTION:  [50, 55, 68]     as const,  // Section outline (was 100/100/105)
+  BORDER_FIELD_RULE: [140, 148, 162] as const, // Field underline rule (was 200/200/208 — soft)
 
   // Backgrounds — page stays white; structural elements (headers,
   // banners) deepen to true charcoal for strong contrast against
@@ -184,18 +190,23 @@ export const FONT = {
 // ── Border / Line Width Tokens ───────────────────────────────
 
 export const BORDER = {
-  SECTION_OUTER:    0.5,   // Border around sections (clean)
-  FIELD:            0.3,   // Field box borders (0.3pt, clean grid)
-  TABLE_OUTER:      0.5,   // Outer border of tables
-  TABLE_ROW:        0.15,  // Row separators (subtle)
-  TABLE_COLUMN:     0.15,  // Column separators (subtle)
-  CHECKBOX:         0.3,   // Checkbox square border
+  // Line widths — bumped 2026-05-05 design-definition pass.
+  // Each rule that bounds a structural element gets ~50-60% thicker
+  // so the report grid feels like a deliberate police-form layout
+  // rather than a faint outline. Decorative grid lines (DIAGRAM_GRID,
+  // SIDEBAR_TAB) are unchanged.
+  SECTION_OUTER:    0.7,   // Border around sections (was 0.5)
+  FIELD:            0.4,   // Field box borders (was 0.3)
+  TABLE_OUTER:      0.7,   // Outer border of tables (was 0.5)
+  TABLE_ROW:        0.25,  // Row separators (was 0.15)
+  TABLE_COLUMN:     0.25,  // Column separators (was 0.15)
+  CHECKBOX:         0.4,   // Checkbox square border (was 0.3)
   CHECK_MARK:       0.6,   // Check mark stroke
-  SIGNATURE_LINE:   0.4,   // Signature line
-  ACCENT_HEADER:    0.8,   // Accent line below header
-  ACCENT_FOOTER:    0.5,   // Accent line above footer
-  ACCENT_SECTION:   1.5,   // Gold left-accent strip on section headers
-  FIELD_UNDERLINE:  0.15,  // Subtle underline below field values
+  SIGNATURE_LINE:   0.5,   // Signature line (was 0.4)
+  ACCENT_HEADER:    1.0,   // Accent line below header (was 0.8)
+  ACCENT_FOOTER:    0.6,   // Accent line above footer (was 0.5)
+  ACCENT_SECTION:   2.0,   // Section header left-accent strip (was 1.5 — bolder anchor)
+  FIELD_UNDERLINE:  0.3,   // Field underline rule (was 0.15 — visibly defined)
   CASE_BOX:         1.0,   // White border inside case number box
   BANNER:           0.8,   // Banner borders
   DIAGRAM_GRID:     0.1,   // Accident diagram grid lines
