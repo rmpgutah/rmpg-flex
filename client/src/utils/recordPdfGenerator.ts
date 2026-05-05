@@ -2176,11 +2176,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
 
   // PSO Client Request: QR code for mobile quick-login.
   // Renders into the COMPANY SEAL slot on the last content page (the
-  // signature block's right cell) so it doesn't push to a new sheet
-  // — pre-fix this was triggering doc.addPage() and producing a near
-  // empty page-5 with only the QR (caught 2026-05-04). The seal slot
-  // is ~22mm wide; we render the QR slightly smaller and stack the
-  // caption below.
+  // signature block's right cell) so it doesn't push to a new sheet.
+  // Sized at 12mm so it tucks into the bottom-right corner of the
+  // seal slot with the "SCAN FOR MOBILE PSO" caption fitting alongside
+  // — pre-fix the 18mm QR was overflowing the slot and visually
+  // crowding the date/time row (caught 2026-05-04).
   if (data.incident_type === 'pso_client_request' && data.id) {
     try {
       const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
@@ -2193,18 +2193,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       if (resp.ok) {
         const { qr_png_base64 } = await resp.json();
         const pageW = doc.internal.pageSize.getWidth();
-        const qrSize = 18; // mm — fits inside the seal slot
-        // Place at bottom-right above the footer on the CURRENT page
-        // (which already has the signature block). Position centered
-        // horizontally inside the seal slot (~25mm wide cell at right
-        // edge of the signature row).
-        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 4;
-        const qrY = y - 28;  // sit inside the seal slot, above any tail
+        const qrSize = 12; // mm — compact, tucks into the seal-slot corner
+        // Bottom-right corner of the seal slot. The slot's outer edge
+        // sits at pageW - PAGE_MARGIN; we inset by 3mm for visual
+        // breathing room. Vertical: 3mm above the bottom of the
+        // signature block so the QR doesn't kiss the bottom border.
+        const qrX = pageW - LAYOUT.PAGE_MARGIN - qrSize - 3;
+        const qrY = y - qrSize - 5;
         doc.addImage(qr_png_base64, 'PNG', qrX, qrY, qrSize, qrSize);
         doc.setFont('helvetica', 'bold');
-        doc.setFontSize(5.5);
+        doc.setFontSize(4.5);
         doc.setTextColor(...COLOR.TEXT_SECONDARY);
-        doc.text('SCAN FOR MOBILE PSO', qrX + qrSize / 2, qrY + qrSize + 2, { align: 'center' });
+        doc.text('SCAN FOR MOBILE PSO', qrX + qrSize / 2, qrY + qrSize + 1.8, { align: 'center' });
       }
     } catch { /* non-fatal — PDF still prints without QR */ }
   }
