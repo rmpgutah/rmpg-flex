@@ -79,11 +79,31 @@ export function useServiceWorker() {
       }
     };
 
-    // Listen for messages from the SW (e.g., SW_UPDATED)
+    // Listen for messages from the SW (e.g., SW_UPDATED).
+    // Behavior change 2026-05-05: when the SW activates a new bundle,
+    // auto-reload the page after a short delay so users always see the
+    // newest assets without needing a manual hard-reload. Previously
+    // this only set updateAvailable=true and waited for the user to
+    // dismiss a banner — but in practice the banner was easy to miss
+    // and operators kept reporting "changes aren't visible" because
+    // their browser was still serving the cached pdfGenerator chunk.
+    // The 1.5s delay gives any in-flight tool tip / form submit a
+    // chance to finish before reload.
     const handleMessage = (event: MessageEvent) => {
       if (event.data?.type === 'SW_UPDATED') {
-        // The new SW activated and cleaned old caches — refresh to load new assets
         setUpdateAvailable(true);
+        try {
+          // Skip auto-reload if the user is in the middle of editing
+          // an unsaved form — there's no perfect signal for "active
+          // edit", so we use a heuristic: skip if any input/textarea
+          // currently has focus.
+          const ae = document.activeElement;
+          const editingTags = new Set(['INPUT', 'TEXTAREA', 'SELECT']);
+          if (ae && editingTags.has(ae.tagName)) return;
+          setTimeout(() => {
+            try { window.location.reload(); } catch { /* noop */ }
+          }, 1500);
+        } catch { /* noop — fall back to manual reload prompt */ }
       }
     };
 
