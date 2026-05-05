@@ -224,6 +224,18 @@ router.post('/dialogue', async (req: Request, res: Response) => {
     }
   }
 
+  // ── Hard block: panic actions are NEVER voice-triggerable ──
+  // Even if the LLM hallucinates and plans officer_down, drop it before
+  // execution. Panic alarms fire only from PanicButton.tsx → /api/dispatch/panic.
+  const VOICE_FORBIDDEN = new Set(['officer_down']);
+  plan.actions = plan.actions.filter(a => {
+    if (VOICE_FORBIDDEN.has(a.tool)) {
+      logger.warn({ tool: a.tool, transcript }, 'voice-dialogue: dropped forbidden tool (panic via voice is disabled)');
+      return false;
+    }
+    return true;
+  });
+
   // Execute planned actions
   const executed: Array<{ tool: string; success: boolean; result?: string }> = [];
   for (const action of plan.actions) {

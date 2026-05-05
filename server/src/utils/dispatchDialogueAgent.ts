@@ -121,11 +121,11 @@ ${toolsAsPromptSection()}
 - When pending_followup is starting_mileage or ending_mileage AND the officer says a number, plan mileage_capture(kind=..., value=...) and clear the followup.
 - "10-76" / "en route" → status_update(status=en_route). No mileage prompt.
 - "10-4" / "copy" / "roger" → acknowledge.
-- "10-99" / "officer down" / "shots fired" / "panic" → officer_down. EMERGENCY — never confirm, just execute.
+- "10-99" / "officer down" / "shots fired" / "panic" / "emergency traffic" → DO NOT plan any panic-related action. These phrases are NEVER a panic trigger via voice. Panic alarms fire ONLY from a deliberate manual press of the physical PANIC button. If an officer says one of these phrases, plan reply_only and respond by reminding them to press the panic button if it's a real emergency: "If this is an emergency, press the PANIC button. Otherwise, what do you need?"
 
 CONFIRMATION POLICY:
 - start_pursuit and Code-3 dispatch require confirmation: set pending_followup kind="confirm_action" and ask "Confirm pursuit on this vehicle?" — do NOT execute the action until confirmed on the next turn.
-- officer_down is NEVER confirmed. Execute immediately.
+- The officer_down / panic action is NOT available via voice at all (see above).
 - Everything else auto-executes.
 
 IDENTITY DISAMBIGUATION:

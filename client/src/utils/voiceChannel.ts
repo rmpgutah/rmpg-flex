@@ -230,12 +230,16 @@ const QUICK_COMMANDS: QuickCommandPattern[] = [
     message: 'Checking area activity',
   },
 
-  // ── Emergency ──
-  {
-    pattern: /\b(?:officer\s*down|shots?\s*fired|10[- ]?99|panic|emergency\s*traffic)\b/i,
-    action: 'officer_down',
-    message: 'EMERGENCY — Officer down broadcast transmitted',
-  },
+  // ── Emergency — DISABLED ──
+  // Voice-driven panic alarms produced phantom triggers in normal radio
+  // traffic (the dispatcher saying "panic alarm just came in", training
+  // discussions, TTS playback re-entering the mic). Panic must fire only
+  // from a deliberate manual press of the PanicButton.
+  // {
+  //   pattern: /\b(?:officer\s*down|shots?\s*fired|10[- ]?99|panic|emergency\s*traffic)\b/i,
+  //   action: 'officer_down',
+  //   message: 'EMERGENCY — Officer down broadcast transmitted',
+  // },
 
   // ── Conversational queries (Phase 4) ──
   // After the resolver rewrites "that call" -> "call CN-26-0457",
