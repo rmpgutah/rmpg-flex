@@ -994,7 +994,11 @@ router.get('/health', requireRole('admin', 'manager', 'supervisor'), (req: Reque
     const hours = Math.floor(uptime / 3600);
     const mins = Math.floor((uptime % 3600) / 60);
     let activeSessions = 0;
-    try { activeSessions = (db.prepare("SELECT COUNT(*) as c FROM user_sessions WHERE expires_at > datetime('now')").get() as any)?.c || 0; } catch {}
+    // Table is `sessions` (not `user_sessions`); previously the wrong name
+    // was caught by the silent try/catch and the value was always 0 in
+    // production. Fixed 2026-05-05 — admin dashboard now shows the real
+    // active-session count.
+    try { activeSessions = (db.prepare("SELECT COUNT(*) as c FROM sessions WHERE expires_at > datetime('now')").get() as any)?.c || 0; } catch {}
     const pkg = require('../../package.json');
     res.json({
       version: pkg.version || '0.0.0',

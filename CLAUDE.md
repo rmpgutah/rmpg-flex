@@ -249,9 +249,46 @@ cd client && npx tsc --noEmit  # TypeScript typecheck (deploy script runs this)
 #   Layer 2: .github/workflows/pr-tests.yml — runs on PR + push to main (CI)
 #   Layer 3: deploy/deploy.sh        — runs before VPS rsync (self-heals missing node_modules)
 # Manual invocations still available:
-cd server && npx vitest run         # Full server suite — 461 tests across 39 files, ~3s (requires `npm install` in server/ first)
-cd server && npm run check:routes   # Route-collision guard — 114 files, 0 duplicate METHOD+path handlers expected
+cd server && npx vitest run         # Full server suite — 1100+ tests across 80+ files, ~5s (requires `npm install` in server/ first)
+cd server && npm run check:routes   # Route-collision guard — 121 files, 0 duplicate METHOD+path handlers expected
 cd server && npx tsc --noEmit       # 0 errors (fixed 2026-04-18 via paramStr() helper; now a hard gate in all 3 layers)
+
+# Integration test harness — the "supertest harness" lives at
+# server/tests/helpers/{testApp.ts, testDb.ts}, NOT under
+# server/src/routes/__tests__/. It is fully built and exercised
+# by 154+ integration tests in server/tests/integration/*.test.ts.
+# A common recon mistake (made 2026-05-05): grepping only `src/`
+# for *.test.ts and concluding "auth has no tests / no harness
+# exists" — both are false.
+#
+# Pattern for a new authenticated-route integration test:
+#   import request from 'supertest';
+#   import { setupTestDataDir, teardownTestDataDir, createTestAdmin }
+#     from '../helpers/testDb';
+#   beforeAll(async () => {
+#     testDir = setupTestDataDir();           // isolated SQLite under /tmp
+#     const { initDatabase } = await import('../../src/models/database');
+#     const db = initDatabase();
+#     const admin = createTestAdmin(db);      // totp_exempt, known password
+#     const { createTestApp } = await import('../helpers/testApp');
+#     app = await createTestApp();
+#     // Login → JWT
+#     const r = await request(app).post('/api/auth/login')
+#       .send({ username: admin.username, password: admin.password });
+#     adminToken = r.body.token;
+#   });
+#   afterAll(() => teardownTestDataDir(testDir));
+# Then assert via `request(app).post('/api/<route>').set('Authorization',
+# `Bearer ${adminToken}`)` and inspect side effects via
+# `(await import('../../src/models/database')).getDb()`.
+#
+# Adding a new route to the harness: edit server/tests/helpers/testApp.ts
+# and add (a) the dynamic `await import(...)` inside the closure, and
+# (b) the `app.use('/api/<prefix>', <routes>)` line. The factory only
+# mounts ~23 routes today (auth, dispatch, incidents, records, citations,
+# warrants, fleet, hr, court, crm, businesses, voicePersona, connections,
+# cases, serve-intake, document-intake, field-interviews); other route
+# files need a one-line add before integration tests can hit them.
 
 # Desktop builds
 cd desktop && npm run build:all   # Build macOS DMG + Windows EXE

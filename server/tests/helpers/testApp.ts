@@ -50,6 +50,9 @@ export async function createTestApp(): Promise<Application> {
   const voicePersonaRoutes = (await import('../../src/routes/voicePersona')).default;
   const connectionsRoutes = (await import('../../src/routes/connections')).default;
   const casesRoutes = (await import('../../src/routes/cases')).default;
+  const serveIntakeRoutes = (await import('../../src/routes/serveIntake')).default;
+  const documentIntakeRoutes = (await import('../../src/routes/documentIntake')).default;
+  const fieldInterviewsRoutes = (await import('../../src/routes/fieldInterviews')).default;
 
   app.use('/api/auth', authRoutes);
   app.use('/api/dispatch', dispatchRoutes);
@@ -71,6 +74,9 @@ export async function createTestApp(): Promise<Application> {
   app.use('/api/voice-persona', voicePersonaRoutes);
   app.use('/api/connections', connectionsRoutes);
   app.use('/api/cases', casesRoutes);
+  app.use('/api/serve-intake', serveIntakeRoutes);
+  app.use('/api/document-intake', documentIntakeRoutes);
+  app.use('/api/field-interviews', fieldInterviewsRoutes);
 
   // Error handler (multer-aware, mirrors production)
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
