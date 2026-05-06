@@ -209,3 +209,58 @@ describe('labeledField (Spillman form-fill style)', () => {
     expect(layout.cursorY).toBe(before);
   });
 });
+
+describe('table (Spillman black-header zebra style)', () => {
+  it('renders header text in UPPERCASE and emits all cell text', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    prims.table(
+      {
+        kind: 'table',
+        label: 'TEST',
+        columns: [
+          { key: 'name', header: 'name' },
+          { key: 'count', header: 'count' },
+        ],
+        accessor: () => [
+          { name: 'apples', count: '5' },
+          { name: 'oranges', count: '7' },
+        ],
+      },
+      {},
+    );
+    const buf = new Uint8Array(doc.output('arraybuffer'));
+    let text = '';
+    for (const b of buf) text += String.fromCharCode(b);
+    expect(text).toContain('NAME');
+    expect(text).toContain('COUNT');
+    expect(text).toContain('apples');
+    expect(text).toContain('oranges');
+  });
+
+  it('handles empty rows array without crashing', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    expect(() => prims.table(
+      { kind: 'table', label: 'EMPTY', columns: [{ key: 'k', header: 'K' }], accessor: () => [] },
+      {},
+    )).not.toThrow();
+  });
+
+  it('coerces null/undefined cell values to empty string', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    prims.table(
+      { kind: 'table', label: 'NULLS', columns: [{ key: 'a', header: 'A' }], accessor: () => [{ a: null }, { a: undefined }] },
+      {},
+    );
+    const buf = new Uint8Array(doc.output('arraybuffer'));
+    let text = '';
+    for (const b of buf) text += String.fromCharCode(b);
+    expect(text).not.toMatch(/\(undefined\)\s*Tj/);
+    expect(text).not.toMatch(/\(null\)\s*Tj/);
+  });
+});
