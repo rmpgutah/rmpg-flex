@@ -24,7 +24,9 @@ function drawDiagonalWatermark(doc: jsPDF, lines: string[]): void {
     doc.text(lines[i], cx, y, { align: 'center', angle: -45 });
   }
   doc.restoreGraphicsState();
-  doc.setTextColor('#000000');
+  // No explicit text-color reset — restoreGraphicsState() already
+  // pops the color set by the prior saveGraphicsState(), so the
+  // caller's color is preserved without us guessing what it was.
 }
 
 export function drawBlankFormWatermark(doc: jsPDF): void {
