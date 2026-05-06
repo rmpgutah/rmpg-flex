@@ -149,7 +149,13 @@ function renderRightPanel(doc: jsPDF, copy: CitationCopyVariant, headerBottomY: 
   layout.advance(6);
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(RULE_WEIGHTS.sectionRule);
-  doc.line(layout.leftX, layout.cursorY, layout.rightX, layout.cursorY);
+  // Rule sized to the banner text + small lead-out so it underlines
+  // the banner rather than extending across the full empty panel.
+  const ruleEnd = Math.min(
+    layout.leftX + doc.getTextWidth(copy.bannerText) + 8,
+    layout.rightX,
+  );
+  doc.line(layout.leftX, layout.cursorY, ruleEnd, layout.cursorY);
   // 5mm clearance below the rule before body text starts — at 9pt (~3mm
   // glyph), a 2mm gap put the rule mid-glyph on the first body line.
   layout.advance(5);

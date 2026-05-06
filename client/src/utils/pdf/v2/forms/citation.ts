@@ -85,7 +85,7 @@ const notesField: NarrativeField<CitationData> = {
   // consistent with other narrative sections.
   label: '',
   accessor: (d) => d.notes ?? '',
-  minLines: 12,
+  minLines: 3,
   editable: true,
   path: 'notes',
 };
@@ -93,18 +93,18 @@ const notesField: NarrativeField<CitationData> = {
 const officerSignature: SignatureField<CitationData> = {
   kind: 'signature',
   label: 'Issuing Officer',
-  accessor: (d) => ({
-    image: d.signature_image ?? undefined,
-    printedName: d.issuing_officer_name ?? '',
-    date: d.signature_date ?? d.violation_date ?? '',
-  }),
-  editable: false,
-};
-
-const subjectSignature: SignatureField<CitationData> = {
-  kind: 'signature',
-  label: 'Subject Acknowledgment',
-  accessor: () => undefined,
+  accessor: (d) => {
+    const name = (d.issuing_officer_name ?? '').trim();
+    const badge = (d.badge_number ?? '').toString().trim();
+    const printedName = badge
+      ? (name ? `${name}  ·  Badge #${badge}` : `Badge #${badge}`)
+      : name;
+    return {
+      image: d.signature_image ?? undefined,
+      printedName,
+      date: d.signature_date ?? d.violation_date ?? '',
+    };
+  },
   editable: false,
 };
 
@@ -120,20 +120,18 @@ export const citationSchema: FormSchema<CitationData> = {
     caseNumberAccessor: (d) => d.citation_number ?? undefined,
   },
   sections: [
+    // Citation metadata + timing combined into one 2-col section to save
+    // ~25mm of vertical space (one section header + redundant rows). Pair
+    // shape: Citation# alone, Type+Status, Date+Time, Offense Level alone.
     {
-      kind: 'section', title: 'CITATION INFORMATION', columns: 1,
+      kind: 'section', title: 'CITATION DETAILS', columns: 2,
       fields: [
         lf('Citation Number', 'citation_number'),
         lf('Type', 'type', (d) => enumFmt(d.type)),
         lf('Status', 'status', (d) => enumFmt(d.status)),
-      ],
-    },
-    {
-      kind: 'section', title: 'TIMING & LEVEL', columns: 2,
-      fields: [
         lf('Violation Date', 'violation_date'),
-        lf('Offense Level', 'offense_level', (d) => enumFmt(d.offense_level)),
         lf('Violation Time', 'violation_time'),
+        lf('Offense Level', 'offense_level', (d) => enumFmt(d.offense_level)),
       ],
     },
     {
@@ -151,6 +149,8 @@ export const citationSchema: FormSchema<CitationData> = {
     },
     {
       kind: 'section', title: 'VEHICLE INFORMATION', columns: 2,
+      // Pair plate + state on row 1; vehicle description (free-text,
+      // longest field) on row 2 alone.
       fields: [
         lf('License Plate', 'vehicle_plate'),
         lf('State', 'vehicle_state'),
@@ -175,38 +175,28 @@ export const citationSchema: FormSchema<CitationData> = {
         });
       }
     },
+    // Court info collapsed: date + name on row 1 (2-col), address on its
+    // own full-width row 2. Saves a redundant 'COURT ADDRESS' section.
     {
       kind: 'section', title: 'COURT', columns: 2,
       fields: [
         lf('Court Date', 'court_date'),
         lf('Court Name', 'court_name'),
+        lf('Court Address', 'court_address'),
       ],
     },
-    {
-      kind: 'section', title: 'COURT ADDRESS', columns: 1,
-      fields: [lf('Address', 'court_address')],
-    },
-    {
-      kind: 'section', title: 'ISSUING OFFICER', columns: 1,
-      fields: [
-        // Empty label — section header already says "ISSUING OFFICER".
-        lf('', 'issuing_officer_name', (d) => {
-        const name = (d.issuing_officer_name ?? '').trim();
-        const badge = (d.badge_number ?? '').toString().trim();
-        if (!name && !badge) return '';
-        if (!badge) return name;
-        if (!name) return `Badge #${badge}`;
-        return `${name}  ·  Badge #${badge}`;
-      }),
-      ],
-    },
+    // ISSUING OFFICER section removed — officer name + badge already
+    // appear inside the SIGNATURES block ("Printed name: ..."). Keeping
+    // both produced redundant text and pushed content onto a 2nd page.
     {
       kind: 'section', title: 'OFFICER NOTES', columns: 1,
       fields: [notesField],
     },
     {
       kind: 'section', title: 'SIGNATURES', columns: 1,
-      fields: [officerSignature, subjectSignature],
+      // Subject Acknowledgment removed — violator signs on the right
+      // panel of every page (Page 1 Violator Copy 'X ___' line).
+      fields: [officerSignature],
     },
   ],
 };
