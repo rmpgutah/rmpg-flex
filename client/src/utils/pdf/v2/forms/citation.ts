@@ -84,7 +84,7 @@ const subjectSignature: SignatureField<CitationData> = {
 
 export const citationSchema: FormSchema<CitationData> = {
   meta: {
-    formNumber: 'FORM PS-209',
+    formNumber: 'PS-209',
     title: 'CITATION',
     revision: '2026-04',
   },

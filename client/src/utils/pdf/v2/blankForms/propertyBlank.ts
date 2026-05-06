@@ -8,7 +8,7 @@ function blankLabeled(label: string): LabeledField<PropertyBlankData> {
 
 export const propertyBlankSchema: FormSchema<PropertyBlankData> = {
   meta: {
-    formNumber: 'FORM PS-208-BLK',
+    formNumber: 'PS-208-BLK',
     title: 'PROPERTY RECORD',
     revision: '2026-04',
   },
