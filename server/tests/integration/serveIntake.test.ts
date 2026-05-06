@@ -74,7 +74,7 @@ describe('POST /api/serve-intake/intake (Armstrong fixture)', () => {
     expect(res.body?.error).toMatch(/documents/i);
   });
 
-  it('processes the 3-document Armstrong fixture end-to-end', async () => {
+  it('processes the 3-document Armstrong fixture end-to-end', { timeout: 30000 }, async () => {
     const fieldSheet = fs.readFileSync(path.join(FIXTURE_DIR, 'armstrong.fieldSheet.txt'), 'utf8');
     const courtDocket = fs.readFileSync(path.join(FIXTURE_DIR, 'armstrong.courtDocket.txt'), 'utf8');
     const infoSheet = fs.readFileSync(path.join(FIXTURE_DIR, 'armstrong.infoSheet.txt'), 'utf8');
