@@ -3,6 +3,7 @@ import type { LayoutEngine } from './layout';
 import type {
   LabeledField, CheckboxField, NarrativeField, TableField, SignatureField, Width,
 } from './types';
+import { TYPOGRAPHY, RULE_WEIGHTS, SPACING } from './style';
 
 // Font sizes are always in points regardless of doc unit.
 const LABEL_FONT_SIZE = 7;
@@ -47,30 +48,33 @@ export class Primitives {
    */
   labeledField<T>(spec: LabeledField<T>, data: T, xOverride?: number, widthOverride?: number): void {
     const positioned = xOverride !== undefined;
-    if (!positioned) this.layout.pageBreakIfNeeded(ROW_HEIGHT);
+    if (!positioned) this.layout.pageBreakIfNeeded(SPACING.fieldRowHeight);
     const x = xOverride ?? this.layout.leftX;
     const width = widthOverride ?? (this.layout.rightX - this.layout.leftX);
     const y = this.layout.cursorY;
     const value = formatValue(spec.accessor(data));
 
-    this.doc.setFont('helvetica', 'normal');
-    this.doc.setFontSize(LABEL_FONT_SIZE);
-    this.doc.setTextColor(100, 100, 100);
-    const labelMax = this.doc.splitTextToSize(spec.label.toUpperCase(), width - 1)[0] ?? spec.label.toUpperCase();
+    // Label — UPPERCASE BOLD on its own line (Spillman/Motorola convention).
+    this.doc.setFont('helvetica', TYPOGRAPHY.fieldLabel.weight);
+    this.doc.setFontSize(TYPOGRAPHY.fieldLabel.size);
+    this.doc.setTextColor(0, 0, 0);
+    const labelText = spec.label.toUpperCase();
+    const labelMax = this.doc.splitTextToSize(labelText, width - 1)[0] ?? labelText;
     this.doc.text(labelMax, x, y);
 
-    this.doc.setFontSize(VALUE_FONT_SIZE);
+    // Value — 9pt regular, 3.5mm below the label baseline.
+    this.doc.setFont('helvetica', TYPOGRAPHY.fieldValue.weight);
+    this.doc.setFontSize(TYPOGRAPHY.fieldValue.size);
     this.doc.setTextColor(0, 0, 0);
-    // Truncate value to fit the available width
     const maxLine = this.doc.splitTextToSize(value, width - 1)[0] ?? value;
     this.doc.text(maxLine, x, y + 4);
 
-    // Thin rule under the value so the boxed field reads as a form cell
-    this.doc.setDrawColor(180, 180, 180);
-    this.doc.setLineWidth(0.1);
-    this.doc.line(x, y + 5, x + width - 1, y + 5);
+    // Form-fill underline beneath the value spanning the field width.
+    this.doc.setDrawColor(0, 0, 0);
+    this.doc.setLineWidth(RULE_WEIGHTS.fieldUnderline);
+    this.doc.line(x, y + 5, x + width, y + 5);
 
-    if (!positioned) this.layout.advance(ROW_HEIGHT);
+    if (!positioned) this.layout.advance(SPACING.fieldRowHeight);
   }
 
   checkboxRow<T>(specs: CheckboxField<T>[], data: T): void {
