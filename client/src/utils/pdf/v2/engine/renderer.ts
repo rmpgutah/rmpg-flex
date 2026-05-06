@@ -67,6 +67,7 @@ export async function renderPdfV2<T>(
       pageNumber: p,
       totalPages: total,
       revision: schema.meta.revision,
+      formNumber: schema.meta.formNumber,
       generatedAt: options?.generatedAt,
     });
   }
