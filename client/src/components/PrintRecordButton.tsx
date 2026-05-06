@@ -270,19 +270,31 @@ export default function PrintRecordButton({
    *  → multiCopyPdfV2 → form schema. Until then, mobile prints fall
    *  through to the legacy generator which already supports the
    *  offset. (Affects citations only; every other record type uses
-   *  the legacy path either way.) */
+   *  the legacy path either way.)
+   *
+   *  Mobile Print opens the same in-app PDF viewer as Office Print so
+   *  the officer sees the +6mm-shifted layout before sending it to
+   *  the in-vehicle Brother PJ thermal printer. They print from the
+   *  viewer's print toolbar exactly the same way as office prints. */
   const handleMobilePrint = useCallback(async () => {
     if (!recordData) return;
     try {
       setLoading(true);
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
       const enrichedData = await enrichWithImages(recordData);
-      await downloadRecordPdf(recordType, enrichedData, identifier, { printTarget: 'mobile' });
+      // v2 dispatch path doesn't yet honor printTarget — fall through
+      // directly to the legacy generator (which IS mobile-aware) for
+      // the blob URL. Citations lose v2 sidecar attestation under
+      // mobile-print today; tracked as the v2-printTarget follow-up.
+      const blobUrl = await generateRecordPdfBlobUrl(recordType, enrichedData, { printTarget: 'mobile' });
+      setPdfBlobUrl(blobUrl);
+      setViewerOpen(true);
     } catch (err) {
-      console.error('[PrintRecordButton] Mobile PDF generation failed:', err);
+      console.error('[PrintRecordButton] Mobile PDF preview failed:', err);
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, enrichWithImages]);
+  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl]);
 
   const handlePreview = useCallback(async () => {
     if (!recordData) return;
