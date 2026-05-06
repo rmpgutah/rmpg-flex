@@ -47,6 +47,28 @@ async function signPayload(
   }
 }
 
+function mapServerViolations(rows: unknown): Array<{
+  statute_citation: string;
+  description: string;
+  offense_level: 'Infraction' | 'Misdemeanor' | 'Felony';
+  fine_amount: number;
+}> {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r: any) => ({
+    statute_citation: String(r?.statute_citation ?? ''),
+    description: String(r?.violation_description ?? ''),
+    offense_level: normalizeOffenseLevel(r?.offense_level),
+    fine_amount: Number(r?.fine_amount ?? 0),
+  }));
+}
+
+function normalizeOffenseLevel(raw: unknown): 'Infraction' | 'Misdemeanor' | 'Felony' {
+  const s = String(raw ?? '').toLowerCase();
+  if (s.startsWith('fel')) return 'Felony';
+  if (s.startsWith('mis')) return 'Misdemeanor';
+  return 'Infraction';
+}
+
 /**
  * Dispatch a record print through the v2 engine if the record
  * type is migrated. Returns true on handled, false on
@@ -59,7 +81,22 @@ export async function tryV2Dispatch(opts: V2DispatchOptions): Promise<boolean> {
   const { citationSchema, citationCanonicalData } = await import('./v2/forms/citation');
   const { CITATION_INSTRUCTIONS } = await import('./v2/forms/citationInstructions');
 
-  const data = opts.recordData ?? {};
+  // Fetch joined violations + payments from /full when an id is available.
+  // The server route returns {...row, violations[], payments[]}. Falls back
+  // to opts.recordData on fetch failure (offline, server error) so prints
+  // still work with whatever the upstream caller provided.
+  let data = opts.recordData ?? {};
+  if (data.id != null) {
+    try {
+      const full = await apiFetch<any>(`/citations/${data.id}/full`);
+      data = { ...full, ...data };  // server fields baseline; upstream overrides win for any explicit overrides (e.g. signature_image)
+      data.violations = mapServerViolations(full.violations);
+    } catch {
+      // Server fetch failed — fall through with original recordData. The
+      // back-compat path in citation.ts will render flat single-violation
+      // fields if violations[] is empty.
+    }
+  }
   const filename = `citation-${opts.identifier || data.citation_number || 'unknown'}.pdf`;
   const caseNumber = String(data.citation_number ?? '');
 
