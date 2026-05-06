@@ -31,15 +31,15 @@ describe('citationSchema layout', () => {
     }
   });
 
-  it('contains an ISSUING OFFICER section before NOTES', () => {
+  it('OFFICER NOTES appears before SIGNATURES', () => {
     const titles: string[] = [];
     for (const s of citationSchema.sections) {
       if (typeof s !== 'function') titles.push(s.title);
     }
-    const officerIdx = titles.indexOf('ISSUING OFFICER');
-    const notesIdx = titles.indexOf('NOTES');
-    expect(officerIdx).toBeGreaterThanOrEqual(0);
-    expect(notesIdx).toBeGreaterThan(officerIdx);
+    const notesIdx = titles.indexOf('OFFICER NOTES');
+    const sigIdx = titles.indexOf('SIGNATURES');
+    expect(notesIdx).toBeGreaterThanOrEqual(0);
+    expect(sigIdx).toBeGreaterThan(notesIdx);
   });
 
   it('VIOLATIONS section is a callback (multi-violation aware)', () => {

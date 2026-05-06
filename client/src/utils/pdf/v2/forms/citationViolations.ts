@@ -17,6 +17,11 @@ export function totalFine(violations: CitationViolation[]): number {
 
 const fmtFine = (n: number): string => `$${n.toFixed(2)}`;
 
+// All field specs in this file use parameterless accessors that close
+// over `violations`, so the `data` arg primitives demand is unused. One
+// cast in one place keeps the call sites readable.
+const NO_DATA = undefined as unknown as never;
+
 /**
  * Render the entire VIOLATIONS block — header + body + total-fine line —
  * at the current layout cursor. Auto-picks compact-table (≤3) or stacked-
@@ -44,7 +49,7 @@ export function renderViolations(
       accessor: () => fmtFine(totalFine(violations)),
       editable: false,
     },
-    undefined as unknown as never,
+    NO_DATA,
   );
 }
 
@@ -57,7 +62,7 @@ function renderCompact(prims: Primitives, violations: CitationViolation[]): void
         { key: 'statute_citation', header: 'STATUTE',     width: 'half' },
         { key: 'description',      header: 'DESCRIPTION', width: 'full' },
         { key: 'level_short',      header: 'LVL',         width: 'quarter' },
-        { key: 'fine_fmt',         header: 'FINE',        width: 'quarter' },
+        { key: 'fine_fmt',         header: 'FINE',        width: 'half' },
       ],
       accessor: () => violations.map((v) => ({
         statute_citation: v.statute_citation,
@@ -67,14 +72,14 @@ function renderCompact(prims: Primitives, violations: CitationViolation[]): void
       })),
       editable: false,
     },
-    undefined as unknown as never,
+    NO_DATA,
   );
 }
 
 function renderStacked(prims: Primitives, violations: CitationViolation[]): void {
   prims.labeledField(
     { kind: 'labeled', label: 'VIOLATIONS', accessor: () => '', editable: false },
-    undefined as unknown as never,
+    NO_DATA,
   );
   violations.forEach((v, i) => {
     prims.spacer(1);
@@ -85,7 +90,7 @@ function renderStacked(prims: Primitives, violations: CitationViolation[]): void
         accessor: () => v.statute_citation,
         editable: false,
       },
-      undefined as unknown as never,
+      NO_DATA,
     );
     prims.labeledField(
       {
@@ -94,7 +99,7 @@ function renderStacked(prims: Primitives, violations: CitationViolation[]): void
         accessor: () => v.offense_level,
         editable: false,
       },
-      undefined as unknown as never,
+      NO_DATA,
     );
     prims.labeledField(
       {
@@ -103,7 +108,7 @@ function renderStacked(prims: Primitives, violations: CitationViolation[]): void
         accessor: () => v.description,
         editable: false,
       },
-      undefined as unknown as never,
+      NO_DATA,
     );
     prims.labeledField(
       {
@@ -112,7 +117,7 @@ function renderStacked(prims: Primitives, violations: CitationViolation[]): void
         accessor: () => fmtFine(v.fine_amount),
         editable: false,
       },
-      undefined as unknown as never,
+      NO_DATA,
     );
   });
 }

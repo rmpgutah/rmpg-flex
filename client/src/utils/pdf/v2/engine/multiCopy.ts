@@ -11,7 +11,9 @@ import type { CitationCopyVariant } from '../forms/citationInstructions';
 import { TYPOGRAPHY, RULE_WEIGHTS } from './style';
 
 const OUTER_MARGIN = 10;
-const HEADER_GAP = 1;
+// 4mm gap from header bottom rule to first section header — enough that
+// the section text glyphs clear the rule (1mm bled into the rule visually).
+const HEADER_GAP = 4;
 const FOOTER_TOP = 18; // bottomMargin in existing renderer
 const HALF_GAP = 5;
 
@@ -52,6 +54,22 @@ export async function renderMultiCopyPdfV2<T>(
     doc.setPage(copyStartPage);
 
     renderLeftPanel(doc, schema, data, headerBottomY);
+
+    // Continuation pages from left-panel overflow need their own
+    // chrome — header + fold rule — so a folded continuation page
+    // still reads as part of the same copy. Walk pages added since
+    // copyStartPage and stamp them. Right panel intentionally not
+    // re-rendered: instructions are single-page, banner only on
+    // the copy-start page; continuation = left content only.
+    const lastPage = doc.getNumberOfPages();
+    for (let p = copyStartPage + 1; p <= lastPage; p++) {
+      doc.setPage(p);
+      const contY = drawDefaultHeader(doc, schema.meta, {
+        caseNumber: schema.header.caseNumberAccessor?.(data),
+      });
+      drawFoldRule(doc, contY);
+    }
+    doc.setPage(lastPage);
   });
 
   // Footers go AFTER all content so PAGE N OF M reflects continuation pages.
@@ -131,8 +149,16 @@ function renderRightPanel(doc: jsPDF, copy: CitationCopyVariant, headerBottomY: 
   layout.advance(6);
   doc.setDrawColor(0, 0, 0);
   doc.setLineWidth(RULE_WEIGHTS.sectionRule);
-  doc.line(layout.leftX, layout.cursorY, layout.rightX, layout.cursorY);
-  layout.advance(2);
+  // Rule sized to the banner text + small lead-out so it underlines
+  // the banner rather than extending across the full empty panel.
+  const ruleEnd = Math.min(
+    layout.leftX + doc.getTextWidth(copy.bannerText) + 8,
+    layout.rightX,
+  );
+  doc.line(layout.leftX, layout.cursorY, ruleEnd, layout.cursorY);
+  // 5mm clearance below the rule before body text starts — at 9pt (~3mm
+  // glyph), a 2mm gap put the rule mid-glyph on the first body line.
+  layout.advance(5);
 
   // Body — 9pt regular text, ~4mm line height. Empty strings advance only.
   doc.setFont('helvetica', TYPOGRAPHY.fieldValue.weight);
