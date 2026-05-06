@@ -333,6 +333,14 @@ export function topMarginY(doc: jsPDF): number {
   return LAYOUT.PAGE_MARGIN + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
 }
 
+/** Top y-edge for the agency/page header chrome — which sits ABOVE
+ *  the content margin at LAYOUT.HEADER_TOP=5mm in office mode. On
+ *  mobile mode it shifts down by MOBILE_PRINTER_TOP_OFFSET so the
+ *  banner doesn't hit the PJ-700 leading-edge dead zone. */
+export function topHeaderY(doc: jsPDF): number {
+  return LAYOUT.HEADER_TOP + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
+}
+
 // ── Computed Layout Helpers ──────────────────────────────────
 
 /** Page content width = pageWidth - 2 * PAGE_MARGIN */
