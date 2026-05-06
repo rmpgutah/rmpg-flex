@@ -1289,6 +1289,10 @@ export default function IncidentsPage() {
               pdfData._officerSignature = signature;
               await downloadPdfReport(reportType, pdfData);
             }}
+            onMobilePrint={async (reportType) => {
+              const pdfData = await buildIncidentPdfData();
+              await downloadPdfReport(reportType, pdfData, { printTarget: 'mobile' });
+            }}
           />
         <button type="button"
           onClick={() => {

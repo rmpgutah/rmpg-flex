@@ -44,7 +44,15 @@ import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, re
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, formatEnumValue,
+  applyPrintTarget, topMarginY, type PrintTarget,
 } from './pdfTokens';
+
+/** Options applied to every public record-PDF entry point. The
+ *  `printTarget` value is tagged onto the resulting jsPDF and read
+ *  via `topMarginY(doc)` wherever a page-top y is needed. */
+export interface RecordPdfOptions {
+  printTarget?: PrintTarget;
+}
 import {
   drawNibrsHeader, drawFormSection, drawCautionFlagStrip,
   drawDispatchTimelineStrip, drawChainOfCustodyTable,
@@ -5230,8 +5238,10 @@ type RecordDataMap = {
 export async function generateRecordPdf<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
+  options: RecordPdfOptions = {},
 ): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPrintTarget(doc, options.printTarget ?? 'office');
 
   // Set form key for footer form numbers
   setActiveFormKey(recordType);
@@ -5366,6 +5376,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
   identifier?: string,
+  options: RecordPdfOptions = {},
 ) {
   try {
     const branding = await fetchPdfBranding();
@@ -5393,12 +5404,13 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     setActiveSignature(
       await fetchPdfSignature(recordType, identifier || '', payloadHash) || undefined
     );
-    const doc = await generateRecordPdf(recordType, data);
+    const doc = await generateRecordPdf(recordType, data, options);
     setActiveOfficerSignature(undefined); // clear after generation
     clearActivePayloadHash();
     clearActiveSignature();
     const id = identifier || 'record';
-    const filename = `${id}_${recordType}.pdf`;
+    const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
+    const filename = `${id}_${recordType}${targetSuffix}.pdf`;
     // Explicit blob download — works on Safari (doc.save uses window.open which strips filename)
     const blob = doc.output('blob');
     const url = URL.createObjectURL(new Blob([blob], { type: 'application/pdf' }));
@@ -5422,6 +5434,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
 export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
+  options: RecordPdfOptions = {},
 ): Promise<string> {
   try {
     const branding = await fetchPdfBranding();
@@ -5449,7 +5462,7 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     setActiveSignature(
       await fetchPdfSignature(recordType, '', payloadHash) || undefined
     );
-    const doc = await generateRecordPdf(recordType, data);
+    const doc = await generateRecordPdf(recordType, data, options);
     setActiveOfficerSignature(undefined); // clear after generation
     clearActivePayloadHash();
     clearActiveSignature();
@@ -5482,8 +5495,9 @@ export interface BoloSubject {
 }
 
 /** Generate a multi-page BOLO (Be On The Lookout) packet PDF */
-export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
+export function generateBoloPdf(subjects: BoloSubject[], options: RecordPdfOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - 2 * margin;
@@ -5536,7 +5550,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
       addConfidentialWatermark(doc);
       // @ts-expect-error jsPDF GState
       doc.setGState(new doc.GState({ opacity: 1.0 }));
-      y = LAYOUT.PAGE_MARGIN + 5;
+      y = topMarginY(doc) + 5;
     }
 
     const sectionStartY = y;
@@ -5629,7 +5643,7 @@ export function generateBoloPdf(subjects: BoloSubject[]): jsPDF {
           addConfidentialWatermark(doc);
           // @ts-expect-error jsPDF GState
           doc.setGState(new doc.GState({ opacity: 1.0 }));
-          y = LAYOUT.PAGE_MARGIN + 5;
+          y = topMarginY(doc) + 5;
         }
         doc.text(w.warrant_number || '', margin + 4, y + 3);
         doc.text(formatEnumValue(w.type), margin + 40, y + 3);
@@ -5697,8 +5711,9 @@ export interface WarrantSummaryData {
 }
 
 /** Generate a single-page Warrant Activity Summary Report */
-export function generateWarrantSummaryPdf(data: WarrantSummaryData): jsPDF {
+export function generateWarrantSummaryPdf(data: WarrantSummaryData, options: RecordPdfOptions = {}): jsPDF {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - 2 * margin;

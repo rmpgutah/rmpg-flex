@@ -288,7 +288,46 @@ export const LAYOUT = {
   LINE_HEIGHT:       2.8,    // Base line height for wrapped text (compact)
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
   SIDEBAR_TAB_W:     18,     // Sidebar tab width
+  // Brother PJ-700/800 mobile thermal printers have a hardware ~6mm
+  // leading-edge dead zone — anything within 6mm of the top of a sheet
+  // gets clipped. When a doc is tagged for 'mobile' print target, the
+  // top y-edge gets pushed down by this amount so the dead zone
+  // becomes safe whitespace instead of clipped content.
+  MOBILE_PRINTER_TOP_OFFSET: 6,
 } as const;
+
+// ── Print Target ─────────────────────────────────────────────
+// 'office' = laser/letter — standard 10mm top margin
+// 'mobile' = Brother PJ-700/800 thermal — 10mm + 6mm dead-zone offset
+export type PrintTarget = 'office' | 'mobile';
+
+/** Tag a jsPDF instance with its print target. The tag is read by
+ *  topMarginY(doc) to apply the mobile-printer offset. */
+export function applyPrintTarget(doc: jsPDF, target: PrintTarget): void {
+  (doc as any).__printTarget = target;
+}
+
+/** Read the print target previously applied to a doc. Defaults to
+ *  'office' for untagged documents — this means existing call sites
+ *  that don't yet thread the target keep their current behavior. */
+export function getPrintTarget(doc: jsPDF): PrintTarget {
+  return ((doc as any).__printTarget as PrintTarget | undefined) ?? 'office';
+}
+
+/** Top y-edge for content on the current page. Use this anywhere
+ *  LAYOUT.PAGE_MARGIN was used as a vertical TOP margin — NOT for
+ *  left/right/bottom margins. Returns 10mm for office, 16mm for mobile. */
+export function topMarginY(doc: jsPDF): number {
+  return LAYOUT.PAGE_MARGIN + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
+}
+
+/** Top y-edge for the agency/page header chrome — which sits ABOVE
+ *  the content margin at LAYOUT.HEADER_TOP=5mm in office mode. On
+ *  mobile mode it shifts down by MOBILE_PRINTER_TOP_OFFSET so the
+ *  banner doesn't hit the PJ-700 leading-edge dead zone. */
+export function topHeaderY(doc: jsPDF): number {
+  return LAYOUT.HEADER_TOP + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
+}
 
 // ── Computed Layout Helpers ──────────────────────────────────
 
