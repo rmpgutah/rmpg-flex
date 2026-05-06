@@ -1290,8 +1290,16 @@ export default function IncidentsPage() {
               await downloadPdfReport(reportType, pdfData);
             }}
             onMobilePrint={async (reportType) => {
-              const pdfData = await buildIncidentPdfData();
-              await downloadPdfReport(reportType, pdfData, { printTarget: 'mobile' });
+              try {
+                if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+                const pdfData = await buildIncidentPdfData();
+                const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData, { printTarget: 'mobile' });
+                setPdfBlobUrl(blobUrl);
+                setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()} (MOBILE)`);
+                setPdfViewerOpen(true);
+              } catch (err) {
+                console.error('[IncidentsPage] Mobile PDF preview failed:', err);
+              }
             }}
           />
         <button type="button"

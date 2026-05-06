@@ -52,6 +52,8 @@ export interface PrintButtonGroupProps {
   /** Override default labels. */
   officeLabel?: string;
   mobileLabel?: string;
+  /** Compact mode — icon-only, no text labels. */
+  compact?: boolean;
 }
 
 const BTN_BASE =
