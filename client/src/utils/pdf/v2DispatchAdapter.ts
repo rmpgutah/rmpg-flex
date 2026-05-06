@@ -55,8 +55,9 @@ async function signPayload(
 export async function tryV2Dispatch(opts: V2DispatchOptions): Promise<boolean> {
   if (opts.recordType !== 'citation') return false;
 
-  const { downloadPdfV2, payloadHash } = await import('./v2');
+  const { downloadMultiCopyPdfV2, payloadHash } = await import('./v2');
   const { citationSchema, citationCanonicalData } = await import('./v2/forms/citation');
+  const { CITATION_INSTRUCTIONS } = await import('./v2/forms/citationInstructions');
 
   const data = opts.recordData ?? {};
   const filename = `citation-${opts.identifier || data.citation_number || 'unknown'}.pdf`;
@@ -74,7 +75,7 @@ export async function tryV2Dispatch(opts: V2DispatchOptions): Promise<boolean> {
     ? await signPayload('citation', caseNumber, hash)
     : null;
 
-  await downloadPdfV2(citationSchema, data, filename, {
+  await downloadMultiCopyPdfV2(citationSchema, data, CITATION_INSTRUCTIONS, filename, {
     schemaId: 'citation',
     caseNumber,
     signature: signature
