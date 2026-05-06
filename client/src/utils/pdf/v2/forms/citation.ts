@@ -80,7 +80,10 @@ function lf(
 
 const notesField: NarrativeField<CitationData> = {
   kind: 'narrative',
-  label: 'Notes',
+  // Empty string — section header "OFFICER NOTES" already labels this block.
+  // Primitives still advances the label-row height (4mm) so spacing stays
+  // consistent with other narrative sections.
+  label: '',
   accessor: (d) => d.notes ?? '',
   minLines: 12,
   editable: true,
@@ -186,7 +189,8 @@ export const citationSchema: FormSchema<CitationData> = {
     {
       kind: 'section', title: 'ISSUING OFFICER', columns: 1,
       fields: [
-        lf('Officer', 'issuing_officer_name', (d) => {
+        // Empty label — section header already says "ISSUING OFFICER".
+        lf('', 'issuing_officer_name', (d) => {
         const name = (d.issuing_officer_name ?? '').trim();
         const badge = (d.badge_number ?? '').toString().trim();
         if (!name && !badge) return '';
