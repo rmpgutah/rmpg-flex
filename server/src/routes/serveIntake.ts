@@ -27,6 +27,7 @@ import { buildEnrichment } from '../utils/serveIntakeEnrichment';
 import { synthesizeCaseSynopsis } from '../utils/caseSynopsis';
 import { synthesizeCaseNarrative } from '../utils/caseNarrative';
 import { detectCourtForm } from '../utils/courtFormDetector';
+import { boundForRegex } from '../utils/regexSafe';
 import {
   isOcrmypdfAvailable,
   isTesseractAvailable,
@@ -46,6 +47,7 @@ router.use(authenticateToken);
 
 // ── Auto-detect document kind by content ─────────────────────
 function detectDocType(text: string): 'court_docket' | 'field_sheet' | 'info_sheet' | 'unknown' {
+  text = boundForRegex(text);
   // Field sheet / info sheet markers stay first — they are very specific to
   // the upstream vendor formats (ICU, ServeManager, etc.) and we want them to
   // win before the broader court-form detector sees a court-style document.

@@ -137,7 +137,25 @@ export function shouldRunOcr(extractedText: string, pageCount: number): boolean 
 //
 // Timeout is generous (90s) because ocrmypdf can take 5-15s
 // per page on slow scans. A 6-page packet ≈ 60s worst case.
+// Hard cap on input size — refuse to write attacker-controlled bytes of
+// unbounded size to disk before invoking ocrmypdf (CodeQL js/http-to-file-access).
+const MAX_OCR_INPUT_BYTES = 100 * 1024 * 1024;
+
+function assertIsPdfBufferForOcr(input: Buffer): void {
+  if (!Buffer.isBuffer(input)) throw new Error('runOcrFallback: input must be a Buffer');
+  if (input.length === 0 || input.length > MAX_OCR_INPUT_BYTES) {
+    throw new Error(`runOcrFallback: input size out of range (0 < n <= ${MAX_OCR_INPUT_BYTES})`);
+  }
+  // PDFs begin with "%PDF-" (0x25 0x50 0x44 0x46 0x2D).
+  if (input.length < 5
+    || input[0] !== 0x25 || input[1] !== 0x50 || input[2] !== 0x44
+    || input[3] !== 0x46 || input[4] !== 0x2D) {
+    throw new Error('runOcrFallback: input does not begin with %PDF- header');
+  }
+}
+
 export async function runOcrFallback(pdfBuffer: Buffer): Promise<Buffer> {
+  assertIsPdfBufferForOcr(pdfBuffer);
   if (!(await isOcrmypdfAvailable())) {
     throw Object.assign(new Error('ocrmypdf is not installed on this server'), {
       code: 'OCRMYPDF_MISSING',

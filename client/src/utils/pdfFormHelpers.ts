@@ -13,6 +13,7 @@ import {
   PDF_VALUE_FONT,
   getGridStartX, getGridContentWidth,
   CLASSIFICATION,
+  topHeaderY,
   type RGBColor,
   type ClassificationLevel,
 } from './pdfTokens';
@@ -508,7 +509,7 @@ export function drawNibrsHeader(
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - 2 * margin;
-  let y = LAYOUT.HEADER_TOP;
+  let y = topHeaderY(doc);
 
   // Header style follows the active section style (set per-generator).
   // Default 'dark' = charcoal bar + white text (legacy NIBRS look).
@@ -1915,7 +1916,7 @@ export function drawEnhancedNibrsHeader(
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - 2 * margin;
-  let y = LAYOUT.HEADER_TOP;
+  let y = topHeaderY(doc);
 
   const headerH = LAYOUT.HEADER_HEIGHT + 4; // taller to fit tri-line + officer block
 

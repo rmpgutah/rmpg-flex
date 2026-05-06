@@ -13,6 +13,15 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { applyPrintTarget, type PrintTarget } from './pdfTokens';
+
+/** Brother PJ-700/800 6mm leading-edge dead zone, expressed in points
+ *  (this generator works in pt, not mm). 6mm × 72/25.4 ≈ 17pt. */
+const MOBILE_TOP_OFFSET_PT = 17;
+
+export interface DispatchGuidePdfOptions {
+  printTarget?: PrintTarget;
+}
 
 // ─── Layout constants ───────────────────────────────────────
 const PAGE = { W: 612, H: 792, MARGIN: 54 }; // US Letter @ 72dpi, 0.75" margins
@@ -61,6 +70,8 @@ interface GuideContext {
   liveCodes: LiveDispatchCode[] | null;
   /** Populated as sections emit; consumed by the cover-page TOC renderer. */
   anchors: SectionAnchor[];
+  /** Top-edge offset in points; non-zero only when printing to mobile thermal. */
+  topOffset: number;
 }
 
 /**
@@ -76,7 +87,7 @@ function anchor(ctx: GuideContext, label: string): void {
 function newPage(ctx: GuideContext): void {
   ctx.doc.addPage();
   ctx.page += 1;
-  ctx.y = PAGE.MARGIN;
+  ctx.y = PAGE.MARGIN + ctx.topOffset;
   pageHeader(ctx);
 }
 
@@ -88,15 +99,16 @@ function ensureSpace(ctx: GuideContext, need: number): void {
 
 function pageHeader(ctx: GuideContext): void {
   const d = ctx.doc;
+  const off = ctx.topOffset;
   d.setFont('helvetica', 'bold');
   d.setFontSize(8);
   d.setTextColor(COLOR.MUTED);
-  d.text('RMPG Flex — Dispatch Console Guide', PAGE.MARGIN, 34);
+  d.text('RMPG Flex — Dispatch Console Guide', PAGE.MARGIN, 34 + off);
   d.setFont('helvetica', 'normal');
-  d.text('Rocky Mountain Protective Group', PAGE.W - PAGE.MARGIN, 34, { align: 'right' });
+  d.text('Rocky Mountain Protective Group', PAGE.W - PAGE.MARGIN, 34 + off, { align: 'right' });
   d.setDrawColor(COLOR.RULE);
   d.setLineWidth(0.5);
-  d.line(PAGE.MARGIN, 40, PAGE.W - PAGE.MARGIN, 40);
+  d.line(PAGE.MARGIN, 40 + off, PAGE.W - PAGE.MARGIN, 40 + off);
 }
 
 function pageFooter(ctx: GuideContext, total: number): void {
@@ -4579,16 +4591,19 @@ function buildSectionSpecs(): SectionSpec[] {
  * Filename includes today's date so dispatchers can see at a glance which
  * version they have on the console.
  */
-export async function generateDispatchGuidePdf(): Promise<void> {
+export async function generateDispatchGuidePdf(options: DispatchGuidePdfOptions = {}): Promise<void> {
   const liveCodes = await fetchLiveCodes();
 
   const doc = new jsPDF({ format: 'letter', unit: 'pt' });
+  applyPrintTarget(doc, options.printTarget ?? 'office');
+  const topOffset = options.printTarget === 'mobile' ? MOBILE_TOP_OFFSET_PT : 0;
   const ctx: GuideContext = {
     doc,
-    y: PAGE.MARGIN,
+    y: PAGE.MARGIN + topOffset,
     page: 1,
     liveCodes,
     anchors: [],
+    topOffset,
   };
 
   const specs = buildSectionSpecs();
@@ -4630,5 +4645,6 @@ export async function generateDispatchGuidePdf(): Promise<void> {
   }
 
   const stamp = new Date().toISOString().slice(0, 10);
-  doc.save(`RMPG-Dispatch-Guide-${stamp}.pdf`);
+  const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
+  doc.save(`RMPG-Dispatch-Guide-${stamp}${targetSuffix}.pdf`);
 }

@@ -20,6 +20,16 @@ import {
 } from '../utils/pdfSigner';
 import { loadKeypairFromEnv } from '../utils/evidenceSigner';
 import { extractSidecar, payloadHash as sidecarPayloadHash, canonicalize as sidecarCanonicalize } from '../utils/pdfSidecarReader';
+import { logSafe } from '../utils/logSafe';
+
+// PDFs always start with the literal bytes "%PDF-" (0x25 0x50 0x44 0x46 0x2D).
+// req.file.mimetype is client-supplied (multipart Content-Type header) and
+// trivially spoofed, so we sniff the actual bytes instead — CodeQL flags
+// mimetype-based gating as a user-controlled bypass.
+function isPdfBuffer(buf: Buffer | undefined | null): boolean {
+  if (!buf || buf.length < 5) return false;
+  return buf[0] === 0x25 && buf[1] === 0x50 && buf[2] === 0x44 && buf[3] === 0x46 && buf[4] === 0x2D;
+}
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -92,9 +102,11 @@ router.post('/verify-signature', (req: Request, res: Response) => {
     const payloadHash = typeof req.body?.payloadHash === 'string' ? req.body.payloadHash.trim().toLowerCase() : '';
     const signedAt = typeof req.body?.signedAt === 'string' ? req.body.signedAt.trim() : '';
     const signature = typeof req.body?.signature === 'string' ? req.body.signature.trim() : '';
-    const publicKey = typeof req.body?.publicKey === 'string'
-      ? req.body.publicKey.trim()
-      : (loadKeypairFromEnv()?.publicKey || '');
+    // SECURITY: ignore any client-supplied publicKey. Accepting one would let
+    // a caller verify against a key they control, defeating the signature
+    // check entirely (CodeQL js/user-controlled-bypass). Always pin to the
+    // server's configured signing key.
+    const publicKey = loadKeypairFromEnv()?.publicKey || '';
 
     if (!formKey || !payloadHash || !signedAt || !signature || !publicKey) {
       res.status(400).json({
@@ -114,8 +126,9 @@ router.post('/verify-signature', (req: Request, res: Response) => {
 router.post('/encrypt', upload.single('pdf'), async (req: Request, res: Response) => {
   try {
     if (!req.file) { res.status(400).json({ error: 'pdf file required (multipart field "pdf")' }); return; }
-    if (req.file.mimetype !== 'application/pdf') {
-      res.status(400).json({ error: 'File must be application/pdf' });
+    // Magic-byte sniff (not Content-Type) — mimetype is client-controlled.
+    if (!isPdfBuffer(req.file.buffer)) {
+      res.status(400).json({ error: 'File must be a PDF (missing %PDF- header)' });
       return;
     }
 
@@ -138,7 +151,7 @@ router.post('/encrypt', upload.single('pdf'), async (req: Request, res: Response
     res.send(encrypted);
   } catch (err: any) {
     if (err?.code === 'QPDF_MISSING') { res.status(503).json({ error: err.message, code: 'QPDF_MISSING' }); return; }
-    console.error('[pdf-tools] encrypt failed:', err);
+    console.error('[pdf-tools] encrypt failed:', logSafe(err?.message ?? String(err)));
     res.status(500).json({ error: err?.message || 'Encryption failed' });
   }
 });
@@ -155,7 +168,7 @@ router.post('/decrypt', upload.single('pdf'), async (req: Request, res: Response
     res.send(decrypted);
   } catch (err: any) {
     if (err?.code === 'QPDF_MISSING') { res.status(503).json({ error: err.message, code: 'QPDF_MISSING' }); return; }
-    console.error('[pdf-tools] decrypt failed:', err);
+    console.error('[pdf-tools] decrypt failed:', logSafe(err?.message ?? String(err)));
     res.status(500).json({ error: err?.message || 'Decryption failed' });
   }
 });
@@ -177,8 +190,9 @@ router.post('/extract-record', upload.single('pdf'), (req: Request, res: Respons
       res.status(400).json({ error: 'pdf file required (multipart field "pdf")' });
       return;
     }
-    if (req.file.mimetype !== 'application/pdf') {
-      res.status(400).json({ error: 'File must be application/pdf' });
+    // Magic-byte sniff (not Content-Type) — mimetype is client-controlled.
+    if (!isPdfBuffer(req.file.buffer)) {
+      res.status(400).json({ error: 'File must be a PDF (missing %PDF- header)' });
       return;
     }
     const result = extractSidecar(req.file.buffer);
@@ -195,6 +209,7 @@ router.post('/extract-record', upload.single('pdf'), (req: Request, res: Respons
     // the server's current key is *also* returned so a UI can warn
     // when an exhibit was signed by a key that's since rotated.
     let signatureValid: boolean | null = null;
+    const currentServerKey = loadKeypairFromEnv()?.publicKey ?? null;
     if (payload.signature) {
       const sig = payload.signature;
       // The signed message is built from {formKey, caseNumber,
@@ -203,10 +218,16 @@ router.post('/extract-record', upload.single('pdf'), (req: Request, res: Respons
       // sha256(canonical(payload)) — payload includes the
       // signature itself which would be circular.
       const expectedHash = sidecarPayloadHash(payload.data);
-      if (expectedHash !== sig.payloadHash) {
+      // SECURITY: never trust the publicKey embedded in the sidecar — that
+      // would let a forged PDF supply its own key alongside its own
+      // signature (CodeQL js/user-controlled-bypass). Always verify against
+      // the server's pinned signing key. If the sidecar's key doesn't match
+      // the server's current key, mark invalid (the client can still inspect
+      // serverPublicKeyMatches for rotation context).
+      if (expectedHash !== sig.payloadHash || !currentServerKey || sig.publicKey !== currentServerKey) {
         signatureValid = false;
       } else {
-        signatureValid = verifyPdfSignature(sig.publicKey, {
+        signatureValid = verifyPdfSignature(currentServerKey, {
           formKey: payload.schemaId,
           caseNumber: payload.caseNumber,
           payloadHash: sig.payloadHash,
@@ -214,7 +235,6 @@ router.post('/extract-record', upload.single('pdf'), (req: Request, res: Respons
         }, sig.signature);
       }
     }
-    const currentServerKey = loadKeypairFromEnv()?.publicKey ?? null;
     res.json({
       schemaId: payload.schemaId,
       formNumber: payload.formNumber,
@@ -229,7 +249,7 @@ router.post('/extract-record', upload.single('pdf'), (req: Request, res: Respons
         : null,
     });
   } catch (err: any) {
-    console.error('[pdf-tools] extract-record failed:', err);
+    console.error('[pdf-tools] extract-record failed:', logSafe(err?.message ?? String(err)));
     res.status(500).json({ error: err?.message || 'Extraction failed' });
   }
 });

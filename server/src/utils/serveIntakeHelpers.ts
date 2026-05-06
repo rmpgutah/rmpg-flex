@@ -1,3 +1,5 @@
+import { boundForRegex } from './regexSafe';
+
 // ═══════════════════════════════════════════════════════════════
 // Universal Data Scanner — format-agnostic extraction across ANY document
 // Scans ALL text for data points using pattern libraries, returns
@@ -10,6 +12,7 @@ interface ScanCandidate { value: string; confidence: number; source: string }
 /** Scan all text for person names — returns candidates sorted by confidence */
 export function scanForNames(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   const add = (value: string, confidence: number, source: string) => {
@@ -41,6 +44,7 @@ export function scanForNames(text: string): ScanCandidate[] {
 /** Scan all text for US addresses — returns candidates sorted by confidence */
 export function scanForAddresses(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   const states = 'AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY';
@@ -70,6 +74,7 @@ export function scanForAddresses(text: string): ScanCandidate[] {
 /** Scan all text for phone numbers */
 export function scanForPhones(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   for (const m of text.matchAll(/\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})/g)) {
@@ -90,6 +95,7 @@ export function scanForPhones(text: string): ScanCandidate[] {
 /** Scan all text for email addresses */
 export function scanForEmails(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   for (const m of text.matchAll(/([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/g)) {
     candidates.push({ value: m[1], confidence: 90, source: 'email-pattern' });
@@ -100,6 +106,7 @@ export function scanForEmails(text: string): ScanCandidate[] {
 /** Scan all text for dates */
 export function scanForDates(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   // MM/DD/YYYY
@@ -116,6 +123,7 @@ export function scanForDates(text: string): ScanCandidate[] {
 /** Scan for case numbers */
 export function scanForCaseNumbers(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   const patterns = [
@@ -139,6 +147,7 @@ export function scanForCaseNumbers(text: string): ScanCandidate[] {
 /** Scan for court names */
 export function scanForCourts(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const patterns = [
     /UNITED\s+STATES\s+DISTRICT\s+COURT[^\n]*/gi,
@@ -180,6 +189,7 @@ export interface AttorneyBlock {
 export function extractAttorneyBlock(text: string): AttorneyBlock {
   const empty: AttorneyBlock = { name: '', barNumber: '', firm: '', addressLine1: '', addressLine2: '', tel: '', fax: '', email: '' };
   if (!text) return empty;
+  text = boundForRegex(text);
 
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
@@ -313,6 +323,7 @@ export function parseInfoSheetLabels(text: string): InfoSheetLabels {
     court: '', courtAddress: '', county: '', jobCreated: '', createdBy: '',
   };
   if (!text) return empty;
+  text = boundForRegex(text);
 
   const labels: { key: keyof InfoSheetLabels; label: string }[] = [
     { key: 'case', label: 'Case' },
@@ -383,6 +394,7 @@ export interface JobActivityEntry {
 
 export function parseJobActivity(text: string): JobActivityEntry[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const startMatch = text.match(/Job Activity/i);
   if (!startMatch) return [];
   const startIdx = (startMatch.index ?? 0) + startMatch[0].length;
@@ -571,6 +583,7 @@ export interface NotesEntry {
 }
 
 export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
+  i = { ...i, documents: boundForRegex(i.documents), serviceRulesSummary: boundForRegex(i.serviceRulesSummary) };
   const up = (s: string) => (s || '').toUpperCase();
   const clauses = (i.documents || '').split(/\s*;\s*/).map(s => s.trim()).filter(Boolean);
   const docCount = clauses.length;
@@ -793,8 +806,10 @@ export interface ParseOutput {
 }
 
 export function parseAllDocuments(src: ParseInput): ParseOutput {
-  const { fieldSheet, infoSheet, courtDocket } = src;
-  const allText = [fieldSheet, infoSheet, courtDocket].filter(Boolean).join('\n\n');
+  const fieldSheet = boundForRegex(src.fieldSheet);
+  const infoSheet = boundForRegex(src.infoSheet);
+  const courtDocket = boundForRegex(src.courtDocket);
+  const allText = boundForRegex([fieldSheet, infoSheet, courtDocket].filter(Boolean).join('\n\n'));
 
   const info = parseInfoSheetLabels(infoSheet);
   // Attorney: try court docket first (most structured), then all text
@@ -1219,6 +1234,7 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
 }
 
 function summarizeRules(instructions: string): string {
+  instructions = boundForRegex(instructions);
   const bits: string[] = [];
   if (/sub-?serve.*?occupant\s*16\+|substitute.*?service/i.test(instructions)) bits.push('SUB-SERVE OK TO OCCUPANT 16+');
   if (/personal\s+service\s+only|personal.*?place\s+of\s+employment|personal.*?POE/i.test(instructions)) bits.push('PERSONAL SERVICE ONLY');
@@ -1241,6 +1257,7 @@ function summarizeRules(instructions: string): string {
 export function parseAddressParts(address: string): AddressParts {
   const empty: AddressParts = { building: '', floor: '', suite: '', street: '', city: '', state: '', zip: '' };
   if (!address) return empty;
+  address = boundForRegex(address);
   const tailMatch = address.match(/^(.+?),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)$/);
   if (!tailMatch) return { ...empty, street: address };
   const street = tailMatch[1].trim();

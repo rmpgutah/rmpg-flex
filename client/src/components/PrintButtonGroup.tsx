@@ -46,15 +46,12 @@ export interface PrintButtonGroupProps {
   onPrint?: (target: PrintTarget) => void | Promise<void>;
   /** Disable all buttons (e.g., while a generation is in flight). */
   disabled?: boolean;
-  /** Optional className applied to the outer wrapper. */
   className?: string;
   /** Show only one target. Useful where mobile or office is irrelevant. */
   only?: PrintTarget;
   /** Override default labels. */
   officeLabel?: string;
   mobileLabel?: string;
-  /** Compact size (icon-only when true). */
-  compact?: boolean;
 }
 
 const BTN_BASE =

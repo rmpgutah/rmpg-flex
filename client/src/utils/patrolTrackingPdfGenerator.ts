@@ -9,8 +9,12 @@
 import jsPDF from 'jspdf';
 import { loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
 import { fetchPdfBranding, DEFAULT_PDF_BRANDING, sanitizePdfText, addSignatureBlock, checkPageBreak, addConfidentialWatermark, finalizePoliceReport } from './pdfGenerator';
-import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT } from './pdfTokens';
+import { COLOR, FONT, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT, applyPrintTarget, topMarginY, type PrintTarget } from './pdfTokens';
 import { localToday } from './dateUtils';
+
+export interface PatrolTrackingPdfOptions {
+  printTarget?: PrintTarget;
+}
 
 // ── Types matching the server patrol-tracking response ──────
 
@@ -126,7 +130,7 @@ function hexToRgb(hex: string): [number, number, number] {
 
 // ── PDF Generator ───────────────────────────────────────────
 
-export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData): Promise<void> {
+export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData, options: PatrolTrackingPdfOptions = {}): Promise<void> {
   try {
   const branding = await fetchPdfBranding();
   const primaryRgb = hexToRgb(branding.primary_color || DEFAULT_PDF_BRANDING.primary_color);
@@ -135,6 +139,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   const logoB64 = await loadLogoDarkBase64();
 
   const doc = new jsPDF('landscape', 'mm', 'letter');
+  applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
   const margin = LAYOUT.PAGE_MARGIN;
@@ -145,7 +150,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   });
   const formNum = FORM_NUMBERS['patrol_tracking'] || 'FORM PS-210';
 
-  let yPos: number = margin;
+  let yPos: number = topMarginY(doc);
 
   // Add watermark to the first page (newPage() handles subsequent pages)
   addConfidentialWatermark(doc);
@@ -262,7 +267,7 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
     addConfidentialWatermark(doc);
     // @ts-expect-error jsPDF GState — safety reset after watermark
     doc.setGState(new doc.GState({ opacity: 1.0 }));
-    yPos = margin + 18; // after header + accent strip
+    yPos = topMarginY(doc) + 18; // after header + accent strip
   }
 
   // ── Utility: check space and maybe new page ────────
@@ -656,7 +661,8 @@ export async function generatePatrolTrackingPdf(data: PatrolTrackingReportData):
   const dateStr = localToday().replace(/-/g, '');
   const firstCallSign = data.trails[0]?.call_sign || 'ALL';
   const suffix = data.total_units === 1 ? `_${firstCallSign}` : '';
-  doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}.pdf`);
+  const targetSuffix = options.printTarget === 'mobile' ? '_mobile' : '';
+  doc.save(`RMPG_Patrol_Tracking${suffix}_${dateStr}${targetSuffix}.pdf`);
   } catch (err) {
     console.error('Patrol tracking PDF generation failed:', err);
     throw new Error(`Failed to generate patrol tracking PDF: ${err instanceof Error ? err.message : 'Unknown error'}`);

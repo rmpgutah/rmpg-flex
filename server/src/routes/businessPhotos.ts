@@ -95,13 +95,24 @@ router.post('/',
     });
   },
   (req: Request, res: Response) => {
+    // Path-traversal guard for the cleanup path: even though multer's
+    // diskStorage builds req.file.path from a crypto.randomUUID(), the
+    // filename callback derives the extension from the client-supplied
+    // originalname/mimetype. Re-anchor to the photo directory and refuse
+    // to unlink anything that resolves outside it (CodeQL js/path-injection).
+    const photoDirResolved = path.resolve(getPhotoDir());
+    const safeUnlink = (p: string) => {
+      const resolved = path.resolve(photoDirResolved, path.basename(p));
+      if (resolved.startsWith(photoDirResolved + path.sep)) {
+        try { fs.unlinkSync(resolved); } catch { /* swallow */ }
+      }
+    };
     try {
       if (!req.file) {
         return res.status(400).json({ error: 'photo file is required' });
       }
       const { business_id, category, caption } = req.body;
-
-      const cleanup = () => { try { fs.unlinkSync(req.file!.path); } catch { /* swallow */ } };
+      const cleanup = () => safeUnlink(req.file!.path);
 
       if (!business_id) {
         cleanup();
@@ -129,7 +140,7 @@ router.post('/',
       auditLog(req, 'CREATE', 'business_photo', Number(result.lastInsertRowid), null, row);
       return res.status(201).json(row);
     } catch (err: any) {
-      try { if (req.file) fs.unlinkSync(req.file.path); } catch { /* swallow */ }
+      if (req.file) safeUnlink(req.file.path);
       return res.status(500).json({ error: 'Failed to upload photo: ' + err.message });
     }
   },
@@ -154,9 +165,9 @@ router.delete('/:photoId',
       const filePath = path.join(getUploadsRoot(), relative);
       // Path-traversal guard: ensure the resolved path stays inside the
       // business-photos directory.
-      const photoDir = getPhotoDir();
+      const photoDir = path.resolve(getPhotoDir());
       const resolved = path.resolve(filePath);
-      if (resolved.startsWith(photoDir)) {
+      if (resolved === photoDir || resolved.startsWith(photoDir + path.sep)) {
         try { if (fs.existsSync(resolved)) fs.unlinkSync(resolved); } catch { /* swallow */ }
       }
       db.prepare('DELETE FROM business_photos WHERE id = ?').run(id);
