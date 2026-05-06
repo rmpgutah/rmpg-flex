@@ -75,7 +75,7 @@ export async function renderPdfV2<T>(
   return doc;
 }
 
-function renderSectionFields<T>(
+export function renderSectionFields<T>(
   prims: Primitives, layout: LayoutEngine, section: SchemaSection<T>, data: T,
 ): void {
   const cols = section.columns ?? 1;

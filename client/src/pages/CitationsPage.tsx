@@ -875,6 +875,7 @@ export default function CitationsPage() {
             <PrintRecordButton
               recordType="citation"
               recordData={{
+                id: c.id,
                 citation_number: c.citation_number,
                 type: c.type,
                 status: c.status,
