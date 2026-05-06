@@ -10,7 +10,7 @@
 import { useCallback, useState, useEffect } from 'react';
 import { Printer, Eye, PenLine } from 'lucide-react';
 import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from '../utils/recordPdfGenerator';
-import { tryV2Dispatch } from '../utils/pdf/v2DispatchAdapter';
+import { tryV2Dispatch, tryV2DispatchBlobUrl } from '../utils/pdf/v2DispatchAdapter';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -261,7 +261,10 @@ export default function PrintRecordButton({
       // Revoke previous blob URL if one exists
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
       const enrichedData = await enrichWithImages(recordData);
-      const blobUrl = await generateRecordPdfBlobUrl(recordType, enrichedData);
+      // v2 sidecar engine handles migrated types (citation today); falls
+      // back to the legacy generator for everything else.
+      const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
+      const blobUrl = v2BlobUrl ?? await generateRecordPdfBlobUrl(recordType, enrichedData);
       setPdfBlobUrl(blobUrl);
       setViewerOpen(true);
     } catch (err) {
@@ -269,7 +272,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, pdfBlobUrl, enrichWithImages]);
+  }, [recordType, recordData, identifier, pdfBlobUrl, enrichWithImages]);
 
   /** Sign & Export: if user has no saved signature, show the sign pad; otherwise generate with saved sig */
   const handleSignAndExport = useCallback(async () => {
