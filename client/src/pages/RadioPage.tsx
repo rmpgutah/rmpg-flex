@@ -241,6 +241,22 @@ export default function RadioPage() {
   const [durationFilter, setDurationFilter]     = useState<string>('0');
   const [colorFilter, setColorFilter]           = useState<string>('');
   const [columnWidth, setColumnWidth]           = useState<'narrow' | 'std' | 'wide'>(() => (ls.get('radio_col_width') as any) || 'std');
+  // ── New v5 persisted state ──
+  const [snoozeUntil, setSnoozeUntil]           = useState<number>(() => parseInt(ls.get('radio_snooze_until') || '0', 10));
+  const [ttsEnabled, setTtsEnabled]             = useState<boolean>(() => ls.get('radio_tts') === '1');
+  const [focusMute, setFocusMute]               = useState<boolean>(() => ls.get('radio_focus_mute') === '1');
+  const [filterPresets, setFilterPresets]       = useState<Array<{ name: string; search: string; channel: string; range: string; dur: string; color: string; lengthMin: number; lengthMax: number }>>(() => ls.getJSON('radio_filter_presets', []));
+  const [recordingBookmarks, setRecordingBookmarks] = useState<Record<string, number[]>>(() => ls.getJSON('radio_rec_bookmarks', {}));
+  const [abLoops, setAbLoops]                   = useState<Record<string, { a: number; b: number }>>(() => ls.getJSON('radio_ab_loops', {}));
+  const [lengthMin, setLengthMin]               = useState<number>(0);
+  const [lengthMax, setLengthMax]               = useState<number>(0);
+  const [timeStart, setTimeStart]               = useState<string>('');
+  const [timeEnd, setTimeEnd]                   = useState<string>('');
+  const [bulkSelectMode, setBulkSelectMode]     = useState<boolean>(false);
+  const [selectedTxIds, setSelectedTxIds]       = useState<Set<string>>(new Set());
+  const [windowFocused, setWindowFocused]       = useState<boolean>(true);
+  const [presetName, setPresetName]             = useState<string>('');
+  const [showDaySummary, setShowDaySummary]     = useState<boolean>(false);
 
   // Persist effects (batched declarations)
   useEffect(() => { ls.setSet('radio_favorites', favorites); }, [favorites]);
@@ -295,6 +311,31 @@ export default function RadioPage() {
   useEffect(() => { ls.set('radio_show_codes', showCodes ? '1' : '0'); }, [showCodes]);
   useEffect(() => { ls.set('radio_show_phonetic', showPhonetic ? '1' : '0'); }, [showPhonetic]);
   useEffect(() => { ls.set('radio_col_width', columnWidth); }, [columnWidth]);
+  useEffect(() => { ls.set('radio_snooze_until', String(snoozeUntil)); }, [snoozeUntil]);
+  useEffect(() => { ls.set('radio_tts', ttsEnabled ? '1' : '0'); }, [ttsEnabled]);
+  useEffect(() => { ls.set('radio_focus_mute', focusMute ? '1' : '0'); }, [focusMute]);
+  useEffect(() => { ls.setJSON('radio_filter_presets', filterPresets); }, [filterPresets]);
+  useEffect(() => { ls.setJSON('radio_rec_bookmarks', recordingBookmarks); }, [recordingBookmarks]);
+  useEffect(() => { ls.setJSON('radio_ab_loops', abLoops); }, [abLoops]);
+
+  // Window focus tracking
+  useEffect(() => {
+    const onFocus = () => setWindowFocused(true);
+    const onBlur = () => setWindowFocused(false);
+    window.addEventListener('focus', onFocus);
+    window.addEventListener('blur', onBlur);
+    return () => {
+      window.removeEventListener('focus', onFocus);
+      window.removeEventListener('blur', onBlur);
+    };
+  }, []);
+
+  // Snooze decay — re-render when snoozeUntil expires
+  useEffect(() => {
+    if (snoozeUntil <= Date.now()) return;
+    const t = setTimeout(() => setSnoozeUntil(0), Math.max(1000, snoozeUntil - Date.now()));
+    return () => clearTimeout(t);
+  }, [snoozeUntil]);
 
   // ════════ EPHEMERAL STATE ════════
   const [pageMessage, setPageMessage] = useState('');
@@ -489,11 +530,24 @@ export default function RadioPage() {
       if (markedOnlyFilter && !markedIds.has(String(e.id))) return false;
       if (colorFilter && txColorLabels[String(e.id)] !== colorFilter) return false;
       if (minDur > 0 && (Number(e.duration) || 0) < minDur) return false;
+      const dur = Number(e.duration) || 0;
+      if (lengthMin > 0 && dur < lengthMin) return false;
+      if (lengthMax > 0 && dur > lengthMax) return false;
+      if (timeStart || timeEnd) {
+        const t = Date.parse(e.transmitted_at || '');
+        if (t) {
+          const d = new Date(t);
+          const minutesOfDay = d.getHours() * 60 + d.getMinutes();
+          const ts = timeStart ? (parseInt(timeStart.split(':')[0], 10) * 60 + (parseInt(timeStart.split(':')[1], 10) || 0)) : 0;
+          const te = timeEnd ? (parseInt(timeEnd.split(':')[0], 10) * 60 + (parseInt(timeEnd.split(':')[1], 10) || 0)) : 1440;
+          if (ts <= te ? !(minutesOfDay >= ts && minutesOfDay <= te) : !(minutesOfDay >= ts || minutesOfDay <= te)) return false;
+        }
+      }
       if (!COMPARE_DATE(e, dateRange)) return false;
       if (historySearch && !matchesSearch(e.transcript || '', historySearch) && !matchesSearch(e.full_name || e.username || '', historySearch)) return false;
       return true;
     });
-  }, [historyEntries, filterUserId, user, excludeSelfFilter, hasAudioFilter, markedOnlyFilter, markedIds, colorFilter, txColorLabels, durationFilter, dateRange, historySearch]);
+  }, [historyEntries, filterUserId, user, excludeSelfFilter, hasAudioFilter, markedOnlyFilter, markedIds, colorFilter, txColorLabels, durationFilter, dateRange, historySearch, lengthMin, lengthMax, timeStart, timeEnd]);
 
   // ── Stats today ──
   const stats = useMemo(() => {
@@ -697,6 +751,8 @@ export default function RadioPage() {
     lastNotifIdRef.current = latest.id;
     if (mutedChans.has(latest.channel)) return;
     if (isQuietHour) return;
+    if (snoozeUntil > Date.now()) return;
+    if (focusMute && !windowFocused) return;
 
     if (flashOnTx) setFlashCount(c => c + 1);
 
@@ -717,12 +773,36 @@ export default function RadioPage() {
       } catch { /* ok */ }
     }
     if (keywordHit) addToast(`Keyword "${keywordHit}" detected — ${latest.fullName || latest.username}`, 'info');
-  }, [transmissionLog, soundEnabled, notifEnabled, mutedChans, user, notifSound, notifVolume, isQuietHour, flashOnTx, perUserNotif, keywordAlerts, addToast]);
+  }, [transmissionLog, soundEnabled, notifEnabled, mutedChans, user, notifSound, notifVolume, isQuietHour, flashOnTx, perUserNotif, keywordAlerts, addToast, snoozeUntil, focusMute, windowFocused]);
 
-  // Page sound
+  // Page sound (also gated by snooze/focus)
   useEffect(() => {
-    if (incomingPage && pageSoundEnabled && !isQuietHour) playBeep('chime', notifVolume / 100);
-  }, [incomingPage, pageSoundEnabled, notifVolume, isQuietHour]);
+    if (!incomingPage) return;
+    if (!pageSoundEnabled || isQuietHour) return;
+    if (snoozeUntil > Date.now()) return;
+    if (focusMute && !windowFocused) return;
+    playBeep('chime', notifVolume / 100);
+  }, [incomingPage, pageSoundEnabled, notifVolume, isQuietHour, snoozeUntil, focusMute, windowFocused]);
+
+  // TTS readout of new transmissions
+  const lastTtsIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!ttsEnabled) return;
+    if (transmissionLog.length === 0) return;
+    if (snoozeUntil > Date.now()) return;
+    if (focusMute && !windowFocused) return;
+    const latest = transmissionLog[transmissionLog.length - 1];
+    if (latest.id === lastTtsIdRef.current) return;
+    if (Number(latest.userId) === Number(user?.id)) { lastTtsIdRef.current = latest.id; return; }
+    if (mutedChans.has(latest.channel)) return;
+    lastTtsIdRef.current = latest.id;
+    if (!('speechSynthesis' in window) || !latest.transcript) return;
+    try {
+      const u = new SpeechSynthesisUtterance(`${latest.fullName || latest.username} on ${latest.channel}: ${latest.transcript}`);
+      u.rate = 1.05; u.pitch = 1.0; u.volume = notifVolume / 100;
+      window.speechSynthesis.speak(u);
+    } catch { /* ignore */ }
+  }, [transmissionLog, ttsEnabled, mutedChans, user, notifVolume, snoozeUntil, focusMute, windowFocused]);
 
   // Flash overlay decay
   useEffect(() => {
@@ -899,6 +979,139 @@ export default function RadioPage() {
     a.click(); URL.revokeObjectURL(url);
   };
   const printHistory = () => window.print();
+
+  // Markdown export
+  const exportHistoryMarkdown = () => {
+    if (filteredHistory.length === 0) return;
+    const lines: string[] = [];
+    lines.push(`# Radio Transcripts — ${new Date().toLocaleString()}`);
+    lines.push(`Filters: ${dateRange}${historyChannel ? ' · ch=' + historyChannel : ''}${historySearch ? ' · search="' + historySearch + '"' : ''}${markedOnlyFilter ? ' · marked' : ''}${hasAudioFilter ? ' · audio' : ''}`);
+    lines.push('');
+    filteredHistory.forEach(e => {
+      const time = e.transmitted_at || '';
+      const who = e.full_name || e.username || 'Unknown';
+      const ch = (e.channel || '').toUpperCase();
+      const dur = e.duration ? ` · ${e.duration}s` : '';
+      const note = txAnnotations[String(e.id)] ? `\n  > 📝 ${txAnnotations[String(e.id)]}` : '';
+      const marked = markedIds.has(String(e.id)) ? ' ⭐' : '';
+      lines.push(`- **${time}** · ${who} · \`${ch}\`${dur}${marked}`);
+      if (e.transcript) lines.push(`  - "${e.transcript}"`);
+      if (note) lines.push(note);
+    });
+    navigator.clipboard?.writeText(lines.join('\n')).then(
+      () => addToast(`Markdown copied (${filteredHistory.length} rows)`, 'success'),
+      () => addToast('Copy failed', 'error'),
+    );
+  };
+
+  // ── Filter presets ──
+  const saveFilterPreset = () => {
+    if (!presetName.trim()) { addToast('Enter a preset name', 'error'); return; }
+    const next = filterPresets.filter(p => p.name !== presetName.trim());
+    next.unshift({
+      name: presetName.trim(),
+      search: historySearch, channel: historyChannel, range: dateRange, dur: durationFilter,
+      color: colorFilter, lengthMin, lengthMax,
+    });
+    setFilterPresets(next.slice(0, 10));
+    setPresetName('');
+    addToast('Preset saved', 'success');
+  };
+  const loadFilterPreset = (name: string) => {
+    const p = filterPresets.find(x => x.name === name);
+    if (!p) return;
+    setHistorySearch(p.search); setHistoryChannel(p.channel); setDateRange(p.range);
+    setDurationFilter(p.dur); setColorFilter(p.color);
+    setLengthMin(p.lengthMin); setLengthMax(p.lengthMax);
+  };
+  const deleteFilterPreset = (name: string) => setFilterPresets(prev => prev.filter(p => p.name !== name));
+
+  const clearAllFilters = () => {
+    setHistorySearch(''); setHistoryChannel(''); setDateRange('all');
+    setDurationFilter('0'); setColorFilter(''); setExcludeSelfFilter(false);
+    setHasAudioFilter(false); setMarkedOnlyFilter(false); setFilterUserId(null);
+    setLengthMin(0); setLengthMax(0); setTimeStart(''); setTimeEnd('');
+  };
+
+  // ── Bulk select ──
+  const toggleSelectTx = (id: string, shiftKey: boolean) => {
+    if (!bulkSelectMode) return;
+    setSelectedTxIds(prev => {
+      const next = new Set(prev);
+      if (shiftKey && next.size > 0) {
+        // Range from last-selected to this one
+        const ids = filteredHistory.map(e => String(e.id));
+        const lastSelected = ids.findIndex(i => next.has(i));
+        const target = ids.indexOf(id);
+        if (lastSelected >= 0 && target >= 0) {
+          const [s, e] = lastSelected < target ? [lastSelected, target] : [target, lastSelected];
+          for (let i = s; i <= e; i++) next.add(ids[i]);
+          return next;
+        }
+      }
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+  const bulkMark = () => {
+    setMarkedIds(prev => {
+      const next = new Set(prev);
+      selectedTxIds.forEach(id => next.add(id));
+      return next;
+    });
+    addToast(`Marked ${selectedTxIds.size}`, 'success');
+  };
+  const bulkColor = (color: string) => {
+    setTxColorLabels(prev => {
+      const next = { ...prev };
+      selectedTxIds.forEach(id => { next[id] = color; });
+      return next;
+    });
+    addToast(`Labeled ${selectedTxIds.size} as ${color}`, 'success');
+  };
+  const bulkClearSelection = () => setSelectedTxIds(new Set());
+
+  // ── Recording bookmarks ──
+  const addBookmark = (recId: string, position: number) => {
+    setRecordingBookmarks(prev => {
+      const cur = prev[recId] || [];
+      if (cur.some(p => Math.abs(p - position) < 0.5)) return prev;
+      return { ...prev, [recId]: [...cur, position].sort((a, b) => a - b) };
+    });
+  };
+  const removeBookmark = (recId: string, position: number) => {
+    setRecordingBookmarks(prev => {
+      const cur = prev[recId] || [];
+      return { ...prev, [recId]: cur.filter(p => Math.abs(p - position) > 0.1) };
+    });
+  };
+
+  // ── A-B loop ──
+  const setLoopPoint = (recId: string, point: 'a' | 'b', value: number) => {
+    setAbLoops(prev => {
+      const cur = prev[recId] || { a: 0, b: 0 };
+      return { ...prev, [recId]: { ...cur, [point]: value } };
+    });
+  };
+
+  // ── Off-duty macro ──
+  const offDutyMacro = () => {
+    if (!confirm('Broadcast 10-7 OUT OF SERVICE and clear active call/status?')) return;
+    broadcastStatus('10-7', 'OUT SVC');
+    setActiveCallNumber('');
+  };
+
+  // ── Snooze controls ──
+  const snoozeRemainingMs = Math.max(0, snoozeUntil - Date.now());
+  const snoozeMin = (mins: number) => {
+    setSnoozeUntil(Date.now() + mins * 60 * 1000);
+    addToast(`Notifications snoozed ${mins} min`, 'info');
+  };
+  const snoozeOff = () => { setSnoozeUntil(0); addToast('Snooze cleared', 'success'); };
+
+  // ── Page char counter ──
+  const PAGE_LIMIT = 160;
+  const pageCharsLeft = PAGE_LIMIT - pageMessage.length;
 
   // ════════ SETTINGS RESET ════════
   const resetAllSettings = () => {
@@ -1125,9 +1338,30 @@ export default function RadioPage() {
         </div>
 
         <div className="flex items-center gap-1.5 flex-wrap">
+          {user && (
+            <>
+              <span className="text-[10px] font-mono" style={{ color: 'var(--rt-muted)' }}>OPR</span>
+              <span className="text-[11px] font-mono font-bold tracking-wider" style={{ color: 'var(--rt-text)' }}>
+                {(user as any).callSign || (user as any).call_sign || (user as any).badge_number || (user as any).fullName || (user as any).username || '—'}
+              </span>
+              <Sep />
+            </>
+          )}
           <ToolbarBtn onClick={enableNotifications} active={notifEnabled} title="Browser notifications">
             {notifEnabled ? <Bell style={{ width: 11, height: 11 }} /> : <BellOff style={{ width: 11, height: 11 }} />} NOTIF
           </ToolbarBtn>
+          {snoozeRemainingMs > 0 ? (
+            <button type="button" onClick={snoozeOff}
+              className="snooze-active flex items-center gap-1.5 px-2 py-1 text-[10px] font-mono font-bold tracking-wider"
+              style={{ border: '1px solid #d4a017', color: '#d4a017', background: 'rgba(212,160,23,0.15)' }}
+              title={`Snoozed — click to clear (${Math.ceil(snoozeRemainingMs / 60000)}m left)`}>
+              <Moon style={{ width: 11, height: 11 }} /> {Math.ceil(snoozeRemainingMs / 60000)}m
+            </button>
+          ) : (
+            <ToolbarBtn onClick={() => snoozeMin(15)} title="Snooze notifications 15 min">
+              <Moon style={{ width: 11, height: 11 }} /> SNOOZE
+            </ToolbarBtn>
+          )}
           <ToolbarBtn onClick={() => setSoundEnabled(v => !v)} active={soundEnabled} title="Beep on new TX (M)">
             {soundEnabled ? <Volume1 style={{ width: 11, height: 11 }} /> : <VolumeX style={{ width: 11, height: 11 }} />} SOUND
           </ToolbarBtn>
@@ -1449,6 +1683,8 @@ export default function RadioPage() {
                     <SettingCheckbox label="Auto-play next" checked={autoPlayNext} onChange={setAutoPlayNext} />
                     <SettingCheckbox label="Loop recording" checked={loopRecording} onChange={setLoopRecording} />
                     <SettingCheckbox label="Relative time" checked={showRelative} onChange={setShowRelative} />
+                    <SettingCheckbox label="TTS readout" checked={ttsEnabled} onChange={setTtsEnabled} />
+                    <SettingCheckbox label="Focus-mute (when window blurred)" checked={focusMute} onChange={setFocusMute} />
                     <SettingRow label="Hang time">
                       <input type="number" min={0} max={2000} step={100} value={hangTimeMs}
                         onChange={(e) => setHangTimeMs(Math.max(0, Math.min(2000, Number(e.target.value) || 0)))}
@@ -1560,7 +1796,7 @@ export default function RadioPage() {
             <div className={`flex-1 flex flex-col items-center px-6 py-${cm ? '4' : '6'} gap-${cm ? '3' : '5'}`}>
 
               {/* CRT FREQ DISPLAY */}
-              <div className="w-full max-w-md p-5 text-center relative overflow-hidden"
+              <div className="crt-display w-full max-w-md p-5 text-center relative overflow-hidden"
                 style={{ background: 'linear-gradient(180deg, #050a05 0%, #020602 100%)', border: '2px solid #1a2a1a',
                   boxShadow: 'inset 0 2px 12px rgba(0,0,0,0.7), 0 0 30px rgba(51,255,51,0.04)' }}>
                 <div className="absolute inset-0 pointer-events-none" style={{
@@ -1572,8 +1808,8 @@ export default function RadioPage() {
                   CH-{(RADIO_CHANNELS.findIndex(c => c.id === currentChannel) + 1).toString().padStart(2, '0')}
                 </div>
                 <div className="text-[9px] font-mono tracking-[0.4em] mt-1 relative" style={{ color: '#1a5a1a' }}>CHANNEL</div>
-                <div className="text-4xl font-bold font-mono tracking-[0.15em] mt-1 relative"
-                  style={{ color: 'var(--rt-crt)', textShadow: '0 0 12px rgba(51, 255, 51, 0.5)' }}>
+                <div className="crt-label text-4xl font-bold font-mono tracking-[0.15em] mt-1 relative"
+                  style={{ color: 'var(--rt-crt)' }}>
                   {channelInfo?.label || currentChannel.toUpperCase()}
                 </div>
                 <div className="text-base font-mono mt-2 tracking-widest relative" style={{ color: 'var(--rt-crt)', opacity: 0.55 }}>
@@ -1626,6 +1862,8 @@ export default function RadioPage() {
                 disabled={!isConnected || !micSupported || (channelBusy && !isTransmitting) || isInCall || (currentChannel ? monitorOnly.has(currentChannel) : false)}
                 aria-label="Push to talk"
                 className="radio-ptt-btn relative flex items-center justify-center select-none"
+                data-tx={isTransmitting ? '1' : '0'}
+                data-rx={otherSpeaking ? '1' : '0'}
                 style={{
                   width: cm ? 140 : 200, height: cm ? 140 : 200,
                   background: isInCall ? 'radial-gradient(circle at 30% 30%, #2b2b2b, #141414, #0c0c0c)'
@@ -1709,6 +1947,12 @@ export default function RadioPage() {
                   title="Toggle silence-alert (5 min)">
                   <Bell style={{ width: 10, height: 10 }} /> SILENCE {silenceAlertMin > 0 ? `${silenceAlertMin}m` : 'OFF'}
                 </button>
+                <button type="button" onClick={offDutyMacro} disabled={!currentChannel}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-[10px] font-mono font-bold tracking-wider hover:text-white disabled:opacity-30"
+                  style={{ border: '1px solid #ef444466', background: 'rgba(239,68,68,0.06)', color: '#ef4444' }}
+                  title="Broadcast 10-7 + clear active call">
+                  <LogOut style={{ width: 10, height: 10 }} /> OFF DUTY
+                </button>
               </div>
 
               {/* PAGE COMPOSER */}
@@ -1723,16 +1967,20 @@ export default function RadioPage() {
                     <datalist id="page-recipient-list">
                       {channelUsers.map(u => <option key={u.userId} value={u.username || u.fullName || ''} />)}
                     </datalist>
-                    <input type="text" value={pageMessage} onChange={(e) => setPageMessage(e.target.value)}
+                    <input type="text" value={pageMessage} onChange={(e) => setPageMessage(e.target.value.slice(0, PAGE_LIMIT))} maxLength={PAGE_LIMIT}
                       onKeyDown={(e) => { if (e.key === 'Enter' && pageMessage) sendQuickPage(pageMessage, pageRecipient); }}
                       placeholder="Message…" aria-label="Page message"
-                      className="flex-1 text-[10px] font-mono px-2 py-1 bg-[#0a0a0a] placeholder:text-rmpg-600"
+                      className="focus-gold flex-1 text-[10px] font-mono px-2 py-1 bg-[#0a0a0a] placeholder:text-rmpg-600"
                       style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-text)' }} />
                     <button type="button" onClick={() => sendQuickPage(pageMessage, pageRecipient)} disabled={!pageMessage || !currentChannel}
                       className="px-3 py-1 text-[10px] font-mono font-bold tracking-wider disabled:opacity-30"
                       style={{ background: 'var(--rt-accent)', color: '#0a0a0a' }}>
                       <Send style={{ width: 11, height: 11, display: 'inline', marginRight: 4 }} /> SEND
                     </button>
+                  </div>
+                  <div className="flex items-center justify-between text-[8px] font-mono tracking-wider px-1" style={{ color: pageCharsLeft < 20 ? '#ef4444' : 'var(--rt-muted)' }}>
+                    <span>CHARS · {pageMessage.length}/{PAGE_LIMIT}</span>
+                    <span>{pageCharsLeft < 20 ? `${pageCharsLeft} left` : ''}</span>
                   </div>
                   <div className="flex flex-wrap gap-1">
                     {pageTemplates.map(t => (
@@ -1872,7 +2120,85 @@ export default function RadioPage() {
                 className="p-0.5" style={{ color: 'var(--rt-muted)' }}>
                 <BookmarkCheck style={{ width: 11, height: 11 }} />
               </button>
+              <button type="button" onClick={clearAllFilters} title="Clear all filters" aria-label="Clear all filters"
+                className="p-0.5" style={{ color: 'var(--rt-muted)' }}>
+                <X style={{ width: 11, height: 11 }} />
+              </button>
+              <button type="button" onClick={() => { setBulkSelectMode(v => !v); if (bulkSelectMode) bulkClearSelection(); }}
+                title="Bulk select mode" aria-label="Bulk select mode"
+                className="p-0.5" style={{ color: bulkSelectMode ? 'var(--rt-accent)' : 'var(--rt-muted)' }}>
+                <BookmarkCheck style={{ width: 11, height: 11 }} />
+                <span className="text-[8px] ml-0.5">×</span>
+              </button>
+              <button type="button" onClick={exportHistoryMarkdown} title="Copy as Markdown" aria-label="Copy as Markdown"
+                className="p-0.5" style={{ color: 'var(--rt-muted)' }}>
+                <Copy style={{ width: 11, height: 11 }} />
+                <span className="text-[8px] font-mono ml-0.5">MD</span>
+              </button>
             </div>
+
+            {/* Length + time-of-day filters */}
+            <div className="flex items-center gap-1.5 px-2 py-1 flex-wrap text-[9px] font-mono" style={{ borderBottom: '1px solid var(--rt-border)', background: '#0c0c0c' }}>
+              <span style={{ color: 'var(--rt-muted)' }}>LEN s</span>
+              <input type="number" min={0} value={lengthMin} onChange={(e) => setLengthMin(Math.max(0, Number(e.target.value) || 0))}
+                aria-label="Min length seconds" className="focus-gold w-12 px-1 py-0.5 bg-[#0a0a0a]"
+                style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-text)' }} />
+              <span style={{ color: 'var(--rt-muted)' }}>–</span>
+              <input type="number" min={0} value={lengthMax} onChange={(e) => setLengthMax(Math.max(0, Number(e.target.value) || 0))}
+                aria-label="Max length seconds" className="focus-gold w-12 px-1 py-0.5 bg-[#0a0a0a]"
+                style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-text)' }} />
+              <Sep />
+              <span style={{ color: 'var(--rt-muted)' }}>TIME</span>
+              <input type="time" value={timeStart} onChange={(e) => setTimeStart(e.target.value)} aria-label="Time start"
+                className="focus-gold px-1 py-0.5 bg-[#0a0a0a]" style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-text)' }} />
+              <span style={{ color: 'var(--rt-muted)' }}>–</span>
+              <input type="time" value={timeEnd} onChange={(e) => setTimeEnd(e.target.value)} aria-label="Time end"
+                className="focus-gold px-1 py-0.5 bg-[#0a0a0a]" style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-text)' }} />
+            </div>
+
+            {/* Filter presets */}
+            <div className="flex items-center gap-1.5 px-2 py-1 flex-wrap text-[9px] font-mono" style={{ borderBottom: '1px solid var(--rt-border)' }}>
+              <input type="text" value={presetName} onChange={(e) => setPresetName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') saveFilterPreset(); }}
+                placeholder="Preset name…" aria-label="Preset name"
+                className="focus-gold flex-1 min-w-0 px-1 py-0.5 bg-[#0a0a0a]"
+                style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-text)' }} />
+              <button type="button" onClick={saveFilterPreset} disabled={!presetName.trim()}
+                className="px-2 py-0.5 disabled:opacity-30" style={{ background: 'var(--rt-accent)', color: '#0a0a0a' }}>
+                <Save style={{ width: 9, height: 9, display: 'inline' }} /> SAVE
+              </button>
+              {filterPresets.map(p => (
+                <span key={p.name} className="flex items-center gap-1 px-1.5 py-0.5" style={{ background: '#1a1a1a', color: 'var(--rt-accent)' }}>
+                  <button type="button" onClick={() => loadFilterPreset(p.name)} title={`Load "${p.name}"`}>{p.name}</button>
+                  <button type="button" onClick={() => deleteFilterPreset(p.name)} aria-label={`Delete preset ${p.name}`}><X style={{ width: 8, height: 8 }} /></button>
+                </span>
+              ))}
+            </div>
+
+            {/* Bulk-action bar */}
+            {bulkSelectMode && (
+              <div className="flex items-center gap-1.5 px-2 py-1 flex-wrap text-[9px] font-mono" style={{ background: 'rgba(212,160,23,0.1)', borderBottom: '1px solid var(--rt-accent)' }}>
+                <span className="font-bold tracking-wider" style={{ color: 'var(--rt-accent)' }}>BULK · {selectedTxIds.size} selected</span>
+                <button type="button" onClick={bulkMark} disabled={selectedTxIds.size === 0}
+                  className="px-1.5 py-0.5 disabled:opacity-30" style={{ border: '1px solid var(--rt-accent)', color: 'var(--rt-accent)' }}>
+                  MARK ALL
+                </button>
+                {COLOR_LABELS.map(c => (
+                  <button key={c.id} type="button" onClick={() => bulkColor(c.id)} disabled={selectedTxIds.size === 0}
+                    className="px-1.5 py-0.5 disabled:opacity-30" style={{ border: `1px solid ${c.color}`, color: c.color }}>
+                    {c.label}
+                  </button>
+                ))}
+                <button type="button" onClick={bulkClearSelection} className="ml-auto px-1.5 py-0.5"
+                  style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-muted)' }}>
+                  CLEAR
+                </button>
+                <button type="button" onClick={() => { setBulkSelectMode(false); bulkClearSelection(); }} className="px-1.5 py-0.5"
+                  style={{ border: '1px solid #ef4444', color: '#ef4444' }}>
+                  EXIT
+                </button>
+              </div>
+            )}
 
             {/* Active filter pills */}
             {(filterUserId || historyChannel || colorFilter) && (
@@ -2049,18 +2375,22 @@ export default function RadioPage() {
                   const isSelected = idx === selectedHistoryIdx;
                   const isPinnedHeader = pinnedTxId === String(entry.id);
                   const isPinnedRec = pinnedRecordingId === String(entry.id);
+                  const isBulkSelected = selectedTxIds.has(String(entry.id));
                   return (
                     <div
                       key={entry.id}
                       id={`hist-row-${entry.id}`}
                       className="py-1 border-b"
+                      onClick={(e) => bulkSelectMode && toggleSelectTx(String(entry.id), e.shiftKey)}
                       style={{
                         borderColor: '#171717',
-                        background: isSelected ? 'rgba(212,160,23,0.15)'
+                        background: isBulkSelected ? 'rgba(212,160,23,0.25)'
+                          : isSelected ? 'rgba(212,160,23,0.15)'
                           : isMarked ? 'rgba(212,160,23,0.08)'
                           : colorMeta ? `${colorMeta.color}10`
                           : isMe ? 'rgba(212,160,23,0.05)' : 'transparent',
                         borderLeft: colorMeta ? `2px solid ${colorMeta.color}` : '2px solid transparent',
+                        cursor: bulkSelectMode ? 'pointer' : 'default',
                       }}
                     >
                       <div className="flex items-start gap-1.5">
@@ -2192,13 +2522,164 @@ export default function RadioPage() {
 
       {/* CSS */}
       <style>{`
+        /* ── PTT button ─────────────────────────────────── */
         .radio-ptt-btn { border-radius: 50% !important; }
+        .radio-ptt-btn::before {
+          content: ''; position: absolute; inset: -6px; border-radius: 50%;
+          border: 1px solid rgba(212, 160, 23, 0.15);
+          animation: pttIdleBreath 4.5s ease-in-out infinite;
+          pointer-events: none;
+        }
+        .radio-ptt-btn[data-tx="1"]::before {
+          border-color: rgba(255, 80, 80, 0.5);
+          animation: pttTxRing 1s ease-in-out infinite;
+        }
+        .radio-ptt-btn[data-rx="1"]::before {
+          border-color: rgba(212, 160, 23, 0.45);
+          animation: pttRxHalo 1.6s ease-in-out infinite;
+        }
+
+        /* ── CRT effects ────────────────────────────────── */
+        @keyframes scanlineSweep {
+          0%   { transform: translateY(-100%); opacity: 0; }
+          5%   { opacity: 0.6; }
+          95%  { opacity: 0.6; }
+          100% { transform: translateY(100%); opacity: 0; }
+        }
+        @keyframes phosphorBreath {
+          0%, 100% { text-shadow: 0 0 10px rgba(51,255,51,0.45), 0 0 20px rgba(51,255,51,0.2); }
+          50%      { text-shadow: 0 0 14px rgba(51,255,51,0.65), 0 0 28px rgba(51,255,51,0.3); }
+        }
+        .crt-display { position: relative; overflow: hidden; }
+        .crt-display::after {
+          content: ''; position: absolute; left: 0; right: 0; height: 2px; top: 0;
+          background: linear-gradient(180deg, rgba(51,255,51,0.0) 0%, rgba(51,255,51,0.18) 50%, rgba(51,255,51,0.0) 100%);
+          animation: scanlineSweep 6s linear infinite;
+          pointer-events: none;
+        }
+        .crt-label { animation: phosphorBreath 3.5s ease-in-out infinite; }
+
+        /* ── Channel rows ───────────────────────────────── */
+        .ch-row { position: relative; transition: background 0.12s ease; }
+        .ch-row::before {
+          content: ''; position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+          background: var(--rt-accent); transition: width 0.12s ease;
+        }
+        .ch-row:hover::before { width: 2px; }
+        .ch-row[data-active="1"]::before { width: 2px; }
+
+        /* ── LED dots (3D radial) ───────────────────────── */
+        .led-3d {
+          background: radial-gradient(circle at 30% 30%, rgba(255,255,255,0.55), transparent 50%), var(--led-color, #22c55e);
+        }
+
+        /* ── Section header top accent rule ─────────────── */
+        .sect-hdr {
+          position: relative;
+        }
+        .sect-hdr::before {
+          content: ''; position: absolute; left: 0; right: 0; top: 0; height: 1px;
+          background: linear-gradient(90deg, transparent 0%, rgba(212,160,23,0.35) 50%, transparent 100%);
+        }
+
+        /* ── Search focus ring ──────────────────────────── */
+        input:focus, textarea:focus, select:focus {
+          outline: none;
+        }
+        input.focus-gold:focus, textarea.focus-gold:focus {
+          box-shadow: 0 0 0 1px var(--rt-accent), 0 0 8px rgba(212,160,23,0.25);
+        }
+
+        /* ── Filter chip glow when active ───────────────── */
+        .chip-active {
+          box-shadow: inset 0 0 6px rgba(212,160,23,0.18);
+        }
+
+        /* ── Stat cards corner tick ─────────────────────── */
+        .stat-card { position: relative; }
+        .stat-card::after {
+          content: ''; position: absolute; top: 2px; right: 2px; width: 4px; height: 4px;
+          background: var(--rt-accent); opacity: 0.5;
+        }
+
+        /* ── Loading skeleton shimmer ───────────────────── */
+        @keyframes skelShimmer {
+          0%   { background-position: -200px 0; }
+          100% { background-position: 200px 0; }
+        }
+        .skel {
+          background: linear-gradient(90deg, #141414 0%, #1a1a1a 50%, #141414 100%);
+          background-size: 200px 100%;
+          animation: skelShimmer 1.2s linear infinite;
+        }
+
+        /* ── Active speaker animated border ─────────────── */
+        @keyframes activeSpeakerBorder {
+          0%,100% { box-shadow: 0 0 0 1px rgba(239,68,68,0.5), 0 0 12px rgba(239,68,68,0.2); }
+          50%     { box-shadow: 0 0 0 1px rgba(239,68,68,0.85), 0 0 18px rgba(239,68,68,0.4); }
+        }
+        .active-speaker { animation: activeSpeakerBorder 1.6s ease-in-out infinite; }
+
+        /* ── Sparkline gradient ─────────────────────────── */
+        .spark-bar { transition: opacity 0.2s ease; }
+        .spark-bar:hover { opacity: 0.7; }
+
+        /* ── Color label swatches enlarged ──────────────── */
+        .color-swatch {
+          width: 10px !important; height: 10px !important;
+          transition: transform 0.1s ease, opacity 0.1s ease;
+        }
+        .color-swatch:hover { transform: scale(1.3); opacity: 1 !important; }
+
+        /* ── Volume slider track gradient ───────────────── */
+        input[type="range"].vol-grad::-webkit-slider-runnable-track {
+          background: linear-gradient(90deg, #2a8a2a 0%, var(--rt-accent) 75%, #ef4444 100%);
+          height: 3px;
+        }
+
+        /* ── Theme transition ───────────────────────────── */
+        body, [style*="--rt-bg"] {
+          transition: background-color 0.25s ease, color 0.25s ease;
+        }
+
+        /* ── Snooze indicator ───────────────────────────── */
+        @keyframes snoozeBreath {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
+        .snooze-active { animation: snoozeBreath 2s ease-in-out infinite; }
+
+        /* ── PTT progress ring (TX duration meter) ──────── */
+        @keyframes pttProgress {
+          0% { stroke-dashoffset: 565; }
+          100% { stroke-dashoffset: 0; }
+        }
+
+        /* ── Existing keyframes ─────────────────────────── */
         @keyframes radioWave { 0% { height: 4px; } 100% { height: 22px; } }
         @keyframes radioPulse { 0% { transform: scale(1); opacity: 0.6; } 100% { transform: scale(1.35); opacity: 0; } }
         @keyframes incomingCallPulse { 0%, 100% { background: rgba(34,197,94,0.18); } 50% { background: rgba(34,197,94,0.32); } }
         @keyframes flashFade { 0% { opacity: 1; } 100% { opacity: 0; } }
+        @keyframes pttIdleBreath {
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50%      { opacity: 0.85; transform: scale(1.04); }
+        }
+        @keyframes pttTxRing {
+          0%   { transform: scale(1); opacity: 0.85; }
+          100% { transform: scale(1.18); opacity: 0; }
+        }
+        @keyframes pttRxHalo {
+          0%, 100% { transform: scale(1); opacity: 0.55; }
+          50%      { transform: scale(1.06); opacity: 0.95; }
+        }
+
         @media print {
           .radio-ptt-btn, header, aside { display: none !important; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .crt-display::after, .crt-label, .radio-ptt-btn::before, .active-speaker, .skel, .snooze-active {
+            animation: none !important;
+          }
         }
       `}</style>
     </div>
