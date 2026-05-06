@@ -37,12 +37,21 @@ export async function renderMultiCopyPdfV2<T>(
 
   copies.forEach((copy, i) => {
     if (i > 0) doc.addPage();
+    const copyStartPage = doc.getNumberOfPages();
     const headerBottomY = drawDefaultHeader(doc, schema.meta, {
       caseNumber: schema.header.caseNumberAccessor?.(data),
     });
     drawFoldRule(doc, headerBottomY);
-    renderLeftPanel(doc, schema, data, headerBottomY);
+
+    // Render right panel FIRST so its banner+body land on the copy-start page
+    // before any left-panel overflow can advance jsPDF's current page.
     renderRightPanel(doc, copy, headerBottomY);
+
+    // Snap back to the copy-start page (right panel may have advanced if its
+    // own content overflowed — currently it doesn't, but be defensive).
+    doc.setPage(copyStartPage);
+
+    renderLeftPanel(doc, schema, data, headerBottomY);
   });
 
   // Footers go AFTER all content so PAGE N OF M reflects continuation pages.
