@@ -37,7 +37,7 @@ describe('citationSchema layout', () => {
       if (typeof s !== 'function') titles.push(s.title);
     }
     const officerIdx = titles.indexOf('ISSUING OFFICER');
-    const notesIdx = titles.indexOf('NOTES');
+    const notesIdx = titles.indexOf('OFFICER NOTES');
     expect(officerIdx).toBeGreaterThanOrEqual(0);
     expect(notesIdx).toBeGreaterThan(officerIdx);
   });

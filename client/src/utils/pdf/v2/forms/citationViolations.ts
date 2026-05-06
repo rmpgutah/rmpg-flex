@@ -57,7 +57,7 @@ function renderCompact(prims: Primitives, violations: CitationViolation[]): void
         { key: 'statute_citation', header: 'STATUTE',     width: 'half' },
         { key: 'description',      header: 'DESCRIPTION', width: 'full' },
         { key: 'level_short',      header: 'LVL',         width: 'quarter' },
-        { key: 'fine_fmt',         header: 'FINE',        width: 'quarter' },
+        { key: 'fine_fmt',         header: 'FINE',        width: 'half' },
       ],
       accessor: () => violations.map((v) => ({
         statute_citation: v.statute_citation,

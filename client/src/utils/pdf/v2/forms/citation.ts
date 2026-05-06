@@ -58,6 +58,17 @@ export interface CitationData {
 const str = (v: unknown): string => (v == null ? '' : String(v));
 const fineFmt = (v: number | null | undefined): string =>
   v == null ? '' : `$${Number(v).toFixed(2)}`;
+// snake_case / SNAKE_CASE / kebab-case → Title Case for enum-like values
+// (type='criminal' → 'Criminal', offense_level='second_degree_felony' →
+// 'Second Degree Felony'). Leaves values that are already mixed-case alone.
+const enumFmt = (v: unknown): string => {
+  const s = str(v).trim();
+  if (!s) return '';
+  return s
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
 
 function lf(
   label: string,
@@ -110,21 +121,21 @@ export const citationSchema: FormSchema<CitationData> = {
       kind: 'section', title: 'CITATION INFORMATION', columns: 1,
       fields: [
         lf('Citation Number', 'citation_number'),
-        lf('Type', 'type'),
-        lf('Status', 'status'),
+        lf('Type', 'type', (d) => enumFmt(d.type)),
+        lf('Status', 'status', (d) => enumFmt(d.status)),
       ],
     },
     {
       kind: 'section', title: 'TIMING & LEVEL', columns: 2,
       fields: [
         lf('Violation Date', 'violation_date'),
-        lf('Offense Level', 'offense_level'),
+        lf('Offense Level', 'offense_level', (d) => enumFmt(d.offense_level)),
         lf('Violation Time', 'violation_time'),
       ],
     },
     {
       kind: 'section', title: 'LOCATION', columns: 1,
-      fields: [lf('Location', 'location')],
+      fields: [lf('Address', 'location')],
     },
     {
       kind: 'section', title: 'SUBJECT', columns: 1,
@@ -152,7 +163,7 @@ export const citationSchema: FormSchema<CitationData> = {
         // Back-compat: render flat single-violation fields.
         ctx.section('VIOLATIONS', (inner) => {
           inner.labeledField(lf('Statute / Code', 'statute_citation'), data);
-          inner.labeledField(lf('Offense Level', 'offense_level'), data);
+          inner.labeledField(lf('Offense Level', 'offense_level', (d) => enumFmt(d.offense_level)), data);
           inner.labeledField(
             lf('Fine Amount', 'fine_amount', (d) => fineFmt(d.fine_amount ?? null)),
             data,
@@ -170,17 +181,23 @@ export const citationSchema: FormSchema<CitationData> = {
     },
     {
       kind: 'section', title: 'COURT ADDRESS', columns: 1,
-      fields: [lf('Court Address', 'court_address')],
+      fields: [lf('Address', 'court_address')],
     },
     {
       kind: 'section', title: 'ISSUING OFFICER', columns: 1,
       fields: [
-        lf('Officer', 'issuing_officer_name', (d) =>
-          `${d.issuing_officer_name ?? ''}  ·  Badge #${d.badge_number ?? ''}`),
+        lf('Officer', 'issuing_officer_name', (d) => {
+        const name = (d.issuing_officer_name ?? '').trim();
+        const badge = (d.badge_number ?? '').toString().trim();
+        if (!name && !badge) return '';
+        if (!badge) return name;
+        if (!name) return `Badge #${badge}`;
+        return `${name}  ·  Badge #${badge}`;
+      }),
       ],
     },
     {
-      kind: 'section', title: 'NOTES', columns: 1,
+      kind: 'section', title: 'OFFICER NOTES', columns: 1,
       fields: [notesField],
     },
     {
