@@ -6193,6 +6193,21 @@ function migrateSchema(): void {
   addCol('field_interviews', 'zone_beat', 'TEXT');
   addCol('field_interviews', 'updated_at', 'TEXT');
 
+  // ── UI trap forensic reports (Ctrl+Alt+D from frozen client) ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS ui_trap_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      username TEXT,
+      captured_at TEXT NOT NULL,
+      url TEXT,
+      user_agent TEXT,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_ui_trap_user ON ui_trap_reports(user_id, created_at)').run();
+
   // ── Voice dialogue agent session memory (one row per officer) ──
   db.prepare(`
     CREATE TABLE IF NOT EXISTS voice_dialogue_sessions (
