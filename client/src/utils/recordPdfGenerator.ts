@@ -5235,6 +5235,23 @@ type RecordDataMap = {
   jail_booking: JailBookingPdfData;
 };
 
+/**
+ * Options for record PDF generation.
+ *
+ * @property printTarget — 'office' (default) renders for laser/inkjet on
+ *   letter paper. 'mobile' renders for Brother PJ-700/800 mobile thermal
+ *   printers (continuous-roll, in-vehicle): adds a 6mm top safe-zone so
+ *   the leading-edge dead zone doesn't clip headers. The flag is stored
+ *   on the doc via applyPrintTarget(); generator helpers that draw
+ *   page chrome read it via getPrintTarget()/topMarginY(). Helpers that
+ *   have not yet been migrated will produce the same output as 'office'
+ *   for that section — see the in-progress migration in
+ *   docs/plans/mobile-printer-offset-rollout.md.
+ */
+export interface RecordPdfOptions {
+  printTarget?: PrintTarget;
+}
+
 export async function generateRecordPdf<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
