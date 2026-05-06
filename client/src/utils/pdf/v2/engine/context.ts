@@ -62,5 +62,7 @@ export function makeRenderContext<T>(
     signature:    (spec: SignatureField<T>) => prims.signature(spec, data),
     spacer:       (h) => prims.spacer(h),
     pageBreakIfNeeded: (h) => layout.pageBreakIfNeeded(h),
+    get primitives() { return prims; },
+    get layout() { return layout; },
   };
 }

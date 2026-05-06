@@ -14,6 +14,7 @@
 // blank is just this schema with empty accessors.
 
 import type { FormSchema, LabeledField, NarrativeField, SignatureField } from '../engine/types';
+import { renderViolations } from './citationViolations';
 
 export interface CitationViolation {
   statute_citation: string;
@@ -106,7 +107,7 @@ export const citationSchema: FormSchema<CitationData> = {
   },
   sections: [
     {
-      kind: 'section', title: 'CITATION INFORMATION', columns: 3,
+      kind: 'section', title: 'CITATION INFORMATION', columns: 1,
       fields: [
         lf('Citation Number', 'citation_number'),
         lf('Type', 'type'),
@@ -114,11 +115,11 @@ export const citationSchema: FormSchema<CitationData> = {
       ],
     },
     {
-      kind: 'section', title: 'TIMING & LEVEL', columns: 3,
+      kind: 'section', title: 'TIMING & LEVEL', columns: 2,
       fields: [
         lf('Violation Date', 'violation_date'),
-        lf('Violation Time', 'violation_time'),
         lf('Offense Level', 'offense_level'),
+        lf('Violation Time', 'violation_time'),
       ],
     },
     {
@@ -126,35 +127,39 @@ export const citationSchema: FormSchema<CitationData> = {
       fields: [lf('Location', 'location')],
     },
     {
-      kind: 'section', title: 'SUBJECT', columns: 3,
+      kind: 'section', title: 'SUBJECT', columns: 1,
       fields: [
         lf('Full Name', 'person_name'),
         lf('Date of Birth', 'person_dob'),
         lf('DL Number', 'person_dl'),
+        lf('Address', 'person_address'),
       ],
     },
     {
-      kind: 'section', title: 'SUBJECT ADDRESS', columns: 1,
-      fields: [lf('Address', 'person_address')],
-    },
-    {
-      kind: 'section', title: 'VEHICLE INFORMATION', columns: 3,
+      kind: 'section', title: 'VEHICLE INFORMATION', columns: 2,
       fields: [
         lf('License Plate', 'vehicle_plate'),
         lf('State', 'vehicle_state'),
         lf('Vehicle Description', 'vehicle_description'),
       ],
     },
-    {
-      kind: 'section', title: 'VIOLATION DETAILS', columns: 2,
-      fields: [
-        lf('Statute / Code', 'statute_citation'),
-        lf('Fine Amount', 'fine_amount', (d) => fineFmt(d.fine_amount ?? null)),
-      ],
-    },
-    {
-      kind: 'section', title: 'VIOLATION DESCRIPTION', columns: 1,
-      fields: [lf('Violation Description', 'violation_description')],
+    // VIOLATIONS — multi-violation aware. Callback emits its own header.
+    (ctx, data) => {
+      const violations = (data as CitationData).violations ?? [];
+      if (violations.length > 0) {
+        renderViolations(ctx.primitives, ctx.layout, violations);
+      } else {
+        // Back-compat: render flat single-violation fields.
+        ctx.section('VIOLATIONS', (inner) => {
+          inner.labeledField(lf('Statute / Code', 'statute_citation'), data);
+          inner.labeledField(lf('Offense Level', 'offense_level'), data);
+          inner.labeledField(
+            lf('Fine Amount', 'fine_amount', (d) => fineFmt(d.fine_amount ?? null)),
+            data,
+          );
+          inner.labeledField(lf('Violation Description', 'violation_description'), data);
+        });
+      }
     },
     {
       kind: 'section', title: 'COURT', columns: 2,
@@ -166,6 +171,13 @@ export const citationSchema: FormSchema<CitationData> = {
     {
       kind: 'section', title: 'COURT ADDRESS', columns: 1,
       fields: [lf('Court Address', 'court_address')],
+    },
+    {
+      kind: 'section', title: 'ISSUING OFFICER', columns: 1,
+      fields: [
+        lf('Officer', 'issuing_officer_name', (d) =>
+          `${d.issuing_officer_name ?? ''}  ·  Badge #${d.badge_number ?? ''}`),
+      ],
     },
     {
       kind: 'section', title: 'NOTES', columns: 1,
