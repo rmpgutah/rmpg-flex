@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo, Fragment } from 'react';
 import {
   Radio, Mic, MicOff, Users, Volume2, VolumeX, AlertCircle, WifiOff, ShieldAlert,
   Search, Download, Phone, PhoneOff, PhoneCall, PhoneIncoming, Play, Square,
@@ -70,7 +70,7 @@ const NOTIF_SOUNDS: Record<string, { freq: number; type: OscillatorType; dur: nu
   blip:  { freq: 1800, type: 'triangle', dur: 0.08 },
 };
 
-const THEMES = ['onyx', 'amber', 'nvg', 'contrast'] as const;
+const THEMES = ['onyx', 'amber', 'nvg', 'contrast', 'cyan', 'magenta'] as const;
 type Theme = typeof THEMES[number];
 const FONT_SCALES = { sm: 0.9, md: 1.0, lg: 1.1 };
 type FontScale = keyof typeof FONT_SCALES;
@@ -130,6 +130,8 @@ const THEME_VARS: Record<Theme, Record<string, string>> = {
   amber:    { '--rt-bg': '#0c0700', '--rt-panel': '#100a02', '--rt-border': '#3a2400', '--rt-accent': '#ffae33', '--rt-text': '#ffd9a3', '--rt-muted': '#a06a00', '--rt-led-on': '#ffae33', '--rt-tx': '#ff5050', '--rt-crt': '#ffae33' },
   nvg:      { '--rt-bg': '#000800', '--rt-panel': '#001a00', '--rt-border': '#0a3a0a', '--rt-accent': '#33ff33', '--rt-text': '#bbffbb', '--rt-muted': '#3a8a3a', '--rt-led-on': '#33ff33', '--rt-tx': '#ff3333', '--rt-crt': '#33ff33' },
   contrast: { '--rt-bg': '#000000', '--rt-panel': '#000000', '--rt-border': '#ffffff', '--rt-accent': '#ffff00', '--rt-text': '#ffffff', '--rt-muted': '#cccccc', '--rt-led-on': '#00ff00', '--rt-tx': '#ff0000', '--rt-crt': '#00ff00' },
+  cyan:     { '--rt-bg': '#00080d', '--rt-panel': '#001824', '--rt-border': '#0a3a4a', '--rt-accent': '#22d3ee', '--rt-text': '#bae6fd', '--rt-muted': '#3a7a8a', '--rt-led-on': '#22d3ee', '--rt-tx': '#ff5050', '--rt-crt': '#33ffee' },
+  magenta:  { '--rt-bg': '#0a0010', '--rt-panel': '#1a0024', '--rt-border': '#3a0a4a', '--rt-accent': '#ff44dd', '--rt-text': '#ffd4f5', '--rt-muted': '#a04488', '--rt-led-on': '#ff44dd', '--rt-tx': '#ff5050', '--rt-crt': '#ff66ee' },
 };
 
 const COMPARE_DATE = (entry: any, range: string): boolean => {
@@ -257,6 +259,74 @@ export default function RadioPage() {
   const [windowFocused, setWindowFocused]       = useState<boolean>(true);
   const [presetName, setPresetName]             = useState<string>('');
   const [showDaySummary, setShowDaySummary]     = useState<boolean>(false);
+  // ── v6 additions ──
+  const [chanLabels, setChanLabels]             = useState<Record<string, string>>(() => ls.getJSON('radio_channel_labels', {}));
+  const [chanDescriptions, setChanDescriptions] = useState<Record<string, string>>(() => ls.getJSON('radio_channel_descriptions', {}));
+  const [pinnedChannel, setPinnedChannel]       = useState<string | null>(() => ls.get('radio_pinned_channel'));
+  const [autoLeaveMin, setAutoLeaveMin]         = useState<number>(() => parseInt(ls.get('radio_auto_leave') || '0', 10));
+  const [confirmLeave, setConfirmLeave]         = useState<boolean>(() => ls.get('radio_confirm_leave') === '1');
+  const [density, setDensity]                   = useState<'cozy' | 'comfortable' | 'compact'>(() => (ls.get('radio_density') as any) || 'comfortable');
+  const [autoTheme, setAutoTheme]               = useState<boolean>(() => ls.get('radio_auto_theme') === '1');
+  const [bgAnimation, setBgAnimation]           = useState<boolean>(() => ls.get('radio_bg_anim') === '1');
+  const [micGain, setMicGain]                   = useState<number>(() => parseInt(ls.get('radio_mic_gain') || '100', 10));
+  const [whisperMode, setWhisperMode]           = useState<boolean>(false);
+  const [coughActive, setCoughActive]           = useState<boolean>(false);
+  const [recNotes, setRecNotes]                 = useState<Record<string, string>>(() => ls.getJSON('radio_rec_notes', {}));
+  const [recSort, setRecSort]                   = useState<'time' | 'duration' | 'user'>(() => (ls.get('radio_rec_sort') as any) || 'time');
+  const [autoRewindOnReplay, setAutoRewindOnReplay] = useState<boolean>(() => ls.get('radio_auto_rewind') === '1');
+  const [playbackMuted, setPlaybackMuted]       = useState<boolean>(false);
+  const [groupNotifs, setGroupNotifs]           = useState<boolean>(() => ls.get('radio_group_notifs') === '1');
+  const [shiftStartedAt, setShiftStartedAt]     = useState<number>(() => parseInt(ls.get('radio_shift_start') || '0', 10));
+  const [editingLabelFor, setEditingLabelFor]   = useState<string | null>(null);
+  const [tempLabel, setTempLabel]               = useState<string>('');
+  const [showHourHeatmap, setShowHourHeatmap]   = useState<boolean>(() => ls.get('radio_show_heatmap') === '1');
+  const groupBufferRef                          = useRef<{ count: number; channels: Set<string>; timer: ReturnType<typeof setTimeout> | null }>({ count: 0, channels: new Set(), timer: null });
+
+  useEffect(() => { ls.setJSON('radio_channel_labels', chanLabels); }, [chanLabels]);
+  useEffect(() => { ls.setJSON('radio_channel_descriptions', chanDescriptions); }, [chanDescriptions]);
+  useEffect(() => { ls.set('radio_pinned_channel', pinnedChannel || ''); }, [pinnedChannel]);
+  useEffect(() => { ls.set('radio_auto_leave', String(autoLeaveMin)); }, [autoLeaveMin]);
+  useEffect(() => { ls.set('radio_confirm_leave', confirmLeave ? '1' : '0'); }, [confirmLeave]);
+  useEffect(() => { ls.set('radio_density', density); }, [density]);
+  useEffect(() => { ls.set('radio_auto_theme', autoTheme ? '1' : '0'); }, [autoTheme]);
+  useEffect(() => { ls.set('radio_bg_anim', bgAnimation ? '1' : '0'); }, [bgAnimation]);
+  useEffect(() => { ls.set('radio_mic_gain', String(micGain)); }, [micGain]);
+  useEffect(() => { ls.setJSON('radio_rec_notes', recNotes); }, [recNotes]);
+  useEffect(() => { ls.set('radio_rec_sort', recSort); }, [recSort]);
+  useEffect(() => { ls.set('radio_auto_rewind', autoRewindOnReplay ? '1' : '0'); }, [autoRewindOnReplay]);
+  useEffect(() => { ls.set('radio_group_notifs', groupNotifs ? '1' : '0'); }, [groupNotifs]);
+  useEffect(() => { if (shiftStartedAt) ls.set('radio_shift_start', String(shiftStartedAt)); }, [shiftStartedAt]);
+  useEffect(() => { ls.set('radio_show_heatmap', showHourHeatmap ? '1' : '0'); }, [showHourHeatmap]);
+
+  // Auto-theme by hour: 06:00-18:00 = onyx (day), 18:00-06:00 = amber (night)
+  useEffect(() => {
+    if (!autoTheme) return;
+    const tick = () => {
+      const h = new Date().getHours();
+      const target: Theme = h >= 6 && h < 18 ? 'onyx' : 'amber';
+      setTheme(prev => prev === target ? prev : target);
+    };
+    tick();
+    const t = setInterval(tick, 60_000);
+    return () => clearInterval(t);
+  }, [autoTheme]);
+
+  // Auto-leave when channel idle for too long
+  useEffect(() => {
+    if (!autoLeaveMin || !currentChannel) return;
+    const t = setInterval(() => {
+      if (Date.now() - lastTrafficRef.current > autoLeaveMin * 60 * 1000) {
+        addToast(`Auto-leaving channel after ${autoLeaveMin}m idle`, 'info');
+        leaveChannel();
+      }
+    }, 30000);
+    return () => clearInterval(t);
+  }, [autoLeaveMin, currentChannel, addToast, leaveChannel]);
+
+  // Initialize shift start on first transmit
+  useEffect(() => {
+    if (isTransmitting && !shiftStartedAt) setShiftStartedAt(Date.now());
+  }, [isTransmitting, shiftStartedAt]);
 
   // Persist effects (batched declarations)
   useEffect(() => { ls.setSet('radio_favorites', favorites); }, [favorites]);
@@ -1113,6 +1183,154 @@ export default function RadioPage() {
   const PAGE_LIMIT = 160;
   const pageCharsLeft = PAGE_LIMIT - pageMessage.length;
 
+  // ── Cough button (mid-TX 1s mute) ──
+  const cough = useCallback(() => {
+    if (!isTransmitting) return;
+    setCoughActive(true);
+    stopTransmit();
+    setTimeout(() => {
+      setCoughActive(false);
+      if (currentChannel && !monitorOnly.has(currentChannel)) startTransmit();
+    }, 1000);
+  }, [isTransmitting, stopTransmit, startTransmit, currentChannel, monitorOnly]);
+
+  // ── Settings backup/restore ──
+  const SETTINGS_KEYS = [
+    'radio_favorites','radio_muted_channels','radio_channel_volumes','radio_channel_notes',
+    'radio_monitor_only','radio_recent_channels','radio_notif_enabled','radio_sound_enabled',
+    'radio_notif_sound','radio_notif_volume','radio_page_sound','radio_flash_tx',
+    'radio_keyword_alerts','radio_quiet_start','radio_quiet_end','radio_user_notif',
+    'radio_marked_tx','radio_pinned_tx','radio_saved_searches','radio_compact','radio_time_24h',
+    'radio_time_relative','radio_silence_alert','radio_current_status','radio_theme',
+    'radio_font_scale','radio_reduce_motion','radio_dim_mode','radio_hide_live','radio_hide_stats',
+    'radio_hide_refs','radio_hide_top','radio_hide_muted','radio_favs_only','radio_phonetic',
+    'radio_ptt_lock','radio_roger_beep','radio_countdown','radio_hang_time','radio_autoplay_next',
+    'radio_loop_rec','radio_page_templates','radio_last_page','radio_tx_annotations','radio_tx_colors',
+    'radio_scratchpad','radio_active_call','radio_pinned_rec','radio_show_scratch','radio_show_codes',
+    'radio_show_phonetic','radio_col_width','radio_snooze_until','radio_tts','radio_focus_mute',
+    'radio_filter_presets','radio_rec_bookmarks','radio_ab_loops','radio_channel_labels',
+    'radio_channel_descriptions','radio_pinned_channel','radio_auto_leave','radio_confirm_leave',
+    'radio_density','radio_auto_theme','radio_bg_anim','radio_mic_gain','radio_rec_notes',
+    'radio_rec_sort','radio_auto_rewind','radio_group_notifs','radio_show_heatmap',
+  ];
+
+  const exportSettings = () => {
+    const dump: Record<string, string | null> = {};
+    SETTINGS_KEYS.forEach(k => { dump[k] = ls.get(k); });
+    const blob = new Blob([JSON.stringify({ exportedAt: new Date().toISOString(), settings: dump }, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `radio-settings-${localToday()}.json`;
+    a.click(); URL.revokeObjectURL(url);
+    addToast('Settings exported', 'success');
+  };
+
+  const importSettings = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const parsed = JSON.parse(reader.result as string);
+        const incoming = parsed?.settings || parsed;
+        if (!incoming || typeof incoming !== 'object') throw new Error('Invalid file');
+        if (!confirm(`Restore ${Object.keys(incoming).length} settings? Current values will be overwritten.`)) return;
+        Object.entries(incoming).forEach(([k, v]) => {
+          if (!k.startsWith('radio_')) return;
+          if (v == null || v === '') localStorage.removeItem(k);
+          else localStorage.setItem(k, String(v));
+        });
+        addToast('Settings restored — reloading…', 'success');
+        setTimeout(() => location.reload(), 800);
+      } catch (e: any) {
+        addToast(`Import failed: ${e.message}`, 'error');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const exportScratchpad = () => {
+    const blob = new Blob([scratchpad], { type: 'text/plain' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `scratchpad-${localToday()}.txt`;
+    a.click(); URL.revokeObjectURL(url);
+  };
+  const importScratchpad = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => setScratchpad(String(reader.result || ''));
+    reader.readAsText(file);
+  };
+
+  // ── Channel rename ──
+  const startRenaming = (id: string, current: string) => {
+    setEditingLabelFor(id);
+    setTempLabel(current);
+  };
+  const commitRename = () => {
+    if (!editingLabelFor) return;
+    setChanLabels(prev => {
+      const next = { ...prev };
+      if (tempLabel.trim()) next[editingLabelFor] = tempLabel.trim();
+      else delete next[editingLabelFor];
+      return next;
+    });
+    setEditingLabelFor(null);
+    setTempLabel('');
+  };
+
+  // ── Test notification ──
+  const testNotification = () => {
+    playBeep(notifSound, notifVolume / 100);
+    if (notifEnabled && 'Notification' in window && Notification.permission === 'granted') {
+      try { new Notification('RMPG Radio · Test', { body: 'This is a test notification.', tag: 'rmpg-radio-test' }); } catch { /* ok */ }
+    }
+    addToast('Test notification sent', 'info');
+  };
+
+  // ── Stats: hour×day heatmap, day-of-week, weekly totals, trends ──
+  const advancedStats = useMemo(() => {
+    const now = Date.now();
+    const weekStart = now - 7 * 86400000;
+    const yesterday = new Date(); yesterday.setDate(yesterday.getDate() - 1); yesterday.setHours(0,0,0,0);
+    const yesterdayStr = yesterday.toISOString().slice(0, 10);
+    // Heatmap: 7 days × 24 hours
+    const heat: number[][] = Array.from({ length: 7 }, () => new Array(24).fill(0));
+    let weekSec = 0;
+    let yesterdayCount = 0;
+    historyEntries.forEach(e => {
+      const t = Date.parse(e.transmitted_at || '');
+      if (!t || t < weekStart) return;
+      const d = new Date(t);
+      const dow = (d.getDay() + 6) % 7; // Mon=0..Sun=6
+      const h = d.getHours();
+      heat[dow][h] += 1;
+      weekSec += Number(e.duration) || 0;
+      if (e.transmitted_at?.startsWith(yesterdayStr)) yesterdayCount += 1;
+    });
+    const dow = heat.map(row => row.reduce((s, v) => s + v, 0));
+    const todayCount = stats.allTxCount;
+    const trendPct = yesterdayCount > 0 ? Math.round(((todayCount - yesterdayCount) / yesterdayCount) * 100) : 0;
+    return { heat, dow, weekSec, todayCount, yesterdayCount, trendPct };
+  }, [historyEntries, stats.allTxCount]);
+
+  // Sort applied to filteredHistory (for recording sort selector)
+  const sortedFilteredHistory = useMemo(() => {
+    if (recSort === 'time') return filteredHistory;
+    const arr = [...filteredHistory];
+    if (recSort === 'duration') arr.sort((a, b) => (Number(b.duration) || 0) - (Number(a.duration) || 0));
+    if (recSort === 'user') arr.sort((a, b) => String(a.full_name || a.username || '').localeCompare(String(b.full_name || b.username || '')));
+    return arr;
+  }, [filteredHistory, recSort]);
+
+  // ── Date dividers builder (TODAY / YESTERDAY / MM-DD) ──
+  const todayKey = localToday();
+  const yesterdayKey = (() => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().slice(0, 10); })();
+  const dateLabelFor = (s: string) => {
+    const k = (s || '').slice(0, 10);
+    if (k === todayKey) return 'TODAY';
+    if (k === yesterdayKey) return 'YESTERDAY';
+    return k;
+  };
+
   // ════════ SETTINGS RESET ════════
   const resetAllSettings = () => {
     if (!confirm('Reset ALL radio preferences? This clears favorites, mutes, settings, marks, annotations, etc.')) return;
@@ -1389,7 +1607,7 @@ export default function RadioPage() {
               >
                 <ScanLine style={{ width: 11, height: 11 }} /> {scanActive ? 'SCAN ON' : 'SCAN'}
               </ToolbarBtn>
-              <ToolbarBtn onClick={leaveChannel} danger title="Leave channel">
+              <ToolbarBtn onClick={() => { if (!confirmLeave || confirm('Leave the current channel?')) leaveChannel(); }} danger title="Leave channel">
                 <LogOut style={{ width: 11, height: 11 }} /> LEAVE
               </ToolbarBtn>
             </>
@@ -1772,6 +1990,53 @@ export default function RadioPage() {
                       </div>
                     </div>
 
+                    {/* New settings */}
+                    <SettingRow label="Density">
+                      <select value={density} onChange={(e) => setDensity(e.target.value as any)} aria-label="Density"
+                        className="bg-[#0a0a0a] text-[10px] font-mono px-1 py-0.5" style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-text)' }}>
+                        <option value="cozy">COZY</option><option value="comfortable">COMFORT</option><option value="compact">COMPACT</option>
+                      </select>
+                    </SettingRow>
+                    <SettingCheckbox label="Auto-theme by hour" checked={autoTheme} onChange={setAutoTheme} />
+                    <SettingCheckbox label="Background animation" checked={bgAnimation} onChange={setBgAnimation} />
+                    <SettingCheckbox label="Group notifications (5s)" checked={groupNotifs} onChange={setGroupNotifs} />
+                    <SettingCheckbox label="Auto-rewind 5s on replay" checked={autoRewindOnReplay} onChange={setAutoRewindOnReplay} />
+                    <SettingCheckbox label="Confirm before leaving channel" checked={confirmLeave} onChange={setConfirmLeave} />
+                    <SettingCheckbox label="Show hour heatmap" checked={showHourHeatmap} onChange={setShowHourHeatmap} />
+                    <SettingRow label="Mic gain">
+                      <input type="range" min={50} max={200} value={micGain} onChange={(e) => setMicGain(Number(e.target.value))}
+                        aria-label="Mic gain %" className="w-20 h-[3px] cursor-pointer" style={{ accentColor: 'var(--rt-accent)' }} />
+                      <span className="text-[8px] ml-1 tabular-nums" style={{ color: 'var(--rt-muted)' }}>{micGain}%</span>
+                    </SettingRow>
+                    <SettingRow label="Auto-leave after">
+                      <input type="number" min={0} max={120} value={autoLeaveMin}
+                        onChange={(e) => setAutoLeaveMin(Math.max(0, Math.min(120, Number(e.target.value) || 0)))}
+                        aria-label="Auto leave minutes"
+                        className="w-12 bg-[#0a0a0a] text-[10px] font-mono px-1 py-0.5"
+                        style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-text)' }} />
+                      <span className="text-[8px] ml-1" style={{ color: 'var(--rt-muted)' }}>min idle (0=off)</span>
+                    </SettingRow>
+                    <button type="button" onClick={testNotification}
+                      className="w-full flex items-center justify-center gap-1 px-2 py-1 text-[9px] font-mono font-bold tracking-wider mt-1"
+                      style={{ border: '1px solid var(--rt-accent)', color: 'var(--rt-accent)', background: 'rgba(212,160,23,0.05)' }}>
+                      <Bell style={{ width: 10, height: 10 }} /> TEST NOTIFICATION
+                    </button>
+
+                    {/* Backup / restore */}
+                    <div className="grid grid-cols-2 gap-1 mt-2">
+                      <button type="button" onClick={exportSettings}
+                        className="flex items-center justify-center gap-1 px-2 py-1 text-[9px] font-mono font-bold tracking-wider"
+                        style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-muted)' }}>
+                        <Download style={{ width: 10, height: 10 }} /> BACKUP
+                      </button>
+                      <label className="flex items-center justify-center gap-1 px-2 py-1 text-[9px] font-mono font-bold tracking-wider cursor-pointer"
+                        style={{ border: '1px solid var(--rt-border)', color: 'var(--rt-muted)' }}>
+                        <FileJson style={{ width: 10, height: 10 }} /> RESTORE
+                        <input type="file" accept="application/json" className="hidden"
+                          onChange={(e) => { const f = e.target.files?.[0]; if (f) importSettings(f); e.currentTarget.value = ''; }} />
+                      </label>
+                    </div>
+
                     {/* Reset */}
                     <button type="button" onClick={resetAllSettings}
                       className="w-full flex items-center justify-center gap-1 px-2 py-1 text-[9px] font-mono font-bold tracking-wider mt-2"
@@ -1922,6 +2187,8 @@ export default function RadioPage() {
                 <ModeToggle active={rogerBeep} onClick={() => setRogerBeep(v => !v)} icon={<Bell style={{ width: 10, height: 10 }} />} label="ROGER BEEP" />
                 <ModeToggle active={countdownBeep} onClick={() => setCountdownBeep(v => !v)} icon={<AlarmClock style={{ width: 10, height: 10 }} />} label="COUNTDOWN" />
                 <ModeToggle active={hangTimeMs > 0} onClick={() => setHangTimeMs(hangTimeMs > 0 ? 0 : 500)} icon={<Clock style={{ width: 10, height: 10 }} />} label={`HANG ${hangTimeMs}ms`} />
+                <ModeToggle active={whisperMode} onClick={() => setWhisperMode(v => !v)} icon={<Volume1 style={{ width: 10, height: 10 }} />} label="WHISPER" />
+                <ModeToggle active={coughActive} onClick={cough} icon={<MicOff style={{ width: 10, height: 10 }} />} label={coughActive ? 'COUGH 1s' : 'COUGH'} />
               </div>
 
               {/* QUICK ACTIONS */}
@@ -2298,7 +2565,26 @@ export default function RadioPage() {
                     <Stat label="MY AIR" value={formatDuration(stats.myAirSec) || '0s'} />
                     <Stat label="ALL TX" value={String(stats.allTxCount)} />
                     <Stat label="ALL AIR" value={formatDuration(stats.allAirSec) || '0s'} />
+                    <Stat label="WEEK AIR" value={formatDuration(advancedStats.weekSec) || '0s'} />
+                    <Stat label={`vs YDAY · ${advancedStats.trendPct > 0 ? '↑' : advancedStats.trendPct < 0 ? '↓' : '·'}`} value={`${advancedStats.trendPct > 0 ? '+' : ''}${advancedStats.trendPct}%`} />
                   </div>
+                  {showHourHeatmap && (
+                    <div className="px-2 pb-2">
+                      <div className="text-[8px] font-mono tracking-[0.2em] mb-1" style={{ color: 'var(--rt-muted)' }}>WEEK · HOUR HEATMAP</div>
+                      <Heatmap rows={advancedStats.heat} />
+                      <div className="text-[8px] font-mono tracking-[0.2em] mt-2 mb-1" style={{ color: 'var(--rt-muted)' }}>DAY-OF-WEEK</div>
+                      <div className="flex items-end gap-px h-6" style={{ background: '#0a0a0a', border: '1px solid var(--rt-border)' }}>
+                        {advancedStats.dow.map((v, i) => {
+                          const max = Math.max(1, ...advancedStats.dow);
+                          const today = (new Date().getDay() + 6) % 7;
+                          return (
+                            <div key={i} className="flex-1" title={['Mon','Tue','Wed','Thu','Fri','Sat','Sun'][i] + ': ' + v}
+                              style={{ height: `${Math.max(2, (v/max)*100)}%`, background: i === today ? 'var(--rt-accent)' : '#2a8a2a' }} />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </>
               )}
 
@@ -2366,7 +2652,9 @@ export default function RadioPage() {
                   <div className="px-1 py-2 text-[10px] font-mono italic" style={{ color: 'var(--rt-muted)' }}>Loading…</div>
                 ) : filteredHistory.length === 0 ? (
                   <div className="px-1 py-2 text-[10px] font-mono italic" style={{ color: 'var(--rt-muted)' }}>No archived transmissions</div>
-                ) : filteredHistory.map((entry, idx) => {
+                ) : sortedFilteredHistory.map((entry, idx) => {
+                  const prevEntry = idx > 0 ? sortedFilteredHistory[idx - 1] : null;
+                  const showDateDivider = recSort === 'time' && (!prevEntry || dateLabelFor(prevEntry.transmitted_at) !== dateLabelFor(entry.transmitted_at));
                   const isMe = Number(entry.user_id) === Number(user?.id);
                   const isMarked = markedIds.has(String(entry.id));
                   const colorId = txColorLabels[String(entry.id)];
@@ -2376,7 +2664,15 @@ export default function RadioPage() {
                   const isPinnedHeader = pinnedTxId === String(entry.id);
                   const isPinnedRec = pinnedRecordingId === String(entry.id);
                   const isBulkSelected = selectedTxIds.has(String(entry.id));
+                  const recNote = recNotes[String(entry.id)] || '';
                   return (
+                    <div key={`grp-${entry.id}`}>
+                    {showDateDivider && (
+                      <div className="sticky top-0 z-10 px-2 py-1 text-[8px] font-mono font-bold tracking-[0.3em]"
+                        style={{ background: 'linear-gradient(180deg, #1a1a1a, #141414)', color: 'var(--rt-accent)', borderBottom: '1px solid var(--rt-border)', borderTop: '1px solid var(--rt-border)' }}>
+                        ── {dateLabelFor(entry.transmitted_at)} ──
+                      </div>
+                    )}
                     <div
                       key={entry.id}
                       id={`hist-row-${entry.id}`}
@@ -2511,6 +2807,29 @@ export default function RadioPage() {
                           </div>
                         </div>
                       )}
+                      {(recNote || annotatingId === `note-${entry.id}`) && (
+                        <div className="mt-1.5 pl-[60px] pr-1">
+                          {annotatingId === `note-${entry.id}` ? (
+                            <div className="flex gap-1">
+                              <input type="text" value={annotateText} onChange={(e) => setAnnotateText(e.target.value)} autoFocus
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') { setRecNotes(p => ({ ...p, [String(entry.id)]: annotateText })); setAnnotatingId(null); }
+                                  if (e.key === 'Escape') setAnnotatingId(null);
+                                }}
+                                placeholder="Playback note…" aria-label="Playback note"
+                                className="focus-gold flex-1 text-[10px] font-mono px-1.5 py-0.5 bg-[#0a0a0a]"
+                                style={{ border: '1px solid var(--rt-accent)', color: 'var(--rt-text)' }} />
+                              <button type="button" onClick={() => { setRecNotes(p => ({ ...p, [String(entry.id)]: annotateText })); setAnnotatingId(null); }}
+                                className="text-[9px] font-mono px-2" style={{ background: 'var(--rt-accent)', color: '#0a0a0a' }}>SAVE</button>
+                            </div>
+                          ) : (
+                            <div className="text-[9px] font-mono px-1.5 py-0.5" style={{ color: 'var(--rt-muted)', borderLeft: '2px solid var(--rt-accent)', background: 'rgba(212,160,23,0.04)' }}>
+                              🎧 {recNote}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     </div>
                   );
                 })}
@@ -2826,6 +3145,26 @@ function Sparkline({ values, highlight }: { values: number[]; highlight?: number
             style={{ height: `${h}%`, background: isNow ? 'var(--rt-accent)' : v === 0 ? '#1a1a1a' : '#2a8a2a', boxShadow: isNow ? '0 0 4px var(--rt-accent)' : 'none' }} />
         );
       })}
+    </div>
+  );
+}
+
+function Heatmap({ rows }: { rows: number[][] }) {
+  const max = Math.max(1, ...rows.flat());
+  const labels = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+  return (
+    <div className="grid grid-cols-[14px_repeat(24,1fr)] gap-px" style={{ background: '#0a0a0a', padding: 1, border: '1px solid var(--rt-border)' }}>
+      {rows.map((row, dayIdx) => (
+        <Fragment key={dayIdx}>
+          <div className="text-[7px] font-mono flex items-center justify-center" style={{ color: 'var(--rt-muted)' }}>{labels[dayIdx]}</div>
+          {row.map((v, hour) => {
+            const intensity = v / max;
+            const bg = v === 0 ? '#101010' : `rgba(212,160,23,${0.15 + intensity * 0.85})`;
+            return <div key={hour} title={`${labels[dayIdx]} ${hour.toString().padStart(2, '0')}:00 — ${v} tx`}
+              style={{ background: bg, height: 8 }} />;
+          })}
+        </Fragment>
+      ))}
     </div>
   );
 }
