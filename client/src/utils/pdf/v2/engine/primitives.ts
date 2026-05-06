@@ -214,20 +214,33 @@ export class Primitives {
     }
 
     // ── Borders: 0.5pt black outer rect + column dividers + below-header line ──
+    // Skip the border pass when a page-break occurred mid-body — totalH would
+    // span the page break and produce an invalid rect that bleeds off-page.
+    // Detection: cursorY less than tableTop means the layout reset to a new
+    // page during the row loop. The header band on the new page is implicit
+    // (drawn by the renderer's page handler); body rows still got their zebra
+    // fills row-by-row; we just skip the broken outer-rect pass in this case.
     const bodyBottom = this.layout.cursorY;
-    const totalH = bodyBottom - tableTop;
-    this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
-    this.doc.setDrawColor(0, 0, 0);
-    this.doc.rect(left, tableTop, tableWidth, totalH);
-    // Below-header separator
-    this.doc.line(left, bodyTop, left + tableWidth, bodyTop);
-    // Column dividers (skip first edge)
-    for (let i = 1; i < spec.columns.length; i++) {
-      this.doc.line(colStarts[i], tableTop, colStarts[i], tableTop + totalH);
+    if (bodyBottom >= tableTop) {
+      const totalH = bodyBottom - tableTop;
+      this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
+      this.doc.setDrawColor(0, 0, 0);
+      this.doc.rect(left, tableTop, tableWidth, totalH);
+      // Below-header separator
+      this.doc.line(left, bodyTop, left + tableWidth, bodyTop);
+      // Column dividers (skip first edge)
+      for (let i = 1; i < spec.columns.length; i++) {
+        this.doc.line(colStarts[i], tableTop, colStarts[i], tableTop + totalH);
+      }
     }
 
-    // Reset text color for downstream callers
+    // Reset text + fill color for downstream callers — the body loop
+    // leaves fillColor at whatever the last row used (black for header,
+    // 5% gray for the last odd row, etc.). Stale fill would leak into a
+    // subsequent setFillColor-less rect(_, 'F') call from any other
+    // primitive (signature block, future filled element).
     this.doc.setTextColor(0, 0, 0);
+    this.doc.setFillColor(255, 255, 255);
   }
 
   signature<T>(spec: SignatureField<T>, data: T): void {
