@@ -15,6 +15,13 @@
 
 import type { FormSchema, LabeledField, NarrativeField, SignatureField } from '../engine/types';
 
+export interface CitationViolation {
+  statute_citation: string;
+  description: string;
+  offense_level: 'Infraction' | 'Misdemeanor' | 'Felony';
+  fine_amount: number;
+}
+
 export interface CitationData {
   citation_number?: string | null;
   type?: string | null;
@@ -41,6 +48,10 @@ export interface CitationData {
   badge_number?: string | null;
   signature_image?: string | null;
   signature_date?: string | null;
+  /** Optional multi-violation array. When present, replaces the single-
+   *  violation flat fields in the rendered VIOLATIONS section. When
+   *  empty/missing, renderer falls back to flat fields. */
+  violations?: CitationViolation[];
 }
 
 const str = (v: unknown): string => (v == null ? '' : String(v));
@@ -187,6 +198,9 @@ export function citationCanonicalData(d: CitationData): Record<string, unknown> 
         }
       }
     }
+  }
+  if (Array.isArray(d.violations) && d.violations.length > 0) {
+    bag.violations = d.violations;
   }
   return bag;
 }
