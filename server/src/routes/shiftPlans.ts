@@ -10,48 +10,14 @@ const router = Router();
 // All routes require authentication
 router.use(authenticateToken);
 
-// ============================================================
-// Initialize tables for this module
-// ============================================================
-function initTables(): void {
-  const db = getDb();
-
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS shift_plans (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      date TEXT NOT NULL,
-      shift_type TEXT NOT NULL DEFAULT 'day',
-      assignments TEXT NOT NULL DEFAULT '[]',
-      status TEXT NOT NULL DEFAULT 'draft',
-      created_by INTEGER,
-      created_at TEXT NOT NULL,
-      updated_at TEXT NOT NULL
-    )
-  `);
-}
-
-// Run table init on import (may fail if DB not yet initialized)
-let tablesInitialized = false;
-try {
-  initTables();
-  tablesInitialized = true;
-} catch {
-  // DB may not be initialized yet at import time; will retry on first request
-}
-
-// Lazy init middleware — ensures tables exist before any route handler runs
-router.use((_req, _res, next) => {
-  if (!tablesInitialized) {
-    try {
-      initTables();
-      tablesInitialized = true;
-    } catch (err) {
-      console.error('shiftPlans initTables retry failed:', err);
-    }
-  }
-  next();
-});
+// shift_plans table + indexes are now created in
+// server/src/models/database.ts (initDatabase + createIndexes blocks)
+// alongside the other 186 tables. The previous module-load + lazy
+// retry pattern was racing against the index-creation step that runs
+// during initDatabase, producing "createIndexes partially failed: no
+// such table: main.shift_plans" warnings on every test-suite run.
+// This route file now relies on the table being available the moment
+// initDatabase() returns — same contract as every other route.
 
 // Helper: parse assignments JSON on a row
 function parseAssignments(row: any): any {

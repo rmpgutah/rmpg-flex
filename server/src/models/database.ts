@@ -4869,7 +4869,11 @@ function migrateSchema(): void {
   addCol('patrol_breaks', 'start_time', 'TEXT');
 
   // Person associates
-  addCol('person_associates', 'associated_person_id', 'INTEGER');
+  // 2026-05-05: removed stale addCol('person_associates','associated_person_id')
+  // -- the actual column is `associate_id` (defined on the CREATE TABLE
+  // at line ~5092 below). The old addCol always failed silently (table
+  // not yet created at this point in migrateSchema) and the matching
+  // index in createIndexes referenced a non-existent column.
 
   // CPGPS tables
   addCol('cpgps_vehicles', 'unit_number', 'TEXT');
@@ -6707,13 +6711,50 @@ function createIndexes(): void {
     -- Calls for service incident type index (high-frequency filter)
     CREATE INDEX IF NOT EXISTS idx_cfs_incident_type ON calls_for_service(incident_type);
 
-    -- Shift plans indexes
+    -- Shift plans table + indexes (moved here from routes/shiftPlans.ts
+    -- on 2026-05-05 to fix the test-suite "createIndexes partially failed:
+    -- no such table: main.shift_plans" warning. The route's initTables()
+    -- created the table lazily on first import, but tests init the DB
+    -- BEFORE any route module loads, so the indexes attached to a table
+    -- that didn't exist yet. Now the table is created up-front like the
+    -- other 186 tables in this file.)
+    CREATE TABLE IF NOT EXISTS shift_plans (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      date TEXT NOT NULL,
+      shift_type TEXT NOT NULL DEFAULT 'day',
+      assignments TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_shift_plans_date ON shift_plans(date);
     CREATE INDEX IF NOT EXISTS idx_shift_plans_status ON shift_plans(status);
 
-    -- Dashcam videos indexes
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_unit ON dashcam_videos(unit_id);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_officer ON dashcam_videos(officer_id);
+    -- Call_units junction table — was missing from source despite
+    -- being live in production (73 rows of dispatch unit-assignment
+    -- data observed 2026-05-05). Restored here so a fresh DB
+    -- provisioning doesn't break the dispatch system. Schema matches
+    -- production exactly; CREATE IF NOT EXISTS is idempotent so this
+    -- is a no-op in production.
+    CREATE TABLE IF NOT EXISTS call_units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      unit_id INTEGER NOT NULL,
+      assigned_at TEXT DEFAULT (datetime('now','localtime')),
+      unassigned_at TEXT,
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE,
+      UNIQUE(call_id, unit_id)
+    );
+
+    -- Dashcam videos indexes — only on columns that actually exist.
+    -- The previous unit_id and officer_id indexes referenced columns
+    -- that were never added to dashcam_videos (verified via grep
+    -- against all addCol calls 2026-05-05). They were producing
+    -- "[DB] createIndexes partially failed (non-fatal): no such
+    -- column: unit_id" warnings on every cold DB init. Removed.
     CREATE INDEX IF NOT EXISTS idx_dashcam_videos_date ON dashcam_videos(recorded_at);
     CREATE INDEX IF NOT EXISTS idx_dashcam_videos_incident ON dashcam_videos(incident_id);
 
@@ -6805,9 +6846,10 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(status);
     CREATE INDEX IF NOT EXISTS idx_email_logs_to ON email_logs(to_email);
 
-    -- Patrol breaks indexes
+    -- Patrol breaks indexes -- column-drift fix 2026-05-05:
+    -- patrol_breaks has break_start (not start_time).
     CREATE INDEX IF NOT EXISTS idx_patrol_breaks_officer ON patrol_breaks(officer_id);
-    CREATE INDEX IF NOT EXISTS idx_patrol_breaks_date ON patrol_breaks(start_time);
+    CREATE INDEX IF NOT EXISTS idx_patrol_breaks_date ON patrol_breaks(break_start);
 
     -- Fleet pretrip checklists indexes
     CREATE INDEX IF NOT EXISTS idx_pretrip_vehicle ON fleet_pretrip_checklists(vehicle_id);
@@ -6818,14 +6860,17 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_evidence_temp_evidence ON evidence_temperature_logs(evidence_id);
     CREATE INDEX IF NOT EXISTS idx_evidence_temp_recorded ON evidence_temperature_logs(recorded_at);
 
-    -- Person associates indexes
+    -- Person associates indexes -- the actual column on
+    -- person_associates is associate_id (line ~5092), not
+    -- associated_person_id. Fixed 2026-05-05.
     CREATE INDEX IF NOT EXISTS idx_person_assoc_person ON person_associates(person_id);
-    CREATE INDEX IF NOT EXISTS idx_person_assoc_associated ON person_associates(associated_person_id);
+    CREATE INDEX IF NOT EXISTS idx_person_assoc_associated ON person_associates(associate_id);
 
-    -- ClearPath GPS indexes
+    -- ClearPath GPS indexes -- column-drift fix 2026-05-05:
+    -- cpgps_trips has trip_start (not start_time).
     CREATE INDEX IF NOT EXISTS idx_cpgps_vehicles_unit ON cpgps_vehicles(unit_number);
     CREATE INDEX IF NOT EXISTS idx_cpgps_trips_vehicle ON cpgps_trips(vehicle_id);
-    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_date ON cpgps_trips(start_time);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_date ON cpgps_trips(trip_start);
     CREATE INDEX IF NOT EXISTS idx_cpgps_locations_vehicle ON cpgps_locations(vehicle_id);
     CREATE INDEX IF NOT EXISTS idx_cpgps_locations_time ON cpgps_locations(timestamp);
     CREATE INDEX IF NOT EXISTS idx_cpgps_alerts_vehicle ON cpgps_alerts(vehicle_id);
@@ -6833,7 +6878,8 @@ function createIndexes(): void {
 
     -- Warrant watch indexes
     CREATE INDEX IF NOT EXISTS idx_warrant_watch_runs_created ON warrant_watch_runs(created_at);
-    CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_run ON warrant_watch_log(run_id);
+    -- Column-drift fix 2026-05-05: warrant_watch_log has scan_run_id (not run_id).
+    CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_run ON warrant_watch_log(scan_run_id);
     CREATE INDEX IF NOT EXISTS idx_scraped_warrants_name ON scraped_warrants(last_name, first_name);
     CREATE INDEX IF NOT EXISTS idx_scraped_warrants_status ON scraped_warrants(status);
 
