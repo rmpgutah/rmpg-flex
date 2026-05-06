@@ -14,6 +14,7 @@
 
 import type { AttorneyBlock } from './serveIntakeHelpers';
 import type { CaseCategory } from './caseSynopsis';
+import { boundForRegex } from './regexSafe';
 
 export interface CaseNarrativeInput {
   /** Concatenated text of all court-docket PDFs (Complaint, Summons, etc.). */
@@ -115,6 +116,7 @@ function extractFirstAllegation(text: string): string | null {
  */
 function extractIncidentLocation(text: string): string | null {
   if (!text) return null;
+  text = boundForRegex(text);
   const m = text.match(/(?:located\s+at|on\s+the\s+premises\s+of|at\s+the\s+property\s+(?:located\s+)?at)\s+([^.\n,]{8,80})/i);
   if (m) return m[1].replace(/\s+/g, ' ').trim();
   // Fallback: first complete US street address inside the body
@@ -165,6 +167,7 @@ export function extractAllCausesOfAction(text: string): string[] {
  */
 function extractPlaintiffRole(text: string): string | null {
   if (!text) return null;
+  text = boundForRegex(text);
   const patterns: RegExp[] = [
     /Plaintiff(?:\s+\w+){0,3}\s+(?:is|was|serves\s+as|works\s+as|operates\s+as|is\s+employed\s+as)\s+(?:a|an|the)?\s*([^.\n]{8,160})/i,
     /Plaintiff[^.\n]*?(?:co-president|president|owner|manager|director|officer|founder|partner|employee|referee|driver|contractor|tenant|landlord|trustee|beneficiary)\s+(?:of|for|at)\s+([^.\n]{4,120})/i,
@@ -186,6 +189,7 @@ function extractPlaintiffRole(text: string): string | null {
  */
 function extractDefendantRole(text: string, defendantLast: string): string | null {
   if (!text || !defendantLast) return null;
+  text = boundForRegex(text);
   const safeLast = defendantLast.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   // Alternation order matters: `(?:a|an|the)` would match the single
   // letter `a` on the input "an individual…", leaving the orphan `n`
@@ -243,6 +247,7 @@ function extractFactsBlock(text: string): string | null {
  */
 function extractInjuries(text: string): string | null {
   if (!text) return null;
+  text = boundForRegex(text);
   const patterns: RegExp[] = [
     /(?:sustained|suffered|sustaining|suffering)\s+([^.\n]{15,220}?(?:injur|trauma|distress|pain|fracture|laceration|contusion|burn|sprain)[^.\n]{0,160})\.?/i,
     /injuries\s+to\s+(?:his|her|their)\s+([^.\n]{6,140})/i,
@@ -280,6 +285,7 @@ function extractWitnesses(text: string): string[] {
  */
 function extractStatutoryCitations(text: string): string[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const set = new Set<string>();
   // Citations may use "§" or the word "section" — accept both.
   const sec = '(?:§+|sections?)';
@@ -319,6 +325,7 @@ function extractCaseFlags(text: string): { punitiveDamages: boolean; juryDemand:
  */
 function extractPrayerForRelief(text: string): string[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const m = text.match(/PRAYER\s+FOR\s+RELIEF[\s\S]{1,3000}?(?:DATED|RESPECTFULLY|DEMAND\s+FOR\s+JURY|$)/i);
   if (!m) return [];
   const block = m[0];
@@ -452,7 +459,7 @@ export function synthesizeCaseNarrative(input: CaseNarrativeInput): CaseNarrativ
 
   // ── WHAT ──
   const whatLines: string[] = [];
-  const docList = (input.documents || '').split(/\s*;\s*/).map((s) => s.trim()).filter(Boolean).join(' + ') || 'the legal papers';
+  const docList = boundForRegex(input.documents || '').split(/\s*;\s*/).map((s) => s.trim()).filter(Boolean).join(' + ') || 'the legal papers';
   whatLines.push(`Documents being served: ${docList}.`);
   if (allCauses.length > 1) {
     whatLines.push(`The Complaint asserts ${allCauses.length} causes of action: ${allCauses.map((c) => c.toUpperCase()).join('; ')}.`);

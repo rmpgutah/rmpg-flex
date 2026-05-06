@@ -50,12 +50,24 @@ interface EmailLike {
 // supply something like `(a+)+$` against a long input. 256 chars is enough
 // for any realistic email-filter pattern.
 const MAX_RULE_REGEX_LEN = 256;
+// Cap the input length tested against an admin-supplied regex. Combined with
+// MAX_RULE_REGEX_LEN this bounds worst-case match time well below ReDoS
+// territory (CodeQL js/regex-injection #2779, #2780).
+const MAX_RULE_INPUT_LEN = 1024;
+
+// Escape regex metacharacters in caller-supplied strings used as literal needles.
+// (Not used for sender_regex/subject_regex which are intentionally regex by spec.)
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+function escapeRegex(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
 
 export function matchesConditions(cond: RuleConditions, email: EmailLike): boolean {
   if (cond.sender_regex) {
     if (cond.sender_regex.length > MAX_RULE_REGEX_LEN) return false;
     try {
-      if (!new RegExp(cond.sender_regex, 'i').test(email.from_address || '')) return false;
+      const input = String(email.from_address || '').slice(0, MAX_RULE_INPUT_LEN);
+      if (!new RegExp(cond.sender_regex, 'i').test(input)) return false;
     } catch {
       return false;
     }
@@ -63,7 +75,8 @@ export function matchesConditions(cond: RuleConditions, email: EmailLike): boole
   if (cond.subject_regex) {
     if (cond.subject_regex.length > MAX_RULE_REGEX_LEN) return false;
     try {
-      if (!new RegExp(cond.subject_regex, 'i').test(email.subject || '')) return false;
+      const input = String(email.subject || '').slice(0, MAX_RULE_INPUT_LEN);
+      if (!new RegExp(cond.subject_regex, 'i').test(input)) return false;
     } catch {
       return false;
     }

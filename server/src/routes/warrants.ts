@@ -8,6 +8,7 @@ import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/univers
 import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, searchUtahWarrantsLive, searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
 import { getSourceMetrics, getHealthSummary } from '../utils/scraperMetrics';
 import { paramStr } from '../utils/reqHelpers';
+import { logSafe } from '../utils/logSafe';
 import { ensureWarrantReviewColumns, ensureWarrantIndexes } from '../utils/warrantHelpers';
 import { pollMultiStateLive, type LivePollCriteria } from '../utils/liveWarrantPoller';
 
@@ -1098,7 +1099,7 @@ router.post('/scrapers/:source_key/trigger', requireRole('admin', 'manager'), as
 
     // Fire and forget — returns immediately so UI doesn't block on the scrape
     const { syncSource } = await import('../utils/multiStateWarrantScraper');
-    syncSource(sourceKey).catch((e: Error) => console.error(`[Manual Trigger] ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String(e.message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`));
+    syncSource(sourceKey).catch((e: Error) => console.error(`[Manual Trigger] ${logSafe(sourceKey)}: ${logSafe(e.message)}`));
 
     auditLog(req, 'warrant_updated', 'config', 0, `Scraper manually triggered: ${sourceKey}`);
     return res.json({ success: true, source_key: sourceKey, message: 'Scrape initiated' });

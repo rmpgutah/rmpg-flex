@@ -237,13 +237,22 @@ export function sanitizePdfText(text: string): string {
     // "BANKRUPTCY -&GT;" surfacing as literal "&GT;" in serve-intake
     // notes, caught 2026-05-04). Decoding common entities before the
     // toUpperCase() pass keeps rendered output clean.
-    .replace(/&amp;/gi, '&')
-    .replace(/&lt;/gi, '<')
-    .replace(/&gt;/gi, '>')
-    .replace(/&quot;/gi, '"')
-    .replace(/&#39;/g,  "'")
-    .replace(/&apos;/gi, "'")
-    .replace(/&nbsp;/gi, ' ')
+    // Single-pass HTML entity decode — avoids double-unescaping (e.g. an
+     // input "&amp;lt;" becoming "<" through sequential replaces). Each
+     // entity in the source string is matched at most once.
+    .replace(/&(amp|lt|gt|quot|apos|nbsp|#39);/gi, (_m, ent) => {
+      const e = String(ent).toLowerCase();
+      switch (e) {
+        case 'amp':  return '&';
+        case 'lt':   return '<';
+        case 'gt':   return '>';
+        case 'quot': return '"';
+        case 'apos': return "'";
+        case '#39':  return "'";
+        case 'nbsp': return ' ';
+        default:     return _m;
+      }
+    })
     // Strip unmatched markdown emphasis markers — narrative text from
     // upstream rich-text editors / serve-intake imports occasionally
     // contains opening "**" with no closing pair (e.g. "**DUE DATE:
