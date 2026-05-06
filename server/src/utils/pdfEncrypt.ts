@@ -55,6 +55,29 @@ const DEFAULT_PERMISSIONS: PdfPermissions = {
   fillForms: false,
 };
 
+// Hard cap on input size — the route-level multer also caps at 50MB, but
+// callers may invoke encryptPdf/decryptPdf directly. Don't write attacker-
+// controlled bytes of unbounded size to a temp file.
+const MAX_INPUT_BYTES = 100 * 1024 * 1024;
+
+// Magic-byte sniff — PDFs start with "%PDF-" (0x25 0x50 0x44 0x46 0x2D).
+// Refuse to spawn qpdf on anything that isn't a PDF; CodeQL flags
+// fs.writeFile(untrustedBytes) (js/http-to-file-access) and this verifies
+// the bytes are at least syntactically a PDF before they reach disk.
+function assertIsPdfBuffer(input: Buffer): void {
+  if (!Buffer.isBuffer(input)) {
+    throw new Error('pdfEncrypt: input must be a Buffer');
+  }
+  if (input.length === 0 || input.length > MAX_INPUT_BYTES) {
+    throw new Error(`pdfEncrypt: input size out of range (0 < n <= ${MAX_INPUT_BYTES})`);
+  }
+  if (input.length < 5
+    || input[0] !== 0x25 || input[1] !== 0x50 || input[2] !== 0x44
+    || input[3] !== 0x46 || input[4] !== 0x2D) {
+    throw new Error('pdfEncrypt: input does not begin with %PDF- header');
+  }
+}
+
 let qpdfAvailability: 'unknown' | 'present' | 'missing' = 'unknown';
 
 /** Check whether qpdf is on PATH. Cached after the first probe. */
@@ -95,6 +118,7 @@ function buildArgs(opts: EncryptOptions, inPath: string, outPath: string): strin
  * the encrypt operation.
  */
 export async function encryptPdf(input: Buffer, opts: EncryptOptions): Promise<Buffer> {
+  assertIsPdfBuffer(input);
   if (!(await isQpdfAvailable())) {
     const err = new Error('qpdf is not installed on the server. Run `apt install -y qpdf` on the VPS.');
     (err as any).code = 'QPDF_MISSING';
@@ -133,6 +157,7 @@ export async function encryptPdf(input: Buffer, opts: EncryptOptions): Promise<B
  * Useful for re-encrypting with a new policy.
  */
 export async function decryptPdf(input: Buffer, password: string): Promise<Buffer> {
+  assertIsPdfBuffer(input);
   if (!(await isQpdfAvailable())) {
     const err = new Error('qpdf is not installed on the server.');
     (err as any).code = 'QPDF_MISSING';

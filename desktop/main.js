@@ -498,7 +498,11 @@ ipcMain.handle('recon:launch', async () => {
         return { ok: false, error: `Recon Connect is not installed at ${dir}.` };
       }
       const cmd = `cd "${dir}" && source venv/bin/activate && python3 "$(ls hackingtool.py 'recon connect.py' 2>/dev/null | head -1)"`;
-      const appleScript = `tell application "Terminal" to do script "${cmd.replace(/"/g, '\\"')}"`;
+      // Escape backslashes BEFORE double quotes so a literal '\' in the
+      // input cannot pair with the escape we add (e.g. an attacker-supplied
+      // `\` would otherwise turn our `\"` into `\\"`, re-opening the
+      // AppleScript string). Single-pass callback handles both characters.
+      const appleScript = `tell application "Terminal" to do script "${cmd.replace(/[\\"]/g, (c) => '\\' + c)}"`;
       spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
       return { ok: true };
     }
@@ -1113,8 +1117,12 @@ const RECON_TOOLS = {
       const fs = require('fs');
       const os = require('os');
       const path = require('path');
-      const f = path.join(os.tmpdir(), `john-${Date.now()}.hash`);
-      fs.writeFileSync(f, hash + '\n');
+      // Unique unguessable directory — avoids predictable-temp-file races
+      // (an attacker watching os.tmpdir() can't pre-create or symlink the
+      // path because mkdtempSync returns a fresh randomized suffix).
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rmpg-john-'));
+      const f = path.join(dir, 'input.hash');
+      fs.writeFileSync(f, hash + '\n', { mode: 0o600 });
       return ['--format=raw-md5', f];
     },
     platform: ['darwin', 'linux'],
@@ -1768,7 +1776,15 @@ ipcMain.handle('recon:install', async () => {
         `echo "✓ Recon Connect installed at ${dir}"`,
         `echo "You can close this window."`,
       ].join(' && ');
-      const appleScript = `tell application "Terminal" to do script "${script.replace(/"/g, '\\"').replace(/\\/g, '\\\\').replace(/\\\\"/g, '\\"')}"`;
+      // Single-pass escape of backslashes and double quotes for embedding
+      // inside the AppleScript string literal. The previous chained-replace
+      // approach double-escaped its own output (escape `"` -> `\"`, then
+      // escape `\` -> `\\` re-escapes the just-added backslash) and then
+      // tried to undo the damage with a third replace — fragile and
+      // incomplete for inputs that already contain `\`. One callback
+      // visits each char exactly once, so neither character can be
+      // re-escaped after it's been escaped.
+      const appleScript = `tell application "Terminal" to do script "${script.replace(/[\\"]/g, (c) => '\\' + c)}"`;
       spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
       return { ok: true };
     }

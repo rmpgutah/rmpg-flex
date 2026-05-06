@@ -13,6 +13,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken } from '../middleware/auth';
 import { logger } from '../utils/logger';
+import { logSafe } from '../utils/logSafe';
 
 const router = Router();
 router.use(authenticateToken);
@@ -45,7 +46,7 @@ router.post('/ui-trap', (req: Request, res: Response) => {
         notes: payload.notes,
       },
     },
-    `UI_TRAP_CAPTURED user=${username} top=${top}`,
+    `UI_TRAP_CAPTURED user=${logSafe(username)} top=${logSafe(top)}`,
   );
 
   // Persist full payload to SQLite for later analysis

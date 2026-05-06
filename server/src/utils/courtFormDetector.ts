@@ -14,6 +14,8 @@
 // as a court doc).
 // ============================================================
 
+import { boundForRegex } from './regexSafe';
+
 export type CourtFormCategory =
   | 'summons'
   | 'complaint'
@@ -375,6 +377,7 @@ function detectCourtSystem(text: string): CourtSystem {
 }
 
 function extractCourtName(text: string): string | null {
+  text = boundForRegex(text);
   // Try common multi-line patterns first.
   const patterns: RegExp[] = [
     /UNITED\s+STATES\s+DISTRICT\s+COURT[^\n]*\n[^\n]*?(?:DISTRICT|DIVISION)[^\n]*/i,
@@ -391,6 +394,7 @@ function extractCourtName(text: string): string | null {
 }
 
 function detectStateFromText(text: string, courtName: string | null): { code: string | null; name: string | null } {
+  text = boundForRegex(text);
   // 1. Check explicit "State of X" / "Commonwealth of X" / "STATE OF X".
   const explicit = text.match(/(?:STATE|COMMONWEALTH|TERRITORY)\s+OF\s+([A-Z][A-Z .]+?)(?:\s*[,\n)]|$)/i);
   if (explicit) {

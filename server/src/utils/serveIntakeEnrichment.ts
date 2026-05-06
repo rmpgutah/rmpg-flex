@@ -19,6 +19,7 @@
 // ============================================================
 
 import type { getDb } from '../models/database';
+import { boundForRegex } from './regexSafe';
 
 type Db = ReturnType<typeof getDb>;
 
@@ -74,6 +75,7 @@ const UNIT_PATTERNS: RegExp[] = [
 
 export function extractUnitNumber(address: string): string | null {
   if (!address) return null;
+  address = boundForRegex(address);
   for (const re of UNIT_PATTERNS) {
     const m = address.match(re);
     if (m && m[1]) return m[1].toUpperCase();
