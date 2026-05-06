@@ -288,7 +288,50 @@ export const LAYOUT = {
   LINE_HEIGHT:       2.8,    // Base line height for wrapped text (compact)
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
   SIDEBAR_TAB_W:     18,     // Sidebar tab width
+  /**
+   * Brother PJ-700/800 series mobile thermal printers have a hardware-enforced
+   * non-printable zone at the leading edge of each page (~6mm). Setting this
+   * via applyPrintTarget(doc, 'mobile') shifts every page's content origin
+   * down by this amount so headers don't get clipped on continuous-roll
+   * thermal paper. Office laser/inkjet output uses 0 (no shift).
+   */
+  MOBILE_PRINTER_TOP_OFFSET: 6,
 } as const;
+
+// ── Print Target ─────────────────────────────────────────────
+//
+// Two intended printer surfaces:
+//   • 'office' — standard laser/inkjet on letter paper (default)
+//   • 'mobile' — Brother PJ-700/800 mobile thermal printer (in-vehicle).
+//     Adds LAYOUT.MOBILE_PRINTER_TOP_OFFSET mm to every page's content
+//     origin so the leading-edge dead zone doesn't clip headers.
+//
+// The target is stored on the jsPDF doc instance itself (not threaded
+// through every helper signature) so post-`addPage()` y-resets and
+// header drawing functions can read it without API changes everywhere.
+
+export type PrintTarget = 'office' | 'mobile';
+
+/** Tag a jsPDF doc with its intended print target. Idempotent. */
+export function applyPrintTarget(doc: jsPDF, target: PrintTarget): jsPDF {
+  (doc as any).__printTarget = target;
+  return doc;
+}
+
+/** Read the print target from a tagged doc (defaults to 'office'). */
+export function getPrintTarget(doc: jsPDF): PrintTarget {
+  return ((doc as any).__printTarget as PrintTarget) || 'office';
+}
+
+/**
+ * Top Y for content on the current page. Use this instead of
+ * `LAYOUT.PAGE_MARGIN` for the initial draw position AND for the y-reset
+ * that follows every `doc.addPage()`. Returns 10mm for office, 16mm for
+ * mobile. Left/right/bottom margins are unaffected — only the top moves.
+ */
+export function topMarginY(doc: jsPDF): number {
+  return LAYOUT.PAGE_MARGIN + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
+}
 
 // ── Computed Layout Helpers ──────────────────────────────────
 

@@ -44,6 +44,7 @@ import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, re
 import {
   LAYOUT, SPACING, FONT, COLOR, BORDER, PDF_VALUE_FONT, getContentWidth,
   getFullFieldWidth, getLeftX, getRightColumnX, getHalfFieldWidth, formatEnumValue,
+  applyPrintTarget, type PrintTarget,
 } from './pdfTokens';
 import {
   drawNibrsHeader, drawFormSection, drawCautionFlagStrip,
@@ -5227,11 +5228,30 @@ type RecordDataMap = {
   jail_booking: JailBookingPdfData;
 };
 
+/**
+ * Options for record PDF generation.
+ *
+ * @property printTarget — 'office' (default) renders for laser/inkjet on
+ *   letter paper. 'mobile' renders for Brother PJ-700/800 mobile thermal
+ *   printers (continuous-roll, in-vehicle): adds a 6mm top safe-zone so
+ *   the leading-edge dead zone doesn't clip headers. The flag is stored
+ *   on the doc via applyPrintTarget(); generator helpers that draw
+ *   page chrome read it via getPrintTarget()/topMarginY(). Helpers that
+ *   have not yet been migrated will produce the same output as 'office'
+ *   for that section — see the in-progress migration in
+ *   docs/plans/mobile-printer-offset-rollout.md.
+ */
+export interface RecordPdfOptions {
+  printTarget?: PrintTarget;
+}
+
 export async function generateRecordPdf<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
+  options: RecordPdfOptions = {},
 ): Promise<jsPDF> {
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPrintTarget(doc, options.printTarget ?? 'office');
 
   // Set form key for footer form numbers
   setActiveFormKey(recordType);
@@ -5366,6 +5386,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
   identifier?: string,
+  options: RecordPdfOptions = {},
 ) {
   try {
     const branding = await fetchPdfBranding();
@@ -5393,7 +5414,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     setActiveSignature(
       await fetchPdfSignature(recordType, identifier || '', payloadHash) || undefined
     );
-    const doc = await generateRecordPdf(recordType, data);
+    const doc = await generateRecordPdf(recordType, data, options);
     setActiveOfficerSignature(undefined); // clear after generation
     clearActivePayloadHash();
     clearActiveSignature();
@@ -5422,6 +5443,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
 export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
   recordType: T,
   data: RecordDataMap[T],
+  options: RecordPdfOptions = {},
 ): Promise<string> {
   try {
     const branding = await fetchPdfBranding();
@@ -5449,7 +5471,7 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     setActiveSignature(
       await fetchPdfSignature(recordType, '', payloadHash) || undefined
     );
-    const doc = await generateRecordPdf(recordType, data);
+    const doc = await generateRecordPdf(recordType, data, options);
     setActiveOfficerSignature(undefined); // clear after generation
     clearActivePayloadHash();
     clearActiveSignature();
