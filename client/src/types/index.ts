@@ -1445,6 +1445,7 @@ export interface FleetFuelLog {
   created_at: string;
   distance?: number;
   efficiency?: number;
+  partial_fill?: number;
   // Computed efficiency fields from backend
   mpg?: number | null;
   calc_distance?: number | null;

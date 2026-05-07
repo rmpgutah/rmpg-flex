@@ -411,6 +411,7 @@ export default function FleetPage() {
         fuel_type: fuelForm.fuel_type,
         station: fuelForm.station.trim() || null,
         notes: fuelForm.notes.trim() || null,
+        partial_fill: fuelForm.partial_fill,
       };
       if (modal === 'edit_fuel' && editingFuelId) {
         await apiFetch(`/fleet/fuel/${editingFuelId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -614,6 +615,7 @@ export default function FleetPage() {
       fuel_type: log.fuel_type,
       station: log.station || '',
       notes: log.notes || '',
+      partial_fill: !!log.partial_fill,
     });
     setEditingFuelId(log.id);
     setModal('edit_fuel');

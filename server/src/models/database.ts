@@ -3629,6 +3629,7 @@ function migrateSchema(): void {
   addCol('fleet_fuel_logs', 'distance', 'REAL');
   addCol('fleet_fuel_logs', 'efficiency', 'REAL');
   addCol('fleet_fuel_logs', 'source', "TEXT DEFAULT 'manual'");
+  addCol('fleet_fuel_logs', 'partial_fill', 'INTEGER DEFAULT 0');
 
   // ── FLEET — maintenance labor cost tracking ──────────────
   addCol('fleet_maintenance', 'labor_cost', 'REAL');
