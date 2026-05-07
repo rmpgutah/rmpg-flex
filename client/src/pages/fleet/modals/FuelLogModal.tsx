@@ -13,11 +13,13 @@ export interface FuelFormState {
   fuel_type: FuelType;
   station: string;
   notes: string;
+  partial_fill: boolean;
 }
 
 export const EMPTY_FUEL_FORM: FuelFormState = {
   fuel_date: '', gallons: '', cost_per_gallon: '', total_cost: '',
   odometer_reading: '', fuel_type: 'regular', station: '', notes: '',
+  partial_fill: false,
 };
 
 const FUEL_TYPES: { value: FuelType; label: string }[] = [
@@ -134,6 +136,18 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Station</label>
               <input className="input-dark w-full text-[11px] min-h-[36px]" value={form.station}
                 onChange={(e) => setField('station', e.target.value)} placeholder="e.g. Shell - Main St" />
+            </div>
+            <div className="col-span-2 flex items-center gap-2">
+              <input
+                id="partial-fill-check"
+                type="checkbox"
+                className="w-4 h-4 accent-[#d4a017] bg-surface-sunken border-rmpg-700 rounded-sm"
+                checked={form.partial_fill}
+                onChange={(e) => onChange({ ...form, partial_fill: e.target.checked })}
+              />
+              <label htmlFor="partial-fill-check" className="text-[10px] text-rmpg-300 cursor-pointer select-none">
+                Partial Fill <span className="text-rmpg-500">(tank was not filled completely — MPG will be calculated at next full fill)</span>
+              </label>
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
