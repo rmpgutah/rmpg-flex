@@ -39,7 +39,7 @@ class AppUpdater {
     // electron-updater will fetch latest.yml / latest-mac.yml from GitHub
     autoUpdater.setFeedURL({
       provider: 'github',
-      owner: 'rmpgutah',
+      owner: 'Rocky-Mountain-Protective-Group-LLC',
       repo: 'rmpg-flex',
     });
 
