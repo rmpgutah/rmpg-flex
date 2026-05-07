@@ -5642,6 +5642,10 @@ function migrateSchema(): void {
   addCol('warrant_scraper_config', 'avg_parse_count', 'REAL');
   addCol('warrant_scraper_config', 'p95_latency_ms', 'INTEGER');
   addCol('warrant_scraper_config', 'jitter_seed', 'INTEGER');
+  // Warrant poller repair — new columns for circuit recovery + drift detection
+  addCol('warrant_scraper_config', 'recovery_at', 'TEXT');
+  addCol('warrant_scraper_config', 'min_expected_count', 'INTEGER');
+  addCol('warrant_scraper_config', 'last_parsed_count', 'INTEGER');
 
   // Warrant scraper enhancement — Phase 1 runs metrics table
   try {
