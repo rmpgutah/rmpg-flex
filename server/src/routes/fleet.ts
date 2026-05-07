@@ -1635,7 +1635,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
 
     // Fetch ALL fuel logs in chronological order for efficiency calculations
     const allLogs = db.prepare(`
-      SELECT id, fuel_date, gallons, odometer_reading, total_cost, distance
+      SELECT id, fuel_date, gallons, odometer_reading, total_cost, distance, partial_fill
       FROM fleet_fuel_logs
       WHERE vehicle_id = ?
       ORDER BY fuel_date ASC, id ASC
@@ -1643,15 +1643,23 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
     `).all(id) as any[];
 
     // Compute per-entry efficiency: mpg, distance, cost_per_mile, running_avg_mpg
-    const efficiencyMap: Record<number, { mpg: number | null; distance: number | null; cost_per_mile: number | null; running_avg_mpg: number | null }> = {};
+    // Partial fill logic: when a fill-up is partial, we cannot compute accurate MPG
+    // because the tank wasn't filled. We accumulate gallons from partial fills and
+    // compute MPG only at the next full fill-up using total distance / total gallons
+    // since the last full fill.
+    const efficiencyMap: Record<number, { mpg: number | null; distance: number | null; cost_per_mile: number | null; running_avg_mpg: number | null; partial_fill: boolean }> = {};
     let cumulativeMiles = 0;
     let cumulativeGallons = 0;
     let bestMpg: number | null = null;
     let worstMpg: number | null = null;
     let totalDistance = 0;
+    // Track accumulated gallons from partial fills pending the next full fill
+    let pendingPartialGallons = 0;
+    let lastFullFillOdometer: number | null = null;
 
     for (let i = 0; i < allLogs.length; i++) {
       const curr = allLogs[i];
+      const isPartial = curr.partial_fill === 1;
       let dist: number | null = null;
       let mpg: number | null = null;
       let costPerMile: number | null = null;
@@ -1669,14 +1677,44 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
         }
       }
 
-      if (dist != null && dist > 0 && curr.gallons > 0) {
-        mpg = Math.round((dist / curr.gallons) * 10) / 10;
-        cumulativeMiles += dist;
-        cumulativeGallons += curr.gallons;
-        totalDistance += dist;
+      if (isPartial) {
+        // Partial fill: accumulate gallons, don't compute MPG for this entry
+        pendingPartialGallons += curr.gallons;
+        // Still track distance for cumulative stats
+        if (dist != null && dist > 0) {
+          totalDistance += dist;
+          cumulativeMiles += dist;
+          cumulativeGallons += curr.gallons;
+        }
+      } else {
+        // Full fill: compute MPG using accumulated gallons (this fill + any pending partials)
+        const totalGallonsForCalc = curr.gallons + pendingPartialGallons;
 
-        if (bestMpg === null || mpg > bestMpg) bestMpg = mpg;
-        if (worstMpg === null || mpg < worstMpg) worstMpg = mpg;
+        if (dist != null && dist > 0 && totalGallonsForCalc > 0) {
+          // If there were partial fills in between, we need the total distance since last full fill
+          let distForCalc = dist;
+          if (pendingPartialGallons > 0 && curr.odometer_reading != null && lastFullFillOdometer != null) {
+            // Use total distance from last full fill to this full fill
+            const totalDist = curr.odometer_reading - lastFullFillOdometer;
+            if (totalDist > 0) distForCalc = totalDist;
+          }
+
+          mpg = Math.round((distForCalc / totalGallonsForCalc) * 10) / 10;
+          cumulativeMiles += dist;
+          cumulativeGallons += curr.gallons;
+          totalDistance += dist;
+
+          if (bestMpg === null || mpg > bestMpg) bestMpg = mpg;
+          if (worstMpg === null || mpg < worstMpg) worstMpg = mpg;
+        } else if (dist != null && dist > 0) {
+          totalDistance += dist;
+          cumulativeMiles += dist;
+          cumulativeGallons += curr.gallons;
+        }
+
+        // Reset partial accumulator
+        pendingPartialGallons = 0;
+        if (curr.odometer_reading != null) lastFullFillOdometer = curr.odometer_reading;
       }
 
       if (dist != null && dist > 0 && curr.total_cost != null && curr.total_cost > 0) {
@@ -1687,7 +1725,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
         ? Math.round((cumulativeMiles / cumulativeGallons) * 10) / 10
         : null;
 
-      efficiencyMap[curr.id] = { mpg, distance: dist, cost_per_mile: costPerMile, running_avg_mpg: runningAvgMpg };
+      efficiencyMap[curr.id] = { mpg, distance: dist, cost_per_mile: costPerMile, running_avg_mpg: runningAvgMpg, partial_fill: isPartial };
     }
 
     // Compute average MPG from cumulative
@@ -1764,6 +1802,9 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       // 2026-04-14 v2: optional driver + card attribution. Both null-allowed
       // so legacy clients that don't send them continue to work unchanged.
       driver_officer_id, fuel_card_id,
+      // Partial fill: indicates the tank was not filled completely.
+      // MPG calculations accumulate gallons across partial fills until the next full fill.
+      partial_fill,
     } = req.body;
 
     if (!fuel_date || !gallons) {
@@ -1790,8 +1831,8 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       INSERT INTO fleet_fuel_logs (
         vehicle_id, fuel_date, gallons, cost_per_gallon, total_cost,
         odometer_reading, fuel_type, station, notes, created_by, created_at, flags,
-        driver_officer_id, fuel_card_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        driver_officer_id, fuel_card_id, partial_fill
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       fuel_date,
@@ -1807,6 +1848,7 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       flagsJson,
       driver_officer_id || null,
       fuel_card_id || null,
+      partial_fill ? 1 : 0,
     );
 
     // Update vehicle mileage if odometer is higher
@@ -1852,6 +1894,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
       station: v => v ?? null, notes: v => v ?? null,
       // v2 fields — supported in both PUT (explicit edit) and POST (create).
       driver_officer_id: v => v ?? null, fuel_card_id: v => v ?? null,
+      partial_fill: v => v ? 1 : 0,
     };
     for (const [key, transform] of Object.entries(fFieldMap)) {
       if (fBodyKeys.includes(key)) { fFields.push(`${key} = ?`); fValues.push(transform(req.body[key])); }
