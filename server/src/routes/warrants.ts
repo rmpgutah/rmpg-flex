@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
@@ -16,6 +16,17 @@ const router = Router();
 
 // All warrant routes require authentication
 router.use(authenticateToken);
+
+// Guard: skip /:id routes when the param is not a numeric ID.
+// This prevents parameterized routes from shadowing literal-path routes
+// defined later in the file (e.g. /expiring, /summary-report, /person-intel).
+router.param('id', (req: Request, _res: Response, next: NextFunction, value: string) => {
+  if (!/^\d+$/.test(value)) {
+    next('route');
+    return;
+  }
+  next();
+});
 
 // GET /api/warrants - List warrants with filters
 router.get('/', (req: Request, res: Response) => {
@@ -192,7 +203,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/export — Export warrants as CSV
-router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrants = db.prepare(`
@@ -2361,7 +2372,7 @@ router.post('/search-all', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/summary-report — Warrant summary/breakdown report
-router.get('/summary-report', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+router.get('/summary-report', requireRole('dispatcher', 'supervisor', 'admin', 'manager', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { from, to } = req.query;
