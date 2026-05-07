@@ -26,6 +26,7 @@ import { Semaphore } from './semaphore';
 import { broadcast } from './websocket';
 import { alertCircuitBroken, checkParserDrift } from './scraperAlerts';
 import { logSafe } from './logSafe';
+import { asciiFoldName } from './utahWarrantScraper';
 
 // Safe human-readable label for a source — falls back to source_key when the
 // display_name column is NULL or empty. Prevents "[Warrant Scraper] null: fetch
@@ -97,6 +98,19 @@ function resolveJitterMs(sourceKey: string): number {
   return (simpleHash(sourceKey) % 1200) * 1000;
 }
 
+/**
+ * Generate a normalized, stable warrant ID from source + name components.
+ * Applies ASCII folding + uppercase to prevent case/diacritic drift between runs.
+ * The discriminator provides uniqueness when two people share the same name
+ * (case number, issue date, or positional index).
+ */
+export function normalizeWarrantId(sourceKey: string, last: string, first: string, discriminator: string | number): string {
+  const normLast = asciiFoldName(last).toUpperCase().replace(/[^A-Z]/g, '');
+  const normFirst = asciiFoldName(first).toUpperCase().replace(/[^A-Z]/g, '');
+  const disc = String(discriminator).replace(/[^a-zA-Z0-9-]/g, '');
+  return `${sourceKey}-${normLast}-${normFirst}-${disc}`.substring(0, 80);
+}
+
 // ── Interfaces ──────────────────────────────────────────────
 
 export interface WarrantEntry {
@@ -149,6 +163,9 @@ interface WarrantSourceConfig {
   avg_parse_count?: number | null;
   p95_latency_ms?: number | null;
   jitter_seed?: number | null;
+  recovery_at?: string | null;
+  min_expected_count?: number | null;
+  last_parsed_count?: number | null;
 }
 
 // ── Scheduler state ─────────────────────────────────────────
@@ -1438,46 +1455,51 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
 
   const txn = db.transaction(() => {
     for (const entry of entries) {
-      // Check if this warrant already exists (always update existing records)
-      const existing = checkStmt.get(sourceKey, entry.warrant_id);
-      if (existing) {
-        updateStmt.run(
-          entry.full_name, entry.first_name, entry.last_name, entry.middle_name,
-          entry.date_of_birth, entry.age, entry.gender, entry.race, entry.city,
-          entry.charge_description, entry.bail_amount,
-          entry.photo_url, entry.photo_url,
-          now, sourceKey, entry.warrant_id
-        );
-        updated++;
-      } else {
-        // Only INSERT new warrants if the person exists in our database
-        let personId: number | null = null;
-        let dobVerified = 0;
+      try {
+        // Check if this warrant already exists (always update existing records)
+        const existing = checkStmt.get(sourceKey, entry.warrant_id);
+        if (existing) {
+          updateStmt.run(
+            entry.full_name, entry.first_name, entry.last_name, entry.middle_name,
+            entry.date_of_birth, entry.age, entry.gender, entry.race, entry.city,
+            entry.charge_description, entry.bail_amount,
+            entry.photo_url, entry.photo_url,
+            now, sourceKey, entry.warrant_id
+          );
+          updated++;
+        } else {
+          // Only INSERT new warrants if the person exists in our database
+          let personId: number | null = null;
+          let dobVerified = 0;
 
-        if (entry.first_name && entry.last_name) {
-          // Try DOB match first (higher confidence)
-          if (entry.date_of_birth) {
-            const dobMatch = matchPersonDobStmt.get(entry.first_name, entry.last_name, entry.date_of_birth) as any;
-            if (dobMatch) { personId = dobMatch.id; dobVerified = 1; }
+          if (entry.first_name && entry.last_name) {
+            // Try DOB match first (higher confidence)
+            if (entry.date_of_birth) {
+              const dobMatch = matchPersonDobStmt.get(entry.first_name, entry.last_name, entry.date_of_birth) as any;
+              if (dobMatch) { personId = dobMatch.id; dobVerified = 1; }
+            }
+            // Fall back to name-only match
+            if (!personId) {
+              const nameMatch = matchPersonStmt.get(entry.first_name, entry.last_name) as any;
+              if (nameMatch) { personId = nameMatch.id; dobVerified = 0; }
+            }
           }
-          // Fall back to name-only match
-          if (!personId) {
-            const nameMatch = matchPersonStmt.get(entry.first_name, entry.last_name) as any;
-            if (nameMatch) { personId = nameMatch.id; dobVerified = 0; }
-          }
+
+          // Store ALL warrants (national search needs full dataset)
+          // person_id is set if matched to a local person (for alerts)
+
+          insertStmt.run(
+            sourceKey, entry.warrant_id, entry.full_name, entry.first_name, entry.last_name,
+            entry.middle_name, entry.date_of_birth, entry.age, entry.gender, entry.race,
+            entry.city, entry.state, entry.warrant_type, entry.case_number, entry.court_name,
+            entry.issue_date, entry.charge_description, entry.bail_amount, entry.offense_level,
+            entry.photo_url, entry.detail_url, now, now, personId, dobVerified
+          );
+          inserted++;
         }
-
-        // Store ALL warrants (national search needs full dataset)
-        // person_id is set if matched to a local person (for alerts)
-
-        insertStmt.run(
-          sourceKey, entry.warrant_id, entry.full_name, entry.first_name, entry.last_name,
-          entry.middle_name, entry.date_of_birth, entry.age, entry.gender, entry.race,
-          entry.city, entry.state, entry.warrant_type, entry.case_number, entry.court_name,
-          entry.issue_date, entry.charge_description, entry.bail_amount, entry.offense_level,
-          entry.photo_url, entry.detail_url, now, now, personId, dobVerified
-        );
-        inserted++;
+      } catch (entryErr) {
+        // Per-entry error boundary: one bad entry must not rollback the whole batch
+        console.warn(`[Warrant Scraper] upsert skip (${logSafe(sourceKey)}/${logSafe(entry.warrant_id)}): ${logSafe((entryErr as Error).message)}`);
       }
     }
   });
