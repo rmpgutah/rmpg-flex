@@ -615,7 +615,7 @@ export default function FleetPage() {
       fuel_type: log.fuel_type,
       station: log.station || '',
       notes: log.notes || '',
-      partial_fill: !!(log as any).partial_fill,
+      partial_fill: !!log.partial_fill,
     });
     setEditingFuelId(log.id);
     setModal('edit_fuel');

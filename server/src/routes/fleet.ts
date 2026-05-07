@@ -1678,13 +1678,12 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
       }
 
       if (isPartial) {
-        // Partial fill: accumulate gallons, don't compute MPG for this entry
+        // Partial fill: accumulate gallons, don't compute MPG for this entry.
+        // Don't add to cumulativeMiles/cumulativeGallons here — those will be
+        // accounted for when the next full fill resolves the pending partials.
         pendingPartialGallons += curr.gallons;
-        // Still track distance for cumulative stats
         if (dist != null && dist > 0) {
           totalDistance += dist;
-          cumulativeMiles += dist;
-          cumulativeGallons += curr.gallons;
         }
       } else {
         // Full fill: compute MPG using accumulated gallons (this fill + any pending partials)
@@ -1700,8 +1699,8 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
           }
 
           mpg = Math.round((distForCalc / totalGallonsForCalc) * 10) / 10;
-          cumulativeMiles += dist;
-          cumulativeGallons += curr.gallons;
+          cumulativeMiles += distForCalc;
+          cumulativeGallons += totalGallonsForCalc;
           totalDistance += dist;
 
           if (bestMpg === null || mpg > bestMpg) bestMpg = mpg;
@@ -1709,7 +1708,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
         } else if (dist != null && dist > 0) {
           totalDistance += dist;
           cumulativeMiles += dist;
-          cumulativeGallons += curr.gallons;
+          cumulativeGallons += curr.gallons + pendingPartialGallons;
         }
 
         // Reset partial accumulator
