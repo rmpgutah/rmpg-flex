@@ -2130,6 +2130,24 @@ export function scheduleWarrantScraper(): void {
 
   startupTimeout = setTimeout(async () => {
     pruneDeadFederalSources();
+
+    // Auto-reset circuit breakers that have been broken for >24h (stale from server restart)
+    try {
+      const db = getDb();
+      const staleBreakers = db.prepare(`
+        UPDATE warrant_scraper_config
+        SET consecutive_errors = 0, circuit_broken = 0
+        WHERE circuit_broken = 1
+          AND last_scrape_at IS NOT NULL
+          AND julianday('now') - julianday(last_scrape_at) > 1.0
+      `).run();
+      if (staleBreakers.changes > 0) {
+        console.log(`[Warrant Scraper] Auto-reset ${staleBreakers.changes} stale circuit breaker(s) (broken >24h)`);
+      }
+    } catch (e) {
+      console.warn('[Warrant Scraper] Failed to auto-reset stale circuit breakers:', (e as Error).message);
+    }
+
     const configs = getSourceConfigs();
     const enabled = configs.filter(c => c.enabled);
     const disabled = configs.length - enabled.length;
