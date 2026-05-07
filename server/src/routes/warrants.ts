@@ -1762,11 +1762,12 @@ router.post('/:id/archive', (req: Request, res: Response) => {
     if (warrant.archived_at) { res.status(400).json({ error: 'Warrant is already archived', code: 'WARRANT_IS_ALREADY_ARCHIVED' }); return; }
 
     const now = localNow();
-    db.prepare('UPDATE warrants SET archived_at = ? WHERE id = ?').run(now, warrant.id);
+    const userId = req.user!.userId;
+    db.prepare('UPDATE warrants SET archived_at = ?, archived_by = ? WHERE id = ?').run(now, userId, warrant.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'warrant_archived', 'warrant', ?, ?, ?)`).run(
-      req.user!.userId, warrant.id, `Archived warrant ${warrant.warrant_number}`, req.ip || 'unknown');
+      userId, warrant.id, `Archived warrant ${warrant.warrant_number}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
       SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
@@ -1774,6 +1775,8 @@ router.post('/:id/archive', (req: Request, res: Response) => {
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
+
+    broadcast('alerts', 'warrant', { action: 'archived', warrant: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('Archive warrant error:', error);
@@ -1789,7 +1792,7 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
     if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
     if (!warrant.archived_at) { res.status(400).json({ error: 'Warrant is not archived', code: 'WARRANT_IS_NOT_ARCHIVED' }); return; }
 
-    db.prepare('UPDATE warrants SET archived_at = NULL WHERE id = ?').run(warrant.id);
+    db.prepare('UPDATE warrants SET archived_at = NULL, archived_by = NULL WHERE id = ?').run(warrant.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'warrant_unarchived', 'warrant', ?, ?, ?)`).run(
@@ -1801,6 +1804,8 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
+
+    broadcast('alerts', 'warrant', { action: 'unarchived', warrant: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive warrant error:', error);
