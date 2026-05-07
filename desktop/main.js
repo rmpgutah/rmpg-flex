@@ -126,11 +126,39 @@ function getIconPath() {
 }
 
 // ─── Splash Screen ──────────────────────────────────────────
+function getSplashLogoDataUri() {
+  try {
+    const fs = require('fs');
+    const candidates = DEV_MODE
+      ? [
+          path.join(__dirname, '..', 'client', 'public', 'rmpg flex.png'),
+          path.join(__dirname, '..', 'client', 'public', 'RMPG Logo Dark.png'),
+          path.join(__dirname, '..', 'client', 'public', 'rmpg-logo.png'),
+        ]
+      : [
+          path.join(process.resourcesPath, 'rmpg flex.png'),
+          path.join(process.resourcesPath, 'RMPG Logo Dark.png'),
+          path.join(process.resourcesPath, 'icon.png'),
+        ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        const ext = path.extname(p).slice(1).toLowerCase() || 'png';
+        const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+        const b64 = fs.readFileSync(p).toString('base64');
+        return `data:${mime};base64,${b64}`;
+      }
+    }
+  } catch (err) {
+    console.warn('[SPLASH] logo load failed:', err && err.message);
+  }
+  return ''; // Fall back to text logo if image unavailable
+}
+
 function createSplashWindow() {
   if (!app.isReady()) { console.warn('[APP] createSplashWindow called before ready — skipping'); return; }
   splashWindow = new BrowserWindow({
-    width: 420,
-    height: 320,
+    width: 480,
+    height: 380,
     frame: false,
     transparent: true,
     resizable: false,
@@ -143,6 +171,11 @@ function createSplashWindow() {
     },
   });
 
+  const logoUri = getSplashLogoDataUri();
+  const logoMarkup = logoUri
+    ? `<img src="${logoUri}" alt="RMPG Flex" class="logo-img" draggable="false" />`
+    : `<div class="logo-fallback"><span>RMPG</span></div>`;
+
   const splashHTML = `data:text/html;charset=utf-8,${encodeURIComponent(`
     <!DOCTYPE html>
     <html>
@@ -151,72 +184,289 @@ function createSplashWindow() {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          background: #000000;
-          color: #fff;
+          color: #e6e6e6;
+          height: 100vh;
+          overflow: hidden;
+          -webkit-app-region: drag;
+          position: relative;
+          /* Two-layer background: soft gold radial + charcoal base, framed */
+          background:
+            radial-gradient(ellipse at center, rgba(212,160,23,0.10) 0%, rgba(0,0,0,0) 65%),
+            linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
+          border: 1px solid #1a1a1a;
+          border-radius: 6px;
+          box-shadow:
+            inset 0 0 0 1px rgba(212,160,23,0.18),
+            0 0 0 1px rgba(0,0,0,0.5),
+            0 18px 40px rgba(0,0,0,0.6);
+        }
+        /* Subtle drifting grid */
+        body::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px,
+            linear-gradient(90deg, rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px;
+          mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+          -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+          pointer-events: none;
+          animation: grid-drift 22s linear infinite;
+        }
+        @keyframes grid-drift {
+          0%   { background-position: 0 0, 0 0; }
+          100% { background-position: 32px 32px, 32px 32px; }
+        }
+        /* HUD corner brackets */
+        .corner {
+          position: absolute;
+          width: 18px;
+          height: 18px;
+          pointer-events: none;
+          opacity: 0.85;
+          animation: corner-pulse 3.6s ease-in-out infinite;
+        }
+        .corner::before, .corner::after {
+          content: '';
+          position: absolute;
+          background: #d4a017;
+          box-shadow: 0 0 6px rgba(212,160,23,0.5);
+        }
+        .corner::before { top: 0; left: 0; width: 12px; height: 1.5px; }
+        .corner::after  { top: 0; left: 0; width: 1.5px; height: 12px; }
+        .corner.tl { top: 10px; left: 10px; }
+        .corner.tr { top: 10px; right: 10px; transform: scaleX(-1); }
+        .corner.bl { bottom: 10px; left: 10px; transform: scaleY(-1); }
+        .corner.br { bottom: 10px; right: 10px; transform: scale(-1); }
+        @keyframes corner-pulse {
+          0%, 100% { opacity: 0.55; }
+          50% { opacity: 1; }
+        }
+        /* Layout */
+        .stage {
+          position: relative;
+          z-index: 1;
+          height: 100%;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          height: 100vh;
-          border: 1px solid #333;
-          border-radius: 12px;
-          overflow: hidden;
-          -webkit-app-region: drag;
+          padding: 28px 24px 20px;
         }
-        .logo {
-          width: 100px;
-          height: 100px;
-          border: 3px solid #5a5a5a;
+        /* Logo block with rotating ring + pulse aura */
+        .logo-wrap {
+          position: relative;
+          width: 132px;
+          height: 132px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 18px;
+        }
+        .logo-wrap::before {
+          /* Pulse aura behind logo */
+          content: '';
+          position: absolute;
+          inset: -8px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(212,160,23,0.35) 0%, rgba(212,160,23,0) 65%);
+          filter: blur(4px);
+          animation: aura-pulse 2.6s ease-in-out infinite;
+        }
+        .logo-wrap::after {
+          /* Rotating gold arc ring */
+          content: '';
+          position: absolute;
+          inset: -2px;
+          border-radius: 50%;
+          background: conic-gradient(from 0deg,
+            rgba(212,160,23,0) 0deg,
+            rgba(212,160,23,0.05) 30deg,
+            rgba(212,160,23,0.95) 70deg,
+            rgba(212,160,23,0.05) 110deg,
+            rgba(212,160,23,0) 140deg,
+            rgba(212,160,23,0) 360deg);
+          mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
+          -webkit-mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
+          animation: ring-spin 2.8s linear infinite;
+        }
+        @keyframes aura-pulse {
+          0%, 100% { opacity: 0.5; transform: scale(0.95); }
+          50%      { opacity: 1;   transform: scale(1.08); }
+        }
+        @keyframes ring-spin {
+          to { transform: rotate(360deg); }
+        }
+        .logo-img {
+          position: relative;
+          z-index: 2;
+          width: 96px;
+          height: 96px;
+          object-fit: contain;
+          filter: drop-shadow(0 0 12px rgba(212,160,23,0.45));
+          animation: logo-float 6s ease-in-out infinite;
+        }
+        .logo-fallback {
+          position: relative;
+          z-index: 2;
+          width: 96px;
+          height: 96px;
+          border: 2px solid #d4a017;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 20px;
         }
-        .logo-text {
-          font-size: 28px;
+        .logo-fallback span {
+          font-size: 26px;
           font-weight: 900;
-          color: #d7d7d7;
           letter-spacing: 2px;
+          color: #d4a017;
         }
+        @keyframes logo-float {
+          0%, 100% { transform: translateY(0); }
+          50%      { transform: translateY(-3px); }
+        }
+        /* Title block */
         h1 {
-          font-size: 20px;
-          font-weight: 700;
-          letter-spacing: 3px;
+          font-size: 18px;
+          font-weight: 800;
+          letter-spacing: 6px;
           text-transform: uppercase;
-          margin-bottom: 6px;
+          color: #f0f0f0;
+          margin-bottom: 5px;
+          text-shadow: 0 0 12px rgba(212,160,23,0.25);
         }
         .subtitle {
-          font-size: 11px;
+          font-size: 9px;
           color: #888;
           text-transform: uppercase;
-          letter-spacing: 2px;
-          margin-bottom: 30px;
+          letter-spacing: 4px;
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
-        .spinner {
-          width: 28px;
-          height: 28px;
-          border: 3px solid #333;
-          border-top: 3px solid #d7d7d7;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-          margin-bottom: 12px;
+        .subtitle::before, .subtitle::after {
+          content: '';
+          height: 1px;
+          width: 22px;
+          background: linear-gradient(90deg, transparent, #d4a017, transparent);
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Indeterminate progress bar */
+        .progress-track {
+          position: relative;
+          width: 240px;
+          height: 3px;
+          background: rgba(212,160,23,0.10);
+          border-radius: 1px;
+          overflow: hidden;
+          margin-bottom: 14px;
+          box-shadow: inset 0 0 0 1px rgba(212,160,23,0.18);
+        }
+        .progress-bar {
+          position: absolute;
+          top: 0;
+          left: -40%;
+          width: 40%;
+          height: 100%;
+          background: linear-gradient(90deg,
+            rgba(212,160,23,0) 0%,
+            rgba(212,160,23,0.5) 35%,
+            rgba(212,160,23,1) 50%,
+            rgba(212,160,23,0.5) 65%,
+            rgba(212,160,23,0) 100%);
+          box-shadow: 0 0 8px rgba(212,160,23,0.6);
+          animation: progress-slide 1.6s ease-in-out infinite;
+        }
+        @keyframes progress-slide {
+          0%   { left: -40%; }
+          100% { left: 100%; }
+        }
+        /* Status line */
         .status {
-          font-size: 10px;
-          color: #666;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 9px;
+          color: #b8924a;
           text-transform: uppercase;
-          letter-spacing: 1px;
+          letter-spacing: 2.5px;
+        }
+        .status .dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #d4a017;
+          box-shadow: 0 0 6px #d4a017;
+          animation: status-blink 1.6s ease-in-out infinite;
+        }
+        @keyframes status-blink {
+          0%, 100% { opacity: 0.3; }
+          50%      { opacity: 1; }
+        }
+        .status .ellipsis::after {
+          content: '';
+          display: inline-block;
+          width: 12px;
+          text-align: left;
+          animation: ellipsis 1.4s steps(4, end) infinite;
+        }
+        @keyframes ellipsis {
+          0%   { content: ''; }
+          25%  { content: '.'; }
+          50%  { content: '..'; }
+          75%  { content: '...'; }
+          100% { content: ''; }
+        }
+        /* Version badge bottom */
+        .version {
+          position: absolute;
+          bottom: 12px;
+          right: 14px;
+          font-size: 8px;
+          letter-spacing: 2px;
+          color: rgba(212,160,23,0.55);
+          text-transform: uppercase;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        .build-tag {
+          position: absolute;
+          bottom: 12px;
+          left: 14px;
+          font-size: 8px;
+          letter-spacing: 2px;
+          color: rgba(255,255,255,0.25);
+          text-transform: uppercase;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         }
       </style>
     </head>
     <body>
-      <div class="logo"><span class="logo-text">RMPG</span></div>
-      <h1>RMPG Flex</h1>
-      <p class="subtitle">CAD / RMS Dispatch System</p>
-      <div class="spinner"></div>
-      <p class="status">Connecting to server...</p>
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+
+      <div class="stage">
+        <div class="logo-wrap">
+          ${logoMarkup}
+        </div>
+        <h1>RMPG Flex</h1>
+        <p class="subtitle">CAD &middot; RMS Dispatch System</p>
+
+        <div class="progress-track">
+          <div class="progress-bar"></div>
+        </div>
+
+        <div class="status">
+          <span class="dot"></span>
+          <span>Establishing Secure Uplink<span class="ellipsis"></span></span>
+        </div>
+      </div>
+
+      <div class="build-tag">RMPG-PRIMARY</div>
+      <div class="version">v${app.getVersion ? app.getVersion() : '5.8.2'}</div>
     </body>
     </html>
   `)}`;

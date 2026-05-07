@@ -40,6 +40,10 @@
       {
         "from": "../client/public/rmpg-seal.png",
         "to": "icon.png"
+      },
+      {
+        "from": "../client/public/rmpg flex.png",
+        "to": "rmpg flex.png"
       }
     ],
     "mac": {
