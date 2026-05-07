@@ -9,16 +9,27 @@ import type { CallForService, Unit, CallNote } from '../../../types';
  * Map a raw calls_for_service DB row to a CallForService frontend object.
  */
 export function mapDbCall(row: any): CallForService {
-  // Notes: backend stores as single string; we parse or wrap
+  // Notes: backend stores as single string; we parse or wrap.
+  // Defensive: handle the case where row.notes is already an array (e.g. a
+  // pre-mapped call passed through mapDbCall again via a websocket re-map).
+  // Without this guard, JSON.parse(array) throws, the catch fallback puts the
+  // whole array into the `text` field, and the renderer eventually tries to
+  // render a CallNote object as a JSX child → React error #31.
   let notes: CallNote[] = [];
   if (row.notes) {
-    try {
-      const parsed = JSON.parse(row.notes);
-      if (Array.isArray(parsed)) notes = parsed;
-      else notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
-    } catch {
-      notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
+    if (Array.isArray(row.notes)) {
+      notes = row.notes as CallNote[];
+    } else if (typeof row.notes === 'string') {
+      try {
+        const parsed = JSON.parse(row.notes);
+        if (Array.isArray(parsed)) notes = parsed;
+        else notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
+      } catch {
+        notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
+      }
     }
+    // Any other shape (object, number, etc.) is silently dropped — better an
+    // empty notes panel than a hard crash.
   }
 
   // assigned_unit_ids -> assigned_units (call signs)
