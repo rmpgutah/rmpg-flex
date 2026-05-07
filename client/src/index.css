@@ -593,17 +593,181 @@ body.fx-noise::after {
   position: fixed;
   inset: 0;
   z-index: 0;
-  background: #0a0a0a;
-  background-size: 40px 40px;
-  animation: login-grid-drift 20s linear infinite;
+  /* Transparent grid so globe shows through */
+  background:
+    linear-gradient(rgba(212, 160, 23, 0.045) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgba(212, 160, 23, 0.045) 1px, transparent 1px) 0 0 / 48px 48px;
+  animation: login-grid-drift 28s linear infinite;
   pointer-events: none;
+  mask-image: radial-gradient(ellipse at center, black 25%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 25%, transparent 80%);
 }
 
-/* Login input focus glow */
+/* Login input focus glow — gold halo */
 .login-input-glow:focus {
-  border-color: #888888 !important;
-  box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.3), 0 0 12px rgba(136, 136, 136, 0.15);
+  border-color: #d4a017 !important;
+  box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.45), 0 0 16px rgba(212, 160, 23, 0.22);
 }
+
+/* ── Login HUD chrome ─────────────────────────────────────── */
+@keyframes login-scanline {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+.login-scanline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+  mix-blend-mode: screen;
+}
+.login-scanline::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 140px;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(212, 160, 23, 0.025) 45%,
+    rgba(212, 160, 23, 0.06) 50%,
+    rgba(212, 160, 23, 0.025) 55%,
+    transparent 100%);
+  animation: login-scanline 9s linear infinite;
+}
+
+@keyframes login-corner-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1;    }
+}
+
+.login-corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+  z-index: 3;
+  animation: login-corner-pulse 3.6s ease-in-out infinite;
+}
+.login-corner::before,
+.login-corner::after {
+  content: '';
+  position: absolute;
+  background: #d4a017;
+  box-shadow: 0 0 6px rgba(212, 160, 23, 0.5);
+}
+.login-corner.tl { top: 16px; left: 16px; }
+.login-corner.tr { top: 16px; right: 16px; transform: scaleX(-1); }
+.login-corner.bl { bottom: 16px; left: 16px; transform: scaleY(-1); }
+.login-corner.br { bottom: 16px; right: 16px; transform: scale(-1); }
+.login-corner::before { top: 0; left: 0; width: 16px; height: 1.5px; }
+.login-corner::after  { top: 0; left: 0; width: 1.5px; height: 16px; }
+
+@keyframes login-badge-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+@keyframes login-badge-glow {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(212, 160, 23, 0.25)); }
+  50%      { filter: drop-shadow(0 0 22px rgba(212, 160, 23, 0.45)); }
+}
+.login-badge-anim {
+  animation: login-badge-float 6s ease-in-out infinite, login-badge-glow 4s ease-in-out infinite;
+}
+
+/* Animated gold border on the form card */
+@keyframes login-card-border {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.login-card-frame {
+  position: relative;
+  border-radius: 2px;
+}
+.login-card-frame::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: 2px;
+  background: linear-gradient(90deg,
+    rgba(212, 160, 23, 0.05) 0%,
+    rgba(212, 160, 23, 0.55) 25%,
+    rgba(212, 160, 23, 0.85) 50%,
+    rgba(212, 160, 23, 0.55) 75%,
+    rgba(212, 160, 23, 0.05) 100%);
+  background-size: 200% 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: login-card-border 6s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Radar sweep behind badge */
+@keyframes login-radar-sweep {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.login-radar {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 0;
+}
+.login-radar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 160, 23, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(212, 160, 23, 0.06),
+    inset 0 0 60px rgba(212, 160, 23, 0.06);
+}
+.login-radar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(212, 160, 23, 0.35) 30deg, transparent 60deg);
+  animation: login-radar-sweep 4.5s linear infinite;
+  mask: radial-gradient(circle, transparent 0%, black 35%, transparent 75%);
+  -webkit-mask: radial-gradient(circle, transparent 0%, black 35%, transparent 75%);
+}
+
+/* HUD readout side-panel chrome */
+.login-hud-panel {
+  background: linear-gradient(180deg, rgba(20, 20, 20, 0.65) 0%, rgba(8, 8, 8, 0.85) 100%);
+  border: 1px solid rgba(212, 160, 23, 0.18);
+  border-left: 2px solid #d4a017;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.login-hud-readout {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+}
+
+@keyframes login-data-flicker {
+  0%, 100% { opacity: 1; }
+  47%      { opacity: 1; }
+  48%      { opacity: 0.4; }
+  49%      { opacity: 1; }
+  92%      { opacity: 1; }
+  93%      { opacity: 0.55; }
+  94%      { opacity: 1; }
+}
+.login-data-flicker { animation: login-data-flicker 8s steps(1, end) infinite; }
 
 /* --- LED Indicator Animations (Spillman Flex) --- */
 @keyframes led-blink {
