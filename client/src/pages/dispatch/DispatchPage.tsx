@@ -2279,7 +2279,7 @@ export default function DispatchPage() {
                             <span className="font-bold">{note.author || 'System'}</span>
                             <span className="font-mono">{formatTime(note.timestamp)}</span>
                           </div>
-                          <div className="text-rmpg-200 mt-0.5">{note.text}</div>
+                          <div className="text-rmpg-200 mt-0.5">{typeof note.text === 'string' ? note.text : String(note.text ?? '')}</div>
                         </div>
                       ))}
                     </div>
@@ -5094,7 +5094,7 @@ export default function DispatchPage() {
                           </div>
                         ) : (
                           <>
-                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
+                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(typeof note.text === 'string' ? note.text : String(note.text ?? ''))}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
                                 <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
