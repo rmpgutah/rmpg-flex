@@ -95,7 +95,10 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
           transition: 'box-shadow 0.3s ease',
           position: 'relative',
         }}
+        role="button"
+        tabIndex={0}
         onClick={() => { if (mapInstance) { mapInstance.setHeading?.(0); mapInstance.setTilt?.(0); } }}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); if (mapInstance) { mapInstance.setHeading?.(0); mapInstance.setTilt?.(0); } } }}
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
       >

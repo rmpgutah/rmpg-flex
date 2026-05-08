@@ -1060,8 +1060,12 @@ export default function MapPage() {
 
       infoWindowRef.current = new google.maps.InfoWindow();
 
-      // Cursor coordinate tracking (desktop only)
+      // Cursor coordinate tracking (desktop only) — throttled to ~30fps
+      let lastCoordUpdate = 0;
       map.addListener('mousemove', (e: google.maps.MapMouseEvent) => {
+        const now = Date.now();
+        if (now - lastCoordUpdate < 33) return; // ~30fps throttle
+        lastCoordUpdate = now;
         if (e.latLng) setCursorCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
       });
       map.getDiv().addEventListener('mouseleave', () => setCursorCoords(null));
