@@ -8,13 +8,17 @@
 // back to a compact Leaflet map using pre-cached offline tiles.
 // ============================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize2, MapPin, RefreshCw, Radar, Wifi, WifiOff } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Maximize2, MapPin, RefreshCw, Navigation } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
 import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
-import type { CallForService, Unit } from '../types';
+import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
+import type { CallForService, Unit, UnitStatus } from '../types';
+
+/** Priority color mapping — uses shared PRIORITY_HEX tokens */
+const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
 
 interface DispatchMiniMapProps {
   call: CallForService | null;
@@ -29,70 +33,88 @@ interface DispatchMiniMapProps {
 const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
 const MINI_ZOOM = 15;
 
-// Inject pulse keyframes once
-function injectPulseStyle() {
-  if (document.querySelector('style[data-rmpg-minimap-anim]')) return;
-  const style = document.createElement('style');
-  style.setAttribute('data-rmpg-minimap-anim', 'true');
-  style.textContent = `
-    @keyframes rmpg-call-pulse {
-      0% { transform:scale(1); opacity:0.7; }
-      100% { transform:scale(2.2); opacity:0; }
-    }
-    @keyframes rmpg-radar-sweep {
-      0% { transform:rotate(0deg); }
-      100% { transform:rotate(360deg); }
-    }
-    @keyframes rmpg-eta-fill {
-      0% { width:0%; }
-      100% { width:100%; }
-    }
-  `;
-  document.head.appendChild(style);
-}
+/** Build a call marker DOM element with priority-colored badge */
+function buildCallMarker(label: string, priority?: string): HTMLElement {
+  const color = MINI_PRIORITY_COLORS[priority || ''] || '#ef4444';
+  const isP1 = priority === 'P1';
+  const isP2 = priority === 'P2';
 
-/** Build a call marker DOM element (red label with pulsing ring + caret) */
-function buildCallMarker(label: string): HTMLElement {
-  injectPulseStyle();
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;position:relative;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6));';
 
-  // Pulsing ring behind marker
-  const pulse = document.createElement('div');
-  pulse.style.cssText =
-    'position:absolute;top:50%;left:50%;width:16px;height:16px;' +
-    'border:2px solid rgba(239,68,68,0.6);border-radius:50%;' +
-    'transform:translate(-50%,-50%);' +
-    'animation:rmpg-call-pulse 1.8s ease-out infinite;pointer-events:none;';
-  wrapper.appendChild(pulse);
+  // Priority pulse animation for P1/P2
+  if (isP1 || isP2) {
+    wrapper.style.animation = isP1 ? 'minimap-pulse 1.2s ease-in-out infinite' : 'minimap-pulse 2.5s ease-in-out infinite';
+  }
 
   const tag = document.createElement('div');
   tag.style.cssText =
-    'background:#ef4444;color:#fff;font-size:7px;font-weight:900;' +
-    "padding:1px 3px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;" +
-    'letter-spacing:0.03em;box-shadow:0 1px 6px rgba(239,68,68,0.5);position:relative;z-index:1;';
-  tag.textContent = label;
+    `background:${color};color:#fff;font-size:7px;font-weight:900;` +
+    "padding:2px 4px;border:1.5px solid rgba(255,255,255,0.9);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;" +
+    `box-shadow:0 0 8px ${color}50, inset 0 1px 0 rgba(255,255,255,0.15);display:flex;align-items:center;gap:3px;border-radius:1px;`;
+
+  // Priority badge
+  if (priority) {
+    const priBadge = document.createElement('span');
+    priBadge.style.cssText = 'font-size:6px;opacity:0.85;letter-spacing:0.5px;';
+    priBadge.textContent = priority;
+    tag.appendChild(priBadge);
+
+    const sep = document.createElement('span');
+    sep.style.cssText = 'opacity:0.4;font-size:5px;';
+    sep.textContent = '\u00b7';
+    tag.appendChild(sep);
+  }
+
+  const labelSpan = document.createElement('span');
+  labelSpan.textContent = label;
+  tag.appendChild(labelSpan);
 
   const caret = document.createElement('div');
   caret.style.cssText =
-    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;' +
-    'border-top:6px solid #ef4444;position:relative;z-index:1;';
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};`;
 
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
   return wrapper;
 }
 
-/** Build a unit marker DOM element (status-tinted chip with glow) */
-function buildUnitMarker(callSign: string): HTMLElement {
-  const el = document.createElement('div');
-  el.style.cssText =
-    'background:linear-gradient(180deg,#2a2a2a,#1a1a1a);color:#e0e0e0;font-size:8px;font-weight:900;' +
-    "padding:1px 5px;border:1px solid #d4a01780;white-space:nowrap;font-family:'JetBrains Mono',monospace;" +
-    'border-radius:2px;box-shadow:0 0 6px rgba(212,160,23,0.25),0 2px 4px rgba(0,0,0,0.5);' +
-    'letter-spacing:0.03em;';
-  el.textContent = callSign;
-  return el;
+/** Build a unit marker DOM element with status-colored indicator */
+function buildUnitMarker(callSign: string, status?: UnitStatus): HTMLElement {
+  const color = UNIT_STATUS_HEX[status || 'available'] || '#888888';
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.5));';
+
+  const tag = document.createElement('div');
+  tag.style.cssText =
+    `background:${color};color:#fff;font-size:8px;font-weight:900;` +
+    "padding:2px 5px;border:1.5px solid rgba(255,255,255,0.8);white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:1px;" +
+    `box-shadow:0 0 6px ${color}40, inset 0 1px 0 rgba(255,255,255,0.12);display:flex;align-items:center;gap:2px;`;
+
+  const csSpan = document.createElement('span');
+  csSpan.textContent = callSign;
+  tag.appendChild(csSpan);
+
+  // Tiny caret pointing down
+  const caret = document.createElement('div');
+  caret.style.cssText =
+    `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};`;
+
+  wrapper.appendChild(tag);
+  wrapper.appendChild(caret);
+  return wrapper;
+}
+
+/** Inject minimap-specific keyframe animation (idempotent) */
+function injectMinimapKeyframes() {
+  if (document.getElementById('minimap-keyframes')) return;
+  const style = document.createElement('style');
+  style.id = 'minimap-keyframes';
+  style.textContent = `
+    @keyframes minimap-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: 0.9; } }
+  `;
+  document.head.appendChild(style);
 }
 
 export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
@@ -105,6 +127,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const [tilesStalled, setTilesStalled] = useState(false);
   const [gmapsRetry, setGmapsRetry] = useState(0);
   const tileMonitorRef = useRef<(() => void) | null>(null);
+  const [mapHeading, setMapHeading] = useState(0);
+  const headingListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+
+  // Inject keyframes on mount
+  useEffect(() => { injectMinimapKeyframes(); }, []);
 
   const visibleUnitCount = useMemo(() =>
     units.filter(u =>
@@ -192,6 +219,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       mapRef.current = map;
       registerMapInstance(map);
 
+      // Track heading for compass indicator
+      headingListenerRef.current = google.maps.event.addListener(map, 'heading_changed', () => {
+        setMapHeading(map.getHeading?.() || 0);
+      });
+
       // Monitor tile loading for vehicle WiFi resilience
       if (tileMonitorRef.current) tileMonitorRef.current();
       tileMonitorRef.current = monitorTileLoading(map, {
@@ -237,13 +269,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       return overlay;
     };
 
-    // Call marker (red pin)
+    // Call marker (priority-colored pin)
     if (call?.latitude != null && call?.longitude != null && mapRef.current) {
-      const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL'), 100);
+      const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL', (call as any).priority), 100);
       markersRef.current.push(m);
     }
 
-    // Assigned unit markers (blue dots)
+    // Assigned unit markers (status-colored)
     // assigned_units contains numeric unit IDs as strings (from mapDbCall parsing assigned_unit_ids)
     const assignedUnits = units.filter(u =>
       call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
@@ -251,7 +283,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
     for (const unit of assignedUnits) {
       if (mapRef.current) {
-        const m = createOverlay(mapRef.current, { lat: unit.latitude!, lng: unit.longitude! }, buildUnitMarker(unit.call_sign), 50);
+        const m = createOverlay(mapRef.current, { lat: unit.latitude!, lng: unit.longitude! }, buildUnitMarker(unit.call_sign, (unit as any).status), 50);
         markersRef.current.push(m);
       }
     }
@@ -305,13 +337,18 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
   }, [activeRoute, onRouteUpdate]);
 
-  // Cleanup: unregister map instance + tile monitor on unmount
+  // Cleanup: unregister map instance + tile monitor + heading listener on unmount
   useEffect(() => {
     return () => {
       if (tileMonitorRef.current) { tileMonitorRef.current(); tileMonitorRef.current = null; }
+      if (headingListenerRef.current) { google.maps.event.removeListener(headingListenerRef.current); headingListenerRef.current = null; }
       if (mapRef.current) unregisterMapInstance(mapRef.current);
     };
   }, []);
+
+  // Derive assigned unit count for status display
+  const assignedUnits = units.filter(u => call?.assigned_units?.includes(String(u.id)));
+  const assignedWithGpsCount = assignedUnits.filter(u => u.latitude != null && u.longitude != null).length;
 
   // ── Map error placeholder (sole error surface) ──
   if (isAuthError) {
@@ -322,43 +359,52 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     );
   }
 
+  const priorityColor = MINI_PRIORITY_COLORS[(call as any)?.priority] || '#888888';
+
   return (
     <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141414' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
         pointerEvents: 'none',
       }}>
-        <div style={{
-          background: 'rgba(0,0,0,0.85)', pointerEvents: 'auto',
-          padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
-          border: '1px solid #141414', borderRadius: 2,
-        }}>
-          <Radar style={{
-            width: 10, height: 10, color: '#d4a017',
-            animation: 'rmpg-radar-sweep 3s linear infinite',
-          }} />
-          <span style={{
-            fontSize: 8, fontWeight: 900, color: '#d4a017',
-            fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.06em',
-          }}>
-            {call?.call_number || 'TACT-MAP'}
-          </span>
-          {visibleUnitCount > 0 && (
-            <span style={{
-              fontSize: 7, color: '#888', fontFamily: "'JetBrains Mono', monospace",
-              borderLeft: '1px solid #333', paddingLeft: 4,
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, pointerEvents: 'auto' }}>
+          {/* Title badge with priority accent */}
+          <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5"
+            style={{
+              background: 'rgba(0,0,0,0.8)',
+              backdropFilter: 'blur(4px)',
+              borderLeft: `2px solid ${priorityColor}`,
+              color: '#aaaaaa',
+              fontFamily: "'JetBrains Mono', monospace",
+              display: 'flex', alignItems: 'center', gap: 3,
             }}>
-              {visibleUnitCount}U
+            <MapPin style={{ width: 8, height: 8, color: priorityColor }} />
+            Mini-Map
+            {(call as any)?.priority && (
+              <span style={{ fontSize: 7, color: priorityColor, fontWeight: 900 }}>{(call as any).priority}</span>
+            )}
+          </span>
+          {/* Unit count badge */}
+          {assignedUnits.length > 0 && (
+            <span className="text-[7px] font-bold px-1.5 py-0.5"
+              style={{
+                background: 'rgba(0,0,0,0.8)',
+                backdropFilter: 'blur(4px)',
+                color: '#666666',
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+              {assignedWithGpsCount}/{assignedUnits.length} UNITS
+              {assignedWithGpsCount > 0 && <span style={{ color: '#22c55e', marginLeft: 3 }}>●</span>}
             </span>
           )}
         </div>
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
-            className="text-rmpg-400 hover:text-white"
-            style={{ background: 'rgba(0,0,0,0.85)', padding: '2px 4px', border: '1px solid #141414', cursor: 'pointer', borderRadius: 2 }}
+            className="text-rmpg-400 hover:text-white transition-colors"
+            style={{ background: 'rgba(0,0,0,0.8)', padding: '3px 5px', border: 'none', cursor: 'pointer', backdropFilter: 'blur(4px)' }}
             title="Open full map"
           >
             <Maximize2 style={{ width: 10, height: 10 }} />
@@ -366,8 +412,8 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {onClose && (
             <button type="button"
               onClick={onClose}
-              className="text-rmpg-400 hover:text-white"
-              style={{ background: 'rgba(0,0,0,0.85)', padding: '2px 4px', border: '1px solid #141414', cursor: 'pointer', borderRadius: 2 }}
+              className="text-rmpg-400 hover:text-white transition-colors"
+              style={{ background: 'rgba(0,0,0,0.8)', padding: '3px 5px', border: 'none', cursor: 'pointer', backdropFilter: 'blur(4px)' }}
               title="Close mini-map"
             >
               ✕
@@ -376,34 +422,44 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         </div>
       </div>
 
-      {/* Route ETA badge (bottom-left) */}
+      {/* Compass indicator (top-right, below buttons) */}
+      {loaded && mapHeading !== 0 && (
+        <div style={{
+          position: 'absolute', top: 36, right: 4, zIndex: 10,
+          pointerEvents: 'none',
+        }}>
+          <div style={{
+            width: 24, height: 24, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.8)',
+            border: '1px solid #2b2b2b',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)',
+          }}>
+            <svg width="16" height="16" viewBox="0 0 16 16"
+              style={{ transform: `rotate(${-mapHeading}deg)`, transition: 'transform 0.3s ease' }}>
+              <polygon points="8,2 6.5,9 8,7.5 9.5,9" fill="#d4a017" />
+              <polygon points="8,14 6.5,7 8,8.5 9.5,7" fill="#555555" />
+              <text x="8" y="1.5" textAnchor="middle" fill="#d4a017" fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
+            </svg>
+          </div>
+        </div>
+      )}
+
+      {/* Route ETA badge (bottom-left) — enhanced */}
       {activeRoute && (
         <div style={{
           position: 'absolute', bottom: 4, left: 4, zIndex: 10,
-          background: 'rgba(0,0,0,0.92)', borderLeft: '2px solid #d4a017',
-          border: '1px solid #1a1a1a', borderRadius: 2,
-          padding: '3px 8px 5px 8px', display: 'flex', flexDirection: 'column', gap: 2,
-          minWidth: 80,
+          background: 'rgba(0,0,0,0.92)', border: '1px solid #88888830',
+          backdropFilter: 'blur(4px)',
+          padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 6,
+          borderLeft: '2px solid #22c55e',
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <MapPin style={{ width: 7, height: 7, color: '#d4a017', flexShrink: 0 }} />
-            <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
-              {activeRoute.unitCallSign}→{activeRoute.callNumber}
-            </span>
-            <span style={{ fontSize: 9, color: '#fff', fontWeight: 900, marginLeft: 'auto' }}>{activeRoute.eta}</span>
-          </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
-            <div style={{
-              flex: 1, height: 2, background: '#1a1a1a', borderRadius: 1, overflow: 'hidden',
-            }}>
-              <div style={{
-                height: '100%', background: 'linear-gradient(90deg, #d4a017, #ef4444)',
-                animation: 'rmpg-eta-fill 8s ease-in-out infinite alternate',
-                borderRadius: 1,
-              }} />
-            </div>
-            <span style={{ fontSize: 7, color: '#555', fontFamily: "'JetBrains Mono', monospace" }}>{activeRoute.distance}</span>
-          </div>
+          <Navigation style={{ width: 8, height: 8, color: '#22c55e', transform: 'rotate(45deg)' }} />
+          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+            {activeRoute.unitCallSign}→{activeRoute.callNumber}
+          </span>
+          <span style={{ fontSize: 10, color: '#fff', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>{activeRoute.eta}</span>
+          <span style={{ fontSize: 8, color: '#666666', fontFamily: "'JetBrains Mono', monospace" }}>{activeRoute.distance}</span>
         </div>
       )}
 
@@ -461,7 +517,8 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.9)', border: '1px solid #f59e0b40',
+            background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
+            backdropFilter: 'blur(4px)',
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
             borderRadius: 2,
           }}>

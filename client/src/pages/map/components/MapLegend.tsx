@@ -149,13 +149,21 @@ export default function MapLegend({ layers, showBreadcrumbs, breadcrumbColorMode
               Breadcrumbs: {breadcrumbColorMode === 'unit' ? 'By Unit' : breadcrumbColorMode === 'speed' ? 'By Speed' : 'By Status'}
             </div>
             {breadcrumbColorMode === 'speed' && (
-              <div className="space-y-0.5">
-                {SPEED_GRADIENT.map((s) => (
-                  <div key={s.label} className="flex items-center gap-1.5">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
-                    <span className="text-[9px] font-mono text-rmpg-200">{s.label}</span>
-                  </div>
-                ))}
+              <div className="space-y-1">
+                {/* Gradient bar visualization */}
+                <div style={{
+                  height: 6,
+                  borderRadius: 1,
+                  background: 'linear-gradient(90deg, #22c55e 0%, #eab308 40%, #f97316 70%, #ef4444 100%)',
+                  border: '1px solid #2a2a2a',
+                }} />
+                <div className="flex justify-between">
+                  <span className="text-[7px] font-mono text-rmpg-500">0</span>
+                  <span className="text-[7px] font-mono text-rmpg-500">25</span>
+                  <span className="text-[7px] font-mono text-rmpg-500">50</span>
+                  <span className="text-[7px] font-mono text-rmpg-500">75+</span>
+                </div>
+                <div className="text-[7px] font-mono text-rmpg-500 text-center">mph</div>
               </div>
             )}
             {breadcrumbColorMode === 'status' && (
