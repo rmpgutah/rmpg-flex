@@ -1,31 +1,59 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 
 interface MapCompassRoseProps {
   mapInstance: google.maps.Map | null;
 }
 
+/** Degree tick marks at 30° intervals for the outer ring */
+const TICK_DEGREES = [0, 30, 60, 90, 120, 150, 180, 210, 240, 270, 300, 330];
+const CENTER = 28;
+const OUTER_R = 26;
+const TICK_INNER_R = 23;
+const TICK_MAJOR_INNER_R = 21.5;
+
+function degToRad(deg: number) {
+  return (deg * Math.PI) / 180;
+}
+
 export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
   const [heading, setHeading] = useState(0);
+  const [tilt, setTilt] = useState(0);
   const [hovered, setHovered] = useState(false);
   const listenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const tiltListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const prefersReducedMotion = useMemo(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    [],
+  );
 
   useEffect(() => {
     if (!mapInstance) return;
 
-    const update = () => {
+    const updateHeading = () => {
       const h = mapInstance.getHeading?.() || 0;
       setHeading(h);
     };
 
-    update();
+    const updateTilt = () => {
+      const t = mapInstance.getTilt?.() || 0;
+      setTilt(t);
+    };
+
+    updateHeading();
+    updateTilt();
 
     // heading_changed fires when the user rotates the map (tilt mode or 45-degree imagery)
-    listenerRef.current = google.maps.event.addListener(mapInstance, 'heading_changed', update);
+    listenerRef.current = google.maps.event.addListener(mapInstance, 'heading_changed', updateHeading);
+    tiltListenerRef.current = google.maps.event.addListener(mapInstance, 'tilt_changed', updateTilt);
 
     return () => {
       if (listenerRef.current) {
         google.maps.event.removeListener(listenerRef.current);
         listenerRef.current = null;
+      }
+      if (tiltListenerRef.current) {
+        google.maps.event.removeListener(tiltListenerRef.current);
+        tiltListenerRef.current = null;
       }
     };
   }, [mapInstance]);
@@ -34,6 +62,8 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
 
   // SVG rotates opposite to map heading so north always points to geographic north
   const rotation = -heading;
+  const bearingStr = String(Math.round(((heading % 360) + 360) % 360)).padStart(3, '0');
+  const goldColor = hovered ? '#e8c44a' : '#d4a017';
 
   // Generate degree tick marks for the outer ring
   const ticks: { angle: number; length: number; width: number; color: string }[] = [];
@@ -61,6 +91,7 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         background: 'radial-gradient(circle at 50% 50%, rgba(20,28,38,0.95) 60%, rgba(10,14,20,0.98))',
         border: '1.5px solid #2b2b2b',
         display: 'flex',
+        flexDirection: 'column',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: 'grab',
@@ -69,9 +100,6 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
           : '0 4px 16px rgba(0,0,0,0.4), inset 0 0 12px rgba(0,0,0,0.3)',
         transition: 'box-shadow 0.25s ease',
       }}
-      onClick={() => { if (mapInstance) mapInstance.setHeading?.(0); }}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
     >
       <svg
         role="img"
@@ -80,9 +108,11 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         height="48"
         viewBox="0 0 48 48"
         style={{
-          transform: `rotate(${rotation}deg)`,
-          transition: 'transform 0.25s ease-out',
-          filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          gap: 0,
+          lineHeight: 1.1,
         }}
       >
         {/* Outer degree ring tick marks */}

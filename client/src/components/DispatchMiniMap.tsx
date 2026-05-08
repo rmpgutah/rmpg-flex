@@ -133,6 +133,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // Inject keyframes on mount
   useEffect(() => { injectMinimapKeyframes(); }, []);
 
+  const visibleUnitCount = useMemo(() =>
+    units.filter(u =>
+      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
+    ).length,
+    [units, call?.assigned_units],
+  );
+
   // Classify error: auth/config vs connectivity
   // Google Maps is the sole map surface — every error becomes an auth/config
   // error placeholder (Leaflet/CartoDB fallback retired 2026-04-29).
@@ -456,35 +463,86 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         </div>
       )}
 
-      {/* Map container */}
-      <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
+      {/* Map container with tactical grid overlay */}
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          backgroundImage:
+            'repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(212,160,23,0.04) 39px, rgba(212,160,23,0.04) 40px),' +
+            'repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(212,160,23,0.04) 39px, rgba(212,160,23,0.04) 40px)',
+        }} />
+      </div>
 
-      {/* Loading overlay */}
+      {/* Loading overlay — tactical radar sweep */}
       {!loaded && !error && (
         <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 6,
           background: '#0b0b0b',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
+          <div style={{ position: 'relative', width: 32, height: 32 }}>
+            {/* Radar ring */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              border: '1px solid #d4a01740', borderRadius: '50%',
+            }} />
+            {/* Sweep line */}
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', width: 14, height: 1,
+              background: 'linear-gradient(90deg, #d4a017, transparent)',
+              transformOrigin: '0 0',
+              animation: 'rmpg-radar-sweep 2s linear infinite',
+            }} />
+            {/* Center dot */}
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%',
+              width: 3, height: 3, borderRadius: '50%',
+              background: '#d4a017', transform: 'translate(-50%,-50%)',
+            }} />
+          </div>
+          <span style={{
+            fontSize: 7, color: '#333', fontWeight: 700,
+            fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em',
+          }}>
+            ACQUIRING
+          </span>
         </div>
       )}
 
-      {/* Tile stall badge */}
+      {/* Tile stall badge with signal indicator */}
       {loaded && tilesStalled && (
         <div style={{
-          position: 'absolute', bottom: activeRoute ? 28 : 4, right: 4, zIndex: 10,
+          position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
           pointerEvents: 'none',
         }}>
           <div style={{
             background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
             backdropFilter: 'blur(4px)',
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+            borderRadius: 2,
           }}>
-            <RefreshCw style={{ width: 8, height: 8, color: '#f59e0b' }} className="animate-spin" />
+            <WifiOff style={{ width: 8, height: 8, color: '#f59e0b' }} />
             <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               OFFLINE
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Connected indicator (green dot when tiles loaded and not stalled) */}
+      {loaded && !tilesStalled && (
+        <div style={{
+          position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
+          pointerEvents: 'none',
+          display: 'flex', alignItems: 'center', gap: 3,
+          background: 'rgba(0,0,0,0.7)', padding: '2px 5px', borderRadius: 2,
+        }}>
+          <div style={{
+            width: 5, height: 5, borderRadius: '50%',
+            background: '#22c55e', boxShadow: '0 0 4px rgba(34,197,94,0.5)',
+          }} />
+          <Wifi style={{ width: 7, height: 7, color: '#22c55e60' }} />
         </div>
       )}
     </div>

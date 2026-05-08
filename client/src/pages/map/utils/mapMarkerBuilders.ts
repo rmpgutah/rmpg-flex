@@ -7,6 +7,15 @@
 import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from './mapConstants';
 
+/** Adjust a hex color brightness by a delta (-255 to 255) */
+function adjustBrightness(hex: string, delta: number): string {
+  const h = hex.replace('#', '');
+  const r = Math.max(0, Math.min(255, parseInt(h.substring(0, 2), 16) + delta));
+  const g = Math.max(0, Math.min(255, parseInt(h.substring(2, 4), 16) + delta));
+  const b = Math.max(0, Math.min(255, parseInt(h.substring(4, 6), 16) + delta));
+  return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+}
+
 // ── AdvancedMarkerElement Content Builders ────────────────────
 
 export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gpsSource?: string, heading?: number | null): HTMLElement {
@@ -19,8 +28,20 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
   wrapper.title = callSign + ' \u2014 ' + label;
 
   // Hover scale interactions
-  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.08)'; });
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.12)'; });
   wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(1)'; });
+
+  // Status pulse ring — subtle expanding ring behind the marker for active statuses
+  if (status === 'dispatched' || status === 'enroute' || status === 'onscene') {
+    const pulseRing = document.createElement('div');
+    const pulseSpeed = status === 'dispatched' ? '1.5s' : status === 'enroute' ? '2s' : '3s';
+    pulseRing.style.cssText =
+      `position:absolute;top:50%;left:50%;width:24px;height:24px;` +
+      `border:1.5px solid ${color};border-radius:50%;opacity:0;pointer-events:none;` +
+      `transform:translate(-50%,-50%) scale(0.5);z-index:-1;` +
+      `animation:rmpg-unit-pulse ${pulseSpeed} ease-out infinite;`;
+    wrapper.appendChild(pulseRing);
+  }
 
   // Heading direction arrow — shows travel direction above the marker
   if (heading != null && isFinite(heading)) {
@@ -35,10 +56,17 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
 
   const tag = document.createElement('div');
   tag.style.cssText =
-    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
+    `background:linear-gradient(180deg, ${color}, ${adjustBrightness(color, -20)});color:#fff;font-size:9px;font-weight:900;` +
     "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.85);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
     `display:flex;align-items:center;gap:3px;border-radius:1px;line-height:1.2;min-width:36px;text-align:center;justify-content:center;` +
-    `box-shadow:inset 0 1px 0 rgba(255,255,255,0.15), 0 0 8px ${color}40;filter:saturate(1.1);`;
+    `box-shadow:inset 0 1px 0 rgba(255,255,255,0.2), inset 0 -1px 0 rgba(0,0,0,0.15), 0 0 10px ${color}50;`;
+
+  // LED status dot
+  const led = document.createElement('div');
+  led.style.cssText =
+    `width:4px;height:4px;border-radius:50%;background:${color};flex-shrink:0;` +
+    `box-shadow:0 0 4px ${color}, 0 0 8px ${color}80;border:0.5px solid rgba(255,255,255,0.5);`;
+  tag.appendChild(led);
 
   const csSpan = document.createElement('span');
   csSpan.textContent = callSign;
@@ -54,7 +82,7 @@ export function buildUnitMarkerContent(callSign: string, status: UnitStatus, _gp
 
   const caret = document.createElement('div');
   caret.style.cssText =
-    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};transition:border-color 0.2s ease;`;
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${adjustBrightness(color, -20)};transition:border-color 0.2s ease;`;
 
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
@@ -65,30 +93,55 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
   const color = PRIORITY_COLORS[priority] || '#666666';
   const { category } = getIncidentCategory(incidentType);
 
-  // Priority-based glow
-  const glowShadow = priority === 'P1' ? `0 0 12px ${color}50` : priority === 'P2' ? `0 0 8px ${color}40` : `0 0 6px ${color}30`;
+  // Priority-based glow — intensified for P1/P2
+  const glowShadow = priority === 'P1'
+    ? `0 0 14px ${color}60, 0 0 28px ${color}25`
+    : priority === 'P2'
+    ? `0 0 10px ${color}50, 0 0 20px ${color}20`
+    : `0 0 6px ${color}30`;
 
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 2px rgba(0,0,0,0.5));transition:transform 0.2s ease;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.8)) drop-shadow(0 0 2px rgba(0,0,0,0.5));transition:transform 0.2s ease;position:relative;';
   wrapper.setAttribute('aria-label', (callNumber || '') + ' ' + category);
 
   // Priority pulse animations: P1 = red fast (1s), P2 = orange medium (2s)
   if (priority === 'P1') {
     wrapper.style.animation = 'pulse-p1 1s ease-in-out infinite';
+    // Add expanding ripple for P1
+    const ripple = document.createElement('div');
+    ripple.style.cssText =
+      `position:absolute;top:50%;left:50%;width:30px;height:30px;` +
+      `border:2px solid ${color};border-radius:50%;opacity:0;pointer-events:none;z-index:-1;` +
+      `transform:translate(-50%,-50%) scale(0.3);` +
+      `animation:rmpg-unit-pulse 1.5s ease-out infinite;`;
+    wrapper.appendChild(ripple);
   } else if (priority === 'P2') {
     wrapper.style.animation = 'pulse-p2 2s ease-in-out infinite';
   }
 
   // Hover scale interactions
-  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.08)'; });
+  wrapper.addEventListener('mouseenter', () => { wrapper.style.transform = 'scale(1.12)'; });
   wrapper.addEventListener('mouseleave', () => { wrapper.style.transform = 'scale(1)'; });
+
+  // Priority badge (top-left corner)
+  if (priority === 'P1' || priority === 'P2') {
+    const pBadge = document.createElement('div');
+    pBadge.style.cssText =
+      `position:absolute;top:-7px;left:-7px;width:14px;height:14px;border-radius:2px;z-index:2;` +
+      `background:${color};border:1px solid rgba(255,255,255,0.9);` +
+      `font-size:6px;font-weight:900;color:#fff;font-family:'JetBrains Mono',monospace;` +
+      `display:flex;align-items:center;justify-content:center;` +
+      `box-shadow:0 0 6px ${color}80;`;
+    pBadge.textContent = priority;
+    wrapper.appendChild(pBadge);
+  }
 
   const tag = document.createElement('div');
   tag.style.cssText =
-    `background:${color};color:#fff;font-size:9px;font-weight:900;` +
+    `background:linear-gradient(180deg, ${color}, ${adjustBrightness(color, -25)});color:#fff;font-size:9px;font-weight:900;` +
     "padding:2px 6px;border:1.5px solid rgba(255,255,255,0.95);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.05em;" +
     `display:flex;align-items:center;gap:3px;border-radius:1px;line-height:1.2;min-width:40px;text-align:center;justify-content:center;` +
-    `box-shadow:${glowShadow};`;
+    `box-shadow:${glowShadow}, inset 0 1px 0 rgba(255,255,255,0.2);`;
 
   if (callNumber) {
     const numSpan = document.createElement('span');
@@ -127,7 +180,7 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
 
   const caret = document.createElement('div');
   caret.style.cssText =
-    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};`;
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${adjustBrightness(color, -25)};`;
 
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
@@ -423,6 +476,7 @@ export function injectKeyframes() {
     @keyframes pulse-p1 { 0%,100% { box-shadow:0 0 4px rgba(220,38,38,0.3); filter:brightness(1); } 50% { box-shadow:0 0 18px rgba(220,38,38,0.9), 0 0 30px rgba(220,38,38,0.4); filter:brightness(1.2); } }
     @keyframes pulse-p2 { 0%,100% { box-shadow:0 0 3px rgba(245,158,11,0.2); filter:brightness(1); } 50% { box-shadow:0 0 12px rgba(245,158,11,0.7), 0 0 20px rgba(245,158,11,0.3); filter:brightness(1.15); } }
     @keyframes pulse-gps { 0%,100% { transform:scale(1); opacity:0.7; } 50% { transform:scale(3.0); opacity:0; } }
+    @keyframes rmpg-unit-pulse { 0% { transform:translate(-50%,-50%) scale(0.5); opacity:0.6; } 100% { transform:translate(-50%,-50%) scale(2.5); opacity:0; } }
     @keyframes marker-enter { from { opacity:0; transform:scale(0.5) translateY(10px); } to { opacity:1; transform:scale(1) translateY(0); } }
     @keyframes marker-exit { from { opacity:1; transform:scale(1); } to { opacity:0; transform:scale(0.8); } }
     @keyframes marker-selected { 0%,100% { box-shadow:0 0 0 0 rgba(160, 160, 160,0.4); } 50% { box-shadow:0 0 0 8px rgba(160, 160, 160,0); } }

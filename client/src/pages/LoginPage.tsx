@@ -23,6 +23,16 @@ const BUILD_TIME: string =
 
 type TwoFactorMode = 'choose' | 'totp' | 'webauthn' | 'backup';
 
+// ── Performance detection ─────────────────────────
+/** True when the device is likely too slow for heavy login visuals (WebGL globe, stacked CSS animations). */
+function isLowPerfDevice(): boolean {
+  // Honour OS / browser reduced-motion preference
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return true;
+  // Low core-count usually means low-power laptop / Toughbook
+  if (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4) return true;
+  return false;
+}
+
 // ── Device detection helpers ──────────────────────
 function getDeviceInfo() {
   const ua = navigator.userAgent;
@@ -134,12 +144,15 @@ export default function LoginPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Clock
+  // Performance tier (computed once)
+  const lowPerf = useMemo(() => isLowPerfDevice(), []);
+
+  // Clock — update every 60s on low-perf, every 1s otherwise
   const [clock, setClock] = useState(getCurrentTime());
   useEffect(() => {
-    const iv = setInterval(() => setClock(getCurrentTime()), 1000);
+    const iv = setInterval(() => setClock(getCurrentTime()), lowPerf ? 60_000 : 1000);
     return () => clearInterval(iv);
-  }, []);
+  }, [lowPerf]);
 
   // Device info (computed once)
   const device = useMemo(() => getDeviceInfo(), []);
@@ -333,32 +346,38 @@ export default function LoginPage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden" style={{ background: 'radial-gradient(ellipse at center, #0b0b0b 0%, #050505 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
-      {/* Ambient 3D globe — sits at the back */}
-      <Suspense fallback={null}>
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ zIndex: 0, opacity: 0.65 }}
-          aria-hidden="true"
-        >
-          <LoginGlobe className="w-full h-full" />
-        </div>
-      </Suspense>
+    <div className={`min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden${lowPerf ? ' login-lite' : ''}`} style={{ background: 'radial-gradient(ellipse at center, #0b0b0b 0%, #050505 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
+      {/* Ambient 3D globe — skip on low-perf devices (biggest GPU hog) */}
+      {!lowPerf && (
+        <Suspense fallback={null}>
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ zIndex: 0, opacity: 0.65 }}
+            aria-hidden="true"
+          >
+            <LoginGlobe className="w-full h-full" />
+          </div>
+        </Suspense>
+      )}
 
-      {/* Animated grid overlay (now translucent — globe shows through) */}
-      <div className="login-grid-bg" style={{ zIndex: 1 }} />
+      {/* Animated grid overlay — skip on low-perf */}
+      {!lowPerf && <div className="login-grid-bg" style={{ zIndex: 1 }} />}
 
-      {/* Radar sweep behind everything (decorative) */}
-      <div className="login-radar" aria-hidden="true" />
+      {/* Radar sweep behind everything (decorative) — skip on low-perf */}
+      {!lowPerf && <div className="login-radar" aria-hidden="true" />}
 
-      {/* HUD corner brackets */}
-      <div className="login-corner tl" aria-hidden="true" />
-      <div className="login-corner tr" aria-hidden="true" />
-      <div className="login-corner bl" aria-hidden="true" />
-      <div className="login-corner br" aria-hidden="true" />
+      {/* HUD corner brackets — skip on low-perf */}
+      {!lowPerf && (
+        <>
+          <div className="login-corner tl" aria-hidden="true" />
+          <div className="login-corner tr" aria-hidden="true" />
+          <div className="login-corner bl" aria-hidden="true" />
+          <div className="login-corner br" aria-hidden="true" />
+        </>
+      )}
 
-      {/* Scanline overlay */}
-      <div className="login-scanline" aria-hidden="true" />
+      {/* Scanline overlay — skip on low-perf */}
+      {!lowPerf && <div className="login-scanline" aria-hidden="true" />}
 
       {/* Vignette to keep card readable over globe */}
       <div
@@ -370,7 +389,8 @@ export default function LoginPage() {
         aria-hidden="true"
       />
 
-      {/* HUD readout panel — top left (system) */}
+      {/* HUD readout panel — top left (system) — hidden on low-perf */}
+      {!lowPerf && (
       <div className="hidden md:block absolute top-4 left-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
         <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1" style={{ color: '#d4a017' }}>◆ Command Console</div>
         <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
@@ -380,8 +400,10 @@ export default function LoginPage() {
           <div className="flex justify-between gap-3"><span>SECTOR</span><span style={{ color: '#c5c5c5' }}>UTAH · MTN</span></div>
         </div>
       </div>
+      )}
 
-      {/* HUD readout panel — top right (clock + threat level) */}
+      {/* HUD readout panel — top right (clock + threat level) — hidden on low-perf */}
+      {!lowPerf && (
       <div className="hidden md:block absolute top-4 right-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
         <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1 text-right" style={{ color: '#d4a017' }}>Tactical Status ◆</div>
         <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
@@ -391,8 +413,10 @@ export default function LoginPage() {
           <div className="flex justify-between gap-3"><span>PATROL</span><span className="login-data-flicker" style={{ color: '#c5c5c5' }}>ACTIVE</span></div>
         </div>
       </div>
+      )}
 
-      {/* HUD readout panel — bottom left (system telemetry) */}
+      {/* HUD readout panel — bottom left (system telemetry) — hidden on low-perf */}
+      {!lowPerf && (
       <div className="hidden md:block absolute bottom-4 left-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
         <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1" style={{ color: '#d4a017' }}>◆ Telemetry</div>
         <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
@@ -402,8 +426,10 @@ export default function LoginPage() {
           <div className="flex justify-between gap-3"><span>EVIDENCE</span><span style={{ color: '#22c55e' }}>● SIGNED</span></div>
         </div>
       </div>
+      )}
 
-      {/* HUD readout panel — bottom right (region) */}
+      {/* HUD readout panel — bottom right (region) — hidden on low-perf */}
+      {!lowPerf && (
       <div className="hidden md:block absolute bottom-4 right-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
         <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1 text-right" style={{ color: '#d4a017' }}>Coverage ◆</div>
         <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
@@ -413,6 +439,7 @@ export default function LoginPage() {
           <div className="flex justify-between gap-3"><span>BEATS</span><span style={{ color: '#c5c5c5' }}>719</span></div>
         </div>
       </div>
+      )}
 
       {/* ── Security Warning Banner ─────────────────── */}
       <div

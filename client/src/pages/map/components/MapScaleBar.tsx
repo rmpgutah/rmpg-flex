@@ -119,6 +119,7 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
         borderRadius: 2,
         background: 'rgba(13, 21, 32, 0.92)',
         padding: '4px 8px 5px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
       }}
     >
       {/* Top row: distance label + zoom level + unit toggle */}
