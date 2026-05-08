@@ -9,7 +9,30 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
+
+// ─── Lazy-load native modules ─────────────────────────────────
+// better-sqlite3 is a native (C++) add-on that must be compiled for
+// the exact Electron ABI + architecture. If the rebuild failed or the
+// binary is missing (common on first macOS launch after a bad build),
+// eagerly requiring it crashes the entire app before the splash even
+// shows. Load lazily so the app can start with offline support
+// gracefully disabled.
+let initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta;
+try {
+  ({ initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
+} catch (err) {
+  console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
+  console.error('[APP] Offline support will be disabled this session.');
+  // Provide no-op stubs so the rest of main.js doesn't crash on calls
+  initLocalDb = () => { console.warn('[LOCAL-DB] Unavailable — native module failed to load'); };
+  getLocalDb = () => null;
+  closeLocalDb = () => {};
+  getConfig = () => null;
+  setConfig = () => {};
+  getQueueDepth = () => 0;
+  getSyncMeta = () => null;
+}
+
 const { ConnectivityMonitor } = require('./connectivityMonitor');
 
 // ─── Chromium Geolocation ────────────────────────────────────
@@ -476,11 +499,35 @@ function createSplashWindow() {
   });
 }
 
+let splashTimeout = null;
+
 function closeSplash() {
+  if (splashTimeout) {
+    clearTimeout(splashTimeout);
+    splashTimeout = null;
+  }
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.close();
     splashWindow = null;
   }
+}
+
+/**
+ * Start a safety timer that closes the splash screen after maxMs even
+ * if ready-to-show never fires (server hangs, loadURL stalls, etc.).
+ * Without this, macOS users see the splash forever with no way to
+ * interact with the app.
+ */
+function startSplashTimeout(maxMs = 15000) {
+  splashTimeout = setTimeout(() => {
+    console.warn(`[SPLASH] Timed out after ${maxMs}ms — force-closing`);
+    closeSplash();
+    // If the main window exists but isn't visible yet, show it now
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  }, maxMs);
 }
 
 // ─── Server Connectivity Check ──────────────────────────────
@@ -674,6 +721,11 @@ async function createMainWindow() {
   // Handle page load failures (server down, network error)
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error(`[APP] Page load failed: ${errorDescription} (code ${errorCode})`);
+    // Close splash so the user can see (and interact with) the offline page
+    closeSplash();
+    if (!mainWindow.isVisible()) {
+      mainWindow.show();
+    }
     // Show the offline page with a retry button
     mainWindow.loadURL(getOfflineHTML()).catch((err) => {
       console.warn('[APP] Offline page loadURL failed:', err && err.message);
@@ -2417,10 +2469,17 @@ app.whenReady().then(async () => {
 
   // Show splash screen while connecting
   createSplashWindow();
+  // Safety timeout: close splash after 15s even if ready-to-show never fires
+  // (prevents macOS users from getting stuck on an unresponsive splash)
+  startSplashTimeout(15000);
 
   try {
-    // Initialize local database for offline support
-    initLocalDb();
+    // Initialize local database for offline support (non-fatal if it fails)
+    try {
+      initLocalDb();
+    } catch (dbErr) {
+      console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);
+    }
 
     // Check server connectivity before loading the app
     const isReachable = await checkServerConnectivity();
