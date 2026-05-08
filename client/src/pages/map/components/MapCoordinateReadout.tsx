@@ -11,9 +11,10 @@ function toDMS(decimal: number, isLat: boolean): string {
   const deg = Math.floor(abs);
   const minFull = (abs - deg) * 60;
   const min = Math.floor(minFull);
-  const sec = ((minFull - min) * 60).toFixed(1);
+  const secVal = (minFull - min) * 60;
+  const sec = `${String(Math.floor(secVal)).padStart(2, '0')}.${Math.round((secVal % 1) * 10)}`;
   const dir = isLat ? (decimal >= 0 ? 'N' : 'S') : (decimal >= 0 ? 'E' : 'W');
-  return `${deg}°${String(min).padStart(2, '0')}'${String(sec).padStart(4, '0')}"${dir}`;
+  return `${deg}°${String(min).padStart(2, '0')}'${sec}"${dir}`;
 }
 
 export default function MapCoordinateReadout({ mapInstance }: MapCoordinateReadoutProps) {

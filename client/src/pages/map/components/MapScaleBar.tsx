@@ -131,7 +131,7 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
           {activeLabel}
         </div>
         <div className="flex items-center gap-1.5">
-          <span className="font-mono text-[7px] text-rmpg-500 tabular-nums">Z{zoomLevel}</span>
+          <span className="font-mono text-[7px] text-rmpg-500 tabular-nums" title="Zoom level">Z{zoomLevel}</span>
           <button
             type="button"
             onClick={toggleUnit}

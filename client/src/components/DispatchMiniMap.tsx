@@ -14,13 +14,11 @@ import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
 import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
-import { UNIT_STATUS_HEX } from '../utils/statusColors';
+import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
 import type { CallForService, Unit, UnitStatus } from '../types';
 
-/** Priority color mapping */
-const MINI_PRIORITY_COLORS: Record<string, string> = {
-  P1: '#ef4444', P2: '#f59e0b', P3: '#888888', P4: '#666666', P5: '#555555',
-};
+/** Priority color mapping — uses shared PRIORITY_HEX tokens */
+const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
 
 interface DispatchMiniMapProps {
   call: CallForService | null;
@@ -35,8 +33,8 @@ interface DispatchMiniMapProps {
 const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
 const MINI_ZOOM = 15;
 
-/** Build a call marker DOM element with priority-colored badge + category */
-function buildCallMarker(label: string, priority?: string, incidentType?: string): HTMLElement {
+/** Build a call marker DOM element with priority-colored badge */
+function buildCallMarker(label: string, priority?: string): HTMLElement {
   const color = MINI_PRIORITY_COLORS[priority || ''] || '#ef4444';
   const isP1 = priority === 'P1';
   const isP2 = priority === 'P2';
@@ -115,7 +113,6 @@ function injectMinimapKeyframes() {
   style.id = 'minimap-keyframes';
   style.textContent = `
     @keyframes minimap-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: 0.9; } }
-    @keyframes minimap-heading-sweep { 0% { opacity: 0.7; } 50% { opacity: 1; } 100% { opacity: 0.7; } }
   `;
   document.head.appendChild(style);
 }
@@ -267,7 +264,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
     // Call marker (priority-colored pin)
     if (call?.latitude != null && call?.longitude != null && mapRef.current) {
-      const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL', (call as any).priority, (call as any).incident_type), 100);
+      const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL', (call as any).priority), 100);
       markersRef.current.push(m);
     }
 
