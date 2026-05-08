@@ -96,13 +96,16 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AU
  * DOMException("signal is aborted without reason") on AbortController timeout.
  * Neither is helpful for a field officer staring at a login screen.
  */
+const NETWORK_ERROR_PATTERNS = ['failed to fetch', 'networkerror', 'network request failed', 'load failed'];
+const TIMEOUT_ERROR_PATTERNS = ['abort', 'timed out', 'timeout'];
+
 function friendlyAuthError(err: unknown): string {
   if (!(err instanceof Error)) return 'Login failed. Please try again.';
   const msg = err.message.toLowerCase();
-  if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('network request failed') || msg.includes('load failed')) {
+  if (NETWORK_ERROR_PATTERNS.some(p => msg.includes(p))) {
     return 'Unable to connect to the server. Check your network connection and try again.';
   }
-  if (msg.includes('abort') || msg.includes('timed out') || msg.includes('timeout')) {
+  if (TIMEOUT_ERROR_PATTERNS.some(p => msg.includes(p))) {
     return 'Server request timed out. Check your network connection and try again.';
   }
   // Already a meaningful server-side error message — pass through
