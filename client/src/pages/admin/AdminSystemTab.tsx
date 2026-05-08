@@ -78,16 +78,75 @@ interface UnitTypeConfig {
 }
 
 interface SystemSettings {
+  // Agency Information
   agency_name: string;
   agency_ori: string;
   default_timezone: string;
   auto_archive_days: string;
   session_timeout_minutes: string;
+  // Feature Toggles
   feature_bolos: string;
   feature_warrants: string;
   feature_fleet: string;
   feature_evidence: string;
   feature_patrol_checkpoints: string;
+  // Dispatch Settings
+  dispatch_auto_clear_hours: string;
+  dispatch_priority_escalation: string;
+  dispatch_require_notes_on_clear: string;
+  dispatch_max_calls_per_unit: string;
+  dispatch_auto_assign_nearest: string;
+  dispatch_show_gps_breadcrumbs: string;
+  dispatch_breadcrumb_retention_days: string;
+  dispatch_alert_stale_calls_minutes: string;
+  dispatch_require_disposition: string;
+  dispatch_auto_timestamp_events: string;
+  // Notification Settings
+  notify_email_on_priority1: string;
+  notify_sms_on_bolo: string;
+  notify_dispatch_sound: string;
+  notify_warrant_expiry_days: string;
+  notify_fleet_maintenance_miles: string;
+  notify_shift_change_minutes: string;
+  notify_daily_briefing_time: string;
+  notify_court_reminder_days: string;
+  // Records Management
+  records_auto_case_number: string;
+  records_case_number_prefix: string;
+  records_require_approval: string;
+  records_retention_years: string;
+  records_allow_amendment: string;
+  records_default_classification: string;
+  records_auto_link_persons: string;
+  records_pdf_watermark: string;
+  // Officer / Personnel
+  officer_require_body_cam: string;
+  officer_max_overtime_hours: string;
+  officer_require_use_of_force: string;
+  officer_shift_duration_hours: string;
+  officer_mandatory_break_hours: string;
+  officer_performance_review_months: string;
+  // Map & GPS
+  map_default_zoom: string;
+  map_center_lat: string;
+  map_center_lng: string;
+  map_gps_update_interval: string;
+  map_geofence_alerts: string;
+  map_show_traffic_layer: string;
+  // Evidence & Legal
+  evidence_require_chain_custody: string;
+  evidence_photo_required: string;
+  evidence_auto_hash: string;
+  evidence_max_file_size_mb: string;
+  legal_miranda_reminder: string;
+  legal_juvenile_special_handling: string;
+  // Reporting & Analytics
+  report_auto_generate_daily: string;
+  report_include_gps_data: string;
+  report_logo_on_exports: string;
+  report_footer_text: string;
+  report_ucr_auto_classify: string;
+  report_shift_summary: string;
   [key: string]: string;
 }
 
@@ -170,6 +229,63 @@ const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   feature_fleet: '1',
   feature_evidence: '1',
   feature_patrol_checkpoints: '1',
+  // Dispatch
+  dispatch_auto_clear_hours: '24',
+  dispatch_priority_escalation: '0',
+  dispatch_require_notes_on_clear: '0',
+  dispatch_max_calls_per_unit: '3',
+  dispatch_auto_assign_nearest: '0',
+  dispatch_show_gps_breadcrumbs: '1',
+  dispatch_breadcrumb_retention_days: '30',
+  dispatch_alert_stale_calls_minutes: '30',
+  dispatch_require_disposition: '0',
+  dispatch_auto_timestamp_events: '1',
+  // Notifications
+  notify_email_on_priority1: '0',
+  notify_sms_on_bolo: '0',
+  notify_dispatch_sound: '1',
+  notify_warrant_expiry_days: '30',
+  notify_fleet_maintenance_miles: '500',
+  notify_shift_change_minutes: '15',
+  notify_daily_briefing_time: '06:00',
+  notify_court_reminder_days: '7',
+  // Records
+  records_auto_case_number: '1',
+  records_case_number_prefix: 'RMPG',
+  records_require_approval: '0',
+  records_retention_years: '7',
+  records_allow_amendment: '1',
+  records_default_classification: 'internal',
+  records_auto_link_persons: '1',
+  records_pdf_watermark: '0',
+  // Officer / Personnel
+  officer_require_body_cam: '0',
+  officer_max_overtime_hours: '20',
+  officer_require_use_of_force: '1',
+  officer_shift_duration_hours: '10',
+  officer_mandatory_break_hours: '6',
+  officer_performance_review_months: '12',
+  // Map & GPS
+  map_default_zoom: '12',
+  map_center_lat: '40.7608',
+  map_center_lng: '-111.891',
+  map_gps_update_interval: '15',
+  map_geofence_alerts: '1',
+  map_show_traffic_layer: '0',
+  // Evidence & Legal
+  evidence_require_chain_custody: '1',
+  evidence_photo_required: '0',
+  evidence_auto_hash: '1',
+  evidence_max_file_size_mb: '100',
+  legal_miranda_reminder: '1',
+  legal_juvenile_special_handling: '1',
+  // Reporting
+  report_auto_generate_daily: '0',
+  report_include_gps_data: '0',
+  report_logo_on_exports: '1',
+  report_footer_text: '',
+  report_ucr_auto_classify: '0',
+  report_shift_summary: '0',
 };
 
 const LS_ADMIN_SECTIONS = 'rmpg_admin_sections';
@@ -2289,6 +2405,8 @@ export default function AdminSystemTab({
                     </div>
                   </div>
                 </div>
+
+                {/* ── Feature Toggles ── */}
                 <div className="mt-4">
                   <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mb-3">Feature Toggles</div>
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-2">
@@ -2321,6 +2439,303 @@ export default function AdminSystemTab({
                     ))}
                   </div>
                 </div>
+
+                {/* ── Dispatch Settings ── */}
+                <div className="mt-4">
+                  <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mb-3">Dispatch Settings</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Auto-Clear Calls After (hours)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.dispatch_auto_clear_hours} onChange={(e) => updateSetting('dispatch_auto_clear_hours', e.target.value)} min="0" max="168" />
+                        <p className="text-[9px] text-rmpg-500 mt-0.5">Active calls auto-clear after this many hours. 0 = disabled.</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Concurrent Calls Per Unit</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.dispatch_max_calls_per_unit} onChange={(e) => updateSetting('dispatch_max_calls_per_unit', e.target.value)} min="1" max="10" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Alert Stale Calls After (minutes)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.dispatch_alert_stale_calls_minutes} onChange={(e) => updateSetting('dispatch_alert_stale_calls_minutes', e.target.value)} min="5" max="240" />
+                        <p className="text-[9px] text-rmpg-500 mt-0.5">Highlight calls with no activity for this duration.</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">GPS Breadcrumb Retention (days)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.dispatch_breadcrumb_retention_days} onChange={(e) => updateSetting('dispatch_breadcrumb_retention_days', e.target.value)} min="1" max="365" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { key: 'dispatch_priority_escalation', label: 'Priority Escalation', desc: 'Auto-escalate unresponded high-priority calls' },
+                        { key: 'dispatch_require_notes_on_clear', label: 'Require Notes on Clear', desc: 'Officers must add notes before clearing a call' },
+                        { key: 'dispatch_auto_assign_nearest', label: 'Auto-Assign Nearest Unit', desc: 'Suggest nearest available unit for new calls' },
+                        { key: 'dispatch_show_gps_breadcrumbs', label: 'Show GPS Breadcrumbs', desc: 'Display GPS trail on the map for active units' },
+                        { key: 'dispatch_require_disposition', label: 'Require Disposition', desc: 'Require a disposition code when clearing calls' },
+                        { key: 'dispatch_auto_timestamp_events', label: 'Auto-Timestamp Events', desc: 'Auto-log timestamps for enroute/onscene/clear' },
+                      ].map((toggle) => (
+                        <button type="button" key={toggle.key} onClick={() => toggleFeature(toggle.key)}
+                          className={`flex items-center gap-2 p-2 border transition-colors text-left w-full ${
+                            systemSettings[toggle.key] === '1' ? 'bg-green-900/20 border-green-700/50 hover:border-green-600' : 'bg-rmpg-900 border-rmpg-600 hover:border-rmpg-500'
+                          }`}>
+                          {systemSettings[toggle.key] === '1' ? <ToggleRight className="w-4 h-4 text-green-400 flex-shrink-0" /> : <ToggleLeft className="w-4 h-4 text-rmpg-500 flex-shrink-0" />}
+                          <div>
+                            <div className={`text-[11px] font-medium ${systemSettings[toggle.key] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{toggle.label}</div>
+                            <div className="text-[9px] text-rmpg-500">{toggle.desc}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Notification Settings ── */}
+                <div className="mt-4">
+                  <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mb-3">Notification Settings</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Warrant Expiry Warning (days)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.notify_warrant_expiry_days} onChange={(e) => updateSetting('notify_warrant_expiry_days', e.target.value)} min="1" max="90" />
+                        <p className="text-[9px] text-rmpg-500 mt-0.5">Warn this many days before warrant expiration.</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Fleet Maintenance Warning (miles)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.notify_fleet_maintenance_miles} onChange={(e) => updateSetting('notify_fleet_maintenance_miles', e.target.value)} min="100" max="5000" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Shift Change Alert (minutes before)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.notify_shift_change_minutes} onChange={(e) => updateSetting('notify_shift_change_minutes', e.target.value)} min="5" max="60" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Court Reminder (days before)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.notify_court_reminder_days} onChange={(e) => updateSetting('notify_court_reminder_days', e.target.value)} min="1" max="30" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Daily Briefing Time</label>
+                        <input type="time" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.notify_daily_briefing_time} onChange={(e) => updateSetting('notify_daily_briefing_time', e.target.value)} />
+                        <p className="text-[9px] text-rmpg-500 mt-0.5">Time to auto-generate daily activity briefing.</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { key: 'notify_email_on_priority1', label: 'Email on P1 Calls', desc: 'Send email notification for Priority 1 emergency calls' },
+                        { key: 'notify_sms_on_bolo', label: 'SMS on BOLO', desc: 'Send SMS alerts when a new BOLO is issued' },
+                        { key: 'notify_dispatch_sound', label: 'Dispatch Sound', desc: 'Play audio alert when a new call is dispatched' },
+                      ].map((toggle) => (
+                        <button type="button" key={toggle.key} onClick={() => toggleFeature(toggle.key)}
+                          className={`flex items-center gap-2 p-2 border transition-colors text-left w-full ${
+                            systemSettings[toggle.key] === '1' ? 'bg-green-900/20 border-green-700/50 hover:border-green-600' : 'bg-rmpg-900 border-rmpg-600 hover:border-rmpg-500'
+                          }`}>
+                          {systemSettings[toggle.key] === '1' ? <ToggleRight className="w-4 h-4 text-green-400 flex-shrink-0" /> : <ToggleLeft className="w-4 h-4 text-rmpg-500 flex-shrink-0" />}
+                          <div>
+                            <div className={`text-[11px] font-medium ${systemSettings[toggle.key] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{toggle.label}</div>
+                            <div className="text-[9px] text-rmpg-500">{toggle.desc}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Records Management ── */}
+                <div className="mt-4">
+                  <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mb-3">Records Management</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Case Number Prefix</label>
+                        <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.records_case_number_prefix} onChange={(e) => updateSetting('records_case_number_prefix', e.target.value)} maxLength={10} placeholder="e.g. RMPG" />
+                        <p className="text-[9px] text-rmpg-500 mt-0.5">Prefix for auto-generated case numbers.</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Record Retention (years)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.records_retention_years} onChange={(e) => updateSetting('records_retention_years', e.target.value)} min="1" max="99" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Classification</label>
+                        <select className="select-dark text-xs w-full" value={systemSettings.records_default_classification} onChange={(e) => updateSetting('records_default_classification', e.target.value)}>
+                          <option value="public">Public</option>
+                          <option value="internal">Internal Use Only</option>
+                          <option value="confidential">Confidential</option>
+                          <option value="restricted">Restricted</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { key: 'records_auto_case_number', label: 'Auto-Generate Case Numbers', desc: 'Automatically assign case numbers on creation' },
+                        { key: 'records_require_approval', label: 'Require Supervisor Approval', desc: 'Reports require supervisor approval before finalizing' },
+                        { key: 'records_allow_amendment', label: 'Allow Record Amendments', desc: 'Allow amendments to closed/finalized records' },
+                        { key: 'records_auto_link_persons', label: 'Auto-Link Persons', desc: 'Automatically link known persons to new records' },
+                        { key: 'records_pdf_watermark', label: 'PDF Watermark', desc: 'Add classification watermark to exported PDFs' },
+                      ].map((toggle) => (
+                        <button type="button" key={toggle.key} onClick={() => toggleFeature(toggle.key)}
+                          className={`flex items-center gap-2 p-2 border transition-colors text-left w-full ${
+                            systemSettings[toggle.key] === '1' ? 'bg-green-900/20 border-green-700/50 hover:border-green-600' : 'bg-rmpg-900 border-rmpg-600 hover:border-rmpg-500'
+                          }`}>
+                          {systemSettings[toggle.key] === '1' ? <ToggleRight className="w-4 h-4 text-green-400 flex-shrink-0" /> : <ToggleLeft className="w-4 h-4 text-rmpg-500 flex-shrink-0" />}
+                          <div>
+                            <div className={`text-[11px] font-medium ${systemSettings[toggle.key] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{toggle.label}</div>
+                            <div className="text-[9px] text-rmpg-500">{toggle.desc}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Officer / Personnel ── */}
+                <div className="mt-4">
+                  <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mb-3">Officer / Personnel</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Overtime Hours Per Week</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.officer_max_overtime_hours} onChange={(e) => updateSetting('officer_max_overtime_hours', e.target.value)} min="0" max="80" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Shift Duration (hours)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.officer_shift_duration_hours} onChange={(e) => updateSetting('officer_shift_duration_hours', e.target.value)} min="4" max="24" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Mandatory Break After (hours)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.officer_mandatory_break_hours} onChange={(e) => updateSetting('officer_mandatory_break_hours', e.target.value)} min="2" max="12" />
+                        <p className="text-[9px] text-rmpg-500 mt-0.5">Officers must take a break after this many consecutive hours.</p>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Performance Review Cycle (months)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.officer_performance_review_months} onChange={(e) => updateSetting('officer_performance_review_months', e.target.value)} min="1" max="24" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { key: 'officer_require_body_cam', label: 'Require Body Camera', desc: 'Require body cam activation on dispatch' },
+                        { key: 'officer_require_use_of_force', label: 'Require Use of Force Report', desc: 'Mandatory UoF report for all force incidents' },
+                      ].map((toggle) => (
+                        <button type="button" key={toggle.key} onClick={() => toggleFeature(toggle.key)}
+                          className={`flex items-center gap-2 p-2 border transition-colors text-left w-full ${
+                            systemSettings[toggle.key] === '1' ? 'bg-green-900/20 border-green-700/50 hover:border-green-600' : 'bg-rmpg-900 border-rmpg-600 hover:border-rmpg-500'
+                          }`}>
+                          {systemSettings[toggle.key] === '1' ? <ToggleRight className="w-4 h-4 text-green-400 flex-shrink-0" /> : <ToggleLeft className="w-4 h-4 text-rmpg-500 flex-shrink-0" />}
+                          <div>
+                            <div className={`text-[11px] font-medium ${systemSettings[toggle.key] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{toggle.label}</div>
+                            <div className="text-[9px] text-rmpg-500">{toggle.desc}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Map & GPS ── */}
+                <div className="mt-4">
+                  <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mb-3">Map & GPS</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Zoom Level</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.map_default_zoom} onChange={(e) => updateSetting('map_default_zoom', e.target.value)} min="1" max="20" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Center Latitude</label>
+                        <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.map_center_lat} onChange={(e) => updateSetting('map_center_lat', e.target.value)} placeholder="40.7608" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Default Center Longitude</label>
+                        <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.map_center_lng} onChange={(e) => updateSetting('map_center_lng', e.target.value)} placeholder="-111.891" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">GPS Update Interval (seconds)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.map_gps_update_interval} onChange={(e) => updateSetting('map_gps_update_interval', e.target.value)} min="5" max="120" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { key: 'map_geofence_alerts', label: 'Geofence Alerts', desc: 'Alert when units enter or leave defined geofences' },
+                        { key: 'map_show_traffic_layer', label: 'Show Traffic Layer', desc: 'Display real-time traffic data on the map' },
+                      ].map((toggle) => (
+                        <button type="button" key={toggle.key} onClick={() => toggleFeature(toggle.key)}
+                          className={`flex items-center gap-2 p-2 border transition-colors text-left w-full ${
+                            systemSettings[toggle.key] === '1' ? 'bg-green-900/20 border-green-700/50 hover:border-green-600' : 'bg-rmpg-900 border-rmpg-600 hover:border-rmpg-500'
+                          }`}>
+                          {systemSettings[toggle.key] === '1' ? <ToggleRight className="w-4 h-4 text-green-400 flex-shrink-0" /> : <ToggleLeft className="w-4 h-4 text-rmpg-500 flex-shrink-0" />}
+                          <div>
+                            <div className={`text-[11px] font-medium ${systemSettings[toggle.key] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{toggle.label}</div>
+                            <div className="text-[9px] text-rmpg-500">{toggle.desc}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Evidence & Legal ── */}
+                <div className="mt-4">
+                  <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mb-3">Evidence & Legal</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Max Evidence File Size (MB)</label>
+                        <input type="number" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.evidence_max_file_size_mb} onChange={(e) => updateSetting('evidence_max_file_size_mb', e.target.value)} min="1" max="1000" />
+                        <p className="text-[9px] text-rmpg-500 mt-0.5">Maximum file size for individual evidence uploads.</p>
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { key: 'evidence_require_chain_custody', label: 'Require Chain of Custody', desc: 'Enforce chain of custody logging for all evidence' },
+                        { key: 'evidence_photo_required', label: 'Photo Required', desc: 'Require photos for physical evidence items' },
+                        { key: 'evidence_auto_hash', label: 'Auto-Hash Evidence', desc: 'Automatically compute SHA-256 hash for digital evidence' },
+                        { key: 'legal_miranda_reminder', label: 'Miranda Warning Reminder', desc: 'Show Miranda warning reminder during arrest booking' },
+                        { key: 'legal_juvenile_special_handling', label: 'Juvenile Special Handling', desc: 'Enable special handling rules for juvenile records' },
+                      ].map((toggle) => (
+                        <button type="button" key={toggle.key} onClick={() => toggleFeature(toggle.key)}
+                          className={`flex items-center gap-2 p-2 border transition-colors text-left w-full ${
+                            systemSettings[toggle.key] === '1' ? 'bg-green-900/20 border-green-700/50 hover:border-green-600' : 'bg-rmpg-900 border-rmpg-600 hover:border-rmpg-500'
+                          }`}>
+                          {systemSettings[toggle.key] === '1' ? <ToggleRight className="w-4 h-4 text-green-400 flex-shrink-0" /> : <ToggleLeft className="w-4 h-4 text-rmpg-500 flex-shrink-0" />}
+                          <div>
+                            <div className={`text-[11px] font-medium ${systemSettings[toggle.key] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{toggle.label}</div>
+                            <div className="text-[9px] text-rmpg-500">{toggle.desc}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                {/* ── Reporting & Analytics ── */}
+                <div className="mt-4">
+                  <div className="text-[10px] text-rmpg-400 uppercase font-bold border-b border-rmpg-700 pb-1 mb-3">Reporting & Analytics</div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <div>
+                        <label className="text-[10px] text-rmpg-400 uppercase block mb-1">Report Footer Text</label>
+                        <input type="text" className="input-dark text-xs w-full min-h-[36px]" value={systemSettings.report_footer_text} onChange={(e) => updateSetting('report_footer_text', e.target.value)} placeholder="Custom footer text for exported reports" />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      {[
+                        { key: 'report_auto_generate_daily', label: 'Auto-Generate Daily Report', desc: 'Automatically generate daily activity reports' },
+                        { key: 'report_include_gps_data', label: 'Include GPS Data', desc: 'Include GPS coordinates and track data in reports' },
+                        { key: 'report_logo_on_exports', label: 'Agency Logo on Exports', desc: 'Include agency logo on exported PDF reports' },
+                        { key: 'report_ucr_auto_classify', label: 'UCR Auto-Classify', desc: 'Auto-classify incidents for UCR/NIBRS reporting' },
+                        { key: 'report_shift_summary', label: 'Shift Summary Reports', desc: 'Auto-generate summary reports at end of each shift' },
+                      ].map((toggle) => (
+                        <button type="button" key={toggle.key} onClick={() => toggleFeature(toggle.key)}
+                          className={`flex items-center gap-2 p-2 border transition-colors text-left w-full ${
+                            systemSettings[toggle.key] === '1' ? 'bg-green-900/20 border-green-700/50 hover:border-green-600' : 'bg-rmpg-900 border-rmpg-600 hover:border-rmpg-500'
+                          }`}>
+                          {systemSettings[toggle.key] === '1' ? <ToggleRight className="w-4 h-4 text-green-400 flex-shrink-0" /> : <ToggleLeft className="w-4 h-4 text-rmpg-500 flex-shrink-0" />}
+                          <div>
+                            <div className={`text-[11px] font-medium ${systemSettings[toggle.key] === '1' ? 'text-green-300' : 'text-rmpg-400'}`}>{toggle.label}</div>
+                            <div className="text-[9px] text-rmpg-500">{toggle.desc}</div>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
                 {settingsDirty && (
                   <div className="mt-4 flex justify-end border-t border-rmpg-700 pt-3">
                     <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={saveSystemSettings} disabled={savingSettings}>
