@@ -35,23 +35,39 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
   // SVG rotates opposite to map heading so north always points to geographic north
   const rotation = -heading;
 
+  // Generate degree tick marks for the outer ring
+  const ticks: { angle: number; length: number; width: number; color: string }[] = [];
+  for (let deg = 0; deg < 360; deg += 5) {
+    const isMajor = deg % 90 === 0;
+    const isMinor = deg % 45 === 0 && !isMajor;
+    const is15 = deg % 15 === 0 && !isMajor && !isMinor;
+    ticks.push({
+      angle: deg,
+      length: isMajor ? 5 : isMinor ? 4 : is15 ? 3 : 2,
+      width: isMajor ? 1.2 : isMinor ? 0.8 : 0.5,
+      color: isMajor ? '#d4a017' : isMinor ? '#888888' : is15 ? '#555555' : '#333333',
+    });
+  }
+
   return (
     <div
       aria-label="Compass rose"
       title="Compass - Click to reset north"
       className="backdrop-blur-md shadow-xl"
       style={{
-        width: 48,
-        height: 48,
+        width: 56,
+        height: 56,
         borderRadius: '50%',
-        background: 'rgba(13, 21, 32, 0.88)',
-        border: '1px solid #2b2b2b',
+        background: 'radial-gradient(circle at 50% 50%, rgba(20,28,38,0.95) 60%, rgba(10,14,20,0.98))',
+        border: '1.5px solid #2b2b2b',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'center',
         cursor: 'grab',
-        boxShadow: hovered ? '0 0 12px rgba(212,160,23,0.3)' : undefined,
-        transition: 'box-shadow 0.2s ease',
+        boxShadow: hovered
+          ? '0 0 16px rgba(212,160,23,0.35), inset 0 0 12px rgba(0,0,0,0.4)'
+          : '0 4px 16px rgba(0,0,0,0.4), inset 0 0 12px rgba(0,0,0,0.3)',
+        transition: 'box-shadow 0.25s ease',
       }}
       onClick={() => { if (mapInstance) mapInstance.setHeading?.(0); }}
       onMouseEnter={() => setHovered(true)}
@@ -60,44 +76,79 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
       <svg
         role="img"
         aria-label="Compass pointing north"
-        width="40"
-        height="40"
-        viewBox="0 0 40 40"
+        width="48"
+        height="48"
+        viewBox="0 0 48 48"
         style={{
           transform: `rotate(${rotation}deg)`,
           transition: 'transform 0.25s ease-out',
           filter: 'drop-shadow(0 2px 4px rgba(0,0,0,0.3))',
         }}
       >
+        {/* Outer degree ring tick marks */}
+        {ticks.map((tick) => {
+          const rad = (tick.angle - 90) * Math.PI / 180;
+          const outerR = 22;
+          const innerR = outerR - tick.length;
+          return (
+            <line
+              key={tick.angle}
+              x1={24 + outerR * Math.cos(rad)}
+              y1={24 + outerR * Math.sin(rad)}
+              x2={24 + innerR * Math.cos(rad)}
+              y2={24 + innerR * Math.sin(rad)}
+              stroke={tick.color}
+              strokeWidth={tick.width}
+              strokeLinecap="round"
+            />
+          );
+        })}
+
+        {/* Inner circle ring */}
+        <circle cx="24" cy="24" r="15" fill="none" stroke="#2a2a2a" strokeWidth="0.5" />
+
         {/* Cross lines (E-W and N-S subtle lines) */}
-        <line x1="20" y1="6" x2="20" y2="34" stroke="#4b4b4b" strokeWidth="0.5" />
-        <line x1="6" y1="20" x2="34" y2="20" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="24" y1="10" x2="24" y2="38" stroke="#3b3b3b" strokeWidth="0.4" />
+        <line x1="10" y1="24" x2="38" y2="24" stroke="#3b3b3b" strokeWidth="0.4" />
 
         {/* 45-degree tick marks (NE, SE, SW, NW) */}
-        <line x1="29.9" y1="10.1" x2="28.5" y2="11.5" stroke="#4b4b4b" strokeWidth="0.5" />
-        <line x1="29.9" y1="29.9" x2="28.5" y2="28.5" stroke="#4b4b4b" strokeWidth="0.5" />
-        <line x1="10.1" y1="29.9" x2="11.5" y2="28.5" stroke="#4b4b4b" strokeWidth="0.5" />
-        <line x1="10.1" y1="10.1" x2="11.5" y2="11.5" stroke="#4b4b4b" strokeWidth="0.5" />
+        <line x1="33.9" y1="14.1" x2="32.5" y2="15.5" stroke="#3b3b3b" strokeWidth="0.5" />
+        <line x1="33.9" y1="33.9" x2="32.5" y2="32.5" stroke="#3b3b3b" strokeWidth="0.5" />
+        <line x1="14.1" y1="33.9" x2="15.5" y2="32.5" stroke="#3b3b3b" strokeWidth="0.5" />
+        <line x1="14.1" y1="14.1" x2="15.5" y2="15.5" stroke="#3b3b3b" strokeWidth="0.5" />
 
-        {/* #16: North arrow with brighter hover state */}
-        <polygon points="20,4 17.5,18 20,16 22.5,18" fill={hovered ? '#e8c44a' : '#d4a017'} opacity={1} />
-        {/* South arrow (dim white) */}
-        <polygon points="20,36 17.5,22 20,24 22.5,22" fill="#666666" />
+        {/* North arrow with gold gradient */}
+        <defs>
+          <linearGradient id="northGrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stopColor={hovered ? '#f0d060' : '#e8c44a'} />
+            <stop offset="100%" stopColor={hovered ? '#d4a017' : '#b8860b'} />
+          </linearGradient>
+        </defs>
+        <polygon points="24,5 21,22 24,19 27,22" fill="url(#northGrad)" />
+        {/* South arrow (dim) */}
+        <polygon points="24,43 21,26 24,29 27,26" fill="#555555" />
         {/* East arrow */}
-        <polygon points="36,20 22,17.5 24,20 22,22.5" fill="#666666" />
+        <polygon points="43,24 26,21 29,24 26,27" fill="#555555" />
         {/* West arrow */}
-        <polygon points="4,20 18,17.5 16,20 18,22.5" fill="#666666" />
+        <polygon points="5,24 22,21 19,24 22,27" fill="#555555" />
 
         {/* Cardinal letters */}
-        <text x="20" y="3.5" textAnchor="middle" fill={hovered ? '#e8c44a' : '#d4a017'} fontSize="5" fontFamily="monospace" fontWeight="bold">N</text>
-        <text x="20" y="39.5" textAnchor="middle" fill="#666666" fontSize="4.5" fontFamily="monospace" fontWeight="bold">S</text>
-        <text x="39" y="21.5" textAnchor="middle" fill="#666666" fontSize="4.5" fontFamily="monospace" fontWeight="bold">E</text>
-        <text x="1" y="21.5" textAnchor="middle" fill="#666666" fontSize="4.5" fontFamily="monospace" fontWeight="bold">W</text>
+        <text x="24" y="4" textAnchor="middle" fill={hovered ? '#f0d060' : '#d4a017'} fontSize="5" fontFamily="monospace" fontWeight="bold">N</text>
+        <text x="24" y="47.5" textAnchor="middle" fill="#555555" fontSize="4" fontFamily="monospace" fontWeight="bold">S</text>
+        <text x="46.5" y="25.5" textAnchor="middle" fill="#555555" fontSize="4" fontFamily="monospace" fontWeight="bold">E</text>
+        <text x="1.5" y="25.5" textAnchor="middle" fill="#555555" fontSize="4" fontFamily="monospace" fontWeight="bold">W</text>
 
-        {/* #17: Center dot with hover glow */}
-        <circle cx="20" cy="20" r="2" fill="#d4a017" opacity={hovered ? 1 : 0.75}>
-          {hovered && <animate attributeName="r" values="2;2.5;2" dur="1.5s" repeatCount="indefinite" />}
+        {/* Center dot with glow */}
+        <circle cx="24" cy="24" r="2.5" fill="#d4a017" opacity={hovered ? 1 : 0.75}>
+          {hovered && <animate attributeName="r" values="2.5;3;2.5" dur="1.5s" repeatCount="indefinite" />}
         </circle>
+        {/* Outer glow ring on hover */}
+        {hovered && (
+          <circle cx="24" cy="24" r="4" fill="none" stroke="#d4a01740" strokeWidth="1">
+            <animate attributeName="r" values="4;5;4" dur="1.5s" repeatCount="indefinite" />
+            <animate attributeName="opacity" values="0.6;0.2;0.6" dur="1.5s" repeatCount="indefinite" />
+          </circle>
+        )}
       </svg>
     </div>
   );

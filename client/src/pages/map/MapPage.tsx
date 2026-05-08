@@ -144,6 +144,9 @@ import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 import { useSpeedAnalytics } from './hooks/useSpeedAnalytics';
 import SpeedGraphOverlay from './components/SpeedGraphOverlay';
 import CoverageTimeline from './components/CoverageTimeline';
+import MapCompassRose from './components/MapCompassRose';
+import MapScaleBar from './components/MapScaleBar';
+import MapCoordinateReadout from './components/MapCoordinateReadout';
 import { hashToHsl } from '../../utils/colorLookup';
 
 // ============================================================
@@ -5626,6 +5629,25 @@ export default function MapPage() {
             </div>
           </div>
         </div>}
+
+        {/* ── Compass Rose - Bottom Left above legend (desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[1000]" style={{ bottom: 36, left: 8 }}>
+            <MapCompassRose mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* ── Scale Bar - Bottom Right above sidebar (desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <div className="absolute z-[1000]" style={{ bottom: 28, right: sidebarOpen ? 'calc(clamp(220px, 20vw, 300px) + 8px)' : 44 }}>
+            <MapScaleBar mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* ── Coordinate Readout - Bottom center (desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <MapCoordinateReadout mapInstance={mapInstanceRef.current} />
+        )}
 
         {/* ── Stats Bar - Top Left (after layers panel, desktop only) ── */}
         {!isMobile && <div

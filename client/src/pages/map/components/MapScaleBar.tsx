@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 
 interface MapScaleBarProps {
   mapInstance: google.maps.Map | null;
@@ -10,13 +10,8 @@ function getMetersPerPixel(lat: number, zoom: number): number {
 }
 
 /** Pick a nice round distance value (in feet) for the scale bar */
-function pickNiceDistance(maxFeet: number): number {
+function pickNiceDistanceFeet(maxFeet: number): number {
   const niceValues = [50, 100, 200, 500, 1000, 2000, 2640, 5280, 10560, 26400, 52800, 132000, 264000, 528000];
-  for (const v of niceValues) {
-    if (v <= maxFeet) continue;
-    // Return the previous nice value that fits
-  }
-  // Find the largest nice value that fits within maxFeet
   let best = niceValues[0];
   for (const v of niceValues) {
     if (v <= maxFeet) best = v;
@@ -25,8 +20,19 @@ function pickNiceDistance(maxFeet: number): number {
   return best;
 }
 
+/** Pick a nice round distance value (in meters) for the scale bar */
+function pickNiceDistanceMeters(maxMeters: number): number {
+  const niceValues = [10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000];
+  let best = niceValues[0];
+  for (const v of niceValues) {
+    if (v <= maxMeters) best = v;
+    else break;
+  }
+  return best;
+}
+
 /** Format feet as a human-readable label */
-function formatDistance(feet: number): string {
+function formatDistanceFeet(feet: number): string {
   if (feet >= 5280) {
     const miles = feet / 5280;
     return miles === Math.floor(miles) ? `${miles} mi` : `${miles.toFixed(1)} mi`;
@@ -34,12 +40,27 @@ function formatDistance(feet: number): string {
   return `${feet} ft`;
 }
 
+/** Format meters as a human-readable label */
+function formatDistanceMetric(meters: number): string {
+  if (meters >= 1000) {
+    const km = meters / 1000;
+    return km === Math.floor(km) ? `${km} km` : `${km.toFixed(1)} km`;
+  }
+  return `${meters} m`;
+}
+
 const TARGET_BAR_WIDTH = 120; // pixels - target width for the bar
 
 export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
   const [barWidth, setBarWidth] = useState(0);
   const [label, setLabel] = useState('');
+  const [metricLabel, setMetricLabel] = useState('');
+  const [metricBarWidth, setMetricBarWidth] = useState(0);
+  const [showMetric, setShowMetric] = useState(false);
+  const [zoomLevel, setZoomLevel] = useState(0);
   const listenerRefs = useRef<google.maps.MapsEventListener[]>([]);
+
+  const toggleUnit = useCallback(() => setShowMetric(prev => !prev), []);
 
   useEffect(() => {
     if (!mapInstance) return;
@@ -53,15 +74,21 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
       const metersPerPixel = getMetersPerPixel(lat, zoom);
       const feetPerPixel = metersPerPixel * 3.28084;
 
-      // How many feet would TARGET_BAR_WIDTH pixels represent?
+      setZoomLevel(Math.round(zoom));
+
+      // Imperial
       const maxFeet = feetPerPixel * TARGET_BAR_WIDTH;
-      const niceFeet = pickNiceDistance(maxFeet);
+      const niceFeet = pickNiceDistanceFeet(maxFeet);
+      const exactWidthFt = niceFeet / feetPerPixel;
+      setBarWidth(Math.round(exactWidthFt));
+      setLabel(formatDistanceFeet(niceFeet));
 
-      // Compute exact pixel width for the nice distance
-      const exactWidth = niceFeet / feetPerPixel;
-
-      setBarWidth(Math.round(exactWidth));
-      setLabel(formatDistance(niceFeet));
+      // Metric
+      const maxMeters = metersPerPixel * TARGET_BAR_WIDTH;
+      const niceMeters = pickNiceDistanceMeters(maxMeters);
+      const exactWidthM = niceMeters / metersPerPixel;
+      setMetricBarWidth(Math.round(exactWidthM));
+      setMetricLabel(formatDistanceMetric(niceMeters));
     };
 
     update();
@@ -78,43 +105,71 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
 
   if (!mapInstance || barWidth === 0) return null;
 
+  const activeWidth = showMetric ? metricBarWidth : barWidth;
+  const activeLabel = showMetric ? metricLabel : label;
   const segments = 4;
-  const segWidth = barWidth / segments;
+  const segWidth = activeWidth / segments;
 
   return (
     <div
       role="img"
-      aria-label={`Map scale: ${label}`}
+      aria-label={`Map scale: ${activeLabel}`}
       className="backdrop-blur-md shadow-lg transition-all duration-200 border border-[#2b2b2b]/50 rounded-sm"
       style={{
         borderRadius: 2,
-        background: 'rgba(13, 21, 32, 0.9)',
+        background: 'rgba(13, 21, 32, 0.92)',
         padding: '4px 8px 5px',
       }}
     >
-      {/* #19: Distance label with tabular-nums for stable width */}
-      <div className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider text-center mb-1 cursor-pointer hover:text-[#a0a0a0] transition-colors tabular-nums" style={{ width: barWidth }}>
-        {label}
+      {/* Top row: distance label + zoom level + unit toggle */}
+      <div className="flex items-center justify-between mb-1" style={{ width: activeWidth, minWidth: 80 }}>
+        <div
+          className="font-mono text-[10px] font-bold text-rmpg-200 tracking-wider cursor-pointer hover:text-[#a0a0a0] transition-colors tabular-nums"
+          onClick={toggleUnit}
+          title={`Click to switch to ${showMetric ? 'imperial' : 'metric'}`}
+        >
+          {activeLabel}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="font-mono text-[7px] text-rmpg-500 tabular-nums">Z{zoomLevel}</span>
+          <button
+            type="button"
+            onClick={toggleUnit}
+            className="font-mono text-[7px] font-bold px-1 py-0 transition-colors hover:text-rmpg-200"
+            style={{
+              color: '#666666',
+              background: 'rgba(255,255,255,0.05)',
+              border: '1px solid #333333',
+              borderRadius: 1,
+              cursor: 'pointer',
+            }}
+            title={`Switch to ${showMetric ? 'imperial' : 'metric'}`}
+          >
+            {showMetric ? 'MI' : 'KM'}
+          </button>
+        </div>
       </div>
-      {/* Alternating bar segments with gradient */}
-      <div className="flex" style={{ width: barWidth, height: 4 }}>
+      {/* Dual-tone alternating bar segments */}
+      <div className="flex" style={{ width: activeWidth, height: 4 }}>
         {Array.from({ length: segments }).map((_, i) => (
           <div
             key={i}
             style={{
               width: segWidth,
               height: '100%',
-              background: i % 2 === 0 ? 'linear-gradient(to right, #5a6e80, #9ca3af)' : '#000000',
-              borderTop: '1px solid #ffffff',
-              borderBottom: '1px solid #ffffff',
+              background: i % 2 === 0 ? 'linear-gradient(to bottom, #7a8a9a, #5a6e80)' : '#0a0a0a',
+              borderTop: '1px solid rgba(255,255,255,0.7)',
+              borderBottom: '1px solid rgba(255,255,255,0.7)',
             }}
           />
         ))}
       </div>
-      {/* #20: End ticks with softer caps */}
-      <div className="relative" style={{ width: barWidth, height: 5 }}>
+      {/* End ticks */}
+      <div className="relative" style={{ width: activeWidth, height: 5 }}>
         <div className="absolute left-0 top-0 w-px h-full bg-white/80" />
         <div className="absolute right-0 top-0 w-px h-full bg-white/80" />
+        {/* Half-way tick */}
+        <div className="absolute top-0 w-px h-2/3 bg-white/40" style={{ left: activeWidth / 2 }} />
       </div>
     </div>
   );
