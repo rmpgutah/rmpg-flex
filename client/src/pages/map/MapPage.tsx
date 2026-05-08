@@ -144,6 +144,8 @@ import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 import { useSpeedAnalytics } from './hooks/useSpeedAnalytics';
 import SpeedGraphOverlay from './components/SpeedGraphOverlay';
 import CoverageTimeline from './components/CoverageTimeline';
+import MapCompassRose from './components/MapCompassRose';
+import MapScaleBar from './components/MapScaleBar';
 import { hashToHsl } from '../../utils/colorLookup';
 
 // ============================================================
@@ -553,6 +555,9 @@ export default function MapPage() {
   const [assignOfficerIds, setAssignOfficerIds] = useState<string[]>([]);
   const [assignUnitIds, setAssignUnitIds] = useState<string[]>([]);
   const [assignNotes, setAssignNotes] = useState('');
+
+  // Cursor coordinates — shows lat/lng on hover (desktop only)
+  const [cursorCoords, setCursorCoords] = useState<{ lat: number; lng: number } | null>(null);
 
   // District enrichment data for beat map coloring
   const [beatDistrictMap, setBeatDistrictMap] = useState<Map<string, Map<string, BeatDistrictEntry>> | undefined>(undefined);
@@ -1054,6 +1059,12 @@ export default function MapPage() {
       });
 
       infoWindowRef.current = new google.maps.InfoWindow();
+
+      // Cursor coordinate tracking (desktop only)
+      map.addListener('mousemove', (e: google.maps.MapMouseEvent) => {
+        if (e.latLng) setCursorCoords({ lat: e.latLng.lat(), lng: e.latLng.lng() });
+      });
+      map.getDiv().addEventListener('mouseleave', () => setCursorCoords(null));
 
       // Hide Google's dismissible "can't load correctly" dialog instantly.
       const hideStyleId = '__rmpg_hide_gm_dialog__';
@@ -5600,29 +5611,46 @@ export default function MapPage() {
             aria-label="Map status legend"
             style={{
               borderRadius: 2,
-              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.88)' : 'rgba(6,12,20,0.92)',
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.88)' : isSatelliteStyle(mapStyle) ? 'rgba(6,12,20,0.88)' : 'rgba(6,12,20,0.94)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(30,48,72,0.5)',
-              padding: '4px 8px',
+              padding: '4px 10px',
+              boxShadow: isLightMapStyle(mapStyle) ? '0 2px 8px rgba(0,0,0,0.1)' : '0 2px 12px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.03)',
             }}
           >
-            <div className="flex items-center gap-2.5">
+            <div className="flex items-center gap-3">
               {(Object.entries(UNIT_STATUS_COLORS) as [UnitStatus, string][])
                 .filter(([k]) => k !== 'off_duty')
-                .map(([status, color]) => (
-                  <div key={status} className="flex items-center gap-1">
-                    <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 5px ${color}80` }} />
-                    <span className={`text-[8px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-600' : 'text-rmpg-300'}`}>
-                      {UNIT_STATUS_LABELS[status as UnitStatus]}
-                    </span>
+                .map(([status, color]) => {
+                  const count = unitsByStatus[status as string] || 0;
+                  return (
+                    <div key={status} className="flex items-center gap-1 group cursor-default" title={`${UNIT_STATUS_LABELS[status as UnitStatus]}: ${count} units`}>
+                      <div className="w-2.5 h-2.5 rounded-full shrink-0 transition-transform group-hover:scale-125" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}80, inset 0 1px 0 rgba(255,255,255,0.3)` }} />
+                      <span className={`text-[8px] font-mono font-bold transition-colors ${isLightMapStyle(mapStyle) ? 'text-gray-600 group-hover:text-gray-900' : 'text-rmpg-300 group-hover:text-white'}`}>
+                        {UNIT_STATUS_LABELS[status as UnitStatus]}
+                      </span>
+                      {count > 0 && (
+                        <span className="text-[7px] font-mono font-black px-1 rounded-sm" style={{ background: color + '20', color }}>
+                          {count}
+                        </span>
+                      )}
+                    </div>
+                  );
+                })}
+              <div className={`w-px h-4 ${isLightMapStyle(mapStyle) ? 'bg-gray-300' : 'bg-rmpg-600'}`} />
+              {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
+                const pCount = callsByPriority[p] || 0;
+                return (
+                  <div key={p} className="flex items-center gap-0.5 group cursor-default" title={`${p}: ${pCount} calls`}>
+                    <div className="w-2 h-2 rounded-sm shrink-0 transition-transform group-hover:scale-125" style={{ backgroundColor: PRIORITY_COLORS[p], boxShadow: `0 0 4px ${PRIORITY_COLORS[p]}60` }} />
+                    <span className={`text-[7px] font-mono font-bold transition-colors ${isLightMapStyle(mapStyle) ? 'text-gray-500 group-hover:text-gray-800' : 'text-rmpg-400 group-hover:text-white'}`}>{p}</span>
+                    {pCount > 0 && (
+                      <span className="text-[6px] font-mono font-black" style={{ color: PRIORITY_COLORS[p] }}>
+                        {pCount}
+                      </span>
+                    )}
                   </div>
-                ))}
-              <div className={`w-px h-3 ${isLightMapStyle(mapStyle) ? 'bg-gray-300' : 'bg-rmpg-600'}`} />
-              {(['P1', 'P2', 'P3', 'P4'] as const).map(p => (
-                <div key={p} className="flex items-center gap-0.5">
-                  <div className="w-1.5 h-1.5 rounded-sm shrink-0" style={{ backgroundColor: PRIORITY_COLORS[p] }} />
-                  <span className={`text-[7px] font-mono font-bold ${isLightMapStyle(mapStyle) ? 'text-gray-500' : 'text-rmpg-400'}`}>{p}</span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>}
@@ -5962,6 +5990,50 @@ export default function MapPage() {
           </div>
         )}
 
+        {/* ── Compass Rose + Scale Bar (bottom-right, above action buttons, desktop only) ── */}
+        {!isMobile && mapLoaded && (
+          <div
+            className="absolute z-[1000] flex flex-col items-center gap-2"
+            style={{
+              bottom: 100,
+              right: sidebarOpen ? 'calc(clamp(220px, 20vw, 300px) + 12px)' : 52,
+              transition: 'right 0.2s ease',
+            }}
+          >
+            <MapCompassRose mapInstance={mapInstanceRef.current} />
+            <MapScaleBar mapInstance={mapInstanceRef.current} />
+          </div>
+        )}
+
+        {/* ── Cursor Coordinate Display (bottom-left, above status legend, desktop only) ── */}
+        {!isMobile && mapLoaded && cursorCoords && (
+          <div
+            className="absolute z-[999] pointer-events-none"
+            style={{ bottom: 30, left: 'calc(50% - 90px)' }}
+          >
+            <div
+              className="backdrop-blur-md shadow-lg"
+              style={{
+                borderRadius: 2,
+                background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.85)' : 'rgba(6,12,20,0.92)',
+                border: isLightMapStyle(mapStyle) ? '1px solid rgba(0,0,0,0.12)' : '1px solid rgba(30,48,72,0.5)',
+                padding: '2px 8px',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 8,
+              }}
+            >
+              <span className={`text-[8px] font-mono font-bold tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-500' : 'text-rmpg-400'}`}>
+                {cursorCoords.lat.toFixed(6)}
+              </span>
+              <span className={`text-[6px] ${isLightMapStyle(mapStyle) ? 'text-gray-400' : 'text-rmpg-600'}`}>•</span>
+              <span className={`text-[8px] font-mono font-bold tabular-nums ${isLightMapStyle(mapStyle) ? 'text-gray-500' : 'text-rmpg-400'}`}>
+                {cursorCoords.lng.toFixed(6)}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* ── Bottom Right Buttons (Recenter + GPS Locate) ── */}
         <div
           className="absolute z-[1000] flex flex-col gap-2"
@@ -6055,8 +6127,8 @@ export default function MapPage() {
           <div
             className="absolute bottom-0 left-0 right-0 z-20 flex items-center justify-center gap-6 px-4 select-none pointer-events-none"
             style={{
-              height: 22,
-              background: 'rgba(20,30,43,0.80)',
+              height: 24,
+              background: 'linear-gradient(180deg, rgba(10,15,25,0.70) 0%, rgba(10,15,25,0.92) 100%)',
               backdropFilter: 'blur(6px)',
               WebkitBackdropFilter: 'blur(6px)',
               borderTop: '1px solid rgba(30,48,72,0.5)',
