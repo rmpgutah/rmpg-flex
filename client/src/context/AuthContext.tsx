@@ -90,6 +90,25 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AU
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Convert raw browser network errors into user-friendly messages.
+ * `fetch()` throws TypeError("Failed to fetch") on network failures and
+ * DOMException("signal is aborted without reason") on AbortController timeout.
+ * Neither is helpful for a field officer staring at a login screen.
+ */
+function friendlyAuthError(err: unknown): string {
+  if (!(err instanceof Error)) return 'Login failed. Please try again.';
+  const msg = err.message.toLowerCase();
+  if (msg.includes('failed to fetch') || msg.includes('networkerror') || msg.includes('network request failed') || msg.includes('load failed')) {
+    return 'Unable to connect to the server. Check your network connection and try again.';
+  }
+  if (msg.includes('abort') || msg.includes('timed out') || msg.includes('timeout')) {
+    return 'Server request timed out. Check your network connection and try again.';
+  }
+  // Already a meaningful server-side error message — pass through
+  return err.message;
+}
+
 // Generate a device fingerprint hash for trusted device recognition
 // Cached at module level — never changes during a session
 let _cachedFingerprint: string | null = null;
@@ -645,7 +664,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoginStep('complete');
         return { requires2FA: false, success: true };
       } else {
-        const message = err instanceof Error ? err.message : 'Login failed';
+        const message = friendlyAuthError(err);
         setError(message);
         throw err;
       }
@@ -697,7 +716,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(errData.error || 'Invalid backup code');
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Verification failed';
+      const message = friendlyAuthError(err);
       setError(message);
       throw err;
     } finally {
@@ -790,7 +809,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoginStep('show_backup_codes');
       return { backupCodes: data.backupCodes };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Setup verification failed';
+      const message = friendlyAuthError(err);
       setError(message);
       throw err;
     } finally {
@@ -831,7 +850,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setTempToken(null);
       setRequiresPasswordChange(false);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Password change failed';
+      const message = friendlyAuthError(err);
       setError(message);
       throw err;
     } finally {
