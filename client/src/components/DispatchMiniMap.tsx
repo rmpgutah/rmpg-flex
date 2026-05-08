@@ -8,8 +8,8 @@
 // back to a compact Leaflet map using pre-cached offline tiles.
 // ============================================================
 
-import { useEffect, useRef, useState } from 'react';
-import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Maximize2, MapPin, RefreshCw, Radar, Wifi, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
 import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
@@ -29,34 +29,68 @@ interface DispatchMiniMapProps {
 const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
 const MINI_ZOOM = 15;
 
-/** Build a call marker DOM element (red label with caret) */
+// Inject pulse keyframes once
+function injectPulseStyle() {
+  if (document.querySelector('style[data-rmpg-minimap-anim]')) return;
+  const style = document.createElement('style');
+  style.setAttribute('data-rmpg-minimap-anim', 'true');
+  style.textContent = `
+    @keyframes rmpg-call-pulse {
+      0% { transform:scale(1); opacity:0.7; }
+      100% { transform:scale(2.2); opacity:0; }
+    }
+    @keyframes rmpg-radar-sweep {
+      0% { transform:rotate(0deg); }
+      100% { transform:rotate(360deg); }
+    }
+    @keyframes rmpg-eta-fill {
+      0% { width:0%; }
+      100% { width:100%; }
+    }
+  `;
+  document.head.appendChild(style);
+}
+
+/** Build a call marker DOM element (red label with pulsing ring + caret) */
 function buildCallMarker(label: string): HTMLElement {
+  injectPulseStyle();
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;position:relative;';
+
+  // Pulsing ring behind marker
+  const pulse = document.createElement('div');
+  pulse.style.cssText =
+    'position:absolute;top:50%;left:50%;width:16px;height:16px;' +
+    'border:2px solid rgba(239,68,68,0.6);border-radius:50%;' +
+    'transform:translate(-50%,-50%);' +
+    'animation:rmpg-call-pulse 1.8s ease-out infinite;pointer-events:none;';
+  wrapper.appendChild(pulse);
 
   const tag = document.createElement('div');
-  /* #54: Call marker with subtle shadow for depth */
   tag.style.cssText =
     'background:#ef4444;color:#fff;font-size:7px;font-weight:900;' +
-    "padding:1px 3px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
+    "padding:1px 3px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;" +
+    'letter-spacing:0.03em;box-shadow:0 1px 6px rgba(239,68,68,0.5);position:relative;z-index:1;';
   tag.textContent = label;
 
   const caret = document.createElement('div');
   caret.style.cssText =
-    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #ef4444;';
+    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;' +
+    'border-top:6px solid #ef4444;position:relative;z-index:1;';
 
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
   return wrapper;
 }
 
-/** Build a unit marker DOM element (blue chip) */
+/** Build a unit marker DOM element (status-tinted chip with glow) */
 function buildUnitMarker(callSign: string): HTMLElement {
   const el = document.createElement('div');
-  /* #55: Unit marker with shadow */
   el.style.cssText =
-    'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
-    "padding:1px 4px;border:1px solid #363636;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
+    'background:linear-gradient(180deg,#2a2a2a,#1a1a1a);color:#e0e0e0;font-size:8px;font-weight:900;' +
+    "padding:1px 5px;border:1px solid #d4a01780;white-space:nowrap;font-family:'JetBrains Mono',monospace;" +
+    'border-radius:2px;box-shadow:0 0 6px rgba(212,160,23,0.25),0 2px 4px rgba(0,0,0,0.5);' +
+    'letter-spacing:0.03em;';
   el.textContent = callSign;
   return el;
 }
@@ -71,6 +105,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const [tilesStalled, setTilesStalled] = useState(false);
   const [gmapsRetry, setGmapsRetry] = useState(0);
   const tileMonitorRef = useRef<(() => void) | null>(null);
+
+  const visibleUnitCount = useMemo(() =>
+    units.filter(u =>
+      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
+    ).length,
+    [units, call?.assigned_units],
+  );
 
   // Classify error: auth/config vs connectivity
   // Google Maps is the sole map surface — every error becomes an auth/config
@@ -289,16 +330,35 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         display: 'flex', justifyContent: 'space-between', alignItems: 'center',
         pointerEvents: 'none',
       }}>
-        <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider px-1 py-0.5"
-          style={{ background: 'rgba(0,0,0,0.7)', pointerEvents: 'auto' }}>
-          <MapPin style={{ width: 8, height: 8, display: 'inline', marginRight: 3 }} />
-          Mini-Map
-        </span>
+        <div style={{
+          background: 'rgba(0,0,0,0.85)', pointerEvents: 'auto',
+          padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+          border: '1px solid #141414', borderRadius: 2,
+        }}>
+          <Radar style={{
+            width: 10, height: 10, color: '#d4a017',
+            animation: 'rmpg-radar-sweep 3s linear infinite',
+          }} />
+          <span style={{
+            fontSize: 8, fontWeight: 900, color: '#d4a017',
+            fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.06em',
+          }}>
+            {call?.call_number || 'TACT-MAP'}
+          </span>
+          {visibleUnitCount > 0 && (
+            <span style={{
+              fontSize: 7, color: '#888', fontFamily: "'JetBrains Mono', monospace",
+              borderLeft: '1px solid #333', paddingLeft: 4,
+            }}>
+              {visibleUnitCount}U
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
             className="text-rmpg-400 hover:text-white"
-            style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+            style={{ background: 'rgba(0,0,0,0.85)', padding: '2px 4px', border: '1px solid #141414', cursor: 'pointer', borderRadius: 2 }}
             title="Open full map"
           >
             <Maximize2 style={{ width: 10, height: 10 }} />
@@ -307,7 +367,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             <button type="button"
               onClick={onClose}
               className="text-rmpg-400 hover:text-white"
-              style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+              style={{ background: 'rgba(0,0,0,0.85)', padding: '2px 4px', border: '1px solid #141414', cursor: 'pointer', borderRadius: 2 }}
               title="Close mini-map"
             >
               ✕
@@ -320,45 +380,112 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {activeRoute && (
         <div style={{
           position: 'absolute', bottom: 4, left: 4, zIndex: 10,
-          background: 'rgba(0,0,0,0.9)', border: '1px solid #88888850',
-          padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+          background: 'rgba(0,0,0,0.92)', borderLeft: '2px solid #d4a017',
+          border: '1px solid #1a1a1a', borderRadius: 2,
+          padding: '3px 8px 5px 8px', display: 'flex', flexDirection: 'column', gap: 2,
+          minWidth: 80,
         }}>
-          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
-            {activeRoute.unitCallSign}→{activeRoute.callNumber}
-          </span>
-          <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#666666' }}>{activeRoute.distance}</span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <MapPin style={{ width: 7, height: 7, color: '#d4a017', flexShrink: 0 }} />
+            <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+              {activeRoute.unitCallSign}→{activeRoute.callNumber}
+            </span>
+            <span style={{ fontSize: 9, color: '#fff', fontWeight: 900, marginLeft: 'auto' }}>{activeRoute.eta}</span>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+            <div style={{
+              flex: 1, height: 2, background: '#1a1a1a', borderRadius: 1, overflow: 'hidden',
+            }}>
+              <div style={{
+                height: '100%', background: 'linear-gradient(90deg, #d4a017, #ef4444)',
+                animation: 'rmpg-eta-fill 8s ease-in-out infinite alternate',
+                borderRadius: 1,
+              }} />
+            </div>
+            <span style={{ fontSize: 7, color: '#555', fontFamily: "'JetBrains Mono', monospace" }}>{activeRoute.distance}</span>
+          </div>
         </div>
       )}
 
-      {/* Map container */}
-      <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
+      {/* Map container with tactical grid overlay */}
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          backgroundImage:
+            'repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(212,160,23,0.04) 39px, rgba(212,160,23,0.04) 40px),' +
+            'repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(212,160,23,0.04) 39px, rgba(212,160,23,0.04) 40px)',
+        }} />
+      </div>
 
-      {/* Loading overlay */}
+      {/* Loading overlay — tactical radar sweep */}
       {!loaded && !error && (
         <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 6,
           background: '#0b0b0b',
         }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
+          <div style={{ position: 'relative', width: 32, height: 32 }}>
+            {/* Radar ring */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              border: '1px solid #d4a01740', borderRadius: '50%',
+            }} />
+            {/* Sweep line */}
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', width: 14, height: 1,
+              background: 'linear-gradient(90deg, #d4a017, transparent)',
+              transformOrigin: '0 0',
+              animation: 'rmpg-radar-sweep 2s linear infinite',
+            }} />
+            {/* Center dot */}
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%',
+              width: 3, height: 3, borderRadius: '50%',
+              background: '#d4a017', transform: 'translate(-50%,-50%)',
+            }} />
+          </div>
+          <span style={{
+            fontSize: 7, color: '#333', fontWeight: 700,
+            fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em',
+          }}>
+            ACQUIRING
+          </span>
         </div>
       )}
 
-      {/* Tile stall badge */}
+      {/* Tile stall badge with signal indicator */}
       {loaded && tilesStalled && (
         <div style={{
-          position: 'absolute', bottom: activeRoute ? 28 : 4, right: 4, zIndex: 10,
+          position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
+            background: 'rgba(0,0,0,0.9)', border: '1px solid #f59e0b40',
             padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+            borderRadius: 2,
           }}>
-            <RefreshCw style={{ width: 8, height: 8, color: '#f59e0b' }} className="animate-spin" />
+            <WifiOff style={{ width: 8, height: 8, color: '#f59e0b' }} />
             <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
               OFFLINE
             </span>
           </div>
+        </div>
+      )}
+
+      {/* Connected indicator (green dot when tiles loaded and not stalled) */}
+      {loaded && !tilesStalled && (
+        <div style={{
+          position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
+          pointerEvents: 'none',
+          display: 'flex', alignItems: 'center', gap: 3,
+          background: 'rgba(0,0,0,0.7)', padding: '2px 5px', borderRadius: 2,
+        }}>
+          <div style={{
+            width: 5, height: 5, borderRadius: '50%',
+            background: '#22c55e', boxShadow: '0 0 4px rgba(34,197,94,0.5)',
+          }} />
+          <Wifi style={{ width: 7, height: 7, color: '#22c55e60' }} />
         </div>
       )}
     </div>
