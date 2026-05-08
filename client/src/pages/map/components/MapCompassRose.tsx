@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useMemo, useState, useRef } from 'react';
 
 interface MapCompassRoseProps {
   mapInstance: google.maps.Map | null;
@@ -21,6 +21,10 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
   const [hovered, setHovered] = useState(false);
   const listenerRef = useRef<google.maps.MapsEventListener | null>(null);
   const tiltListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const prefersReducedMotion = useMemo(
+    () => typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches,
+    [],
+  );
 
   useEffect(() => {
     if (!mapInstance) return;
@@ -133,7 +137,7 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
 
           {/* Outer glow ring with pulse animation */}
           <circle cx={CENTER} cy={CENTER} r={OUTER_R} fill="none" stroke={goldColor} strokeWidth="0.5" opacity="0.3" filter="url(#ringGlow)">
-            <animate attributeName="opacity" values="0.15;0.35;0.15" dur="3s" repeatCount="indefinite" />
+            {!prefersReducedMotion && <animate attributeName="opacity" values="0.15;0.35;0.15" dur="3s" repeatCount="indefinite" />}
           </circle>
 
           {/* Outer ring */}
@@ -205,7 +209,7 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
 
           {/* Center dot with hover glow */}
           <circle cx={CENTER} cy={CENTER} r="2.2" fill="#d4a017" opacity={hovered ? 1 : 0.8}>
-            {hovered && <animate attributeName="r" values="2.2;2.8;2.2" dur="1.5s" repeatCount="indefinite" />}
+            {hovered && !prefersReducedMotion && <animate attributeName="r" values="2.2;2.8;2.2" dur="1.5s" repeatCount="indefinite" />}
           </circle>
         </svg>
       </div>
