@@ -28,8 +28,8 @@ type TwoFactorMode = 'choose' | 'totp' | 'webauthn' | 'backup';
 function isLowPerfDevice(): boolean {
   // Honour OS / browser reduced-motion preference
   if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return true;
-  // Low core-count usually means low-power laptop / Toughbook
-  if (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 4) return true;
+  // Very low core-count (≤2) usually means a truly low-power device / Toughbook
+  if (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 2) return true;
   return false;
 }
 
