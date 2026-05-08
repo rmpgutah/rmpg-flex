@@ -90,6 +90,7 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
         borderRadius: 2,
         background: 'rgba(13, 21, 32, 0.9)',
         padding: '4px 8px 5px',
+        boxShadow: '0 2px 8px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.03)',
       }}
     >
       {/* #19: Distance label with tabular-nums for stable width */}
@@ -104,17 +105,19 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
             style={{
               width: segWidth,
               height: '100%',
-              background: i % 2 === 0 ? 'linear-gradient(to right, #5a6e80, #9ca3af)' : '#000000',
-              borderTop: '1px solid #ffffff',
-              borderBottom: '1px solid #ffffff',
+              background: i % 2 === 0 ? 'linear-gradient(to right, #6a7e90, #b0b8c0)' : '#111',
+              borderTop: '1px solid rgba(255,255,255,0.8)',
+              borderBottom: '1px solid rgba(255,255,255,0.8)',
             }}
           />
         ))}
       </div>
       {/* #20: End ticks with softer caps */}
-      <div className="relative" style={{ width: barWidth, height: 5 }}>
+      <div className="relative" style={{ width: barWidth, height: 6 }}>
         <div className="absolute left-0 top-0 w-px h-full bg-white/80" />
         <div className="absolute right-0 top-0 w-px h-full bg-white/80" />
+        {/* Mid tick */}
+        <div className="absolute top-0 w-px h-2/3 bg-white/40" style={{ left: barWidth / 2 }} />
       </div>
     </div>
   );
