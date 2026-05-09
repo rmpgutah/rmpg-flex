@@ -71,7 +71,7 @@ const OFFENSE_COLORS: Record<string, string> = {
 function formatOffenseLevel(level: string | null): string {
   if (!level) return '';
   return level
-    .replace(/_/g, ' ').toUpperCase()
+    .replace(/_/g, ' ')
     .replace(/\b\w/g, (c) => c.toUpperCase());
 }
 

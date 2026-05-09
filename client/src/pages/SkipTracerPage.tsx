@@ -533,7 +533,7 @@ function renderAllFields(obj: any, renderFieldRow: (label: string, value: any, c
       if (value === null || value === undefined || value === '') return null;
       if (typeof value === 'object' && !Array.isArray(value)) return null; // skip nested objects
       if (Array.isArray(value) && value.length === 0) return null;
-      const label = key.replace(/_/g, ' ').toUpperCase().replace(/([A-Z])/g, ' $1').trim();
+      const label = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim().toUpperCase();
       const displayValue = Array.isArray(value) ? value.join(', ') : value;
       return <React.Fragment key={key}>{renderFieldRow(label, displayValue, key)}</React.Fragment>;
     });
