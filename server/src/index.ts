@@ -26,6 +26,9 @@ import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
 import { runScraperNightly } from './utils/scraperNightlyJob';
 import { getDb } from './models/database';
 import { logger, httpLogger } from './utils/logger';
+import { requestContext } from './utils/requestContext';
+import { setupGracefulShutdown } from './utils/gracefulShutdown';
+import { runStartupChecks } from './utils/configValidator';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -172,12 +175,26 @@ app.use('/api/dashcam-ai', dashcamAiRouter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Improvement 73: Response compression negotiation headers
+app.use((req, res, next) => {
+  // Signal to reverse proxy what compression we accept
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (typeof acceptEncoding === 'string' && acceptEncoding.includes('br')) {
+    res.setHeader('X-Compression-Available', 'br, gzip');
+  } else if (typeof acceptEncoding === 'string' && acceptEncoding.includes('gzip')) {
+    res.setHeader('X-Compression-Available', 'gzip');
+  }
+  next();
+});
+
 app.use(sanitizeInput);
 
 // Structured logging + per-request X-Request-Id tracing via pino-http.
 // Replaces the prior timestamp+random-suffix scheme with crypto.randomUUID().
 // Attaches req.log (child logger carrying request ID) for downstream handlers.
 app.use(httpLogger);
+app.use(requestContext);
 
 // Fix 72: Add response compression for large GeoJSON payloads
 // Using built-in compression by setting headers — actual compression handled by reverse proxy in production
@@ -665,6 +682,14 @@ try {
   // Initialize WebSocket on the primary server
   initWebSocket(primaryServer);
   logger.info('WebSocket server initialized');
+
+  // Set up enhanced graceful shutdown for all servers
+  setupGracefulShutdown([primaryServer]);
+
+  // Run startup configuration checks
+  runStartupChecks().then(({ passed, results }) => {
+    logger.info({ passed, results }, 'Startup checks completed');
+  });
 
   // Start listening
   const listenPort = config.ssl.enabled ? config.httpsPort : config.port;
