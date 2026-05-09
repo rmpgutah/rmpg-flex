@@ -1,11 +1,11 @@
 import { describe, it, expect } from 'vitest';
-import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput } from '../serveIntakeHelpers';
+import { parseAddressParts, extractAttorneyBlock, parseInfoSheetLabels, parseJobActivity, computeDiligenceSchedule, deriveServiceType, primaryDocToken, classifyEntityType, buildNotesNarrative, NotesInput, validateAddressFormat, normalizeAddress, addressesMatch } from '../serveIntakeHelpers';
 
 describe('parseAddressParts', () => {
   it('parses a unit-qualified address', () => {
     const r = parseAddressParts('1812 WEST 4100 SOUTH UNIT E215, WEST VALLEY CITY, UT 84119');
     expect(r).toEqual({
-      building: '1812', floor: '1ST', suite: 'E215',
+      building: '1812', floor: '', suite: 'E215',
       street: '1812 WEST 4100 SOUTH UNIT E215',
       city: 'WEST VALLEY CITY', state: 'UT', zip: '84119',
     });
@@ -14,7 +14,7 @@ describe('parseAddressParts', () => {
   it('parses a plain single-family address', () => {
     const r = parseAddressParts('1176 EL MONTE DRIVE, SALT LAKE CITY, UT 84117');
     expect(r).toEqual({
-      building: '1176', floor: '1ST', suite: 'NOT APPLICABLE',
+      building: '1176', floor: '', suite: 'NOT APPLICABLE',
       street: '1176 EL MONTE DRIVE',
       city: 'SALT LAKE CITY', state: 'UT', zip: '84117',
     });
@@ -299,5 +299,122 @@ describe('buildNotesNarrative', () => {
     expect(dossier).toContain('VERBATIM CLIENT INSTRUCTIONS');
     expect(dossier).toContain('Sub-serve on 1st attempt');
     expect(dossier).toContain('JOB ACTIVITY HISTORY');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════
+// NEW TESTS — Serve Intake Enhancements
+// ═══════════════════════════════════════════════════════════════
+
+describe('parseAddressParts — floor extraction', () => {
+  it('extracts floor from "Floor 3" pattern', () => {
+    const r = parseAddressParts('100 MAIN ST FLOOR 3, SALT LAKE CITY, UT 84101');
+    expect(r.floor).toBe('3');
+  });
+
+  it('extracts floor from "3RD FLOOR" pattern', () => {
+    const r = parseAddressParts('100 MAIN ST 3RD FLOOR, SALT LAKE CITY, UT 84101');
+    expect(r.floor).toBe('3');
+  });
+
+  it('extracts floor from "FL 2" pattern', () => {
+    const r = parseAddressParts('200 STATE ST FL 2, SALT LAKE CITY, UT 84101');
+    expect(r.floor).toBe('2');
+  });
+
+  it('extracts floor from "LEVEL B" pattern', () => {
+    const r = parseAddressParts('300 S TEMPLE LEVEL B, SALT LAKE CITY, UT 84101');
+    expect(r.floor).toBe('B');
+  });
+
+  it('returns empty floor when no floor info in address', () => {
+    const r = parseAddressParts('456 ELM ST, PROVO, UT 84601');
+    expect(r.floor).toBe('');
+  });
+});
+
+describe('classifyEntityType — improved & classification', () => {
+  it('classifies "Tom & Mary Johnson" as individual', () => {
+    expect(classifyEntityType('Tom & Mary Johnson')).toBe('individual');
+  });
+
+  it('still classifies "GUGLIELMO & ASSOCIATES" as org', () => {
+    expect(classifyEntityType('GUGLIELMO & ASSOCIATES')).toBe('organization');
+  });
+
+  it('classifies org keywords: Foundation, Holdings, Enterprises', () => {
+    expect(classifyEntityType('Smith Foundation')).toBe('organization');
+    expect(classifyEntityType('ABC Holdings')).toBe('organization');
+    expect(classifyEntityType('XYZ Enterprises')).toBe('organization');
+  });
+
+  it('classifies simple names as individual', () => {
+    expect(classifyEntityType('John Smith')).toBe('individual');
+    expect(classifyEntityType('Maria Garcia')).toBe('individual');
+  });
+
+  it('"A & B Corp" → org due to Corp keyword', () => {
+    expect(classifyEntityType('A & B Corp')).toBe('organization');
+  });
+});
+
+describe('validateAddressFormat', () => {
+  it('returns valid for a complete address', () => {
+    const r = validateAddressFormat('123 Main St, Salt Lake City, UT 84101');
+    expect(r.valid).toBe(true);
+    expect(r.warnings).toHaveLength(0);
+  });
+
+  it('warns on missing ZIP', () => {
+    const r = validateAddressFormat('123 Main St, Salt Lake City, UT');
+    expect(r.valid).toBe(false);
+    expect(r.warnings.some(w => /ZIP/i.test(w))).toBe(true);
+  });
+
+  it('warns on missing street number', () => {
+    const r = validateAddressFormat('Main St, Salt Lake City, UT 84101');
+    expect(r.valid).toBe(false);
+    expect(r.warnings.some(w => /street number/i.test(w))).toBe(true);
+  });
+
+  it('warns on missing comma separator', () => {
+    const r = validateAddressFormat('123 Main St Salt Lake City UT 84101');
+    expect(r.valid).toBe(false);
+    expect(r.warnings.some(w => /separator/i.test(w))).toBe(true);
+  });
+
+  it('invalid for empty string', () => {
+    const r = validateAddressFormat('');
+    expect(r.valid).toBe(false);
+  });
+});
+
+describe('normalizeAddress', () => {
+  it('expands street abbreviations', () => {
+    expect(normalizeAddress('123 Main St, SLC, UT 84101')).toContain('STREET');
+  });
+
+  it('normalizes to uppercase', () => {
+    const n = normalizeAddress('123 Main Dr, Provo, UT 84601');
+    expect(n).toBe('123 MAIN DRIVE, PROVO, UT 84601');
+  });
+
+  it('collapses multiple spaces', () => {
+    const n = normalizeAddress('123  Main   St,  SLC,  UT  84101');
+    expect(n).not.toMatch(/  /);
+  });
+});
+
+describe('addressesMatch', () => {
+  it('matches addresses with different abbreviations', () => {
+    expect(addressesMatch('123 Main St, Salt Lake City, UT 84101', '123 Main Street, Salt Lake City, UT 84101')).toBe(true);
+  });
+
+  it('does not match different addresses', () => {
+    expect(addressesMatch('123 Main St, Salt Lake City, UT 84101', '456 Elm Dr, Provo, UT 84601')).toBe(false);
+  });
+
+  it('returns false for empty inputs', () => {
+    expect(addressesMatch('', '123 Main St, SLC, UT 84101')).toBe(false);
   });
 });
