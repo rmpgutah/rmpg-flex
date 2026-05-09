@@ -1,6 +1,5 @@
 // API deprecation warning system
 import { Request, Response, NextFunction } from 'express';
-import { logger } from './logger';
 
 interface DeprecatedEndpoint {
   path: string;
