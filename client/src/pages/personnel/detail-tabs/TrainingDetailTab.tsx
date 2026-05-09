@@ -156,7 +156,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
                   <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase flex-shrink-0 ${
                     TRAINING_CATEGORY_COLORS[record.category] || TRAINING_CATEGORY_COLORS.other
                   }`}>
-                    {record.category.replace(/_/g, ' ')}
+                    {record.category.replace(/_/g, ' ').toUpperCase()}
                   </span>
                 </div>
                 {statusBadge(record.status)}

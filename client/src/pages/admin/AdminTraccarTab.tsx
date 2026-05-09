@@ -667,7 +667,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
                   >
                     <Navigation className="w-3 h-3 text-rmpg-400 shrink-0" />
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border ${typeColor}`}>
-                      {evt.event_type.replace(/_/g, ' ')}
+                      {evt.event_type.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     {evt.call_sign && (
                       <span className="text-brand-400 font-mono font-medium">{evt.call_sign}</span>

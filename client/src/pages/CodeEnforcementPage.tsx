@@ -257,7 +257,7 @@ export default function CodeEnforcementPage() {
   const handleViolationStatus = async (id: number, status: string) => {
     try {
       await apiFetch(`/code-enforcement/violations/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-      addToast(`Violation → ${status.replace(/_/g, ' ')}`, 'success');
+      addToast(`Violation → ${status.replace(/_/g, ' ').toUpperCase()}`, 'success');
       fetchViolations({ silent: true }); fetchStats();
       if (selectedViolation?.id === id) {
         const updated = await apiFetch<{ data: CodeViolation }>(`/code-enforcement/violations/${id}`);
@@ -287,7 +287,7 @@ export default function CodeEnforcementPage() {
   const handleTowStatus = async (id: number, status: string) => {
     try {
       await apiFetch(`/code-enforcement/tows/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-      addToast(`Tow → ${status.replace(/_/g, ' ')}`, 'success');
+      addToast(`Tow → ${status.replace(/_/g, ' ').toUpperCase()}`, 'success');
       fetchTows({ silent: true }); fetchStats();
       if (selectedTow?.id === id) {
         const updated = await apiFetch<{ data: VehicleTow }>(`/code-enforcement/tows/${id}`);
@@ -376,7 +376,7 @@ export default function CodeEnforcementPage() {
               </div>
               <select value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
-                {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
               </select>
             </>
           ) : (
@@ -387,7 +387,7 @@ export default function CodeEnforcementPage() {
               </div>
               <select value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
-                {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
               </select>
             </>
           )}
@@ -488,7 +488,7 @@ export default function CodeEnforcementPage() {
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'].filter(s => s !== selectedViolation.status).map(s => (
                     <button type="button" key={s} onClick={() => handleViolationStatus(selectedViolation.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
-                      {s.replace(/_/g, ' ')}
+                      {s.replace(/_/g, ' ').toUpperCase()}
                     </button>
                   ))}
                 </div>
@@ -591,7 +591,7 @@ export default function CodeEnforcementPage() {
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['dispatched', 'in_progress', 'completed', 'released', 'cancelled'].filter(s => s !== selectedTow.status).map(s => (
                     <button type="button" key={s} onClick={() => handleTowStatus(selectedTow.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
-                      {s.replace(/_/g, ' ')}
+                      {s.replace(/_/g, ' ').toUpperCase()}
                     </button>
                   ))}
                 </div>

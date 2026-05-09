@@ -478,7 +478,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           <div className="flex flex-wrap gap-0.5 mt-1">
             {tags.map((tag: string) => (
               <span key={tag} className={`text-[7px] font-bold uppercase px-1 py-0 border ${TAG_COLORS[tag] || 'bg-rmpg-800 text-rmpg-300 border-rmpg-600'}`}>
-                {tag.replace(/_/g, ' ')}
+                {tag.replace(/_/g, ' ').toUpperCase()}
               </span>
             ))}
           </div>

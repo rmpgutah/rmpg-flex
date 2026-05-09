@@ -633,7 +633,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
             .sort(([, a], [, b]) => b - a)
             .map(([table, count]) => (
               <div key={table} className="flex items-center justify-between bg-surface-sunken px-2 py-1 rounded-sm">
-                <span className="text-[10px] text-rmpg-300 truncate">{table.replace(/_/g, ' ')}</span>
+                <span className="text-[10px] text-rmpg-300 truncate">{table.replace(/_/g, ' ').toUpperCase()}</span>
                 <span className="text-[10px] font-mono font-bold text-rmpg-200 ml-2">{count.toLocaleString()}</span>
               </div>
             ))}

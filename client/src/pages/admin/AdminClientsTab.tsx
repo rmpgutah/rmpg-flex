@@ -619,7 +619,7 @@ export default function AdminClientsTab({
                       {clientIncidents.map((inc: any) => (
                         <tr key={inc.id}>
                           <td className="font-bold text-white text-xs font-mono">{inc.incident_number}</td>
-                          <td className="text-xs text-brand-400">{(inc.incident_type || '').replace(/_/g, ' ')}</td>
+                          <td className="text-xs text-brand-400">{(inc.incident_type || '').replace(/_/g, ' ').toUpperCase()}</td>
                           <td className="text-xs font-mono font-bold text-rmpg-300">{inc.priority}</td>
                           <td className="text-xs text-rmpg-300">{toDisplayLabel(inc.status)}</td>
                           <td className="text-xs text-rmpg-300 max-w-[150px] truncate">{inc.location_address}</td>

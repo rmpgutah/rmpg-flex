@@ -518,7 +518,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 text-[10px] text-rmpg-400 flex-1 min-w-0">
             <span className="px-1.5 py-0.5 font-bold bg-purple-900/40 text-purple-300 border border-purple-600/40 uppercase">
-              {(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}
+              {(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ').toUpperCase()}
             </span>
             {selectedEvidence.category && (
               <span className="px-1.5 py-0.5 font-bold bg-rmpg-700 text-rmpg-300 border border-rmpg-600">

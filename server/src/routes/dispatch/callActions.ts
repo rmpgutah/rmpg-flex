@@ -238,7 +238,7 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
     // Reject off-duty or out-of-service units
     if (['off_duty', 'out_of_service'].includes(unit.status)) {
       res.status(409).json({
-        error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')} and cannot be assigned`,
+        error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ').toUpperCase()} and cannot be assigned`,
         code: 'UNIT_UNAVAILABLE',
       });
       return;
@@ -663,7 +663,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
         if (unitRow?.officer_id && unitRow.officer_id !== req.user!.userId) {
           createNotification(
             unitRow.officer_id, 'dispatch',
-            `Call ${call.call_number}: ${status.replace(/_/g, ' ')}`,
+            `Call ${call.call_number}: ${status.replace(/_/g, ' ').toUpperCase()}`,
             `${call.incident_type} — status changed to ${status}`,
             'call', call.id, status === 'cancelled' ? 'high' : 'normal',
           );

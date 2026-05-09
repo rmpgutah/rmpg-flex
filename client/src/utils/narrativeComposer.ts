@@ -410,7 +410,7 @@ export function composeDispatchNarrative(
  * @returns Natural speech text
  */
 export function composeStatusNarrative(callSign: string, status: string): string {
-  const label = status.replace(/_/g, ' ');
+  const label = status.replace(/_/g, ' ').toUpperCase();
   return `${callSign}, ${label}.`;
 }
 

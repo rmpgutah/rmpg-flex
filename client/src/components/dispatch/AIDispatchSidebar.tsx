@@ -96,7 +96,7 @@ export default function AIDispatchSidebar({ selectedCall, aiAnalyses, onAcceptFl
                       title={alreadySet ? `${flag} already set` : `Accept flag: ${flag}`}
                     >
                       {alreadySet ? <Check className="w-2.5 h-2.5" /> : <AlertTriangle className="w-2.5 h-2.5" />}
-                      {flag.replace(/_/g, ' ')}
+                      {flag.replace(/_/g, ' ').toUpperCase()}
                     </button>
                   );
                 })}
