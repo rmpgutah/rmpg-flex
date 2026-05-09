@@ -200,6 +200,33 @@ export default function PrintRecordButton({
       } catch { /* non-fatal */ }
     }
 
+    // For person, vehicle, and property records, fetch connection graph profiles
+    if (['person', 'vehicle', 'property'].includes(recordType) && data.id) {
+      try {
+        const graph = await apiFetch<{ nodes: any[]; edges: any[] }>(
+          `/connections/graph?type=${recordType}&id=${data.id}&depth=1`
+        );
+        if (graph?.nodes?.length > 1 && graph.edges?.length > 0) {
+          // Exclude the seed node (depth 0) — only keep connected profiles
+          const seedKey = `${recordType}-${data.id}`;
+          enriched.connections = graph.nodes
+            .filter((n: any) => n.id !== seedKey && n.depth > 0)
+            .map((n: any) => {
+              // Find the edge connecting this node to determine relationship
+              const edge = graph.edges.find((e: any) =>
+                (e.source === seedKey && e.target === n.id) ||
+                (e.target === seedKey && e.source === n.id)
+              );
+              return {
+                type: n.type,
+                label: n.label,
+                relationship: edge?.relationship || 'linked',
+              };
+            });
+        }
+      } catch { /* non-fatal */ }
+    }
+
     // For call records, fetch GPS breadcrumb trail
     if (recordType === 'call' && data.id) {
       try {
