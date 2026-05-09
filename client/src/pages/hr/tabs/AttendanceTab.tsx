@@ -98,7 +98,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
           </div>
           {summary.by_type.map(t => (
             <div key={t.type} className="panel-beveled p-2 text-center">
-              <p className="field-label">{t.type.replace(/_/g, ' ')}</p>
+              <p className="field-label">{t.type.replace(/_/g, ' ').toUpperCase()}</p>
               <p className="text-lg font-bold font-mono text-white">{t.count} <span className="text-[10px] text-rmpg-400">({t.excused_count} excused)</span></p>
             </div>
           ))}

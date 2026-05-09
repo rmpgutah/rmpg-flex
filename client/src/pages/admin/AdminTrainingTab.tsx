@@ -195,7 +195,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] text-white font-semibold capitalize">
-                    {cat.category.replace(/_/g, ' ')}
+                    {cat.category.replace(/_/g, ' ').toUpperCase()}
                   </span>
                   <span className="text-[9px] font-mono" style={{ color }}>
                     {pct}% ({cat.completed}/{cat.required})

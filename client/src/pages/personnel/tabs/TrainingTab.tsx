@@ -136,7 +136,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
                 categoryFilter === cat ? 'toolbar-btn-primary' : 'toolbar-btn'
               }`}
             >
-              {cat.replace(/_/g, ' ')}
+              {cat.replace(/_/g, ' ').toUpperCase()}
             </button>
           ))}
         </div>
@@ -179,7 +179,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
                     <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase ${
                       TRAINING_CATEGORY_COLORS[record.category] || TRAINING_CATEGORY_COLORS.other
                     }`}>
-                      {record.category.replace(/_/g, ' ')}
+                      {record.category.replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="py-1.5 px-2 text-rmpg-400">{record.provider || '-'}</td>

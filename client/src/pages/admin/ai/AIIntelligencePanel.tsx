@@ -144,7 +144,7 @@ export default function AIIntelligencePanel({ setError }: Props) {
                     {Object.entries(healthReport.database.record_counts).map(([table, count]) => (
                       <div key={table} className="text-center px-2 py-1.5 bg-[#0b0b0b] border border-[#1c1c1c] rounded">
                         <div className="text-xs font-mono text-white">{String(count)}</div>
-                        <div className="text-[9px] text-rmpg-600 mt-0.5 truncate">{table.replace(/_/g, ' ')}</div>
+                        <div className="text-[9px] text-rmpg-600 mt-0.5 truncate">{table.replace(/_/g, ' ').toUpperCase()}</div>
                       </div>
                     ))}
                   </div>

@@ -500,7 +500,7 @@ export default function CaseManagementPage() {
     setStatusChanging(true);
     try {
       await apiFetch(`/cases/${selected.id}/status`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
-      addToast(`Case status → ${newStatus.replace(/_/g, ' ')}`, 'success');
+      addToast(`Case status → ${newStatus.replace(/_/g, ' ').toUpperCase()}`, 'success');
       const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
       setSelected(updated.data);
       fetchCases({ silent: true });
