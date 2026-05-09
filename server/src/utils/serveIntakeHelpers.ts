@@ -1423,21 +1423,36 @@ const DIRECTIONAL_ABBREVS: Record<string, string> = {
   'NE': 'NORTHEAST', 'NW': 'NORTHWEST', 'SE': 'SOUTHEAST', 'SW': 'SOUTHWEST',
 };
 
+// Pre-compiled regex patterns for normalizeAddress to avoid repeated construction
+const STREET_PATTERNS = Object.entries(STREET_ABBREVS).map(([abbr, full]) => ({
+  re: new RegExp(`\\b${abbr}\\.?(?=\\s*,|\\s+[A-Z]{2}\\s|$)`, 'g'),
+  full,
+}));
+const DIRECTIONAL_PATTERNS = Object.entries(DIRECTIONAL_ABBREVS).map(([abbr, full]) => ({
+  reAfterNum: new RegExp(`(?<=^\\d+\\s+)${abbr}\\.?\\b`, 'g'),
+  reAfterComma: new RegExp(`(?<=,\\s*)${abbr}\\.?\\b(?=\\s)`, 'g'),
+  full,
+}));
+const CITY_PATTERNS = Object.entries(CITY_ABBREVS).map(([abbr, full]) => ({
+  re: new RegExp(`\\b${abbr}\\b(?=\\s*,)`, 'g'),
+  full,
+}));
+
 export function normalizeAddress(address: string): string {
   if (!address) return '';
   let normalized = address.toUpperCase().trim();
   // Expand street type abbreviations (at word boundary, followed by comma or end/space+state)
-  for (const [abbr, full] of Object.entries(STREET_ABBREVS)) {
-    normalized = normalized.replace(new RegExp(`\\b${abbr}\\.?(?=\\s*,|\\s+[A-Z]{2}\\s|$)`, 'g'), full);
+  for (const { re, full } of STREET_PATTERNS) {
+    normalized = normalized.replace(re, full);
   }
   // Expand directionals at start of street name or after street number
-  for (const [abbr, full] of Object.entries(DIRECTIONAL_ABBREVS)) {
-    normalized = normalized.replace(new RegExp(`(?<=^\\d+\\s+)${abbr}\\.?\\b`, 'g'), full);
-    normalized = normalized.replace(new RegExp(`(?<=,\\s*)${abbr}\\.?\\b(?=\\s)`, 'g'), full);
+  for (const { reAfterNum, reAfterComma, full } of DIRECTIONAL_PATTERNS) {
+    normalized = normalized.replace(reAfterNum, full);
+    normalized = normalized.replace(reAfterComma, full);
   }
   // Expand city abbreviations
-  for (const [abbr, full] of Object.entries(CITY_ABBREVS)) {
-    normalized = normalized.replace(new RegExp(`\\b${abbr}\\b(?=\\s*,)`, 'g'), full);
+  for (const { re, full } of CITY_PATTERNS) {
+    normalized = normalized.replace(re, full);
   }
   // Collapse multiple spaces and normalize separators
   normalized = normalized.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim();

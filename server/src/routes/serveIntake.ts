@@ -126,7 +126,8 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
         try {
           const perPage = await shouldRunOcrPerPage(tmpPdf, pageCount);
           needsOcr = perPage.shouldOcr;
-        } catch {
+        } catch (err) {
+          log.warn({ err, pageCount }, 'per-page OCR check failed, falling back to average heuristic');
           needsOcr = shouldRunOcr(text, pageCount);
         }
       } else {
@@ -296,6 +297,7 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     // ── documentIntake framework: run extractors on each court docket
     // to fill gaps the serve-specific parser missed. Best-effort.
+    const DI_MIN_CONFIDENCE = 0.3; // minimum confidence to adopt documentIntake field values
     const diExtractions: Array<{ kind: string; fields: Array<{ key: string; value: string; confidence: number }> }> = [];
     try {
       for (const txt of courtDocketParts) {
@@ -305,7 +307,7 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
           diExtractions.push({ kind: ext.kind, fields: ext.fields.map(f => ({ key: f.key, value: f.value, confidence: f.confidence })) });
           // Fill gaps from documentIntake results into parsed output
           for (const f of ext.fields) {
-            if (f.confidence < 0.3) continue; // skip very low confidence
+            if (f.confidence < DI_MIN_CONFIDENCE) continue;
             if (f.key === 'docket_number' && !parsed.courtCaseNumber && f.value) parsed.courtCaseNumber = f.value;
             if (f.key === 'court_name' && !parsed.court && f.value) (parsed as any).court = f.value;
             if (f.key === 'defendant_name' && !parsed.defendant.last && f.value) {
@@ -812,12 +814,16 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const daysRemaining = dueDateObj ? Math.max(0, Math.ceil((dueDateObj.getTime() - Date.now()) / 86_400_000)) : 0;
 
     // ── Auto-priority from document urgency (user override takes precedence)
+    // Days-to-deadline thresholds for auto-priority assignment
+    const RUSH_PRIORITY = 'P2' as const;
+    const URGENT_DAYS_THRESHOLD = 2;   // ≤2 days → P3
+    const SOON_DAYS_THRESHOLD = 5;     // ≤5 days → P3
     let autoPriority: 'P1' | 'P2' | 'P3' | 'P4' = 'P4';
     if (parsed.serviceRulesSummary.includes('RUSH SERVICE REQUESTED')) {
-      autoPriority = 'P2';
-    } else if (daysRemaining > 0 && daysRemaining <= 2) {
+      autoPriority = RUSH_PRIORITY;
+    } else if (daysRemaining > 0 && daysRemaining <= URGENT_DAYS_THRESHOLD) {
       autoPriority = 'P3';
-    } else if (daysRemaining > 2 && daysRemaining <= 5) {
+    } else if (daysRemaining > URGENT_DAYS_THRESHOLD && daysRemaining <= SOON_DAYS_THRESHOLD) {
       autoPriority = 'P3';
     }
     const effectivePriority = overrides?.priority || autoPriority;
