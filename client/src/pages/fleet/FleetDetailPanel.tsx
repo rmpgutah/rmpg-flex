@@ -178,8 +178,16 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
 
   const handleDirectPdf = (key: string) => {
     if (key === 'vehicle_summary') {
+      // Compute cost totals from available fuel + maintenance data
+      const fuelTotal = fuelSummary?.total_cost ?? fuelLogs.reduce((s, f) => s + (Number(f.total_cost) || 0), 0);
+      const maintenanceTotal = maintenance.reduce((s, m) => s + (Number(m.cost) || 0), 0);
       generateFleetVehicleSummaryPdf({
         vehicle: detail,
+        assignedUnit: detail.assigned_unit_call_sign || undefined,
+        costTotals: {
+          fuel: fuelTotal,
+          maintenance: maintenanceTotal,
+        },
         recentMaintenance: maintenance.slice(0, 5),
       });
     } else if (key === 'maintenance_history') {
