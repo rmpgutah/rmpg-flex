@@ -372,6 +372,7 @@ export interface CallPdfData {
   onscene_at?: string;
   cleared_at?: string;
   closed_at?: string;
+  archived_at?: string;
   created_by?: string;
   // Notes / Narrative
   notes?: { id: string; author: string; content: string; created_at: string }[];
@@ -680,6 +681,7 @@ export interface VehiclePdfData {
 }
 
 export interface WarrantPdfData {
+  id?: number;
   warrant_number: string;
   type: string;
   status: string;
@@ -924,6 +926,9 @@ export interface PersonnelPdfData {
   rank?: string;
   role?: string;
   department?: string;
+  status?: string;
+  employment_status?: string;
+  assignment?: string;
   date_of_birth?: string;
   gender?: string;
   blood_type?: string;
@@ -1407,7 +1412,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       { label: 'On Scene',   ts: data.onscene_at,    phase: 'response' },
       { label: 'Cleared',    ts: data.cleared_at,    phase: 'on-scene' },
       { label: 'Closed',     ts: data.closed_at },
-      { label: 'Archived',   ts: (data as any).archived_at },
+      { label: 'Archived',   ts: data.archived_at },
     ].filter(s => !!s.ts);
 
     if (steps.length > 0) {
@@ -1479,7 +1484,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         return `${clock} (${(ms / 3600000).toFixed(2)}h)`;
       };
       const t0 = data.created_at ? new Date(data.created_at).getTime() : NaN;
-      const tEnd = (data.cleared_at || data.closed_at || (data as any).archived_at) ? new Date((data.cleared_at || data.closed_at || (data as any).archived_at) as string).getTime() : NaN;
+      const endTimestamp = data.cleared_at || data.closed_at || data.archived_at;
+      const tEnd = endTimestamp ? new Date(endTimestamp).getTime() : NaN;
       const tDisp = data.dispatched_at ? new Date(data.dispatched_at).getTime() : NaN;
       const tOn = data.onscene_at ? new Date(data.onscene_at).getTime() : NaN;
       const tClr = data.cleared_at ? new Date(data.cleared_at).getTime() : (data.closed_at ? new Date(data.closed_at).getTime() : NaN);
@@ -3414,8 +3420,8 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   // and never collides with form content regardless of how many
   // sections render above it.
   const qrUrl = data.qr_code_data_url ||
-    (typeof window !== 'undefined' && (data as any).id
-      ? await generateQrDataUrl(`${window.location.origin}/warrants/${(data as any).id}`)
+    (typeof window !== 'undefined' && data.id
+      ? await generateQrDataUrl(`${window.location.origin}/warrants/${data.id}`)
       : null);
   if (qrUrl) {
     const pageW = doc.internal.pageSize.getWidth();
@@ -4022,7 +4028,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
           : undefined;
     y = addQuickReferenceBanner(doc, {
       primary: data.vehicle_number || 'NO UNIT',
-      secondary: [ymm, (data as any).license_plate].filter(Boolean).join(' · '),
+      secondary: [ymm, data.plate_number].filter(Boolean).join(' · '),
       pill,
     }, y);
   }
@@ -4431,7 +4437,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
   // Quick-reference banner — name + badge# + active pill
   {
     const name = `${data.last_name || 'UNKNOWN'}, ${data.first_name || ''}`.toUpperCase();
-    const status = String((data as any).status || (data as any).employment_status || '').toLowerCase();
+    const status = String(data.status || data.employment_status || '').toLowerCase();
     const pill: QuickRefBannerConfig['pill'] | undefined = status === 'active'
       ? { label: 'ACTIVE', tone: 'standard' }
       : status === 'terminated' || status === 'separated' || status === 'inactive'
@@ -4441,7 +4447,7 @@ async function generatePersonnelReport(doc: jsPDF, data: PersonnelPdfData) {
           : undefined;
     y = addQuickReferenceBanner(doc, {
       primary: name,
-      secondary: [`Badge ${data.badge_number || ''}`, (data as any).rank, (data as any).assignment].filter(Boolean).join(' · '),
+      secondary: [`Badge ${data.badge_number || ''}`, data.rank, data.assignment].filter(Boolean).join(' · '),
       pill,
     }, y);
   }
@@ -4997,7 +5003,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
 
   // Quick-reference banner — citation# + violation + status pill
   {
-    const violation = (data as any).violation_description || (data as any).statute_citation || '';
+    const violation = data.violation_description || data.statute_citation || '';
     const status = String(data.status || '').toLowerCase();
     const pill: QuickRefBannerConfig['pill'] | undefined = status === 'paid'
       ? { label: 'PAID', tone: 'inactive' }
