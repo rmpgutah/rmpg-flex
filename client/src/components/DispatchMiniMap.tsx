@@ -8,8 +8,8 @@
 // back to a compact Leaflet map using pre-cached offline tiles.
 // ============================================================
 
-import { useEffect, useRef, useState } from 'react';
-import { Maximize2, MapPin, RefreshCw, Navigation } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Maximize2, MapPin, Navigation, RefreshCw, Wifi, WifiOff } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
 import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
