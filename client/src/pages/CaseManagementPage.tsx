@@ -1078,7 +1078,7 @@ export default function CaseManagementPage() {
                             <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full border-2 border-surface-base" style={{ background: event.color }} />
                             <div className="text-[9px] font-mono text-rmpg-500">{event.date ? new Date(event.date).toLocaleString() : '—'}</div>
                             <div className="text-[10px] text-rmpg-300">
-                              <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type}]</span>
+                              <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type?.replace(/_/g, ' ').toUpperCase() || 'EVENT'}]</span>
                               {event.label}
                             </div>
                           </div>

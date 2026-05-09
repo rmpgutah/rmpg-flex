@@ -4793,10 +4793,58 @@ function migrateSchema(): void {
   // Bug: fleet.ts POST route INSERTs next_service_mileage but the column
   // was never added to the schema — every fleet vehicle create threw 500.
   addCol('fleet_vehicles', 'next_service_mileage', 'INTEGER');
+  addCol('fleet_vehicles', 'tank_capacity', 'REAL');
   addCol('fleet_inspections', 'checklist', "TEXT DEFAULT '[]'");
 
-  // ── HR — performance review template field ──
-  addCol('performance_reviews', 'template_name', 'TEXT');
+  // ── HR — missing tables required by hr.ts routes ──
+  db.prepare(`CREATE TABLE IF NOT EXISTS performance_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    officer_id INTEGER NOT NULL,
+    reviewer_id INTEGER,
+    review_period_start TEXT NOT NULL,
+    review_period_end TEXT NOT NULL,
+    review_date TEXT,
+    type TEXT NOT NULL DEFAULT 'annual',
+    overall_rating REAL,
+    categories TEXT DEFAULT '{}',
+    strengths TEXT,
+    areas_for_improvement TEXT,
+    goals TEXT,
+    officer_comments TEXT,
+    acknowledged_at TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    template_name TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (officer_id) REFERENCES users(id),
+    FOREIGN KEY (reviewer_id) REFERENCES users(id)
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS leave_balances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    officer_id INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    vacation_total REAL NOT NULL DEFAULT 80,
+    vacation_used REAL NOT NULL DEFAULT 0,
+    sick_total REAL NOT NULL DEFAULT 40,
+    sick_used REAL NOT NULL DEFAULT 0,
+    personal_total REAL NOT NULL DEFAULT 24,
+    personal_used REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (officer_id) REFERENCES users(id),
+    UNIQUE(officer_id, year)
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS review_cycles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  )`).run();
 
   // ══════════════════════════════════════════════════════════
   // NEW FEATURES — Schema extensions (features 1-45)
