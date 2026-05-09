@@ -763,7 +763,7 @@ export default function DashCamerasPage() {
               className="select-dark text-[10px] py-1 w-auto max-w-[150px]">
               <option value="all">All Events</option>
               {eventTypes.map(et => (
-                <option key={et} value={et}>{et}</option>
+                <option key={et} value={et}>{et.replace(/_/g, ' ')}</option>
               ))}
             </select>
             <div className="h-4 w-px bg-rmpg-700" />

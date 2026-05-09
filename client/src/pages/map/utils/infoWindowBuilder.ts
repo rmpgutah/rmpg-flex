@@ -485,7 +485,7 @@ export function buildPropertyInfoWindow(
   if (linkedPersons.length > 0) {
     contactsTab += `
       <div style="${details.client_contact ? `margin-top:6px;padding-top:4px;border-top:1px solid ${C_BORDER};` : ''}">
-        ${sectionHeader(`Linked Persons (${linkedPersons.length})`, '#e879f9')}
+        ${sectionHeader(`Linked Individuals (${linkedPersons.length})`, '#e879f9')}
         ${linkedPersons.slice(0, 8).map(p => {
           const relColor = RELATIONSHIP_COLORS[p.relationship || ''] || '#666666';
           const name = `${p.first_name} ${p.last_name}`;

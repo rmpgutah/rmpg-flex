@@ -1638,7 +1638,7 @@ export default function IncidentsPage() {
 
         {/* Persons Involved */}
         <CollapsibleSection
-          title="Persons Involved"
+          title="Individuals Involved"
           icon={UserPlus}
           count={detailPersons.length}
           defaultOpen

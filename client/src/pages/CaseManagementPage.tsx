@@ -80,7 +80,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'calls', label: 'Calls', countKey: 'calls' },
   { id: 'incidents', label: 'Incidents', countKey: 'incidents' },
-  { id: 'persons', label: 'Persons', countKey: 'persons' },
+  { id: 'persons', label: 'Individual', countKey: 'persons' },
   { id: 'vehicles', label: 'Vehicles', countKey: 'vehicles' },
   { id: 'properties', label: 'Properties', countKey: 'properties' },
   { id: 'evidence', label: 'Evidence', countKey: 'evidence' },
@@ -861,7 +861,7 @@ export default function CaseManagementPage() {
                   {/* Link Person Quick Action */}
                   <div className="panel-beveled p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-[9px] font-mono text-rmpg-500 uppercase">Linked Persons</div>
+                      <div className="text-[9px] font-mono text-rmpg-500 uppercase">Linked Individuals</div>
                       <button type="button" onClick={() => setLinkPersonOpen(true)} className="toolbar-btn text-[10px]">
                         <Link style={{ width: 10, height: 10 }} /> Link Person
                       </button>
@@ -1078,7 +1078,7 @@ export default function CaseManagementPage() {
                             <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full border-2 border-surface-base" style={{ background: event.color }} />
                             <div className="text-[9px] font-mono text-rmpg-500">{event.date ? new Date(event.date).toLocaleString() : '—'}</div>
                             <div className="text-[10px] text-rmpg-300">
-                              <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type}]</span>
+                              <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type?.replace(/_/g, ' ').toUpperCase() || 'EVENT'}]</span>
                               {event.label}
                             </div>
                           </div>

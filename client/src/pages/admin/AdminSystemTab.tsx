@@ -2566,7 +2566,7 @@ export default function AdminSystemTab({
                         { key: 'records_auto_case_number', label: 'Auto-Generate Case Numbers', desc: 'Automatically assign case numbers on creation' },
                         { key: 'records_require_approval', label: 'Require Supervisor Approval', desc: 'Reports require supervisor approval before finalizing' },
                         { key: 'records_allow_amendment', label: 'Allow Record Amendments', desc: 'Allow amendments to closed/finalized records' },
-                        { key: 'records_auto_link_persons', label: 'Auto-Link Persons', desc: 'Automatically link known persons to new records' },
+                        { key: 'records_auto_link_persons', label: 'Auto-Link Individual', desc: 'Automatically link known individuals to new records' },
                         { key: 'records_pdf_watermark', label: 'PDF Watermark', desc: 'Add classification watermark to exported PDFs' },
                       ].map((toggle) => (
                         <button type="button" key={toggle.key} onClick={() => toggleFeature(toggle.key)}
