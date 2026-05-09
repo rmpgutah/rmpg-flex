@@ -11,9 +11,14 @@
 
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
-import { authenticateToken } from '../middleware/auth';
+import { authenticateToken, requireRole } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { logSafe } from '../utils/logSafe';
+import { collectDiagnostics } from '../utils/systemDiagnostics';
+import { checkDbHealth, getTableSizes } from '../utils/dbHealth';
+import { getMetricsSnapshot } from '../utils/metricsCollector';
+import { getTaskHealthReport } from '../utils/schedulerHealth';
+import { getCircuitBreakerStates } from '../utils/circuitBreaker';
 
 const router = Router();
 router.use(authenticateToken);
@@ -87,6 +92,32 @@ router.get('/ui-trap/:id', (req: Request, res: Response) => {
   const row = db.prepare('SELECT * FROM ui_trap_reports WHERE id = ?').get(parseInt(String(req.params.id), 10));
   if (!row) return res.status(404).json({ error: 'Not found' });
   res.json(row);
+});
+
+// ─── Admin diagnostic endpoints ──────────────────────────────
+
+router.get('/system-diagnostics', requireRole('admin'), (_req: Request, res: Response) => {
+  res.json(collectDiagnostics());
+});
+
+router.get('/db-health', requireRole('admin'), (_req: Request, res: Response) => {
+  res.json(checkDbHealth());
+});
+
+router.get('/db-tables', requireRole('admin'), (_req: Request, res: Response) => {
+  res.json(getTableSizes());
+});
+
+router.get('/metrics', requireRole('admin'), (_req: Request, res: Response) => {
+  res.json(getMetricsSnapshot());
+});
+
+router.get('/tasks', requireRole('admin'), (_req: Request, res: Response) => {
+  res.json(getTaskHealthReport());
+});
+
+router.get('/circuit-breakers', requireRole('admin'), (_req: Request, res: Response) => {
+  res.json(getCircuitBreakerStates());
 });
 
 export default router;
