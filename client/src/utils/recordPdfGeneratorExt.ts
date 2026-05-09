@@ -248,9 +248,9 @@ export async function generateCaseReport(doc: jsPDF, data: CasePdfData): Promise
     y = addNarrativeSection(doc, 'Investigative Narrative', data.narrative, y, data.priority);
   }
 
-  // ── Linked Persons ────────────────────────────────────
+  // ── Linked Individuals ────────────────────────────────────
   if (data.linked_persons && data.linked_persons.length > 0) {
-    y = renderLinkedTable(doc, y, 'Linked Persons',
+    y = renderLinkedTable(doc, y, 'Linked Individuals',
       ['NAME', 'DOB', 'RELATIONSHIP'],
       [40, 18, 26],
       data.linked_persons.map(p => [

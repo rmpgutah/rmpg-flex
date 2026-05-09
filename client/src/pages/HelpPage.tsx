@@ -402,7 +402,7 @@ export default function HelpPage() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4">
                   {[
                     { label: 'Dispatch & CAD', desc: 'Real-time call management, unit tracking, and voice alerts', icon: Radio },
-                    { label: 'Records (RMS)', desc: 'Persons, vehicles, incidents, citations, and warrants', icon: Database },
+                    { label: 'Records (RMS)', desc: 'Individuals, vehicles, incidents, citations, and warrants', icon: Database },
                     { label: 'Tactical Map', desc: 'Live GPS, call markers, beat overlays, offline tiles', icon: Map },
                     { label: 'Investigations', desc: 'Case management, skip tracing, forensic lab', icon: Search },
                     { label: 'Communications', desc: 'Secure messaging, email, radio, and BOLO alerts', icon: MessageSquare },

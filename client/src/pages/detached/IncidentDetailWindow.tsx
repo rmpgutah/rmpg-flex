@@ -311,10 +311,10 @@ export default function IncidentDetailWindow() {
         </div>
       )}
 
-      {/* Persons Involved */}
+      {/* Individuals Involved */}
       <div className="bg-surface-base border border-rmpg-600 p-4 mb-6">
         <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-2">
-          Persons Involved ({persons.length})
+          Individuals Involved ({persons.length})
         </h3>
         {persons.length > 0 ? (
           <table className="w-full text-sm">

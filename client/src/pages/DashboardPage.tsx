@@ -647,7 +647,7 @@ export default function DashboardPage() {
             <Shield className="w-4 h-4 text-gray-400" />
             <div>
               <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.total_persons || 0}</div>
-              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Total Persons</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Total Individuals</div>
             </div>
           </div>
         </div>

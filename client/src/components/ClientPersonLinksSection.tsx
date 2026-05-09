@@ -198,7 +198,7 @@ export function ClientPersonLinks({ clientId, clientName }: ClientPersonLinksPro
     <div className="panel-beveled p-3 bg-surface-base">
       <div className="flex items-center justify-between mb-2">
         <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider flex items-center gap-1.5">
-          <User className="w-3 h-3" /> Linked Persons
+          <User className="w-3 h-3" /> Linked Individuals
           {links.length > 0 && (
             <span className="ml-1 px-1.5 py-px bg-rmpg-700/60 text-rmpg-300 text-[9px] font-mono">{links.length}</span>
           )}

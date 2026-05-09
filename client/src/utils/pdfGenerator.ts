@@ -4057,7 +4057,7 @@ function generateProcessServiceReport(doc: jsPDF, data: IncidentData) {
   // Linked Persons
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 25, data.priority);
-    const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.contentY;
+    const sec = openAutoSection(doc, 'Linked Individuals', y); y = sec.contentY;
     const colPositions = [gridX, gridX + 50, gridX + 100];
     const tableHeaders = [
       { label: 'NAME', x: colPositions[0] },
