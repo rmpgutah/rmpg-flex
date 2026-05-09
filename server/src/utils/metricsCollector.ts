@@ -1,5 +1,4 @@
 // Metrics collection
-import { logger } from './logger';
 
 interface MetricPoint {
   value: number;
