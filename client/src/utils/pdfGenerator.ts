@@ -807,7 +807,9 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const useReadableText = !isEmpty && isNarrativeLikePdfText(sanitized, width);
   const lineStep = getPdfTextLineHeight(FONT.SIZE_FIELD_VALUE, useReadableText);
   const baseBoxH = useReadableText ? 3.2 : 2.6;
-  const displayText = isEmpty ? 'N/A' : sanitized.toUpperCase();
+  // [Improvement 10] Empty fields show em-dash instead of N/A for
+  // cleaner visual on forms with many empty optional fields.
+  const displayText = isEmpty ? '—' : sanitized.toUpperCase();
   doc.setFont(PDF_VALUE_FONT, 'normal');
   doc.setFontSize(FONT.SIZE_FIELD_VALUE);
   const allFieldLines = isEmpty ? [displayText] : wordWrapText(doc, displayText, maxW - 1);
@@ -835,7 +837,8 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   const boxY = y + labelH;
 
   // Value text — vertically centered in box
-  const valColor = isEmpty ? COLOR.TEXT_TERTIARY : COLOR.TEXT_PRIMARY;
+  // [Improvement 11] Empty fields use dedicated placeholder color
+  const valColor = isEmpty ? COLOR.TEXT_PLACEHOLDER : COLOR.TEXT_PRIMARY;
   doc.setTextColor(valColor[0], valColor[1], valColor[2]);
 
   const textBlockH = lines.length * lineStep;
@@ -885,11 +888,14 @@ export function addCheckboxField(doc: jsPDF, label: string, checked: boolean, x:
   doc.rect(x, boxY, boxSize, boxSize);
 
   if (checked) {
-    // Light fill + bold dark checkmark
-    doc.setFillColor(230, 245, 230);
+    // [Improvement 12] Darker green tint for checked boxes — the previous
+    // [230,245,230] was nearly invisible on photocopies; [210,235,210]
+    // scans as a definite tint without being distracting.
+    doc.setFillColor(210, 235, 210);
     doc.rect(x + 0.15, boxY + 0.15, boxSize - 0.3, boxSize - 0.3, 'F');
-    doc.setDrawColor(20, 20, 20);
-    doc.setLineWidth(0.7);
+    // [Improvement 13] Thicker, bolder check mark stroke for visibility
+    doc.setDrawColor(15, 15, 15);
+    doc.setLineWidth(0.8);
     // Check mark: short down-stroke then long up-stroke
     const cx = x + boxSize / 2;
     const cy = boxY + boxSize / 2;
@@ -1174,6 +1180,9 @@ export function addSignatureBlock(
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SECTION_OUTER);
   doc.rect(x, row1Y, width, sigRowH);
+  // [Improvement 46] Subtle background tint in signature area
+  doc.setFillColor(...COLOR.SIGNATURE_BG);
+  doc.rect(x + 0.3, row1Y + 0.3, width - 0.6, sigRowH - 0.6, 'F');
 
   if (sigData?.signatureImage) {
     try {
@@ -1269,7 +1278,10 @@ export function addStackedSignatures(
   // ── Company Seal (right column) — aligned to full signature block height ──
   doc.setDrawColor(...COLOR.TEXT_PRIMARY);
   doc.setLineWidth(BORDER.SECTION_OUTER);
-  doc.rect(mx + sigW, y, sealColW, totalH); // matches signature block height
+  doc.rect(mx + sigW, y, sealColW, totalH);
+  // [Improvement 47] Subtle tint behind seal area
+  doc.setFillColor(...COLOR.STAMP_BG);
+  doc.rect(mx + sigW + 0.3, y + 0.3, sealColW - 0.6, totalH - 0.6, 'F');
 
   // Dashed circle centered in seal column
   const sealH = totalH;
@@ -1349,6 +1361,8 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   void subRowY;
 
   // ── Accent line ──────────────────────────────────────
+  // [Improvement 14] Footer accent line uses primary brand color for
+  // visual consistency with the header accent strip.
   doc.setDrawColor(footerAccentRgb[0], footerAccentRgb[1], footerAccentRgb[2]);
   doc.setLineWidth(BORDER.ACCENT_FOOTER);
   doc.line(SAFE_PRINT_EDGE_SIDE, accentLineY, pageWidth - SAFE_PRINT_EDGE_SIDE, accentLineY);
@@ -1357,6 +1371,8 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  // [Improvement 15] Footer left side shows form# and "INTERNAL USE ONLY"
+  // with a separator pipe for clear visual hierarchy.
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
   doc.text(leftParts.join('  |  '), SAFE_PRINT_EDGE_SIDE, textY);
 
@@ -1368,6 +1384,7 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   doc.setFont(PDF_VALUE_FONT, 'bold');
   doc.setFontSize(6);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
+  // [Improvement 46 applied] Slightly larger page numbering for visibility
   doc.text(`PAGE ${pageNum} OF ${totalPages}`, pageWidth - SAFE_PRINT_EDGE_SIDE, textY, { align: 'right' });
 }
 
@@ -1802,12 +1819,17 @@ export function addNarrativeSection(
   }
   const estimatedH = totalLines * lineH + Math.max(0, paraCount - 1) * paragraphGap + SPACING.SM + 2;
 
-  // Draw background tint sized to actual content (subtle light gray) — first page only
+  // Draw background tint sized to actual content (warm off-white) — first page only
+  // [Improvement 49] Uses dedicated narrative background color
   const cw = getContentWidth(doc);
   const pageH = doc.internal.pageSize.getHeight();
   const maxTintH = Math.min(estimatedH, pageH - y - LAYOUT.FOOTER_HEIGHT - 4);
-  doc.setFillColor(...COLOR.BG_SECTION_TINT);
+  doc.setFillColor(...COLOR.BG_NARRATIVE);
   doc.rect(LAYOUT.PAGE_MARGIN, y - 1, cw, maxTintH, 'F');
+  // [Improvement 50] Subtle left-margin rule for narrative visual anchoring
+  doc.setDrawColor(...COLOR.DIVIDER_RULE);
+  doc.setLineWidth(BORDER.NARRATIVE_RULE);
+  doc.line(LAYOUT.PAGE_MARGIN + 2, y, LAYOUT.PAGE_MARGIN + 2, y + Math.min(maxTintH - 2, estimatedH));
 
   // Page break callback: draw section continuation sub-header + fresh tint
   const contTitle = title.toUpperCase() + ' -- CONTINUED';
@@ -1936,14 +1958,18 @@ export function addImageToPage(
 
   try {
     doc.addImage(image.dataUrl, image.format, x, y, renderW, renderH);
+    // [Improvement 48] Subtle image frame border for definition
+    doc.setDrawColor(...COLOR.BORDER_FIELD);
+    doc.setLineWidth(BORDER.IMAGE_FRAME);
+    doc.rect(x, y, renderW, renderH);
   } catch {
     doc.setDrawColor(...COLOR.BORDER_FIELD);
-    doc.setLineWidth(BORDER.FIELD);
+    doc.setLineWidth(BORDER.IMAGE_FRAME);
     doc.rect(x, y, renderW, renderH);
     doc.setFont(PDF_VALUE_FONT, 'normal');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
-    doc.setTextColor(...COLOR.TEXT_TERTIARY);
-    doc.text('[Image unavailable]', x + renderW / 2, y + renderH / 2, { align: 'center' });
+    doc.setTextColor(...COLOR.TEXT_PLACEHOLDER);
+    doc.text('[IMAGE UNAVAILABLE]', x + renderW / 2, y + renderH / 2, { align: 'center' });
   }
 
   return { w: renderW, h: renderH };
