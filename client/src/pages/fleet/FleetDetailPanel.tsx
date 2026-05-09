@@ -3,6 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
+  Receipt,
 } from 'lucide-react';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
@@ -18,12 +19,15 @@ import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
 import FleetTiresTab from './tabs/FleetTiresTab';
 import FleetDamageTab from './tabs/FleetDamageTab';
 import FleetRecallsTab from './tabs/FleetRecallsTab';
+import FleetExpensesTab from './tabs/FleetExpensesTab';
 import { formatMilitary } from './utils/fleetFormatters';
 import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
+import { generateFleetVehicleSummaryPdf } from './utils/fleetVehicleSummaryPdf';
+import { generateFleetMaintenanceHistoryPdf } from './utils/fleetMaintenanceHistoryPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls';
+export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'expenses';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -54,6 +58,7 @@ function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'non
 const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { key: 'overview', label: 'Overview', icon: Car },
   { key: 'fuel', label: 'Fuel', icon: Fuel },
+  { key: 'expenses', label: 'Expenses', icon: Receipt },
   { key: 'inspections', label: 'Inspections', icon: ClipboardCheck },
   { key: 'assignments', label: 'Assignments', icon: Radio },
   { key: 'personnel', label: 'Personnel', icon: Users },
@@ -122,6 +127,8 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
     { key: 'fuel_logs', label: 'Fuel Logs' },
     { key: 'maintenance', label: 'Maintenance' },
     { key: 'mileage_summary', label: 'Mileage / Day' },
+    { key: 'vehicle_summary', label: 'Vehicle Summary PDF' },
+    { key: 'maintenance_history', label: 'Maintenance History PDF' },
   ] as const;
 
   const buildRecordData = (reportType: string) => ({
@@ -165,6 +172,18 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
     })),
   });
 
+  const handleDirectPdf = (key: string) => {
+    if (key === 'vehicle_summary') {
+      generateFleetVehicleSummaryPdf({
+        vehicle: detail,
+        recentMaintenance: maintenance.slice(0, 5),
+      });
+    } else if (key === 'maintenance_history') {
+      generateFleetMaintenanceHistoryPdf({ vehicle: detail, records: maintenance });
+    }
+    setOpen(false);
+  };
+
   return (
     <div className="relative" ref={ref}>
       <button type="button" className="toolbar-btn" onClick={() => setOpen(!open)}>
@@ -173,16 +192,27 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
       {open && (
         <div className="absolute right-0 mt-1 z-50 bg-rmpg-700 border border-rmpg-500 rounded-sm shadow-lg min-w-[180px]">
           {reportOptions.map((opt) => (
-            <PrintRecordButton
-              key={opt.key}
-              recordType="fleet"
-              recordData={buildRecordData(opt.key)}
-              identifier={`${detail.vehicle_number}_${opt.key}`}
-              entityType="fleet"
-              entityId={detail.id}
-              label={opt.label}
-              className="w-full text-left px-3 py-1.5 text-xs hover:bg-rmpg-600 border-none rounded-none"
-            />
+            opt.key === 'vehicle_summary' || opt.key === 'maintenance_history' ? (
+              <button
+                key={opt.key}
+                type="button"
+                onClick={() => handleDirectPdf(opt.key)}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-rmpg-600 text-white"
+              >
+                {opt.label}
+              </button>
+            ) : (
+              <PrintRecordButton
+                key={opt.key}
+                recordType="fleet"
+                recordData={buildRecordData(opt.key)}
+                identifier={`${detail.vehicle_number}_${opt.key}`}
+                entityType="fleet"
+                entityId={detail.id}
+                label={opt.label}
+                className="w-full text-left px-3 py-1.5 text-xs hover:bg-rmpg-600 border-none rounded-none"
+              />
+            )
           ))}
         </div>
       )}
@@ -387,6 +417,7 @@ export default function FleetDetailPanel({
         {activeTab === 'tires' && <FleetTiresTab vehicleId={detail.id} />}
         {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
         {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
+        {activeTab === 'expenses' && <FleetExpensesTab vehicle={detail} canManage={['admin', 'manager', 'supervisor', 'officer'].includes(user?.role || '')} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
       </div>
     </div>

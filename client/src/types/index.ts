@@ -1551,6 +1551,42 @@ export interface FleetCostSummary {
   [key: string]: any;
 }
 
+// --- Fleet Expenses (non-fuel) ---
+
+export type FleetExpenseCategory = 'registration' | 'tolls' | 'parking' | 'car_wash' | 'tickets' | 'towing' | 'permits' | 'misc';
+
+export interface FleetExpense {
+  id?: string | number;
+  vehicle_id: number;
+  expense_date: string;
+  category: FleetExpenseCategory;
+  amount: number;
+  vendor?: string;
+  description?: string;
+  receipt_path?: string;
+  odometer_reading?: number;
+  recurring?: boolean | number;
+  recurring_frequency?: 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+  notes?: string;
+  created_by?: number;
+  created_by_name?: string;
+  created_at?: string;
+  updated_at?: string;
+  archived_at?: string;
+}
+
+export interface FleetExpenseSummary {
+  categories: Array<{
+    category: string;
+    count: number;
+    total: number;
+    avg_amount: number;
+    first_date: string;
+    last_date: string;
+  }>;
+  grand_total: number;
+}
+
 // --- Fleet Inspections ---
 
 export type InspectionType = 'pre_trip' | 'post_trip' | 'monthly' | 'annual';
