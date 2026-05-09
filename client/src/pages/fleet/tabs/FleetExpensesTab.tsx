@@ -10,6 +10,7 @@ import React, { useEffect, useState } from 'react';
 import {
   Plus, Trash2, Pencil, FileText, Receipt, Car, ParkingCircle,
   AlertTriangle, Truck, FileCheck, MoreHorizontal, DollarSign,
+  Shield, Wrench, Paintbrush, Warehouse, LifeBuoy, ClipboardCheck, Cpu, Package,
 } from 'lucide-react';
 import IconButton from '../../../components/IconButton';
 import { apiFetch } from '../../../hooks/useApi';
@@ -22,14 +23,22 @@ interface Props {
 }
 
 const CATEGORY_META: Record<FleetExpenseCategory, { label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = {
-  registration: { label: 'Registration/Renewal', icon: FileCheck, color: 'text-blue-400' },
-  tolls:        { label: 'Tolls',                icon: Car,           color: 'text-amber-400' },
-  parking:      { label: 'Parking',              icon: ParkingCircle, color: 'text-purple-400' },
-  car_wash:     { label: 'Car Wash/Cleaning',    icon: Car,           color: 'text-cyan-400' },
-  tickets:      { label: 'Tickets/Fines',        icon: AlertTriangle, color: 'text-red-400' },
-  towing:       { label: 'Towing',               icon: Truck,         color: 'text-orange-400' },
-  permits:      { label: 'Permits',              icon: FileCheck,     color: 'text-green-400' },
-  misc:         { label: 'Miscellaneous',        icon: MoreHorizontal, color: 'text-gray-400' },
+  registration:        { label: 'Registration/Renewal',  icon: FileCheck,      color: 'text-blue-400' },
+  tolls:               { label: 'Tolls',                  icon: Car,            color: 'text-amber-400' },
+  parking:             { label: 'Parking',                icon: ParkingCircle,  color: 'text-purple-400' },
+  car_wash:            { label: 'Car Wash/Cleaning',      icon: Car,            color: 'text-cyan-400' },
+  tickets:             { label: 'Tickets/Fines',          icon: AlertTriangle,  color: 'text-red-400' },
+  towing:              { label: 'Towing',                 icon: Truck,          color: 'text-orange-400' },
+  permits:             { label: 'Permits',                icon: FileCheck,      color: 'text-green-400' },
+  insurance:           { label: 'Insurance',              icon: Shield,         color: 'text-indigo-400' },
+  equipment:           { label: 'Equipment',              icon: Wrench,         color: 'text-yellow-400' },
+  decals_wraps:        { label: 'Decals/Wraps',           icon: Paintbrush,     color: 'text-pink-400' },
+  storage:             { label: 'Storage',                icon: Warehouse,      color: 'text-stone-400' },
+  roadside_assistance: { label: 'Roadside Assistance',    icon: LifeBuoy,       color: 'text-emerald-400' },
+  inspection:          { label: 'Inspection',             icon: ClipboardCheck, color: 'text-teal-400' },
+  electronics:         { label: 'Electronics',            icon: Cpu,            color: 'text-violet-400' },
+  accessories:         { label: 'Accessories',            icon: Package,        color: 'text-lime-400' },
+  misc:                { label: 'Miscellaneous',          icon: MoreHorizontal, color: 'text-gray-400' },
 };
 
 const CATEGORIES = Object.keys(CATEGORY_META) as FleetExpenseCategory[];
