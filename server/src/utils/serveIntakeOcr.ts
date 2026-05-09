@@ -113,6 +113,11 @@ export async function getPageCount(pdfPath: string): Promise<number> {
 // born-digital documents typically run >2000 chars/page; scans have
 // 0-50; the 10× gap makes 200 a safe boundary that doesn't false-
 // positive on cover-page-only documents.
+//
+// For mixed documents (born-digital + scanned pages), callers
+// should prefer shouldRunOcrPerPage() which checks each page
+// individually (up to 20 pages). This function remains as a
+// fast synchronous check; shouldRunOcrPerPage is async.
 // ─────────────────────────────────────────────────────────────
 export function shouldRunOcr(extractedText: string, pageCount: number): boolean {
   if (pageCount === 0) return false;
@@ -120,6 +125,52 @@ export function shouldRunOcr(extractedText: string, pageCount: number): boolean 
   if (textLen === 0) return true;
   const charsPerPage = textLen / pageCount;
   return charsPerPage < 200;
+}
+
+// Per-page OCR decision: runs pdftotext on each page individually
+// (up to 20 pages) to detect sparse pages that need OCR even when
+// the document-wide average is above threshold.
+const SPARSE_PAGE_THRESHOLD = 100;
+const MAX_PER_PAGE_CHECK = 20;
+
+export interface PerPageOcrResult {
+  shouldOcr: boolean;
+  sparsePages: number[];
+  totalChars: number[];
+}
+
+export async function shouldRunOcrPerPage(
+  pdfPath: string,
+  pageCount: number,
+): Promise<PerPageOcrResult> {
+  const effectiveCount = Math.min(pageCount, MAX_PER_PAGE_CHECK);
+  const totalChars: number[] = [];
+  const sparsePages: number[] = [];
+
+  for (let page = 1; page <= effectiveCount; page++) {
+    try {
+      const { stdout } = await execFileAsync(
+        'pdftotext',
+        ['-f', String(page), '-l', String(page), pdfPath, '-'],
+        { timeout: 10_000 },
+      );
+      const charCount = stdout.trim().length;
+      totalChars.push(charCount);
+      if (charCount < SPARSE_PAGE_THRESHOLD) {
+        sparsePages.push(page);
+      }
+    } catch {
+      // If pdftotext fails on a page, treat it as sparse
+      totalChars.push(0);
+      sparsePages.push(page);
+    }
+  }
+
+  return {
+    shouldOcr: sparsePages.length > 0,
+    sparsePages,
+    totalChars,
+  };
 }
 
 // Run ocrmypdf on a PDF buffer and return the OCR'd PDF bytes.
