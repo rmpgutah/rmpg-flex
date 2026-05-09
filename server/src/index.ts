@@ -125,6 +125,8 @@ import firecrawlToolsRoutes from './routes/firecrawlTools';
 import geocodeRoutes from './routes/geocode';
 import drivingEventsRoutes from './routes/drivingEvents';
 import evidenceRoutes from './routes/evidence';
+import intelBulletinsRoutes from './routes/intelBulletins';
+import shiftBriefingsRoutes from './routes/shiftBriefings';
 import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
@@ -470,6 +472,8 @@ app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
 app.use('/api/pdf-tools', pdfToolsRoutes);
 app.use('/api/geocode', geocodeRoutes);
+app.use('/api/intel-bulletins', intelBulletinsRoutes);
+app.use('/api/shift-briefings', shiftBriefingsRoutes);
 app.use('/api/docs', apiDocsRoutes);        // OpenAPI/Swagger interactive docs
 
 // ─── Scheduler status endpoint (admin) ────────────────────
