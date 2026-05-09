@@ -710,7 +710,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               setSelectedPeriod(p || null);
             }} className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white">
               <option value="">Select pay period...</option>
-              {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
+              {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status?.replace(/_/g, ' ').toUpperCase()})</option>)}
             </select>
             {selectedPeriod && entries.length > 0 && (
               <button type="button"
