@@ -39,6 +39,14 @@ const CATEGORY_LABELS: Record<string, string> = {
   tickets: 'Tickets/Fines',
   towing: 'Towing',
   permits: 'Permits',
+  insurance: 'Insurance',
+  equipment: 'Equipment',
+  decals_wraps: 'Decals/Wraps',
+  storage: 'Storage',
+  roadside_assistance: 'Roadside Assistance',
+  inspection: 'Inspection',
+  electronics: 'Electronics',
+  accessories: 'Accessories',
   misc: 'Miscellaneous',
 };
 

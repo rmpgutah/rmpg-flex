@@ -1553,7 +1553,7 @@ export interface FleetCostSummary {
 
 // --- Fleet Expenses (non-fuel) ---
 
-export type FleetExpenseCategory = 'registration' | 'tolls' | 'parking' | 'car_wash' | 'tickets' | 'towing' | 'permits' | 'misc';
+export type FleetExpenseCategory = 'registration' | 'tolls' | 'parking' | 'car_wash' | 'tickets' | 'towing' | 'permits' | 'insurance' | 'equipment' | 'decals_wraps' | 'storage' | 'roadside_assistance' | 'inspection' | 'electronics' | 'accessories' | 'misc';
 
 export interface FleetExpense {
   id?: string | number;
