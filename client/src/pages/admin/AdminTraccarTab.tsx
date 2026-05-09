@@ -585,7 +585,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
                       <div className="flex-1 min-w-0">
                         <div className="text-rmpg-200 font-medium truncate">{device.name}</div>
                         <div className="text-[9px] text-rmpg-500 truncate">
-                          ID: {device.uniqueId} · {device.status}
+                          ID: {device.uniqueId} · {device.status?.replace(/_/g, ' ') || 'unknown'}
                           {device.model ? ` · ${device.model}` : ''}
                         </div>
                       </div>

@@ -406,7 +406,7 @@ export default function ColoradoDocPage() {
               {selected.status && (
                 <div className="flex justify-center">
                   <span className={`px-2.5 py-1 rounded-sm text-[10px] uppercase tracking-wider font-bold border ${statusClass(selected.status)}`}>
-                    {selected.status}
+                    {selected.status?.replace(/_/g, ' ') || 'UNKNOWN'}
                   </span>
                 </div>
               )}
