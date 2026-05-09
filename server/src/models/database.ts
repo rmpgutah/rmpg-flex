@@ -5216,6 +5216,30 @@ function migrateSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_fleet_swaps_officer ON fleet_vehicle_swaps(officer_id);
   `);
 
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS fleet_expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER NOT NULL REFERENCES fleet_vehicles(id),
+      expense_date TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('registration','tolls','parking','car_wash','tickets','towing','permits','misc')),
+      amount REAL NOT NULL,
+      vendor TEXT,
+      description TEXT,
+      receipt_path TEXT,
+      odometer_reading INTEGER,
+      recurring INTEGER DEFAULT 0,
+      recurring_frequency TEXT CHECK(recurring_frequency IN ('monthly','quarterly','semi_annual','annual')),
+      notes TEXT,
+      created_by INTEGER REFERENCES users(id),
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      archived_at TEXT
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_vehicle ON fleet_expenses(vehicle_id)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_date ON fleet_expenses(expense_date)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_category ON fleet_expenses(category)').run();
+
   // ── Feature 26: Message drafts ──
   addCol('messages', 'is_draft', 'INTEGER DEFAULT 0');
   addCol('messages', 'draft_updated_at', 'TEXT');

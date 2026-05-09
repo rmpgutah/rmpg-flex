@@ -12,6 +12,7 @@ import { auditLog } from '../utils/auditLogger';
 import { broadcastFleetUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { pathInside } from '../utils/pathSafety';
+import { logger } from '../utils/logger';
 
 const execFileAsync = promisify(execFile);
 
@@ -3337,6 +3338,132 @@ registerCostCategoryRoutes({
   },
   auditAction: 'fleet_utility_created',
   entityType: 'fleet_utility_cost',
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Fleet Expenses — general vehicle expenses separate from fuel
+// (registration, tolls, parking, car wash, tickets, towing, permits, misc)
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/fleet/expenses/summary — fleet-wide expense summary (grouped by category)
+router.get('/expenses/summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const from = typeof req.query.from === 'string' ? req.query.from : null;
+    const to = typeof req.query.to === 'string' ? req.query.to : null;
+    let sql = `
+      SELECT category, COUNT(*) as count, SUM(amount) as total,
+             AVG(amount) as avg_amount, MIN(expense_date) as first_date,
+             MAX(expense_date) as last_date
+      FROM fleet_expenses
+      WHERE archived_at IS NULL
+    `;
+    const params: any[] = [];
+    if (from) { sql += ' AND expense_date >= ?'; params.push(from); }
+    if (to) { sql += ' AND expense_date <= ?'; params.push(to); }
+    sql += ' GROUP BY category ORDER BY total DESC';
+    const rows = db.prepare(sql).all(...params);
+
+    const grandTotal = rows.reduce((sum: number, r: any) => sum + (r.total || 0), 0);
+    res.json({ categories: rows, grand_total: grandTotal });
+  } catch (err: any) {
+    logger.error({ err }, 'fleet expenses summary failed');
+    res.status(500).json({ error: 'Failed to get expense summary' });
+  }
+});
+
+// GET /api/fleet/:id/expenses — list expenses for a vehicle
+router.get('/:id/expenses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = req.params.id;
+    const rows = db.prepare(`
+      SELECT e.*, u.full_name as created_by_name
+      FROM fleet_expenses e
+      LEFT JOIN users u ON e.created_by = u.id
+      WHERE e.vehicle_id = ? AND e.archived_at IS NULL
+      ORDER BY e.expense_date DESC
+    `).all(id);
+    res.json({ data: rows });
+  } catch (err: any) {
+    logger.error({ err }, 'fleet expenses list failed');
+    res.status(500).json({ error: 'Failed to list expenses' });
+  }
+});
+
+// POST /api/fleet/:id/expenses — create expense
+router.post('/:id/expenses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
+
+    const { expense_date, category, amount, vendor, description, receipt_path, odometer_reading, recurring, recurring_frequency, notes } = req.body;
+    if (!expense_date || !category || amount == null) {
+      res.status(400).json({ error: 'expense_date, category, and amount are required' });
+      return;
+    }
+
+    const result = db.prepare(`
+      INSERT INTO fleet_expenses (vehicle_id, expense_date, category, amount, vendor, description, receipt_path, odometer_reading, recurring, recurring_frequency, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, expense_date, category, Number(amount), vendor || null, description || null, receipt_path || null, odometer_reading ? Number(odometer_reading) : null, recurring ? 1 : 0, recurring_frequency || null, notes || null, req.user!.userId);
+
+    const created = db.prepare('SELECT * FROM fleet_expenses WHERE id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'fleet_expense_created', 'fleet_expense', Number(result.lastInsertRowid),
+      `Created ${category} expense for vehicle ${id}: $${Number(amount).toFixed(2)}`);
+    broadcastFleetUpdate({ action: 'expense_added', vehicle_id: id, id: Number(result.lastInsertRowid) });
+    res.status(201).json(created);
+  } catch (err: any) {
+    logger.error({ err }, 'fleet expenses create failed');
+    res.status(500).json({ error: 'Failed to create expense' });
+  }
+});
+
+// PUT /api/fleet/expenses/:id — update expense
+router.put('/expenses/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM fleet_expenses WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Expense not found' }); return; }
+
+    const fields = ['expense_date', 'category', 'amount', 'vendor', 'description', 'receipt_path', 'odometer_reading', 'recurring', 'recurring_frequency', 'notes'];
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const f of fields) {
+      if (Object.prototype.hasOwnProperty.call(req.body, f)) {
+        sets.push(`${f} = ?`);
+        if (f === 'amount' || f === 'odometer_reading') vals.push(req.body[f] != null ? Number(req.body[f]) : null);
+        else if (f === 'recurring') vals.push(req.body[f] ? 1 : 0);
+        else vals.push(req.body[f] ?? null);
+      }
+    }
+    if (sets.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    sets.push("updated_at = datetime('now','localtime')");
+    vals.push(req.params.id);
+    db.prepare(`UPDATE fleet_expenses SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    const updated = db.prepare('SELECT * FROM fleet_expenses WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (err: any) {
+    logger.error({ err }, 'fleet expenses update failed');
+    res.status(500).json({ error: 'Failed to update expense' });
+  }
+});
+
+// DELETE /api/fleet/expenses/:id — soft-delete
+router.delete('/expenses/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM fleet_expenses WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Expense not found' }); return; }
+    db.prepare("UPDATE fleet_expenses SET archived_at = datetime('now','localtime') WHERE id = ?").run(req.params.id);
+    auditLog(req, 'fleet_expense_deleted', 'fleet_expense', Number(req.params.id), 'Archived expense');
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error({ err }, 'fleet expenses delete failed');
+    res.status(500).json({ error: 'Failed to delete expense' });
+  }
 });
 
 // GET /api/fleet/:id/cost-timeline — unified chronological cost ledger
