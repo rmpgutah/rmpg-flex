@@ -78,7 +78,7 @@ export async function fetchWeather(lat?: number, lon?: number): Promise<WeatherD
   if (latitude == null || longitude == null) {
     try {
       const pos = await new Promise<GeolocationPosition>((resolve, reject) => {
-        navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000, maximumAge: 600000 });
+        navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000, maximumAge: 600000 });
       });
       latitude = pos.coords.latitude;
       longitude = pos.coords.longitude;
