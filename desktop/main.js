@@ -538,7 +538,7 @@ function startSplashTimeout(maxMs = 15000) {
 function checkServerConnectivity() {
   return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 3;
+    const maxAttempts = 3; // 3 × 2s = 6s max; reduced from 5 (10s) to prevent long startup delays
     const delayMs = 2000;
     let resolved = false;
 
@@ -727,7 +727,7 @@ async function createMainWindow() {
         await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
         console.log('[APP] Service workers cleared');
       })(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('cache clear timeout')), 5000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Cache/ServiceWorker clear timed out after 5000ms')), 5000)),
     ]);
   } catch (err) {
     console.warn('[APP] Cache/SW clear timed out or failed — continuing:', err && err.message);
@@ -755,7 +755,10 @@ async function createMainWindow() {
   mainWindow.webContents.once('did-finish-load', () => {
     console.log('[APP] did-finish-load fired');
     if (splashWindow && !splashWindow.isDestroyed()) {
-      // Give ready-to-show a brief moment to fire first (it's the preferred event)
+      // 500ms grace period: ready-to-show (the preferred event) fires at
+      // first paint. If it hasn't fired yet, this backup ensures the splash
+      // closes. If ready-to-show fires during the 500ms, closeSplash() is
+      // a no-op the second time (it checks splashWindow existence).
       setTimeout(() => {
         closeSplash();
         if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
