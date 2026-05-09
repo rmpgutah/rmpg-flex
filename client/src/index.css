@@ -5559,17 +5559,13 @@ code, kbd {
   box-shadow: inset 3px 0 0 #d4a017;
 }
 
-/* ── 55. Subtle transition for all color changes ── */
-* {
+/* ── 55. Subtle transition for interactive element color changes ── */
+button, a, input, select, textarea, [role="button"],
+.toolbar-btn, .tab-bar-item, .menu-item, .badge,
+.card-dark, .card-dark-hover, .led-dot, .panel-title-bar {
   transition-property: color, background-color, border-color, opacity;
-  transition-duration: 0.1s;
-  transition-timing-function: ease;
-}
-/* Override for elements that need different transitions */
-input, textarea, select, button, a, [role="button"],
-.toolbar-btn, .tab-bar-item, .menu-item {
-  transition-property: all;
   transition-duration: 0.15s;
+  transition-timing-function: ease;
 }
 
 /* ── 56. Improved card border gradient effect ── */
@@ -5590,7 +5586,7 @@ input, textarea, select, button, a, [role="button"],
 }
 
 /* ── 58. Breadcrumb separator styling ── */
-nav[aria-label*="readcrumb"] span,
+nav[aria-label*="Breadcrumb"] span,
 .breadcrumb-separator {
   color: #555555;
   margin: 0 4px;
@@ -5640,8 +5636,8 @@ fieldset legend, .form-group-title {
   background: linear-gradient(90deg, transparent, var(--surface-base));
 }
 
-/* ── 63. Hover reveal for truncated text ── */
-.table-dark tbody td:hover {
+/* ── 63. Hover reveal for truncated text (on double-click) ── */
+.table-dark tbody td:active {
   white-space: normal;
   word-break: break-word;
   z-index: 1;
@@ -5705,7 +5701,7 @@ input[aria-invalid="false"] {
 .table-dark tbody td .font-mono:hover,
 [class*="tabular-nums"]:hover {
   color: #ffffff;
-  text-shadow: 0 0 8px currentColor;
+  text-shadow: 0 0 4px rgba(136, 136, 136, 0.2);
 }
 
 /* ── 73. Subtle border radius on all tooltip-like elements ── */
