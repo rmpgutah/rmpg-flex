@@ -91,6 +91,8 @@ const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
+const IntelBulletinsPage = lazyRetry(() => import('./pages/IntelBulletinsPage'));
+const ShiftBriefingsPage = lazyRetry(() => import('./pages/ShiftBriefingsPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 const MobileHomePage = lazyRetry(() => import('./pages/mobile'));
@@ -313,6 +315,8 @@ function AppRoutes() {
             <Route path="/cases" element={<RouteErrorBoundary><CaseManagementPage /></RouteErrorBoundary>} />
             <Route path="/crime-analysis" element={<RouteErrorBoundary><CrimeAnalysisPage /></RouteErrorBoundary>} />
             <Route path="/connections" element={<RouteErrorBoundary><ConnectionsPage /></RouteErrorBoundary>} />
+            <Route path="/intel-bulletins" element={<RouteErrorBoundary><IntelBulletinsPage /></RouteErrorBoundary>} />
+            <Route path="/shift-briefings" element={<RouteErrorBoundary><ShiftBriefingsPage /></RouteErrorBoundary>} />
             <Route path="/code-enforcement" element={<RouteErrorBoundary><CodeEnforcementPage /></RouteErrorBoundary>} />
             <Route path="/court" element={<RouteErrorBoundary><CourtTrackerPage /></RouteErrorBoundary>} />
             <Route path="/dar" element={<RouteErrorBoundary><DailyActivityReportsPage /></RouteErrorBoundary>} />

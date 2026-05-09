@@ -6826,6 +6826,68 @@ function createIndexes(): void {
       UNIQUE(call_id, unit_id)
     );
 
+    -- ─── INTELLIGENCE BULLETINS ───────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS intel_bulletins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bulletin_number TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      bulletin_type TEXT NOT NULL DEFAULT 'bolo',
+      priority TEXT NOT NULL DEFAULT 'medium',
+      status TEXT NOT NULL DEFAULT 'active',
+      description TEXT NOT NULL,
+      suspect_name TEXT,
+      suspect_description TEXT,
+      vehicle_description TEXT,
+      location_area TEXT,
+      weapons_involved TEXT,
+      photo_url TEXT,
+      expires_at TEXT,
+      linked_case_id INTEGER,
+      linked_warrant_id INTEGER,
+      linked_call_id INTEGER,
+      created_by INTEGER NOT NULL,
+      cancelled_by INTEGER,
+      cancelled_at TEXT,
+      expired_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS intel_bulletin_acknowledgments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bulletin_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      acknowledged_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (bulletin_id) REFERENCES intel_bulletins(id) ON DELETE CASCADE,
+      UNIQUE(bulletin_id, user_id)
+    );
+
+    -- ─── SHIFT BRIEFINGS ─────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS shift_briefings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      briefing_number TEXT UNIQUE NOT NULL,
+      shift_type TEXT NOT NULL DEFAULT 'day',
+      briefing_date TEXT NOT NULL,
+      title TEXT,
+      content TEXT,
+      notes TEXT,
+      weather_conditions TEXT,
+      staffing_level TEXT,
+      created_by INTEGER NOT NULL,
+      deleted_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS shift_briefing_acknowledgments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      briefing_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      acknowledged_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (briefing_id) REFERENCES shift_briefings(id) ON DELETE CASCADE,
+      UNIQUE(briefing_id, user_id)
+    );
+
     -- Dashcam videos indexes — only on columns that actually exist.
     -- The previous unit_id and officer_id indexes referenced columns
     -- that were never added to dashcam_videos (verified via grep
@@ -7022,6 +7084,22 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_panic_alerts_created ON panic_alerts(created_at);
     CREATE INDEX IF NOT EXISTS idx_panic_alerts_call ON panic_alerts(call_id);
     CREATE INDEX IF NOT EXISTS idx_panic_alerts_escalation ON panic_alerts(escalation_level);
+
+    -- Intel bulletins indexes
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_status ON intel_bulletins(status);
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_type ON intel_bulletins(bulletin_type);
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_priority ON intel_bulletins(priority);
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_created ON intel_bulletins(created_at);
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_expires ON intel_bulletins(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_intel_ack_bulletin ON intel_bulletin_acknowledgments(bulletin_id);
+    CREATE INDEX IF NOT EXISTS idx_intel_ack_user ON intel_bulletin_acknowledgments(user_id);
+
+    -- Shift briefings indexes
+    CREATE INDEX IF NOT EXISTS idx_shift_briefings_date ON shift_briefings(briefing_date);
+    CREATE INDEX IF NOT EXISTS idx_shift_briefings_shift ON shift_briefings(shift_type);
+    CREATE INDEX IF NOT EXISTS idx_shift_briefings_created ON shift_briefings(created_at);
+    CREATE INDEX IF NOT EXISTS idx_shift_briefing_ack_briefing ON shift_briefing_acknowledgments(briefing_id);
+    CREATE INDEX IF NOT EXISTS idx_shift_briefing_ack_user ON shift_briefing_acknowledgments(user_id);
   `);
   } catch (err: any) {
     console.warn('[DB] createIndexes partially failed (non-fatal):', err?.message || 'Unknown error');
