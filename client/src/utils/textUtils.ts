@@ -21,12 +21,17 @@ export function truncateWords(
   return truncated.trimEnd() + suffix;
 }
 
-/** Highlight search term in text (returns HTML string) */
+/** Highlight search term in text (returns HTML string). Use only with trusted text content. */
 export function highlightText(text: string, searchTerm: string): string {
   if (!searchTerm || !text) return text || '';
+  // Escape HTML entities in the source text to prevent XSS
+  const safeText = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
   const escaped = searchTerm.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escaped})`, 'gi');
-  return text.replace(
+  return safeText.replace(
     regex,
     '<mark class="bg-yellow-300/30 text-inherit">$1</mark>'
   );

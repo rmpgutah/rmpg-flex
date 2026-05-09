@@ -84,8 +84,9 @@ export function validateUpload(
     '.ps1',
     '.sh',
   ];
-  const ext = '.' + filename.split('.').pop()?.toLowerCase();
-  if (dangerousExtensions.includes(ext)) {
+  const dotIndex = filename.lastIndexOf('.');
+  const ext = dotIndex >= 0 ? filename.slice(dotIndex).toLowerCase() : '';
+  if (ext && dangerousExtensions.includes(ext)) {
     return { valid: false, error: `File extension ${ext} is not allowed` };
   }
 

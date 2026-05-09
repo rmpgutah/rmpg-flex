@@ -86,9 +86,8 @@ export function getWebVitals(): Record<string, number | null> {
   };
 
   try {
-    const nav = performance.getEntriesByType(
-      'navigation'
-    )[0] as PerformanceNavigationTiming;
+    const navEntries = performance.getEntriesByType('navigation');
+    const nav = navEntries.length > 0 ? (navEntries[0] as PerformanceNavigationTiming) : null;
     if (nav) {
       vitals.navigationStart = Math.round(nav.startTime);
       vitals.domContentLoaded = Math.round(nav.domContentLoadedEventEnd);

@@ -79,7 +79,7 @@ export function isAllowedMethod(method: string): boolean {
 /** Sanitize SQL identifiers to prevent injection in dynamic queries */
 export function sanitizeSqlIdentifier(identifier: string): string {
   if (!/^[a-zA-Z_][a-zA-Z0-9_]{0,63}$/.test(identifier)) {
-    throw new Error(`Invalid SQL identifier: ${identifier.slice(0, 20)}`);
+    throw new Error('Invalid SQL identifier');
   }
   return identifier;
 }
