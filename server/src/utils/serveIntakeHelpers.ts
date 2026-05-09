@@ -55,18 +55,24 @@ export function scanForAddresses(text: string): ScanCandidate[] {
     candidates.push({ value: value.replace(/\s+/g, ' ').trim(), confidence, source });
   };
 
-  // Full address with ZIP: "1234 Street Name, City, ST 84123"
-  const fullAddrRe = new RegExp(`(\\d+\\s+[A-Za-z][^\\n]{5,60},\\s*[A-Za-z .]+,\\s*(?:${states})\\s*\\d{5}(?:-\\d{4})?)`, 'gi');
-  for (const m of text.matchAll(fullAddrRe)) {
-    add(m[1], 90, 'full-address');
-  }
-  // Labeled: "Address: ..." or "Service Address: ..."
-  for (const m of text.matchAll(/(?:Address|Service Address|Recipient Address|Serve at)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/gi)) {
-    add(m[1], 95, 'labeled-address');
-  }
-  // "residing at" / "located at" — defendant's address in court docs
-  for (const m of text.matchAll(/(?:resid(?:es|ing)|located)\s+at[:\s]+(\d+\s+\w[^\n]{5,80}\d{5})/gi)) {
-    add(m[1], 85, 'residing-at');
+  // Process line-by-line to eliminate catastrophic backtracking on long unstructured text
+  const lines = text.split('\n');
+  for (const line of lines) {
+    if (line.length > 300) continue; // skip absurdly long lines (not real addresses)
+
+    // Full address with ZIP: "1234 Street Name, City, ST 84123"
+    const fullAddrRe = new RegExp(`(\\d+\\s+[A-Za-z][^,]{4,60},\\s*[A-Za-z .]+,\\s*(?:${states})\\s*\\d{5}(?:-\\d{4})?)`, 'gi');
+    for (const m of line.matchAll(fullAddrRe)) {
+      add(m[1], 90, 'full-address');
+    }
+    // Labeled: "Address: ..." or "Service Address: ..."
+    for (const m of line.matchAll(/(?:Address|Service Address|Recipient Address|Serve at)[:\s]+(.{0,100}?\d{5}(?:-\d{4})?)/gi)) {
+      add(m[1], 95, 'labeled-address');
+    }
+    // "residing at" / "located at" — defendant's address in court docs
+    for (const m of line.matchAll(/(?:resid(?:es|ing)|located)\s+at[:\s]+(\d+\s+\w[^,]{4,80}\d{5})/gi)) {
+      add(m[1], 85, 'residing-at');
+    }
   }
   return candidates.sort((a, b) => b.confidence - a.confidence);
 }
@@ -96,6 +102,8 @@ export function scanForPhones(text: string): ScanCandidate[] {
 export function scanForEmails(text: string): ScanCandidate[] {
   if (!text) return [];
   text = boundForRegex(text);
+  // Quick bail: if no '@' exists, skip the expensive matchAll entirely
+  if (!text.includes('@')) return [];
   const candidates: ScanCandidate[] = [];
   for (const m of text.matchAll(/([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/g)) {
     candidates.push({ value: m[1], confidence: 90, source: 'email-pattern' });
