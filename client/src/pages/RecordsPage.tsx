@@ -296,7 +296,7 @@ export default function RecordsPage() {
   const isLoading = loadingPersons || loadingVehicles || loadingProperties || loadingEvidence;
 
   const tabs: { id: TabId; label: string; icon: React.ElementType; count: number }[] = [
-    { id: 'persons', label: 'Persons', icon: UserCircle, count: persons.length },
+    { id: 'persons', label: 'Individual', icon: UserCircle, count: persons.length },
     { id: 'vehicles', label: 'Vehicles', icon: Car, count: vehicles.length },
     { id: 'properties', label: 'Properties', icon: Building2, count: properties.length },
     { id: 'businesses', label: 'Business', icon: Briefcase, count: 0 },

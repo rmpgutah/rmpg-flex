@@ -80,7 +80,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'calls', label: 'Calls', countKey: 'calls' },
   { id: 'incidents', label: 'Incidents', countKey: 'incidents' },
-  { id: 'persons', label: 'Persons', countKey: 'persons' },
+  { id: 'persons', label: 'Individual', countKey: 'persons' },
   { id: 'vehicles', label: 'Vehicles', countKey: 'vehicles' },
   { id: 'properties', label: 'Properties', countKey: 'properties' },
   { id: 'evidence', label: 'Evidence', countKey: 'evidence' },

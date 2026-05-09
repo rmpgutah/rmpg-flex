@@ -1860,13 +1860,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
-  // Linked Persons — route through the shared addTableWithShading helper
+  // Linked Individuals — route through the shared addTableWithShading helper
   // so the table automatically redraws column headers + a
-  // "LINKED PERSONS -- CONTINUED" sub-bar on any page break (no more
+  // "LINKED INDIVIDUALS -- CONTINUED" sub-bar on any page break (no more
   // orphaned data rows on continuation pages).
   if (data.linked_persons && data.linked_persons.length > 0) {
     y = checkPageBreak(doc, y, 22, prio);
-    const sec = openAutoSection(doc, 'LINKED PERSONS', y);
+    const sec = openAutoSection(doc, 'LINKED INDIVIDUALS', y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
     const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.14, ffw * 0.26, ffw * 0.20];
     const pColPos: number[] = [];

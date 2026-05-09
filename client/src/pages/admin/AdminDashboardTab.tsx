@@ -173,7 +173,7 @@ export default function AdminDashboardTab({ LoadingSpinner, onNavigate }: AdminD
           <Database className="w-3.5 h-3.5" /> Record Counts
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8 gap-2">
-          <StatCard icon={Users} label="Persons" value={data.totalPersons} color="text-brand-400" />
+          <StatCard icon={Users} label="Individual" value={data.totalPersons} color="text-brand-400" />
           <StatCard icon={Car} label="Vehicles" value={data.totalVehicles} color="text-green-400" />
           <StatCard icon={Building2} label="Properties" value={data.totalProperties} color="text-purple-400" />
           <StatCard icon={Briefcase} label="Businesses" value={data.totalBusinesses} color="text-purple-400" />
