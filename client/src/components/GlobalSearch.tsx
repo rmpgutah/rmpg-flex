@@ -39,7 +39,7 @@ interface RecentSearch {
 const ENTITY_CONFIG = {
   person: {
     icon: User,
-    label: 'Individual',
+    label: 'Individuals',
     route: '/records',
     color: 'text-brand-400',
   },

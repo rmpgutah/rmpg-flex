@@ -3564,7 +3564,7 @@ export default function DispatchPage() {
               {/* Detail Tabs */}
               <div className="flex border-b border-[#2b2b2b] flex-shrink-0" style={{ background: '#050505' }}>
                 {(['info', 'persons', 'timeline', 'notes', 'attachments', 'flags', 'audit'] as const).map(tab => {
-                  const labels: Record<string, string> = { info: 'Info', persons: 'Individual / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
+                  const labels: Record<string, string> = { info: 'Info', persons: 'Individuals / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                   const icons: Record<string, React.ReactNode> = {
                     info: <FileText style={{ width: 9, height: 9 }} />,
                     persons: <User style={{ width: 9, height: 9 }} />,
@@ -4148,7 +4148,7 @@ export default function DispatchPage() {
                         {/* ── Linked Persons ── */}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <label className="text-[9px] text-brand-gold-500">Linked Individual</label>
+                            <label className="text-[9px] text-brand-gold-500">Linked Individuals</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
                               <option value="suspect">Suspect</option>
                               <option value="victim">Victim</option>
