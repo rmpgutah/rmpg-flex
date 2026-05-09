@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
-  Receipt,
+  Receipt, MapPin, Camera,
 } from 'lucide-react';
 import type {
   FleetVehicle, FleetMaintenance, FleetFuelLog, FleetFuelSummary,
@@ -20,6 +20,8 @@ import FleetTiresTab from './tabs/FleetTiresTab';
 import FleetDamageTab from './tabs/FleetDamageTab';
 import FleetRecallsTab from './tabs/FleetRecallsTab';
 import FleetExpensesTab from './tabs/FleetExpensesTab';
+import FleetGpsTab from './tabs/FleetGpsTab';
+import FleetDashCamTab from './tabs/FleetDashCamTab';
 import { formatMilitary } from './utils/fleetFormatters';
 import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
@@ -27,7 +29,7 @@ import { generateFleetVehicleSummaryPdf } from './utils/fleetVehicleSummaryPdf';
 import { generateFleetMaintenanceHistoryPdf } from './utils/fleetMaintenanceHistoryPdf';
 import PrintRecordButton from '../../components/PrintRecordButton';
 
-export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'expenses';
+export type DetailTab = 'overview' | 'fuel' | 'inspections' | 'assignments' | 'personnel' | 'analytics' | 'tires' | 'damage' | 'recalls' | 'expenses' | 'gps' | 'dashcam';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green', maintenance: 'led-dot led-amber',
@@ -65,6 +67,8 @@ const TABS: { key: DetailTab; label: string; icon: React.ComponentType<{ classNa
   { key: 'tires', label: 'Tires', icon: Circle },
   { key: 'damage', label: 'Damage', icon: AlertTriangle },
   { key: 'recalls', label: 'Recalls', icon: AlertOctagon },
+  { key: 'gps', label: 'GPS', icon: MapPin },
+  { key: 'dashcam', label: 'Dash Cam', icon: Camera },
   { key: 'analytics', label: 'Analytics', icon: BarChart3 },
 ];
 
@@ -418,6 +422,8 @@ export default function FleetDetailPanel({
         {activeTab === 'damage' && <FleetDamageTab vehicleId={detail.id} />}
         {activeTab === 'recalls' && <FleetRecallsTab vehicleId={detail.id} />}
         {activeTab === 'expenses' && <FleetExpensesTab vehicle={detail} canManage={['admin', 'manager', 'supervisor', 'officer'].includes(user?.role || '')} />}
+        {activeTab === 'gps' && <FleetGpsTab vehicleId={detail.id} />}
+        {activeTab === 'dashcam' && <FleetDashCamTab vehicleId={detail.id} />}
         {activeTab === 'analytics' && <FleetAnalyticsTab analytics={analytics} loading={analyticsLoading} />}
       </div>
     </div>
