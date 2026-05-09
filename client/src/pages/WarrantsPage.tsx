@@ -1524,7 +1524,7 @@ export default function WarrantsPage() {
                 <div className="text-2xl font-bold font-mono tabular-nums text-white">
                   {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : (dashStats?.personsFlagged ?? 0)}
                 </div>
-                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Persons Flagged</div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Individuals Flagged</div>
               </div>
               <div className={`panel-inset p-3 rounded-sm text-center ${dashStats && dashStats.sourcesOnline < dashStats.sourcesTotal ? 'bg-red-900/10 border border-red-900/30' : 'bg-surface-sunken'}`}>
                 <div className={`text-2xl font-bold font-mono tabular-nums ${dashStats && dashStats.sourcesOnline >= dashStats.sourcesTotal ? 'text-green-400' : dashStats ? 'text-amber-400' : 'text-white'}`}>
@@ -2738,7 +2738,7 @@ export default function WarrantsPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="panel-raised p-3 text-center">
                     <div className="text-xl font-bold font-mono text-white">{autoPollStatus.totalPersons}</div>
-                    <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Persons Monitored</div>
+                    <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Individuals Monitored</div>
                   </div>
                   <div className="panel-raised p-3 text-center">
                     <div className="text-xl font-bold font-mono text-red-400">{autoPollStatus.flaggedPersons.length}</div>
@@ -2857,7 +2857,7 @@ export default function WarrantsPage() {
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-                      <span className="text-xs font-bold text-white">Persons with Active Warrants</span>
+                      <span className="text-xs font-bold text-white">Individuals with Active Warrants</span>
                       <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono font-bold">
                         {autoPollStatus.flaggedPersons.length}
                       </span>
@@ -3269,7 +3269,7 @@ export default function WarrantsPage() {
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                         <div className="panel-beveled p-2">
-                          <div className="text-[9px] text-rmpg-500 uppercase">Persons</div>
+                          <div className="text-[9px] text-rmpg-500 uppercase">Individuals</div>
                           <div className="text-base font-bold font-mono text-white tabular-nums">{run.persons_checked}</div>
                         </div>
                         <div className="panel-beveled p-2">

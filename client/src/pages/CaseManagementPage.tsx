@@ -861,7 +861,7 @@ export default function CaseManagementPage() {
                   {/* Link Person Quick Action */}
                   <div className="panel-beveled p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-[9px] font-mono text-rmpg-500 uppercase">Linked Persons</div>
+                      <div className="text-[9px] font-mono text-rmpg-500 uppercase">Linked Individuals</div>
                       <button type="button" onClick={() => setLinkPersonOpen(true)} className="toolbar-btn text-[10px]">
                         <Link style={{ width: 10, height: 10 }} /> Link Person
                       </button>

@@ -355,6 +355,10 @@ export default function RecordsPage() {
       const p = propertiesState.selectedProperty;
       return { recordType: 'property' as const, recordData: p, identifier: p.name, entityType: 'property' as const, entityId: p.id };
     }
+    if (activeTab === 'businesses' && businessState.selectedBusiness) {
+      const b = businessState.selectedBusiness;
+      return { recordType: 'business' as const, recordData: b, identifier: b.name, entityType: 'business' as const, entityId: b.id };
+    }
     if (activeTab === 'evidence' && evidenceState.selectedEvidence) {
       const e = evidenceState.selectedEvidence;
       return { recordType: 'evidence' as const, recordData: e, identifier: e.evidence_number, entityType: 'evidence' as const, entityId: e.id };
