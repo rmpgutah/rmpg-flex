@@ -2850,7 +2850,7 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       flagList = rf.map((f: any) => typeof f === 'string' ? f : (f?.type || f?.name || f?.label || '')).filter(Boolean);
     }
     // Clean up: replace underscores with spaces
-    flagList = flagList.map(f => f.replace(/_/g, ' '));
+    flagList = flagList.map(f => f.replace(/_/g, ' ').toUpperCase());
 
     // Dedup against the checkbox flags above.
     const alreadyShown = new Set<string>();
@@ -3872,7 +3872,7 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
     const r1a = addFieldPair(doc, 'Evidence Number', data.evidence_number || '', lx, y, fifthW * 2);
     const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.evidence_type), lx + fifthW * 2, y, fifthW);
     const r1c = addFieldPair(doc, 'Category', data.category || '', lx + fifthW * 3, y, fifthW);
-    const r1d = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + fifthW * 4, y, fifthW);
+    const r1d = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
     // Row 2: Related Incident, Serial Number, Brand, Model (4 cols)
     const r2a = addFieldPair(doc, 'Related Incident', data.incident_number || '', lx, y, quarterW);
@@ -4072,7 +4072,7 @@ function expiryStatusTag(dateStr: string | null | undefined, warnWithinDays = 30
 function buildFleetCautionText(data: FleetPdfData, flags: string[]): string {
   const parts: string[] = [];
   if (flags.includes('OUT OF SERVICE') || flags.includes('IN REPAIR')) {
-    parts.push(`Vehicle ${data.vehicle_number} is currently ${data.status?.replace(/_/g, ' ')} — not available for deployment.`);
+    parts.push(`Vehicle ${data.vehicle_number} is currently ${data.status?.replace(/_/g, ' ').toUpperCase()} — not available for deployment.`);
   }
   if (flags.includes('REGISTRATION EXPIRED') || flags.includes('INSURANCE EXPIRED')) {
     parts.push('CRITICAL: Expired compliance documents — vehicle may not be legally operable on public roadways until renewed.');
@@ -4147,7 +4147,7 @@ async function generateFleetReport(doc: jsPDF, data: FleetPdfData) {
     // Row 3: Plate Number, Plate State, Status (3 cols)
     const r3a = addFieldPair(doc, 'Plate Number', data.plate_number || '', lx, y, thirdW);
     const r3b = addFieldPair(doc, 'Plate State', data.plate_state || '', lx + thirdW, y, thirdW);
-    const r3c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + thirdW * 2, y, thirdW);
+    const r3c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + thirdW * 2, y, thirdW);
     y = Math.max(r3a, r3b, r3c);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -5360,7 +5360,7 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
     // Row 1: Citation Number (2/4), Type (1/4), Status (1/4)
     const r1a = addFieldPair(doc, 'Citation Number', data.citation_number || '', lx, y, quarterW * 2);
     const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.type), lx + quarterW * 2, y, quarterW);
-    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ')), lx + quarterW * 3, y, quarterW);
+    const r1c = addFieldPair(doc, 'Status', displayStatus((data.status || '').replace(/_/g, ' ').toUpperCase()), lx + quarterW * 3, y, quarterW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Date of Violation, Time, Location
     const r2a = addFieldPair(doc, 'Date of Violation', data.violation_date || '', lx, y, quarterW);

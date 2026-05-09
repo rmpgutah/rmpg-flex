@@ -471,7 +471,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                     background: notification.is_read ? '#0a0a0a' : '#141414',
                     borderLeft: notification.is_read ? '2px solid transparent' : '2px solid #888888',
                   }}
-                  title={route ? `Click to go to ${notification.type.replace(/_/g, ' ')}` : undefined}
+                  title={route ? `Click to go to ${notification.type.replace(/_/g, ' ').toUpperCase()}` : undefined}
                 >
                   {/* Type Icon + LED */}
                   <div className="flex-shrink-0 flex items-center gap-1" style={{ marginTop: '2px' }}>
@@ -522,7 +522,7 @@ export default function NotificationCenter({ className = '' }: NotificationCente
                         className="text-rmpg-500 uppercase"
                         style={{ fontSize: '8px', fontWeight: 700, letterSpacing: '0.5px' }}
                       >
-                        {notification.type.replace(/_/g, ' ')}
+                        {notification.type.replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </div>
                   </div>

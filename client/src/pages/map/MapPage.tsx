@@ -1605,7 +1605,7 @@ export default function MapPage() {
                 const personRows = linkedPersons.slice(0, 8).map((p: any) => {
                   const relColor = RELATIONSHIP_COLORS[p.relationship] || '#666666';
                   const name = escapeHtml(`${p.first_name} ${p.last_name}`);
-                  const rel = escapeHtml((p.relationship || '').replace(/_/g, ' '));
+                  const rel = escapeHtml((p.relationship || '').replace(/_/g, ' ').toUpperCase());
                   const flagsArr = (() => { try { return JSON.parse(p.flags || '[]'); } catch { return []; } })();
                   const hasWarning = flagsArr.includes('trespass') || flagsArr.includes('violent') || flagsArr.includes('armed') || p.relationship === 'trespass_warning' || p.relationship === 'banned';
                   return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #2b2b2b20;">
@@ -1626,7 +1626,7 @@ export default function MapPage() {
                   return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #2b2b2b20;">
                     <div>
                       <span style="color:#bfbfbf;font-size:9px;font-weight:700;">${escapeHtml(c.call_number || '')}</span>
-                      <span style="color:#6b7280;font-size:8px;margin-left:4px;">${escapeHtml(c.incident_type?.replace(/_/g, ' ') || '')}</span>
+                      <span style="color:#6b7280;font-size:8px;margin-left:4px;">${escapeHtml(c.incident_type?.replace(/_/g, ' ').toUpperCase() || '')}</span>
                     </div>
                     <div style="text-align:right;">
                       <span style="color:${statusColor};font-size:8px;font-weight:600;">${escapeHtml(c.status || '')}</span>

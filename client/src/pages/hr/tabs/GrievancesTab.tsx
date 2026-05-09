@@ -112,7 +112,7 @@ export default function GrievancesTab() {
           </div>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Statuses</option>
-            {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+            {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
           </select>
           <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
         </div>

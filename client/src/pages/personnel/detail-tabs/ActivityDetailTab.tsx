@@ -78,7 +78,7 @@ export default function ActivityDetailTab({ activity }: Props) {
                         <span
                           className={`font-mono uppercase text-[10px] font-bold tracking-wider ${actionColor}`}
                         >
-                          {entry.action.replace(/_/g, ' ')}
+                          {entry.action.replace(/_/g, ' ').toUpperCase()}
                         </span>
                       </span>
                       <span className="font-mono text-[9px] text-rmpg-500 flex-shrink-0">

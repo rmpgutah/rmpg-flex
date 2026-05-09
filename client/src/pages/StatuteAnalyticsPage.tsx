@@ -166,7 +166,7 @@ export default function StatuteAnalyticsPage() {
           <div className="flex items-center gap-2 text-[10px] ml-2">
             <span className="text-white font-bold">{penaltyResult.citation}</span>
             <span className="text-rmpg-400">{penaltyResult.short_title}</span>
-            <span className="text-amber-400">{penaltyResult.offense_level?.replace(/_/g, ' ')}</span>
+            <span className="text-amber-400">{penaltyResult.offense_level?.replace(/_/g, ' ').toUpperCase()}</span>
             <span className="text-rmpg-400">Jail: {penaltyResult.penalty_range?.jail_max}</span>
             <span className="text-rmpg-400">Fine: {penaltyResult.penalty_range?.fine_max}</span>
             <button type="button" onClick={() => setPenaltyResult(null)} className="text-rmpg-500 hover:text-rmpg-300 ml-1">x</button>
@@ -278,7 +278,7 @@ export default function StatuteAnalyticsPage() {
                       s.offense_level?.includes('misdemeanor') ? 'text-amber-400 border-amber-700/50 bg-amber-900/30' :
                       'text-green-400 border-green-700/50 bg-green-900/30'
                     }`}>
-                      {s.offense_level?.replace(/_/g, ' ') || 'N/A'}
+                      {s.offense_level?.replace(/_/g, ' ').toUpperCase() || 'N/A'}
                     </span>
                   </div>
                 ))}

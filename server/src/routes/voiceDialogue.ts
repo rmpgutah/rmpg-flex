@@ -215,12 +215,12 @@ router.post('/dialogue', async (req: Request, res: Response) => {
     if (RISKY_ACTIONS.has(a.tool) && !plan.pending_followup) {
       plan.pending_followup = {
         kind: 'confirm_action',
-        prompt: `Confirm ${a.tool.replace(/_/g, ' ')}?`,
+        prompt: `Confirm ${a.tool.replace(/_/g, ' ').toUpperCase()}?`,
         expires_at: Date.now() + 30_000,
         meta: { deferred_action: a },
       };
       plan.actions.splice(i, 1);
-      plan.reply = (plan.reply ? plan.reply + ' ' : '') + `Confirm ${a.tool.replace(/_/g, ' ')}?`;
+      plan.reply = (plan.reply ? plan.reply + ' ' : '') + `Confirm ${a.tool.replace(/_/g, ' ').toUpperCase()}?`;
     }
   }
 

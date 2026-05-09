@@ -457,7 +457,7 @@ export default function OffenderRegistryPage() {
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <span className={`px-1 border ${TYPE_COLORS[alert.alert_type] || ''}`}>
-                    {alert.alert_type.replace(/_/g, ' ')}
+                    {alert.alert_type.replace(/_/g, ' ').toUpperCase()}
                   </span>
                   <span className="truncate">{alert.description}</span>
                 </div>

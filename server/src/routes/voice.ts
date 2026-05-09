@@ -353,7 +353,7 @@ export async function executeCommand(
         `Voice command: ${unit.call_sign} status changed to ${newStatus}`);
 
       // ── Contextual feedback based on status ──
-      const parts: string[] = [`Copy, ${unit.call_sign} now showing ${newStatus.replace(/_/g, ' ')}.`];
+      const parts: string[] = [`Copy, ${unit.call_sign} now showing ${newStatus.replace(/_/g, ' ').toUpperCase()}.`];
 
       if (newStatus === 'on_scene') {
         // Auto threat briefing when arriving on scene
@@ -558,7 +558,7 @@ export async function executeCommand(
       const gps = getLatestGps(unit.call_sign);
       const currentCall = getCurrentCall(unit.id);
       const parts: string[] = [`Situation report for ${unit.call_sign}.`];
-      parts.push(`Current status: ${unit.status.replace(/_/g, ' ')}.`);
+      parts.push(`Current status: ${unit.status.replace(/_/g, ' ').toUpperCase()}.`);
       if (currentCall) {
         parts.push(`Assigned to ${currentCall.call_number}, ${currentCall.incident_type}, priority ${currentCall.priority}, at ${currentCall.location_address || 'unknown location'}.`);
       } else {
@@ -703,7 +703,7 @@ export async function executeCommand(
       try {
         const c = db.prepare('SELECT case_number, status, assigned_to, updated_at FROM cases WHERE case_number = ?').get(caseNum) as any;
         if (!c) return { success: true, response: `No case found with number ${caseNum}.` };
-        return { success: true, response: `Case ${c.case_number}: status ${(c.status || 'unknown').replace(/_/g, ' ')}, assigned to ${c.assigned_to || 'unassigned'}.` };
+        return { success: true, response: `Case ${c.case_number}: status ${(c.status || 'unknown').replace(/_/g, ' ').toUpperCase()}, assigned to ${c.assigned_to || 'unassigned'}.` };
       } catch { return { success: true, response: `Case lookup not available.` }; }
     }
 

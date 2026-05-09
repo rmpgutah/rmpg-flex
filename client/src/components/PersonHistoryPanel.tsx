@@ -111,7 +111,7 @@ function formatRole(role: string): string {
 }
 
 function formatType(type: string): string {
-  return (type || '').replace(/_/g, ' ');
+  return (type || '').replace(/_/g, ' ').toUpperCase();
 }
 
 const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
@@ -377,7 +377,7 @@ export default function PersonHistoryPanel({
                       CITATION_STATUS_CLASSES[c.status] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                     }`}
                   >
-                    {c.status.replace(/_/g, ' ')}
+                    {c.status.replace(/_/g, ' ').toUpperCase()}
                   </span>
                   <span
                     className={`inline-flex items-center px-1 py-0.5 text-[9px] uppercase font-bold border panel-beveled ${

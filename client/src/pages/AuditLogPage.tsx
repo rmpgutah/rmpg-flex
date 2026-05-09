@@ -485,7 +485,7 @@ const AuditLogPage: React.FC = () => {
             >
               <option value="">All Types</option>
               {uniqueEntityTypes.map(type => (
-                <option key={type} value={type}>{type.replace(/_/g, ' ')}</option>
+                <option key={type} value={type}>{type.replace(/_/g, ' ').toUpperCase()}</option>
               ))}
             </select>
           </div>

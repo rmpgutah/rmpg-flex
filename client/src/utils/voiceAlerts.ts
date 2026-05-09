@@ -30,7 +30,7 @@ function priorityToNumber(p?: string): number | undefined {
 
 function humanizeType(t?: string): string | undefined {
   if (!t) return undefined;
-  return t.replace(/_/g, ' ');
+  return t.replace(/_/g, ' ').toUpperCase();
 }
 
 function toCallSlots(call: {
@@ -837,10 +837,10 @@ export async function announceStatusChange(callOrSign: string | { call_sign?: st
     enqueuePhrases([{ text: `Unit ${callSign}, on scene${location ? ` at ${location}` : callNumber ? ` on call ${callNumber}` : ''}.` }]);
   } else if (statusNorm === 'cleared' || statusNorm === 'closed') {
     enqueuePhrases([{
-      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${disposition.replace(/_/g, ' ')}.` : ''}`
+      text: `Unit ${callSign}, clear${callNumber ? ` from call ${callNumber}` : ''}.${disposition ? ` Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` : ''}`
     }]);
   } else {
-    const status = newStatus.replace(/_/g, ' ');
+    const status = newStatus.replace(/_/g, ' ').toUpperCase();
     enqueuePhrases([{ text: `Unit ${callSign}, now ${status}.` }]);
   }
 }
@@ -1136,7 +1136,7 @@ export async function announceCallArchived(callNumber: string, disposition?: str
     { text: `Call ${callNumber} archived.` },
   ];
   if (disposition) {
-    phrases.push({ text: `Disposition: ${disposition.replace(/_/g, ' ')}.` });
+    phrases.push({ text: `Disposition: ${disposition.replace(/_/g, ' ').toUpperCase()}.` });
   }
   if (responseTimeMin != null && responseTimeMin > 0) {
     phrases.push({ text: `Response time: ${responseTimeMin} minutes.` });
@@ -1229,10 +1229,10 @@ export async function announceServeComplete(name: string, address: string, docTy
   await delay(200);
 
   const phrases: VoicePhrase[] = [
-    { text: `Service complete. ${result.replace(/_/g, ' ')} on ${name}${address ? ` at ${address}` : ''}.` },
+    { text: `Service complete. ${result.replace(/_/g, ' ').toUpperCase()} on ${name}${address ? ` at ${address}` : ''}.` },
   ];
   if (docType) {
-    phrases.push({ text: `Documents: ${docType.replace(/_/g, ' ')}.` });
+    phrases.push({ text: `Documents: ${docType.replace(/_/g, ' ').toUpperCase()}.` });
   }
   phrases.push({ text: `Attempt ${attempt}.` });
   enqueuePhrases(phrases);

@@ -137,7 +137,7 @@ function buildVehicleInfoContent(vehicle: FleetVehicle): HTMLDivElement {
   const makeModel = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ');
   addRow('Vehicle', makeModel || undefined);
   addRow('Plate', vehicle.plate_number);
-  addRow('Status', vehicle.status?.replace(/_/g, ' '));
+  addRow('Status', vehicle.status?.replace(/_/g, ' ').toUpperCase());
   addRow('Mileage', vehicle.current_mileage ? `${vehicle.current_mileage.toLocaleString()} mi` : undefined);
   addRow('Next Service', vehicle.next_service_due);
   addRow('Assigned Unit', vehicle.assigned_call_sign);

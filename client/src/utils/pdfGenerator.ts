@@ -3094,7 +3094,7 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
         { label: 'COLOR', x: colPositions[3] },
       ];
       const tableRows = vehicles.map((v) => [
-        capFirst(v.role?.replace(/_/g, ' ') || ''),
+        capFirst(v.role?.replace(/_/g, ' ').toUpperCase() || ''),
         `${v.plate_number || 'N/A'}${v.state ? ' (' + v.state + ')' : ''}`,
         [v.year, v.make, v.model].filter(Boolean).join(' '),
         v.color || '',

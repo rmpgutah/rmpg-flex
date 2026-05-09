@@ -260,7 +260,7 @@ function buildDefaultInfoHtml(name: string, cfg: GeoLayerConfig, props: Record<s
   if (cfg.detailProps) {
     for (const p of cfg.detailProps) {
       if (props[p] !== undefined && props[p] !== null && props[p] !== '') {
-        const label = p.replace(/_/g, ' ').replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
+        const label = p.replace(/_/g, ' ').toUpperCase().replace(/^(POP_CURRESTIMATE|POPLASTESTIMATE)$/i, 'Population');
         html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">${escapeForHtml(label)}:</span> ${escapeForHtml(String(props[p]))}</div>`;
       }
     }

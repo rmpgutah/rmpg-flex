@@ -443,7 +443,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
       // Pill badge at high zoom
       const fontSize = Math.max(7 / globalScale, 2);
       ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
-      const text = link.relationship.replace(/_/g, ' ');
+      const text = link.relationship.replace(/_/g, ' ').toUpperCase();
       const textWidth = ctx.measureText(text).width;
       const padX = 3 / globalScale;
       const padY = 1.5 / globalScale;

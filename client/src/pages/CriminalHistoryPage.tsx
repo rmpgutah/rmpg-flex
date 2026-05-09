@@ -383,7 +383,7 @@ export default function CriminalHistoryPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border ${typeColor(entry.type)}`}>
-                              {entry.type.replace(/_/g, ' ')}
+                              {entry.type.replace(/_/g, ' ').toUpperCase()}
                             </span>
                             <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
                             <span className="text-[9px] text-rmpg-500">{entry.date ? new Date(entry.date).toLocaleDateString() : ''}</span>
@@ -421,7 +421,7 @@ export default function CriminalHistoryPage() {
                             <div className="flex items-center gap-2">
                               {typeIcon(entry.type)}
                               <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border ${typeColor(entry.type)}`}>
-                                {entry.type.replace(/_/g, ' ')}
+                                {entry.type.replace(/_/g, ' ').toUpperCase()}
                               </span>
                               <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
                             </div>
