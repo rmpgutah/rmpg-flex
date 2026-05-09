@@ -538,31 +538,52 @@ function startSplashTimeout(maxMs = 15000) {
 function checkServerConnectivity() {
   return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 3; // 3 × 2s = 6s max; reduced from 5 (10s) to prevent long startup delays
     const delayMs = 2000;
+    let resolved = false;
 
     function tryConnect() {
+      if (resolved) return;
       attempts++;
       console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${REMOTE_SERVER_URL}/api/health`);
 
       const request = net.request(`${REMOTE_SERVER_URL}/api/health`);
 
+      // Per-request timeout — prevent hung TCP handshakes from stalling startup
+      const reqTimeout = setTimeout(() => {
+        try { request.abort(); } catch { /* ignore */ }
+        if (!resolved && attempts < maxAttempts) {
+          setTimeout(tryConnect, delayMs);
+        } else if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      }, 5000);
+
       request.on('response', (response) => {
-        if (response.statusCode === 200) {
+        clearTimeout(reqTimeout);
+        // Consume body to prevent memory leak
+        response.on('data', () => {});
+        response.on('end', () => {});
+        if (!resolved && response.statusCode === 200) {
+          resolved = true;
           console.log('[APP] Server is reachable');
           resolve(true);
-        } else if (attempts < maxAttempts) {
+        } else if (!resolved && attempts < maxAttempts) {
           setTimeout(tryConnect, delayMs);
-        } else {
+        } else if (!resolved) {
+          resolved = true;
           resolve(false);
         }
       });
 
       request.on('error', (err) => {
+        clearTimeout(reqTimeout);
         console.log(`[APP] Connection attempt ${attempts} failed:`, err.message);
-        if (attempts < maxAttempts) {
+        if (!resolved && attempts < maxAttempts) {
           setTimeout(tryConnect, delayMs);
-        } else {
+        } else if (!resolved) {
+          resolved = true;
           resolve(false);
         }
       });
@@ -695,12 +716,22 @@ async function createMainWindow() {
   // Clear Chromium HTTP cache before loading — ensures deploys propagate
   // immediately without requiring a manual hard-refresh in the desktop app.
   // (Service workers, localStorage, and IndexedDB are NOT cleared.)
-  await mainWindow.webContents.session.clearCache();
-  console.log('[APP] HTTP cache cleared');
-
-  // Unregister stale service workers so the latest version installs fresh
-  await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
-  console.log('[APP] Service workers cleared');
+  // Wrap in a race with a timeout so a macOS-specific hang in clearCache
+  // or clearStorageData doesn't block startup forever.
+  try {
+    await Promise.race([
+      (async () => {
+        await mainWindow.webContents.session.clearCache();
+        console.log('[APP] HTTP cache cleared');
+        // Unregister stale service workers so the latest version installs fresh
+        await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
+        console.log('[APP] Service workers cleared');
+      })(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Cache/ServiceWorker clear timed out after 5000ms')), 5000)),
+    ]);
+  } catch (err) {
+    console.warn('[APP] Cache/SW clear timed out or failed — continuing:', err && err.message);
+  }
 
   // Load the remote web application
   console.log('[APP] Loading:', REMOTE_SERVER_URL);
@@ -716,6 +747,26 @@ async function createMainWindow() {
     closeSplash();
     mainWindow.show();
     mainWindow.focus();
+  });
+
+  // Backup: if ready-to-show never fires (happens on macOS when the page
+  // HTML loads but first paint is delayed by large JS bundles), close the
+  // splash once the page finishes loading and show the window.
+  mainWindow.webContents.once('did-finish-load', () => {
+    console.log('[APP] did-finish-load fired');
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      // 500ms grace period: ready-to-show (the preferred event) fires at
+      // first paint. If it hasn't fired yet, this backup ensures the splash
+      // closes. If ready-to-show fires during the 500ms, closeSplash() is
+      // a no-op the second time (it checks splashWindow existence).
+      setTimeout(() => {
+        closeSplash();
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }, 500);
+    }
   });
 
   // Handle page load failures (server down, network error)
@@ -2481,16 +2532,22 @@ app.whenReady().then(async () => {
       console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);
     }
 
-    // Check server connectivity before loading the app
-    const isReachable = await checkServerConnectivity();
-
-    if (!isReachable) {
-      console.warn('[APP] Server unreachable — will show offline page');
-    }
+    // Start connectivity check in parallel with window creation.
+    // Old behaviour blocked on 5 × 2s retries before createMainWindow(),
+    // leaving macOS users staring at the splash for up to 10s before
+    // the window even began loading. Now the window starts immediately
+    // and the connectivity result is used only to seed the monitor.
+    const connectivityPromise = checkServerConnectivity();
 
     createMenu();
     await createMainWindow();
     createTray();
+
+    // Await connectivity (usually already resolved by now)
+    const isReachable = await connectivityPromise;
+    if (!isReachable) {
+      console.warn('[APP] Server unreachable at startup');
+    }
 
     // Initialize auto-updater
     console.log('[APP] Initializing auto-updater with:', REMOTE_SERVER_URL);

@@ -472,6 +472,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setError(message);
         throw new Error(message);
       }
+    } catch (err: unknown) {
+      const message = friendlyAuthError(err);
+      setError(message);
+      throw err;
     } finally {
       setLoginBusy(false);
     }
@@ -548,7 +552,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (err?.message?.includes('No security keys registered')) {
         setError('No security keys are registered. Set up a key in Profile → Security.');
       } else {
-        setError(err?.message || 'Security key verification failed');
+        const message = friendlyAuthError(err);
+        setError(message);
       }
       throw err;
     } finally {
@@ -762,6 +767,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await res.json();
       return { qrCodeDataUri: data.qrCodeDataUri, manualKey: data.manualKey };
+    } catch (err: unknown) {
+      const message = friendlyAuthError(err);
+      setError(message);
+      throw err;
     } finally {
       setLoginBusy(false);
     }
