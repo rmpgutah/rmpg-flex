@@ -179,7 +179,7 @@ router.post('/', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispa
 
   const bulletin = insertBulletin();
 
-  auditLog(req, 'CREATE', 'intel_bulletins', result.lastInsertRowid as number, null, bulletin);
+  auditLog(req, 'CREATE', 'intel_bulletins', (bulletin as any)?.id, null, bulletin);
   broadcast('intel', 'intel_bulletin_created', bulletin);
 
   res.status(201).json(bulletin);

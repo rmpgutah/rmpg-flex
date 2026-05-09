@@ -150,6 +150,8 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
+    { path: '/shift-briefings', icon: FileText, label: 'Shift Briefings' },
+    { path: '/intel-bulletins', icon: AlertTriangle, label: 'Intel Bulletins' },
     { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
     { path: '/reports/custom', icon: Database, label: 'Report Builder' },
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
