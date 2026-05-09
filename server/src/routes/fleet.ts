@@ -3367,7 +3367,7 @@ router.get('/expenses/summary', (req: Request, res: Response) => {
     const grandTotal = rows.reduce((sum: number, r: any) => sum + (r.total || 0), 0);
     res.json({ categories: rows, grand_total: grandTotal });
   } catch (err: any) {
-    logger.error({ err }, 'fleet expenses summary failed');
+    logger.error({ err }, 'Failed to fetch fleet expenses summary');
     res.status(500).json({ error: 'Failed to get expense summary' });
   }
 });
@@ -3386,7 +3386,7 @@ router.get('/:id/expenses', (req: Request, res: Response) => {
     `).all(id);
     res.json({ data: rows });
   } catch (err: any) {
-    logger.error({ err }, 'fleet expenses list failed');
+    logger.error({ err, vehicleId: req.params.id }, 'Failed to list expenses for vehicle');
     res.status(500).json({ error: 'Failed to list expenses' });
   }
 });
@@ -3416,7 +3416,7 @@ router.post('/:id/expenses', requireRole('admin', 'manager', 'supervisor', 'offi
     broadcastFleetUpdate({ action: 'expense_added', vehicle_id: id, id: Number(result.lastInsertRowid) });
     res.status(201).json(created);
   } catch (err: any) {
-    logger.error({ err }, 'fleet expenses create failed');
+    logger.error({ err, vehicleId: req.params.id }, 'Failed to create expense for vehicle');
     res.status(500).json({ error: 'Failed to create expense' });
   }
 });
@@ -3446,7 +3446,7 @@ router.put('/expenses/:id', requireRole('admin', 'manager', 'supervisor'), (req:
     const updated = db.prepare('SELECT * FROM fleet_expenses WHERE id = ?').get(req.params.id);
     res.json(updated);
   } catch (err: any) {
-    logger.error({ err }, 'fleet expenses update failed');
+    logger.error({ err, expenseId: req.params.id }, 'Failed to update expense');
     res.status(500).json({ error: 'Failed to update expense' });
   }
 });
@@ -3461,7 +3461,7 @@ router.delete('/expenses/:id', requireRole('admin', 'manager'), (req: Request, r
     auditLog(req, 'fleet_expense_deleted', 'fleet_expense', Number(req.params.id), 'Archived expense');
     res.json({ success: true });
   } catch (err: any) {
-    logger.error({ err }, 'fleet expenses delete failed');
+    logger.error({ err, expenseId: req.params.id }, 'Failed to delete expense');
     res.status(500).json({ error: 'Failed to delete expense' });
   }
 });
@@ -3486,7 +3486,7 @@ router.delete('/expenses/:id', requireRole('admin', 'manager'), (req: Request, r
 //   - Query params: ?from=YYYY-MM-DD&to=YYYY-MM-DD (both optional).
 interface TimelineEntry {
   date: string;              // YYYY-MM-DD
-  category: 'fuel' | 'maintenance' | 'loan' | 'insurance' | 'accessory' | 'utility';
+  category: 'fuel' | 'maintenance' | 'loan' | 'insurance' | 'accessory' | 'utility' | 'expense';
   amount: number;
   description: string;
   reference_id: number | string;  // source row id
@@ -3562,6 +3562,25 @@ router.get('/:id/cost-timeline', (req: Request, res: Response) => {
         amount: Number(a.cost) || 0,
         description: `Installed: ${a.name}`,
         reference_id: a.id,
+        synthetic: false,
+      });
+    }
+
+    // ── Expenses (non-fuel) ────────────────────────────────────
+    const expenses = db.prepare(`
+      SELECT id, expense_date, category, amount, vendor, description
+      FROM fleet_expenses
+      WHERE vehicle_id = ? AND archived_at IS NULL
+    `).all(id) as any[];
+    for (const e of expenses) {
+      const date = String(e.expense_date).slice(0, 10);
+      if (!dateFilter(date)) continue;
+      entries.push({
+        date,
+        category: 'expense',
+        amount: Number(e.amount) || 0,
+        description: `${e.category || 'Expense'}${e.vendor ? ` · ${e.vendor}` : ''}${e.description ? ` — ${e.description}` : ''}`,
+        reference_id: e.id,
         synthetic: false,
       });
     }
@@ -3680,7 +3699,7 @@ router.get('/:id/cost-timeline', (req: Request, res: Response) => {
     // Sort chronologically, newest first. Ties broken by category order
     // so the same-day sequence reads consistently across pages.
     const categoryOrder: Record<TimelineEntry['category'], number> = {
-      fuel: 0, maintenance: 1, loan: 2, insurance: 3, accessory: 4, utility: 5,
+      fuel: 0, maintenance: 1, expense: 2, loan: 3, insurance: 4, accessory: 5, utility: 6,
     };
     entries.sort((a, b) => {
       if (a.date !== b.date) return a.date < b.date ? 1 : -1;
