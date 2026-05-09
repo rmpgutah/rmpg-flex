@@ -243,6 +243,7 @@ export type RecordPdfType =
   | 'fleet'
   | 'personnel'
   | 'property'
+  | 'business'
   | 'citation'
   | 'case'
   | 'field_interview'
@@ -1029,6 +1030,58 @@ export interface PropertyPdfData {
   incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
   calls?: { call_number: string; incident_type: string; status: string; created_at: string }[];
   trespass_orders?: { order_number: string; subject_name: string; status: string; issued_date: string; expires_date: string }[];
+}
+
+export interface BusinessPdfData {
+  id?: string;
+  name: string;
+  dba_name?: string;
+  business_type?: string;
+  ein?: string;
+  license_number?: string;
+  address?: string;
+  city?: string;
+  state?: string;
+  zip?: string;
+  phone?: string;
+  email?: string;
+  website?: string;
+  owner_name?: string;
+  owner_phone?: string;
+  contact_name?: string;
+  contact_phone?: string;
+  contact_email?: string;
+  industry?: string;
+  employee_count?: string;
+  annual_revenue?: string;
+  status?: string;
+  notes?: string;
+  flags?: string[];
+  // Security / After-Hours
+  alarm_company?: string;
+  alarm_panel_code?: string;
+  alarm_passphrase?: string;
+  after_hours_contact_name?: string;
+  after_hours_contact_phone?: string;
+  hours_of_operation?: string;
+  holiday_schedule?: string;
+  loss_prevention_contact?: string;
+  // Insurance
+  insurance_carrier?: string;
+  insurance_policy_number?: string;
+  // Corporate
+  parent_company?: string;
+  franchise_id?: string;
+  // Timestamps
+  created_at?: string;
+  updated_at?: string;
+  archived_at?: string;
+  attachment_images?: PdfImage[];
+  // Linked records
+  incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
+  calls?: { call_number: string; incident_type: string; status: string; location: string; created_at: string }[];
+  trespass_orders?: { order_number: string; subject_name: string; status: string; issued_date: string; expires_date: string }[];
+  linked_persons?: { name: string; role: string; phone?: string }[];
 }
 
 export interface CitationPdfData {
@@ -4974,6 +5027,239 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
   y = addStackedSignatures(doc, 'Officer', '', y, getOfficerSig());
 }
 
+// ── Business Record ──────────────────────────────────────────
+
+async function generateBusinessReport(doc: jsPDF, data: BusinessPdfData) {
+  const lx = getLeftX();
+  const rx = getRightColumnX(doc);
+  const hfw = getHalfFieldWidth(doc);
+  const ffw = getFullFieldWidth(doc);
+
+  setActiveCaseNumber(data.name || 'N/A');
+  let y = drawNibrsHeader(doc, {
+    stateIdentifier: 'STATE OF UTAH',
+    agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
+    formTitle: 'BUSINESS RECORD',
+    formNumber: 'FORM PS-210',
+    caseNumber: data.name || 'N/A',
+    caseNumberLabel: 'BUSINESS NAME',
+  });
+
+  // Quick-reference banner — business name + address + status pill
+  {
+    const addr = [data.address, data.city, data.state].filter(Boolean).join(', ');
+    const statusLower = (data.status || 'active').toLowerCase();
+    const pill: QuickRefBannerConfig['pill'] | undefined = statusLower === 'active'
+      ? { label: 'ACTIVE', tone: 'standard' }
+      : statusLower === 'closed'
+        ? { label: 'CLOSED', tone: 'inactive' }
+        : { label: (data.status || '').toUpperCase(), tone: 'elevated' };
+    y = addQuickReferenceBanner(doc, {
+      primary: (data.name || 'UNNAMED BUSINESS').toUpperCase(),
+      secondary: [data.dba_name ? `DBA: ${data.dba_name}` : '', addr].filter(Boolean).join(' · '),
+      pill,
+    }, y);
+  }
+
+  y = addLinkedRecordsStrip(doc, data, y);
+
+  // ── Business Identification ──
+  y = checkPageBreak(doc, y, 22);
+  { const sec = openAutoSection(doc, 'Business Identification', y); y = sec.contentY;
+    // Row 1: Name (half), DBA (half)
+    const r1a = addFieldPair(doc, 'Business Name', data.name || '', lx, y, hfw);
+    const r1b = addFieldPair(doc, 'DBA / Trade Name', data.dba_name || '', rx, y, hfw);
+    y = Math.max(r1a, r1b);
+    // Row 2: Type, Industry, EIN, License #
+    const qw = ffw / 4;
+    const r2a = addFieldPair(doc, 'Business Type', data.business_type || '', lx, y, qw);
+    const r2b = addFieldPair(doc, 'Industry', data.industry || '', lx + qw, y, qw);
+    const r2c = addFieldPair(doc, 'EIN', data.ein || '', lx + 2 * qw, y, qw);
+    const r2d = addFieldPair(doc, 'License #', data.license_number || '', lx + 3 * qw, y, qw);
+    y = Math.max(r2a, r2b, r2c, r2d);
+    // Row 3: Employee Count, Annual Revenue, Status, Record ID
+    const r3a = addFieldPair(doc, 'Employees', data.employee_count || '', lx, y, qw);
+    const r3b = addFieldPair(doc, 'Annual Revenue', data.annual_revenue || '', lx + qw, y, qw);
+    const r3c = addFieldPair(doc, 'Status', (data.status || 'active').toUpperCase(), lx + 2 * qw, y, qw);
+    const r3d = addFieldPair(doc, 'Record ID', data.id || '', lx + 3 * qw, y, qw);
+    y = Math.max(r3a, r3b, r3c, r3d);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Location & Contact ──
+  y = checkPageBreak(doc, y, 20);
+  { const sec = openAutoSection(doc, 'Location & Contact', y); y = sec.contentY;
+    // Row 1: Address (full)
+    const fullAddr = `${data.address || ''}${data.city ? `, ${data.city}` : ''}${data.state ? `, ${data.state}` : ''} ${data.zip || ''}`.trim();
+    y = addFieldPair(doc, 'Address', fullAddr, lx, y, ffw);
+    // Row 2: Phone, Email, Website
+    const tw = ffw / 3;
+    const c1 = addFieldPair(doc, 'Phone', data.phone || '', lx, y, tw);
+    const c2 = addFieldPair(doc, 'Email', data.email || '', lx + tw, y, tw);
+    const c3 = addFieldPair(doc, 'Website', data.website || '', lx + 2 * tw, y, tw);
+    y = Math.max(c1, c2, c3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Owner & Management ──
+  y = checkPageBreak(doc, y, 18);
+  { const sec = openAutoSection(doc, 'Owner & Management', y); y = sec.contentY;
+    // Row 1: Owner Name, Owner Phone
+    const o1 = addFieldPair(doc, 'Owner Name', data.owner_name || '', lx, y, hfw);
+    const o2 = addFieldPair(doc, 'Owner Phone', data.owner_phone || '', rx, y, hfw);
+    y = Math.max(o1, o2);
+    // Row 2: Contact Name, Contact Phone, Contact Email
+    const tw = ffw / 3;
+    const m1 = addFieldPair(doc, 'Contact Name', data.contact_name || '', lx, y, tw);
+    const m2 = addFieldPair(doc, 'Contact Phone', data.contact_phone || '', lx + tw, y, tw);
+    const m3 = addFieldPair(doc, 'Contact Email', data.contact_email || '', lx + 2 * tw, y, tw);
+    y = Math.max(m1, m2, m3);
+    // Row 3: After-Hours Contact
+    if (data.after_hours_contact_name || data.after_hours_contact_phone || data.loss_prevention_contact) {
+      const a1 = addFieldPair(doc, 'After-Hours Contact', data.after_hours_contact_name || '', lx, y, tw);
+      const a2 = addFieldPair(doc, 'After-Hours Phone', data.after_hours_contact_phone || '', lx + tw, y, tw);
+      const a3 = addFieldPair(doc, 'Loss Prevention', data.loss_prevention_contact || '', lx + 2 * tw, y, tw);
+      y = Math.max(a1, a2, a3);
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Corporate Structure ──
+  if (data.parent_company || data.franchise_id) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Corporate Structure', y); y = sec.contentY;
+    const cp1 = addFieldPair(doc, 'Parent Company', data.parent_company || '', lx, y, hfw);
+    const cp2 = addFieldPair(doc, 'Franchise ID', data.franchise_id || '', rx, y, hfw);
+    y = Math.max(cp1, cp2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Security & Alarm ──
+  if (data.alarm_company || data.alarm_panel_code || data.alarm_passphrase) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Security & Alarm', y); y = sec.contentY;
+    const tw = ffw / 3;
+    const s1 = addFieldPair(doc, 'Alarm Company', data.alarm_company || '', lx, y, tw);
+    const s2 = addFieldPair(doc, 'Panel Code', data.alarm_panel_code || '', lx + tw, y, tw);
+    const s3 = addFieldPair(doc, 'Passphrase', data.alarm_passphrase || '', lx + 2 * tw, y, tw);
+    y = Math.max(s1, s2, s3);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Insurance ──
+  if (data.insurance_carrier || data.insurance_policy_number) {
+    y = checkPageBreak(doc, y, 12);
+    const sec = openAutoSection(doc, 'Insurance', y); y = sec.contentY;
+    const i1 = addFieldPair(doc, 'Insurance Carrier', data.insurance_carrier || '', lx, y, hfw);
+    const i2 = addFieldPair(doc, 'Policy Number', data.insurance_policy_number || '', rx, y, hfw);
+    y = Math.max(i1, i2);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Hours of Operation ──
+  if (data.hours_of_operation) {
+    y = checkPageBreak(doc, y, 12);
+    y = addNarrativeSection(doc, 'Hours of Operation', data.hours_of_operation, y);
+  }
+
+  // ── Holiday Schedule ──
+  if (data.holiday_schedule) {
+    y = addNarrativeSection(doc, 'Holiday Schedule', data.holiday_schedule, y);
+  }
+
+  // ── Flags ──
+  if (data.flags && data.flags.length > 0) {
+    y = checkPageBreak(doc, y, 10);
+    const sec = openAutoSection(doc, 'Flags', y); y = sec.contentY;
+    y = addFieldPair(doc, 'Active Flags', data.flags.join(', '), lx, y, ffw);
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Linked Persons ──
+  if (data.linked_persons && data.linked_persons.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Individuals', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const pRows = data.linked_persons.map(p => [
+      p.name || 'N/A',
+      titleCase(p.role || 'linked'),
+      p.phone || '',
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'NAME', x: lx }, { label: 'ROLE', x: lx + 70 }, { label: 'PHONE', x: lx + 130 }],
+      pRows, y, [lx, lx + 70, lx + 130]);
+  }
+
+  // ── Incident History ──
+  if (data.incidents && data.incidents.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Incident History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const incRows = data.incidents.map(inc => [
+      inc.incident_number || 'N/A',
+      formatEnumValue(inc.incident_type),
+      titleCase(inc.status || ''),
+      fmtDate(inc.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'INCIDENT #', x: lx }, { label: 'TYPE', x: lx + 35 }, { label: 'STATUS', x: lx + 100 }, { label: 'DATE', x: lx + 140 }],
+      incRows, y, [lx, lx + 35, lx + 100, lx + 140]);
+  }
+
+  // ── Dispatch Call History ──
+  if (data.calls && data.calls.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Dispatch Call History', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const callRows = data.calls.map(c => [
+      c.call_number || 'N/A',
+      formatEnumValue(c.incident_type),
+      displayStatus(c.status || ''),
+      c.location || '',
+      fmtDate(c.created_at),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'CALL #', x: lx }, { label: 'TYPE', x: lx + 27 }, { label: 'STATUS', x: lx + 69 }, { label: 'LOCATION', x: lx + 97 }, { label: 'DATE', x: lx + 152 }],
+      callRows, y, [lx, lx + 27, lx + 69, lx + 97, lx + 152]);
+  }
+
+  // ── Trespass Orders ──
+  if (data.trespass_orders && data.trespass_orders.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Trespass Orders', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const toRows = data.trespass_orders.map(t => [
+      t.order_number || 'N/A',
+      t.subject_name || '',
+      titleCase(t.status || ''),
+      fmtDate(t.issued_date),
+      fmtDate(t.expires_date),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'ORDER #', x: lx }, { label: 'SUBJECT', x: lx + 30 }, { label: 'STATUS', x: lx + 85 }, { label: 'ISSUED', x: lx + 120 }, { label: 'EXPIRES', x: lx + 150 }],
+      toRows, y, [lx, lx + 30, lx + 85, lx + 120, lx + 150]);
+  }
+
+  // ── Notes ──
+  y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
+
+  // ── Record Metadata ──
+  y = drawFormSection(doc, {
+    sideTab: { label: 'META' },
+    topBanner: true,
+    onPageBreak: formSectionPageBreak,
+    rows: [{ cells: [
+      { label: 'CREATED', value: fmtTimestamp(data.created_at || ''), ratio: 1 },
+      { label: 'LAST UPDATED', value: fmtTimestamp(data.updated_at || ''), ratio: 1 },
+    ]}],
+    y,
+  });
+
+  // Attachments
+  if (data.attachment_images && data.attachment_images.length > 0) {
+    y = await addAttachmentsSection(doc, data.attachment_images, y);
+  }
+
+  // Signature Block
+  y = addStackedSignatures(doc, 'Officer', '', y, getOfficerSig());
+}
+
 // ── Citation Report ──────────────────────────────────────────
 
 async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
@@ -5234,6 +5520,7 @@ type RecordDataMap = {
   fleet: FleetPdfData;
   personnel: PersonnelPdfData;
   property: PropertyPdfData;
+  business: BusinessPdfData;
   citation: CitationPdfData;
   case: CasePdfData;
   field_interview: FieldInterviewPdfData;
@@ -5304,6 +5591,9 @@ export async function generateRecordPdf<T extends RecordPdfType>(
       break;
     case 'property':
       await generatePropertyReport(doc, data as PropertyPdfData);
+      break;
+    case 'business':
+      await generateBusinessReport(doc, data as BusinessPdfData);
       break;
     case 'citation':
       await generateCitationReport(doc, data as CitationPdfData);
