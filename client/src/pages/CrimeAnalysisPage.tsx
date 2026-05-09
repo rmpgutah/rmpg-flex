@@ -383,7 +383,7 @@ export default function CrimeAnalysisPage() {
                       <div key={idx} className="px-2 py-2 panel-beveled space-y-1">
                         <div className="flex items-center justify-between">
                           <span className="text-[10px] font-bold uppercase" style={{ color: labelColor }}>
-                            {metric.priority?.replace(/_/g, ' ').toUpperCase() || 'NORMAL'}
+                            {metric.priority?.replace(/_/g, ' ').toUpperCase() || 'UNKNOWN'}
                           </span>
                           <div className="flex items-center gap-3">
                             <span className="text-[9px] text-rmpg-400">Avg: <span className="text-white font-bold">{metric.avg_minutes} min</span></span>
