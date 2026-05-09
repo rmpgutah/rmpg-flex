@@ -250,6 +250,14 @@ export type RecordPdfType =
   | 'court_event'
   | 'jail_booking';
 
+// ── Connection Profile (shared across Person / Vehicle / Property PDFs) ──
+
+export interface PdfConnectionProfile {
+  type: string;       // 'person' | 'vehicle' | 'property' | 'incident' | 'case' | etc.
+  label: string;      // human-readable label from getRecordLabel
+  relationship: string;
+}
+
 // ── Data Interfaces ──────────────────────────────────────────
 
 export interface CallPdfData {
@@ -594,6 +602,8 @@ export interface PersonPdfData {
   // Linked records (from record_links)
   linked_vehicles?: { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship?: string }[];
   linked_properties?: { name: string; address?: string; relationship?: string }[];
+  // Connection graph profiles (from /api/connections/graph)
+  connections?: PdfConnectionProfile[];
   // Cross-reference dossier appendix payload (Phase B). Caller fetches
   // /api/records/persons/:id/dossier and stuffs the result here before
   // calling downloadRecordPdf. Listed in NON_CANONICAL_FIELDS in
@@ -677,6 +687,8 @@ export interface VehiclePdfData {
   incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
   calls?: { call_number: string; incident_type: string; status: string; location: string; created_at: string }[];
   citations?: { citation_number: string; type: string; status: string; violation_date: string }[];
+  // Connection graph profiles (from /api/connections/graph)
+  connections?: PdfConnectionProfile[];
   // Cross-reference dossier appendix payload (Phase B). See PersonPdfData.
   _dossier?: import('./pdfDossierRenderer').VehicleDossierData;
 }
@@ -1030,6 +1042,8 @@ export interface PropertyPdfData {
   incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
   calls?: { call_number: string; incident_type: string; status: string; created_at: string }[];
   trespass_orders?: { order_number: string; subject_name: string; status: string; issued_date: string; expires_date: string }[];
+  // Connection graph profiles (from /api/connections/graph)
+  connections?: PdfConnectionProfile[];
 }
 
 export interface BusinessPdfData {
@@ -1235,6 +1249,27 @@ function formatElapsed(ms: number): string {
 function titleCase(str: string): string {
   if (!str) return '';
   return str.replace(/\b\w/g, (c: string) => c.toUpperCase());
+}
+
+/** Render a "Connected Profiles" table from the connections graph data.
+ *  Shared across person, vehicle, and property PDF generators. */
+function addConnectionsSection(
+  doc: jsPDF, connections: PdfConnectionProfile[] | undefined, y: number,
+  priority?: string,
+): number {
+  if (!connections || connections.length === 0) return y;
+  const lx = getLeftX();
+  y = checkPageBreak(doc, y, 25, priority);
+  { const sec = openAutoSection(doc, 'Connected Profiles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+  const rows = connections.map(c => [
+    titleCase(c.type.replace(/_/g, ' ')),
+    c.label || 'N/A',
+    titleCase(c.relationship.replace(/_/g, ' ')),
+  ]);
+  y = addTableWithShading(doc,
+    [{ label: 'TYPE', x: lx }, { label: 'NAME / IDENTIFIER', x: lx + 30 }, { label: 'RELATIONSHIP', x: lx + 130 }],
+    rows, y, [lx, lx + 30, lx + 130]);
+  return y;
 }
 
 // ── Call for Service Report ──────────────────────────────────
@@ -3049,6 +3084,9 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
       propRows, y, [lx, lx + 50, lx + 140]);
   }
 
+  // ── 14d. Connected Profiles ──────────────────────────────────
+  y = addConnectionsSection(doc, data.connections, y, prio);
+
   // ── 15. Notes ─────────────────────────────────────────────
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y, prio);
 
@@ -3317,6 +3355,9 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
       [{ label: 'CITATION #', x: lx }, { label: 'TYPE', x: lx + 40 }, { label: 'STATUS', x: lx + 90 }, { label: 'DATE', x: lx + 140 }],
       citRows, y, [lx, lx + 40, lx + 90, lx + 140]);
   }
+
+  // ── Connected Profiles ──
+  y = addConnectionsSection(doc, data.connections, y);
 
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
@@ -4993,6 +5034,9 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
       [{ label: 'ORDER #', x: lx }, { label: 'SUBJECT', x: lx + 30 }, { label: 'STATUS', x: lx + 85 }, { label: 'ISSUED', x: lx + 120 }, { label: 'EXPIRES', x: lx + 150 }],
       toRows, y, [lx, lx + 30, lx + 85, lx + 120, lx + 150]);
   }
+
+  // ── Connected Profiles ──
+  y = addConnectionsSection(doc, data.connections, y);
 
   // Access Instructions
   y = addNarrativeSection(doc, 'Access Instructions', data.access_instructions || '', y);
