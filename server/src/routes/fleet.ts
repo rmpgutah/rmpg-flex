@@ -3342,7 +3342,8 @@ registerCostCategoryRoutes({
 
 // ═══════════════════════════════════════════════════════════════
 // Fleet Expenses — general vehicle expenses separate from fuel
-// (registration, tolls, parking, car wash, tickets, towing, permits, misc)
+// (registration, tolls, parking, car_wash, tickets, towing, permits, insurance,
+//  equipment, decals_wraps, storage, roadside_assistance, inspection, electronics, accessories, misc)
 // ═══════════════════════════════════════════════════════════════
 
 // GET /api/fleet/expenses/summary — fleet-wide expense summary (grouped by category)
@@ -4085,6 +4086,13 @@ router.get('/:id/cost-summary', (req: Request, res: Response) => {
       WHERE (vehicle_id = ? OR vehicle_id IS NULL) AND archived_at IS NULL
     `).get(id) as any;
 
+    // Expenses — sum all non-archived fleet_expenses for this vehicle.
+    const expensesTotal = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM fleet_expenses
+      WHERE vehicle_id = ? AND archived_at IS NULL
+    `).get(id) as any;
+
     const round = (n: number) => Math.round(n * 100) / 100;
     const totalLifetime = round(
       (Number(fuel.total) || 0) +
@@ -4092,7 +4100,8 @@ router.get('/:id/cost-summary', (req: Request, res: Response) => {
       (Number(accessories.total) || 0) +
       loanPaidToDate +
       insurancePaidToDate +
-      (Number(utilities.total) || 0),
+      (Number(utilities.total) || 0) +
+      (Number(expensesTotal.total) || 0),
     );
 
     res.json({
@@ -4104,6 +4113,7 @@ router.get('/:id/cost-summary', (req: Request, res: Response) => {
         insurance:   round(insurancePaidToDate),
         accessories: round(Number(accessories.total) || 0),
         utilities:   round(Number(utilities.total) || 0),
+        expenses:    round(Number(expensesTotal.total) || 0),
       },
       total_lifetime: totalLifetime,
       monthly_commitment: {

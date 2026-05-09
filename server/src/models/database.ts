@@ -5269,7 +5269,7 @@ function migrateSchema(): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       vehicle_id INTEGER NOT NULL REFERENCES fleet_vehicles(id),
       expense_date TEXT NOT NULL,
-      category TEXT NOT NULL CHECK(category IN ('registration','tolls','parking','car_wash','tickets','towing','permits','misc')),
+      category TEXT NOT NULL CHECK(category IN ('registration','tolls','parking','car_wash','tickets','towing','permits','insurance','equipment','decals_wraps','storage','roadside_assistance','inspection','electronics','accessories','misc')),
       amount REAL NOT NULL,
       vendor TEXT,
       description TEXT,
@@ -5287,6 +5287,44 @@ function migrateSchema(): void {
   db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_vehicle ON fleet_expenses(vehicle_id)').run();
   db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_date ON fleet_expenses(expense_date)').run();
   db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_category ON fleet_expenses(category)').run();
+
+  // ── fleet_expenses: widen category CHECK to include all 16 categories ──
+  try {
+    const feSchema = db.prepare(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='fleet_expenses'`
+    ).get() as { sql: string } | undefined;
+    if (feSchema?.sql && !feSchema.sql.includes('insurance')) {
+      db.transaction(() => {
+        db.prepare(`
+          CREATE TABLE fleet_expenses_v2 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicle_id INTEGER NOT NULL REFERENCES fleet_vehicles(id),
+            expense_date TEXT NOT NULL,
+            category TEXT NOT NULL CHECK(category IN ('registration','tolls','parking','car_wash','tickets','towing','permits','insurance','equipment','decals_wraps','storage','roadside_assistance','inspection','electronics','accessories','misc')),
+            amount REAL NOT NULL,
+            vendor TEXT,
+            description TEXT,
+            receipt_path TEXT,
+            odometer_reading INTEGER,
+            recurring INTEGER DEFAULT 0,
+            recurring_frequency TEXT CHECK(recurring_frequency IN ('monthly','quarterly','semi_annual','annual')),
+            notes TEXT,
+            created_by INTEGER REFERENCES users(id),
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            updated_at TEXT DEFAULT (datetime('now','localtime')),
+            archived_at TEXT
+          )
+        `).run();
+        db.prepare('INSERT INTO fleet_expenses_v2 SELECT * FROM fleet_expenses').run();
+        db.prepare('DROP TABLE fleet_expenses').run();
+        db.prepare('ALTER TABLE fleet_expenses_v2 RENAME TO fleet_expenses').run();
+        db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_vehicle ON fleet_expenses(vehicle_id)').run();
+        db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_date ON fleet_expenses(expense_date)').run();
+        db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_category ON fleet_expenses(category)').run();
+      })();
+      console.log('[migrate] Widened fleet_expenses category CHECK for 16 categories');
+    }
+  } catch { /* Already migrated or table structure compatible */ }
 
   // ── Feature 26: Message drafts ──
   addCol('messages', 'is_draft', 'INTEGER DEFAULT 0');
