@@ -81,7 +81,7 @@ export async function createEvidenceArchive(
     const chunks: Buffer[] = [];
     const output = new Writable({
       write(chunk, _encoding, callback) {
-        chunks.push(Buffer.from(chunk));
+        chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
         callback();
       },
     });
