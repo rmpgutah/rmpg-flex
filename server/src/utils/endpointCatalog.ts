@@ -31,7 +31,7 @@ export function getEndpointCatalog(app: Express): EndpointInfo[] {
         const prefix = layer.regexp?.source
           ?.replace(/\\\//g, '/')
           ?.replace(/\^/g, '')
-          ?.replace(/\$/, '')
+          ?.replace(/\$/g, '')
           ?.replace(/\?(?:=.*)?/g, '')
           ?.replace(/\(\?:([^)]+)\)/g, '$1')
           || '';
