@@ -2228,8 +2228,8 @@ router.get('/quality-metrics', requireRole('admin', 'manager', 'supervisor'), (r
 
     const getPercentile = (arr: number[], p: number) => {
       if (arr.length === 0) return 0;
-      const idx = Math.ceil(arr.length * p / 100) - 1;
-      return arr[Math.max(0, idx)];
+      const idx = Math.floor((arr.length - 1) * p / 100);
+      return arr[idx];
     };
 
     const times = responseTimes.map(r => r.response_time_seconds);

@@ -7010,7 +7010,8 @@ function createIndexes(): void {
       change_summary TEXT,
       created_at TEXT DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
-      FOREIGN KEY (editor_id) REFERENCES users(id)
+      FOREIGN KEY (editor_id) REFERENCES users(id),
+      UNIQUE(call_id, version)
     );
 
     -- Dashcam videos indexes — only on columns that actually exist.
