@@ -5,6 +5,7 @@ import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
 import { localNow, localToday } from '../utils/timeUtils';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -2623,7 +2624,7 @@ router.get('/dashboard-weekly-trend', (req: Request, res: Response) => {
       lastWeekSameDay: lastWeek.count,
     });
   } catch (error: any) {
-    console.error('Dashboard weekly trend error:', error);
+    logger.error({ err: error }, 'Dashboard weekly trend error');
     res.status(500).json({ error: 'Failed to get weekly trend', code: 'DASHBOARD_WEEKLY_TREND_ERROR' });
   }
 });
@@ -2642,7 +2643,7 @@ router.get('/dashboard-calls-by-type', (req: Request, res: Response) => {
 
     res.json(byType);
   } catch (error: any) {
-    console.error('Dashboard calls by type error:', error);
+    logger.error({ err: error }, 'Dashboard calls by type error');
     res.status(500).json({ error: 'Failed to get calls by type', code: 'DASHBOARD_CALLS_BY_TYPE_ERROR' });
   }
 });
@@ -2671,7 +2672,7 @@ router.get('/dashboard-unit-status', (req: Request, res: Response) => {
 
     res.json({ statusCounts, activeUnits });
   } catch (error: any) {
-    console.error('Dashboard unit status error:', error);
+    logger.error({ err: error }, 'Dashboard unit status error');
     res.status(500).json({ error: 'Failed to get unit status', code: 'DASHBOARD_UNIT_STATUS_ERROR' });
   }
 });
