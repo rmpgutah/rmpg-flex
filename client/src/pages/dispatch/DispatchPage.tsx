@@ -3321,8 +3321,9 @@ export default function DispatchPage() {
                         title="Open Route Builder for assigned unit"
                         style={{ color: '#d4a017' }}
                         onClick={() => {
-                          const firstUnitId = String(selectedCall.assigned_units[0]);
-                          navigate(`/route-builder?unit=${encodeURIComponent(firstUnitId)}`);
+                          const firstUnitId = selectedCall.assigned_units?.[0];
+                          if (!firstUnitId) return;
+                          navigate(`/route-builder?unit=${encodeURIComponent(String(firstUnitId))}`);
                         }}
                       >
                         <Route style={{ width: 10, height: 10 }} /> Route
