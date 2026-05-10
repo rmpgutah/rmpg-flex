@@ -105,6 +105,7 @@ const CrashReportsPage = lazyRetry(() => import('./pages/CrashReportsPage'));
 const TipsPage = lazyRetry(() => import('./pages/TipsPage'));
 const CommunityPortalPage = lazyRetry(() => import('./pages/CommunityPortalPage'));
 const AccreditationsPage = lazyRetry(() => import('./pages/AccreditationsPage'));
+const RouteBuilderPage = lazyRetry(() => import('./pages/RouteBuilderPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 const MobileHomePage = lazyRetry(() => import('./pages/mobile'));
@@ -298,6 +299,7 @@ function AppRoutes() {
             <Route path="/" element={<HomeRedirect>{window.location.hostname === 'crm.rmpgutah.us' ? <Navigate to="/crm" replace /> : <DashboardPage />}</HomeRedirect>} />
             <Route path="/dispatch" element={<DispatchPage />} />
             <Route path="/map" element={<RouteErrorBoundary><MapPage /></RouteErrorBoundary>} />
+            <Route path="/route-builder" element={<RouteErrorBoundary><RouteBuilderPage /></RouteErrorBoundary>} />
             <Route path="/geography" element={<RouteErrorBoundary><GeographyPage /></RouteErrorBoundary>} />
             <Route path="/incidents" element={<RouteErrorBoundary><IncidentsPage /></RouteErrorBoundary>} />
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
