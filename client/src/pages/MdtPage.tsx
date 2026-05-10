@@ -461,7 +461,7 @@ export default function MdtPage() {
   // ── Fetch BOLOs ──
   const fetchBolos = useCallback(async () => {
     try {
-      const result = await apiFetch<any>('/comms/bolos/active');
+      const result = await apiFetch<BoloEntry[] | { data: BoloEntry[] }>('/comms/bolos/active');
       const arr = Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : [];
       setBolos(arr);
     } catch {
@@ -483,7 +483,7 @@ export default function MdtPage() {
   // ── Fetch Dispatch Codes ──
   const fetchCodes = useCallback(async () => {
     try {
-      const result = await apiFetch<any>('/dispatch/geography/codes');
+      const result = await apiFetch<DispatchCode[] | { data: DispatchCode[] }>('/dispatch/geography/codes');
       const arr = Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : [];
       setCodes(arr);
     } catch {
@@ -617,7 +617,7 @@ export default function MdtPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, [selectedCall, showCodes]);
+  }, [selectedCall, showCodes, handleCallStatus]);
 
   // ── Add Call Note ──
   const handleAddNote = async () => {
@@ -1133,9 +1133,9 @@ export default function MdtPage() {
                       <MapPin style={{ width: 8, height: 8 }} />
                       {call.location || 'No address'}
                     </div>
-                    {(call as any).disposition && (
+                    {call.disposition && (
                       <div className="text-[8px] text-rmpg-500 mt-0.5 font-mono uppercase">
-                        Disp: {(call as any).disposition}
+                        Disp: {call.disposition}
                       </div>
                     )}
                   </div>
@@ -1419,7 +1419,7 @@ export default function MdtPage() {
                   {selectedCall.notes && selectedCall.notes.length > 0 ? (
                     <div className="space-y-1 mb-2">
                       {selectedCall.notes.map((note, i) => (
-                        <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1 bg-surface-sunken border-l-2 border-l-rmpg-700">
+                        <div key={note.id || `${note.timestamp}-${i}`} className="text-[9px] text-rmpg-300 px-2 py-1 bg-surface-sunken border-l-2 border-l-rmpg-700">
                           <span className="text-rmpg-500">{safeTimeStr(note.timestamp)}</span>
                           {' \u2014 '}
                           {note.text}
