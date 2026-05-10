@@ -11,6 +11,7 @@ import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
 import { computeRiskScore } from '../../utils/riskScoring';
+import { paramStr } from '../../utils/reqHelpers';
 import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 import { buildThreatContext } from '../../utils/threatContext';
@@ -2826,6 +2827,91 @@ router.get('/calls/cross-reference', requireRole('admin', 'manager', 'supervisor
     res.json(calls);
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to cross-reference calls', code: 'CROSS_REFERENCE_ERROR' });
+  }
+});
+
+// ── Upgrade: Call Narratives (versioned history) ──
+
+// POST /api/dispatch/calls/:id/narratives — Add a narrative version
+router.post('/calls/:id/narratives', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const callId = parseInt(paramStr(req.params.id), 10);
+    if (isNaN(callId)) { res.status(400).json({ error: 'Invalid call ID' }); return; }
+
+    const userId = (req as any).user.id;
+    const userName = (req as any).user.full_name || (req as any).user.username;
+    const { narrative_text, change_summary } = req.body;
+
+    if (!narrative_text) { res.status(400).json({ error: 'narrative_text is required' }); return; }
+
+    const call = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(callId);
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    // Wrap in transaction to prevent version race conditions
+    const insertNarrative = db.transaction(() => {
+      const latest = db.prepare('SELECT MAX(version) as max_ver FROM call_narratives WHERE call_id = ?').get(callId) as any;
+      const nextVersion = (latest?.max_ver || 0) + 1;
+
+      const result = db.prepare(`
+        INSERT INTO call_narratives (call_id, version, narrative_text, editor_id, editor_name, change_summary)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(callId, nextVersion, narrative_text, userId, userName, change_summary || null);
+
+      return { id: result.lastInsertRowid, version: nextVersion };
+    });
+
+    const { id: narrativeId, version: nextVersion } = insertNarrative();
+
+    auditLog(req, 'CREATE', 'call_narratives', narrativeId as number, null, { call_id: callId, version: nextVersion });
+    broadcastDispatchUpdate({ action: 'narrative_updated', call_id: callId, version: nextVersion });
+
+    res.json({ success: true, id: narrativeId, version: nextVersion });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to add narrative', details: err?.message });
+  }
+});
+
+// GET /api/dispatch/calls/:id/narratives — Get all narrative versions for a call
+router.get('/calls/:id/narratives', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const callId = parseInt(paramStr(req.params.id), 10);
+    if (isNaN(callId)) { res.status(400).json({ error: 'Invalid call ID' }); return; }
+
+    const narratives = db.prepare(`
+      SELECT n.*, u.badge_number as editor_badge
+      FROM call_narratives n
+      LEFT JOIN users u ON n.editor_id = u.id
+      WHERE n.call_id = ?
+      ORDER BY n.version DESC
+    `).all(callId);
+
+    res.json(narratives);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to get narratives', details: err?.message });
+  }
+});
+
+// GET /api/dispatch/calls/:id/narratives/latest — Get latest narrative
+router.get('/calls/:id/narratives/latest', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const callId = parseInt(paramStr(req.params.id), 10);
+    if (isNaN(callId)) { res.status(400).json({ error: 'Invalid call ID' }); return; }
+
+    const narrative = db.prepare(`
+      SELECT n.*, u.badge_number as editor_badge
+      FROM call_narratives n
+      LEFT JOIN users u ON n.editor_id = u.id
+      WHERE n.call_id = ?
+      ORDER BY n.version DESC
+      LIMIT 1
+    `).get(callId);
+
+    res.json(narrative || null);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to get latest narrative', details: err?.message });
   }
 });
 

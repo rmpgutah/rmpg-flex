@@ -6951,6 +6951,69 @@ function createIndexes(): void {
       UNIQUE(briefing_id, user_id)
     );
 
+    CREATE TABLE IF NOT EXISTS shift_handoffs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      outgoing_dispatcher_id INTEGER NOT NULL,
+      incoming_dispatcher_id INTEGER,
+      shift_type TEXT NOT NULL DEFAULT 'day',
+      status TEXT NOT NULL DEFAULT 'pending',
+      active_calls_summary TEXT,
+      held_calls_summary TEXT,
+      pending_backups TEXT,
+      officer_notes TEXT,
+      priority_items TEXT,
+      weather_conditions TEXT,
+      staffing_notes TEXT,
+      acknowledged_at TEXT,
+      completed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (outgoing_dispatcher_id) REFERENCES users(id),
+      FOREIGN KEY (incoming_dispatcher_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mutual_aid_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      requesting_agency TEXT NOT NULL DEFAULT 'RMPG',
+      responding_agency TEXT,
+      call_id INTEGER,
+      request_type TEXT NOT NULL DEFAULT 'units',
+      units_requested INTEGER DEFAULT 1,
+      units_provided INTEGER DEFAULT 0,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      priority TEXT DEFAULT 'P2',
+      contact_name TEXT,
+      contact_phone TEXT,
+      contact_radio TEXT,
+      response_notes TEXT,
+      requested_by INTEGER NOT NULL,
+      responded_by INTEGER,
+      requested_at TEXT DEFAULT (datetime('now','localtime')),
+      responded_at TEXT,
+      completed_at TEXT,
+      cancelled_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
+      FOREIGN KEY (requested_by) REFERENCES users(id),
+      FOREIGN KEY (responded_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS call_narratives (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      narrative_text TEXT NOT NULL,
+      editor_id INTEGER NOT NULL,
+      editor_name TEXT,
+      change_summary TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (editor_id) REFERENCES users(id),
+      UNIQUE(call_id, version)
+    );
+
     -- Dashcam videos indexes — only on columns that actually exist.
     -- The previous unit_id and officer_id indexes referenced columns
     -- that were never added to dashcam_videos (verified via grep
@@ -7163,6 +7226,22 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_shift_briefings_created ON shift_briefings(created_at);
     CREATE INDEX IF NOT EXISTS idx_shift_briefing_ack_briefing ON shift_briefing_acknowledgments(briefing_id);
     CREATE INDEX IF NOT EXISTS idx_shift_briefing_ack_user ON shift_briefing_acknowledgments(user_id);
+
+    -- Shift handoffs indexes
+    CREATE INDEX IF NOT EXISTS idx_shift_handoffs_outgoing ON shift_handoffs(outgoing_dispatcher_id);
+    CREATE INDEX IF NOT EXISTS idx_shift_handoffs_incoming ON shift_handoffs(incoming_dispatcher_id);
+    CREATE INDEX IF NOT EXISTS idx_shift_handoffs_status ON shift_handoffs(status);
+    CREATE INDEX IF NOT EXISTS idx_shift_handoffs_created ON shift_handoffs(created_at);
+
+    -- Mutual aid indexes
+    CREATE INDEX IF NOT EXISTS idx_mutual_aid_status ON mutual_aid_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_mutual_aid_call ON mutual_aid_requests(call_id);
+    CREATE INDEX IF NOT EXISTS idx_mutual_aid_priority ON mutual_aid_requests(priority);
+    CREATE INDEX IF NOT EXISTS idx_mutual_aid_requested ON mutual_aid_requests(requested_at);
+
+    -- Call narratives indexes
+    CREATE INDEX IF NOT EXISTS idx_call_narratives_call ON call_narratives(call_id, version);
+    CREATE INDEX IF NOT EXISTS idx_call_narratives_editor ON call_narratives(editor_id);
   `);
   } catch (err: any) {
     console.warn('[DB] createIndexes partially failed (non-fatal):', err?.message || 'Unknown error');

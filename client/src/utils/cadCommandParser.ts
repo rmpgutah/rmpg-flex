@@ -63,6 +63,10 @@ export type CommandAction =
   | { type: 'show_shift_summary' }
   | { type: 'check_recurring'; address: string }
   | { type: 'cross_reference'; query: string }
+  | { type: 'handoff'; shiftType: string }
+  | { type: 'mutual_aid'; agency: string; reason?: string }
+  | { type: 'narrative'; callId: string; text: string }
+  | { type: 'quality_metrics'; days?: number }
   | { type: 'show_help' }
   | { type: 'none' };
 
@@ -144,6 +148,10 @@ const COMMANDS: Record<string, { usage: string; desc: string }> = {
   SS:   { usage: 'SS',                        desc: 'Show shift summary' },
   RC:   { usage: 'RC <address>',              desc: 'Check recurring calls at address' },
   XR:   { usage: 'XR <query>',               desc: 'Cross reference search' },
+  HO:   { usage: 'HO <shift_type>',          desc: 'Initiate shift handoff with auto-briefing' },
+  MA:   { usage: 'MA <agency> [reason]',      desc: 'Request mutual aid from agency' },
+  NAR:  { usage: 'NAR <call#> <text>',        desc: 'Add versioned narrative to call' },
+  QM:   { usage: 'QM [days]',                desc: 'Show dispatch quality metrics' },
   HELP: { usage: 'HELP',                       desc: 'Show command reference' },
 };
 
@@ -1197,6 +1205,54 @@ export async function executeCommand(
         success: true,
         message: `Cross referencing: ${query}...`,
         action: { type: 'cross_reference', query },
+      };
+    }
+
+    // ── Shift Handoff ──
+    case 'HO': {
+      const shiftType = args[0] || 'day';
+      return {
+        success: true,
+        message: `Initiating shift handoff (${shiftType})...`,
+        action: { type: 'handoff', shiftType },
+      };
+    }
+
+    // ── Mutual Aid ──
+    case 'MA': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: MA <agency> [reason]', action: { type: 'none' } };
+      }
+      const agency = args[0];
+      const reason = args.slice(1).join(' ') || undefined;
+      return {
+        success: true,
+        message: `Requesting mutual aid from ${agency}...`,
+        action: { type: 'mutual_aid', agency, reason },
+      };
+    }
+
+    // ── Narrative ──
+    case 'NAR': {
+      if (args.length < 2) {
+        return { success: false, message: 'Usage: NAR <call#> <text>', action: { type: 'none' } };
+      }
+      const callId = args[0];
+      const text = args.slice(1).join(' ');
+      return {
+        success: true,
+        message: `Adding narrative to call ${callId}...`,
+        action: { type: 'narrative', callId, text },
+      };
+    }
+
+    // ── Quality Metrics ──
+    case 'QM': {
+      const days = args[0] ? parseInt(args[0], 10) : undefined;
+      return {
+        success: true,
+        message: `Loading quality metrics${days ? ` (${days} days)` : ''}...`,
+        action: { type: 'quality_metrics', days },
       };
     }
 
