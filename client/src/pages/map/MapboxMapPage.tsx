@@ -10,6 +10,7 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
+import type maplibregl from 'maplibre-gl';
 import {
   Shield, AlertTriangle, Search, X, Layers, MapPin, Navigation2,
   Eye, EyeOff, ChevronDown, ChevronUp, Loader2, RefreshCw,
@@ -174,7 +175,7 @@ export default function MapboxMapPage() {
   // ── Refs ───────────────────────────────────────────────────────────────────
   const mapContainerRef  = useRef<HTMLDivElement>(null);
   const mapRef           = useRef<mapboxgl.Map | null>(null);
-  const mapLibreRef      = useRef<any>(null);
+  const mapLibreRef      = useRef<maplibregl.Map | null>(null);
   const unitMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const callMarkersRef   = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const selfMarkerRef    = useRef<mapboxgl.Marker | null>(null);
@@ -359,7 +360,7 @@ export default function MapboxMapPage() {
 
   // ── MapLibre Fallback: Unit & Call Markers ─────────────────────────────────
 
-  const mapLibreMarkersRef = useRef<any[]>([]);
+  const mapLibreMarkersRef = useRef<maplibregl.Marker[]>([]);
 
   useEffect(() => {
     if (!mapLibreFallback || !mapLibreRef.current) return;
