@@ -10,6 +10,7 @@
 // ============================================================
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
 
 // ── Types ────────────────────────────────────────────────────
 
@@ -42,7 +43,7 @@ export interface EventPlan {
 
 export const PLAN_COLORS: Record<PlanItemType, string> = {
   perimeter: '#ef4444',   // Red
-  route: '#888888',       // Blue
+  route: '#888888',       // Gray
   staging: '#22c55e',     // Green
   annotation: '#f59e0b',  // Amber
 };
@@ -59,11 +60,30 @@ const LS_KEY = 'rmpg_event_plans';
 // ── Hook ─────────────────────────────────────────────────────
 
 interface UseEventPlanningOptions {
-  map: google.maps.Map | null;
-  infoWindow: google.maps.InfoWindow | null;
+  map: mapboxgl.Map | null;
 }
 
-export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
+/** Create a styled DOM element for a Mapbox marker */
+function createMarkerEl(color: string, type: 'staging' | 'annotation', text?: string): HTMLElement {
+  const el = document.createElement('div');
+  const size = type === 'staging' ? 16 : 12;
+  el.style.width = `${size}px`;
+  el.style.height = `${size}px`;
+  el.style.backgroundColor = color;
+  el.style.border = '2px solid #ffffff';
+  el.style.borderRadius = type === 'staging' ? '2px' : '50%';
+  el.style.cursor = 'pointer';
+  if (type === 'annotation' && text) {
+    const label = document.createElement('span');
+    label.textContent = text;
+    label.style.cssText = 'position:absolute;left:18px;top:-4px;color:#fff;font-size:10px;font-weight:bold;white-space:nowrap;pointer-events:none;';
+    el.style.position = 'relative';
+    el.appendChild(label);
+  }
+  return el;
+}
+
+export function useEventPlanning({ map }: UseEventPlanningOptions) {
   const [plans, setPlans] = useState<EventPlan[]>(() => {
     try {
       const saved = localStorage.getItem(LS_KEY);
@@ -76,14 +96,15 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
   const [isDrawing, setIsDrawing] = useState(false);
   const [planVisible, setPlanVisible] = useState(true);
 
-  // Map overlay references
-  const overlaysRef = useRef<Array<google.maps.Polygon | google.maps.Polyline | google.maps.Marker>>([]);
-  const drawPointsRef = useRef<google.maps.LatLng[]>([]);
-  const drawPolylineRef = useRef<google.maps.Polyline | null>(null);
-  const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
-  const dblClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  // Map overlay references — Mapbox markers + source/layer IDs
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const layerIdsRef = useRef<string[]>([]);
+  const drawPointsRef = useRef<[number, number][]>([]);
+  const previewSourceId = 'event-plan-draw-preview';
+  const clickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
+  const dblClickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
 
-  // Refs to break stale closure in Google Maps listeners (listeners capture at registration time)
+  // Refs to break stale closure in listeners
   const addItemToPlanRef = useRef<(item: PlanItem) => void>(() => {});
   const finishDrawingRef = useRef<() => void>(() => {});
   const cancelDrawingRef = useRef<() => void>(() => {});
@@ -123,21 +144,27 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
     ));
   }, []);
 
+  // ── Helpers: remove preview source/layer ───────────────────
+
+  const removePreview = useCallback(() => {
+    if (!map) return;
+    try {
+      if (map.getLayer(previewSourceId)) map.removeLayer(previewSourceId);
+      if (map.getSource(previewSourceId)) map.removeSource(previewSourceId);
+    } catch { /* ignore */ }
+  }, [map]);
+
   // ── Start drawing mode ─────────────────────────────────────
 
   const startDrawing = useCallback((type: PlanItemType) => {
     if (!map || !activePlanId) return;
-    // Cancel any existing draw (use ref to avoid circular dependency)
     cancelDrawingRef.current();
     setDrawMode(type);
 
     if (type === 'staging' || type === 'annotation') {
-      // Single-click to place
       setIsDrawing(true);
-      const listener = map.addListener('click', (e: google.maps.MapMouseEvent) => {
-        if (!e.latLng) return;
-        const position = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-
+      const handler = (e: mapboxgl.MapMouseEvent) => {
+        const position = { lat: e.lngLat.lat, lng: e.lngLat.lng };
         const label = type === 'staging' ? 'Staging Area' : 'Note';
         const text = type === 'annotation' ? prompt('Enter annotation text:') || 'Note' : undefined;
 
@@ -155,39 +182,58 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
         stopDrawingListeners();
         setDrawMode(null);
         setIsDrawing(false);
-      });
-      clickListenerRef.current = listener;
+      };
+      map.on('click', handler);
+      clickHandlerRef.current = handler;
     } else {
       // Multi-click polygon/polyline
       setIsDrawing(true);
       drawPointsRef.current = [];
 
-      // Preview polyline while drawing
-      const previewLine = new google.maps.Polyline({
-        map,
-        path: [],
-        strokeColor: PLAN_COLORS[type],
-        strokeOpacity: 0.8,
-        strokeWeight: 2,
-        icons: type === 'route' ? [{ icon: { path: google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 2 }, offset: '50%' }] : [],
+      // Add preview line source
+      removePreview();
+      map.addSource(previewSourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
       });
-      drawPolylineRef.current = previewLine;
-
-      const listener = map.addListener('click', (e: google.maps.MapMouseEvent) => {
-        if (!e.latLng) return;
-        drawPointsRef.current.push(e.latLng);
-        previewLine.setPath(drawPointsRef.current);
+      map.addLayer({
+        id: previewSourceId,
+        type: 'line',
+        source: previewSourceId,
+        paint: {
+          'line-color': PLAN_COLORS[type],
+          'line-width': 2,
+          'line-opacity': 0.8,
+        },
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
       });
 
-      const dblListener = map.addListener('dblclick', (e: google.maps.MapMouseEvent) => {
-        e.stop?.();
+      const clickHandler = (e: mapboxgl.MapMouseEvent) => {
+        drawPointsRef.current.push([e.lngLat.lng, e.lngLat.lat]);
+        const src = map.getSource(previewSourceId) as mapboxgl.GeoJSONSource | undefined;
+        if (src) {
+          src.setData({
+            type: 'FeatureCollection',
+            features: [{
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: drawPointsRef.current },
+              properties: {},
+            }],
+          });
+        }
+      };
+
+      const dblHandler = (e: mapboxgl.MapMouseEvent) => {
+        e.preventDefault();
         finishDrawingRef.current();
-      });
+      };
 
-      clickListenerRef.current = listener;
-      dblClickListenerRef.current = dblListener;
+      map.on('click', clickHandler);
+      map.on('dblclick', dblHandler);
+      clickHandlerRef.current = clickHandler;
+      dblClickHandlerRef.current = dblHandler;
     }
-  }, [map, activePlanId]);
+  }, [map, activePlanId, removePreview]);
 
   // ── Finish multi-point drawing ─────────────────────────────
 
@@ -199,7 +245,7 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
       return;
     }
 
-    const path = points.map((p) => ({ lat: p.lat(), lng: p.lng() }));
+    const path = points.map((p) => ({ lat: p[1], lng: p[0] }));
 
     const defaultLabel = drawMode === 'perimeter' ? 'Perimeter' : 'Route';
     const item: PlanItem = {
@@ -226,18 +272,15 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
   }, []);
 
   const stopDrawingListeners = () => {
-    if (clickListenerRef.current) {
-      google.maps.event.removeListener(clickListenerRef.current);
-      clickListenerRef.current = null;
+    if (map && clickHandlerRef.current) {
+      map.off('click', clickHandlerRef.current);
+      clickHandlerRef.current = null;
     }
-    if (dblClickListenerRef.current) {
-      google.maps.event.removeListener(dblClickListenerRef.current);
-      dblClickListenerRef.current = null;
+    if (map && dblClickHandlerRef.current) {
+      map.off('dblclick', dblClickHandlerRef.current);
+      dblClickHandlerRef.current = null;
     }
-    if (drawPolylineRef.current) {
-      drawPolylineRef.current.setMap(null);
-      drawPolylineRef.current = null;
-    }
+    removePreview();
     drawPointsRef.current = [];
   };
 
@@ -251,7 +294,7 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
     ));
   }, [activePlanId]);
 
-  // Keep refs in sync so Google Maps listeners always call the latest version
+  // Keep refs in sync so listeners always call the latest version
   addItemToPlanRef.current = addItemToPlan;
   finishDrawingRef.current = finishDrawing;
   cancelDrawingRef.current = cancelDrawing;
@@ -272,105 +315,97 @@ export function useEventPlanning({ map, infoWindow }: UseEventPlanningOptions) {
     ));
   }, [activePlanId]);
 
+  // ── Helper: remove all rendered overlays ───────────────────
+
+  const clearOverlays = useCallback(() => {
+    for (const m of markersRef.current) m.remove();
+    markersRef.current = [];
+    if (map) {
+      for (const lid of layerIdsRef.current) {
+        try {
+          if (map.getLayer(lid)) map.removeLayer(lid);
+          if (map.getSource(lid)) map.removeSource(lid);
+        } catch { /* ignore */ }
+      }
+    }
+    layerIdsRef.current = [];
+  }, [map]);
+
   // ── Render plan overlays on map ────────────────────────────
 
   useEffect(() => {
-    // Clear existing overlays
-    for (const ol of overlaysRef.current) {
-      if ('setMap' in ol) (ol as any).setMap(null);
-    }
-    overlaysRef.current = [];
-
+    clearOverlays();
     if (!map || !activePlan || !planVisible) return;
 
     for (const item of activePlan.items) {
       if (item.type === 'perimeter' && item.path && item.path.length >= 3) {
-        const polygon = new google.maps.Polygon({
-          map,
-          paths: item.path,
-          strokeColor: item.color,
-          strokeOpacity: 0.8,
-          strokeWeight: 2,
-          fillColor: item.color,
-          fillOpacity: 0.12,
-          clickable: true,
+        const coords: [number, number][] = item.path.map((p) => [p.lng, p.lat]);
+        // Close the polygon ring
+        if (coords.length > 0) coords.push(coords[0]);
+        const fillId = `plan-fill-${item.id}`;
+        const lineId = `plan-line-${item.id}`;
+        const srcId = `plan-src-${item.id}`;
+
+        map.addSource(srcId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [coords] },
+            properties: { label: item.label, itemId: item.id },
+          },
         });
-        polygon.addListener('click', (e: google.maps.PolyMouseEvent) => {
-          if (infoWindow && e.latLng) {
-            infoWindow.setContent(makeInfoHtml(item));
-            infoWindow.setPosition(e.latLng);
-            infoWindow.open(map);
-          }
+        map.addLayer({
+          id: fillId, type: 'fill', source: srcId,
+          paint: { 'fill-color': item.color, 'fill-opacity': 0.12 },
         });
-        overlaysRef.current.push(polygon);
+        map.addLayer({
+          id: lineId, type: 'line', source: srcId,
+          paint: { 'line-color': item.color, 'line-width': 2, 'line-opacity': 0.8 },
+        });
+        layerIdsRef.current.push(fillId, lineId, srcId);
       }
 
       if (item.type === 'route' && item.path && item.path.length >= 2) {
-        const polyline = new google.maps.Polyline({
-          map,
-          path: item.path,
-          strokeColor: item.color,
-          strokeOpacity: 0.9,
-          strokeWeight: 3,
-          icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_OPEN_ARROW, scale: 3, strokeColor: item.color }, offset: '50%' }],
-          clickable: true,
+        const coords: [number, number][] = item.path.map((p) => [p.lng, p.lat]);
+        const lineId = `plan-route-${item.id}`;
+
+        map.addSource(lineId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: coords },
+            properties: { label: item.label, itemId: item.id },
+          },
         });
-        polyline.addListener('click', (e: google.maps.PolyMouseEvent) => {
-          if (infoWindow && e.latLng) {
-            infoWindow.setContent(makeInfoHtml(item));
-            infoWindow.setPosition(e.latLng);
-            infoWindow.open(map);
-          }
+        map.addLayer({
+          id: lineId, type: 'line', source: lineId,
+          paint: { 'line-color': item.color, 'line-width': 3, 'line-opacity': 0.9 },
+          layout: { 'line-join': 'round', 'line-cap': 'round' },
         });
-        overlaysRef.current.push(polyline);
+        layerIdsRef.current.push(lineId);
       }
 
       if ((item.type === 'staging' || item.type === 'annotation') && item.position) {
-        const marker = new google.maps.Marker({
-          map,
-          position: item.position,
-          title: item.label,
-          icon: {
-            path: item.type === 'staging'
-              ? google.maps.SymbolPath.BACKWARD_CLOSED_ARROW
-              : google.maps.SymbolPath.CIRCLE,
-            scale: item.type === 'staging' ? 8 : 6,
-            fillColor: item.color,
-            fillOpacity: 0.9,
-            strokeColor: '#ffffff',
-            strokeWeight: 2,
-          },
-          label: item.type === 'annotation' ? {
-            text: item.text || item.label,
-            color: '#ffffff',
-            fontSize: '10px',
-            fontWeight: 'bold',
-            className: 'event-plan-label',
-          } : undefined,
-        });
-        marker.addListener('click', () => {
-          if (infoWindow) {
-            infoWindow.setContent(makeInfoHtml(item));
-            infoWindow.setPosition(item.position!);
-            infoWindow.open(map);
-          }
-        });
-        overlaysRef.current.push(marker);
+        const el = createMarkerEl(item.color, item.type, item.type === 'annotation' ? (item.text || item.label) : undefined);
+        const popup = new mapboxgl.Popup({ offset: 15, closeButton: true, className: 'event-plan-popup' })
+          .setHTML(makeInfoHtml(item));
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([item.position.lng, item.position.lat])
+          .setPopup(popup)
+          .addTo(map);
+        markersRef.current.push(marker);
       }
     }
-  }, [map, activePlan, planVisible, infoWindow]);
+  }, [map, activePlan, planVisible, clearOverlays]);
 
   // ── Cleanup on unmount ─────────────────────────────────────
 
   useEffect(() => {
     return () => {
       stopDrawingListeners();
-      for (const ol of overlaysRef.current) {
-        if ('setMap' in ol) (ol as any).setMap(null);
-      }
-      overlaysRef.current = [];
+      clearOverlays();
     };
-  }, []);
+  }, [clearOverlays]);
 
   return {
     plans,

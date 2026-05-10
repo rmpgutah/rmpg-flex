@@ -11,6 +11,7 @@
 // ============================================================
 
 import { useEffect, useRef } from 'react';
+import mapboxgl from 'mapbox-gl';
 
 interface CallLike {
   id: string | number;
@@ -33,7 +34,7 @@ const DEFAULT_PRIORITIES = ['P1', '1'];
 const DEFAULT_IGNORE_STATUSES = ['CLEARED', 'CLOSED', 'CANCELED', 'CANCELLED'];
 
 export function useAutoPanToP1(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   calls: CallLike[],
   options: Options = {},
 ) {
@@ -73,7 +74,7 @@ export function useAutoPanToP1(
       if (lat == null || lng == null) continue;
 
       try {
-        map.panTo({ lat, lng });
+        map.panTo([lng, lat]);
       } catch {
         // Map may have been torn down mid-pan — ignore.
       }
