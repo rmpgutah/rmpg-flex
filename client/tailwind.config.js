@@ -52,7 +52,8 @@ export default {
         // modifier works (e.g. bg-surface-sunken/50). RGB channels are
         // declared in index.css as --surface-*-rgb (space-separated).
         surface: {
-          // Deep navy blue surfaces — no pure black
+          // Dark Mode colors:  #000000 #0b0b0b #000000 #030303 #000000
+          // Light Mode colors: #081828 #0d2440 #051420 #061525 #020a14
           base:    'rgb(var(--surface-base-rgb) / <alpha-value>)',
           raised:  'rgb(var(--surface-raised-rgb) / <alpha-value>)',
           sunken:  'rgb(var(--surface-sunken-rgb) / <alpha-value>)',
@@ -61,19 +62,19 @@ export default {
         },
 
         // ── RMPG Brand ─────────────────────────────────────
-        // Deep navy blue shell with gold accents
+        // Pure black shell with neutral metallic accents
 
         brand: {
-          50:  '#e6eef8',
-          100: '#c0d4ec',
-          200: '#8ab0d8',
-          300: '#5a90c4',
-          400: '#3a78b4',
-          500: '#2a6098',
-          600: '#1e4a78',
-          700: '#163860',
-          800: '#102a4a',
-          900: '#0a1e3c',
+          50:  '#f2f2f2',
+          100: '#dddddd',
+          200: '#bfbfbf',
+          300: '#9e9e9e',
+          400: '#7f7f7f',
+          500: '#666666',
+          600: '#4c4c4c',
+          700: '#343434',
+          800: '#1f1f1f',
+          900: '#0e0e0e',
         },
 
         // Warm gold accent — eagle beak / mountain highlights
@@ -85,33 +86,33 @@ export default {
           700: '#936c0a',
         },
 
-        // Blue token — actual blue tones for the blue theme
+        // Keep the "blue" token name for existing utility usage, but render it as neutral gray
         blue: {
-          50:  '#e6eef8',
-          100: '#c0d4ec',
-          200: '#8ab0d8',
-          300: '#5a90c4',
-          400: '#3a78b4',
-          500: '#2a6098',
-          600: '#1e4a78',
-          700: '#163860',
-          800: '#102a4a',
-          900: '#0a1e3c',
+          50:  '#f1f1f1',
+          100: '#d9d9d9',
+          200: '#bdbdbd',
+          300: '#a1a1a1',
+          400: '#c8c8c8',
+          500: '#9a9a9a',
+          600: '#737373',
+          700: '#4f4f4f',
+          800: '#2e2e2e',
+          900: '#141414',
         },
 
-        // RMPG navy blue palette
+        // Neutral graphite greys — no blue cast
         rmpg: {
-          50:  '#e6eef8',
-          100: '#c0d4ec',
-          200: '#8ab0d8',
-          300: '#5a90c4',
-          400: '#3a78b4',
-          500: '#2a6098',
-          600: '#1e4a78',
-          700: '#163860',
-          800: '#102a4a',
-          900: '#0a1e3c',
-          950: '#061835',
+          50:  '#ededed',
+          100: '#d6d6d6',
+          200: '#b8b8b8',
+          300: '#969696',
+          400: '#757575',
+          500: '#5a5a5a',
+          600: '#434343',
+          700: '#2d2d2d',
+          800: '#1b1b1b',
+          900: '#0d0d0d',
+          950: '#030303',
         },
 
         dispatch: {
