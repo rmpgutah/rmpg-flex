@@ -771,20 +771,25 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
   // ── Feature 41: Vehicle History Report ──
   const [vehicleHistory, setVehicleHistory] = React.useState<any>(null);
   const [pdfHistory, setPdfHistory] = React.useState<any>(null);
+
+  const fetchVehicleHistory = React.useCallback(async (vId: string) => {
+    const data = await apiFetch<any>(`/records/vehicles/${vId}/history`);
+    return data?.data || data;
+  }, []);
+
   const handleLoadHistory = async (vId: string) => {
     try {
-      const data = await apiFetch<any>(`/records/vehicles/${vId}/history`);
-      setVehicleHistory(data?.data || data);
+      setVehicleHistory(await fetchVehicleHistory(vId));
     } catch { /* ignore */ }
   };
 
   // Pre-fetch history for PDF enrichment when vehicle changes
   React.useEffect(() => {
-    if (!selectedVehicle) { setPdfHistory(null); return; }
-    apiFetch<any>(`/records/vehicles/${selectedVehicle.id}/history`)
-      .then(d => setPdfHistory(d?.data || d))
+    if (!selectedVehicle?.id) { setPdfHistory(null); return; }
+    fetchVehicleHistory(selectedVehicle.id)
+      .then(setPdfHistory)
       .catch(() => setPdfHistory(null));
-  }, [selectedVehicle?.id]);
+  }, [selectedVehicle?.id, fetchVehicleHistory]);
 
   // ── Feature 44: Stolen Vehicle Check ──
   const [stolenCheckResult, setStolenCheckResult] = React.useState<any>(null);
@@ -817,7 +822,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         <div className="flex gap-1 mt-1">
           <PrintRecordButton
             recordType="vehicle"
-            recordData={buildVehiclePdfData(selectedVehicle, pdfHistory || undefined)}
+            recordData={buildVehiclePdfData(selectedVehicle, pdfHistory ?? undefined)}
             identifier={selectedVehicle.license_plate || selectedVehicle.id}
             entityType="vehicle"
             entityId={selectedVehicle.id}
