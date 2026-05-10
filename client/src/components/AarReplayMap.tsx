@@ -1,23 +1,18 @@
 // ============================================================
-// AarReplayMap — Google Maps embed for AAR replay page
+// AarReplayMap — Mapbox GL embed for AAR replay page
 // ============================================================
 // Shows the cruiser's gps_breadcrumbs as a polyline plus two
 // markers:
-//   - Pivot marker: the event location (gold for AAR consistency)
+//   - Pivot marker: the event location (red circle)
 //   - Scrub marker: where the unit was at the current video time;
 //     parent updates via prop, marker animates without re-rendering
 //     the whole map
-//
-// Loads Google Maps via the existing shared loader so the dark
-// theme + offline-tile behavior matches MapPage. Falls back
-// gracefully on API-key-missing or load-failure.
+// ============================================================
 
 import React, { useEffect, useRef, useState } from 'react';
-import {
-  loadGoogleMaps,
-  DARK_MAP_STYLE,
-  resolveGoogleMapsApiKey,
-} from '../utils/googleMapsLoader';
+import mapboxgl from 'mapbox-gl';
+import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { getMapboxToken } from '../utils/mapboxApiKey';
 
 export interface AarMapBreadcrumb {
   recorded_at: string;
@@ -35,12 +30,27 @@ interface Props {
   scrubLng: number | null;
 }
 
+const TRAIL_ID = 'aar-breadcrumb-trail';
+
+/** Create a circle marker element */
+function createCircleEl(color: string, size: number, borderColor = '#fff', borderWidth = 2): HTMLElement {
+  const el = document.createElement('div');
+  el.style.cssText = `width:${size}px;height:${size}px;border-radius:50%;background:${color};border:${borderWidth}px solid ${borderColor};box-shadow:0 0 6px ${color}80;`;
+  return el;
+}
+
+/** Create an arrow marker element */
+function createArrowEl(color: string): HTMLElement {
+  const el = document.createElement('div');
+  el.style.cssText = `width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-bottom:12px solid ${color};filter:drop-shadow(0 0 4px ${color}80);`;
+  return el;
+}
+
 export default function AarReplayMap({ pivot, breadcrumbs, scrubLat, scrubLng }: Props): React.ReactElement {
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
-  const pivotMarkerRef = useRef<google.maps.Marker | null>(null);
-  const scrubMarkerRef = useRef<google.maps.Marker | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const pivotMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const scrubMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
@@ -50,38 +60,40 @@ export default function AarReplayMap({ pivot, breadcrumbs, scrubLat, scrubLng }:
     let cancelled = false;
     (async () => {
       try {
-        const apiKey = await resolveGoogleMapsApiKey();
-        if (!apiKey) {
-          if (!cancelled) setError('Google Maps API key not configured');
+        const token = await getMapboxToken();
+        if (!token) {
+          if (!cancelled) setError('Mapbox access token not configured');
           return;
         }
-        await loadGoogleMaps(apiKey);
         if (cancelled || !containerRef.current) return;
 
-        const center = pivot ?? (breadcrumbs[0]
-          ? { lat: breadcrumbs[0].latitude, lng: breadcrumbs[0].longitude }
-          : { lat: 40.76, lng: -111.89 }); // SLC fallback
+        injectMapboxStyles();
 
-        const map = new google.maps.Map(containerRef.current, {
+        const center: [number, number] = pivot
+          ? [pivot.lng, pivot.lat]
+          : breadcrumbs[0]
+            ? [breadcrumbs[0].longitude, breadcrumbs[0].latitude]
+            : [-111.89, 40.76]; // SLC fallback
+
+        const map = createMapboxMap({
+          container: containerRef.current,
           center,
           zoom: 16,
-          styles: DARK_MAP_STYLE,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: true,
-          zoomControl: true,
-          clickableIcons: false,
+          accessToken: token,
         });
         mapRef.current = map;
-        setReady(true);
+
+        map.on('load', () => {
+          if (!cancelled) setReady(true);
+        });
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Map load failed');
       }
     })();
 
-    return () => { cancelled = true; };
-    // Intentionally only run once — pivot/breadcrumbs handled in
-    // separate effects below to avoid re-instantiating the map.
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -90,47 +102,28 @@ export default function AarReplayMap({ pivot, breadcrumbs, scrubLat, scrubLng }:
     if (!ready || !mapRef.current) return;
     const map = mapRef.current;
 
-    // Clean prior
-    polylineRef.current?.setMap(null);
-    polylineRef.current = null;
-    pivotMarkerRef.current?.setMap(null);
+    // Clean prior trail
+    removeMapboxTrail(map, TRAIL_ID);
+    pivotMarkerRef.current?.remove();
     pivotMarkerRef.current = null;
 
     if (breadcrumbs.length >= 2) {
-      polylineRef.current = new google.maps.Polyline({
-        path: breadcrumbs.map(b => ({ lat: b.latitude, lng: b.longitude })),
-        geodesic: true,
-        strokeColor: '#d4a017', // RMPG gold
-        strokeOpacity: 0.95,
-        strokeWeight: 4,
-        map,
-        zIndex: 1,
-      });
+      const coords: [number, number][] = breadcrumbs.map(b => [b.longitude, b.latitude]);
+      addMapboxTrail(map, TRAIL_ID, coords, '#d4a017', 4);
     }
 
     if (pivot) {
-      pivotMarkerRef.current = new google.maps.Marker({
-        position: pivot,
-        map,
-        title: 'Event location',
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 9,
-          fillColor: '#dc2626', // alert red
-          fillOpacity: 0.95,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        },
-        zIndex: 3,
-      });
+      pivotMarkerRef.current = new mapboxgl.Marker({ element: createCircleEl('#dc2626', 18) })
+        .setLngLat([pivot.lng, pivot.lat])
+        .addTo(map);
     }
 
     // Fit bounds to all points (track + pivot)
     if (breadcrumbs.length > 0 || pivot) {
-      const bounds = new google.maps.LatLngBounds();
-      for (const b of breadcrumbs) bounds.extend({ lat: b.latitude, lng: b.longitude });
-      if (pivot) bounds.extend(pivot);
-      map.fitBounds(bounds, 60); // 60px padding
+      const bounds = new mapboxgl.LngLatBounds();
+      for (const b of breadcrumbs) bounds.extend([b.longitude, b.latitude]);
+      if (pivot) bounds.extend([pivot.lng, pivot.lat]);
+      map.fitBounds(bounds, { padding: 60 });
       // If only one point, zoom is too tight — pull back
       if (breadcrumbs.length <= 1) map.setZoom(16);
     }
@@ -142,38 +135,29 @@ export default function AarReplayMap({ pivot, breadcrumbs, scrubLat, scrubLng }:
     const map = mapRef.current;
 
     if (scrubLat == null || scrubLng == null) {
-      scrubMarkerRef.current?.setMap(null);
+      scrubMarkerRef.current?.remove();
       scrubMarkerRef.current = null;
       return;
     }
 
     if (!scrubMarkerRef.current) {
-      scrubMarkerRef.current = new google.maps.Marker({
-        position: { lat: scrubLat, lng: scrubLng },
-        map,
-        title: 'Unit position at video time',
-        icon: {
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 6,
-          fillColor: '#22c55e', // green = "live cursor"
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        },
-        zIndex: 4,
-      });
+      scrubMarkerRef.current = new mapboxgl.Marker({ element: createArrowEl('#22c55e') })
+        .setLngLat([scrubLng, scrubLat])
+        .addTo(map);
     } else {
-      scrubMarkerRef.current.setPosition({ lat: scrubLat, lng: scrubLng });
+      scrubMarkerRef.current.setLngLat([scrubLng, scrubLat]);
     }
   }, [ready, scrubLat, scrubLng]);
 
   // ── Cleanup on unmount ────────────────────────────────────
   useEffect(() => {
     return () => {
-      polylineRef.current?.setMap(null);
-      pivotMarkerRef.current?.setMap(null);
-      scrubMarkerRef.current?.setMap(null);
-      mapRef.current = null;
+      pivotMarkerRef.current?.remove();
+      scrubMarkerRef.current?.remove();
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, []);
 
