@@ -8,13 +8,14 @@
 // back to a compact Leaflet map using pre-cached offline tiles.
 // ============================================================
 
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Maximize2, MapPin, Navigation, RefreshCw, Wifi, WifiOff } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Maximize2, MapPin, Navigation, RefreshCw, Wifi, WifiOff, Route } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
 import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
+import { apiFetch } from '../hooks/useApi';
 import type { CallForService, Unit, UnitStatus } from '../types';
 
 /** Priority color mapping — uses shared PRIORITY_HEX tokens */
@@ -28,6 +29,10 @@ interface DispatchMiniMapProps {
   fullHeight?: boolean;
   /** Called when route ETA changes (for parent to display inline) */
   onRouteUpdate?: (info: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null) => void;
+  /** Serve route jobs to overlay on the mini map (for PSO calls) */
+  serveRouteJobs?: any[];
+  /** Serve route polyline data (optimized_order_json from serve_routes) */
+  serveRouteOrder?: number[] | null;
 }
 
 const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
@@ -117,11 +122,13 @@ function injectMinimapKeyframes() {
   document.head.appendChild(style);
 }
 
-export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
+export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate, serveRouteJobs, serveRouteOrder }: DispatchMiniMapProps) {
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<any[]>([]);
+  const serveOverlaysRef = useRef<any[]>([]);
+  const servePolylineRef = useRef<google.maps.Polyline | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tilesStalled, setTilesStalled] = useState(false);
@@ -337,6 +344,108 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
   }, [activeRoute, onRouteUpdate]);
 
+  // Serve route overlay — show numbered markers + polyline for PSO calls
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+
+    // Clean up previous serve overlays
+    serveOverlaysRef.current.forEach(m => {
+      if (typeof m.setMap === 'function') m.setMap(null);
+    });
+    serveOverlaysRef.current = [];
+    if (servePolylineRef.current) {
+      servePolylineRef.current.setMap(null);
+      servePolylineRef.current = null;
+    }
+
+    if (!serveRouteJobs || serveRouteJobs.length === 0) return;
+
+    // Order jobs by route order if available
+    let orderedJobs = serveRouteJobs;
+    if (serveRouteOrder && serveRouteOrder.length > 0) {
+      const jobMap = new Map(serveRouteJobs.map((j: any) => [j.id, j]));
+      const ordered = serveRouteOrder.map(id => jobMap.get(id)).filter(Boolean);
+      const orderedIdSet = new Set(serveRouteOrder);
+      const remaining = serveRouteJobs.filter((j: any) => !orderedIdSet.has(j.id));
+      orderedJobs = [...ordered, ...remaining];
+    }
+
+    // Draw polyline
+    const path = orderedJobs
+      .filter((j: any) => j.recipient_lat != null && j.recipient_lng != null)
+      .map((j: any) => ({ lat: j.recipient_lat, lng: j.recipient_lng }));
+
+    if (path.length > 1) {
+      servePolylineRef.current = new google.maps.Polyline({
+        path,
+        geodesic: true,
+        strokeColor: '#d4a017',
+        strokeOpacity: 0.7,
+        strokeWeight: 2,
+        map,
+        icons: [{
+          icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2, strokeColor: '#d4a017', fillColor: '#d4a017', fillOpacity: 1 },
+          offset: '50%',
+          repeat: '80px',
+        }],
+      });
+    }
+
+    // Numbered markers
+    const createOverlayFn = (pos: google.maps.LatLngLiteral, content: HTMLElement, zIndex: number) => {
+      const overlay = new google.maps.OverlayView();
+      let container: HTMLDivElement | null = null;
+      overlay.onAdd = () => {
+        container = document.createElement('div');
+        container.style.position = 'absolute';
+        container.style.zIndex = String(zIndex);
+        container.appendChild(content);
+        overlay.getPanes()?.overlayMouseTarget.appendChild(container);
+      };
+      overlay.draw = () => {
+        if (!container) return;
+        const proj = overlay.getProjection();
+        if (!proj) return;
+        const pt = proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat, pos.lng));
+        if (pt) { container.style.left = `${pt.x}px`; container.style.top = `${pt.y}px`; container.style.transform = 'translate(-50%, -100%)'; }
+      };
+      overlay.onRemove = () => { container?.parentElement?.removeChild(container); container = null; };
+      overlay.setMap(map);
+      return overlay;
+    };
+
+    orderedJobs.forEach((job: any, idx: number) => {
+      if (job.recipient_lat == null || job.recipient_lng == null) return;
+      const statusColor = job.status === 'served' ? '#22c55e'
+        : job.status === 'failed' ? '#ef4444'
+        : job.status === 'in_progress' ? '#eab308'
+        : '#d4a017';
+      const el = document.createElement('div');
+      el.style.cssText = 'display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));';
+      const badge = document.createElement('div');
+      badge.style.cssText = `width:16px;height:16px;border-radius:50%;background:${statusColor};color:#000;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;font-family:'JetBrains Mono',monospace;border:1px solid #fff;`;
+      badge.textContent = String(idx + 1);
+      const caret = document.createElement('div');
+      caret.style.cssText = `width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:4px solid ${statusColor};`;
+      el.appendChild(badge);
+      el.appendChild(caret);
+
+      const overlay = createOverlayFn({ lat: job.recipient_lat, lng: job.recipient_lng }, el, 150);
+      serveOverlaysRef.current.push(overlay);
+    });
+
+    // Extend bounds to include serve jobs
+    if (orderedJobs.length > 0 && path.length > 0) {
+      const bounds = new google.maps.LatLngBounds();
+      if (call?.latitude != null && call?.longitude != null) {
+        bounds.extend({ lat: call.latitude, lng: call.longitude });
+      }
+      path.forEach(p => bounds.extend(p));
+      map.fitBounds(bounds, 40);
+    }
+  }, [loaded, serveRouteJobs, serveRouteOrder, call?.id]);
+
   // Cleanup: unregister map instance + tile monitor + heading listener on unmount
   useEffect(() => {
     return () => {
@@ -397,6 +506,19 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
               }}>
               {assignedWithGpsCount}/{assignedUnits.length} UNITS
               {assignedWithGpsCount > 0 && <span style={{ color: '#22c55e', marginLeft: 3 }}>●</span>}
+            </span>
+          )}
+          {/* Serve route badge */}
+          {serveRouteJobs && serveRouteJobs.length > 0 && (
+            <span className="text-[7px] font-bold px-1.5 py-0.5"
+              style={{
+                background: 'rgba(0,0,0,0.8)',
+                backdropFilter: 'blur(4px)',
+                color: '#d4a017',
+                fontFamily: "'JetBrains Mono', monospace",
+                borderLeft: '2px solid #d4a017',
+              }}>
+              {serveRouteJobs.length} STOPS
             </span>
           )}
         </div>
