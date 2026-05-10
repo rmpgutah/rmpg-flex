@@ -22,7 +22,7 @@ import {
   injectMapboxStyles, addMapbox3DBuildings,
   addMapboxTerrain, removeMapboxTerrain,
 } from '../../utils/mapboxLoader';
-import { getMapboxToken } from '../../utils/mapboxApiKey';
+import { getMapboxToken, getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
 import { createMap as createMapLibreMap } from '../../integrations/maplibreMap';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
@@ -247,6 +247,7 @@ export default function MapboxMapPage() {
           container: mapContainerRef.current,
           accessToken: token,
           style: mapStyle,
+          customStyleUrl: getCachedMapboxStyleUrl() || undefined,
           center: SLC_CENTER,
           zoom: DEFAULT_ZOOM,
         });

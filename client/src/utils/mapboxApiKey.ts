@@ -10,6 +10,7 @@
 import { apiFetch } from '../hooks/useApi';
 
 let cachedMapboxToken: string | null = null;
+let cachedMapboxStyleUrl: string | null = null;
 let inflightMapboxToken: Promise<string | null> | null = null;
 
 /**
@@ -27,6 +28,13 @@ export function hasMapboxToken(): boolean {
 }
 
 /**
+ * Get the cached custom Mapbox style URL (null if not configured).
+ */
+export function getCachedMapboxStyleUrl(): string | null {
+  return cachedMapboxStyleUrl;
+}
+
+/**
  * Fetch the Mapbox access token from the server.
  * Returns the token string, or null if not configured.
  */
@@ -34,17 +42,21 @@ export async function getMapboxToken(forceRefresh = false): Promise<string | nul
   if (!forceRefresh && cachedMapboxToken) return cachedMapboxToken;
   if (!forceRefresh && inflightMapboxToken) return inflightMapboxToken;
 
-  inflightMapboxToken = apiFetch<{ configured?: boolean; accessToken?: string }>(
+  inflightMapboxToken = apiFetch<{ configured?: boolean; accessToken?: string; styleUrl?: string }>(
     '/integrations/mapbox/client-key'
   )
     .then((response) => {
       const token = typeof response?.accessToken === 'string' ? response.accessToken.trim() : '';
       cachedMapboxToken = token || null;
+      cachedMapboxStyleUrl = typeof response?.styleUrl === 'string' && response.styleUrl.trim()
+        ? response.styleUrl.trim()
+        : null;
       return cachedMapboxToken;
     })
     .catch(() => {
       // Mapbox is optional — don't throw if endpoint not available
       cachedMapboxToken = null;
+      cachedMapboxStyleUrl = null;
       return null;
     })
     .finally(() => {
