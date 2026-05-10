@@ -148,6 +148,8 @@ import CoverageTimeline from './components/CoverageTimeline';
 import MapCompassRose from './components/MapCompassRose';
 import MapScaleBar from './components/MapScaleBar';
 import MapCoordinateReadout from './components/MapCoordinateReadout';
+import MapEngineSelector from './components/MapEngineSelector';
+import { useMapProvider } from './hooks/useMapProvider';
 import { hashToHsl } from '../../utils/colorLookup';
 
 // ============================================================
@@ -248,6 +250,10 @@ export default function MapPage() {
   const { prefs: userPrefs } = useUserPreferences();
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const [mobileSheetTab, setMobileSheetTab] = useState<'layers' | 'units' | 'calls'>('layers');
+
+  // Map engine provider detection (Mapbox → Google → MapLibre)
+  const { engine: mapEngine, availableEngines, switchEngine: switchMapEngine } = useMapProvider();
+
   const mapRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<google.maps.Map | null>(null);
   const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]); // AdvancedMarkerElement or OverlayView
@@ -4461,6 +4467,15 @@ export default function MapPage() {
             </div>
 
             <div className="border-t border-rmpg-700 p-1.5">
+              {/* Map Engine Selector (Mapbox / Google / MapLibre) */}
+              <div className="flex items-center justify-between px-2 py-1 mb-1">
+                <span className="text-[10px] text-rmpg-300">Map Engine</span>
+                <MapEngineSelector
+                  currentEngine={mapEngine}
+                  availableEngines={availableEngines}
+                  onSwitch={switchMapEngine}
+                />
+              </div>
               <button
                 onClick={() => setShowMapStyles(!showMapStyles)}
                 className="flex items-center gap-2 w-full px-2 py-1.5 text-left transition-colors hover:bg-rmpg-800/50"

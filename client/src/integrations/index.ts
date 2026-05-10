@@ -16,6 +16,8 @@ export { createNetworkGraph } from './networkGraph';
 
 // Maps
 export { createHeatmapLayer, createIncidentLayer, createUnitLayer, createDispatchArcLayer, initDeckOverlay, updateDeckLayers, destroyDeckOverlay } from './deckLayers';
+export { createMapboxHeatmapLayer, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer, initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay } from './deckMapboxLayers';
+export { createMap, addGeoJsonLayer, addBeatBoundaries, addUnitMarkers, addIncidentMarkers } from './maplibreMap';
 
 // Collaboration
 export { createCollaborativeDoc, createIncidentSession, mergeDocuments } from './collaboration';

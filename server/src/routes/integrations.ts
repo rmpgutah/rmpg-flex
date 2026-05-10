@@ -6,6 +6,7 @@ import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { encryptApiKey, decryptApiKey } from '../utils/serveManagerClient';
 import { hashApiKey } from '../utils/apiKeyHash';
+import { logger } from '../utils/logger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -198,6 +199,77 @@ router.get('/google-maps/client-key', (_req: Request, res: Response) => {
       configured: false,
       error: 'Failed to fetch Google Maps key',
       code: 'FAILED_TO_FETCH_GOOGLE_MAPS_KEY',
+    });
+  }
+});
+
+// GET /api/integrations/mapbox/client-key
+// Exposes the Mapbox access token to authenticated app users so
+// the Mapbox GL JS primary map surface can initialize at runtime.
+router.get('/mapbox/client-key', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const envToken = (process.env.MAPBOX_ACCESS_TOKEN || '').trim();
+    const storedToken =
+      getIntegrationConfigValue(db, 'mapbox_api_key')
+      || getIntegrationConfigValue(db, 'mapbox_access_token')
+      || null;
+
+    const accessToken = envToken || storedToken || '';
+
+    res.json({
+      configured: accessToken.length > 0,
+      accessToken: accessToken || undefined,
+      source: envToken ? 'env' : storedToken ? 'system_config' : 'missing',
+    });
+  } catch (error: any) {
+    console.error('Mapbox token fetch error:', error);
+    logger.error({ err: error }, 'Mapbox token fetch error');
+    res.status(500).json({
+      configured: false,
+      error: 'Failed to fetch Mapbox token',
+      code: 'FAILED_TO_FETCH_MAPBOX_TOKEN',
+    });
+  }
+});
+
+// GET /api/integrations/map-provider/status
+// Returns which map engines are available based on configured tokens.
+router.get('/map-provider/status', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const mapboxToken =
+      getIntegrationConfigValue(db, 'mapbox_api_key')
+      || getIntegrationConfigValue(db, 'mapbox_access_token')
+      || (process.env.MAPBOX_ACCESS_TOKEN || '').trim()
+      || '';
+
+    const googleKey =
+      getIntegrationConfigValue(db, 'google_maps_api_key')
+      || getIntegrationConfigValue(db, 'google_maps_browser_key')
+      || (process.env.GOOGLE_MAPS_API_KEY || '').trim()
+      || '';
+
+    const engines: string[] = [];
+    if (mapboxToken) engines.push('mapbox');
+    if (googleKey) engines.push('google');
+    engines.push('maplibre'); // always available
+
+    res.json({
+      primary: engines[0] || 'maplibre',
+      engines,
+      mapbox: { configured: !!mapboxToken },
+      google: { configured: !!googleKey },
+      maplibre: { configured: true },
+    });
+  } catch (error: any) {
+    console.error('Map provider status error:', error);
+    logger.error({ err: error }, 'Map provider status error');
+    res.status(500).json({
+      primary: 'maplibre',
+      engines: ['maplibre'],
+      error: 'Failed to fetch map provider status',
     });
   }
 });
