@@ -48,26 +48,31 @@ router.get('/permits/:id', (req: Request, res: Response) => {
     'SELECT * FROM alarm_activations WHERE permit_id = ? ORDER BY activation_date DESC'
   ).all(id);
 
-  res.json({ ...permit as any, activations });
+  res.json({ ...(permit as any), activations });
 });
 
 // POST /permits — create permit
 router.post('/permits', (req: Request, res: Response) => {
   const db = getDb();
   const {
-    permit_number, business_name, contact_name, contact_phone, contact_email,
-    address, alarm_type, alarm_company, status, notes
+    permit_number, location_name, location_address, alarm_company, alarm_type,
+    contact_name, contact_phone, contact_email,
+    permit_start, permit_expiry, status, billing_threshold, fee_per_false_alarm, notes
   } = req.body;
 
   const result = db.prepare(`
     INSERT INTO alarm_permits (
-      permit_number, business_name, contact_name, contact_phone, contact_email,
-      address, alarm_type, alarm_company, false_alarm_count, status, notes,
+      permit_number, location_name, location_address, alarm_company, alarm_type,
+      contact_name, contact_phone, contact_email,
+      permit_start, permit_expiry, status, false_alarm_count,
+      billing_threshold, fee_per_false_alarm, notes,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, datetime('now','localtime'), datetime('now','localtime'))
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))
   `).run(
-    permit_number, business_name, contact_name, contact_phone, contact_email,
-    address, alarm_type, alarm_company, status || 'active', notes
+    permit_number, location_name, location_address, alarm_company, alarm_type || 'burglar',
+    contact_name, contact_phone, contact_email,
+    permit_start, permit_expiry, status || 'active',
+    billing_threshold || 3, fee_per_false_alarm || 100, notes
   );
 
   res.json({ success: true, id: result.lastInsertRowid });
@@ -84,19 +89,24 @@ router.put('/permits/:id', (req: Request, res: Response) => {
   }
 
   const {
-    permit_number, business_name, contact_name, contact_phone, contact_email,
-    address, alarm_type, alarm_company, status, notes
+    permit_number, location_name, location_address, alarm_company, alarm_type,
+    contact_name, contact_phone, contact_email,
+    permit_start, permit_expiry, status, billing_threshold, fee_per_false_alarm, notes
   } = req.body;
 
   db.prepare(`
     UPDATE alarm_permits SET
-      permit_number = ?, business_name = ?, contact_name = ?, contact_phone = ?, contact_email = ?,
-      address = ?, alarm_type = ?, alarm_company = ?, status = ?, notes = ?,
+      permit_number = ?, location_name = ?, location_address = ?, alarm_company = ?, alarm_type = ?,
+      contact_name = ?, contact_phone = ?, contact_email = ?,
+      permit_start = ?, permit_expiry = ?, status = ?,
+      billing_threshold = ?, fee_per_false_alarm = ?, notes = ?,
       updated_at = datetime('now','localtime')
     WHERE id = ?
   `).run(
-    permit_number, business_name, contact_name, contact_phone, contact_email,
-    address, alarm_type, alarm_company, status, notes,
+    permit_number, location_name, location_address, alarm_company, alarm_type,
+    contact_name, contact_phone, contact_email,
+    permit_start, permit_expiry, status,
+    billing_threshold, fee_per_false_alarm, notes,
     id
   );
 
@@ -124,7 +134,7 @@ router.get('/activations', (req: Request, res: Response) => {
   }
 
   const rows = db.prepare(`
-    SELECT a.*, p.permit_number, p.business_name, p.address
+    SELECT a.*, p.permit_number, p.location_name, p.location_address
     FROM alarm_activations a
     LEFT JOIN alarm_permits p ON a.permit_id = p.id
     ${whereClause}
@@ -137,8 +147,8 @@ router.get('/activations', (req: Request, res: Response) => {
 router.post('/activations', (req: Request, res: Response) => {
   const db = getDb();
   const {
-    permit_id, activation_date, alarm_type, responding_officer, disposition,
-    is_false_alarm, notes
+    permit_id, activation_date, alarm_type, response_time_minutes, responding_unit,
+    is_false_alarm, cause, call_id, notes
   } = req.body;
 
   // Verify permit exists
@@ -150,12 +160,13 @@ router.post('/activations', (req: Request, res: Response) => {
 
   const result = db.prepare(`
     INSERT INTO alarm_activations (
-      permit_id, activation_date, alarm_type, responding_officer, disposition,
-      is_false_alarm, notes, created_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
+      permit_id, activation_date, alarm_type, response_time_minutes, responding_unit,
+      is_false_alarm, cause, call_id, notes, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'))
   `).run(
     permit_id, activation_date || new Date().toISOString(), alarm_type,
-    responding_officer, disposition, is_false_alarm ? 1 : 0, notes
+    response_time_minutes, responding_unit, is_false_alarm ? 1 : 0,
+    cause, call_id, notes
   );
 
   // Auto-increment false_alarm_count on the permit
@@ -177,7 +188,7 @@ router.post('/activations', (req: Request, res: Response) => {
 router.get('/stats', (req: Request, res: Response) => {
   const db = getDb();
   const rows = db.prepare(`
-    SELECT p.id, p.permit_number, p.business_name, p.address, p.false_alarm_count,
+    SELECT p.id, p.permit_number, p.location_name, p.location_address, p.false_alarm_count,
       COUNT(a.id) as total_activations,
       SUM(CASE WHEN a.is_false_alarm = 1 THEN 1 ELSE 0 END) as false_alarm_activations
     FROM alarm_permits p

@@ -29,8 +29,8 @@ router.get('/', (req: Request, res: Response) => {
     params.push(status);
   }
   if (search) {
-    whereClause += ' AND (serial_number LIKE ? OR seller_name LIKE ?)';
-    params.push(`%${search}%`, `%${search}%`);
+    whereClause += ' AND (serial_number LIKE ? OR seller_last_name LIKE ? OR seller_first_name LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`, `%${search}%`);
   }
 
   const rows = db.prepare(`SELECT * FROM pawn_transactions ${whereClause} ORDER BY created_at DESC`).all(...params);
@@ -66,19 +66,37 @@ router.get('/:id', (req: Request, res: Response) => {
 router.post('/', requireRole('admin', 'manager', 'officer'), (req: Request, res: Response) => {
   const db = getDb();
   const {
-    seller_name, seller_id_type, seller_id_number, seller_address, seller_phone,
-    item_description, serial_number, item_category, amount, status, notes
+    shop_name, shop_address, transaction_date, transaction_type,
+    item_description, item_category, serial_number, brand, model, color,
+    seller_first_name, seller_last_name, seller_dob, seller_id_type, seller_id_number,
+    seller_address, seller_phone,
+    hold_period_days, amount, status, notes, entered_by
   } = req.body;
+
+  // Compute hold_expires from transaction_date + hold_period_days
+  const holdDays = hold_period_days || 30;
+  let hold_expires: string | null = null;
+  if (transaction_date) {
+    const d = new Date(transaction_date);
+    d.setDate(d.getDate() + holdDays);
+    hold_expires = d.toISOString().slice(0, 10);
+  }
 
   const result = db.prepare(`
     INSERT INTO pawn_transactions (
-      seller_name, seller_id_type, seller_id_number, seller_address, seller_phone,
-      item_description, serial_number, item_category, amount, status, notes,
+      shop_name, shop_address, transaction_date, transaction_type,
+      item_description, item_category, serial_number, brand, model, color,
+      seller_first_name, seller_last_name, seller_dob, seller_id_type, seller_id_number,
+      seller_address, seller_phone,
+      hold_period_days, hold_expires, amount, status, notes, entered_by,
       created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))
   `).run(
-    seller_name, seller_id_type, seller_id_number, seller_address, seller_phone,
-    item_description, serial_number, item_category, amount, status || 'active', notes
+    shop_name, shop_address, transaction_date, transaction_type || 'pawn',
+    item_description, item_category, serial_number, brand, model, color,
+    seller_first_name, seller_last_name, seller_dob, seller_id_type, seller_id_number,
+    seller_address, seller_phone,
+    holdDays, hold_expires, amount, status || 'held', notes, entered_by
   );
 
   res.json({ success: true, id: result.lastInsertRowid });
@@ -95,19 +113,28 @@ router.put('/:id', (req: Request, res: Response) => {
   }
 
   const {
-    seller_name, seller_id_type, seller_id_number, seller_address, seller_phone,
-    item_description, serial_number, item_category, amount, status, notes
+    shop_name, shop_address, transaction_date, transaction_type,
+    item_description, item_category, serial_number, brand, model, color,
+    seller_first_name, seller_last_name, seller_dob, seller_id_type, seller_id_number,
+    seller_address, seller_phone,
+    hold_period_days, hold_expires, amount, status, notes, entered_by
   } = req.body;
 
   db.prepare(`
     UPDATE pawn_transactions SET
-      seller_name = ?, seller_id_type = ?, seller_id_number = ?, seller_address = ?, seller_phone = ?,
-      item_description = ?, serial_number = ?, item_category = ?, amount = ?, status = ?, notes = ?,
+      shop_name = ?, shop_address = ?, transaction_date = ?, transaction_type = ?,
+      item_description = ?, item_category = ?, serial_number = ?, brand = ?, model = ?, color = ?,
+      seller_first_name = ?, seller_last_name = ?, seller_dob = ?, seller_id_type = ?, seller_id_number = ?,
+      seller_address = ?, seller_phone = ?,
+      hold_period_days = ?, hold_expires = ?, amount = ?, status = ?, notes = ?, entered_by = ?,
       updated_at = datetime('now','localtime')
     WHERE id = ?
   `).run(
-    seller_name, seller_id_type, seller_id_number, seller_address, seller_phone,
-    item_description, serial_number, item_category, amount, status, notes,
+    shop_name, shop_address, transaction_date, transaction_type,
+    item_description, item_category, serial_number, brand, model, color,
+    seller_first_name, seller_last_name, seller_dob, seller_id_type, seller_id_number,
+    seller_address, seller_phone,
+    hold_period_days, hold_expires, amount, status, notes, entered_by,
     id
   );
 
@@ -138,14 +165,14 @@ router.post('/:id/flag', (req: Request, res: Response) => {
     return;
   }
 
-  const { reason } = req.body;
+  const { matched_evidence_id } = req.body;
 
   db.prepare(`
     UPDATE pawn_transactions SET
-      status = 'stolen', flagged_reason = ?, flagged_at = datetime('now','localtime'),
+      status = 'flagged', flagged_stolen = 1, matched_evidence_id = ?,
       updated_at = datetime('now','localtime')
     WHERE id = ?
-  `).run(reason || null, id);
+  `).run(matched_evidence_id || null, id);
 
   res.json({ success: true });
 });

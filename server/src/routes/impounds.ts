@@ -57,22 +57,31 @@ router.get('/:id', (req: Request, res: Response) => {
 router.post('/', (req: Request, res: Response) => {
   const db = getDb();
   const {
-    vehicle_year, vehicle_make, vehicle_model, vehicle_color, vin, plate_number, plate_state,
-    owner_name, owner_phone, owner_address, tow_company, tow_fee, daily_fee,
-    impound_reason, impound_location, officer_id, case_number, notes, status
+    vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_vin,
+    license_plate, license_state, tow_company, tow_driver,
+    lot_location, lot_space, reason, authority,
+    hold_flag, hold_reason, daily_fee, tow_fee,
+    owner_name, owner_phone, owner_notified, owner_notified_date,
+    call_id, incident_id, officer_id, photos, property_inventory, notes, status
   } = req.body;
 
   const result = db.prepare(`
     INSERT INTO vehicle_impounds (
-      vehicle_year, vehicle_make, vehicle_model, vehicle_color, vin, plate_number, plate_state,
-      owner_name, owner_phone, owner_address, tow_company, tow_fee, daily_fee,
-      impound_reason, impound_location, officer_id, case_number, notes, status,
-      impound_date, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'), datetime('now','localtime'))
+      vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_vin,
+      license_plate, license_state, tow_company, tow_driver,
+      lot_location, lot_space, impound_date, reason, authority,
+      hold_flag, hold_reason, daily_fee, tow_fee, status,
+      owner_name, owner_phone, owner_notified, owner_notified_date,
+      call_id, incident_id, officer_id, photos, property_inventory, notes,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))
   `).run(
-    vehicle_year, vehicle_make, vehicle_model, vehicle_color, vin, plate_number, plate_state,
-    owner_name, owner_phone, owner_address, tow_company, tow_fee || 0, daily_fee || 0,
-    impound_reason, impound_location, officer_id, case_number, notes, status || 'impounded'
+    vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_vin,
+    license_plate, license_state, tow_company, tow_driver,
+    lot_location, lot_space, reason, authority,
+    hold_flag || 0, hold_reason, daily_fee || 25, tow_fee || 150, status || 'impounded',
+    owner_name, owner_phone, owner_notified || 0, owner_notified_date,
+    call_id, incident_id, officer_id, photos, property_inventory, notes
   );
 
   res.json({ success: true, id: result.lastInsertRowid });
@@ -89,22 +98,31 @@ router.put('/:id', (req: Request, res: Response) => {
   }
 
   const {
-    vehicle_year, vehicle_make, vehicle_model, vehicle_color, vin, plate_number, plate_state,
-    owner_name, owner_phone, owner_address, tow_company, tow_fee, daily_fee,
-    impound_reason, impound_location, officer_id, case_number, notes, status
+    vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_vin,
+    license_plate, license_state, tow_company, tow_driver,
+    lot_location, lot_space, reason, authority,
+    hold_flag, hold_reason, daily_fee, tow_fee,
+    owner_name, owner_phone, owner_notified, owner_notified_date,
+    call_id, incident_id, officer_id, photos, property_inventory, notes, status
   } = req.body;
 
   db.prepare(`
     UPDATE vehicle_impounds SET
-      vehicle_year = ?, vehicle_make = ?, vehicle_model = ?, vehicle_color = ?, vin = ?, plate_number = ?, plate_state = ?,
-      owner_name = ?, owner_phone = ?, owner_address = ?, tow_company = ?, tow_fee = ?, daily_fee = ?,
-      impound_reason = ?, impound_location = ?, officer_id = ?, case_number = ?, notes = ?, status = ?,
+      vehicle_year = ?, vehicle_make = ?, vehicle_model = ?, vehicle_color = ?, vehicle_vin = ?,
+      license_plate = ?, license_state = ?, tow_company = ?, tow_driver = ?,
+      lot_location = ?, lot_space = ?, reason = ?, authority = ?,
+      hold_flag = ?, hold_reason = ?, daily_fee = ?, tow_fee = ?,
+      owner_name = ?, owner_phone = ?, owner_notified = ?, owner_notified_date = ?,
+      call_id = ?, incident_id = ?, officer_id = ?, photos = ?, property_inventory = ?, notes = ?, status = ?,
       updated_at = datetime('now','localtime')
     WHERE id = ?
   `).run(
-    vehicle_year, vehicle_make, vehicle_model, vehicle_color, vin, plate_number, plate_state,
-    owner_name, owner_phone, owner_address, tow_company, tow_fee, daily_fee,
-    impound_reason, impound_location, officer_id, case_number, notes, status,
+    vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_vin,
+    license_plate, license_state, tow_company, tow_driver,
+    lot_location, lot_space, reason, authority,
+    hold_flag, hold_reason, daily_fee, tow_fee,
+    owner_name, owner_phone, owner_notified, owner_notified_date,
+    call_id, incident_id, officer_id, photos, property_inventory, notes, status,
     id
   );
 

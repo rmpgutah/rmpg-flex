@@ -62,8 +62,11 @@ router.post('/', (req: Request, res: Response) => {
   const db = getDb();
   const {
     case_type, status, animal_type, animal_breed, animal_color, animal_name,
-    owner_name, owner_phone, owner_address, location, description,
-    officer_id, priority, notes
+    animal_sex, microchip_number,
+    owner_name, owner_phone, owner_address, location, latitude, longitude,
+    description, disposition, assigned_officer_id, linked_incident_id,
+    quarantine_start, quarantine_end, vaccination_status, impound_date, release_date,
+    priority, notes
   } = req.body;
 
   // Auto-generate case number: AC-YY-NNNNN
@@ -81,15 +84,20 @@ router.post('/', (req: Request, res: Response) => {
 
   const result = db.prepare(`
     INSERT INTO animal_control_cases (
-      case_number, case_type, status, animal_type, animal_breed, animal_color, animal_name,
-      owner_name, owner_phone, owner_address, location, description,
-      officer_id, priority, notes,
-      created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))
+      case_number, case_type, animal_type, animal_breed, animal_color, animal_name,
+      animal_sex, microchip_number,
+      owner_name, owner_address, owner_phone, location, latitude, longitude,
+      description, status, disposition, assigned_officer_id, linked_incident_id,
+      quarantine_start, quarantine_end, vaccination_status, impound_date, release_date,
+      notes, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now','localtime'), datetime('now','localtime'))
   `).run(
-    case_number, case_type, status || 'open', animal_type, animal_breed, animal_color, animal_name,
-    owner_name, owner_phone, owner_address, location, description,
-    officer_id, priority || 'normal', notes
+    case_number, case_type || 'complaint', animal_type, animal_breed, animal_color, animal_name,
+    animal_sex, microchip_number,
+    owner_name, owner_address, owner_phone, location, latitude, longitude,
+    description, status || 'open', disposition, assigned_officer_id, linked_incident_id,
+    quarantine_start, quarantine_end, vaccination_status, impound_date, release_date,
+    notes
   );
 
   res.json({ success: true, id: result.lastInsertRowid, case_number });
@@ -107,21 +115,30 @@ router.put('/:id', (req: Request, res: Response) => {
 
   const {
     case_type, status, animal_type, animal_breed, animal_color, animal_name,
-    owner_name, owner_phone, owner_address, location, description,
-    officer_id, priority, notes
+    animal_sex, microchip_number,
+    owner_name, owner_phone, owner_address, location, latitude, longitude,
+    description, disposition, assigned_officer_id, linked_incident_id,
+    quarantine_start, quarantine_end, vaccination_status, impound_date, release_date,
+    priority, notes
   } = req.body;
 
   db.prepare(`
     UPDATE animal_control_cases SET
       case_type = ?, status = ?, animal_type = ?, animal_breed = ?, animal_color = ?, animal_name = ?,
-      owner_name = ?, owner_phone = ?, owner_address = ?, location = ?, description = ?,
-      officer_id = ?, priority = ?, notes = ?,
+      animal_sex = ?, microchip_number = ?,
+      owner_name = ?, owner_phone = ?, owner_address = ?, location = ?, latitude = ?, longitude = ?,
+      description = ?, disposition = ?, assigned_officer_id = ?, linked_incident_id = ?,
+      quarantine_start = ?, quarantine_end = ?, vaccination_status = ?, impound_date = ?, release_date = ?,
+      notes = ?,
       updated_at = datetime('now','localtime')
     WHERE id = ?
   `).run(
     case_type, status, animal_type, animal_breed, animal_color, animal_name,
-    owner_name, owner_phone, owner_address, location, description,
-    officer_id, priority, notes,
+    animal_sex, microchip_number,
+    owner_name, owner_phone, owner_address, location, latitude, longitude,
+    description, disposition, assigned_officer_id, linked_incident_id,
+    quarantine_start, quarantine_end, vaccination_status, impound_date, release_date,
+    notes,
     id
   );
 
