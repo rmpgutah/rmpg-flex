@@ -71,7 +71,7 @@ export async function exportGraphToPdf(
   // Graph image — best effort, continue on failure
   let imgDataUrl: string | null = null;
   try {
-    imgDataUrl = await svgElementToPngDataUrl(svg, { scale: 2, backgroundColor: '#0d2847' });
+    imgDataUrl = await svgElementToPngDataUrl(svg, { scale: 2, backgroundColor: '#0a0a0a' });
   } catch (err) {
     console.error('graphToPdf: svg rasterize failed:', err);
   }

@@ -7,12 +7,12 @@ export const THEME_STORAGE_KEY = 'rmpg_theme_preference';
 // palette under html.theme-light. These chrome/body colors match the
 // --surface-base values exactly.
 const THEME_CHROME_COLORS: Record<ThemePreference, string> = {
-  dark: '#0d2847',
+  dark: '#000000',
   light: '#081828',
 };
 
 const THEME_BODY_BACKGROUNDS: Record<ThemePreference, string> = {
-  dark: '#0d2847',
+  dark: '#0a0a0a',
   light: '#081828',
 };
 

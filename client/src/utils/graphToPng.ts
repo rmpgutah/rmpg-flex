@@ -23,7 +23,7 @@ export async function svgElementToPngDataUrl(
   opts: Options = {}
 ): Promise<string> {
   const scale = opts.scale ?? 2;
-  const bg = opts.backgroundColor ?? '#0d2847';
+  const bg = opts.backgroundColor ?? '#0a0a0a';
 
   // 1) Serialize the SVG to a string, ensuring xmlns is present.
   const serializer = new XMLSerializer();
