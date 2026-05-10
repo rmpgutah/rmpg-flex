@@ -21,7 +21,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import { getMapboxToken } from '../utils/mapboxApiKey';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -213,7 +213,7 @@ export default function OffenderRegistryPage() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
-  const [staticMapApiKey, setStaticMapApiKey] = useState('');
+  const [staticMapToken, setStaticMapToken] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -289,12 +289,12 @@ export default function OffenderRegistryPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getGoogleMapsApiKey()
-      .then((apiKey) => {
-        if (!cancelled) setStaticMapApiKey(apiKey);
+    getMapboxToken()
+      .then((token) => {
+        if (!cancelled) setStaticMapToken(token || '');
       })
       .catch(() => {
-        if (!cancelled) setStaticMapApiKey('');
+        if (!cancelled) setStaticMapToken('');
       });
     return () => {
       cancelled = true;
@@ -519,9 +519,9 @@ export default function OffenderRegistryPage() {
                     Registered Address / Ban Zone
                   </div>
                   <div className="h-40 bg-[#0c0c0c] relative">
-                    {staticMapApiKey ? (
+                    {staticMapToken ? (
                       <img
-                        src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${staticMapApiKey}&style=feature:all|element:geometry|color:0x121212&style=feature:all|element:labels.text.fill|color:0x8a8a8a`}
+                        src={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l-marker+ff0000(${selected.location_lng},${selected.location_lat})/${selected.location_lng},${selected.location_lat},15,0/600x200@2x?access_token=${staticMapToken}`}
                         alt="Ban zone map"
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

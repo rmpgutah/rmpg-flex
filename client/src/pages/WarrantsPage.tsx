@@ -35,7 +35,6 @@ import {
 } from '../utils/warrantListHelpers';
 import { buildWarrantPacketPdf } from '../utils/warrantPacket';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 import ScrapersTab from './warrants/ScrapersTab';
 
 // ============================================================

@@ -2,15 +2,15 @@
 // RMPG Flex — Dispatch CFS Route Builder Page
 //
 // Automatic multi-stop route planner for officers handling
-// multiple active CFS calls. Uses Google Maps Directions API
-// with optimizeWaypoints for client-side TSP, plus server-side
-// nearest-neighbor + 2-opt for initial ordering.
+// multiple active CFS calls. Uses Mapbox Directions API
+// for client-side routing, plus server-side nearest-neighbor
+// + 2-opt for initial ordering.
 //
 // Features:
 //   • Auto-detects active calls for selected unit
 //   • Optimizes stop order for shortest driving route
 //   • Priority-weighted routing (P1 calls visited first)
-//   • Live Google Maps with Directions polyline rendering
+//   • Live Mapbox GL with Directions polyline rendering
 //   • Drag-to-reorder stops manually
 //   • Save/load routes per unit
 //   • WebSocket-driven live call updates
@@ -24,10 +24,11 @@ import {
   Play, Save, Trash2, RefreshCw, Loader2, AlertTriangle,
   CheckCircle2, Circle, Crosshair, Fuel, ArrowRight,
 } from 'lucide-react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import { getMapboxToken } from '../utils/mapboxApiKey';
+import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 
@@ -119,17 +120,17 @@ export default function RouteBuilderPage() {
   const [savedRouteId, setSavedRouteId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
-  const [useGoogleDirections, setUseGoogleDirections] = useState(true);
+  const [useMapboxDirections, setUseMapboxDirections] = useState(true);
   const [priorityWeighted, setPriorityWeighted] = useState(true);
   const [directionsDistance, setDirectionsDistance] = useState<string | null>(null);
   const [directionsDuration, setDirectionsDuration] = useState<string | null>(null);
 
   // Refs
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-  const originMarkerRef = useRef<google.maps.Marker | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const originMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const mapboxTokenRef = useRef<string>('');
 
   const { subscribe } = useWebSocket();
 
@@ -153,30 +154,33 @@ export default function RouteBuilderPage() {
 
     (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
-        await loadGoogleMaps(apiKey);
-        if (cancelled || !mapContainerRef.current) return;
+        const token = await getMapboxToken();
+        if (cancelled || !mapContainerRef.current || !token) return;
+        mapboxTokenRef.current = token;
+        injectMapboxStyles();
 
-        const map = new google.maps.Map(mapContainerRef.current, {
-          center: { lat: 40.7608, lng: -111.891 },
+        const map = createMapboxMap({
+          container: mapContainerRef.current,
+          center: [-111.891, 40.7608],
           zoom: 12,
-          styles: DARK_MAP_STYLE,
-          disableDefaultUI: true,
-          zoomControl: true,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: false,
+          accessToken: token,
         });
         mapRef.current = map;
-        setMapReady(true);
+        map.on('load', () => {
+          if (!cancelled) setMapReady(true);
+        });
       } catch (err) {
-        console.error('Failed to load Google Maps:', err);
-        setError('Failed to load Google Maps. Route visualization unavailable.');
+        console.error('Failed to load Mapbox:', err);
+        setError('Failed to load map. Route visualization unavailable.');
       }
     })();
 
     return () => {
       cancelled = true;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, []);
 
@@ -265,123 +269,89 @@ export default function RouteBuilderPage() {
       if (!map) return;
 
       // Clear existing markers
-      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
-      originMarkerRef.current?.setMap(null);
-      directionsRendererRef.current?.setMap(null);
+      originMarkerRef.current?.remove();
+      removeMapboxTrail(map, 'route-line');
+      removeMapboxTrail(map, 'directions-route');
 
       // Fit bounds
-      const bounds = new google.maps.LatLngBounds();
-      bounds.extend(routeOrigin);
-      stops.forEach((s) => bounds.extend({ lat: s.latitude, lng: s.longitude }));
-      map.fitBounds(bounds, 60);
+      const bounds = new mapboxgl.LngLatBounds();
+      bounds.extend([routeOrigin.lng, routeOrigin.lat]);
+      stops.forEach((s) => bounds.extend([s.longitude, s.latitude]));
+      map.fitBounds(bounds, { padding: 60 });
 
       // Origin marker
-      originMarkerRef.current = new google.maps.Marker({
-        position: routeOrigin,
-        map,
-        title: 'Current Location',
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 10,
-          fillColor: '#3b82f6',
-          fillOpacity: 1,
-          strokeColor: '#1d4ed8',
-          strokeWeight: 3,
-        },
-        zIndex: 100,
-      });
+      const originEl = document.createElement('div');
+      originEl.style.cssText = 'width:20px;height:20px;border-radius:50%;background:#3b82f6;border:3px solid #1d4ed8;box-shadow:0 0 8px #3b82f680;';
+      originMarkerRef.current = new mapboxgl.Marker({ element: originEl })
+        .setLngLat([routeOrigin.lng, routeOrigin.lat])
+        .addTo(map);
 
-      if (useGoogleDirections && stops.length <= 25) {
-        // Use Google Directions API with optimizeWaypoints
-        renderGoogleDirections(map, routeOrigin, stops);
+      if (useMapboxDirections && stops.length <= 25) {
+        renderMapboxDirections(map, routeOrigin, stops);
       } else {
-        // Fallback: draw straight-line polyline with numbered markers
         renderSimpleRoute(map, routeOrigin, stops);
       }
     },
-    [useGoogleDirections],
+    [useMapboxDirections],
   );
 
-  const renderGoogleDirections = useCallback(
-    (map: google.maps.Map, routeOrigin: { lat: number; lng: number }, stops: RouteWaypoint[]) => {
-      const directionsService = new google.maps.DirectionsService();
+  const renderMapboxDirections = useCallback(
+    async (map: mapboxgl.Map, routeOrigin: { lat: number; lng: number }, stops: RouteWaypoint[]) => {
+      const token = mapboxTokenRef.current;
+      if (!token) {
+        renderSimpleRoute(map, routeOrigin, stops);
+        return;
+      }
 
-      // Build waypoints (all except last which is destination)
-      const midStops = stops.slice(0, -1);
-      const lastStop = stops[stops.length - 1];
+      // Build coordinates string: origin;waypoints;destination
+      const allPoints = [
+        `${routeOrigin.lng},${routeOrigin.lat}`,
+        ...stops.map((s) => `${s.longitude},${s.latitude}`),
+      ];
+      const coordsStr = allPoints.join(';');
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?access_token=${token}&geometries=geojson&overview=full`;
 
-      const request: google.maps.DirectionsRequest = {
-        origin: routeOrigin,
-        destination: { lat: lastStop.latitude, lng: lastStop.longitude },
-        waypoints: midStops.map((s) => ({
-          location: { lat: s.latitude, lng: s.longitude },
-          stopover: true,
-        })),
-        optimizeWaypoints: false, // Already optimized server-side
-        travelMode: google.maps.TravelMode.DRIVING,
-        drivingOptions: {
-          departureTime: new Date(),
-          trafficModel: google.maps.TrafficModel.BEST_GUESS,
-        },
-      };
+      try {
+        const resp = await fetch(url);
+        const data = await resp.json();
 
-      directionsService.route(request, (result, status) => {
-        if (status === google.maps.DirectionsStatus.OK && result) {
-          // Render the directions polyline
-          if (directionsRendererRef.current) {
-            directionsRendererRef.current.setMap(null);
-          }
+        if (data.routes && data.routes.length > 0) {
+          const route = data.routes[0];
+          const coords = route.geometry.coordinates as [number, number][];
 
-          directionsRendererRef.current = new google.maps.DirectionsRenderer({
-            map,
-            directions: result,
-            suppressMarkers: true, // We draw our own markers
-            polylineOptions: {
-              strokeColor: '#d4a017',
-              strokeOpacity: 0.9,
-              strokeWeight: 4,
-            },
-          });
+          // Draw route polyline
+          removeMapboxTrail(map, 'directions-route');
+          addMapboxTrail(map, 'directions-route', coords, '#d4a017', 4);
 
-          // Calculate total distance/duration from legs
-          const route = result.routes[0];
-          if (route?.legs) {
-            let totalMeters = 0;
-            let totalSecs = 0;
-            route.legs.forEach((leg) => {
-              totalMeters += leg.distance?.value ?? 0;
-              totalSecs += leg.duration?.value ?? 0;
-            });
-            setDirectionsDistance(`${(totalMeters / 1609.344).toFixed(1)} mi`);
-            setDirectionsDuration(`${Math.round(totalSecs / 60)} min`);
-            setTotalDistance(parseFloat((totalMeters / 1609.344).toFixed(2)));
-            setEstimatedMinutes(Math.round(totalSecs / 60));
-          }
+          // Calculate distance/duration
+          const distMiles = (route.distance / 1609.344).toFixed(1);
+          const durMin = Math.round(route.duration / 60);
+          setDirectionsDistance(`${distMiles} mi`);
+          setDirectionsDuration(`${durMin} min`);
+          setTotalDistance(parseFloat(distMiles));
+          setEstimatedMinutes(durMin);
 
-          // Add numbered stop markers
           addStopMarkers(map, stops);
         } else {
-          // Fallback to simple rendering
           renderSimpleRoute(map, routeOrigin, stops);
         }
-      });
+      } catch {
+        renderSimpleRoute(map, routeOrigin, stops);
+      }
     },
     [],
   );
 
   const renderSimpleRoute = useCallback(
-    (map: google.maps.Map, routeOrigin: { lat: number; lng: number }, stops: RouteWaypoint[]) => {
-      // Draw polyline
-      const path = [routeOrigin, ...stops.map((s) => ({ lat: s.latitude, lng: s.longitude }))];
-      new google.maps.Polyline({
-        path,
-        map,
-        strokeColor: '#d4a017',
-        strokeOpacity: 0.8,
-        strokeWeight: 3,
-        geodesic: true,
-      });
+    (map: mapboxgl.Map, routeOrigin: { lat: number; lng: number }, stops: RouteWaypoint[]) => {
+      const coords: [number, number][] = [
+        [routeOrigin.lng, routeOrigin.lat],
+        ...stops.map((s) => [s.longitude, s.latitude] as [number, number]),
+      ];
+      removeMapboxTrail(map, 'route-line');
+      addMapboxTrail(map, 'route-line', coords, '#d4a017', 3);
 
       addStopMarkers(map, stops);
       setDirectionsDistance(null);
@@ -391,38 +361,28 @@ export default function RouteBuilderPage() {
   );
 
   const addStopMarkers = useCallback(
-    (map: google.maps.Map, stops: RouteWaypoint[]) => {
-      markersRef.current.forEach((m) => m.setMap(null));
+    (map: mapboxgl.Map, stops: RouteWaypoint[]) => {
+      markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
 
       stops.forEach((stop, idx) => {
         const color = stop.completed ? '#22c55e' : (PRIORITY_COLORS[stop.priority] || '#888888');
-        const marker = new google.maps.Marker({
-          position: { lat: stop.latitude, lng: stop.longitude },
-          map,
-          title: `Stop ${idx + 1}: ${stop.call_number} — ${stop.incident_type}`,
-          label: {
-            text: String(idx + 1),
-            color: '#ffffff',
-            fontSize: '12px',
-            fontWeight: 'bold',
-          },
-          icon: {
-            path: 'M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z',
-            fillColor: color,
-            fillOpacity: 1,
-            strokeColor: '#000',
-            strokeWeight: 1,
-            scale: 1.8,
-            anchor: new google.maps.Point(12, 22),
-            labelOrigin: new google.maps.Point(12, 9),
-          },
-          zIndex: 50 - idx,
-        });
 
-        // Info window
-        const infoWindow = new google.maps.InfoWindow({
-          content: `
+        // Create custom marker element
+        const el = document.createElement('div');
+        el.style.cssText = `
+          width:24px;height:30px;position:relative;cursor:pointer;
+        `;
+        el.innerHTML = `
+          <svg width="24" height="30" viewBox="0 0 24 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 18 12 18s12-9 12-18c0-6.63-5.37-12-12-12z" fill="${color}" stroke="#000" stroke-width="1"/>
+            <text x="12" y="14" text-anchor="middle" fill="#fff" font-size="11" font-weight="bold" font-family="system-ui">${idx + 1}</text>
+          </svg>
+        `;
+        el.title = `Stop ${idx + 1}: ${stop.call_number} — ${stop.incident_type}`;
+
+        const popup = new mapboxgl.Popup({ offset: 25, closeButton: false, className: 'mapbox-popup-dark' })
+          .setHTML(`
             <div style="background:#141414;color:#e5e5e5;padding:8px 12px;border-radius:2px;min-width:200px;font-family:system-ui;">
               <div style="font-weight:600;color:#d4a017;margin-bottom:4px;">
                 Stop ${idx + 1} — ${stop.call_number}
@@ -435,12 +395,12 @@ export default function RouteBuilderPage() {
               ${stop.description ? `<div style="font-size:11px;color:#666;margin-top:4px;">${stop.description.slice(0, 100)}</div>` : ''}
               ${stop.completed ? '<div style="color:#22c55e;font-size:11px;margin-top:4px;">✓ Completed</div>' : ''}
             </div>
-          `,
-        });
+          `);
 
-        marker.addListener('click', () => {
-          infoWindow.open(map, marker);
-        });
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([stop.longitude, stop.latitude])
+          .setPopup(popup)
+          .addTo(map);
 
         markersRef.current.push(marker);
       });
@@ -611,8 +571,8 @@ export default function RouteBuilderPage() {
             <label className="flex items-center gap-1 cursor-pointer">
               <input
                 type="checkbox"
-                checked={useGoogleDirections}
-                onChange={(e) => setUseGoogleDirections(e.target.checked)}
+                checked={useMapboxDirections}
+                onChange={(e) => setUseMapboxDirections(e.target.checked)}
                 className="accent-[#d4a017]"
               />
               Traffic-aware
@@ -654,10 +614,13 @@ export default function RouteBuilderPage() {
                 setEstimatedMinutes(0);
                 setDirectionsDistance(null);
                 setDirectionsDuration(null);
-                markersRef.current.forEach((m) => m.setMap(null));
+                markersRef.current.forEach((m) => m.remove());
                 markersRef.current = [];
-                originMarkerRef.current?.setMap(null);
-                directionsRendererRef.current?.setMap(null);
+                originMarkerRef.current?.remove();
+                if (mapRef.current) {
+                  removeMapboxTrail(mapRef.current, 'route-line');
+                  removeMapboxTrail(mapRef.current, 'directions-route');
+                }
               }}
               aria-label="Clear route"
               className="px-2 py-1.5 bg-[#141414] border border-[#222222] text-[#888888] rounded-[2px] hover:bg-[#1a1a1a] hover:text-red-400 transition-colors"
@@ -816,7 +779,7 @@ export default function RouteBuilderPage() {
         <div className="px-3 py-2 border-t border-[#222222] bg-[#050505] text-[9px] text-[#555555] font-mono">
           Route optimization: nearest-neighbor + 2-opt TSP solver
           {priorityWeighted && ' (priority-weighted)'}
-          {useGoogleDirections && ' • Google Directions traffic-aware'}
+          {useMapboxDirections && ' • Mapbox Directions traffic-aware'}
         </div>
       </div>
 
