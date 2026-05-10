@@ -67,9 +67,12 @@ export async function detectMapEngine(config?: MapProviderConfig): Promise<MapEn
   if (detectionPromise) return detectionPromise;
 
   detectionPromise = (async () => {
-    // 1. Try Mapbox
+    // 1. Try Mapbox (with timeout to prevent infinite hang)
     try {
-      const mapboxToken = await getMapboxToken();
+      const mapboxToken = await Promise.race([
+        getMapboxToken(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
+      ]);
       if (mapboxToken) {
         resolvedEngine = 'mapbox';
         return 'mapbox' as MapEngine;
@@ -78,9 +81,12 @@ export async function detectMapEngine(config?: MapProviderConfig): Promise<MapEn
       // Mapbox not available — try next
     }
 
-    // 2. Try Google Maps
+    // 2. Try Google Maps (with timeout)
     try {
-      const gmapsKey = await getGoogleMapsApiKey();
+      const gmapsKey = await Promise.race([
+        getGoogleMapsApiKey(),
+        new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000)),
+      ]);
       if (gmapsKey) {
         resolvedEngine = 'google';
         return 'google' as MapEngine;

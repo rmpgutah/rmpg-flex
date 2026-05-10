@@ -211,7 +211,10 @@ export default function MapboxMapPage() {
 
     async function initMap() {
       try {
-        const token = await getMapboxToken();
+        // Timeout token fetch to avoid infinite hang if server is unreachable
+        const tokenPromise = getMapboxToken();
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
+        const token = await Promise.race([tokenPromise, timeoutPromise]);
         if (cancelled) return;
         if (!token) {
           setMapError('Mapbox access token not configured. Go to Admin → Integrations to add your Mapbox token.');
@@ -221,7 +224,15 @@ export default function MapboxMapPage() {
         tokenRef.current = token;
         injectMapboxStyles();
 
-        if (!mapContainerRef.current) return;
+        if (!mapContainerRef.current) {
+          // Container not yet mounted — wait a tick and retry
+          await new Promise((r) => setTimeout(r, 100));
+          if (cancelled || !mapContainerRef.current) {
+            setMapError('Map container failed to mount');
+            setLoading(false);
+            return;
+          }
+        }
 
         const map = createMapboxMap({
           container: mapContainerRef.current,
@@ -232,7 +243,17 @@ export default function MapboxMapPage() {
         });
         mapRef.current = map;
 
+        // Timeout map load to prevent infinite "Initializing" state
+        const loadTimeout = setTimeout(() => {
+          if (!cancelled && !mapRef.current?.loaded()) {
+            devWarn('[MapboxMap] map load timed out after 15s');
+            setLoading(false);
+            // Map may still be loading — don't set error, just remove overlay
+          }
+        }, 15_000);
+
         map.on('load', () => {
+          clearTimeout(loadTimeout);
           if (cancelled) return;
           // NavigationControl, ScaleControl, GeolocateControl, and AttributionControl
           // are already added by createMapboxMap() — don't duplicate them here.
@@ -244,7 +265,12 @@ export default function MapboxMapPage() {
         });
 
         map.on('error', (e) => {
+          clearTimeout(loadTimeout);
           devWarn('[MapboxMap] map error', e);
+          if (!cancelled) {
+            setMapError(e.error?.message || 'Mapbox map error');
+            setLoading(false);
+          }
         });
       } catch (err) {
         if (!cancelled) {

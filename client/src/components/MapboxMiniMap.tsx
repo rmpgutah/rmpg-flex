@@ -114,18 +114,30 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
 
     injectMapboxStyles();
 
-    const init = async () => {
+    const init = async (attempt = 1) => {
       try {
-        const token = await getMapboxToken();
+        // Timeout token fetch to prevent infinite hang
+        const tokenPromise = getMapboxToken();
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 8_000));
+        const token = await Promise.race([tokenPromise, timeoutPromise]);
         if (!token || cancelled) {
-          if (!cancelled) setError('Mapbox token not configured');
+          if (!cancelled) {
+            if (attempt < 3) {
+              // Retry with exponential backoff
+              setTimeout(() => { if (!cancelled) init(attempt + 1); }, attempt * 3000);
+            } else {
+              setError('Mapbox token not configured');
+            }
+          }
           return;
         }
+
+        if (!containerRef.current || cancelled) return;
 
         mapboxgl.accessToken = token;
 
         const map = new mapboxgl.Map({
-          container: containerRef.current!,
+          container: containerRef.current,
           style: 'mapbox://styles/mapbox/dark-v11',
           center: DEFAULT_CENTER,
           zoom: MINI_ZOOM,
@@ -152,7 +164,13 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
 
         mapRef.current = map;
       } catch (err: any) {
-        if (!cancelled) setError(err?.message || 'Failed to load map');
+        if (!cancelled) {
+          if (attempt < 3) {
+            setTimeout(() => { if (!cancelled) init(attempt + 1); }, attempt * 3000);
+          } else {
+            setError(err?.message || 'Failed to load map');
+          }
+        }
       }
     };
 
