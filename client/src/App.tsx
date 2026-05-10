@@ -93,6 +93,18 @@ const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
 const IntelBulletinsPage = lazyRetry(() => import('./pages/IntelBulletinsPage'));
 const ShiftBriefingsPage = lazyRetry(() => import('./pages/ShiftBriefingsPage'));
+// Spillman-inspired new modules (2026-05-10)
+const PawnTrackingPage = lazyRetry(() => import('./pages/PawnTrackingPage'));
+const ImpoundPage = lazyRetry(() => import('./pages/ImpoundPage'));
+const AlarmTrackingPage = lazyRetry(() => import('./pages/AlarmTrackingPage'));
+const AnimalControlPage = lazyRetry(() => import('./pages/AnimalControlPage'));
+const ALPRPage = lazyRetry(() => import('./pages/ALPRPage'));
+const JailManagementPage = lazyRetry(() => import('./pages/JailManagementPage'));
+const FireRMSPage = lazyRetry(() => import('./pages/FireRMSPage'));
+const CrashReportsPage = lazyRetry(() => import('./pages/CrashReportsPage'));
+const TipsPage = lazyRetry(() => import('./pages/TipsPage'));
+const CommunityPortalPage = lazyRetry(() => import('./pages/CommunityPortalPage'));
+const AccreditationsPage = lazyRetry(() => import('./pages/AccreditationsPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 const MobileHomePage = lazyRetry(() => import('./pages/mobile'));
@@ -343,6 +355,18 @@ function AppRoutes() {
             <Route path="/documents" element={<RouteErrorBoundary><DocumentsPage /></RouteErrorBoundary>} />
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
+            {/* Spillman-inspired new modules */}
+            <Route path="/pawn-tracking" element={<RouteErrorBoundary><PawnTrackingPage /></RouteErrorBoundary>} />
+            <Route path="/impound" element={<RouteErrorBoundary><ImpoundPage /></RouteErrorBoundary>} />
+            <Route path="/alarm-tracking" element={<RouteErrorBoundary><AlarmTrackingPage /></RouteErrorBoundary>} />
+            <Route path="/animal-control" element={<RouteErrorBoundary><AnimalControlPage /></RouteErrorBoundary>} />
+            <Route path="/alpr" element={<RouteErrorBoundary><ALPRPage /></RouteErrorBoundary>} />
+            <Route path="/jail" element={<RouteErrorBoundary><JailManagementPage /></RouteErrorBoundary>} />
+            <Route path="/fire-rms" element={<RouteErrorBoundary><FireRMSPage /></RouteErrorBoundary>} />
+            <Route path="/crash-reports" element={<RouteErrorBoundary><CrashReportsPage /></RouteErrorBoundary>} />
+            <Route path="/tips" element={<RouteErrorBoundary><TipsPage /></RouteErrorBoundary>} />
+            <Route path="/community-reports" element={<RouteErrorBoundary><CommunityPortalPage /></RouteErrorBoundary>} />
+            <Route path="/accreditations" element={<RouteErrorBoundary><AccreditationsPage /></RouteErrorBoundary>} />
             <Route path="/admin" element={<RouteErrorBoundary><AdminPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
