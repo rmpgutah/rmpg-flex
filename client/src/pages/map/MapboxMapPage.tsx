@@ -234,7 +234,8 @@ export default function MapboxMapPage() {
 
         map.on('load', () => {
           if (cancelled) return;
-          map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
+          // NavigationControl, ScaleControl, GeolocateControl, and AttributionControl
+          // are already added by createMapboxMap() — don't duplicate them here.
           if (DARK_STYLES.includes(mapStyle)) addMapbox3DBuildings(map);
           loadBeatOverlay(map);
           setMapLoaded(true);

@@ -27,8 +27,8 @@ export default function MapPageRouter() {
 
   if (detecting) return LOADING_FALLBACK;
 
-  // Mapbox and MapLibre both use the Mapbox GL renderer
-  if (engine === 'mapbox' || engine === 'maplibre') {
+  // Only Mapbox uses the Mapbox GL renderer (requires a Mapbox token)
+  if (engine === 'mapbox') {
     return (
       <Suspense fallback={LOADING_FALLBACK}>
         <MapboxMapPage />
@@ -36,7 +36,8 @@ export default function MapPageRouter() {
     );
   }
 
-  // Google Maps or unknown — use the existing full-featured MapPage
+  // Google Maps, MapLibre, or unknown — use the existing full-featured MapPage
+  // (MapLibre has no Mapbox token and cannot use MapboxMapPage)
   return (
     <Suspense fallback={LOADING_FALLBACK}>
       <GoogleMapPage />
