@@ -5,7 +5,7 @@
 // engine based on configured tokens. Provides a unified interface
 // for the MapPage and other map consumers.
 //
-// Priority: Mapbox GL → Google Maps → MapLibre GL
+// Priority: Mapbox GL → MapLibre GL
 // ============================================================
 
 import { useEffect, useState, useCallback } from 'react';

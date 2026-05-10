@@ -2,7 +2,7 @@
 // RMPG Flex — Map Engine Selector Component
 // ============================================================
 // Dropdown in the map toolbar that lets users switch between
-// available map engines (Mapbox GL, Google Maps, MapLibre GL).
+// available map engines (Mapbox GL, MapLibre GL).
 // Only shows engines that have configured tokens.
 // ============================================================
 
@@ -19,7 +19,6 @@ interface MapEngineSelectorProps {
 
 const ENGINE_ICONS: Record<MapEngine, string> = {
   mapbox: '◆',
-  google: '◈',
   maplibre: '◇',
 };
 

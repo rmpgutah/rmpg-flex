@@ -174,35 +174,6 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
   }
 });
 
-// GET /api/integrations/google-maps/client-key
-// Exposes the browser-safe Maps JS key to authenticated app users so
-// live production maps do not depend on a build-time Vite env var.
-router.get('/google-maps/client-key', (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const envKey = (process.env.GOOGLE_MAPS_API_KEY || '').trim();
-    const storedKey =
-      getIntegrationConfigValue(db, 'google_maps_api_key')
-      || getIntegrationConfigValue(db, 'google_maps_browser_key')
-      || null;
-
-    const apiKey = envKey || storedKey || '';
-
-    res.json({
-      configured: apiKey.length > 0,
-      apiKey: apiKey || undefined,
-      source: envKey ? 'env' : storedKey ? 'system_config' : 'missing',
-    });
-  } catch (error: any) {
-    console.error('Google Maps key fetch error:', error);
-    res.status(500).json({
-      configured: false,
-      error: 'Failed to fetch Google Maps key',
-      code: 'FAILED_TO_FETCH_GOOGLE_MAPS_KEY',
-    });
-  }
-});
-
 // GET /api/integrations/mapbox/client-key
 // Exposes the Mapbox access token to authenticated app users so
 // the Mapbox GL JS primary map surface can initialize at runtime.
@@ -235,6 +206,7 @@ router.get('/mapbox/client-key', (_req: Request, res: Response) => {
 
 // GET /api/integrations/map-provider/status
 // Returns which map engines are available based on configured tokens.
+// Mapbox is the mandatory engine; MapLibre GL is the free fallback.
 router.get('/map-provider/status', (_req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -245,22 +217,14 @@ router.get('/map-provider/status', (_req: Request, res: Response) => {
       || (process.env.MAPBOX_ACCESS_TOKEN || '').trim()
       || '';
 
-    const googleKey =
-      getIntegrationConfigValue(db, 'google_maps_api_key')
-      || getIntegrationConfigValue(db, 'google_maps_browser_key')
-      || (process.env.GOOGLE_MAPS_API_KEY || '').trim()
-      || '';
-
     const engines: string[] = [];
     if (mapboxToken) engines.push('mapbox');
-    if (googleKey) engines.push('google');
     engines.push('maplibre'); // always available
 
     res.json({
       primary: engines[0] || 'maplibre',
       engines,
       mapbox: { configured: !!mapboxToken },
-      google: { configured: !!googleKey },
       maplibre: { configured: true },
     });
   } catch (error: any) {
