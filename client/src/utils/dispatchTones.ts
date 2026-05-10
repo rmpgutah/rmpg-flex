@@ -6,7 +6,7 @@
 // Respects the user's sound toggle (localStorage 'rmpg-sound').
 // ============================================================
 
-type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'alert' | 'chirp' | 'double_chirp' | 'descending' | 'p1_alert' | 'panic_continuous';
+type ToneType = 'caution' | 'warning' | 'info' | 'error' | 'alarm' | 'alert' | 'chirp' | 'double_chirp' | 'descending' | 'p1_alert' | 'panic_continuous' | 'backup_request' | 'shift_change' | 'weather_alert' | 'hot_spot_entry' | 'mutual_aid';
 
 let audioCtx: AudioContext | null = null;
 
@@ -233,6 +233,71 @@ const PROFILES: Record<ToneType, ToneProfile> = {
       { freq: 1100, start: 2.10, dur: 0.09 },
       { freq: 800,  start: 2.20, dur: 0.09 },
       { freq: 1100, start: 2.30, dur: 0.09 },
+    ],
+  },
+
+  // ── Backup Request: Triple ascending attention tone ─────────
+  // 600 → 800 → 1000 Hz ascending pips, each 100ms, sine.
+  // Unmistakable "escalating urgency" cadence for backup calls.
+  backup_request: {
+    type: 'sine',
+    gain: 0.28,
+    steps: [
+      { freq: 600,  start: 0,    dur: 0.10 },
+      { freq: 800,  start: 0.12, dur: 0.10 },
+      { freq: 1000, start: 0.24, dur: 0.10 },
+    ],
+  },
+
+  // ── Shift Change: Westminster chime ────────────────────────
+  // C5 → E5 → G5 → C6 (523 → 659 → 784 → 1047 Hz), each 100ms
+  // with 20ms gaps. Classic four-note chime for shift transitions.
+  shift_change: {
+    type: 'sine',
+    gain: 0.22,
+    steps: [
+      { freq: 523,  start: 0,    dur: 0.10 },
+      { freq: 659,  start: 0.12, dur: 0.10 },
+      { freq: 784,  start: 0.24, dur: 0.10 },
+      { freq: 1047, start: 0.36, dur: 0.10 },
+    ],
+  },
+
+  // ── Weather Alert: Slow deep pulse ─────────────────────────
+  // 300 Hz, 3 cycles × 200ms with 100ms gaps. Low-frequency
+  // pulsing draws attention without the urgency of a siren.
+  weather_alert: {
+    type: 'sine',
+    gain: 0.25,
+    steps: [
+      { freq: 300, start: 0,    dur: 0.20 },
+      { freq: 300, start: 0.30, dur: 0.20 },
+      { freq: 300, start: 0.60, dur: 0.20 },
+    ],
+  },
+
+  // ── Hot Spot Entry: Two quick descending pips ──────────────
+  // 1200 → 800 Hz, 50ms each. Fast descending pair signals
+  // geographic awareness without alarm-level urgency.
+  hot_spot_entry: {
+    type: 'sine',
+    gain: 0.20,
+    steps: [
+      { freq: 1200, start: 0,    dur: 0.05 },
+      { freq: 800,  start: 0.07, dur: 0.05 },
+    ],
+  },
+
+  // ── Mutual Aid: Rapid 3-beep ───────────────────────────────
+  // 1000 → 1200 → 1000 Hz, each 80ms. Distinctive tri-tone
+  // pattern for inter-agency coordination requests.
+  mutual_aid: {
+    type: 'sine',
+    gain: 0.25,
+    steps: [
+      { freq: 1000, start: 0,    dur: 0.08 },
+      { freq: 1200, start: 0.10, dur: 0.08 },
+      { freq: 1000, start: 0.20, dur: 0.08 },
     ],
   },
 
