@@ -218,12 +218,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Map Initialization ─────────────────────────────────────────────────────
 
   useEffect(() => {
-    if (preferredEngine === 'maplibre') {
+    if (preferredEngine === 'maplibre' && !mapLibreFallback) {
       setMapError(null);
       setMapLibreFallback(true);
       setLoading(false);
     }
-  }, [preferredEngine]);
+  }, [preferredEngine, mapLibreFallback]);
 
   useEffect(() => {
     if (mapLibreFallback) {
@@ -246,8 +246,12 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             setMapError('Unable to fetch Mapbox token due to a network/connectivity error. Check connectivity, then retry.');
           } else if (tokenStatus?.errorKind === 'server') {
             setMapError(`Failed to fetch Mapbox token from server: ${tokenStatus.errorMessage || 'unknown error'}`);
-          } else {
+          } else if (tokenStatus?.errorKind === 'client') {
+            setMapError(`Mapbox token fetch failed on client side: ${tokenStatus.errorMessage || 'unknown client error'}`);
+          } else if (tokenStatus?.errorKind === 'none' || tokenStatus?.errorKind === 'unconfigured') {
             setMapError('Mapbox access token not configured. Go to Admin → Integrations to add your Mapbox token.');
+          } else {
+            setMapError('Mapbox token is unavailable. Using MapLibre fallback.');
           }
           devLog('[MapboxMap] Mapbox token unavailable, activating MapLibre GL fallback', tokenStatus);
           setMapLibreFallback(true);

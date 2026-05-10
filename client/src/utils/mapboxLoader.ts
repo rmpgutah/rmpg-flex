@@ -53,7 +53,9 @@ function isValidCustomMapboxStyleUrl(value: string | undefined): boolean {
   const trimmed = value.trim();
   if (!trimmed) return false;
   if (trimmed.startsWith('mapbox://styles/')) return true;
-  return /^https:\/\/api\.mapbox\.com\/styles\/v1\/[^/]+\/[^/]+/i.test(trimmed);
+  // Accept only Mapbox HTTPS style endpoints:
+  //   https://api.mapbox.com/styles/v1/{username}/{style_id}[?...|#...]
+  return /^https:\/\/api\.mapbox\.com\/styles\/v1\/[^/]+\/[^/?#]+(?:[/?#]|$)/i.test(trimmed);
 }
 
 export const MAPBOX_STYLE_LABELS: Record<MapboxStyleId, string> = {

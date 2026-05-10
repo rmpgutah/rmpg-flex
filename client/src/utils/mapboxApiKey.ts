@@ -14,7 +14,7 @@ let cachedMapboxStyleUrl: string | null = null;
 let inflightMapboxToken: Promise<string | null> | null = null;
 let lastMapboxTokenError: string | null = null;
 
-export type MapboxTokenErrorKind = 'none' | 'unconfigured' | 'auth' | 'network' | 'server';
+export type MapboxTokenErrorKind = 'none' | 'unconfigured' | 'auth' | 'network' | 'server' | 'client';
 
 export interface MapboxTokenStatus {
   token: string | null;
@@ -88,7 +88,11 @@ function classifyMapboxTokenError(message: string | null): MapboxTokenErrorKind 
   if (m.includes('network') || m.includes('failed to fetch') || m.includes('timed out') || m.includes('offline')) {
     return 'network';
   }
-  return 'server';
+  const statusMatch = m.match(/\bstatus\s*(\d{3})\b/);
+  if ((statusMatch && Number(statusMatch[1]) >= 500) || m.includes('internal server')) {
+    return 'server';
+  }
+  return 'client';
 }
 
 export async function getMapboxTokenStatus(forceRefresh = false): Promise<MapboxTokenStatus> {
