@@ -266,8 +266,9 @@ export function addMapboxTerrain(map: mapboxgl.Map, exaggeration = 1.5): void {
     }
 
     map.setTerrain({ source: 'mapbox-dem', exaggeration });
-  } catch {
-    // Terrain may not be supported in all contexts
+  } catch (err) {
+    // Terrain may not be supported in older browsers or WebGL1 contexts
+    console.warn('[Mapbox] Terrain setup failed:', err);
   }
 }
 
@@ -278,7 +279,7 @@ export function removeMapboxTerrain(map: mapboxgl.Map): void {
   try {
     map.setTerrain(null);
   } catch {
-    // Ignore if terrain wasn't set
+    // Safe to ignore — terrain may not have been set
   }
 }
 

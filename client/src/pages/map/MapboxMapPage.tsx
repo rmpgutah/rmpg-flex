@@ -374,7 +374,7 @@ export default function MapboxMapPage() {
     const map = mapRef.current;
     if (!map || !mapLoaded) return;
     if (terrainEnabled) {
-      addMapboxTerrain(map, 1.5);
+      addMapboxTerrain(map);
     } else {
       removeMapboxTerrain(map);
     }
