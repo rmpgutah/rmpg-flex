@@ -58,3 +58,37 @@ export function formatActivityDetails(details: string): string {
   // For other patterns, just clean up any snake_case words
   return details.replace(/\b[a-z]+(?:_[a-z]+)+\b/g, (word) => toDisplayLabel(word));
 }
+
+/**
+ * Label a call's age bucket based on time since creation.
+ */
+export function formatCallAge(createdAt: string): string {
+  const diff = Date.now() - new Date(createdAt).getTime();
+  if (isNaN(diff) || diff < 0) return 'NEW';
+  const mins = diff / 60_000;
+  if (mins < 5) return 'NEW';
+  if (mins < 60) return 'ACTIVE';
+  if (mins < 240) return 'AGING';
+  return 'STALE';
+}
+
+/**
+ * Return a priority string with an emoji badge prefix.
+ */
+export function formatPriorityBadge(priority: string): string {
+  switch (priority) {
+    case 'P1': return '🔴 P1';
+    case 'P2': return '🟠 P2';
+    case 'P3': return '🟡 P3';
+    case 'P4': return '🟢 P4';
+    default:   return priority;
+  }
+}
+
+/**
+ * Humanize a status transition (e.g. "dispatched" → "En Route" becomes
+ * "Dispatched → En Route").
+ */
+export function getStatusTransitionLabel(from: string, to: string): string {
+  return `${toDisplayLabel(from)} → ${toDisplayLabel(to)}`;
+}

@@ -940,17 +940,37 @@ export async function announceWarrantHit(data: { person_name?: string; warrant_c
 }
 
 /** Announce backup request */
-export async function announceBackupRequest(data: { officer_name?: string; location?: string; call_number?: string }): Promise<void> {
+export async function announceBackupRequest(callOrData: any, requestingUnit?: string): Promise<void> {
   if (!isVoiceEnabled() || !isSpeechAvailable()) return;
-  const who = data.officer_name || 'unknown';
-  const dedupKey = `backup:${who}`;
+
+  // Support legacy signature: announceBackupRequest({ officer_name, location, call_number })
+  if (!requestingUnit && callOrData && typeof callOrData === 'object' && !callOrData.call_number && callOrData.officer_name) {
+    const who = callOrData.officer_name || 'unknown';
+    const dedupKey = `backup:${who}`;
+    if (wasRecentlyAnnounced(dedupKey)) return;
+    markAnnounced(dedupKey);
+    await playToneAsync('warning');
+    await delay(TONE_GAP_MS);
+    const phrases: VoicePhrase[] = [{ text: `Backup requested by ${who}.` }];
+    if (callOrData.location) phrases.push({ text: `Location: ${callOrData.location}.` });
+    enqueuePhrases(phrases);
+    return;
+  }
+
+  // New signature: announceBackupRequest(call, requestingUnit)
+  const callNum = callOrData?.call_number || 'unknown';
+  const loc = callOrData?.location_address || callOrData?.location || 'unknown location';
+  const unit = requestingUnit || 'unknown unit';
+  const dedupKey = `backup:${callNum}:${unit}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);
-  await playToneAsync('warning');
+
+  await playToneAsync('backup_request');
   await delay(TONE_GAP_MS);
-  const phrases: VoicePhrase[] = [{ text: `Backup requested by ${who}.` }];
-  if (data.location) phrases.push({ text: `Location: ${data.location}.` });
-  enqueuePhrases(phrases);
+
+  enqueuePhrases([
+    { text: `Backup requested for call ${callNum} at ${loc} by ${unit}. Available units respond.` },
+  ]);
 }
 
 /** Announce pursuit */
@@ -1373,6 +1393,183 @@ export async function announceLocalAction(actionType: 'call_created' | 'unit_dis
   }
 
   enqueuePhrases([{ text: detail }]);
+}
+
+// ─── Situational Awareness Alerts (66–75) ────────────────────
+
+/**
+ * Announce priority escalation:
+ * "Call 26-CFS00110 escalated from Priority 3 to Priority 1. 123 Main St."
+ */
+export async function announcePriorityEscalation(call: any, oldPriority: string, newPriority: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const callNum = call?.call_number || 'unknown';
+  const loc = call?.location_address || call?.location || '';
+  const dedupKey = `escalation:${callNum}:${oldPriority}:${newPriority}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  const tone = newPriority === 'P1' ? 'alarm' : 'warning';
+  await playToneAsync(tone);
+  await delay(TONE_GAP_MS);
+
+  enqueuePhrases([
+    { text: `Call ${callNum} escalated from ${oldPriority} to ${newPriority}. ${loc}.` },
+  ]);
+}
+
+/**
+ * Announce shift change:
+ * "Shift change. Day shift off duty, Swing shift coming on."
+ */
+export async function announceShiftChange(incomingShift: string, outgoingShift: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `shiftchange:${outgoingShift}:${incomingShift}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('shift_change');
+  await delay(TONE_GAP_MS);
+
+  enqueuePhrases([
+    { text: `Shift change. ${outgoingShift} off duty, ${incomingShift} coming on.` },
+  ]);
+}
+
+/**
+ * Announce weather alert:
+ * "Weather advisory: Winter Storm Warning. Heavy snow expected, 6 to 10 inches. All units exercise caution."
+ */
+export async function announceWeatherAlert(alertType: string, description: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `weather:${alertType}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('weather_alert');
+  await delay(TONE_GAP_MS);
+
+  enqueuePhrases([
+    { text: `Weather advisory: ${alertType}. ${description}. All units exercise caution.` },
+  ]);
+}
+
+/**
+ * Announce geofence breach:
+ * "Unit S19 has left beat 7A."
+ */
+export async function announceGeofenceBreach(unit: string, beat: string, direction?: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `geofence:${unit}:${beat}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('caution');
+  await delay(200);
+
+  const dirText = direction ? ` ${direction}` : '';
+  enqueuePhrases([
+    { text: `${unit} has left beat ${beat}${dirText}.` },
+  ]);
+}
+
+/**
+ * Announce supervisor review:
+ * "Call 26-CFS00110 reviewed by Sergeant Williams."
+ */
+export async function announceSupervisorReview(callNumber: string, supervisor: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `review:${callNumber}:${supervisor}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('info');
+  await delay(200);
+
+  enqueuePhrases([
+    { text: `Call ${callNumber} reviewed by ${supervisor}.` },
+  ]);
+}
+
+/**
+ * Announce recurring location:
+ * "Recurring location: 456 State St, 12 calls in 30 days."
+ */
+export async function announceRecurringLocation(address: string, count: number, period: number): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `recurring:${address}:${count}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('caution');
+  await delay(200);
+
+  enqueuePhrases([
+    { text: `Recurring location: ${address}, ${count} calls in ${period} days.` },
+  ]);
+}
+
+/**
+ * Announce unit fatigue:
+ * "Unit S19, 10 hours on duty, 14 calls. Consider relief."
+ */
+export async function announceUnitFatigue(callSign: string, hours: number, callCount: number): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `fatigue:${callSign}:${Math.floor(hours)}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('caution');
+  await delay(200);
+
+  enqueuePhrases([
+    { text: `Unit ${callSign}, ${Math.round(hours)} hours on duty, ${callCount} calls. Consider relief.` },
+  ]);
+}
+
+/**
+ * Announce hot spot entry:
+ * "Unit S19 entering hot spot: 789 West Temple, 8 recent calls."
+ */
+export async function announceHotSpotEntry(unit: string, address: string, callCount: number): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `hotspot:${unit}:${address}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('hot_spot_entry');
+  await delay(200);
+
+  enqueuePhrases([
+    { text: `${unit} entering hot spot: ${address}, ${callCount} recent calls.` },
+  ]);
+}
+
+/**
+ * Announce mutual aid request:
+ * "Mutual aid from Salt Lake City PD for call 26-CFS00110, Active Shooter."
+ */
+export async function announceMutualAidRequest(agency: string, callNumber: string, callType: string): Promise<void> {
+  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+
+  const dedupKey = `mutualaid:${agency}:${callNumber}`;
+  if (wasRecentlyAnnounced(dedupKey)) return;
+  markAnnounced(dedupKey);
+
+  await playToneAsync('mutual_aid');
+  await delay(TONE_GAP_MS);
+
+  enqueuePhrases([
+    { text: `Mutual aid from ${agency} for call ${callNumber}, ${callType}.` },
+  ]);
 }
 
 // ─── Demo / Test ─────────────────────────────────────────────

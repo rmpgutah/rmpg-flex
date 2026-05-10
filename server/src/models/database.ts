@@ -5608,6 +5608,7 @@ function migrateSchema(): void {
   addCol('units', 'mileage', 'REAL');
   addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
   addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
+  addCol('units', 'assigned_beat_id', 'INTEGER');   // FK → dispatch_beats(id)
 
   // ── Traccar device-to-unit mapping table ──
   db.prepare(`
