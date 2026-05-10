@@ -587,36 +587,6 @@ router.get('/units/:id/history', validateParamIdMiddleware, requireRole('admin',
 // Upgrades 21–35: Extended unit endpoints
 // ────────────────────────────────────────────────────────────
 
-// Upgrade 21: GET /units/workload — Per-unit workload summary
-router.get('/units/workload', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const todayStart = localNow().slice(0, 10) + ' 00:00:00';
-    const rows = db.prepare(`
-      SELECT u.id, u.call_sign, usr.full_name AS officer_name,
-        (SELECT COUNT(*) FROM calls_for_service
-         WHERE assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%'
-           AND status NOT IN ('CLEARED','CANCELLED')) AS active_call_count,
-        (SELECT COUNT(*) FROM calls_for_service
-         WHERE assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%'
-           AND created_at >= ?) AS total_calls_today,
-        (SELECT COALESCE(SUM(
-          CAST((julianday(COALESCE(cleared_at, datetime('now','localtime'))) - julianday(created_at)) * 1440 AS INTEGER)
-        ), 0) FROM calls_for_service
-         WHERE assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%'
-           AND created_at >= ?) AS total_minutes_on_calls_today
-      FROM units u
-      LEFT JOIN users usr ON u.officer_id = usr.id
-      WHERE u.status != 'off_duty'
-      ORDER BY active_call_count DESC
-    `).all(todayStart, todayStart);
-    res.json(rows);
-  } catch (error: any) {
-    console.error('[Units] workload error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to get unit workload', code: 'UNIT_WORKLOAD_ERROR' });
-  }
-});
-
 // Upgrade 22: GET /units/fatigue-monitor — Fatigue alerts for long-duty or high-call officers
 router.get('/units/fatigue-monitor', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {

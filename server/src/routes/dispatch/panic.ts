@@ -660,40 +660,6 @@ router.get('/panic/:id/audio', requireRole('admin', 'supervisor', 'manager'), (r
   }
 });
 
-// ── 46. Panic History ──
-router.get('/panic/history', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit as string, 10) || 25));
-    const offset = (page - 1) * limit;
-
-    const conditions: string[] = [];
-    const params: any[] = [];
-
-    if (req.query.date_from) { conditions.push('pa.created_at >= ?'); params.push(req.query.date_from); }
-    if (req.query.date_to) { conditions.push('pa.created_at <= ?'); params.push(req.query.date_to); }
-    if (req.query.officer_id) { conditions.push('pa.officer_id = ?'); params.push(Number(req.query.officer_id)); }
-    if (req.query.status) { conditions.push('pa.status = ?'); params.push(req.query.status); }
-
-    const where = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
-
-    const total = (db.prepare(`SELECT COUNT(*) AS cnt FROM panic_alerts pa ${where}`).get(...params) as any)?.cnt || 0;
-    const rows = db.prepare(`
-      SELECT pa.*, u.full_name AS officer_name
-      FROM panic_alerts pa
-      LEFT JOIN users u ON pa.officer_id = u.id
-      ${where}
-      ORDER BY pa.created_at DESC
-      LIMIT ? OFFSET ?
-    `).all(...params, limit, offset);
-
-    res.json({ data: rows, total, page, limit, pages: Math.ceil(total / limit) });
-  } catch (error: any) {
-    res.status(500).json({ error: 'Failed to load panic history', code: 'PANIC_HISTORY_ERROR' });
-  }
-});
-
 // ── 47. Panic Stats ──
 router.get('/panic/stats', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
   try {
@@ -713,40 +679,6 @@ router.get('/panic/stats', requireRole('admin', 'manager', 'supervisor', 'dispat
     res.json(stats);
   } catch (error: any) {
     res.status(500).json({ error: 'Failed to load panic stats', code: 'PANIC_STATS_ERROR' });
-  }
-});
-
-// ── 48. Mark Panic as False Alarm ──
-router.post('/panic/:id/false-alarm', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const panicId = Number(req.params.id);
-    const { reason } = req.body || {};
-
-    if (!reason || typeof reason !== 'string' || reason.trim().length === 0) {
-      res.status(400).json({ error: 'Reason is required', code: 'REASON_REQUIRED' });
-      return;
-    }
-
-    const existing = db.prepare('SELECT * FROM panic_alerts WHERE id = ?').get(panicId) as any;
-    if (!existing) {
-      res.status(404).json({ error: 'Panic alert not found', code: 'PANIC_NOT_FOUND' });
-      return;
-    }
-
-    const now = localNow();
-    db.prepare(`
-      UPDATE panic_alerts SET status = 'false_alarm', false_alarm_reason = ?, resolved_at = ?, updated_at = ? WHERE id = ?
-    `).run(reason.trim(), now, now, panicId);
-
-    cancelEscalationTimer(panicId);
-
-    auditLog(req, 'UPDATE', 'panic_alerts', panicId, { status: existing.status }, { status: 'false_alarm', false_alarm_reason: reason.trim() });
-    broadcastDispatchUpdate({ action: 'panic_updated', panic: { id: panicId, status: 'false_alarm' } });
-
-    res.json({ success: true, id: panicId });
-  } catch (error: any) {
-    res.status(500).json({ error: 'Failed to update panic alert', code: 'PANIC_FALSE_ALARM_ERROR' });
   }
 });
 
