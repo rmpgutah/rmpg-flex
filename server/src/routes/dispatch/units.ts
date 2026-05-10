@@ -692,13 +692,20 @@ router.get('/units/by-capability', requireRole('admin', 'manager', 'supervisor',
       return;
     }
 
+    // Sanitize capability to prevent LIKE injection via embedded quotes
+    const safeCap = String(capability).replace(/["%_\\]/g, '');
+    if (!safeCap) {
+      res.status(400).json({ error: 'invalid capability value', code: 'INVALID_CAPABILITY' });
+      return;
+    }
+
     const units = db.prepare(`
       SELECT u.*, usr.full_name AS officer_name
       FROM units u
       LEFT JOIN users usr ON u.officer_id = usr.id
       WHERE u.capabilities LIKE ?
       ORDER BY u.call_sign
-    `).all(`%"${capability}"%`);
+    `).all(`%"${safeCap}"%`);
     res.json(units);
   } catch (error: any) {
     console.error('[Units] by-capability error:', error?.message || 'Unknown error');
