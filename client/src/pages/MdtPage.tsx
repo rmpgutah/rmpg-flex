@@ -9,6 +9,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Monitor, Navigation, Eye, CheckCircle, MapPin, Clock, Send, AlertTriangle,
   MessageSquare, Shield, FileText, Loader2, X, ChevronRight,
+  Radio, Hash, Search, History, Volume2, Wifi, WifiOff,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus } from '../types';
 import { apiFetch } from '../hooks/useApi';
@@ -24,6 +25,8 @@ import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
 import { formatDateTime, localToday, safeTimeStr } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
+import { playTone } from '../utils/dispatchTones';
+import IconButton from '../components/IconButton';
 
 // ── Quick Status Buttons ────────────────────────────────────
 
@@ -221,6 +224,28 @@ function MdtMessagesPanel({ userId }: { userId?: string }) {
   );
 }
 
+// ── BOLO type ─────────────────────────────────────────────
+
+interface BoloEntry {
+  id: number;
+  description?: string;
+  priority?: string;
+  vehicle_description?: string;
+  subject_description?: string;
+  created_at?: string;
+  status?: string;
+}
+
+// ── Dispatch Code type ────────────────────────────────────
+
+interface DispatchCode {
+  id?: number;
+  code: string;
+  description: string;
+  priority?: string;
+  category?: string;
+}
+
 // ── Component ──────────────────────────────────────────────
 
 export default function MdtPage() {
@@ -231,7 +256,7 @@ export default function MdtPage() {
   const [myCalls, setMyCalls] = useState<CallForService[]>([]);
   const [pendingCalls, setPendingCalls] = useState<CallForService[]>([]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
-  const [activeTab, setActiveTab] = useState<'my-calls' | 'pending' | 'messages' | 'ncic'>('my-calls');
+  const [activeTab, setActiveTab] = useState<'my-calls' | 'pending' | 'messages' | 'ncic' | 'history'>('my-calls');
   const [ncicQuery, setNcicQuery] = useState<{ type: 'person' | 'vehicle' | 'warrant'; query: string } | null>(null);
   const [loading, setLoading] = useState(true);
   const [msgUnread, setMsgUnread] = useState(0);
@@ -241,6 +266,25 @@ export default function MdtPage() {
   const [showFiForm, setShowFiForm] = useState(false);
   const [fiData, setFiData] = useState({ subject_name: '', location: '', reason: '', narrative: '' });
   const [fiSubmitting, setFiSubmitting] = useState(false);
+
+  // ── History calls state ──
+  const [historyCalls, setHistoryCalls] = useState<CallForService[]>([]);
+
+  // ── BOLO ticker state ──
+  const [bolos, setBolos] = useState<BoloEntry[]>([]);
+  const [boloIndex, setBoloIndex] = useState(0);
+
+  // ── Dispatch codes panel state ──
+  const [showCodes, setShowCodes] = useState(false);
+  const [codes, setCodes] = useState<DispatchCode[]>([]);
+  const [codeFilter, setCodeFilter] = useState('');
+
+  // ── Call notes state ──
+  const [noteText, setNoteText] = useState('');
+  const [addingNote, setAddingNote] = useState(false);
+
+  // ── Officer safety alert tracking ──
+  const lastWarnedCallRef = useRef<string | null>(null);
 
   // Error toast auto-dismiss
   const errorTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -385,6 +429,9 @@ export default function MdtPage() {
       // Pending calls (available for self-dispatch)
       setPendingCalls(allCalls.filter(c => c.status === 'pending'));
 
+      // History calls (cleared/closed)
+      setHistoryCalls(allCalls.filter(c => c.status === 'cleared' || c.status === 'closed'));
+
       // Keep selectedCall fresh — update from new data if still exists
       setSelectedCall(prev => {
         if (!prev) return null;
@@ -403,6 +450,43 @@ export default function MdtPage() {
   useEffect(() => { fetchData(); }, [fetchData]);
   useLiveSync('dispatch', fetchData);
 
+  // ── Fetch BOLOs ──
+  const fetchBolos = useCallback(async () => {
+    try {
+      const result = await apiFetch<any>('/comms/bolos/active');
+      const arr = Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : [];
+      setBolos(arr);
+    } catch {
+      setBolos([]);
+    }
+  }, []);
+
+  useEffect(() => { fetchBolos(); }, [fetchBolos]);
+
+  // BOLO ticker rotation
+  useEffect(() => {
+    if (bolos.length <= 1) return;
+    const id = setInterval(() => {
+      setBoloIndex(prev => (prev + 1) % bolos.length);
+    }, 5000);
+    return () => clearInterval(id);
+  }, [bolos.length]);
+
+  // ── Fetch Dispatch Codes ──
+  const fetchCodes = useCallback(async () => {
+    try {
+      const result = await apiFetch<any>('/dispatch/geography/codes');
+      const arr = Array.isArray(result) ? result : Array.isArray(result?.data) ? result.data : [];
+      setCodes(arr);
+    } catch {
+      setCodes([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (showCodes && codes.length === 0) fetchCodes();
+  }, [showCodes, codes.length, fetchCodes]);
+
   // ── Real-time WebSocket subscriptions for dispatch events ──
   const { subscribe } = useWebSocket();
   useEffect(() => {
@@ -418,8 +502,12 @@ export default function MdtPage() {
         fetchData();
       }
     });
-    return () => { unsubDispatch(); unsubUnit(); };
-  }, [subscribe, fetchData, gps.unitId]);
+    // BOLO alerts
+    const unsubBolo = subscribe('bolo_alert', () => {
+      fetchBolos();
+    });
+    return () => { unsubDispatch(); unsubUnit(); unsubBolo(); };
+  }, [subscribe, fetchData, fetchBolos, gps.unitId]);
 
   // ── Unit Status Change ──
   const handleUnitStatus = async (newStatus: string) => {
@@ -471,6 +559,82 @@ export default function MdtPage() {
     }
   };
 
+  // ── Officer Safety Alert — play warning tone on first view ──
+  useEffect(() => {
+    if (!selectedCall) return;
+    const hasSafety = !!(
+      selectedCall.officer_safety_caution ||
+      (selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim())) ||
+      selectedCall.domestic_violence
+    );
+    if (hasSafety && lastWarnedCallRef.current !== selectedCall.id) {
+      lastWarnedCallRef.current = selectedCall.id;
+      playTone('warning');
+    }
+  }, [selectedCall]);
+
+  // ── Keyboard Hotkeys ──
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      switch (e.key) {
+        case 'F5':
+          e.preventDefault();
+          if (selectedCall?.status === 'dispatched') {
+            handleCallStatus(selectedCall.id, 'enroute');
+          }
+          break;
+        case 'F6':
+          e.preventDefault();
+          if (selectedCall?.status === 'enroute') {
+            handleCallStatus(selectedCall.id, 'onscene');
+          }
+          break;
+        case 'F7':
+          e.preventDefault();
+          if (selectedCall?.status === 'onscene') {
+            handleCallStatus(selectedCall.id, 'cleared');
+          }
+          break;
+        case 'F8':
+          e.preventDefault();
+          setActiveTab('ncic');
+          break;
+        case 'Escape':
+          e.preventDefault();
+          if (showCodes) {
+            setShowCodes(false);
+          } else if (selectedCall) {
+            setSelectedCall(null);
+          }
+          break;
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedCall, showCodes]);
+
+  // ── Add Call Note ──
+  const handleAddNote = async () => {
+    if (!selectedCall || !noteText.trim()) return;
+    setAddingNote(true);
+    try {
+      await apiFetch(`/dispatch/calls/${selectedCall.id}/notes`, {
+        method: 'POST',
+        body: JSON.stringify({ text: noteText.trim() }),
+      });
+      setNoteText('');
+      fetchData();
+    } catch (err) {
+      console.error('Add note failed:', err);
+      addToast('Failed to add note', 'error');
+    } finally {
+      setAddingNote(false);
+    }
+  };
+
   // ── Priority Color ──
   const prioColor = (p: string) => {
     switch (p) {
@@ -483,6 +647,41 @@ export default function MdtPage() {
 
   // Set document title
   useEffect(() => { document.title = 'Mobile Data Terminal \u2014 RMPG Flex'; }, []);
+
+  // ── Response Time Calculation ──
+  const calcResponseTime = (call: CallForService): string | null => {
+    const start = call.dispatched_at;
+    const end = call.onscene_at;
+    if (!start || !end) return null;
+    const diffMs = new Date(end).getTime() - new Date(start).getTime();
+    if (diffMs < 0) return null;
+    const mins = Math.floor(diffMs / 60000);
+    const secs = Math.floor((diffMs % 60000) / 1000);
+    return `${mins}m ${secs}s`;
+  };
+
+  // ── 24h Clock ──
+  const now = new Date();
+  const clockStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+
+  // ── Officer Safety Check ──
+  const hasOfficerSafety = selectedCall ? !!(
+    selectedCall.officer_safety_caution ||
+    (selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim())) ||
+    selectedCall.domestic_violence
+  ) : false;
+
+  // ── Filtered codes ──
+  const filteredCodes = codeFilter
+    ? codes.filter(c =>
+        c.code.toLowerCase().includes(codeFilter.toLowerCase()) ||
+        c.description.toLowerCase().includes(codeFilter.toLowerCase())
+      )
+    : codes;
+
+  // ── Active / pending counts for status bar ──
+  const activeCallCount = myCalls.length;
+  const pendingCallCount = pendingCalls.length;
 
 
   if (loading) {
@@ -539,6 +738,19 @@ export default function MdtPage() {
 
         {/* Quick status buttons + actions */}
         <div className={`flex items-center gap-1 ${isMobile ? 'overflow-x-auto' : ''}`}>
+          {/* 10-CODES button */}
+          <button type="button"
+            onClick={() => setShowCodes(!showCodes)}
+            className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border mr-0.5 ${
+              showCodes ? 'border-[#d4a017] text-[#d4a017] bg-[#d4a017]/10' : 'border-rmpg-700 text-rmpg-400 hover:text-white hover:border-[#d4a017]'
+            }`}
+            title="Dispatch Codes Quick Reference"
+          >
+            <span className="flex items-center gap-1">
+              <Hash style={{ width: 9, height: 9 }} />
+              10-CODES
+            </span>
+          </button>
           <button type="button"
             onClick={() => setShowFiForm(!showFiForm)}
             className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border mr-0.5 ${
@@ -574,6 +786,93 @@ export default function MdtPage() {
           ))}
         </div>
       </div>
+
+      {/* ── BOLO Ticker ── */}
+      {bolos.length > 0 && (
+        <div
+          className="flex-shrink-0 px-4 py-1.5 flex items-center gap-2 border-b overflow-hidden"
+          style={{
+            background: 'rgba(239,68,68,0.06)',
+            borderColor: 'rgba(239,68,68,0.2)',
+          }}
+        >
+          <div className="flex items-center gap-1 flex-shrink-0">
+            <Volume2 style={{ width: 10, height: 10, color: '#ef4444' }} />
+            <span className="text-[8px] font-black uppercase tracking-wider text-red-400">BOL</span>
+          </div>
+          <div className="flex-1 min-w-0 overflow-hidden">
+            {bolos[boloIndex % bolos.length] && (
+              <div className="flex items-center gap-2 animate-fade-in">
+                <span
+                  className="text-[8px] font-black px-1 py-px rounded-sm flex-shrink-0"
+                  style={{
+                    background: bolos[boloIndex % bolos.length].priority === 'high' ? '#ef4444' :
+                                bolos[boloIndex % bolos.length].priority === 'medium' ? '#f59e0b' : '#22c55e',
+                    color: '#000',
+                  }}
+                >
+                  {(bolos[boloIndex % bolos.length].priority || 'INFO').toUpperCase()}
+                </span>
+                <span className="text-[10px] text-rmpg-200 truncate font-mono">
+                  {bolos[boloIndex % bolos.length].description ||
+                   bolos[boloIndex % bolos.length].subject_description ||
+                   bolos[boloIndex % bolos.length].vehicle_description ||
+                   'Active BOLO'}
+                </span>
+              </div>
+            )}
+          </div>
+          <span className="text-[8px] text-rmpg-500 flex-shrink-0 font-mono">
+            {boloIndex % bolos.length + 1}/{bolos.length}
+          </span>
+        </div>
+      )}
+
+      {/* ── Dispatch Codes Panel ── */}
+      {showCodes && (
+        <div className="flex-shrink-0 border-b border-[#d4a017]/30" style={{ background: 'rgba(212,160,23,0.04)', maxHeight: 240 }}>
+          <div className="px-4 py-2 flex items-center justify-between border-b border-[#d4a017]/20">
+            <span className="text-[9px] font-bold text-[#d4a017] uppercase tracking-wider">10-Code Quick Reference</span>
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <Search style={{ width: 9, height: 9, position: 'absolute', left: 6, top: '50%', transform: 'translateY(-50%)', color: '#666' }} />
+                <input
+                  type="text"
+                  value={codeFilter}
+                  onChange={e => setCodeFilter(e.target.value)}
+                  placeholder="Filter codes..."
+                  className="bg-surface-base border border-rmpg-600 text-white text-[9px] pl-5 pr-2 py-0.5 font-mono w-32 focus:border-[#d4a017] focus:outline-none"
+                />
+              </div>
+              <IconButton onClick={() => setShowCodes(false)} aria-label="Close codes panel" className="text-rmpg-500 hover:text-white">
+                <X className="w-3 h-3" />
+              </IconButton>
+            </div>
+          </div>
+          <div className="overflow-auto px-4 py-1" style={{ maxHeight: 180 }}>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-0.5">
+              {filteredCodes.map((c, i) => (
+                <div key={`${c.code}-${i}`} className="flex items-center gap-1.5 py-0.5">
+                  <span
+                    className="text-[9px] font-mono font-bold min-w-[40px]"
+                    style={{
+                      color: c.priority === 'P1' ? '#ef4444' :
+                             c.priority === 'P2' ? '#f97316' :
+                             c.priority === 'P3' ? '#eab308' : '#888888',
+                    }}
+                  >
+                    {c.code}
+                  </span>
+                  <span className="text-[9px] text-rmpg-300 truncate">{c.description}</span>
+                </div>
+              ))}
+              {filteredCodes.length === 0 && (
+                <div className="col-span-full text-[9px] text-rmpg-500 py-2 text-center">No matching codes</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Quick FI Form ── */}
       {showFiForm && (
@@ -662,7 +961,7 @@ export default function MdtPage() {
         <div className={`${isMobile ? (selectedCall ? 'hidden' : 'w-full') : 'w-2/5'} flex flex-col border-r border-rmpg-700/50 overflow-hidden`}>
           {/* Tabs */}
           <div className="flex border-b border-rmpg-700/50 flex-shrink-0 overflow-x-auto bg-surface-sunken">
-            {(['my-calls', 'pending', 'messages', 'ncic'] as const).map(tab => (
+            {(['my-calls', 'pending', 'messages', 'ncic', 'history'] as const).map(tab => (
               <button type="button"
                 key={tab}
                 onClick={() => setActiveTab(tab)}
@@ -676,7 +975,8 @@ export default function MdtPage() {
                 {tab === 'my-calls' ? `My Calls (${myCalls.length})` :
                  tab === 'pending' ? `Pending (${pendingCalls.length})` :
                  tab === 'messages' ? `Messages${msgUnread > 0 ? ` (${msgUnread})` : ''}` :
-                 'NCIC'}
+                 tab === 'ncic' ? 'NCIC' :
+                 `History (${historyCalls.length})`}
               </button>
             ))}
           </div>
@@ -789,6 +1089,57 @@ export default function MdtPage() {
                 />
               </div>
             )}
+
+            {activeTab === 'history' && (
+              historyCalls.length === 0 ? (
+                <div className="flex items-center justify-center h-full text-rmpg-500 text-[10px]">
+                  <div className="text-center">
+                    <History className="w-8 h-8 mx-auto mb-2 text-rmpg-600" />
+                    <p>No cleared/closed calls</p>
+                  </div>
+                </div>
+              ) : (
+                historyCalls.map(call => (
+                  <div
+                    key={call.id}
+                    onClick={() => setSelectedCall(call)}
+                    className="px-3 py-2 cursor-pointer transition-colors border-b border-rmpg-700/50 hover:bg-[#181818]"
+                    style={{
+                      background: selectedCall?.id === call.id ? 'rgba(34,197,94,0.08)' : 'transparent',
+                      borderLeft: `3px solid ${call.status === 'cleared' ? '#888888' : '#444444'}`,
+                    }}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px] font-mono font-bold text-rmpg-400">{call.call_number}</span>
+                        <StatusBadge status={call.status} type="call_status" size="sm" />
+                        <span
+                          className="text-[8px] font-black px-1 rounded-sm"
+                          style={{ background: prioColor(call.priority), color: '#fff' }}
+                        >
+                          {call.priority}
+                        </span>
+                      </div>
+                      <span className="text-[8px] font-mono text-rmpg-500">
+                        {call.cleared_at ? safeTimeStr(call.cleared_at) : call.closed_at ? safeTimeStr(call.closed_at) : ''}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-rmpg-300 font-semibold mt-0.5">
+                      {formatIncidentType(call.incident_type)}
+                    </div>
+                    <div className="text-[9px] text-rmpg-500 flex items-center gap-1 mt-0.5">
+                      <MapPin style={{ width: 8, height: 8 }} />
+                      {call.location || 'No address'}
+                    </div>
+                    {(call as any).disposition && (
+                      <div className="text-[8px] text-rmpg-500 mt-0.5 font-mono uppercase">
+                        Disp: {(call as any).disposition}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )
+            )}
           </div>
         </div>
 
@@ -869,9 +1220,37 @@ export default function MdtPage() {
 
               {/* Call details body */}
               <div className="flex-1 overflow-auto p-4 space-y-3">
-                {/* Location */}
+                {/* ── Officer Safety Alert Banner ── */}
+                {hasOfficerSafety && (
+                  <div
+                    className="flex items-center gap-2 p-2"
+                    style={{
+                      background: 'rgba(239,68,68,0.15)',
+                      border: '2px solid #ef4444',
+                      animation: 'officer-safety-flash 1s ease-in-out infinite',
+                    }}
+                  >
+                    <AlertTriangle style={{ width: 14, height: 14, color: '#ef4444' }} />
+                    <span className="text-[10px] font-black uppercase tracking-wider text-red-400">{'\u26A0'} OFFICER SAFETY ALERT</span>
+                    <div className="flex gap-2 ml-auto">
+                      {selectedCall.officer_safety_caution && (
+                        <span className="text-[8px] font-black text-red-300 uppercase px-1 py-px" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #991b1b' }}>CAUTION</span>
+                      )}
+                      {selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim()) && (
+                        <span className="text-[8px] font-black text-red-300 uppercase px-1 py-px" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #991b1b' }}>WEAPONS: {selectedCall.weapons_involved}</span>
+                      )}
+                      {selectedCall.domestic_violence && (
+                        <span className="text-[8px] font-black text-orange-300 uppercase px-1 py-px" style={{ background: 'rgba(245,158,11,0.3)', border: '1px solid #92400e' }}>DOMESTIC VIOLENCE</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* ── LOCATION section ── */}
                 <div>
-                  <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1" style={{ letterSpacing: '0.1em' }}>Location</div>
+                  <div className="text-[9px] uppercase font-bold tracking-wider mb-1 flex items-center gap-1" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>
+                    <MapPin style={{ width: 9, height: 9 }} /> Location
+                  </div>
                   <div className="text-[11px] text-white flex items-center gap-1.5">
                     <MapPin style={{ width: 11, height: 11, color: '#22c55e' }} />
                     {selectedCall.location || 'No address'}
@@ -881,18 +1260,67 @@ export default function MdtPage() {
                   )}
                 </div>
 
-                {/* Description */}
+                {/* ── DESCRIPTION section ── */}
                 {selectedCall.description && (
                   <div>
-                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Description</div>
+                    <div className="text-[9px] uppercase font-bold tracking-wider mb-1" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>Description</div>
                     <div className="text-[10px] text-rmpg-200 p-2 bg-surface-sunken border border-rmpg-700">
                       {selectedCall.description}
                     </div>
                   </div>
                 )}
 
-                {/* Hazard flags */}
-                {(selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim())) || selectedCall.domestic_violence || selectedCall.injuries_reported ? (
+                {/* ── CALL TIMELINE section ── */}
+                <div>
+                  <div className="text-[9px] uppercase font-bold tracking-wider mb-1 flex items-center gap-1" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>
+                    <Clock style={{ width: 9, height: 9 }} /> Call Timeline
+                  </div>
+                  <div className="bg-surface-sunken border border-rmpg-700 p-2 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
+                      <span className="text-[9px] text-rmpg-500 font-mono w-20">CREATED</span>
+                      <span className="text-[9px] text-rmpg-200 font-mono">{safeTimeStr(selectedCall.created_at)}</span>
+                    </div>
+                    {selectedCall.dispatched_at && (
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+                        <span className="text-[9px] text-rmpg-500 font-mono w-20">DISPATCHED</span>
+                        <span className="text-[9px] text-rmpg-200 font-mono">{safeTimeStr(selectedCall.dispatched_at)}</span>
+                      </div>
+                    )}
+                    {selectedCall.enroute_at && (
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#888888' }} />
+                        <span className="text-[9px] text-rmpg-500 font-mono w-20">ENROUTE</span>
+                        <span className="text-[9px] text-rmpg-200 font-mono">{safeTimeStr(selectedCall.enroute_at)}</span>
+                      </div>
+                    )}
+                    {selectedCall.onscene_at && (
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#a855f7' }} />
+                        <span className="text-[9px] text-rmpg-500 font-mono w-20">ON SCENE</span>
+                        <span className="text-[9px] text-rmpg-200 font-mono">{safeTimeStr(selectedCall.onscene_at)}</span>
+                      </div>
+                    )}
+                    {selectedCall.cleared_at && (
+                      <div className="flex items-center gap-2">
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: '#666666' }} />
+                        <span className="text-[9px] text-rmpg-500 font-mono w-20">CLEARED</span>
+                        <span className="text-[9px] text-rmpg-200 font-mono">{safeTimeStr(selectedCall.cleared_at)}</span>
+                      </div>
+                    )}
+                    {calcResponseTime(selectedCall) && (
+                      <div className="flex items-center gap-2 pt-1 border-t border-rmpg-700/50 mt-1">
+                        <Navigation style={{ width: 9, height: 9, color: '#d4a017' }} />
+                        <span className="text-[9px] text-[#d4a017] font-bold uppercase">Response Time:</span>
+                        <span className="text-[9px] text-white font-mono font-bold">{calcResponseTime(selectedCall)}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Hazard flags (injuries only when officer safety already shown) ── */}
+                {!hasOfficerSafety && ((selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim())) || selectedCall.domestic_violence || selectedCall.injuries_reported) ? (
                   <div className="flex items-center gap-2 p-2" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #991b1b' }}>
                     <AlertTriangle style={{ width: 12, height: 12, color: '#ef4444' }} />
                     <div className="flex gap-2">
@@ -908,12 +1336,18 @@ export default function MdtPage() {
                     </div>
                   </div>
                 ) : null}
+                {hasOfficerSafety && selectedCall.injuries_reported && (
+                  <div className="flex items-center gap-2 p-2" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #991b1b' }}>
+                    <AlertTriangle style={{ width: 12, height: 12, color: '#ef4444' }} />
+                    <span className="text-[9px] font-bold text-red-300 uppercase">INJURIES REPORTED</span>
+                  </div>
+                )}
 
-                {/* Subject / Vehicle descriptions with NCIC buttons */}
+                {/* ── SUBJECT / VEHICLE section ── */}
                 {selectedCall.subject_description && (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Subject Description</div>
+                      <div className="text-[9px] uppercase font-bold tracking-wider" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>Subject Description</div>
                       <button type="button"
                         onClick={() => { setNcicQuery({ type: 'person', query: selectedCall.subject_description || '' }); setActiveTab('ncic'); }}
                         className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
@@ -928,7 +1362,7 @@ export default function MdtPage() {
                 {selectedCall.vehicle_description && (
                   <div>
                     <div className="flex items-center justify-between mb-1">
-                      <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Vehicle Description</div>
+                      <div className="text-[9px] uppercase font-bold tracking-wider" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>Vehicle Description</div>
                       <button type="button"
                         onClick={() => { setNcicQuery({ type: 'vehicle', query: selectedCall.vehicle_description || '' }); setActiveTab('ncic'); }}
                         className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/50 hover:bg-gray-800/50 transition-colors"
@@ -941,21 +1375,21 @@ export default function MdtPage() {
                   </div>
                 )}
 
-                {/* Caller info */}
+                {/* ── CALLER section ── */}
                 {selectedCall.caller_name && (
                   <div>
-                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Caller</div>
+                    <div className="text-[9px] uppercase font-bold tracking-wider mb-1" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>Caller</div>
                     <div className="text-[10px] text-rmpg-200">
                       {selectedCall.caller_name}
-                      {selectedCall.caller_phone && ` — ${selectedCall.caller_phone}`}
+                      {selectedCall.caller_phone && ` \u2014 ${selectedCall.caller_phone}`}
                     </div>
                   </div>
                 )}
 
-                {/* Assigned units */}
+                {/* ── ASSIGNED UNITS section ── */}
                 {selectedCall.assigned_units && selectedCall.assigned_units.length > 0 && (
                   <div>
-                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Assigned Units</div>
+                    <div className="text-[9px] uppercase font-bold tracking-wider mb-1" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>Assigned Units</div>
                     <div className="flex gap-1 flex-wrap">
                       {selectedCall.assigned_units.map(u => (
                         <span
@@ -977,27 +1411,46 @@ export default function MdtPage() {
                 {/* Premise history */}
                 <PremiseHistory address={selectedCall.location} compact />
 
-                {/* Notes / Timeline */}
-                {selectedCall.notes && selectedCall.notes.length > 0 && (
-                  <div>
-                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider mb-1">Notes</div>
-                    <div className="space-y-1">
-                      {selectedCall.notes.slice(-5).map((note, i) => (
+                {/* ── NOTES section with Add Note ── */}
+                <div>
+                  <div className="text-[9px] uppercase font-bold tracking-wider mb-1" style={{ color: '#d4a017', letterSpacing: '0.1em' }}>Notes</div>
+                  {selectedCall.notes && selectedCall.notes.length > 0 ? (
+                    <div className="space-y-1 mb-2">
+                      {selectedCall.notes.map((note, i) => (
                         <div key={i} className="text-[9px] text-rmpg-300 px-2 py-1 bg-surface-sunken border-l-2 border-l-rmpg-700">
                           <span className="text-rmpg-500">{safeTimeStr(note.timestamp)}</span>
-                          {' — '}
+                          {' \u2014 '}
                           {note.text}
                         </div>
                       ))}
                     </div>
+                  ) : (
+                    <div className="text-[9px] text-rmpg-500 mb-2">No notes yet</div>
+                  )}
+                  <div className="flex items-center gap-1">
+                    <input
+                      type="text"
+                      value={noteText}
+                      onChange={(e) => setNoteText(e.target.value)}
+                      onKeyDown={(e) => e.key === 'Enter' && handleAddNote()}
+                      placeholder="Add note..."
+                      className="flex-1 bg-surface-base border border-rmpg-600 text-white text-[9px] px-2 py-1 font-mono focus:border-green-500 focus:outline-none focus:ring-1 focus:ring-green-500/30 transition-colors"
+                    />
+                    <button type="button"
+                      onClick={handleAddNote}
+                      disabled={!noteText.trim() || addingNote}
+                      className="px-2 py-1 text-[8px] font-bold uppercase bg-green-900/50 text-green-400 border border-green-700/50 hover:bg-green-800/50 disabled:opacity-40 transition-colors"
+                    >
+                      {addingNote ? '...' : 'Add Note'}
+                    </button>
                   </div>
-                )}
+                </div>
 
                 {/* Timer */}
                 <div className="flex items-center gap-2 mt-3 text-[9px] text-rmpg-500">
                   <Clock style={{ width: 10, height: 10 }} />
                   <span>Created: {formatDateTime(selectedCall.created_at)}</span>
-                  <span>• Time in status: {formatTimer(getStatusElapsed(selectedCall))}</span>
+                  <span>{'\u2022'} Time in status: {formatTimer(getStatusElapsed(selectedCall))}</span>
                 </div>
               </div>
             </>
@@ -1008,11 +1461,90 @@ export default function MdtPage() {
                 <p className="text-sm font-medium">Select a call to view details</p>
                 <p className="text-[10px] text-rmpg-600 mt-1">or self-dispatch from the Pending queue</p>
                 <div className="text-[8px] text-rmpg-600 mt-3 font-mono">MDT v5.3 ONLINE</div>
+                <div className="text-[7px] text-rmpg-700 mt-2 font-mono">
+                  F5=Enroute  F6=OnScene  F7=Clear  F8=NCIC  Esc=Close
+                </div>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* ── STATUS BAR FOOTER ── */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-1 bg-surface-sunken border-t border-rmpg-700" style={{ minHeight: 26 }}>
+        {/* Clock */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-mono font-bold text-white tracking-wider">{clockStr}</span>
+        </div>
+
+        {/* GPS status */}
+        <div className="flex items-center gap-1.5">
+          {gps.latitude ? (
+            <>
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ background: '#22c55e', boxShadow: '0 0 4px #22c55e' }}
+              />
+              <span className="text-[8px] font-mono text-green-400">
+                {gps.latitude.toFixed(5)}, {gps.longitude?.toFixed(5)}
+              </span>
+            </>
+          ) : (
+            <>
+              <span
+                className="w-2 h-2 rounded-full"
+                style={{ background: '#ef4444', boxShadow: '0 0 4px #ef4444' }}
+              />
+              <span className="text-[8px] font-mono text-red-400">NO GPS</span>
+            </>
+          )}
+        </div>
+
+        {/* Unit + status */}
+        <div className="flex items-center gap-1.5">
+          <Radio style={{ width: 9, height: 9, color: '#888888' }} />
+          <span className="text-[8px] font-mono font-bold text-rmpg-300">
+            {myUnit?.call_sign || '---'}
+          </span>
+          {myUnit && (
+            <span className="text-[8px] font-mono uppercase" style={{ color: UNIT_STATUSES.find(s => s.status === myUnit.status)?.color || '#666' }}>
+              {myUnit.status?.replace('_', ' ')}
+            </span>
+          )}
+        </div>
+
+        {/* Call counts */}
+        <div className="flex items-center gap-2">
+          <span className="text-[8px] font-mono text-rmpg-400">
+            ACT: <span className="text-green-400 font-bold">{activeCallCount}</span>
+          </span>
+          <span className="text-[8px] font-mono text-rmpg-400">
+            PND: <span className="text-amber-400 font-bold">{pendingCallCount}</span>
+          </span>
+        </div>
+
+        {/* Channel indicator */}
+        <div className="flex items-center gap-1.5">
+          <span className="text-[8px] font-mono font-bold text-rmpg-400">CH1 SECURE</span>
+        </div>
+
+        {/* MDT ONLINE indicator */}
+        <div className="flex items-center gap-1.5">
+          <span
+            className="w-2 h-2 rounded-full"
+            style={{ background: '#22c55e', boxShadow: '0 0 6px #22c55e, 0 0 2px #22c55e' }}
+          />
+          <span className="text-[8px] font-mono font-bold text-green-400 uppercase tracking-wider">MDT ONLINE</span>
+        </div>
+      </div>
+
+      {/* ── CSS for officer safety flash animation ── */}
+      <style>{`
+        @keyframes officer-safety-flash {
+          0%, 100% { border-color: #ef4444; background: rgba(239,68,68,0.15); }
+          50% { border-color: #f59e0b; background: rgba(245,158,11,0.12); }
+        }
+      `}</style>
     </div>
   );
 }
