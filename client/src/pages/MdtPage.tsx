@@ -5,7 +5,7 @@
 // field operations. Mirrors the Spillman Flex MDT interface.
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import {
   Monitor, Navigation, Eye, CheckCircle, MapPin, Clock, Send, AlertTriangle,
   MessageSquare, Shield, FileText, Loader2, X, ChevronRight,
@@ -37,6 +37,14 @@ const UNIT_STATUSES = [
   { label: 'BUSY', status: 'busy', color: '#ef4444' },
   { label: 'OFF', status: 'off_duty', color: '#666666' },
 ] as const;
+
+// Checks if weapons_involved has a meaningful (non-empty/non-"none") value
+const hasActiveWeapons = (value: any): boolean =>
+  !!value && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(value).toLowerCase().trim());
+
+// Checks if a call has officer safety concerns
+const checkOfficerSafety = (call: CallForService | null): boolean =>
+  !!call && !!(call.officer_safety_caution || hasActiveWeapons(call.weapons_involved) || call.domestic_violence);
 
 // ── MDT Messages Panel ────────────────────────────────────
 
@@ -562,12 +570,7 @@ export default function MdtPage() {
   // ── Officer Safety Alert — play warning tone on first view ──
   useEffect(() => {
     if (!selectedCall) return;
-    const hasSafety = !!(
-      selectedCall.officer_safety_caution ||
-      (selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim())) ||
-      selectedCall.domestic_violence
-    );
-    if (hasSafety && lastWarnedCallRef.current !== selectedCall.id) {
+    if (checkOfficerSafety(selectedCall) && lastWarnedCallRef.current !== selectedCall.id) {
       lastWarnedCallRef.current = selectedCall.id;
       playTone('warning');
     }
@@ -665,19 +668,18 @@ export default function MdtPage() {
   const clockStr = now.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
 
   // ── Officer Safety Check ──
-  const hasOfficerSafety = selectedCall ? !!(
-    selectedCall.officer_safety_caution ||
-    (selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim())) ||
-    selectedCall.domestic_violence
-  ) : false;
+  const hasOfficerSafety = checkOfficerSafety(selectedCall);
 
   // ── Filtered codes ──
-  const filteredCodes = codeFilter
-    ? codes.filter(c =>
-        c.code.toLowerCase().includes(codeFilter.toLowerCase()) ||
-        c.description.toLowerCase().includes(codeFilter.toLowerCase())
-      )
-    : codes;
+  const filteredCodes = useMemo(() =>
+    codeFilter
+      ? codes.filter(c =>
+          c.code.toLowerCase().includes(codeFilter.toLowerCase()) ||
+          c.description.toLowerCase().includes(codeFilter.toLowerCase())
+        )
+      : codes,
+    [codes, codeFilter]
+  );
 
   // ── Active / pending counts for status bar ──
   const activeCallCount = myCalls.length;
@@ -1236,7 +1238,7 @@ export default function MdtPage() {
                       {selectedCall.officer_safety_caution && (
                         <span className="text-[8px] font-black text-red-300 uppercase px-1 py-px" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #991b1b' }}>CAUTION</span>
                       )}
-                      {selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim()) && (
+                      {hasActiveWeapons(selectedCall.weapons_involved) && (
                         <span className="text-[8px] font-black text-red-300 uppercase px-1 py-px" style={{ background: 'rgba(239,68,68,0.3)', border: '1px solid #991b1b' }}>WEAPONS: {selectedCall.weapons_involved}</span>
                       )}
                       {selectedCall.domestic_violence && (
@@ -1320,11 +1322,11 @@ export default function MdtPage() {
                 </div>
 
                 {/* ── Hazard flags (injuries only when officer safety already shown) ── */}
-                {!hasOfficerSafety && ((selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim())) || selectedCall.domestic_violence || selectedCall.injuries_reported) ? (
+                {!hasOfficerSafety && (hasActiveWeapons(selectedCall.weapons_involved) || selectedCall.domestic_violence || selectedCall.injuries_reported) ? (
                   <div className="flex items-center gap-2 p-2" style={{ background: 'rgba(239,68,68,0.1)', border: '1px solid #991b1b' }}>
                     <AlertTriangle style={{ width: 12, height: 12, color: '#ef4444' }} />
                     <div className="flex gap-2">
-                      {selectedCall.weapons_involved && !['none', 'no', 'n/a', 'false', '0', ''].includes(String(selectedCall.weapons_involved).toLowerCase().trim()) && (
+                      {hasActiveWeapons(selectedCall.weapons_involved) && (
                         <span className="text-[9px] font-bold text-red-400 uppercase">WEAPONS</span>
                       )}
                       {selectedCall.domestic_violence && (
