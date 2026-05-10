@@ -35,7 +35,7 @@ const stackRows: Row[] = [
 ];
 
 const mapRows: Row[] = [
-  { dimension: 'Tile source', openises: 'Leaflet + OpenStreetMap', flex: 'Google Maps JS API + offline CartoDB dark_matter fallback', verdict: 'flex' },
+  { dimension: 'Tile source', openises: 'Leaflet + OpenStreetMap', flex: 'Mapbox GL JS (primary) + Google Maps JS API fallback + offline CartoDB dark_matter', verdict: 'flex' },
   { dimension: 'Offline tiles', openises: 'None', flex: 'Service-worker pre-cached tiles for Utah Z7–15', verdict: 'flex' },
   { dimension: 'Geo hierarchy', openises: 'Flat locations', flex: '4-tier Miller drilldown: Areas → Sectors → Zones → Beats (6/29/288/719)', verdict: 'flex' },
   { dimension: 'Polygon overlays', openises: 'Custom markups', flex: 'beat.geojson (719 features), county / municipality / highway GeoJSON', verdict: 'flex' },
