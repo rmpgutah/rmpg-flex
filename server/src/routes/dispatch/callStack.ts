@@ -68,21 +68,25 @@ router.put('/call-stack/reorder', requireRole('admin', 'manager', 'dispatcher', 
   res.json({ success: true });
 });
 
+// DELETE /api/dispatch/call-stack/:unitId/all — Clear entire unit stack
+router.delete('/call-stack/:unitId/all', requireRole('admin', 'manager', 'dispatcher', 'supervisor'), (req: Request, res: Response) => {
+  const db = getDb();
+  const unitId = paramStr(req.params.unitId);
+  db.prepare('DELETE FROM call_stack WHERE unit_id = ?').run(unitId);
+  broadcastDispatchUpdate({ action: 'call_stack_updated', data: { unit_id: unitId } });
+  res.json({ success: true });
+});
+
 // DELETE /api/dispatch/call-stack/:unitId/:callId — Remove a call from stack
 router.delete('/call-stack/:unitId/:callId', requireRole('admin', 'manager', 'dispatcher', 'supervisor'), (req: Request, res: Response) => {
   const db = getDb();
   const unitId = paramStr(req.params.unitId);
   const callId = parseInt(paramStr(req.params.callId), 10);
-  db.prepare('DELETE FROM call_stack WHERE unit_id = ? AND call_id = ?').run(unitId, callId);
-  broadcastDispatchUpdate({ action: 'call_stack_updated', data: { unit_id: unitId } });
-  res.json({ success: true });
-});
-
-// DELETE /api/dispatch/call-stack/:unitId — Clear entire unit stack
-router.delete('/call-stack/:unitId', requireRole('admin', 'manager', 'dispatcher', 'supervisor'), (req: Request, res: Response) => {
-  const db = getDb();
-  const unitId = paramStr(req.params.unitId);
-  db.prepare('DELETE FROM call_stack WHERE unit_id = ?').run(unitId);
+  const result = db.prepare('DELETE FROM call_stack WHERE unit_id = ? AND call_id = ?').run(unitId, callId);
+  if (result.changes === 0) {
+    res.status(404).json({ error: 'Call not found in unit stack' });
+    return;
+  }
   broadcastDispatchUpdate({ action: 'call_stack_updated', data: { unit_id: unitId } });
   res.json({ success: true });
 });
