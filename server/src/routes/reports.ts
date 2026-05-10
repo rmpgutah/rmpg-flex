@@ -5,6 +5,7 @@ import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
 import { localNow, localToday } from '../utils/timeUtils';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -2586,6 +2587,93 @@ router.get('/officer-feed/:officerId', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Officer feed error:', error);
     res.status(500).json({ error: 'Failed to get officer feed', code: 'OFFICER_FEED_ERROR' });
+  }
+});
+
+// ── Dashboard Weekly Trend ──────────────────────────────────────────
+router.get('/dashboard-weekly-trend', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const dailyTrend = db.prepare(`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-7 days')
+      GROUP BY DATE(created_at) ORDER BY date ASC
+    `).all();
+
+    const yesterday = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now', '-1 day')
+    `).get() as any;
+
+    const lastWeek = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now', '-7 days')
+    `).get() as any;
+
+    const today = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now')
+    `).get() as any;
+
+    res.json({
+      dailyTrend,
+      today: today.count,
+      yesterday: yesterday.count,
+      lastWeekSameDay: lastWeek.count,
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Dashboard weekly trend error');
+    res.status(500).json({ error: 'Failed to get weekly trend', code: 'DASHBOARD_WEEKLY_TREND_ERROR' });
+  }
+});
+
+// ── Dashboard Calls by Type ─────────────────────────────────────────
+router.get('/dashboard-calls-by-type', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const byType = db.prepare(`
+      SELECT COALESCE(incident_type, call_type, 'Unknown') as type, COUNT(*) as count
+      FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now')
+      GROUP BY type ORDER BY count DESC LIMIT 10
+    `).all();
+
+    res.json(byType);
+  } catch (error: any) {
+    logger.error({ err: error }, 'Dashboard calls by type error');
+    res.status(500).json({ error: 'Failed to get calls by type', code: 'DASHBOARD_CALLS_BY_TYPE_ERROR' });
+  }
+});
+
+// ── Dashboard Unit Status ───────────────────────────────────────────
+router.get('/dashboard-unit-status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM units
+      GROUP BY status ORDER BY count DESC
+    `).all();
+
+    const activeUnits = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.current_call_id,
+        us.full_name as officer_name, us.badge_number,
+        c.call_number, c.incident_type as call_type, c.location as call_location
+      FROM units u
+      LEFT JOIN users us ON u.officer_id = us.id
+      LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+      WHERE u.status != 'off_duty'
+      ORDER BY u.status, u.call_sign
+      LIMIT 50
+    `).all();
+
+    res.json({ statusCounts, activeUnits });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Dashboard unit status error');
+    res.status(500).json({ error: 'Failed to get unit status', code: 'DASHBOARD_UNIT_STATUS_ERROR' });
   }
 });
 

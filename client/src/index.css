@@ -365,24 +365,38 @@ html:not(.theme-light) [class*="to-rmpg-"] {
   --tw-gradient-to: #111111 var(--tw-gradient-to-position) !important;
 }
 
-[class*="#303030"],
-[class*="#1c1c1c"],
-[class*="#1a1a1a"],
-[class*="#202020"],
-[class*="#2b2b2b"],
-[class*="#2b2b2b"],
-[class*="#0f0f0f"],
-[class*="#181818"],
-[class*="#292929"],
-[class*="#2d2d2d"],
-[class*="#0b0b0b"],
-[class*="#0f0f0f"],
-[class*="#121212"],
-[class*="#272727"],
-[class*="#303030"],
-[class*="#3b3b3b"],
-[class*="#373737"],
-[class*="#3d3d3d"] {
+html.theme-dark [class*="#303030"],
+html.theme-dark [class*="#1c1c1c"],
+html.theme-dark [class*="#1a1a1a"],
+html.theme-dark [class*="#202020"],
+html.theme-dark [class*="#2b2b2b"],
+html.theme-dark [class*="#0f0f0f"],
+html.theme-dark [class*="#181818"],
+html.theme-dark [class*="#292929"],
+html.theme-dark [class*="#2d2d2d"],
+html.theme-dark [class*="#0b0b0b"],
+html.theme-dark [class*="#0f0f0f"],
+html.theme-dark [class*="#121212"],
+html.theme-dark [class*="#272727"],
+html.theme-dark [class*="#3b3b3b"],
+html.theme-dark [class*="#373737"],
+html.theme-dark [class*="#3d3d3d"],
+html:not(.theme-light) [class*="#303030"],
+html:not(.theme-light) [class*="#1c1c1c"],
+html:not(.theme-light) [class*="#1a1a1a"],
+html:not(.theme-light) [class*="#202020"],
+html:not(.theme-light) [class*="#2b2b2b"],
+html:not(.theme-light) [class*="#0f0f0f"],
+html:not(.theme-light) [class*="#181818"],
+html:not(.theme-light) [class*="#292929"],
+html:not(.theme-light) [class*="#2d2d2d"],
+html:not(.theme-light) [class*="#0b0b0b"],
+html:not(.theme-light) [class*="#0f0f0f"],
+html:not(.theme-light) [class*="#121212"],
+html:not(.theme-light) [class*="#272727"],
+html:not(.theme-light) [class*="#3b3b3b"],
+html:not(.theme-light) [class*="#373737"],
+html:not(.theme-light) [class*="#3d3d3d"] {
   background-color: #0b0b0b !important;
   border-color: #2a2a2a !important;
   color: #d0d0d0 !important;
@@ -447,30 +461,54 @@ html:not(.theme-light) [style*="rgb(59 130 246"] {
    Covers the full Tailwind blue/sky/cyan/indigo palettes plus common
    custom blues. Updates background, border-color, color, outline,
    box-shadow, fill, and stroke so the blue never reaches the pixel.
+   Scoped to dark mode only — light (navy) mode uses blue-hued colors.
    ═══════════════════════════════════════════════════════════════════ */
-[style*="#3b82f6"], [style*="#60a5fa"], [style*="#93c5fd"],
-[style*="#bfdbfe"], [style*="#dbeafe"], [style*="#eff6ff"],
-[style*="#2563eb"], [style*="#1d4ed8"], [style*="#1e40af"],
-[style*="#1e3a8a"], [style*="#262626"],
-[style*="#38bdf8"], [style*="#0ea5e9"], [style*="#0284c7"],
-[style*="#0369a1"], [style*="#075985"], [style*="#3c3c3c"],
-[style*="#7dd3fc"], [style*="#bae6fd"], [style*="#e0f2fe"], [style*="#f0f9ff"],
-[style*="#06b6d4"], [style*="#22d3ee"], [style*="#67e8f9"],
-[style*="#a5f3fc"], [style*="#cffafe"],
-[style*="#0891b2"], [style*="#0e7490"], [style*="#4b4b4b"], [style*="#404040"],
-[style*="#6366f1"], [style*="#818cf8"], [style*="#4f46e5"],
-[style*="#4338ca"], [style*="#3730a3"], [style*="#312e81"],
-[style*="#1a6abe"], [style*="#2068b0"], [style*="#144a84"],
-[style*="#1e6ab8"], [style*="#2a6ab0"], [style*="#2a7acf"],
-[style*="rgba(59,130,246"], [style*="rgba(59, 130, 246"],
-[style*="rgba(96,165,250"], [style*="rgba(96, 165, 250"],
-[style*="rgba(147,197,253"], [style*="rgba(147, 197, 253"],
-[style*="rgba(29,78,216"],   [style*="rgba(29, 78, 216"],
-[style*="rgba(37,99,235"],   [style*="rgba(37, 99, 235"],
-[style*="rgba(56,189,248"],  [style*="rgba(56, 189, 248"],
-[style*="rgba(14,165,233"],  [style*="rgba(14, 165, 233"],
-[style*="rgba(6,182,212"],   [style*="rgba(6, 182, 212"],
-[style*="rgba(34,211,238"],  [style*="rgba(34, 211, 238"] {
+html.theme-dark [style*="#3b82f6"], html.theme-dark [style*="#60a5fa"], html.theme-dark [style*="#93c5fd"],
+html.theme-dark [style*="#bfdbfe"], html.theme-dark [style*="#dbeafe"], html.theme-dark [style*="#eff6ff"],
+html.theme-dark [style*="#2563eb"], html.theme-dark [style*="#1d4ed8"], html.theme-dark [style*="#1e40af"],
+html.theme-dark [style*="#1e3a8a"], html.theme-dark [style*="#262626"],
+html.theme-dark [style*="#38bdf8"], html.theme-dark [style*="#0ea5e9"], html.theme-dark [style*="#0284c7"],
+html.theme-dark [style*="#0369a1"], html.theme-dark [style*="#075985"], html.theme-dark [style*="#3c3c3c"],
+html.theme-dark [style*="#7dd3fc"], html.theme-dark [style*="#bae6fd"], html.theme-dark [style*="#e0f2fe"], html.theme-dark [style*="#f0f9ff"],
+html.theme-dark [style*="#06b6d4"], html.theme-dark [style*="#22d3ee"], html.theme-dark [style*="#67e8f9"],
+html.theme-dark [style*="#a5f3fc"], html.theme-dark [style*="#cffafe"],
+html.theme-dark [style*="#0891b2"], html.theme-dark [style*="#0e7490"], html.theme-dark [style*="#4b4b4b"], html.theme-dark [style*="#404040"],
+html.theme-dark [style*="#6366f1"], html.theme-dark [style*="#818cf8"], html.theme-dark [style*="#4f46e5"],
+html.theme-dark [style*="#4338ca"], html.theme-dark [style*="#3730a3"], html.theme-dark [style*="#312e81"],
+html.theme-dark [style*="#1a6abe"], html.theme-dark [style*="#2068b0"], html.theme-dark [style*="#144a84"],
+html.theme-dark [style*="#1e6ab8"], html.theme-dark [style*="#2a6ab0"], html.theme-dark [style*="#2a7acf"],
+html.theme-dark [style*="rgba(59,130,246"], html.theme-dark [style*="rgba(59, 130, 246"],
+html.theme-dark [style*="rgba(96,165,250"], html.theme-dark [style*="rgba(96, 165, 250"],
+html.theme-dark [style*="rgba(147,197,253"], html.theme-dark [style*="rgba(147, 197, 253"],
+html.theme-dark [style*="rgba(29,78,216"],   html.theme-dark [style*="rgba(29, 78, 216"],
+html.theme-dark [style*="rgba(37,99,235"],   html.theme-dark [style*="rgba(37, 99, 235"],
+html.theme-dark [style*="rgba(56,189,248"],  html.theme-dark [style*="rgba(56, 189, 248"],
+html.theme-dark [style*="rgba(14,165,233"],  html.theme-dark [style*="rgba(14, 165, 233"],
+html.theme-dark [style*="rgba(6,182,212"],   html.theme-dark [style*="rgba(6, 182, 212"],
+html.theme-dark [style*="rgba(34,211,238"],  html.theme-dark [style*="rgba(34, 211, 238"],
+html:not(.theme-light) [style*="#3b82f6"], html:not(.theme-light) [style*="#60a5fa"], html:not(.theme-light) [style*="#93c5fd"],
+html:not(.theme-light) [style*="#bfdbfe"], html:not(.theme-light) [style*="#dbeafe"], html:not(.theme-light) [style*="#eff6ff"],
+html:not(.theme-light) [style*="#2563eb"], html:not(.theme-light) [style*="#1d4ed8"], html:not(.theme-light) [style*="#1e40af"],
+html:not(.theme-light) [style*="#1e3a8a"], html:not(.theme-light) [style*="#262626"],
+html:not(.theme-light) [style*="#38bdf8"], html:not(.theme-light) [style*="#0ea5e9"], html:not(.theme-light) [style*="#0284c7"],
+html:not(.theme-light) [style*="#0369a1"], html:not(.theme-light) [style*="#075985"], html:not(.theme-light) [style*="#3c3c3c"],
+html:not(.theme-light) [style*="#7dd3fc"], html:not(.theme-light) [style*="#bae6fd"], html:not(.theme-light) [style*="#e0f2fe"], html:not(.theme-light) [style*="#f0f9ff"],
+html:not(.theme-light) [style*="#06b6d4"], html:not(.theme-light) [style*="#22d3ee"], html:not(.theme-light) [style*="#67e8f9"],
+html:not(.theme-light) [style*="#a5f3fc"], html:not(.theme-light) [style*="#cffafe"],
+html:not(.theme-light) [style*="#0891b2"], html:not(.theme-light) [style*="#0e7490"], html:not(.theme-light) [style*="#4b4b4b"], html:not(.theme-light) [style*="#404040"],
+html:not(.theme-light) [style*="#6366f1"], html:not(.theme-light) [style*="#818cf8"], html:not(.theme-light) [style*="#4f46e5"],
+html:not(.theme-light) [style*="#4338ca"], html:not(.theme-light) [style*="#3730a3"], html:not(.theme-light) [style*="#312e81"],
+html:not(.theme-light) [style*="#1a6abe"], html:not(.theme-light) [style*="#2068b0"], html:not(.theme-light) [style*="#144a84"],
+html:not(.theme-light) [style*="#1e6ab8"], html:not(.theme-light) [style*="#2a6ab0"], html:not(.theme-light) [style*="#2a7acf"],
+html:not(.theme-light) [style*="rgba(59,130,246"], html:not(.theme-light) [style*="rgba(59, 130, 246"],
+html:not(.theme-light) [style*="rgba(96,165,250"], html:not(.theme-light) [style*="rgba(96, 165, 250"],
+html:not(.theme-light) [style*="rgba(147,197,253"], html:not(.theme-light) [style*="rgba(147, 197, 253"],
+html:not(.theme-light) [style*="rgba(29,78,216"],   html:not(.theme-light) [style*="rgba(29, 78, 216"],
+html:not(.theme-light) [style*="rgba(37,99,235"],   html:not(.theme-light) [style*="rgba(37, 99, 235"],
+html:not(.theme-light) [style*="rgba(56,189,248"],  html:not(.theme-light) [style*="rgba(56, 189, 248"],
+html:not(.theme-light) [style*="rgba(14,165,233"],  html:not(.theme-light) [style*="rgba(14, 165, 233"],
+html:not(.theme-light) [style*="rgba(6,182,212"],   html:not(.theme-light) [style*="rgba(6, 182, 212"],
+html:not(.theme-light) [style*="rgba(34,211,238"],  html:not(.theme-light) [style*="rgba(34, 211, 238"] {
   background: #0b0b0b !important;
   border-color: #3a3a3a !important;
   color: #c8c8c8 !important;
@@ -3767,49 +3805,54 @@ html.font-large { font-size: 19px; }
    pure-black default).
    ============================================================ */
 html.theme-light {
-  --surface-base: #0d2a4d;
-  --surface-raised: #153a6a;
-  --surface-sunken: #081e3d;
-  --surface-overlay: #061630;
-  --surface-deep: #041022;
+  /* Deep navy royal palette — mirrors dark mode's near-zero lightness
+     but with a saturated navy hue. Every surface, border, and panel
+     is a shade of #00172e-family navy. */
+  --surface-base: #081828;
+  --surface-raised: #0d2440;
+  --surface-sunken: #051420;
+  --surface-overlay: #061525;
+  --surface-deep: #020a14;
   /* Light-mode RGB channels for Tailwind's <alpha-value> — same colors as
      the hex values above, different encoding. */
-  --surface-base-rgb: 13 42 77;
-  --surface-raised-rgb: 21 58 106;
-  --surface-sunken-rgb: 8 30 61;
-  --surface-overlay-rgb: 6 22 48;
-  --surface-deep-rgb: 4 16 34;
-  --border-default: #2a5a9e;
-  --border-subtle: #234d87;
-  --border-strong: #3a75c2;
-  --border-panel: #2a5a9e;
+  --surface-base-rgb: 8 24 40;
+  --surface-raised-rgb: 13 36 64;
+  --surface-sunken-rgb: 5 20 32;
+  --surface-overlay-rgb: 6 21 37;
+  --surface-deep-rgb: 2 10 20;
+  --border-default: #183560;
+  --border-subtle: #122a4a;
+  --border-strong: #204578;
+  --border-panel: #153058;
   --text-primary: #e5e7eb;
-  --text-secondary: #c4d3e6;
-  --text-muted: #9bb4d0;
-  --brand-blue: #2a75c2;
-  --toolbar-gradient-start: #2a75c2;
-  --toolbar-gradient-end: #3a8fd9;
-  --grid-header-bg: #102f55;
-  --grid-row-alt: #123560;
-  --surface-panel: #102f55;
-  --surface-panel-alt: #0d2644;
-  --surface-hover: #163d70;
-  --info-text: #c4d3e6;
-  --info-bg: rgba(42, 117, 194, 0.18);
-  --info-border: rgba(58, 117, 194, 0.36);
-  --desktop-shell-start: #0d2a4d;
-  --desktop-shell-end: #153a6a;
-  --desktop-shell-raised-start: #0d2a4d;
-  --desktop-shell-raised-end: #153a6a;
-  --desktop-shell-border: #2a5a9e;
-  --desktop-shell-accent: #3a75c2;
-  --desktop-shell-accent-shadow: rgba(42, 90, 158, 0.28);
-  --desktop-shell-subtle-text: #9bb4d0;
-  --desktop-shell-icon: #9bb4d0;
-  --bevel-highlight: #4a7bbf;
-  --titlebar-gradient: linear-gradient(180deg, #2a5a9e 0%, #1e4a8a 50%, #153a6a 100%);
-  color-scheme: dark;  /* still white-on-dark; blue is just hue-shifted */
-  background-color: #0d2a4d;
+  --text-secondary: #b8c8dc;
+  --text-muted: #7a94b4;
+  --brand-blue: #1a3a6a;
+  --brand-gold: #d4a017;
+  --toolbar-gradient-start: #0d2440;
+  --toolbar-gradient-end: #122a4a;
+  --grid-header-bg: #061525;
+  --grid-row-alt: #071a30;
+  --field-label-color: #d4a017;
+  --surface-panel: #0a1e38;
+  --surface-panel-alt: #071a30;
+  --surface-hover: #122e50;
+  --info-text: #b8c8dc;
+  --info-bg: rgba(24, 53, 96, 0.18);
+  --info-border: rgba(32, 69, 120, 0.36);
+  --desktop-shell-start: #081828;
+  --desktop-shell-end: #0d2440;
+  --desktop-shell-raised-start: #081828;
+  --desktop-shell-raised-end: #0d2440;
+  --desktop-shell-border: #183560;
+  --desktop-shell-accent: #204578;
+  --desktop-shell-accent-shadow: rgba(24, 53, 96, 0.28);
+  --desktop-shell-subtle-text: #7a94b4;
+  --desktop-shell-icon: #7a94b4;
+  --bevel-highlight: #264a80;
+  --titlebar-gradient: linear-gradient(180deg, #183560 0%, #0d2440 50%, #0a1e38 100%);
+  color-scheme: dark;  /* still white-on-dark; navy is just hue-shifted */
+  background-color: #081828;
 }
 
 html.theme-dark,
@@ -3836,6 +3879,117 @@ html.theme-light .border-rmpg-700 { border-color: var(--border-default) !importa
 html.theme-light .border-rmpg-800 { border-color: var(--border-subtle) !important; }
 html.theme-light .panel-beveled { background: var(--surface-raised) !important; border-color: var(--border-default) !important; }
 html.theme-light .panel-surface { background: var(--surface-raised) !important; }
+
+/* ── Light-mode overrides for hardcoded dark-mode hex colors ──────
+   Pages use hardcoded bg-[#0a0a0a], bg-[#141414], bg-[#000000], etc.
+   In navy light mode, remap those blacks/grays to navy equivalents.
+   ──────────────────────────────────────────────────────────────── */
+/* Background colors */
+html.theme-light [class*="bg-\\[\\#000000\\]"],
+html.theme-light [class*="bg-\\[\\#0a0a0a\\]"],
+html.theme-light [class*="bg-\\[\\#050505\\]"],
+html.theme-light [class*="bg-\\[\\#030303\\]"],
+html.theme-light [class*="bg-black"] {
+  background-color: var(--surface-deep) !important;
+}
+html.theme-light [class*="bg-\\[\\#0b0b0b\\]"],
+html.theme-light [class*="bg-\\[\\#0d0d0d\\]"],
+html.theme-light [class*="bg-\\[\\#0f0f0f\\]"],
+html.theme-light [class*="bg-\\[\\#080808\\]"],
+html.theme-light [class*="bg-\\[\\#0c0c0c\\]"],
+html.theme-light [class*="bg-\\[\\#101010\\]"] {
+  background-color: var(--surface-sunken) !important;
+}
+html.theme-light [class*="bg-\\[\\#111111\\]"],
+html.theme-light [class*="bg-\\[\\#121212\\]"],
+html.theme-light [class*="bg-\\[\\#141414\\]"],
+html.theme-light [class*="bg-\\[\\#161616\\]"],
+html.theme-light [class*="bg-\\[\\#181818\\]"] {
+  background-color: var(--surface-base) !important;
+}
+html.theme-light [class*="bg-\\[\\#1a1a1a\\]"],
+html.theme-light [class*="bg-\\[\\#1c1c1c\\]"],
+html.theme-light [class*="bg-\\[\\#1f1f1f\\]"],
+html.theme-light [class*="bg-\\[\\#202020\\]"],
+html.theme-light [class*="bg-\\[\\#222222\\]"],
+html.theme-light [class*="bg-\\[\\#242424\\]"] {
+  background-color: var(--surface-raised) !important;
+}
+html.theme-light [class*="bg-\\[\\#272727\\]"],
+html.theme-light [class*="bg-\\[\\#292929\\]"],
+html.theme-light [class*="bg-\\[\\#2b2b2b\\]"],
+html.theme-light [class*="bg-\\[\\#2d2d2d\\]"],
+html.theme-light [class*="bg-\\[\\#2e2e2e\\]"],
+html.theme-light [class*="bg-\\[\\#303030\\]"],
+html.theme-light [class*="bg-\\[\\#333333\\]"],
+html.theme-light [class*="bg-\\[\\#353535\\]"],
+html.theme-light [class*="bg-\\[\\#373737\\]"],
+html.theme-light [class*="bg-\\[\\#3a3a3a\\]"],
+html.theme-light [class*="bg-\\[\\#3b3b3b\\]"],
+html.theme-light [class*="bg-\\[\\#3d3d3d\\]"] {
+  background-color: var(--surface-hover) !important;
+}
+/* Hover state navy mapping */
+html.theme-light [class*="hover\\:bg-\\[\\#1a1a1a\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#202020\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#2b2b2b\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#0f0f0f\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#111111\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#141414\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#161616\\]"]:hover {
+  background-color: var(--surface-hover) !important;
+}
+/* Border colors */
+html.theme-light [class*="border-\\[\\#222222\\]"],
+html.theme-light [class*="border-\\[\\#1a1a1a\\]"],
+html.theme-light [class*="border-\\[\\#2e2e2e\\]"] {
+  border-color: var(--border-default) !important;
+}
+html.theme-light [class*="border-\\[\\#303030\\]"],
+html.theme-light [class*="border-\\[\\#3a3a3a\\]"],
+html.theme-light [class*="border-\\[\\#3b3b3b\\]"],
+html.theme-light [class*="border-\\[\\#373737\\]"],
+html.theme-light [class*="border-\\[\\#2b2b2b\\]"],
+html.theme-light [class*="border-\\[\\#292929\\]"],
+html.theme-light [class*="border-\\[\\#3d3d3d\\]"] {
+  border-color: var(--border-strong) !important;
+}
+/* Text color adjustments */
+html.theme-light [class*="text-gray-"],
+html.theme-light [class*="text-neutral-"],
+html.theme-light [class*="text-zinc-"],
+html.theme-light [class*="text-stone-"] {
+  color: var(--text-secondary) !important;
+}
+/* Inline-style dark backgrounds → navy in light mode */
+html.theme-light [style*="background-color: #000"],
+html.theme-light [style*="background-color:#000"],
+html.theme-light [style*="background: #000"],
+html.theme-light [style*="background:#000"],
+html.theme-light [style*="background-color: #0a0a0a"],
+html.theme-light [style*="background-color:#0a0a0a"],
+html.theme-light [style*="background: #0a0a0a"],
+html.theme-light [style*="background:#0a0a0a"] {
+  background-color: var(--surface-deep) !important;
+  background: var(--surface-deep) !important;
+}
+html.theme-light [style*="background-color: #141414"],
+html.theme-light [style*="background-color:#141414"],
+html.theme-light [style*="background-color: #111111"],
+html.theme-light [style*="background-color:#111111"] {
+  background-color: var(--surface-base) !important;
+}
+/* Light-mode gradient overrides for dark-mode gradients */
+html.theme-light [style*="linear-gradient(180deg, #202020"],
+html.theme-light [style*="linear-gradient(180deg, #303030"],
+html.theme-light [style*="linear-gradient(180deg, #1a1a1a"],
+html.theme-light [style*="radial-gradient(circle, #303030"],
+html.theme-light [style*="radial-gradient(circle, #3b3b3b"],
+html.theme-light [style*="linear-gradient(180deg, #0b0b0b"],
+html.theme-light [style*="linear-gradient(180deg, #090909"] {
+  background: var(--titlebar-gradient) !important;
+  border-color: var(--border-default) !important;
+}
 
 /* ============================================================
    Feature 39: Enhanced Print Stylesheet for Detail Views
@@ -4184,7 +4338,7 @@ html:not(.theme-light) :focus-visible {
   outline-offset: 2px;
 }
 html.theme-light :focus-visible {
-  outline: 2px solid #94a3b8;
+  outline: 2px solid #264a80;
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) {

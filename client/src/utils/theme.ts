@@ -8,12 +8,12 @@ export const THEME_STORAGE_KEY = 'rmpg_theme_preference';
 // --surface-base values exactly.
 const THEME_CHROME_COLORS: Record<ThemePreference, string> = {
   dark: '#000000',
-  light: '#0d2a4d',
+  light: '#081828',
 };
 
 const THEME_BODY_BACKGROUNDS: Record<ThemePreference, string> = {
   dark: '#0a0a0a',
-  light: '#0d2a4d',
+  light: '#081828',
 };
 
 // Both themes render as dark-on-dark (white text on a dark surface, just with
