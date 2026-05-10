@@ -1885,7 +1885,8 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'dea_api_key', 'usms_api_key', 'atf_api_key', 'interpol_api_key',
   'nsopw_api_key', 'ofac_api_key',
   // Free / Open Source
-  'openweathermap_api_key', 'mapbox_api_key', 'nominatim_api_key', 'opencage_api_key',
+  'openweathermap_api_key', 'mapbox_api_key', 'mapbox_username', 'mapbox_password',
+  'mapbox_style_url', 'nominatim_api_key', 'opencage_api_key',
   'ipinfo_api_key', 'virustotal_api_key', 'abuseipdb_api_key', 'shodan_api_key',
   'have_i_been_pwned_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',
   'abstract_api_key', 'whoisxml_api_key', 'urlscan_api_key', 'emailrep_api_key',

@@ -188,9 +188,14 @@ router.get('/mapbox/client-key', (_req: Request, res: Response) => {
 
     const accessToken = envToken || storedToken || '';
 
+    // Also return the custom style URL if configured (allows direct
+    // Mapbox account integration via account-specific style links)
+    const styleUrl = getIntegrationConfigValue(db, 'mapbox_style_url') || undefined;
+
     res.json({
       configured: accessToken.length > 0,
       accessToken: accessToken || undefined,
+      styleUrl,
       source: envToken ? 'env' : storedToken ? 'system_config' : 'missing',
     });
   } catch (error: any) {

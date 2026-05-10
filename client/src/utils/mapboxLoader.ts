@@ -30,6 +30,9 @@ export interface MapboxMapConfig {
   terrainExaggeration?: number;
   /** Use globe projection at low zoom levels (default: true for v3) */
   globe?: boolean;
+  /** Custom style URL — overrides the style preset if provided.
+   *  Accepts mapbox://styles/... or https://api.mapbox.com/styles/v1/... */
+  customStyleUrl?: string;
 }
 
 // ── Mapbox Style URLs ─────────────────────────────────────
@@ -100,7 +103,7 @@ export function createMapboxMap(config: MapboxMapConfig): mapboxgl.Map {
   mapboxgl.accessToken = config.accessToken;
 
   const styleId = config.style || 'dark';
-  const styleUrl = MAPBOX_STYLES[styleId] || MAPBOX_STYLES.dark;
+  const styleUrl = config.customStyleUrl || MAPBOX_STYLES[styleId] || MAPBOX_STYLES.dark;
   const useGlobe = config.globe !== false; // default: true
 
   const map = new mapboxgl.Map({
