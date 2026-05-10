@@ -48,9 +48,8 @@ export async function getMapboxToken(forceRefresh = false): Promise<string | nul
     .then((response) => {
       const token = typeof response?.accessToken === 'string' ? response.accessToken.trim() : '';
       cachedMapboxToken = token || null;
-      cachedMapboxStyleUrl = typeof response?.styleUrl === 'string' && response.styleUrl.trim()
-        ? response.styleUrl.trim()
-        : null;
+      const rawStyleUrl = typeof response?.styleUrl === 'string' ? response.styleUrl.trim() : '';
+      cachedMapboxStyleUrl = rawStyleUrl || null;
       return cachedMapboxToken;
     })
     .catch(() => {
