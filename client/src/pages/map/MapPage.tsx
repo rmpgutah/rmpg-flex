@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { formatEnumValue } from '../../utils/formatters';
 import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading } from '../../utils/googleMapsLoader';
 import { getGoogleMapsApiKey } from '../../utils/googleMapsApiKey';
@@ -5161,6 +5162,15 @@ export default function MapPage() {
                   )}
                 </div>
               )}
+            </div>
+
+            {/* ── Dispatch Tools ──────────────────────── */}
+            <div className="mt-3 pt-3 border-t border-rmpg-700">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-2">Dispatch Tools</div>
+
+              <Link to="/route-builder" className="w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors text-rmpg-400 hover:bg-surface-raised hover:text-[#d4a017] no-underline">
+                <Route className="w-3 h-3" /> CFS Route Builder
+              </Link>
             </div>
 
             {/* ── Officer Safety ──────────────────────── */}

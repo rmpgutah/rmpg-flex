@@ -4,7 +4,7 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Route,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
@@ -3312,6 +3312,21 @@ export default function DispatchPage() {
                         style={{ color: '#4ade80' }}
                       >
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
+                      </button>
+                    )}
+                    {/* Route Builder — navigate to multi-stop CFS route planner for assigned units */}
+                    {!isEditing && (selectedCall.assigned_units || []).length > 0 && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        title="Open Route Builder for assigned unit"
+                        style={{ color: '#d4a017' }}
+                        onClick={() => {
+                          const firstUnitId = selectedCall.assigned_units?.[0];
+                          if (!firstUnitId) return;
+                          navigate(`/route-builder?unit=${encodeURIComponent(String(firstUnitId))}`);
+                        }}
+                      >
+                        <Route style={{ width: 10, height: 10 }} /> Route
                       </button>
                     )}
                     {/* Schedule Return Visit — PSO/Process Service calls in completed states */}
