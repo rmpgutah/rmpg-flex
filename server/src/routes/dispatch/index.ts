@@ -11,6 +11,7 @@ import panicRouter from './panic';
 import geographyRouter from './geography';
 import handoffsRouter from './handoffs';
 import mutualAidRouter from './mutualAid';
+import callStackRouter from './callStack';
 
 const router = Router();
 
@@ -29,5 +30,6 @@ router.use('/', panicRouter);
 router.use('/', geographyRouter);
 router.use('/', handoffsRouter);
 router.use('/', mutualAidRouter);
+router.use('/', callStackRouter);
 
 export default router;

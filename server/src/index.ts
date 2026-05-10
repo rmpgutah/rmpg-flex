@@ -134,6 +134,18 @@ import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
 import apiDocsRoutes from './routes/apiDocs';
+import pawnRoutes from './routes/pawn';
+import impoundRoutes from './routes/impounds';
+import alarmRoutes from './routes/alarms';
+import animalControlRoutes from './routes/animalControl';
+import communityReportRoutes from './routes/communityReports';
+import crashReportRoutes from './routes/crashReports';
+import tipRoutes from './routes/tips';
+import alprRoutes from './routes/alpr';
+import jailRoutes from './routes/jail';
+import fireRmsRoutes from './routes/fireRms';
+import custodyLogRoutes from './routes/custodyLog';
+import accreditationRoutes from './routes/accreditations';
 import { getSchedulerStatus, runJobNow } from './utils/scheduler';
 
 const app = express();
@@ -492,6 +504,20 @@ app.use('/api/geocode', geocodeRoutes);
 app.use('/api/intel-bulletins', intelBulletinsRoutes);
 app.use('/api/shift-briefings', shiftBriefingsRoutes);
 app.use('/api/docs', apiDocsRoutes);        // OpenAPI/Swagger interactive docs
+
+// ─── Spillman-inspired new modules (2026-05-10) ──────────
+app.use('/api/pawn', pawnRoutes);
+app.use('/api/impounds', impoundRoutes);
+app.use('/api/alarms', alarmRoutes);
+app.use('/api/animal-control', animalControlRoutes);
+app.use('/api/community-reports', communityReportRoutes);
+app.use('/api/crash-reports', crashReportRoutes);
+app.use('/api/tips', tipRoutes);
+app.use('/api/alpr', alprRoutes);
+app.use('/api/jail', jailRoutes);
+app.use('/api/fire-rms', fireRmsRoutes);
+app.use('/api/custody-log', custodyLogRoutes);
+app.use('/api/accreditations', accreditationRoutes);
 
 // ─── Scheduler status endpoint (admin) ────────────────────
 app.get('/api/admin/scheduler', authenticateToken, (_req, res) => {
