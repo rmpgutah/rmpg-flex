@@ -13,8 +13,10 @@ import StatusBadge from '../../components/StatusBadge';
 import AlertBanner from '../../components/AlertBanner';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import PrintRecordButton from '../../components/PrintRecordButton';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 import type { VehicleFormData } from '../../components/VehicleFormModal';
+import type { VehiclePdfData } from '../../utils/recordPdfGenerator';
 import {
   titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType,
   cleanDisplay,
@@ -132,6 +134,83 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
 function safeVehicleDate(value?: string | null): string | null {
   const formatted = safeDateStr(value, '');
   return formatted || null;
+}
+
+/** Build a VehiclePdfData payload from the client-side Vehicle object + optional history data */
+function buildVehiclePdfData(
+  v: Vehicle,
+  history?: { incidents?: any[]; citations?: any[]; calls?: any[] },
+): VehiclePdfData {
+  const flagStrings = v.flags.map(f => typeof f === 'object' ? (f.type || 'FLAG') : f);
+  return {
+    id: v.id,
+    license_plate: v.license_plate,
+    plate_state: v.plate_state,
+    plate_type: v.plate_type,
+    vin: v.vin,
+    make: v.make,
+    model: v.model,
+    year: v.year || undefined,
+    body_style: v.body_style,
+    trim: v.trim,
+    doors: v.doors,
+    color: v.color,
+    secondary_color: v.secondary_color,
+    engine_type: v.engine_type,
+    fuel_type: v.fuel_type,
+    transmission: v.transmission,
+    drive_type: v.drive_type,
+    odometer: v.odometer,
+    owner_name: v.owner_name,
+    owner_address: v.owner_address,
+    owner_phone: v.owner_phone,
+    owner_dl_number: v.owner_dl_number,
+    owner_dob: v.owner_dob,
+    registered_owner: v.registered_owner,
+    primary_driver_name: v.primary_driver_name,
+    vehicle_use: v.vehicle_use,
+    commercial_vehicle: v.commercial_vehicle,
+    hazmat: v.hazmat,
+    insurance_company: v.insurance_company,
+    insurance_policy: v.insurance_policy,
+    insurance_expiry: v.insurance_expiry,
+    registration_expiry: v.registration_expiry,
+    registration_state: v.registration_state,
+    ncic_entry_number: v.ncic_entry_number,
+    stolen_status: v.stolen_status,
+    stolen_date: v.stolen_date,
+    recovery_date: v.recovery_date,
+    tow_status: v.tow_status,
+    tow_company: v.tow_company,
+    tow_date: v.tow_date,
+    tow_location: v.tow_location,
+    lien_holder: v.lien_holder,
+    title_status: v.title_status,
+    exterior_condition: v.exterior_condition,
+    interior_condition: v.interior_condition,
+    estimated_value: v.estimated_value,
+    window_tint: v.window_tint,
+    modifications: v.modifications,
+    equipment_notes: v.equipment_notes,
+    distinguishing_features: v.distinguishing_features,
+    damage_description: v.damage_description,
+    flags: flagStrings,
+    notes: v.notes,
+    created_at: v.created_at,
+    updated_at: v.updated_at,
+    incidents: history?.incidents?.map(inc => ({
+      incident_number: inc.incident_number || '',
+      incident_type: inc.incident_type || '',
+      status: inc.status || '',
+      created_at: inc.created_at || inc.occurred_at || '',
+    })),
+    citations: history?.citations?.map(c => ({
+      citation_number: c.citation_number || '',
+      type: c.violation_description || c.type || '',
+      status: c.status || '',
+      violation_date: c.violation_date || '',
+    })),
+  };
 }
 
 // ── Props ──────────────────────────────────────────
@@ -691,12 +770,21 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 
   // ── Feature 41: Vehicle History Report ──
   const [vehicleHistory, setVehicleHistory] = React.useState<any>(null);
+  const [pdfHistory, setPdfHistory] = React.useState<any>(null);
   const handleLoadHistory = async (vId: string) => {
     try {
       const data = await apiFetch<any>(`/records/vehicles/${vId}/history`);
       setVehicleHistory(data?.data || data);
     } catch { /* ignore */ }
   };
+
+  // Pre-fetch history for PDF enrichment when vehicle changes
+  React.useEffect(() => {
+    if (!selectedVehicle) { setPdfHistory(null); return; }
+    apiFetch<any>(`/records/vehicles/${selectedVehicle.id}/history`)
+      .then(d => setPdfHistory(d?.data || d))
+      .catch(() => setPdfHistory(null));
+  }, [selectedVehicle?.id]);
 
   // ── Feature 44: Stolen Vehicle Check ──
   const [stolenCheckResult, setStolenCheckResult] = React.useState<any>(null);
@@ -727,6 +815,15 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         </div>
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1">
+          <PrintRecordButton
+            recordType="vehicle"
+            recordData={buildVehiclePdfData(selectedVehicle, pdfHistory || undefined)}
+            identifier={selectedVehicle.license_plate || selectedVehicle.id}
+            entityType="vehicle"
+            entityId={selectedVehicle.id}
+            label="Print PDF"
+            className="text-[9px] px-2 py-0.5 bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] hover:bg-[#d4a017]/20"
+          />
           <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-gray-900/30 border border-gray-700/50 text-gray-400 hover:bg-gray-900/50">
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
           </button>
@@ -814,13 +911,32 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         <CollapsibleSection title="Registration & Insurance" icon={Shield} defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             {renderInfoRow('Reg. Expiry', safeVehicleDate(selectedVehicle.registration_expiry), Calendar)}
+            {renderInfoRow('Reg. State', selectedVehicle.registration_state)}
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
+            {renderInfoRow('Insurance Expiry', safeVehicleDate(selectedVehicle.insurance_expiry), Calendar)}
+            {renderInfoRow('NCIC Entry #', selectedVehicle.ncic_entry_number, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
             {renderInfoRow('Owner Address', selectedVehicle.owner_address ? formatAddressDisplay(selectedVehicle.owner_address) : undefined, MapPin)}
             {renderInfoRow('Owner Phone', selectedVehicle.owner_phone ? formatPhoneDisplay(selectedVehicle.owner_phone) : undefined, Phone)}
+            {renderInfoRow('Owner DL #', selectedVehicle.owner_dl_number, Hash)}
+            {renderInfoRow('Owner DOB', safeVehicleDate(selectedVehicle.owner_dob), Calendar)}
+            {renderInfoRow('Primary Driver', selectedVehicle.primary_driver_name)}
+            {renderInfoRow('Vehicle Use', selectedVehicle.vehicle_use)}
           </div>
         </CollapsibleSection>
+
+        {/* ── Vehicle Condition (conditional) ──── */}
+        {(selectedVehicle.title_status || selectedVehicle.exterior_condition || selectedVehicle.interior_condition || selectedVehicle.estimated_value) && (
+          <CollapsibleSection title="Vehicle Condition" icon={Car} defaultOpen={false}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {renderInfoRow('Title Status', selectedVehicle.title_status)}
+              {renderInfoRow('Exterior', selectedVehicle.exterior_condition)}
+              {renderInfoRow('Interior', selectedVehicle.interior_condition)}
+              {renderInfoRow('Est. Value', selectedVehicle.estimated_value ? `$${selectedVehicle.estimated_value}` : undefined)}
+            </div>
+          </CollapsibleSection>
+        )}
 
         {/* ── Stolen / Tow Status (conditional) ── */}
         {(selectedVehicle.stolen_status || selectedVehicle.tow_status) && (
@@ -832,13 +948,14 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
               {renderInfoRow('Tow Status', selectedVehicle.tow_status)}
               {renderInfoRow('Tow Company', selectedVehicle.tow_company)}
               {renderInfoRow('Tow Date', safeVehicleDate(selectedVehicle.tow_date), Calendar)}
+              {renderInfoRow('Tow Location', selectedVehicle.tow_location, MapPin)}
             </div>
           </CollapsibleSection>
         )}
 
         {/* ── Damage & Features (conditional) ──── */}
-        {(selectedVehicle.damage_description || selectedVehicle.distinguishing_features) && (
-          <CollapsibleSection title="Damage & Features" icon={AlertTriangle}>
+        {(selectedVehicle.damage_description || selectedVehicle.distinguishing_features || selectedVehicle.window_tint || selectedVehicle.modifications || selectedVehicle.equipment_notes) && (
+          <CollapsibleSection title="Damage, Features & Modifications" icon={AlertTriangle}>
             {selectedVehicle.damage_description && (
               <div className="mb-2">
                 <label className="text-[10px] text-red-400 uppercase font-semibold">Damage:</label>
@@ -846,9 +963,27 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
               </div>
             )}
             {selectedVehicle.distinguishing_features && (
-              <div>
+              <div className="mb-2">
                 <label className="text-[10px] text-amber-400 uppercase font-semibold">Distinguishing Features:</label>
                 <p className="text-xs text-amber-300/80 mt-0.5">{selectedVehicle.distinguishing_features}</p>
+              </div>
+            )}
+            {selectedVehicle.window_tint && (
+              <div className="mb-2">
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Window Tint:</label>
+                <p className="text-xs text-rmpg-200 mt-0.5">{selectedVehicle.window_tint}</p>
+              </div>
+            )}
+            {selectedVehicle.modifications && (
+              <div className="mb-2">
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications:</label>
+                <p className="text-xs text-rmpg-200 mt-0.5">{selectedVehicle.modifications}</p>
+              </div>
+            )}
+            {selectedVehicle.equipment_notes && (
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes:</label>
+                <p className="text-xs text-rmpg-200 mt-0.5">{selectedVehicle.equipment_notes}</p>
               </div>
             )}
           </CollapsibleSection>
