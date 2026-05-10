@@ -1118,9 +1118,8 @@ export default function DispatchPage() {
   // PSO incident types — must be declared before filteredCalls which references it
   const PSO_INCIDENT_TYPES = ['pso_client_request'];
 
-  // Fetch serve route sort order when serve tab is active
+  // Fetch serve route sort order on mount and when serve tab is active
   useEffect(() => {
-    if (filterTab !== 'serve') return;
     let cancelled = false;
     (async () => {
       try {

@@ -282,7 +282,7 @@ export default function MapPage() {
       const saved = localStorage.getItem('rmpg_map_layers');
       if (saved) return JSON.parse(saved) as { units: boolean; incidents: boolean; properties: boolean; serveRoutes: boolean };
     } catch { /* use defaults */ }
-    return { units: true, incidents: true, properties: true, serveRoutes: false };
+    return { units: true, incidents: true, properties: true, serveRoutes: true };
   });
 
   // Fix 27+29: save layer toggle states to localStorage with debouncing
