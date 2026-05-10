@@ -22,6 +22,7 @@ import FleetRecallsTab from './tabs/FleetRecallsTab';
 import FleetExpensesTab from './tabs/FleetExpensesTab';
 import FleetGpsTab from './tabs/FleetGpsTab';
 import FleetDashCamTab from './tabs/FleetDashCamTab';
+import { apiFetch } from '../../hooks/useApi';
 import { formatMilitary } from './utils/fleetFormatters';
 import { generateFleetFuelReport } from './utils/fleetFuelReport';
 import { generateFlaggedAuditPdf } from './utils/flaggedAuditPdf';
@@ -176,18 +177,27 @@ function FleetPrintMenu({ detail, fuelLogs, maintenance, fuelSummary }: {
     })),
   });
 
-  const handleDirectPdf = (key: string) => {
+  const handleDirectPdf = async (key: string) => {
     if (key === 'vehicle_summary') {
-      // Compute cost totals from available fuel + maintenance data
-      const fuelTotal = fuelSummary?.total_cost ?? fuelLogs.reduce((s, f) => s + (Number(f.total_cost) || 0), 0);
-      const maintenanceTotal = maintenance.reduce((s, m) => s + (Number(m.cost) || 0), 0);
+      // Fetch the full cost summary from the server (all 7 categories)
+      let costTotals: { fuel?: number; maintenance?: number; expenses?: number; loans?: number; insurance?: number; accessories?: number; utilities?: number } = {};
+      try {
+        const costData = await apiFetch<{
+          categories: { fuel: number; maintenance: number; loans: number; insurance: number; accessories: number; utilities: number; expenses: number };
+        }>(`/fleet/${detail.id}/cost-summary`);
+        if (costData?.categories) {
+          costTotals = costData.categories;
+        }
+      } catch {
+        // Fallback to locally available fuel + maintenance data
+        const fuelTotal = fuelSummary?.total_cost ?? fuelLogs.reduce((s, f) => s + (Number(f.total_cost) || 0), 0);
+        const maintenanceTotal = maintenance.reduce((s, m) => s + (Number(m.cost) || 0), 0);
+        costTotals = { fuel: fuelTotal, maintenance: maintenanceTotal };
+      }
       generateFleetVehicleSummaryPdf({
         vehicle: detail,
         assignedUnit: detail.assigned_unit_call_sign || undefined,
-        costTotals: {
-          fuel: fuelTotal,
-          maintenance: maintenanceTotal,
-        },
+        costTotals,
         recentMaintenance: maintenance.slice(0, 5),
       });
     } else if (key === 'maintenance_history') {
