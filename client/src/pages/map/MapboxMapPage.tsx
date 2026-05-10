@@ -13,12 +13,13 @@ import mapboxgl from 'mapbox-gl';
 import {
   Shield, AlertTriangle, Search, X, Layers, MapPin, Navigation2,
   Eye, EyeOff, ChevronDown, ChevronUp, Loader2, RefreshCw,
-  Map as MapIcon, PanelLeftClose, PanelLeftOpen, Crosshair,
+  Map as MapIcon, PanelLeftClose, PanelLeftOpen, Crosshair, Mountain,
 } from 'lucide-react';
 
 import {
   createMapboxMap, destroyMapboxMap, setMapboxStyle,
   injectMapboxStyles, addMapbox3DBuildings,
+  addMapboxTerrain, removeMapboxTerrain,
 } from '../../utils/mapboxLoader';
 import { getMapboxToken } from '../../utils/mapboxApiKey';
 import { apiFetch } from '../../hooks/useApi';
@@ -166,6 +167,7 @@ export default function MapboxMapPage() {
   const [searchResults, setSearchResults] = useState<Array<{ place_name: string; center: [number, number] }>>([]);
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
+  const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const mapContainerRef  = useRef<HTMLDivElement>(null);
@@ -366,6 +368,17 @@ export default function MapboxMapPage() {
       if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', vis);
     });
   }, [beatsVisible, mapLoaded]);
+
+  // Toggle 3D terrain
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    if (terrainEnabled) {
+      addMapboxTerrain(map, 1.5);
+    } else {
+      removeMapboxTerrain(map);
+    }
+  }, [terrainEnabled, mapLoaded]);
 
   // ── Data Fetch + Auto-Refresh ──────────────────────────────────────────────
 
@@ -847,6 +860,13 @@ export default function MapboxMapPage() {
               className="text-rmpg-400 hover:text-[#d4a017] p-1.5"
             >
               <Crosshair className="w-3.5 h-3.5" />
+            </IconButton>
+            <IconButton
+              aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
+              onClick={() => setTerrainEnabled(v => !v)}
+              className={`p-1.5 ${terrainEnabled ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+            >
+              <Mountain className="w-3.5 h-3.5" />
             </IconButton>
             <IconButton
               aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}

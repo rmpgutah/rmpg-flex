@@ -14,7 +14,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 
 // ── Types ─────────────────────────────────────────────────
 
-export type MapboxStyleId = 'dark' | 'satellite' | 'hybrid' | 'streets' | 'terrain' | 'night_nav' | 'outdoors';
+export type MapboxStyleId = 'dark' | 'standard' | 'satellite' | 'hybrid' | 'streets' | 'terrain' | 'night_nav' | 'outdoors';
 
 export interface MapboxMapConfig {
   container: HTMLElement | string;
@@ -25,12 +25,18 @@ export interface MapboxMapConfig {
   style?: MapboxStyleId;
   interactive?: boolean;
   accessToken: string;
+  /** Enable 3D terrain with exaggeration factor (default: off) */
+  terrain?: boolean;
+  terrainExaggeration?: number;
+  /** Use globe projection at low zoom levels (default: true for v3) */
+  globe?: boolean;
 }
 
 // ── Mapbox Style URLs ─────────────────────────────────────
 
 const MAPBOX_STYLES: Record<MapboxStyleId, string> = {
   dark: 'mapbox://styles/mapbox/dark-v11',
+  standard: 'mapbox://styles/mapbox/standard',
   satellite: 'mapbox://styles/mapbox/satellite-v9',
   hybrid: 'mapbox://styles/mapbox/satellite-streets-v12',
   streets: 'mapbox://styles/mapbox/streets-v12',
@@ -41,6 +47,7 @@ const MAPBOX_STYLES: Record<MapboxStyleId, string> = {
 
 export const MAPBOX_STYLE_LABELS: Record<MapboxStyleId, string> = {
   dark: 'Dark',
+  standard: 'Standard',
   satellite: 'Satellite',
   hybrid: 'Hybrid',
   streets: 'Streets',
@@ -85,6 +92,8 @@ let isLoaded = false;
 
 /**
  * Create a Mapbox GL map with Spillman Flex dark theme.
+ * Supports Mapbox GL JS v3 features: globe projection, fog/atmosphere,
+ * 3D terrain, Standard style, and fullscreen control.
  */
 export function createMapboxMap(config: MapboxMapConfig): mapboxgl.Map {
   // Set the access token globally
@@ -92,6 +101,7 @@ export function createMapboxMap(config: MapboxMapConfig): mapboxgl.Map {
 
   const styleId = config.style || 'dark';
   const styleUrl = MAPBOX_STYLES[styleId] || MAPBOX_STYLES.dark;
+  const useGlobe = config.globe !== false; // default: true
 
   const map = new mapboxgl.Map({
     container: config.container,
@@ -105,8 +115,9 @@ export function createMapboxMap(config: MapboxMapConfig): mapboxgl.Map {
     antialias: true,
     maxZoom: 20,
     minZoom: 3,
-    // Enable globe projection for a premium feel
-    projection: 'mercator',
+    // Mapbox GL JS v3: globe projection for an immersive view at low zooms,
+    // automatically transitions to mercator at closer zoom levels.
+    projection: useGlobe ? 'globe' : 'mercator',
   });
 
   // Add compact attribution
@@ -118,6 +129,9 @@ export function createMapboxMap(config: MapboxMapConfig): mapboxgl.Map {
     showZoom: true,
     visualizePitch: true,
   }), 'top-right');
+
+  // Add fullscreen control (Mapbox GL JS v3 best practice)
+  map.addControl(new mapboxgl.FullscreenControl(), 'top-right');
 
   // Add scale bar (imperial for US law enforcement)
   map.addControl(new mapboxgl.ScaleControl({ unit: 'imperial' }), 'bottom-left');
@@ -133,6 +147,32 @@ export function createMapboxMap(config: MapboxMapConfig): mapboxgl.Map {
   if (styleId === 'dark' || styleId === 'night_nav') {
     map.on('style.load', () => {
       applySpillmanDarkOverrides(map);
+      applySpillmanFog(map);
+    });
+  }
+
+  // Apply fog/atmosphere for globe projection on non-dark styles too
+  if (useGlobe && styleId !== 'dark' && styleId !== 'night_nav') {
+    map.on('style.load', () => {
+      applyDefaultFog(map);
+    });
+  }
+
+  // Enable 3D terrain if requested and available
+  if (config.terrain) {
+    map.on('style.load', () => {
+      addMapboxTerrain(map, config.terrainExaggeration);
+    });
+  }
+
+  // Standard style config: set light preset to night for Spillman theme
+  if (styleId === 'standard') {
+    map.on('style.load', () => {
+      try {
+        map.setConfigProperty('basemap', 'lightPreset', 'night');
+      } catch {
+        // Standard style config may not be available in all versions
+      }
     });
   }
 
@@ -170,18 +210,103 @@ function applySpillmanDarkOverrides(map: mapboxgl.Map): void {
   }
 }
 
+// ── Fog / Atmosphere (Mapbox GL JS v3) ────────────────────
+
+/**
+ * Apply Spillman Flex dark fog/atmosphere for globe projection.
+ * Creates a moody, dark atmosphere matching the tactical theme.
+ */
+function applySpillmanFog(map: mapboxgl.Map): void {
+  try {
+    map.setFog({
+      color: 'rgba(10, 10, 10, 0.9)',           // Lower atmosphere — near-black
+      'high-color': 'rgba(20, 15, 5, 1)',        // Upper atmosphere — warm black
+      'horizon-blend': 0.08,                      // Sharp horizon line
+      'star-intensity': 0.4,                      // Subtle stars for night feel
+      'space-color': 'rgba(5, 5, 5, 1)',         // Deep space — almost black
+    });
+  } catch {
+    // Fog API may not be available on all style types
+  }
+}
+
+/**
+ * Apply default fog/atmosphere for non-dark styles with globe projection.
+ */
+function applyDefaultFog(map: mapboxgl.Map): void {
+  try {
+    map.setFog({
+      color: 'rgba(186, 210, 235, 0.8)',         // Lower atmosphere — soft blue
+      'high-color': 'rgba(36, 92, 223, 1)',      // Upper atmosphere — sky blue
+      'horizon-blend': 0.2,                       // Gentle horizon blend
+      'star-intensity': 0.15,                     // Minimal stars
+      'space-color': 'rgba(10, 10, 30, 1)',      // Dark space
+    });
+  } catch {
+    // Fog API may not be available on all style types
+  }
+}
+
+// ── 3D Terrain (Mapbox GL JS v3) ──────────────────────────
+
+/**
+ * Add 3D terrain using Mapbox DEM (Digital Elevation Model).
+ * Exaggeration controls the vertical scale (1.0 = real-world, 1.5 = enhanced).
+ */
+export function addMapboxTerrain(map: mapboxgl.Map, exaggeration = 1.5): void {
+  try {
+    // Add the Mapbox DEM raster source if not already present
+    if (!map.getSource('mapbox-dem')) {
+      map.addSource('mapbox-dem', {
+        type: 'raster-dem',
+        url: 'mapbox://mapbox.mapbox-terrain-dem-v1',
+        tileSize: 512,
+        maxzoom: 14,
+      });
+    }
+
+    map.setTerrain({ source: 'mapbox-dem', exaggeration });
+  } catch {
+    // Terrain may not be supported in all contexts
+  }
+}
+
+/**
+ * Remove 3D terrain from the map.
+ */
+export function removeMapboxTerrain(map: mapboxgl.Map): void {
+  try {
+    map.setTerrain(null);
+  } catch {
+    // Ignore if terrain wasn't set
+  }
+}
+
 /**
  * Switch the map style.
+ * Re-applies fog/atmosphere and Standard style config as needed.
  */
 export function setMapboxStyle(map: mapboxgl.Map, styleId: MapboxStyleId): void {
   const styleUrl = MAPBOX_STYLES[styleId] || MAPBOX_STYLES.dark;
   map.setStyle(styleUrl);
 
-  if (styleId === 'dark' || styleId === 'night_nav') {
-    map.once('style.load', () => {
+  map.once('style.load', () => {
+    if (styleId === 'dark' || styleId === 'night_nav') {
       applySpillmanDarkOverrides(map);
-    });
-  }
+      applySpillmanFog(map);
+    } else if (map.getProjection()?.name === 'globe') {
+      applyDefaultFog(map);
+    }
+
+    // Standard style: set night preset for Spillman theme
+    if (styleId === 'standard') {
+      try {
+        map.setConfigProperty('basemap', 'lightPreset', 'night');
+      } catch {
+        // Standard style config not available
+      }
+    }
+  });
 }
 
 /**
@@ -431,6 +556,11 @@ export function injectMapboxStyles(): void {
 
     /* Geolocate control */
     .mapboxgl-ctrl-geolocate .mapboxgl-ctrl-icon {
+      filter: invert(0.7) !important;
+    }
+
+    /* Fullscreen control dark theme */
+    .mapboxgl-ctrl-fullscreen .mapboxgl-ctrl-icon {
       filter: invert(0.7) !important;
     }
   `;
