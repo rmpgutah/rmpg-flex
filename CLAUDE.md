@@ -19,7 +19,7 @@ RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management Sy
 | **Backend** | Express 5 + TypeScript (tsx runtime) + better-sqlite3 |
 | **Auth** | JWT (access + refresh) + WebAuthn (FIDO2/YubiKey) + TOTP 2FA |
 | **Real-time** | WebSocket (ws) for live dispatch, GPS, presence |
-| **Maps** | Google Maps JS API + offline CartoDB dark_matter tiles + GeoJSON overlays |
+| **Maps** | Mapbox GL JS (primary) + Google Maps JS API fallback + offline CartoDB dark_matter tiles + GeoJSON overlays |
 | **Desktop** | Electron (macOS DMG + Windows EXE) with offline sync |
 | **Mobile** | Capacitor (Android APK) |
 | **PDF** | jsPDF for reports, citations, patrol logs |
@@ -410,8 +410,8 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 - **Shift Plans**: `shift_plans`, `shift_swap_requests`
 - **Notification Rules**: `notification_rules` for custom alert automation
 
-### Maps — Google Maps is the sole map surface
-`/map` is the single production map, backed by the Google Maps JS API with offline CartoDB raster tile fallback. **Do not reintroduce OpenLayers or a parallel `/map-v2` surface.** A parallel OpenLayers map (`/map-v2`) was attempted and retired; all traces were removed 2026-04-23 (route, redirect, `ol` dependency, PDF guide section 15, migration plan). The stale iOS PWA plans (`docs/plans/2026-04-20-ios-mobile-pwa-enhancement-*.md`) still reference non-existent `map-v2` hooks and need Google-Maps-based replacements before execution.
+### Maps — Mapbox is the preferred provider
+Map provider hierarchy is **Mapbox GL JS → Google Maps JS API → MapLibre GL fallback**. Keep a single `/map` route and do not reintroduce OpenLayers or a parallel `/map-v2` surface. A prior `/map-v2` OpenLayers experiment was retired; stale iOS PWA plans referencing it still need replacement with the current provider hierarchy.
 
 ### PDF Editor — 50-upgrade roadmap (snapshot 2026-04-29)
 The editor and viewer now run on the proprietary RMPG PDF Engine v1.0

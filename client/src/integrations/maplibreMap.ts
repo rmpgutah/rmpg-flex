@@ -1,8 +1,8 @@
 // ============================================================
 // RMPG Flex — MapLibre GL Integration
 // ============================================================
-// Open-source vector tile map engine as an alternative to
-// Mapbox/Google fallback. No API key required, supports fully offline
+// Open-source vector tile map engine as a fallback when
+// Mapbox/Google are unavailable. No API key required, supports fully offline
 // .mbtiles packages, 3D building extrusion, and custom
 // vector tile styling.
 //

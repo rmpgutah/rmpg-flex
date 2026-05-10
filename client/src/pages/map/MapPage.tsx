@@ -267,10 +267,10 @@ export default function MapPage() {
   const [mapRetry, setMapRetry] = useState(0); // bump to re-trigger Google Maps init
   const [tilesStalled, setTilesStalled] = useState(false);
 
-  // Google Maps is the sole map surface. Any map load failure surfaces the
-  // configuration-required dialog instead of degrading to a Leaflet/CartoDB
-  // fallback (the offline fallback was retired 2026-04-29 to make Google
-  // failures visible rather than silently masked).
+  // Google Maps is the current runtime surface in this module, with Mapbox as
+  // the preferred provider in map-provider selection order. Any map load
+  // failure surfaces the configuration-required dialog instead of degrading to
+  // a Leaflet/CartoDB fallback.
   const isAuthError = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 

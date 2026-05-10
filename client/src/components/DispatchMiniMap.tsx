@@ -140,9 +140,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     [units, call?.assigned_units],
   );
 
-  // Classify error: auth/config vs connectivity
-  // Google Maps is the sole map surface — every error becomes an auth/config
-  // error placeholder (Leaflet/CartoDB fallback retired 2026-04-29).
+  // Classify error: auth/config vs connectivity.
+  // This minimap still runs on Google Maps while Mapbox remains the preferred
+  // provider in selection order; failures render the auth/config placeholder.
   const isAuthError = error != null;
 
   // Routing (auto-route when a single assigned unit has GPS)
