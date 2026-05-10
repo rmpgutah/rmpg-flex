@@ -108,12 +108,17 @@ router.get('/active-routes', requireRole('admin', 'manager', 'supervisor', 'disp
       LIMIT 2000
     `).all(today);
 
-    // All routes for today
+    // All routes for today or that have pending/in_progress jobs
     const routes = db.prepare(`
       SELECT sr.*, u.call_sign AS officer_call_sign, u.display_name AS officer_name
       FROM serve_routes sr
       LEFT JOIN users u ON u.id = sr.officer_id
       WHERE sr.route_date = ?
+        OR sr.officer_id IN (
+          SELECT DISTINCT sq2.officer_id FROM serve_queue sq2
+          WHERE sq2.status IN ('pending', 'in_progress')
+            AND sq2.officer_id IS NOT NULL
+        )
     `).all(today);
 
     res.json({ jobs, routes });
