@@ -156,12 +156,12 @@ function applySpillmanDarkOverrides(map: mapboxgl.Map): void {
 
       if (override.paint) {
         for (const [prop, value] of Object.entries(override.paint)) {
-          map.setPaintProperty(override.id, prop, value);
+          map.setPaintProperty(override.id, prop as any, value);
         }
       }
       if (override.layout) {
         for (const [prop, value] of Object.entries(override.layout)) {
-          map.setLayoutProperty(override.id, prop, value as string);
+          map.setLayoutProperty(override.id, prop as any, value as string);
         }
       }
     } catch {
