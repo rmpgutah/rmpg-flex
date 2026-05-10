@@ -1919,4 +1919,294 @@ router.post('/request-backup', requireRole('admin', 'manager', 'supervisor', 'of
   }
 });
 
+// ── 36. Performance Dashboard ──
+router.get('/performance-dashboard', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localNow().slice(0, 10);
+    const rows = db.prepare(`
+      SELECT
+        dispatcher_id,
+        COUNT(*) AS calls_handled_today,
+        ROUND(AVG(
+          CASE WHEN dispatched_at IS NOT NULL AND created_at IS NOT NULL
+            THEN (julianday(dispatched_at) - julianday(created_at)) * 86400
+          END
+        ), 1) AS avg_dispatch_time_seconds
+      FROM calls_for_service
+      WHERE DATE(created_at) = ?
+        AND dispatcher_id IS NOT NULL
+      GROUP BY dispatcher_id
+    `).all(today);
+
+    const hourRow = db.prepare(`
+      SELECT COUNT(*) AS total FROM calls_for_service WHERE DATE(created_at) = ?
+    `).get(today) as any;
+    const currentHour = localHour();
+    const callsPerHour = currentHour > 0 ? Math.round(((hourRow?.total || 0) / currentHour) * 10) / 10 : hourRow?.total || 0;
+
+    res.json({ dispatchers: rows, calls_per_hour: callsPerHour, date: today });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load performance dashboard', code: 'PERFORMANCE_DASHBOARD_ERROR' });
+  }
+});
+
+// ── 37. Response Time Trends ──
+router.get('/response-time-trends', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        DATE(created_at) AS date,
+        COUNT(*) AS call_count,
+        ROUND(AVG(
+          CASE WHEN dispatched_at IS NOT NULL AND created_at IS NOT NULL
+            THEN (julianday(dispatched_at) - julianday(created_at)) * 86400
+          END
+        ), 1) AS avg_dispatch_seconds,
+        ROUND(AVG(
+          CASE WHEN on_scene_at IS NOT NULL AND dispatched_at IS NOT NULL
+            THEN (julianday(on_scene_at) - julianday(dispatched_at)) * 86400
+          END
+        ), 1) AS avg_response_seconds
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+      GROUP BY DATE(created_at)
+      ORDER BY date
+    `).all(days);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load response time trends', code: 'RESPONSE_TIME_TRENDS_ERROR' });
+  }
+});
+
+// ── 38. Call Volume Forecast ──
+router.get('/call-volume-forecast', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const currentDow = localDayOfWeek();
+    const rows = db.prepare(`
+      SELECT
+        CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+        ROUND(AVG(cnt), 1) AS avg_calls
+      FROM (
+        SELECT DATE(created_at) AS d, strftime('%H', created_at) AS h, COUNT(*) AS cnt
+        FROM calls_for_service
+        WHERE created_at >= DATE('now', '-84 days')
+          AND CAST(strftime('%w', created_at) AS INTEGER) = ?
+        GROUP BY d, h
+      )
+      GROUP BY hour
+      ORDER BY hour
+    `).all(currentDow);
+
+    const totalPredicted = rows.reduce((sum: number, r: any) => sum + (r.avg_calls || 0), 0);
+    res.json({ day_of_week: currentDow, hourly_forecast: rows, total_predicted_24h: Math.round(totalPredicted) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate call volume forecast', code: 'CALL_VOLUME_FORECAST_ERROR' });
+  }
+});
+
+// ── 39. Beat Performance ──
+router.get('/beat-performance', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        beat,
+        COUNT(*) AS call_count,
+        ROUND(AVG(
+          CASE WHEN on_scene_at IS NOT NULL AND dispatched_at IS NOT NULL
+            THEN (julianday(on_scene_at) - julianday(dispatched_at)) * 86400
+          END
+        ), 1) AS avg_response_seconds,
+        ROUND(
+          CAST(SUM(CASE WHEN status = 'CLEARED' THEN 1 ELSE 0 END) AS REAL) /
+          NULLIF(COUNT(*), 0) * 100, 1
+        ) AS clearance_rate
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND beat IS NOT NULL AND beat != ''
+      GROUP BY beat
+      ORDER BY call_count DESC
+    `).all(days);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load beat performance', code: 'BEAT_PERFORMANCE_ERROR' });
+  }
+});
+
+// ── 40. Disposition Analysis ──
+router.get('/disposition-analysis', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        COALESCE(disposition, 'UNSET') AS disposition,
+        COUNT(*) AS count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+      GROUP BY disposition
+      ORDER BY count DESC
+    `).all(days);
+
+    const total = rows.reduce((sum: number, r: any) => sum + r.count, 0);
+    const withPct = rows.map((r: any) => ({
+      ...r,
+      percentage: total > 0 ? Math.round((r.count / total) * 1000) / 10 : 0,
+    }));
+    res.json({ total, dispositions: withPct });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load disposition analysis', code: 'DISPOSITION_ANALYSIS_ERROR' });
+  }
+});
+
+// ── 41. Peak Hours ──
+router.get('/peak-hours', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const byHour = db.prepare(`
+      SELECT
+        CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+        COUNT(*) AS call_count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-30 days')
+      GROUP BY hour
+      ORDER BY hour
+    `).all();
+
+    const byHourDow = db.prepare(`
+      SELECT
+        CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+        CAST(strftime('%w', created_at) AS INTEGER) AS day_of_week,
+        COUNT(*) AS call_count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-30 days')
+      GROUP BY hour, day_of_week
+      ORDER BY day_of_week, hour
+    `).all();
+
+    res.json({ by_hour: byHour, by_hour_and_day: byHourDow });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load peak hours', code: 'PEAK_HOURS_ERROR' });
+  }
+});
+
+// ── 42. Officer Performance ──
+router.get('/officer-performance', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        primary_officer AS officer,
+        COUNT(*) AS calls_handled,
+        ROUND(AVG(
+          CASE WHEN cleared_at IS NOT NULL AND on_scene_at IS NOT NULL
+            THEN (julianday(cleared_at) - julianday(on_scene_at)) * 1440
+          END
+        ), 1) AS avg_onscene_minutes,
+        ROUND(
+          CAST(SUM(CASE WHEN status = 'CLEARED' THEN 1 ELSE 0 END) AS REAL) /
+          NULLIF(COUNT(*), 0) * 100, 1
+        ) AS clearance_rate
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND primary_officer IS NOT NULL AND primary_officer != ''
+      GROUP BY primary_officer
+      ORDER BY calls_handled DESC
+    `).all(days);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load officer performance', code: 'OFFICER_PERFORMANCE_ERROR' });
+  }
+});
+
+// ── 43. Incident Type Trends ──
+router.get('/incident-type-trends', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const current = db.prepare(`
+      SELECT incident_type, COUNT(*) AS count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND incident_type IS NOT NULL AND incident_type != ''
+      GROUP BY incident_type
+      ORDER BY count DESC
+      LIMIT 20
+    `).all(days) as any[];
+
+    const previous = db.prepare(`
+      SELECT incident_type, COUNT(*) AS count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND created_at < DATE('now', '-' || ? || ' days')
+        AND incident_type IS NOT NULL AND incident_type != ''
+      GROUP BY incident_type
+    `).all(days * 2, days) as any[];
+
+    const prevMap: Record<string, number> = {};
+    for (const r of previous) prevMap[r.incident_type] = r.count;
+
+    const trends = current.map((r: any) => {
+      const prev = prevMap[r.incident_type] || 0;
+      const changePct = prev > 0 ? Math.round(((r.count - prev) / prev) * 1000) / 10 : null;
+      return { incident_type: r.incident_type, current_count: r.count, previous_count: prev, change_percentage: changePct };
+    });
+    res.json(trends);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load incident type trends', code: 'INCIDENT_TYPE_TRENDS_ERROR' });
+  }
+});
+
+// ── 44. Mutual Aid Stats ──
+router.get('/mutual-aid-stats', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        COALESCE(le_notification_agency, 'UNKNOWN') AS agency,
+        COUNT(*) AS call_count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND le_notification = 1
+      GROUP BY agency
+      ORDER BY call_count DESC
+    `).all(days);
+    const total = rows.reduce((sum: number, r: any) => sum + r.call_count, 0);
+    res.json({ total, by_agency: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load mutual aid stats', code: 'MUTUAL_AID_STATS_ERROR' });
+  }
+});
+
+// ── 45. Call Density Grid ──
+router.get('/call-density-grid', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        ROUND(latitude / 0.01) * 0.01 AS lat_bin,
+        ROUND(longitude / 0.01) * 0.01 AS lng_bin,
+        COUNT(*) AS call_count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND latitude BETWEEN -90 AND 90
+        AND longitude BETWEEN -180 AND 180
+      GROUP BY lat_bin, lng_bin
+      ORDER BY call_count DESC
+    `).all(days);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load call density grid', code: 'CALL_DENSITY_GRID_ERROR' });
+  }
+});
+
 export default router;
