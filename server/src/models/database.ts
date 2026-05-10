@@ -7346,6 +7346,590 @@ function seedData(): void {
     insertPreset.run('Creative', 0.7, 1024, 0.95, 1.0, 0);
     insertPreset.run('Verbose', 0.5, 2048, 0.9, 1.0, 0);
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // SPILLMAN-INSPIRED NEW TABLES (2026-05-10)
+  // ══════════════════════════════════════════════════════════════
+
+  // ─── 1.1 Call Stacking Queue ─────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS call_stack (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id TEXT NOT NULL,
+    call_id INTEGER NOT NULL,
+    priority_order INTEGER NOT NULL DEFAULT 0,
+    added_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_call_stack_unit ON call_stack(unit_id)`).run();
+  db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_stack_unit_call ON call_stack(unit_id, call_id)`).run();
+
+  // ─── 1.2 Dispatch Timer Profiles ─────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS timer_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    call_type TEXT,
+    warn_minutes INTEGER NOT NULL DEFAULT 15,
+    alert_minutes INTEGER NOT NULL DEFAULT 30,
+    critical_minutes INTEGER NOT NULL DEFAULT 60,
+    audio_alert INTEGER DEFAULT 1,
+    is_default INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+
+  // ─── 1.3 CAD-to-CAD Peers ───────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS cad_peers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_name TEXT NOT NULL,
+    endpoint_url TEXT NOT NULL,
+    shared_secret TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    last_sync_at TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS cad_peer_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    peer_id INTEGER NOT NULL,
+    remote_call_id TEXT NOT NULL,
+    call_number TEXT,
+    incident_type TEXT,
+    location TEXT,
+    priority TEXT,
+    status TEXT DEFAULT 'pending',
+    raw_data TEXT,
+    received_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (peer_id) REFERENCES cad_peers(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cad_peer_calls_peer ON cad_peer_calls(peer_id)`).run();
+
+  // ─── 1.5 EMD / ProQA Protocols ──────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_protocols (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    call_type TEXT NOT NULL,
+    protocol_type TEXT DEFAULT 'emd' CHECK(protocol_type IN ('emd','fire','police','custom')),
+    decision_tree TEXT NOT NULL,
+    version TEXT DEFAULT '1.0',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dispatch_protocols_type ON dispatch_protocols(call_type)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS protocol_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_id INTEGER NOT NULL,
+    protocol_id INTEGER NOT NULL,
+    determinant_code TEXT,
+    responses TEXT,
+    completed_by INTEGER,
+    completed_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+    FOREIGN KEY (protocol_id) REFERENCES dispatch_protocols(id) ON DELETE CASCADE
+  )`).run();
+
+  // ─── 2.1 Pawn Tracking ──────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS pawn_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_name TEXT NOT NULL,
+    shop_address TEXT,
+    transaction_date TEXT NOT NULL,
+    transaction_type TEXT DEFAULT 'pawn' CHECK(transaction_type IN ('pawn','buy','consignment')),
+    item_description TEXT NOT NULL,
+    item_category TEXT,
+    serial_number TEXT,
+    brand TEXT,
+    model TEXT,
+    color TEXT,
+    seller_first_name TEXT,
+    seller_last_name TEXT,
+    seller_dob TEXT,
+    seller_id_type TEXT,
+    seller_id_number TEXT,
+    seller_address TEXT,
+    seller_phone TEXT,
+    hold_period_days INTEGER DEFAULT 30,
+    hold_expires TEXT,
+    status TEXT DEFAULT 'held' CHECK(status IN ('held','released','flagged','seized','returned')),
+    flagged_stolen INTEGER DEFAULT 0,
+    matched_evidence_id INTEGER,
+    amount REAL,
+    notes TEXT,
+    entered_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_pawn_serial ON pawn_transactions(serial_number)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_pawn_seller ON pawn_transactions(seller_last_name, seller_first_name)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_pawn_status ON pawn_transactions(status)`).run();
+
+  // ─── 2.2 Animal Control ─────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS animal_control_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_number TEXT UNIQUE,
+    case_type TEXT DEFAULT 'complaint' CHECK(case_type IN ('complaint','stray','bite','quarantine','cruelty','noise','licensing','other')),
+    animal_type TEXT,
+    animal_breed TEXT,
+    animal_color TEXT,
+    animal_name TEXT,
+    animal_sex TEXT,
+    microchip_number TEXT,
+    owner_name TEXT,
+    owner_address TEXT,
+    owner_phone TEXT,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    description TEXT,
+    status TEXT DEFAULT 'open' CHECK(status IN ('open','investigating','resolved','closed','transferred')),
+    disposition TEXT,
+    assigned_officer_id INTEGER,
+    linked_incident_id INTEGER,
+    quarantine_start TEXT,
+    quarantine_end TEXT,
+    vaccination_status TEXT,
+    impound_date TEXT,
+    release_date TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_animal_cases_status ON animal_control_cases(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_animal_cases_type ON animal_control_cases(case_type)`).run();
+
+  // ─── 2.3 Alarm Tracking ─────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS alarm_permits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    permit_number TEXT UNIQUE,
+    location_name TEXT NOT NULL,
+    location_address TEXT NOT NULL,
+    alarm_company TEXT,
+    alarm_type TEXT DEFAULT 'burglar' CHECK(alarm_type IN ('burglar','fire','panic','medical','holdup','other')),
+    contact_name TEXT,
+    contact_phone TEXT,
+    contact_email TEXT,
+    permit_start TEXT,
+    permit_expiry TEXT,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active','expired','suspended','revoked')),
+    false_alarm_count INTEGER DEFAULT 0,
+    billing_threshold INTEGER DEFAULT 3,
+    fee_per_false_alarm REAL DEFAULT 100.00,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alarm_permits_address ON alarm_permits(location_address)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS alarm_activations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    permit_id INTEGER,
+    activation_date TEXT NOT NULL,
+    alarm_type TEXT,
+    response_time_minutes INTEGER,
+    responding_unit TEXT,
+    is_false_alarm INTEGER DEFAULT 0,
+    cause TEXT,
+    call_id INTEGER,
+    billed INTEGER DEFAULT 0,
+    invoice_id INTEGER,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (permit_id) REFERENCES alarm_permits(id) ON DELETE SET NULL
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alarm_activations_permit ON alarm_activations(permit_id)`).run();
+
+  // ─── 2.4 Impound Lot Management ─────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS vehicle_impounds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_year TEXT,
+    vehicle_make TEXT,
+    vehicle_model TEXT,
+    vehicle_color TEXT,
+    vehicle_vin TEXT,
+    license_plate TEXT,
+    license_state TEXT,
+    tow_company TEXT,
+    tow_driver TEXT,
+    lot_location TEXT,
+    lot_space TEXT,
+    impound_date TEXT NOT NULL,
+    release_date TEXT,
+    reason TEXT NOT NULL,
+    authority TEXT,
+    hold_flag INTEGER DEFAULT 0,
+    hold_reason TEXT,
+    daily_fee REAL DEFAULT 25.00,
+    tow_fee REAL DEFAULT 150.00,
+    total_fees REAL DEFAULT 0,
+    status TEXT DEFAULT 'impounded' CHECK(status IN ('impounded','hold','released','auction','crushed','abandoned')),
+    owner_name TEXT,
+    owner_phone TEXT,
+    owner_notified INTEGER DEFAULT 0,
+    owner_notified_date TEXT,
+    call_id INTEGER,
+    incident_id INTEGER,
+    officer_id INTEGER,
+    photos TEXT,
+    property_inventory TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_impounds_status ON vehicle_impounds(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_impounds_plate ON vehicle_impounds(license_plate)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_impounds_vin ON vehicle_impounds(vehicle_vin)`).run();
+
+  // ─── 2.6 Evidence Chain of Custody ──────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS evidence_custody_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evidence_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('intake','transfer','checkout','return','dispose','release','lab_submit','lab_return','audit')),
+    from_person TEXT,
+    to_person TEXT,
+    from_location TEXT,
+    to_location TEXT,
+    reason TEXT,
+    condition_notes TEXT,
+    signature TEXT,
+    performed_by INTEGER,
+    performed_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_custody_evidence ON evidence_custody_log(evidence_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_custody_date ON evidence_custody_log(performed_at)`).run();
+
+  // ─── 3.1 Community / Citizen Reports ────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS community_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tracking_number TEXT UNIQUE NOT NULL,
+    report_type TEXT DEFAULT 'non_emergency' CHECK(report_type IN ('non_emergency','noise','graffiti','abandoned_vehicle','pothole','other','tip')),
+    reporter_name TEXT,
+    reporter_phone TEXT,
+    reporter_email TEXT,
+    is_anonymous INTEGER DEFAULT 0,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    description TEXT NOT NULL,
+    status TEXT DEFAULT 'submitted' CHECK(status IN ('submitted','reviewing','assigned','resolved','closed','rejected')),
+    assigned_to INTEGER,
+    resolution TEXT,
+    call_id INTEGER,
+    incident_id INTEGER,
+    photos TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_community_reports_status ON community_reports(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_community_reports_tracking ON community_reports(tracking_number)`).run();
+
+  // ─── 3.2 Crash / Accident Reports ──────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS crash_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_number TEXT UNIQUE,
+    crash_date TEXT NOT NULL,
+    crash_time TEXT,
+    location TEXT NOT NULL,
+    latitude REAL,
+    longitude REAL,
+    jurisdiction TEXT,
+    road_name TEXT,
+    cross_street TEXT,
+    road_type TEXT,
+    road_surface TEXT,
+    weather_conditions TEXT,
+    light_conditions TEXT,
+    traffic_control TEXT,
+    crash_type TEXT CHECK(crash_type IN ('vehicle_vehicle','vehicle_pedestrian','vehicle_bicycle','vehicle_fixed_object','vehicle_animal','rollover','sideswipe','rear_end','head_on','angle','other')),
+    severity TEXT CHECK(severity IN ('fatal','injury','property_damage','non_reportable')),
+    num_vehicles INTEGER DEFAULT 1,
+    num_injuries INTEGER DEFAULT 0,
+    num_fatalities INTEGER DEFAULT 0,
+    hit_and_run INTEGER DEFAULT 0,
+    dui_involved INTEGER DEFAULT 0,
+    parties TEXT,
+    vehicles TEXT,
+    injuries TEXT,
+    witnesses TEXT,
+    insurance_info TEXT,
+    diagram_data TEXT,
+    narrative TEXT,
+    contributing_factors TEXT,
+    officer_id INTEGER,
+    call_id INTEGER,
+    incident_id INTEGER,
+    status TEXT DEFAULT 'draft' CHECK(status IN ('draft','pending_review','approved','filed','amended')),
+    approved_by INTEGER,
+    approved_at TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crash_reports_date ON crash_reports(crash_date)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crash_reports_status ON crash_reports(status)`).run();
+
+  // ─── 3.3 Anonymous Tips ─────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS anonymous_tips (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tracking_number TEXT UNIQUE NOT NULL,
+    tip_type TEXT DEFAULT 'crime' CHECK(tip_type IN ('crime','drug','wanted','gang','fraud','other')),
+    description TEXT NOT NULL,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    suspect_description TEXT,
+    vehicle_description TEXT,
+    urgency TEXT DEFAULT 'routine' CHECK(urgency IN ('immediate','urgent','routine')),
+    status TEXT DEFAULT 'new' CHECK(status IN ('new','reviewed','investigating','actionable','closed','unfounded')),
+    assigned_to INTEGER,
+    case_id INTEGER,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_tips_status ON anonymous_tips(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_tips_tracking ON anonymous_tips(tracking_number)`).run();
+
+  // ─── 5.1 ALPR (Automated License Plate Recognition) ──
+  db.prepare(`CREATE TABLE IF NOT EXISTS alpr_reads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plate_number TEXT NOT NULL,
+    plate_state TEXT,
+    camera_id TEXT,
+    camera_name TEXT,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    confidence REAL,
+    image_url TEXT,
+    vehicle_make TEXT,
+    vehicle_model TEXT,
+    vehicle_color TEXT,
+    vehicle_year TEXT,
+    direction TEXT,
+    speed REAL,
+    is_hit INTEGER DEFAULT 0,
+    hit_reason TEXT,
+    read_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alpr_plate ON alpr_reads(plate_number)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alpr_date ON alpr_reads(read_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alpr_hits ON alpr_reads(is_hit) WHERE is_hit = 1`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS alpr_hotlist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plate_number TEXT NOT NULL,
+    plate_state TEXT,
+    reason TEXT NOT NULL,
+    source TEXT,
+    priority TEXT DEFAULT 'routine' CHECK(priority IN ('critical','urgent','routine')),
+    alert_type TEXT DEFAULT 'stolen' CHECK(alert_type IN ('stolen','wanted','bolo','amber','missing','other')),
+    description TEXT,
+    vehicle_make TEXT,
+    vehicle_model TEXT,
+    vehicle_color TEXT,
+    vehicle_year TEXT,
+    owner_name TEXT,
+    case_number TEXT,
+    expires_at TEXT,
+    is_active INTEGER DEFAULT 1,
+    added_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_hotlist_plate ON alpr_hotlist(plate_number)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_hotlist_active ON alpr_hotlist(is_active) WHERE is_active = 1`).run();
+
+  // ─── 5.3 Accreditation Tracking ─────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS accreditations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    officer_id INTEGER NOT NULL,
+    accreditation_type TEXT NOT NULL,
+    issuing_body TEXT,
+    certificate_number TEXT,
+    issued_date TEXT,
+    expiry_date TEXT,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active','expired','pending_renewal','revoked','suspended')),
+    training_hours REAL,
+    document_url TEXT,
+    notes TEXT,
+    reminder_sent_60 INTEGER DEFAULT 0,
+    reminder_sent_30 INTEGER DEFAULT 0,
+    reminder_sent_7 INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_accreditations_officer ON accreditations(officer_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_accreditations_expiry ON accreditations(expiry_date)`).run();
+
+  // ─── 7.1 Jail Management ────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS jail_inmates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_number TEXT UNIQUE,
+    person_id INTEGER,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    middle_name TEXT,
+    dob TEXT,
+    sex TEXT,
+    race TEXT,
+    height TEXT,
+    weight TEXT,
+    hair_color TEXT,
+    eye_color TEXT,
+    identifying_marks TEXT,
+    photo_url TEXT,
+    status TEXT DEFAULT 'in_custody' CHECK(status IN ('in_custody','released','transferred','escaped','deceased')),
+    classification TEXT DEFAULT 'general' CHECK(classification IN ('minimum','medium','maximum','protective','medical','mental_health','juvenile','general')),
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_jail_inmates_status ON jail_inmates(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_jail_inmates_name ON jail_inmates(last_name, first_name)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS jail_bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inmate_id INTEGER NOT NULL,
+    booking_number TEXT UNIQUE,
+    booking_date TEXT DEFAULT (datetime('now','localtime')),
+    release_date TEXT,
+    release_type TEXT,
+    arrest_id INTEGER,
+    charges TEXT,
+    bail_amount REAL,
+    bail_status TEXT DEFAULT 'none' CHECK(bail_status IN ('none','set','posted','denied','released_or')),
+    court_date TEXT,
+    housing_unit TEXT,
+    cell_number TEXT,
+    medical_flags TEXT,
+    suicide_watch INTEGER DEFAULT 0,
+    special_needs TEXT,
+    property_inventory TEXT,
+    booking_officer_id INTEGER,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (inmate_id) REFERENCES jail_inmates(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_jail_bookings_inmate ON jail_bookings(inmate_id)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS jail_housing (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_name TEXT NOT NULL,
+    cell_number TEXT,
+    capacity INTEGER DEFAULT 1,
+    current_occupancy INTEGER DEFAULT 0,
+    classification TEXT,
+    status TEXT DEFAULT 'available' CHECK(status IN ('available','occupied','maintenance','closed')),
+    notes TEXT
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS jail_movements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inmate_id INTEGER NOT NULL,
+    from_location TEXT,
+    to_location TEXT,
+    reason TEXT,
+    escorted_by INTEGER,
+    moved_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (inmate_id) REFERENCES jail_inmates(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_jail_movements_inmate ON jail_movements(inmate_id)`).run();
+
+  // ─── 8.1 Fire RMS ──────────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS fire_incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_number TEXT UNIQUE,
+    nfirs_number TEXT,
+    incident_date TEXT NOT NULL,
+    incident_time TEXT,
+    alarm_time TEXT,
+    arrival_time TEXT,
+    controlled_time TEXT,
+    last_unit_cleared TEXT,
+    incident_type TEXT,
+    property_use TEXT,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    structure_type TEXT,
+    stories INTEGER,
+    area_of_origin TEXT,
+    heat_source TEXT,
+    cause TEXT CHECK(cause IN ('accidental','intentional','undetermined','natural','under_investigation')),
+    estimated_loss REAL,
+    estimated_content_loss REAL,
+    insurance_info TEXT,
+    injuries_civilian INTEGER DEFAULT 0,
+    injuries_firefighter INTEGER DEFAULT 0,
+    fatalities INTEGER DEFAULT 0,
+    mutual_aid TEXT,
+    apparatus TEXT,
+    personnel TEXT,
+    narrative TEXT,
+    officer_id INTEGER,
+    call_id INTEGER,
+    status TEXT DEFAULT 'draft' CHECK(status IN ('draft','complete','filed','amended')),
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_fire_incidents_date ON fire_incidents(incident_date)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS fire_preplans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    building_name TEXT NOT NULL,
+    address TEXT NOT NULL,
+    latitude REAL,
+    longitude REAL,
+    building_type TEXT,
+    construction_type TEXT,
+    stories INTEGER,
+    square_footage INTEGER,
+    occupancy_type TEXT,
+    max_occupancy INTEGER,
+    hazardous_materials TEXT,
+    access_points TEXT,
+    water_supply TEXT,
+    nearest_hydrant_id INTEGER,
+    sprinkler_system INTEGER DEFAULT 0,
+    alarm_system INTEGER DEFAULT 0,
+    standpipe INTEGER DEFAULT 0,
+    knox_box INTEGER DEFAULT 0,
+    fdc_location TEXT,
+    key_holder_name TEXT,
+    key_holder_phone TEXT,
+    special_hazards TEXT,
+    tactical_notes TEXT,
+    floor_plan_url TEXT,
+    last_inspected TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_fire_preplans_address ON fire_preplans(address)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS fire_hydrants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hydrant_number TEXT UNIQUE,
+    location TEXT,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    hydrant_type TEXT DEFAULT 'standard' CHECK(hydrant_type IN ('standard','high_flow','dry_barrel','wet_barrel','flush','wall')),
+    flow_rate_gpm INTEGER,
+    static_pressure_psi INTEGER,
+    residual_pressure_psi INTEGER,
+    main_size_inches REAL,
+    color_code TEXT,
+    status TEXT DEFAULT 'in_service' CHECK(status IN ('in_service','out_of_service','maintenance','damaged','buried')),
+    last_tested TEXT,
+    last_flushed TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_fire_hydrants_location ON fire_hydrants(latitude, longitude)`).run();
+
+  // ─── Seed default timer profile ─────────────────────
+  db.prepare(`INSERT OR IGNORE INTO timer_profiles (name, call_type, warn_minutes, alert_minutes, critical_minutes, is_default) VALUES ('Default', NULL, 15, 30, 60, 1)`).run();
 }
 
 export default { initDatabase, getDb };
