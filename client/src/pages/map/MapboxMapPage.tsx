@@ -175,6 +175,7 @@ export default function MapboxMapPage() {
   const selfMarkerRef    = useRef<mapboxgl.Marker | null>(null);
   const tokenRef         = useRef<string | null>(null);
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
   const isMobile    = useIsMobile();
@@ -231,10 +232,9 @@ export default function MapboxMapPage() {
         });
         mapRef.current = map;
 
-        map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
-
         map.on('load', () => {
           if (cancelled) return;
+          map.addControl(new mapboxgl.NavigationControl({ showCompass: true }), 'top-right');
           if (DARK_STYLES.includes(mapStyle)) addMapbox3DBuildings(map);
           loadBeatOverlay(map);
           setMapLoaded(true);
@@ -277,7 +277,11 @@ export default function MapboxMapPage() {
       if (!resp.ok) { devWarn('[MapboxMap] beats.geojson not found'); return; }
       const geojson = await resp.json();
 
-      if (map.getSource('beats')) return;
+      // Remove existing beat layers/source if present (e.g. after style change)
+      ['beats-label', 'beats-border', 'beats-fill'].forEach(id => {
+        if (map.getLayer(id)) map.removeLayer(id);
+      });
+      if (map.getSource('beats')) map.removeSource('beats');
 
       map.addSource('beats', { type: 'geojson', data: geojson });
 
@@ -477,14 +481,12 @@ export default function MapboxMapPage() {
     // Re-add 3D buildings for dark styles after style loads
     map.once('style.load', () => {
       if (DARK_STYLES.includes(styleId)) addMapbox3DBuildings(map);
-      // Re-add beat overlay
-      if (tokenRef.current) loadBeatOverlay(map);
+      // Re-add beat overlay (GeoJSON is local, doesn't need token)
+      loadBeatOverlay(map);
     });
   }, [setMapStyleId, loadBeatOverlay]);
 
   // ── Address Search (Mapbox Geocoding) ──────────────────────────────────────
-
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleSearchInput = useCallback((value: string) => {
     setSearchQuery(value);
