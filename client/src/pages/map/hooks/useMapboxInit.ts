@@ -14,6 +14,8 @@ import {
   setMapboxStyle,
   injectMapboxStyles,
   addMapbox3DBuildings,
+  addMapboxTerrain,
+  removeMapboxTerrain,
   type MapboxStyleId,
 } from '../../../utils/mapboxLoader';
 import { getMapboxToken } from '../../../utils/mapboxApiKey';
