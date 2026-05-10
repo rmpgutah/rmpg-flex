@@ -18,6 +18,7 @@
 // ============================================================
 
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import {
   Route, MapPin, Navigation, Clock, ChevronUp, ChevronDown,
   Play, Save, Trash2, RefreshCw, Loader2, AlertTriangle,
@@ -103,9 +104,12 @@ const PRIORITY_LABELS: Record<string, string> = {
 // ─── Component ──────────────────────────────────────────────
 
 export default function RouteBuilderPage() {
+  const [searchParams] = useSearchParams();
+  const preselectedUnit = searchParams.get('unit') || '';
+
   // State
   const [units, setUnits] = useState<Unit[]>([]);
-  const [selectedUnitId, setSelectedUnitId] = useState<string>('');
+  const [selectedUnitId, setSelectedUnitId] = useState<string>(preselectedUnit);
   const [waypoints, setWaypoints] = useState<RouteWaypoint[]>([]);
   const [origin, setOrigin] = useState<{ lat: number; lng: number } | null>(null);
   const [totalDistance, setTotalDistance] = useState(0);

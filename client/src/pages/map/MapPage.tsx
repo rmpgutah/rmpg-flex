@@ -5148,6 +5148,15 @@ export default function MapPage() {
               )}
             </div>
 
+            {/* ── Dispatch Tools ──────────────────────── */}
+            <div className="mt-3 pt-3 border-t border-rmpg-700">
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-2">Dispatch Tools</div>
+
+              <a href="/route-builder" className="w-full flex items-center gap-2 px-2 py-1.5 text-[10px] rounded-sm transition-colors text-rmpg-400 hover:bg-surface-raised hover:text-[#d4a017] no-underline" style={{ textDecoration: 'none' }}>
+                <Route className="w-3 h-3" /> CFS Route Builder
+              </a>
+            </div>
+
             {/* ── Officer Safety ──────────────────────── */}
             <div className="mt-3 pt-3 border-t border-rmpg-700">
               <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-2">Officer Safety</div>
