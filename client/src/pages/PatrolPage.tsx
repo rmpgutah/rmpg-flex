@@ -31,20 +31,11 @@ import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { safeDateStr, safeTimeStr } from '../utils/dateUtils';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import { createMapboxMap, addMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { getMapboxToken } from '../utils/mapboxApiKey';
 import { useToast } from '../components/ToastProvider';
-
-// Add global google type for TypeScript
-declare global {
-  interface Window {
-    google: typeof google;
-  }
-  // eslint-disable-next-line @typescript-eslint/no-namespace
-  namespace google {
-    // The google.maps types are available globally when the Maps script is loaded.
-  }
-}
 
 type Checkpoint = {
   id: number;
@@ -92,55 +83,40 @@ type Property = {
 };
 
 // ── Patrol Map View ─────────────────────────────────────────
-// Shows checkpoint markers + scan route polylines on Google Maps.
+// Shows checkpoint markers + scan route polylines on Mapbox GL.
+
+function escapeHtml(str: string): string {
+  return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scans: Scan[] }) {
   const mapRef = React.useRef<HTMLDivElement>(null);
-  const mapInstanceRef = React.useRef<google.maps.Map | null>(null);
+  const mapInstanceRef = React.useRef<mapboxgl.Map | null>(null);
+  const markersRef = React.useRef<mapboxgl.Marker[]>([]);
+  const trailIdsRef = React.useRef<string[]>([]);
   const [mapReady, setMapReady] = React.useState(false);
 
   React.useEffect(() => {
     if (!mapRef.current) return;
 
     let cancelled = false;
+    injectMapboxStyles();
 
-    function initPatrolMap() {
-      if (cancelled || !mapRef.current || mapInstanceRef.current) return;
-
-      const map = new google.maps.Map(mapRef.current, {
-        center: { lat: 40.76, lng: -111.89 },
-        zoom: 12,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        backgroundColor: '#171717',
-        gestureHandling: 'greedy',
-      });
-      mapInstanceRef.current = map;
-      registerMapInstance(map);
-      setMapReady(true);
-    }
-
-    // Retry with backoff (3 attempts) for intermittent WiFi
-    function attemptLoad(apiKey: string, attempt: number) {
-      if (cancelled) return;
-      loadGoogleMaps(apiKey)
-        .then(() => initPatrolMap())
-        .catch(() => {
-          if (cancelled) return;
-          if (attempt < 3) {
-            setTimeout(() => attemptLoad(apiKey, attempt + 1), [3000, 6000, 12000][attempt]);
-          }
-        });
-    }
-    let unsubOnline = () => {};
     (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
-        if (cancelled) return;
-        attemptLoad(apiKey, 0);
-        unsubOnline = onOnlineRetryMaps(apiKey, () => {
-          if (!cancelled && !mapInstanceRef.current) initPatrolMap();
+        const token = await getMapboxToken();
+        if (cancelled || !mapRef.current || !token) return;
+
+        const map = createMapboxMap({
+          container: mapRef.current,
+          center: [-111.89, 40.76],
+          zoom: 12,
+          accessToken: token,
+        });
+        mapInstanceRef.current = map;
+
+        map.on('load', () => {
+          if (!cancelled) setMapReady(true);
         });
       } catch {
         setMapReady(false);
@@ -149,8 +125,12 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 
     return () => {
       cancelled = true;
-      unsubOnline();
-      if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.remove();
+        mapInstanceRef.current = null;
+      }
     };
   }, []);
 
@@ -159,35 +139,48 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     const map = mapInstanceRef.current;
     if (!map || !mapReady) return;
 
-    const bounds = new google.maps.LatLngBounds();
+    // Clear previous markers
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    // Remove previous trail layers/sources
+    trailIdsRef.current.forEach(id => {
+      if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(id)) map.removeSource(id);
+    });
+    trailIdsRef.current = [];
+
+    const bounds = new mapboxgl.LngLatBounds();
     let hasPoints = false;
 
     // Checkpoint markers
     checkpoints.forEach(cp => {
       if (!cp.latitude || !cp.longitude) return;
-      const pos = { lat: cp.latitude, lng: cp.longitude };
-      bounds.extend(pos);
+      bounds.extend([cp.longitude, cp.latitude]);
       hasPoints = true;
 
-      const marker = new google.maps.Marker({
-        map,
-        position: pos,
-        title: cp.name,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: cp.is_active ? '#22c55e' : '#666666',
-          fillOpacity: 0.9,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-          scale: 8,
-        },
-      });
+      const el = document.createElement('div');
+      const color = cp.is_active ? '#22c55e' : '#666666';
+      el.style.cssText = `
+        width: 16px; height: 16px; border-radius: 50%;
+        background: ${color}; border: 2px solid #fff;
+        cursor: pointer; box-shadow: 0 0 6px ${color}80;
+      `;
 
-      const info = new google.maps.InfoWindow({
-        content: `<div style="color:#000;font-size:12px;font-weight:bold">${cp.name}</div>
-          <div style="color:#666;font-size:10px">${cp.is_active ? 'Active' : 'Inactive'} • Every ${cp.scan_required_interval_minutes || '?'} min</div>`,
-      });
-      marker.addListener('click', () => info.open(map, marker));
+      const popup = new mapboxgl.Popup({ offset: 12, closeButton: false, className: 'mapbox-popup-dark' })
+        .setHTML(`
+          <div style="background:#141414;color:#e0e0e0;padding:8px 12px;border:1px solid #222;border-radius:2px;font-family:system-ui,sans-serif;font-size:11px;">
+            <div style="font-weight:700;color:#d4a017;margin-bottom:4px;">${escapeHtml(cp.name)}</div>
+            <div>${cp.is_active ? 'Active' : 'Inactive'} • Every ${cp.scan_required_interval_minutes || '?'} min</div>
+          </div>
+        `);
+
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([cp.longitude, cp.latitude])
+        .setPopup(popup)
+        .addTo(map);
+
+      markersRef.current.push(marker);
     });
 
     // Scan route polylines (group by date, draw chronological lines)
@@ -202,29 +195,24 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
 
     const colors = ['#888888', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
     let colorIdx = 0;
-    scansByDate.forEach((dayScans) => {
+    scansByDate.forEach((dayScans, dateKey) => {
       const sorted = dayScans.sort((a, b) => new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime());
-      const path = sorted.map(s => {
-        const pos = { lat: s.latitude!, lng: s.longitude! };
-        bounds.extend(pos);
+      const coords: [number, number][] = sorted.map(s => {
+        bounds.extend([s.longitude!, s.latitude!]);
         hasPoints = true;
-        return pos;
+        return [s.longitude!, s.latitude!];
       });
 
-      if (path.length > 1) {
-        new google.maps.Polyline({
-          map,
-          path,
-          strokeColor: colors[colorIdx % colors.length],
-          strokeOpacity: 0.7,
-          strokeWeight: 2,
-        });
+      if (coords.length > 1) {
+        const trailId = `patrol-trail-${dateKey}`;
+        addMapboxTrail(map, trailId, coords, colors[colorIdx % colors.length], 2);
+        trailIdsRef.current.push(trailId);
       }
       colorIdx++;
     });
 
     if (hasPoints) {
-      map.fitBounds(bounds, 50);
+      map.fitBounds(bounds, { padding: 50 });
     }
   }, [mapReady, checkpoints, scans]);
 

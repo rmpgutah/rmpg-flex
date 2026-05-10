@@ -109,7 +109,6 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   const containerRef = useRef<HTMLDivElement>(null);
   const [liveAddress, setLiveAddress] = useState<string | null>(null);
   const lastGeocodedPos = useRef<{ lat: number; lng: number } | null>(null);
-  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
   const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const gpsTrack = useMemo(() => parseGpsTrack(video?.cpg_gps_track), [video?.cpg_gps_track]);
@@ -117,25 +116,31 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
   useEffect(() => { setLiveAddress(null); lastGeocodedPos.current = null; }, [video?.id]);
 
-  const reverseGeocode = useCallback((lat: number, lng: number) => {
+  const reverseGeocode = useCallback(async (lat: number, lng: number) => {
     const key = cacheKey(lat, lng);
     const cached = geocodeCache.get(key);
     if (cached) { setLiveAddress(cached); lastGeocodedPos.current = { lat, lng }; return; }
-    if (typeof google === 'undefined' || !google.maps) return;
-    if (!geocoderRef.current) geocoderRef.current = new google.maps.Geocoder();
-    geocoderRef.current.geocode({ location: { lat, lng } }, (results, status) => {
-      if (status === 'OK' && results?.[0]) {
-        const c = results[0].address_components;
-        const num = c?.find(x => x.types.includes('street_number'))?.short_name || '';
-        const route = c?.find(x => x.types.includes('route'))?.short_name || '';
-        const city = c?.find(x => x.types.includes('locality'))?.short_name || '';
-        let addr = num && route ? `${num} ${route}` : route || (results[0].formatted_address || '').split(',')[0];
-        if (city) addr += `, ${city}`;
-        geocodeCacheSet(key, addr);
-        setLiveAddress(addr);
-        lastGeocodedPos.current = { lat, lng };
-      }
-    });
+    try {
+      const { getCachedMapboxToken } = await import('../utils/mapboxApiKey');
+      const token = getCachedMapboxToken();
+      if (!token) return;
+      const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&limit=1&types=address`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const feature = data.features?.[0];
+      if (!feature) return;
+      const text = feature.text || '';
+      const addr_num = feature.address || '';
+      const ctx = feature.context || [];
+      const city = ctx.find((c: any) => c.id.startsWith('place'))?.text || '';
+      let addr = addr_num && text ? `${addr_num} ${text}` : text || feature.place_name?.split(',')[0] || '';
+      if (city) addr += `, ${city}`;
+      geocodeCacheSet(key, addr);
+      setLiveAddress(addr);
+      lastGeocodedPos.current = { lat, lng };
+    } catch {
+      // Geocoding failed — silently degrade
+    }
   }, []);
 
   useEffect(() => {

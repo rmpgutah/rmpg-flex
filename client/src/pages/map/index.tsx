@@ -1,16 +1,13 @@
 // ============================================================
-// Map Page — Engine-aware wrapper
+// Map Page — Mapbox GL JS (mandatory engine)
 // ============================================================
-// Routes to MapboxMapPage when the provider detection selects
-// 'mapbox', otherwise falls back to the existing Google Maps
-// MapPage. MapLibre also routes through MapboxMapPage since
-// the Mapbox GL API is compatible.
+// Always renders MapboxMapPage. Google Maps has been fully
+// removed from the system. MapLibre GL is the free fallback
+// when no Mapbox token is configured.
 // ============================================================
 
 import { lazy, Suspense } from 'react';
-import { useMapProvider } from './hooks/useMapProvider';
 
-const GoogleMapPage = lazy(() => import('./MapPage'));
 const MapboxMapPage = lazy(() => import('./MapboxMapPage'));
 
 const LOADING_FALLBACK = (
@@ -23,24 +20,9 @@ const LOADING_FALLBACK = (
 );
 
 export default function MapPageRouter() {
-  const { engine, detecting } = useMapProvider();
-
-  if (detecting) return LOADING_FALLBACK;
-
-  // Only Mapbox uses the Mapbox GL renderer (requires a Mapbox token)
-  if (engine === 'mapbox') {
-    return (
-      <Suspense fallback={LOADING_FALLBACK}>
-        <MapboxMapPage />
-      </Suspense>
-    );
-  }
-
-  // Google Maps, MapLibre, or unknown — use the existing full-featured MapPage
-  // (MapLibre has no Mapbox token and cannot use MapboxMapPage)
   return (
     <Suspense fallback={LOADING_FALLBACK}>
-      <GoogleMapPage />
+      <MapboxMapPage />
     </Suspense>
   );
 }

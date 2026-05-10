@@ -1,21 +1,17 @@
 // ============================================================
 // RMPG Flex — Dispatch Mini-Map
-// Lightweight embeddable Google Maps panel showing the selected
+// Lightweight embeddable Mapbox GL panel showing the selected
 // call location and assigned unit positions. Used inline in the
 // Dispatch right column.
-//
-// When Google Maps fails to load (vehicle WiFi dead zones), falls
-// back to a compact Leaflet map using pre-cached offline tiles.
 // ============================================================
 
 import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
-import { Maximize2, MapPin, Navigation, RefreshCw, Wifi, WifiOff, Route } from 'lucide-react';
+import { Maximize2, MapPin, Navigation, Wifi } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
-import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
-import { useMapRouting } from '../hooks/useMapRouting';
+import mapboxgl from 'mapbox-gl';
+import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { getMapboxToken } from '../utils/mapboxApiKey';
 import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
-import { apiFetch } from '../hooks/useApi';
 import type { CallForService, Unit, UnitStatus } from '../types';
 
 /** Priority color mapping — uses shared PRIORITY_HEX tokens */
@@ -35,8 +31,34 @@ interface DispatchMiniMapProps {
   serveRouteOrder?: number[] | null;
 }
 
-const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
+/** Active route info returned by inline routing */
+interface ActiveRouteInfo {
+  unitCallSign: string;
+  callNumber: string;
+  eta: string;
+  distance: string;
+}
+
+const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608]; // [lng, lat]
 const MINI_ZOOM = 15;
+const ROUTE_TRAIL_ID = 'dispatch-minimap-route';
+const SERVE_TRAIL_ID = 'dispatch-minimap-serve-route';
+
+/** Format seconds into a human-readable ETA */
+function formatEta(seconds: number): string {
+  if (seconds < 60) return '<1 min';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+}
+
+/** Format meters into a human-readable distance */
+function formatDistance(meters: number): string {
+  const miles = meters / 1609.344;
+  return miles < 0.1 ? `${Math.round(meters)} ft` : `${miles.toFixed(1)} mi`;
+}
 
 /** Build a call marker DOM element with priority-colored badge */
 function buildCallMarker(label: string, priority?: string): HTMLElement {
@@ -125,20 +147,20 @@ function injectMinimapKeyframes() {
 export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate, serveRouteJobs, serveRouteOrder }: DispatchMiniMapProps) {
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<any[]>([]);
-  const serveOverlaysRef = useRef<any[]>([]);
-  const servePolylineRef = useRef<google.maps.Polyline | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const serveMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const tokenRef = useRef<string | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tilesStalled, setTilesStalled] = useState(false);
-  const [gmapsRetry, setGmapsRetry] = useState(0);
-  const tileMonitorRef = useRef<(() => void) | null>(null);
-  const [mapHeading, setMapHeading] = useState(0);
-  const headingListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const [mapBearing, setMapBearing] = useState(0);
 
-  // Inject keyframes on mount
-  useEffect(() => { injectMinimapKeyframes(); }, []);
+  // Inline routing state (replaces useMapRouting)
+  const [activeRoute, setActiveRoute] = useState<ActiveRouteInfo | null>(null);
+  const lastAutoRouteRef = useRef<string>('');
+
+  // Inject keyframes + Mapbox styles on mount
+  useEffect(() => { injectMinimapKeyframes(); injectMapboxStyles(); }, []);
 
   const visibleUnitCount = useMemo(() =>
     units.filter(u =>
@@ -147,151 +169,164 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     [units, call?.assigned_units],
   );
 
-  // Classify error: auth/config vs connectivity.
-  // This minimap still runs on Google Maps while Mapbox remains the preferred
-  // provider in selection order; failures render the auth/config placeholder.
   const isAuthError = error != null;
 
-  // Routing (auto-route when a single assigned unit has GPS)
-  const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapRef.current });
-  const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
+  // ── Inline routing functions ──
 
-  // Load Google Maps script with retry + online auto-recovery
+  const clearRoute = useCallback(() => {
+    const map = mapRef.current;
+    if (map) {
+      try { removeMapboxTrail(map, ROUTE_TRAIL_ID); } catch { /* layer may not exist */ }
+    }
+    setActiveRoute(null);
+    lastAutoRouteRef.current = '';
+  }, []);
+
+  const showRoute = useCallback(async (
+    unitCallSign: string, callNumber: string,
+    originLat: number, originLng: number,
+    destLat: number, destLng: number,
+  ) => {
+    const map = mapRef.current;
+    const token = tokenRef.current;
+    if (!map || !token) return;
+
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${originLng},${originLat};${destLng},${destLat}?access_token=${token}&geometries=geojson&overview=full`;
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const route = data.routes?.[0];
+      if (!route) return;
+
+      const coords: [number, number][] = route.geometry.coordinates;
+      // Remove old route trail then add new one
+      try { removeMapboxTrail(map, ROUTE_TRAIL_ID); } catch { /* ok */ }
+      addMapboxTrail(map, ROUTE_TRAIL_ID, coords, '#22c55e', 3);
+
+      setActiveRoute({
+        unitCallSign,
+        callNumber,
+        eta: formatEta(route.duration),
+        distance: formatDistance(route.distance),
+      });
+    } catch {
+      // Routing fetch failed — silently ignore
+    }
+  }, []);
+
+  const updateOrigin = useCallback(async (lat: number, lng: number) => {
+    // Re-fetch route with new origin keeping same destination from call
+    if (!call?.latitude || !call?.longitude) return;
+    const map = mapRef.current;
+    const token = tokenRef.current;
+    if (!map || !token) return;
+
+    // Find the active route's unit callsign from current state
+    const currentRoute = activeRoute;
+    if (!currentRoute) return;
+
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lng},${lat};${call.longitude},${call.latitude}?access_token=${token}&geometries=geojson&overview=full`;
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const route = data.routes?.[0];
+      if (!route) return;
+
+      const coords: [number, number][] = route.geometry.coordinates;
+      try { removeMapboxTrail(map, ROUTE_TRAIL_ID); } catch { /* ok */ }
+      addMapboxTrail(map, ROUTE_TRAIL_ID, coords, '#22c55e', 3);
+
+      setActiveRoute({
+        unitCallSign: currentRoute.unitCallSign,
+        callNumber: currentRoute.callNumber,
+        eta: formatEta(route.duration),
+        distance: formatDistance(route.distance),
+      });
+    } catch {
+      // Silently ignore routing errors
+    }
+  }, [call?.latitude, call?.longitude, activeRoute]);
+
+  // ── Load Mapbox token and create map ──
   useEffect(() => {
     let cancelled = false;
-    let unsubOnline = () => {};
     setError(null);
     setLoaded(false);
 
-    function attemptLoad(apiKey: string, attempt: number) {
-      if (cancelled) return;
-      loadGoogleMaps(apiKey)
-        .then(() => { if (!cancelled) { setLoaded(true); setError(null); } })
-        .catch(() => {
-          if (cancelled) return;
-          if (attempt < 3) {
-            setTimeout(() => attemptLoad(apiKey, attempt + 1), [3000, 6000, 12000][attempt]);
-          } else {
-            setError('Map load failed — check connection');
-          }
-        });
-    }
-
     (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
+        const token = await getMapboxToken();
         if (cancelled) return;
-        attemptLoad(apiKey, 0);
-        unsubOnline = onOnlineRetryMaps(apiKey, () => {
-          if (!cancelled) {
-            setError(null);
-            setLoaded(true);
-          }
-        });
+        if (!token) {
+          setError('Mapbox token not configured');
+          return;
+        }
+        tokenRef.current = token;
+        setLoaded(true);
       } catch (err: any) {
         if (!cancelled) {
-          setLoaded(false);
-          setError(err?.message || getGoogleMapsApiKeyErrorMessage());
+          setError(err?.message || 'Failed to load Mapbox token');
         }
       }
     })();
 
-    return () => { cancelled = true; unsubOnline(); };
-  }, [gmapsRetry]);
+    return () => { cancelled = true; };
+  }, []);
 
   // Initialize or update map
   useEffect(() => {
-    if (!loaded || !mapContainerRef.current) return;
+    if (!loaded || !mapContainerRef.current || !tokenRef.current) return;
 
-    const center = call?.latitude != null && call?.longitude != null
-      ? { lat: call.latitude, lng: call.longitude }
+    const center: [number, number] = call?.latitude != null && call?.longitude != null
+      ? [call.longitude, call.latitude]
       : DEFAULT_CENTER;
 
     if (!mapRef.current) {
-      const map = new google.maps.Map(mapContainerRef.current, {
+      const map = createMapboxMap({
+        container: mapContainerRef.current,
         center,
         zoom: MINI_ZOOM,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
-        gestureHandling: 'cooperative',
+        style: 'dark',
+        accessToken: tokenRef.current,
       });
-      // Auth/quota failure leaves a stub Map whose getDiv() is undefined —
-      // route to the offline fallback rather than crashing the error boundary.
-      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
-        setError('Map load failed — check connection');
-        return;
-      }
+
       mapRef.current = map;
-      registerMapInstance(map);
 
-      // Track heading for compass indicator
-      headingListenerRef.current = google.maps.event.addListener(map, 'heading_changed', () => {
-        setMapHeading(map.getHeading?.() || 0);
-      });
-
-      // Monitor tile loading for vehicle WiFi resilience
-      if (tileMonitorRef.current) tileMonitorRef.current();
-      tileMonitorRef.current = monitorTileLoading(map, {
-        onStalled: () => setTilesStalled(true),
-        onLoaded: () => setTilesStalled(false),
-        onRecovering: () => {},
+      // Track bearing for compass indicator
+      map.on('rotate', () => {
+        setMapBearing(map.getBearing());
       });
     } else {
       mapRef.current.setCenter(center);
     }
 
     // Clear old markers
-    markersRef.current.forEach(m => {
-      if (typeof m.setMap === 'function') m.setMap(null);
-      else if (typeof m.remove === 'function') m.remove();
-    });
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
-
-    // Helper: create an OverlayView-based marker
-    const createOverlay = (map: google.maps.Map, pos: google.maps.LatLngLiteral, content: HTMLElement, zIndex: number) => {
-      const overlay = new google.maps.OverlayView();
-      let container: HTMLDivElement | null = null;
-      overlay.onAdd = () => {
-        container = document.createElement('div');
-        container.style.position = 'absolute';
-        container.style.zIndex = String(zIndex);
-        container.appendChild(content);
-        overlay.getPanes()?.overlayMouseTarget.appendChild(container);
-      };
-      overlay.draw = () => {
-        if (!container) return;
-        const proj = overlay.getProjection();
-        if (!proj) return;
-        const pt = proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat, pos.lng));
-        if (pt) {
-          container.style.left = `${pt.x}px`;
-          container.style.top = `${pt.y}px`;
-          container.style.transform = 'translate(-50%, -100%)';
-        }
-      };
-      overlay.onRemove = () => { container?.parentElement?.removeChild(container); container = null; };
-      overlay.setMap(map);
-      return overlay;
-    };
 
     // Call marker (priority-colored pin)
     if (call?.latitude != null && call?.longitude != null && mapRef.current) {
-      const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL', (call as any).priority), 100);
-      markersRef.current.push(m);
+      const el = buildCallMarker(call.call_number || 'CALL', (call as any).priority);
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([call.longitude, call.latitude])
+        .addTo(mapRef.current);
+      markersRef.current.push(marker);
     }
 
     // Assigned unit markers (status-colored)
-    // assigned_units contains numeric unit IDs as strings (from mapDbCall parsing assigned_unit_ids)
-    const assignedUnits = units.filter(u =>
+    const assignedUnitsWithGps = units.filter(u =>
       call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
     );
 
-    for (const unit of assignedUnits) {
+    for (const unit of assignedUnitsWithGps) {
       if (mapRef.current) {
-        const m = createOverlay(mapRef.current, { lat: unit.latitude!, lng: unit.longitude! }, buildUnitMarker(unit.call_sign, (unit as any).status), 50);
-        markersRef.current.push(m);
+        const el = buildUnitMarker(unit.call_sign, (unit as any).status);
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([unit.longitude!, unit.latitude!])
+          .addTo(mapRef.current);
+        markersRef.current.push(marker);
       }
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
@@ -327,7 +362,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       // Multiple or zero assigned units — clear route
       if (hasActiveRouteRef.current) {
         clearRoute();
-        lastAutoRouteRef.current = '';
       }
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, call?.assigned_units, units, showRoute, clearRoute, updateOrigin]);
@@ -350,14 +384,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     if (!map || !loaded) return;
 
     // Clean up previous serve overlays
-    serveOverlaysRef.current.forEach(m => {
-      if (typeof m.setMap === 'function') m.setMap(null);
-    });
-    serveOverlaysRef.current = [];
-    if (servePolylineRef.current) {
-      servePolylineRef.current.setMap(null);
-      servePolylineRef.current = null;
-    }
+    serveMarkersRef.current.forEach(m => m.remove());
+    serveMarkersRef.current = [];
+    try { removeMapboxTrail(map, SERVE_TRAIL_ID); } catch { /* ok */ }
 
     if (!serveRouteJobs || serveRouteJobs.length === 0) return;
 
@@ -371,50 +400,16 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       orderedJobs = [...ordered, ...remaining];
     }
 
-    // Draw polyline
-    const path = orderedJobs
+    // Build coordinate path for polyline
+    const coords: [number, number][] = orderedJobs
       .filter((j: any) => j.recipient_lat != null && j.recipient_lng != null)
-      .map((j: any) => ({ lat: j.recipient_lat, lng: j.recipient_lng }));
+      .map((j: any) => [j.recipient_lng, j.recipient_lat] as [number, number]);
 
-    if (path.length > 1) {
-      servePolylineRef.current = new google.maps.Polyline({
-        path,
-        geodesic: true,
-        strokeColor: '#d4a017',
-        strokeOpacity: 0.7,
-        strokeWeight: 2,
-        map,
-        icons: [{
-          icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2, strokeColor: '#d4a017', fillColor: '#d4a017', fillOpacity: 1 },
-          offset: '50%',
-          repeat: '80px',
-        }],
-      });
+    if (coords.length > 1) {
+      addMapboxTrail(map, SERVE_TRAIL_ID, coords, '#d4a017', 2);
     }
 
     // Numbered markers
-    const createOverlayFn = (pos: google.maps.LatLngLiteral, content: HTMLElement, zIndex: number) => {
-      const overlay = new google.maps.OverlayView();
-      let container: HTMLDivElement | null = null;
-      overlay.onAdd = () => {
-        container = document.createElement('div');
-        container.style.position = 'absolute';
-        container.style.zIndex = String(zIndex);
-        container.appendChild(content);
-        overlay.getPanes()?.overlayMouseTarget.appendChild(container);
-      };
-      overlay.draw = () => {
-        if (!container) return;
-        const proj = overlay.getProjection();
-        if (!proj) return;
-        const pt = proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat, pos.lng));
-        if (pt) { container.style.left = `${pt.x}px`; container.style.top = `${pt.y}px`; container.style.transform = 'translate(-50%, -100%)'; }
-      };
-      overlay.onRemove = () => { container?.parentElement?.removeChild(container); container = null; };
-      overlay.setMap(map);
-      return overlay;
-    };
-
     orderedJobs.forEach((job: any, idx: number) => {
       if (job.recipient_lat == null || job.recipient_lng == null) return;
       const statusColor = job.status === 'served' ? '#22c55e'
@@ -431,27 +426,32 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       el.appendChild(badge);
       el.appendChild(caret);
 
-      const overlay = createOverlayFn({ lat: job.recipient_lat, lng: job.recipient_lng }, el, 150);
-      serveOverlaysRef.current.push(overlay);
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([job.recipient_lng, job.recipient_lat])
+        .addTo(map);
+      serveMarkersRef.current.push(marker);
     });
 
-    // Extend bounds to include serve jobs
-    if (orderedJobs.length > 0 && path.length > 0) {
-      const bounds = new google.maps.LatLngBounds();
+    // Fit bounds to include serve jobs + call location
+    if (coords.length > 0) {
+      const bounds = new mapboxgl.LngLatBounds();
       if (call?.latitude != null && call?.longitude != null) {
-        bounds.extend({ lat: call.latitude, lng: call.longitude });
+        bounds.extend([call.longitude, call.latitude]);
       }
-      path.forEach(p => bounds.extend(p));
-      map.fitBounds(bounds, 40);
+      coords.forEach(c => bounds.extend(c));
+      map.fitBounds(bounds, { padding: 40 });
     }
   }, [loaded, serveRouteJobs, serveRouteOrder, call?.id]);
 
-  // Cleanup: unregister map instance + tile monitor + heading listener on unmount
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (tileMonitorRef.current) { tileMonitorRef.current(); tileMonitorRef.current = null; }
-      if (headingListenerRef.current) { google.maps.event.removeListener(headingListenerRef.current); headingListenerRef.current = null; }
-      if (mapRef.current) unregisterMapInstance(mapRef.current);
+      markersRef.current.forEach(m => m.remove());
+      serveMarkersRef.current.forEach(m => m.remove());
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, []);
 
@@ -545,7 +545,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       </div>
 
       {/* Compass indicator (top-right, below buttons) */}
-      {loaded && mapHeading !== 0 && (
+      {loaded && mapBearing !== 0 && (
         <div style={{
           position: 'absolute', top: 36, right: 4, zIndex: 10,
           pointerEvents: 'none',
@@ -558,7 +558,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
             backdropFilter: 'blur(4px)',
           }}>
             <svg width="16" height="16" viewBox="0 0 16 16"
-              style={{ transform: `rotate(${-mapHeading}deg)`, transition: 'transform 0.3s ease' }}>
+              style={{ transform: `rotate(${-mapBearing}deg)`, transition: 'transform 0.3s ease' }}>
               <polygon points="8,2 6.5,9 8,7.5 9.5,9" fill="#d4a017" />
               <polygon points="8,14 6.5,7 8,8.5 9.5,7" fill="#555555" />
               <text x="8" y="1.5" textAnchor="middle" fill="#d4a017" fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
@@ -632,28 +632,8 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         </div>
       )}
 
-      {/* Tile stall badge with signal indicator */}
-      {loaded && tilesStalled && (
-        <div style={{
-          position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
-          pointerEvents: 'none',
-        }}>
-          <div style={{
-            background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
-            backdropFilter: 'blur(4px)',
-            padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
-            borderRadius: 2,
-          }}>
-            <WifiOff style={{ width: 8, height: 8, color: '#f59e0b' }} />
-            <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
-              OFFLINE
-            </span>
-          </div>
-        </div>
-      )}
-
-      {/* Connected indicator (green dot when tiles loaded and not stalled) */}
-      {loaded && !tilesStalled && (
+      {/* Connected indicator (green dot when map loaded) */}
+      {loaded && (
         <div style={{
           position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
           pointerEvents: 'none',

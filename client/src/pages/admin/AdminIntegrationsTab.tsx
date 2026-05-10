@@ -80,7 +80,6 @@ const GOOGLE_CLOUD_KEYS: ApiKeyConfig[] = [
 
 const MAP_PROVIDER_KEYS: ApiKeyConfig[] = [
   { key: 'mapbox_api_key', label: 'Mapbox (Primary Map UI)', desc: 'Primary client-side map rendering engine for Map page, dispatch overlays, and beat polygons', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com' },
-  { key: 'google_maps_api_key', label: 'Google Maps JavaScript API (Fallback)', desc: 'Fallback map rendering when Mapbox is unavailable or disabled', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
 ];
 
 const AI_ML_KEYS: ApiKeyConfig[] = [
