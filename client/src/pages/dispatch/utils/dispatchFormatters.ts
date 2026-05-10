@@ -92,3 +92,79 @@ export function formatPriorityBadge(priority: string): string {
 export function getStatusTransitionLabel(from: string, to: string): string {
   return `${toDisplayLabel(from)} → ${toDisplayLabel(to)}`;
 }
+
+// ── Upgrade: Handoff Summary Formatter ──
+export function formatHandoffSummary(handoff: {
+  active_calls_summary?: string;
+  held_calls_summary?: string;
+  pending_backups?: string;
+  officer_notes?: string;
+  priority_items?: string;
+}): string {
+  const parts: string[] = [];
+
+  try {
+    const active = JSON.parse(handoff.active_calls_summary || '[]');
+    if (active.length > 0) {
+      parts.push(`ACTIVE CALLS (${active.length}):`);
+      active.slice(0, 10).forEach((c: any) => {
+        parts.push(`  ${c.priority} ${c.call_number} — ${c.incident_type} @ ${c.location_address || 'Unknown'} [${c.status}]`);
+      });
+      if (active.length > 10) parts.push(`  ... and ${active.length - 10} more`);
+    }
+  } catch { /* ignore parse errors */ }
+
+  try {
+    const held = JSON.parse(handoff.held_calls_summary || '[]');
+    if (held.length > 0) {
+      parts.push(`\nHELD CALLS (${held.length}):`);
+      held.forEach((c: any) => {
+        parts.push(`  ${c.priority} ${c.call_number} — ${c.incident_type}`);
+      });
+    }
+  } catch { /* ignore */ }
+
+  try {
+    const backups = JSON.parse(handoff.pending_backups || '[]');
+    if (backups.length > 0) {
+      parts.push(`\nPENDING BACKUPS (${backups.length}):`);
+      backups.forEach((c: any) => {
+        parts.push(`  ${c.priority} ${c.call_number} — ${c.incident_type} @ ${c.location_address || 'Unknown'}`);
+      });
+    }
+  } catch { /* ignore */ }
+
+  if (handoff.priority_items) parts.push(`\nPRIORITY ITEMS: ${handoff.priority_items}`);
+  if (handoff.officer_notes) parts.push(`\nNOTES: ${handoff.officer_notes}`);
+
+  return parts.join('\n') || 'No active items to hand off.';
+}
+
+// ── Upgrade: Mutual Aid Status Formatter ──
+export function formatMutualAidStatus(request: {
+  responding_agency: string;
+  status: string;
+  units_requested: number;
+  units_provided: number;
+  priority: string;
+}): string {
+  const statusLabels: Record<string, string> = {
+    pending: '⏳ PENDING',
+    approved: '✅ APPROVED',
+    denied: '❌ DENIED',
+    completed: '✔ COMPLETED',
+    cancelled: '⊘ CANCELLED',
+  };
+  return `${statusLabels[request.status] || request.status.toUpperCase()} — ${request.responding_agency} | ${request.priority} | Units: ${request.units_provided}/${request.units_requested}`;
+}
+
+// ── Upgrade: Quality Score Formatter ──
+export function formatQualityScore(compliance: {
+  priority: string;
+  total: number;
+  within_target: number;
+}): string {
+  const pct = compliance.total > 0 ? Math.round((compliance.within_target / compliance.total) * 100) : 0;
+  const grade = pct >= 95 ? 'A' : pct >= 85 ? 'B' : pct >= 75 ? 'C' : pct >= 60 ? 'D' : 'F';
+  return `${compliance.priority}: ${pct}% (${grade}) — ${compliance.within_target}/${compliance.total} within target`;
+}

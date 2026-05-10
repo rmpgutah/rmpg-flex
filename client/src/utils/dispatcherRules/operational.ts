@@ -91,4 +91,64 @@ export const OPERATIONAL_RULES: DispatcherRule[] = [
       return `Radio check — no activity for ${mins} minutes.`;
     },
   },
+
+  // ─── 96: Handoff reminder ──────────────────────────────
+  {
+    id: 'handoff-reminder',
+    trigger: 'timer',
+    match: (ctx) => {
+      if (!ctx.shiftEndTime) return false;
+      const end = new Date(ctx.shiftEndTime).getTime();
+      if (isNaN(end)) return false;
+      const minutesLeft = (end - Date.now()) / 60_000;
+      return minutesLeft > 0 && minutesLeft <= 15;
+    },
+    severity: 'moderate',
+    cooldownMs: FIFTEEN_MIN,
+    compose: (ctx) => {
+      const end = new Date(ctx.shiftEndTime!).getTime();
+      const minutesLeft = Math.round((end - Date.now()) / 60_000);
+      return `Shift ends in ${minutesLeft} minutes. Initiate handoff if not already started.`;
+    },
+  },
+
+  // ─── 97: Mutual aid threshold ──────────────────────────
+  {
+    id: 'mutual-aid-threshold',
+    trigger: 'timer',
+    match: (ctx) => {
+      const calls = ctx.activeCallCount ?? 0;
+      const units = ctx.availableUnitCount ?? 0;
+      const ratio = units > 0 ? calls / units : Infinity;
+      return ratio >= 3 && calls >= 5;
+    },
+    severity: 'major',
+    cooldownMs: TEN_MIN,
+    compose: (ctx) => {
+      const calls = ctx.activeCallCount ?? 0;
+      const units = ctx.availableUnitCount ?? 0;
+      return `Unit-to-call ratio critical: ${calls} active calls, only ${units} available units. Consider requesting mutual aid.`;
+    },
+  },
+
+  // ─── 98: Narrative completeness ────────────────────────
+  {
+    id: 'narrative-completeness',
+    trigger: 'event',
+    eventTypes: ['call_updated'],
+    match: (ctx) => {
+      if (!ctx.event || ctx.event.type !== 'call_updated') return false;
+      const data = ctx.event.payload;
+      if (data?.status !== 'cleared') return false;
+      const desc = data?.description;
+      return !desc || desc.trim().length <= 20;
+    },
+    severity: 'minor',
+    cooldownMs: FIVE_MIN,
+    entityKey: (ctx) => ctx.event?.payload?.call_number ?? 'global',
+    compose: (ctx) => {
+      const callNum = ctx.event?.payload?.call_number ?? 'unknown';
+      return `Call ${callNum} cleared without detailed narrative. Consider adding narrative for records.`;
+    },
+  },
 ];

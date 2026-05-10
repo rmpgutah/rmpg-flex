@@ -9,6 +9,8 @@ import gpsRouter from './gps';
 import aggregatesRouter from './aggregates';
 import panicRouter from './panic';
 import geographyRouter from './geography';
+import handoffsRouter from './handoffs';
+import mutualAidRouter from './mutualAid';
 
 const router = Router();
 
@@ -25,5 +27,7 @@ router.use('/', gpsRouter);
 router.use('/', aggregatesRouter);
 router.use('/', panicRouter);
 router.use('/', geographyRouter);
+router.use('/', handoffsRouter);
+router.use('/', mutualAidRouter);
 
 export default router;

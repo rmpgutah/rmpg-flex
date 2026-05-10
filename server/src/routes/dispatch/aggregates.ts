@@ -2209,4 +2209,120 @@ router.get('/call-density-grid', requireRole('admin', 'manager', 'supervisor'), 
   }
 });
 
+// ── Upgrade: Dispatch Quality Metrics ──
+
+// GET /api/dispatch/quality-metrics — Comprehensive quality dashboard
+router.get('/quality-metrics', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+
+    // Response time percentiles (P50, P90, P95)
+    const responseTimes = db.prepare(`
+      SELECT response_time_seconds
+      FROM calls_for_service
+      WHERE response_time_seconds IS NOT NULL AND response_time_seconds > 0
+      AND created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      ORDER BY response_time_seconds ASC
+    `).all(days) as { response_time_seconds: number }[];
+
+    const getPercentile = (arr: number[], p: number) => {
+      if (arr.length === 0) return 0;
+      const idx = Math.ceil(arr.length * p / 100) - 1;
+      return arr[Math.max(0, idx)];
+    };
+
+    const times = responseTimes.map(r => r.response_time_seconds);
+    const responseTimeMetrics = {
+      p50: getPercentile(times, 50),
+      p90: getPercentile(times, 90),
+      p95: getPercentile(times, 95),
+      average: times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0,
+      total_measured: times.length
+    };
+
+    // Call-to-clear ratios by type
+    const clearRatios = db.prepare(`
+      SELECT incident_type,
+        COUNT(*) as total,
+        SUM(CASE WHEN status IN ('cleared', 'closed') THEN 1 ELSE 0 END) as cleared,
+        ROUND(AVG(CASE WHEN response_time_seconds > 0 THEN response_time_seconds END), 0) as avg_response
+      FROM calls_for_service
+      WHERE created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      GROUP BY incident_type
+      HAVING total >= 3
+      ORDER BY total DESC
+      LIMIT 20
+    `).all(days);
+
+    // Unit utilization rates
+    const unitUtilization = db.prepare(`
+      SELECT u.call_sign, u.unit_type,
+        COUNT(DISTINCT cu.call_id) as calls_handled,
+        SUM(CASE WHEN cu.unassigned_at IS NOT NULL THEN
+          CAST((julianday(cu.unassigned_at) - julianday(cu.assigned_at)) * 86400 AS INTEGER)
+        ELSE 0 END) as total_busy_seconds
+      FROM units u
+      LEFT JOIN call_units cu ON cu.unit_id = u.id
+        AND cu.assigned_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      WHERE u.status != 'decommissioned'
+      GROUP BY u.id
+      ORDER BY calls_handled DESC
+    `).all(days);
+
+    // Priority compliance (P1 under 3min, P2 under 8min)
+    const compliance = db.prepare(`
+      SELECT priority,
+        COUNT(*) as total,
+        SUM(CASE
+          WHEN priority = 'P1' AND response_time_seconds <= 180 THEN 1
+          WHEN priority = 'P2' AND response_time_seconds <= 480 THEN 1
+          WHEN priority = 'P3' AND response_time_seconds <= 900 THEN 1
+          WHEN priority = 'P4' AND response_time_seconds <= 1800 THEN 1
+          ELSE 0
+        END) as within_target
+      FROM calls_for_service
+      WHERE response_time_seconds IS NOT NULL AND response_time_seconds > 0
+      AND created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      GROUP BY priority
+    `).all(days);
+
+    res.json({
+      period_days: days,
+      response_time: responseTimeMetrics,
+      clear_ratios: clearRatios,
+      unit_utilization: unitUtilization,
+      priority_compliance: compliance
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get quality metrics', code: 'QUALITY_METRICS_ERROR' });
+  }
+});
+
+// GET /api/dispatch/quality-metrics/trends — Quality metrics over time
+router.get('/quality-metrics/trends', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days as string, 10) || 30));
+
+    const trends = db.prepare(`
+      SELECT DATE(created_at) as date,
+        COUNT(*) as total_calls,
+        SUM(CASE WHEN status IN ('cleared', 'closed') THEN 1 ELSE 0 END) as cleared_calls,
+        ROUND(AVG(CASE WHEN response_time_seconds > 0 THEN response_time_seconds END), 0) as avg_response_time,
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1_count,
+        SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2_count,
+        SUM(CASE WHEN backup_requested = 1 THEN 1 ELSE 0 END) as backup_requests
+      FROM calls_for_service
+      WHERE created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `).all(days);
+
+    res.json({ period_days: days, trends });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get quality trends', code: 'QUALITY_TRENDS_ERROR' });
+  }
+});
+
 export default router;
