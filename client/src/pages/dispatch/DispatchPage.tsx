@@ -11,6 +11,8 @@ import CallCard from '../../components/CallCard';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
+import MapboxMiniMap from '../../components/MapboxMiniMap';
+import { getResolvedEngine } from '../../utils/mapProvider';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
 import NewCallModal from '../../components/NewCallModal';
@@ -5380,14 +5382,23 @@ export default function DispatchPage() {
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-[#2b2b2b] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
             {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
-              <DispatchMiniMap
-                call={selectedCall}
-                units={units}
-                fullHeight
-                onRouteUpdate={setRouteInfo}
-                serveRouteJobs={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteJobs : undefined}
-                serveRouteOrder={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteOrder : undefined}
-              />
+              getResolvedEngine() === 'mapbox' ? (
+                <MapboxMiniMap
+                  call={selectedCall}
+                  units={units}
+                  fullHeight
+                  onRouteUpdate={setRouteInfo}
+                />
+              ) : (
+                <DispatchMiniMap
+                  call={selectedCall}
+                  units={units}
+                  fullHeight
+                  onRouteUpdate={setRouteInfo}
+                  serveRouteJobs={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteJobs : undefined}
+                  serveRouteOrder={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteOrder : undefined}
+                />
+              )
             ) : (
               <div className="flex-1 flex items-center justify-center text-[#545454]">
                 <div className="text-center">

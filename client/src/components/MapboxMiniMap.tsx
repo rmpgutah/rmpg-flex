@@ -32,6 +32,9 @@ interface MapboxMiniMapProps {
 
 const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608];
 const MINI_ZOOM = 15;
+const TOKEN_TIMEOUT_MS = 8_000;
+const MAX_INIT_ATTEMPTS = 3;
+const BACKOFF_BASE_MS = 3_000;
 
 /** Build a call marker DOM element with priority-colored badge */
 function buildCallMarkerEl(label: string, priority?: string): HTMLElement {
@@ -114,18 +117,29 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
 
     injectMapboxStyles();
 
-    const init = async () => {
+    const init = async (attempt = 1) => {
       try {
-        const token = await getMapboxToken();
+        // Timeout token fetch to prevent infinite hang
+        const tokenPromise = getMapboxToken();
+        const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), TOKEN_TIMEOUT_MS));
+        const token = await Promise.race([tokenPromise, timeoutPromise]);
         if (!token || cancelled) {
-          if (!cancelled) setError('Mapbox token not configured');
+          if (!cancelled) {
+            if (attempt < MAX_INIT_ATTEMPTS) {
+              setTimeout(() => { if (!cancelled) init(attempt + 1); }, attempt * BACKOFF_BASE_MS);
+            } else {
+              setError('Mapbox token not configured');
+            }
+          }
           return;
         }
+
+        if (!containerRef.current || cancelled) return;
 
         mapboxgl.accessToken = token;
 
         const map = new mapboxgl.Map({
-          container: containerRef.current!,
+          container: containerRef.current,
           style: 'mapbox://styles/mapbox/dark-v11',
           center: DEFAULT_CENTER,
           zoom: MINI_ZOOM,
@@ -152,7 +166,13 @@ export default function MapboxMiniMap({ call, units, onClose, fullHeight, onRout
 
         mapRef.current = map;
       } catch (err: any) {
-        if (!cancelled) setError(err?.message || 'Failed to load map');
+        if (!cancelled) {
+          if (attempt < MAX_INIT_ATTEMPTS) {
+            setTimeout(() => { if (!cancelled) init(attempt + 1); }, attempt * BACKOFF_BASE_MS);
+          } else {
+            setError(err?.message || 'Failed to load map');
+          }
+        }
       }
     };
 
