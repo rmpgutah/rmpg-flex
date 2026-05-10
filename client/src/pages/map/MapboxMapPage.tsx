@@ -215,7 +215,7 @@ export default function MapboxMapPage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function initMap() {
+     async function initMap() {
       try {
         // Timeout token fetch to avoid infinite hang if server is unreachable
         const tokenPromise = getMapboxToken();
@@ -223,7 +223,10 @@ export default function MapboxMapPage() {
         const token = await Promise.race([tokenPromise, timeoutPromise]);
         if (cancelled) return;
         if (!token) {
+          // No token configured — use MapLibre fallback instead of dead screen
+          devLog('[MapboxMap] No Mapbox token, activating MapLibre GL fallback');
           setMapError('Mapbox access token not configured. Go to Admin → Integrations to add your Mapbox token.');
+          setMapLibreFallback(true);
           setLoading(false);
           return;
         }
@@ -249,6 +252,11 @@ export default function MapboxMapPage() {
         });
         mapRef.current = map;
 
+        // Track whether the map has successfully loaded at least once.
+        // Individual tile/source errors after successful load should NOT
+        // trigger full MapLibre fallback — only fatal init errors should.
+        let mapDidLoad = false;
+
         // Timeout map load to prevent infinite "Initializing" state
         const loadTimeout = setTimeout(() => {
           if (!cancelled && !mapRef.current?.loaded()) {
@@ -261,6 +269,7 @@ export default function MapboxMapPage() {
         map.on('load', () => {
           clearTimeout(loadTimeout);
           if (cancelled) return;
+          mapDidLoad = true;
           // NavigationControl, ScaleControl, GeolocateControl, and AttributionControl
           // are already added by createMapboxMap() — don't duplicate them here.
           if (DARK_STYLES.includes(mapStyle)) addMapbox3DBuildings(map);
@@ -271,33 +280,60 @@ export default function MapboxMapPage() {
         });
 
         map.on('error', (e) => {
-          clearTimeout(loadTimeout);
           devWarn('[MapboxMap] map error', e);
-          if (!cancelled) {
-            const msg = e.error?.message || 'Mapbox map error';
-            const isAuthErr = msg.includes('access token') || msg.includes('Access token') || msg.includes('not configured');
-            if (isAuthErr) {
-              setMapError(msg);
-            } else {
-              // Non-auth error (network, style fetch, tile fail) — fall back to MapLibre
-              devLog('[MapboxMap] Mapbox failed, activating MapLibre GL fallback');
-              destroyMapboxMap();
-              mapRef.current = null;
-              setMapError(msg);
-              setMapLibreFallback(true);
-            }
+          if (cancelled) return;
+
+          const msg = e.error?.message || 'Mapbox map error';
+          const status = (e.error as any)?.status;
+          const msgLower = msg.toLowerCase();
+
+          // Broad auth-error detection: catch 401, 403, and common auth
+          // messages from Mapbox API (not just "access token" substring)
+          const isAuthErr =
+            status === 401 || status === 403 ||
+            msgLower.includes('access token') ||
+            msgLower.includes('not authorized') ||
+            msgLower.includes('unauthorized') ||
+            msgLower.includes('forbidden') ||
+            msgLower.includes('invalid token') ||
+            msgLower.includes('token is not authorized') ||
+            msgLower.includes('not configured');
+
+          if (isAuthErr) {
+            // Auth failure — destroy Mapbox and fall back to MapLibre
+            devLog('[MapboxMap] Mapbox auth error, activating MapLibre GL fallback');
+            clearTimeout(loadTimeout);
+            destroyMapboxMap();
+            mapRef.current = null;
+            setMapError(msg);
+            setMapLibreFallback(true);
             setLoading(false);
+            return;
           }
+
+          // After successful load, ignore non-fatal errors (individual tile
+          // fails, transient network blips) — Mapbox GL handles retries internally
+          if (mapDidLoad) {
+            devLog('[MapboxMap] Non-fatal post-load error (ignored):', msg);
+            return;
+          }
+
+          // Fatal pre-load error (style fetch failed, GL context lost, etc.)
+          // — fall back to MapLibre
+          clearTimeout(loadTimeout);
+          devLog('[MapboxMap] Mapbox init failed, activating MapLibre GL fallback');
+          destroyMapboxMap();
+          mapRef.current = null;
+          setMapError(msg);
+          setMapLibreFallback(true);
+          setLoading(false);
         });
       } catch (err) {
         if (!cancelled) {
           const msg = err instanceof Error ? err.message : 'Failed to initialize Mapbox map';
-          const isAuthErr = msg.includes('access token') || msg.includes('Access token') || msg.includes('not configured');
+          devLog('[MapboxMap] Mapbox init exception, activating MapLibre GL fallback');
           setMapError(msg);
-          if (!isAuthErr) {
-            devLog('[MapboxMap] Mapbox init failed, activating MapLibre GL fallback');
-            setMapLibreFallback(true);
-          }
+          setMapLibreFallback(true);
           setLoading(false);
         }
       }
@@ -746,12 +782,20 @@ export default function MapboxMapPage() {
           <AlertTriangle className="w-10 h-10 text-[#d4a017] mx-auto mb-3" />
           <h2 className="text-rmpg-200 text-sm font-semibold mb-2">MAP UNAVAILABLE</h2>
           <p className="text-rmpg-400 text-xs mb-4">{mapError}</p>
-          <a
-            href="/admin?tab=integrations"
-            className="text-[#d4a017] text-xs underline hover:text-[#e8b84a]"
-          >
-            Configure in Admin → Integrations
-          </a>
+          <div className="flex flex-col gap-2 items-center">
+            <a
+              href="/admin?tab=integrations"
+              className="text-[#d4a017] text-xs underline hover:text-[#e8b84a]"
+            >
+              Configure in Admin → Integrations
+            </a>
+            <button
+              onClick={() => { setMapLibreFallback(true); }}
+              className="text-rmpg-400 text-xs hover:text-rmpg-200 transition-colors"
+            >
+              Use MapLibre fallback →
+            </button>
+          </div>
         </div>
       </div>
     );
