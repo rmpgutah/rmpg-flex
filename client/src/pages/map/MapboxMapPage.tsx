@@ -418,7 +418,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     });
 
     return () => {
-      map.remove();
+      try { map.remove(); } catch { /* map may not have fully initialized before unmount */ }
       mapLibreRef.current = null;
     };
   }, [mapLibreFallback]);
@@ -476,7 +476,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const retryMapbox = useCallback(() => {
     // Clean up MapLibre fallback
     if (mapLibreRef.current) {
-      mapLibreRef.current.remove();
+      try { mapLibreRef.current.remove(); } catch { /* map may not have fully initialized */ }
       mapLibreRef.current = null;
     }
     mapLibreMarkersRef.current.forEach(m => m.remove());

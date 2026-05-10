@@ -345,7 +345,7 @@ export function isMapboxLoaded(): boolean {
  */
 export function destroyMapboxMap(): void {
   if (mapInstance) {
-    mapInstance.remove();
+    try { mapInstance.remove(); } catch { /* map may not have fully initialized before destroy */ }
     mapInstance = null;
     isLoaded = false;
   }
