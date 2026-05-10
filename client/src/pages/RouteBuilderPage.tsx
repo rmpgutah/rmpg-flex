@@ -480,7 +480,8 @@ export default function RouteBuilderPage() {
             body: JSON.stringify({ call_id: callId }),
           });
         } catch {
-          // Continue locally even if server save fails
+          // Continue locally — warn so user knows persistence may be stale
+          console.warn('Failed to persist stop completion to server');
         }
       }
 
@@ -546,7 +547,7 @@ export default function RouteBuilderPage() {
               renderRoute({ lat: route.origin_lat, lng: route.origin_lng }, wps);
             }
           } catch {
-            // Invalid JSON — ignore
+            console.warn('Failed to parse saved route waypoints JSON');
           }
         }
       })

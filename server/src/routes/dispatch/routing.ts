@@ -22,6 +22,32 @@ import { paramStr } from '../../utils/reqHelpers';
 
 const router = Router();
 
+// ─── Constants ──────────────────────────────────────────────
+
+/** Default fallback position: SLC HQ */
+const DEFAULT_ORIGIN = { lat: 40.7608, lng: -111.891 };
+
+/** Average city driving speed for rough ETA estimates (miles/hour) */
+const AVERAGE_CITY_SPEED_MPH = 25;
+
+/** Meters per mile conversion factor */
+const METERS_PER_MILE = 1609.344;
+
+/**
+ * Priority multipliers for distance weighting.
+ * Lower values make a call appear "closer" — visited earlier.
+ * P1 emergencies get 0.5× (prioritized), P4 low gets 1.3× (deferred).
+ */
+const PRIORITY_MULTIPLIERS: Record<string, number> = {
+  P1: 0.5,
+  P2: 0.8,
+  P3: 1.0,
+  P4: 1.3,
+};
+
+/** Active call statuses for auto-detection */
+const ACTIVE_CALL_STATUSES = ['dispatched', 'enroute', 'onscene', 'pending', 'open'];
+
 // ─── Haversine Distance ─────────────────────────────────────
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
@@ -37,7 +63,7 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
 }
 
 function haversineMiles(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  return haversineMeters(lat1, lng1, lat2, lng2) / 1609.344;
+  return haversineMeters(lat1, lng1, lat2, lng2) / METERS_PER_MILE;
 }
 
 // ─── TSP Solver: Nearest Neighbor + 2-opt ───────────────────
@@ -94,12 +120,7 @@ function nearestNeighbor(
   let current = 0;
 
   // Priority multipliers — lower priority calls appear "farther"
-  const priorityMult: Record<string, number> = {
-    P1: 0.5,  // P1 appears half the distance — prioritized
-    P2: 0.8,
-    P3: 1.0,
-    P4: 1.3,
-  };
+  const priorityMult = PRIORITY_MULTIPLIERS;
 
   while (order.length < n - 1) {
     let bestDist = Infinity;
@@ -211,8 +232,8 @@ router.post(
         originLng = gps.longitude;
       } else {
         // Default to SLC HQ
-        originLat = 40.7608;
-        originLng = -111.891;
+        originLat = DEFAULT_ORIGIN.lat;
+        originLng = DEFAULT_ORIGIN.lng;
       }
     }
 
@@ -228,13 +249,14 @@ router.post(
         )
         .all(unit_id) as { call_id: number }[];
 
+      const statusPlaceholders = ACTIVE_CALL_STATUSES.map(() => '?').join(',');
       const assignedRows = db
         .prepare(
           `SELECT id FROM calls_for_service
-         WHERE status IN ('dispatched','enroute','onscene','pending','open')
+         WHERE status IN (${statusPlaceholders})
            AND json_extract(assigned_unit_ids, '$') LIKE '%' || ? || '%'`,
         )
-        .all(String(unit_id)) as { id: number }[];
+        .all(...ACTIVE_CALL_STATUSES, String(unit_id)) as { id: number }[];
 
       const idSet = new Set<number>();
       for (const r of stackRows) idSet.add(r.call_id);
@@ -303,8 +325,8 @@ router.post(
     });
 
     const totalDistance = routeDistance(matrix, optimizedOrder);
-    // Rough estimate: avg 25mph city driving
-    const estimatedMinutes = (totalDistance / 25) * 60;
+    // Rough estimate based on average city driving speed
+    const estimatedMinutes = (totalDistance / AVERAGE_CITY_SPEED_MPH) * 60;
 
     res.json({
       unit_id,
