@@ -7364,6 +7364,25 @@ function seedData(): void {
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_call_stack_unit ON call_stack(unit_id)`).run();
   db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_stack_unit_call ON call_stack(unit_id, call_id)`).run();
 
+  // ─── 1.1b Dispatch Routes (multi-call route builder) ──
+  db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_routes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id TEXT NOT NULL,
+    created_by INTEGER,
+    origin_lat REAL,
+    origin_lng REAL,
+    waypoints_json TEXT,
+    optimized_order_json TEXT,
+    total_distance_miles REAL,
+    estimated_time_minutes REAL,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dispatch_routes_unit ON dispatch_routes(unit_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dispatch_routes_status ON dispatch_routes(status)`).run();
+
   // ─── 1.2 Dispatch Timer Profiles ─────────────────────
   db.prepare(`CREATE TABLE IF NOT EXISTS timer_profiles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
