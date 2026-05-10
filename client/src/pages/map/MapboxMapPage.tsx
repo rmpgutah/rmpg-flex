@@ -22,7 +22,7 @@ import {
   injectMapboxStyles, addMapbox3DBuildings,
   addMapboxTerrain, removeMapboxTerrain,
 } from '../../utils/mapboxLoader';
-import { getMapboxToken, getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
+import { getMapboxTokenStatus, getCachedMapboxStyleUrl } from '../../utils/mapboxApiKey';
 import { createMap as createMapLibreMap } from '../../integrations/maplibreMap';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
@@ -152,7 +152,11 @@ function buildCallPopupHtml(call: ActiveCall): string {
 
 // ── Component ──────────────────────────────────────────────────────────────────
 
-export default function MapboxMapPage() {
+interface MapboxMapPageProps {
+  preferredEngine?: 'mapbox' | 'maplibre';
+}
+
+export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapPageProps) {
   // ── State ──────────────────────────────────────────────────────────────────
   const [units, setUnits]           = useState<Unit[]>([]);
   const [calls, setCalls]           = useState<ActiveCall[]>([]);
@@ -160,7 +164,8 @@ export default function MapboxMapPage() {
   const [loading, setLoading]       = useState(true);
   const [mapError, setMapError]     = useState<string | null>(null);
   const [mapLoaded, setMapLoaded]   = useState(false);
-  const [mapLibreFallback, setMapLibreFallback] = useState(false);
+  const [mapLibreFallback, setMapLibreFallback] = useState(preferredEngine === 'maplibre');
+  const [retryNonce, setRetryNonce] = useState(0);
 
   const [sidebarOpen, setSidebarOpen]   = usePersistedState('rmpg_mapbox_sidebar_open', true);
   const [activeTab, setActiveTab]       = usePersistedTab('rmpg_mapbox_sidebar', 'units', ['units', 'calls'] as const);
@@ -213,24 +218,43 @@ export default function MapboxMapPage() {
   // ── Map Initialization ─────────────────────────────────────────────────────
 
   useEffect(() => {
+    if (preferredEngine === 'maplibre') {
+      setMapError(null);
+      setMapLibreFallback(true);
+      setLoading(false);
+    }
+  }, [preferredEngine]);
+
+  useEffect(() => {
+    if (mapLibreFallback) {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
 
      async function initMap() {
       try {
         // Timeout token fetch to avoid infinite hang if server is unreachable
-        const tokenPromise = getMapboxToken();
+        const tokenStatusPromise = getMapboxTokenStatus(retryNonce > 0);
         const timeoutPromise = new Promise<null>((resolve) => setTimeout(() => resolve(null), 10_000));
-        const token = await Promise.race([tokenPromise, timeoutPromise]);
+        const tokenStatus = await Promise.race([tokenStatusPromise, timeoutPromise]);
         if (cancelled) return;
-        if (!token) {
-          // No token configured — use MapLibre fallback instead of dead screen
-          devLog('[MapboxMap] No Mapbox token, activating MapLibre GL fallback');
-          setMapError('Mapbox access token not configured. Go to Admin → Integrations to add your Mapbox token.');
+        if (!tokenStatus?.token) {
+          if (tokenStatus?.errorKind === 'auth') {
+            setMapError('Unable to access Mapbox token due to authentication/session failure. Please sign in again, then retry.');
+          } else if (tokenStatus?.errorKind === 'network') {
+            setMapError('Unable to fetch Mapbox token due to a network/connectivity error. Check connectivity, then retry.');
+          } else if (tokenStatus?.errorKind === 'server') {
+            setMapError(`Failed to fetch Mapbox token from server: ${tokenStatus.errorMessage || 'unknown error'}`);
+          } else {
+            setMapError('Mapbox access token not configured. Go to Admin → Integrations to add your Mapbox token.');
+          }
+          devLog('[MapboxMap] Mapbox token unavailable, activating MapLibre GL fallback', tokenStatus);
           setMapLibreFallback(true);
           setLoading(false);
           return;
         }
-        tokenRef.current = token;
+        tokenRef.current = tokenStatus.token;
         injectMapboxStyles();
 
         if (!mapContainerRef.current) {
@@ -245,7 +269,7 @@ export default function MapboxMapPage() {
 
         const map = createMapboxMap({
           container: mapContainerRef.current,
-          accessToken: token,
+          accessToken: tokenStatus.token,
           style: mapStyle,
           customStyleUrl: getCachedMapboxStyleUrl() || undefined,
           center: SLC_CENTER,
@@ -353,8 +377,8 @@ export default function MapboxMapPage() {
       selfMarkerRef.current?.remove();
       if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // run once on mount
+   // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [mapLibreFallback, retryNonce]); // rerun on retry or when fallback cleared
 
   // ── MapLibre GL Fallback ──────────────────────────────────────────────────
 
@@ -460,10 +484,8 @@ export default function MapboxMapPage() {
     setMapLoaded(false);
     setLoading(true);
 
-    // Force re-fetch token and re-init (delay to let state settle)
-    setTimeout(() => {
-      window.location.reload();
-    }, 100);
+    // Trigger in-component re-init without full page reload
+    setRetryNonce((n) => n + 1);
   }, []);
 
   // ── Beat GeoJSON Overlay ───────────────────────────────────────────────────

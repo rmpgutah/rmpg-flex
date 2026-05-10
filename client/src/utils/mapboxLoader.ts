@@ -48,6 +48,14 @@ const MAPBOX_STYLES: Record<MapboxStyleId, string> = {
   outdoors: 'mapbox://styles/mapbox/outdoors-v12',
 };
 
+function isValidCustomMapboxStyleUrl(value: string | undefined): boolean {
+  if (!value) return false;
+  const trimmed = value.trim();
+  if (!trimmed) return false;
+  if (trimmed.startsWith('mapbox://styles/')) return true;
+  return /^https:\/\/api\.mapbox\.com\/styles\/v1\/[^/]+\/[^/]+/i.test(trimmed);
+}
+
 export const MAPBOX_STYLE_LABELS: Record<MapboxStyleId, string> = {
   dark: 'Dark',
   standard: 'Standard',
@@ -103,7 +111,10 @@ export function createMapboxMap(config: MapboxMapConfig): mapboxgl.Map {
   mapboxgl.accessToken = config.accessToken;
 
   const styleId = config.style || 'dark';
-  const styleUrl = config.customStyleUrl || MAPBOX_STYLES[styleId] || MAPBOX_STYLES.dark;
+  const hasValidCustomStyle = isValidCustomMapboxStyleUrl(config.customStyleUrl);
+  const styleUrl = hasValidCustomStyle
+    ? config.customStyleUrl!.trim()
+    : (MAPBOX_STYLES[styleId] || MAPBOX_STYLES.dark);
   const useGlobe = config.globe !== false; // default: true
 
   const map = new mapboxgl.Map({
