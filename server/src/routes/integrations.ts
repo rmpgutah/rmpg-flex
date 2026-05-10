@@ -6,6 +6,7 @@ import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { encryptApiKey, decryptApiKey } from '../utils/serveManagerClient';
 import { hashApiKey } from '../utils/apiKeyHash';
+import { logger } from '../utils/logger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -223,6 +224,7 @@ router.get('/mapbox/client-key', (_req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Mapbox token fetch error:', error);
+    logger.error({ err: error }, 'Mapbox token fetch error');
     res.status(500).json({
       configured: false,
       error: 'Failed to fetch Mapbox token',
@@ -263,6 +265,7 @@ router.get('/map-provider/status', (_req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('Map provider status error:', error);
+    logger.error({ err: error }, 'Map provider status error');
     res.status(500).json({
       primary: 'maplibre',
       engines: ['maplibre'],

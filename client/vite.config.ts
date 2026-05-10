@@ -90,7 +90,7 @@ export default defineConfig({
             return 'vendor-maplibre';
           }
           // Deck.gl — GPU-accelerated map layers
-          if (id.includes('node_modules/@deck.gl') || id.includes('node_modules/@luma.gl') || id.includes('node_modules/@loaders.gl') || id.includes('node_modules/@math.gl') || id.includes('node_modules/@probe.gl')) {
+          if (/node_modules\/@(deck|luma|loaders|math|probe)\.gl/.test(id)) {
             return 'vendor-deckgl';
           }
           // HTML sanitizer — used by RichTextArea
