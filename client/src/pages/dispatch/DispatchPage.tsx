@@ -307,6 +307,10 @@ export default function DispatchPage() {
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
   const [serveLink, setServeLink] = useState<any>(null);
   const [sendingToServe, setSendingToServe] = useState(false);
+  const [serveRouteJobs, setServeRouteJobs] = useState<any[]>([]);
+  const [serveRouteOrder, setServeRouteOrder] = useState<number[] | null>(null);
+  // Map of call_id → serve_queue sort_order for route-based sorting
+  const [serveRouteSortMap, setServeRouteSortMap] = useState<Record<string, number>>({});
   // AI Dispatch analysis state
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
@@ -1087,8 +1091,25 @@ export default function DispatchPage() {
           const serveData = await apiFetch(`/dispatch/calls/${selectedCall.id}/serve-link`);
           if (!cancelled) setServeLink(serveData);
         } catch { if (!cancelled) setServeLink(null); }
+        // Fetch serve route data for mini map overlay
+        try {
+          const routeData = await apiFetch<{ jobs: any[]; routes: any[] }>('/process-server/active-routes');
+          if (!cancelled && routeData?.jobs) {
+            // Filter to jobs assigned to the same officer as this call
+            const callOfficerId = selectedCall.assigned_units?.length ? parseInt(String(selectedCall.assigned_units[0]), 10) : null;
+            const officerJobs = callOfficerId ? routeData.jobs.filter((j: any) => j.officer_id === callOfficerId) : routeData.jobs;
+            setServeRouteJobs(officerJobs);
+            // Get route order
+            const route = callOfficerId ? routeData.routes.find((r: any) => r.officer_id === callOfficerId) : routeData.routes[0];
+            if (route?.optimized_order_json) {
+              try { setServeRouteOrder(JSON.parse(route.optimized_order_json)); } catch { setServeRouteOrder(null); }
+            } else {
+              setServeRouteOrder(null);
+            }
+          }
+        } catch { if (!cancelled) { setServeRouteJobs([]); setServeRouteOrder(null); } }
       } else {
-        if (!cancelled) setServeLink(null);
+        if (!cancelled) { setServeLink(null); setServeRouteJobs([]); setServeRouteOrder(null); }
       }
     })();
     return () => { cancelled = true; };
@@ -1096,6 +1117,40 @@ export default function DispatchPage() {
 
   // PSO incident types — must be declared before filteredCalls which references it
   const PSO_INCIDENT_TYPES = ['pso_client_request'];
+
+  // Fetch serve route sort order when serve tab is active
+  useEffect(() => {
+    if (filterTab !== 'serve') return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<{ jobs: any[]; routes: any[] }>('/process-server/active-routes');
+        if (cancelled || !data?.jobs) return;
+        const sortMap: Record<string, number> = {};
+        // Build a map: call_id → sort_order based on route order
+        for (const route of (data.routes || [])) {
+          if (!route.optimized_order_json) continue;
+          try {
+            const orderIds: number[] = JSON.parse(route.optimized_order_json);
+            const officerJobs = data.jobs.filter((j: any) => j.officer_id === route.officer_id);
+            const jobMap = new Map(officerJobs.map((j: any) => [j.id, j]));
+            orderIds.forEach((id, idx) => {
+              const job = jobMap.get(id);
+              if (job?.call_id) sortMap[String(job.call_id)] = idx;
+            });
+          } catch { /* skip malformed JSON */ }
+        }
+        // Fallback: jobs without explicit route order use sort_order
+        for (const job of data.jobs) {
+          if (job.call_id && !(String(job.call_id) in sortMap)) {
+            sortMap[String(job.call_id)] = job.sort_order ?? 9999;
+          }
+        }
+        if (!cancelled) setServeRouteSortMap(sortMap);
+      } catch { /* non-critical */ }
+    })();
+    return () => { cancelled = true; };
+  }, [filterTab]);
 
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
@@ -1133,6 +1188,17 @@ export default function DispatchPage() {
     if (filterTab === 'archived') {
       return (a.call_number || '').localeCompare(b.call_number || '', undefined, { numeric: true });
     }
+    // Serve tab: sort by route order (sort_order from serve_queue)
+    if (filterTab === 'serve') {
+      const aOrder = serveRouteSortMap[a.id] ?? 9999;
+      const bOrder = serveRouteSortMap[b.id] ?? 9999;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      // Fallback: priority then time for unordered serve calls
+      const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+      const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
+      if (pDiff !== 0) return pDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
     // Pinned calls float to the top regardless of sort mode
     const aPin = a.pinned ? 1 : 0;
     const bPin = b.pinned ? 1 : 0;
@@ -1153,7 +1219,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared, user?.id, serveRouteSortMap]);
 
   // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
   useEffect(() => {
@@ -5320,6 +5386,8 @@ export default function DispatchPage() {
                 units={units}
                 fullHeight
                 onRouteUpdate={setRouteInfo}
+                serveRouteJobs={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteJobs : undefined}
+                serveRouteOrder={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteOrder : undefined}
               />
             ) : (
               <div className="flex-1 flex items-center justify-center text-[#545454]">

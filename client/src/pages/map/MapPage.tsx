@@ -260,6 +260,8 @@ export default function MapPage() {
   const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
   const heatmapLayerRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
   const trackingLinesRef = useRef<google.maps.Polyline[]>([]);
+  const serveRouteMarkersRef = useRef<any[]>([]);
+  const serveRouteLinesRef = useRef<google.maps.Polyline[]>([]);
   const [trackingLineCount, setTrackingLineCount] = useState(0);
   const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -278,9 +280,9 @@ export default function MapPage() {
   const [layers, setLayers] = useState(() => {
     try {
       const saved = localStorage.getItem('rmpg_map_layers');
-      if (saved) return JSON.parse(saved) as { units: boolean; incidents: boolean; properties: boolean };
+      if (saved) return JSON.parse(saved) as { units: boolean; incidents: boolean; properties: boolean; serveRoutes: boolean };
     } catch { /* use defaults */ }
-    return { units: true, incidents: true, properties: true };
+    return { units: true, incidents: true, properties: true, serveRoutes: false };
   });
 
   // Fix 27+29: save layer toggle states to localStorage with debouncing
@@ -314,6 +316,7 @@ export default function MapPage() {
   const [units, setUnits] = useState<Unit[]>([]);
   const [calls, setCalls] = useState<ActiveCall[]>([]);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [serveRouteData, setServeRouteData] = useState<{ jobs: any[]; routes: any[] }>({ jobs: [], routes: [] });
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -866,12 +869,21 @@ export default function MapPage() {
     }
   }, []);
 
+  const fetchServeRoutes = useCallback(async () => {
+    try {
+      const data = await apiFetch<{ jobs: any[]; routes: any[] }>('/process-server/active-routes');
+      setServeRouteData(data && data.jobs ? data : { jobs: [], routes: [] });
+    } catch {
+      // Non-critical — don't set error for serve routes failure
+    }
+  }, []);
+
   const fetchAllData = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoading(true); setError(null); }
-    await Promise.all([fetchUnits(), fetchCalls(), fetchProperties()]);
+    await Promise.all([fetchUnits(), fetchCalls(), fetchProperties(), fetchServeRoutes()]);
     if (!options?.silent) setLoading(false);
     setLastDataUpdate(new Date()); // Fix 40: track last data update timestamp
-  }, [fetchUnits, fetchCalls, fetchProperties]);
+  }, [fetchUnits, fetchCalls, fetchProperties, fetchServeRoutes]);
   useEffect(() => { fetchAllDataRef.current = fetchAllData; }, [fetchAllData]);
 
   // ============================================================
@@ -1722,6 +1734,146 @@ export default function MapPage() {
   }, [layers, units, calls, properties, mapLoaded, createMarker, removeMarker]);
 
   // ============================================================
+  // Serve Route Overlay (polylines + numbered markers)
+  // ============================================================
+
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) return;
+
+    // Clean up previous serve route overlays
+    serveRouteMarkersRef.current.forEach(m => {
+      if (typeof m.setMap === 'function') m.setMap(null);
+      else if (typeof m.remove === 'function') m.remove();
+    });
+    serveRouteMarkersRef.current = [];
+    serveRouteLinesRef.current.forEach(l => l.setMap(null));
+    serveRouteLinesRef.current = [];
+
+    if (!layers.serveRoutes || serveRouteData.jobs.length === 0) return;
+
+    // Group jobs by officer
+    const jobsByOfficer = new Map<number, any[]>();
+    for (const job of serveRouteData.jobs) {
+      if (!job.officer_id) continue;
+      const arr = jobsByOfficer.get(job.officer_id) || [];
+      arr.push(job);
+      jobsByOfficer.set(job.officer_id, arr);
+    }
+
+    // Color palette for different officers' routes
+    const routeColors = ['#d4a017', '#22c55e', '#a78bfa', '#f472b6', '#34d399', '#fbbf24', '#f87171'];
+    let colorIdx = 0;
+
+    jobsByOfficer.forEach((jobs, officerId) => {
+      const color = routeColors[colorIdx % routeColors.length];
+      colorIdx++;
+
+      // Find the route for this officer to get optimized order
+      const route = serveRouteData.routes.find((r: any) => r.officer_id === officerId);
+      let orderedJobs = jobs;
+      if (route?.optimized_order_json) {
+        try {
+          const orderIds: number[] = JSON.parse(route.optimized_order_json);
+          const jobMap = new Map(jobs.map(j => [j.id, j]));
+          const ordered = orderIds.map(id => jobMap.get(id)).filter(Boolean);
+          // Add any jobs not in the optimized order at the end
+          const orderedIdSet = new Set(orderIds);
+          const remaining = jobs.filter(j => !orderedIdSet.has(j.id));
+          orderedJobs = [...ordered, ...remaining];
+        } catch { /* use original order */ }
+      }
+
+      // Draw polyline connecting jobs in route order
+      const path = orderedJobs
+        .filter(j => j.recipient_lat != null && j.recipient_lng != null)
+        .map(j => ({ lat: j.recipient_lat, lng: j.recipient_lng }));
+
+      if (path.length > 1) {
+        const line = new google.maps.Polyline({
+          path,
+          geodesic: true,
+          strokeColor: color,
+          strokeOpacity: 0.7,
+          strokeWeight: 3,
+          map,
+          icons: [{
+            icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 2.5, strokeColor: color, fillColor: color, fillOpacity: 1 },
+            offset: '50%',
+            repeat: '120px',
+          }],
+        });
+        serveRouteLinesRef.current.push(line);
+      }
+
+      // Add numbered markers for each job
+      orderedJobs.forEach((job, idx) => {
+        if (job.recipient_lat == null || job.recipient_lng == null) return;
+        const pos = { lat: job.recipient_lat, lng: job.recipient_lng };
+        const statusColor = job.status === 'served' ? '#22c55e'
+          : job.status === 'failed' ? '#ef4444'
+          : job.status === 'in_progress' ? '#eab308'
+          : color;
+
+        const el = document.createElement('div');
+        el.style.cssText = `display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 1px 3px rgba(0,0,0,0.6));cursor:pointer;`;
+        const badge = document.createElement('div');
+        badge.style.cssText = `width:20px;height:20px;border-radius:50%;background:${statusColor};color:#000;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:900;font-family:'JetBrains Mono',monospace;border:1.5px solid #fff;`;
+        badge.textContent = String(idx + 1);
+        const caret = document.createElement('div');
+        caret.style.cssText = `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${statusColor};`;
+        el.appendChild(badge);
+        el.appendChild(caret);
+
+        const overlay = new google.maps.OverlayView();
+        let container: HTMLDivElement | null = null;
+        overlay.onAdd = () => {
+          container = document.createElement('div');
+          container.style.position = 'absolute';
+          container.style.zIndex = '200';
+          container.appendChild(el);
+          overlay.getPanes()?.overlayMouseTarget.appendChild(container);
+        };
+        overlay.draw = () => {
+          if (!container) return;
+          const proj = overlay.getProjection();
+          if (!proj) return;
+          const pt = proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat, pos.lng));
+          if (pt) { container.style.left = `${pt.x}px`; container.style.top = `${pt.y}px`; container.style.transform = 'translate(-50%, -100%)'; }
+        };
+        overlay.onRemove = () => { container?.parentElement?.removeChild(container); container = null; };
+        overlay.setMap(map);
+
+        // Click to show info
+        el.addEventListener('click', () => {
+          const officerLabel = job.officer_call_sign || job.officer_name || `Officer #${job.officer_id}`;
+          const fullAddr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip].filter(Boolean).join(', ');
+          infoWindowRef.current?.setContent(`
+            <div style="min-width:180px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${color}50;border-radius:4px;">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                <span style="width:16px;height:16px;border-radius:50%;background:${statusColor};color:#000;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;">${idx + 1}</span>
+                <span style="font-size:11px;font-weight:900;color:${color};">${escapeHtml(officerLabel)}</span>
+              </div>
+              <div style="font-size:11px;font-weight:700;margin-bottom:2px;">${escapeHtml(job.recipient_name || 'Unknown')}</div>
+              <div style="font-size:9px;color:#9ca3af;margin-bottom:4px;">${escapeHtml(fullAddr || 'No address')}</div>
+              <div style="display:flex;gap:6px;font-size:9px;">
+                <span style="color:${statusColor};font-weight:700;text-transform:uppercase;">${(job.status || '').replace(/_/g, ' ')}</span>
+                <span style="color:#666;">·</span>
+                <span style="color:#999;">${escapeHtml((job.document_type || '').replace(/_/g, ' '))}</span>
+              </div>
+              ${job.attempt_count ? `<div style="font-size:8px;color:#666;margin-top:3px;">Attempts: ${job.attempt_count}/${job.max_attempts || 3}</div>` : ''}
+            </div>
+          `);
+          infoWindowRef.current?.setPosition(pos);
+          infoWindowRef.current?.open(map);
+        });
+
+        serveRouteMarkersRef.current.push(overlay);
+      });
+    });
+  }, [layers.serveRoutes, serveRouteData, mapLoaded]);
+
+  // ============================================================
   // Route Button Click Handler (delegated from info window HTML)
   // ============================================================
 
@@ -2569,6 +2721,7 @@ export default function MapPage() {
   const unitsWithCoords = useMemo(() => units.filter(u => u.latitude != null && u.longitude != null), [units]);
   const callsWithCoords = useMemo(() => calls.filter(c => c.latitude != null && c.longitude != null), [calls]);
   const propertiesWithCoords = useMemo(() => properties.filter(p => p.latitude != null && p.longitude != null), [properties]);
+  const serveJobsWithCoords = useMemo(() => serveRouteData.jobs.filter((j: any) => j.recipient_lat != null && j.recipient_lng != null), [serveRouteData.jobs]);
 
   const unitsByStatus = useMemo(() => units.reduce((acc, u) => {
     acc[u.status] = (acc[u.status] || 0) + 1;
@@ -3115,6 +3268,7 @@ export default function MapPage() {
                 { key: 'units' as const, icon: <Shield className="w-3 h-3" />, label: 'Units', count: unitsWithCoords.length, color: '#22c55e' },
                 { key: 'incidents' as const, icon: <AlertTriangle className="w-3 h-3" />, label: 'Active Calls', count: callsWithCoords.length, color: '#ef4444' },
                 { key: 'properties' as const, icon: <Building2 className="w-3 h-3" />, label: 'Properties', count: propertiesWithCoords.length, color: '#888888' },
+                { key: 'serveRoutes' as const, icon: <Route className="w-3 h-3" />, label: 'Serve Routes', count: serveJobsWithCoords.length, color: '#d4a017' },
               ].map(({ key, icon, label, count, color }) => (
                 <button
                   key={key}
@@ -6475,6 +6629,7 @@ export default function MapPage() {
                   { key: 'units' as const, icon: Shield, label: 'Units', color: '#22c55e' },
                   { key: 'incidents' as const, icon: AlertTriangle, label: 'Active Calls', color: '#ef4444' },
                   { key: 'properties' as const, icon: Building2, label: 'Properties', color: '#888888' },
+                  { key: 'serveRoutes' as const, icon: Route, label: 'Serve Routes', color: '#d4a017' },
                 ].map(({ key, icon: Icon, label, color }) => (
                   <button
                     key={key}

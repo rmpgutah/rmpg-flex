@@ -86,6 +86,43 @@ router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
   }
 });
 
+// ── GET /active-routes — Today's active serve jobs + routes for map/dispatch overlays ──
+router.get('/active-routes', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    // All pending/in-progress serve jobs for today (across all officers)
+    const jobs = db.prepare(`
+      SELECT sq.id, sq.officer_id, sq.recipient_name, sq.recipient_address,
+        sq.recipient_city, sq.recipient_state, sq.recipient_zip,
+        sq.recipient_lat, sq.recipient_lng, sq.status, sq.priority,
+        sq.deadline, sq.document_type, sq.sort_order, sq.call_id,
+        sq.attempt_count, sq.max_attempts,
+        u.call_sign AS officer_call_sign, u.display_name AS officer_name
+      FROM serve_queue sq
+      LEFT JOIN users u ON u.id = sq.officer_id
+      WHERE (sq.serve_date = ? OR sq.status IN ('pending', 'in_progress'))
+        AND sq.recipient_lat IS NOT NULL AND sq.recipient_lng IS NOT NULL
+      ORDER BY sq.officer_id, sq.sort_order ASC, sq.priority DESC
+      LIMIT 2000
+    `).all(today);
+
+    // All routes for today
+    const routes = db.prepare(`
+      SELECT sr.*, u.call_sign AS officer_call_sign, u.display_name AS officer_name
+      FROM serve_routes sr
+      LEFT JOIN users u ON u.id = sr.officer_id
+      WHERE sr.route_date = ?
+    `).all(today);
+
+    res.json({ jobs, routes });
+  } catch (err: any) {
+    console.error('[SERVE] Active routes error:', err);
+    res.status(500).json({ error: 'Failed to fetch active routes', code: 'FAILED_TO_FETCH_ACTIVE' });
+  }
+});
+
 // ── GET /routes/:date — Get route for officer + date ────────
 router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
   try {
