@@ -53,7 +53,7 @@ export default {
         // declared in index.css as --surface-*-rgb (space-separated).
         surface: {
           // Dark Mode colors:  #000000 #0b0b0b #000000 #030303 #000000
-          // Light Mode colors: #0d2a4d #153a6a #081e3d #061630 #041022
+          // Light Mode colors: #081828 #0d2440 #051420 #061525 #020a14
           base:    'rgb(var(--surface-base-rgb) / <alpha-value>)',
           raised:  'rgb(var(--surface-raised-rgb) / <alpha-value>)',
           sunken:  'rgb(var(--surface-sunken-rgb) / <alpha-value>)',
