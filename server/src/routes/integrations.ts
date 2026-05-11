@@ -99,9 +99,20 @@ function getIntegrationConfigValue(db: any, key: string): string | null {
   ).get(key) as { config_value?: string } | undefined;
   if (!row?.config_value) return null;
   try {
-    return decryptApiKey(row.config_value);
-  } catch {
-    return row.config_value;
+    const decrypted = decryptApiKey(row.config_value);
+    return decrypted;
+  } catch (err) {
+    // Decryption failed — the stored value is either plain-text or
+    // was encrypted with a different method/key.  Log and return null
+    // instead of returning raw ciphertext (which would be sent to
+    // third-party APIs as an invalid credential).
+    logger.warn({ key, err }, 'Failed to decrypt integration config value — stored value may be corrupted or plain-text');
+    // If the raw value looks like a valid Mapbox public token (pk.*)
+    // it was likely stored unencrypted — return it directly.
+    if (row.config_value.startsWith('pk.') || row.config_value.startsWith('sk.')) {
+      return row.config_value;
+    }
+    return null;
   }
 }
 
@@ -188,7 +199,14 @@ router.get('/mapbox/client-key', (_req: Request, res: Response) => {
 
     const accessToken = envToken || storedToken || '';
 
-    // Also return the custom style URL if configured (allows direct
+    // Diagnostic logging for Mapbox token resolution
+    logger.info({
+      source: envToken ? 'env' : storedToken ? 'system_config' : 'missing',
+      configured: accessToken.length > 0,
+      tokenPrefix: accessToken ? accessToken.substring(0, 6) + '...' : '(empty)',
+    }, 'Mapbox client-key request');
+
+    // Also return the custom style URL if configured
     // Mapbox account integration via account-specific style links)
     const styleUrl = getIntegrationConfigValue(db, 'mapbox_style_url') || undefined;
 

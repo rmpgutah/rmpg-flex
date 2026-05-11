@@ -10,6 +10,8 @@
 
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import mapboxgl from 'mapbox-gl';
+import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
+import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import type maplibregl from 'maplibre-gl';
 import {
   Shield, AlertTriangle, Search, X, Layers, MapPin, Navigation2,
@@ -171,11 +173,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [activeTab, setActiveTab]       = usePersistedTab('rmpg_mapbox_sidebar', 'units', ['units', 'calls'] as const);
   const [mapStyle, setMapStyleId]       = usePersistedState<MapStyleId>('rmpg_mapbox_style', 'dark');
   const [beatsVisible, setBeatsVisible] = usePersistedState('rmpg_mapbox_beats', true);
-  const [searchQuery, setSearchQuery]   = useState('');
-  const [searchResults, setSearchResults] = useState<Array<{ place_name: string; center: [number, number] }>>([]);
+  // searchQuery/searchResults state removed — MapboxGeocoder handles this internally
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
   const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
+  const geocoderRef = useRef<MapboxGeocoder | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const mapContainerRef  = useRef<HTMLDivElement>(null);
@@ -186,7 +188,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const selfMarkerRef    = useRef<mapboxgl.Marker | null>(null);
   const tokenRef         = useRef<string | null>(null);
   const refreshTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // searchTimeoutRef removed — geocoder plugin handles debounce internally
 
   // ── Hooks ──────────────────────────────────────────────────────────────────
   const isMobile    = useIsMobile();
@@ -316,9 +318,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           const status = (e.error as any)?.status;
           const msgLower = msg.toLowerCase();
 
-          // Broad auth-error detection: catch 401, 403, and common auth
-          // messages from Mapbox API (not just "access token" substring)
-          const isAuthErr =
+          // Broad auth-error detection: catch 401, 403, style-fetch
+           // failures, and common auth messages from Mapbox API
+           const isAuthErr =
             status === 401 || status === 403 ||
             msgLower.includes('access token') ||
             msgLower.includes('not authorized') ||
@@ -326,14 +328,19 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             msgLower.includes('forbidden') ||
             msgLower.includes('invalid token') ||
             msgLower.includes('token is not authorized') ||
-            msgLower.includes('not configured');
+            msgLower.includes('not configured') ||
+            msgLower.includes('failed to fetch') ||
+            msgLower.includes('style not found') ||
+            msgLower.includes('error status 4');
 
           if (isAuthErr) {
-            // Auth failure — destroy Mapbox and fall back to MapLibre
+            // Auth failure — defer destroy to next tick so Mapbox finishes
+            // its error dispatch before we remove the map instance. Destroying
+            // mid-callback leaves stale DOM in the container that blocks MapLibre.
             devLog('[MapboxMap] Mapbox auth error, activating MapLibre GL fallback');
             clearTimeout(loadTimeout);
-            destroyMapboxMap();
-            mapRef.current = null;
+            cancelled = true;
+            setTimeout(() => { destroyMapboxMap(); mapRef.current = null; }, 0);
             setMapError(msg);
             setMapLibreFallback(true);
             setLoading(false);
@@ -348,11 +355,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           }
 
           // Fatal pre-load error (style fetch failed, GL context lost, etc.)
-          // — fall back to MapLibre
+          // — fall back to MapLibre (defer destroy same as above)
           clearTimeout(loadTimeout);
           devLog('[MapboxMap] Mapbox init failed, activating MapLibre GL fallback');
-          destroyMapboxMap();
-          mapRef.current = null;
+          cancelled = true;
+          setTimeout(() => { destroyMapboxMap(); mapRef.current = null; }, 0);
           setMapError(msg);
           setMapLibreFallback(true);
           setLoading(false);
@@ -389,37 +396,76 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   useEffect(() => {
     if (!mapLibreFallback || !mapContainerRef.current) return;
 
-    devLog('[MapLibreFallback] Initializing MapLibre GL fallback map');
-    const map = createMapLibreMap({ container: mapContainerRef.current });
-    mapLibreRef.current = map;
+    // Clean stale Mapbox DOM from the container before MapLibre init.
+    // mapboxgl.Map.remove() can leave residual child nodes/classes that
+    // prevent MapLibre from properly attaching its canvas.
+    const container = mapContainerRef.current;
+    while (container.firstChild) container.removeChild(container.firstChild);
+    container.className = container.className
+      .replace(/mapboxgl-[\w-]+/g, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    // Re-apply the required positioning class stripped above
+    if (!container.classList.contains('absolute')) container.classList.add('absolute');
 
-    map.on('load', () => {
-      devLog('[MapLibreFallback] MapLibre map loaded');
-      setMapLoaded(true);
+    // Small delay to let any deferred Mapbox cleanup settle
+    const initDelay = setTimeout(() => {
+      if (!mapContainerRef.current) return;
 
-      // Load beat overlay on MapLibre map
-      fetch('/beats.geojson')
-        .then(r => r.ok ? r.json() : null)
-        .then(geojson => {
-          if (!geojson || !map.getStyle()) return;
-          try {
-            map.addSource('beats', { type: 'geojson', data: geojson });
-            map.addLayer({
-              id: 'beats-fill', type: 'fill', source: 'beats',
-              paint: { 'fill-color': '#d4a017', 'fill-opacity': 0.05 },
-            });
-            map.addLayer({
-              id: 'beats-border', type: 'line', source: 'beats',
-              paint: { 'line-color': '#d4a017', 'line-width': 1, 'line-opacity': 0.4 },
-            });
-          } catch { /* beats layer optional */ }
-        })
-        .catch(() => { /* beats layer optional */ });
-    });
+      devLog('[MapLibreFallback] Initializing MapLibre GL fallback map');
+      const map = createMapLibreMap({ container: mapContainerRef.current });
+      mapLibreRef.current = map;
+
+      let tilesLoaded = false;
+
+      // Tile load timeout — if CartoDB tiles don't load in 12s,
+      // the user likely has no internet. Show a meaningful message.
+      const tileTimeout = setTimeout(() => {
+        if (!tilesLoaded) {
+          devWarn('[MapLibreFallback] Tile load timed out (12s)');
+          // Still set mapLoaded so the sidebar/controls are usable
+          setMapLoaded(true);
+        }
+      }, 12_000);
+
+      map.on('load', () => {
+        tilesLoaded = true;
+        clearTimeout(tileTimeout);
+        devLog('[MapLibreFallback] MapLibre map loaded');
+        setMapLoaded(true);
+
+        // Load beat overlay on MapLibre map
+        fetch('/beats.geojson')
+          .then(r => r.ok ? r.json() : null)
+          .then(geojson => {
+            if (!geojson || !map.getStyle()) return;
+            try {
+              map.addSource('beats', { type: 'geojson', data: geojson });
+              map.addLayer({
+                id: 'beats-fill', type: 'fill', source: 'beats',
+                paint: { 'fill-color': '#d4a017', 'fill-opacity': 0.05 },
+              });
+              map.addLayer({
+                id: 'beats-border', type: 'line', source: 'beats',
+                paint: { 'line-color': '#d4a017', 'line-width': 1, 'line-opacity': 0.4 },
+              });
+            } catch { /* beats layer optional */ }
+          })
+          .catch(() => { /* beats layer optional */ });
+      });
+
+      // Detect CartoDB tile failures
+      map.on('error', (e) => {
+        devWarn('[MapLibreFallback] MapLibre error:', e.error?.message || e);
+      });
+    }, 50);
 
     return () => {
-      try { map.remove(); } catch { /* map may not have fully initialized before unmount */ }
-      mapLibreRef.current = null;
+      clearTimeout(initDelay);
+      if (mapLibreRef.current) {
+        try { mapLibreRef.current.remove(); } catch { /* safe */ }
+        mapLibreRef.current = null;
+      }
     };
   }, [mapLibreFallback]);
 
@@ -720,45 +766,38 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     });
   }, [setMapStyleId, loadBeatOverlay]);
 
-  // ── Address Search (Mapbox Geocoding) ──────────────────────────────────────
+  // ── Mapbox GL Geocoder Control (replaces custom address search) ─────────────
 
-  const handleSearchInput = useCallback((value: string) => {
-    setSearchQuery(value);
-    if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
-
-    if (!value.trim()) {
-      setSearchResults([]);
-      return;
-    }
-
-    searchTimeoutRef.current = setTimeout(async () => {
-      const token = tokenRef.current;
-      if (!token) return;
-      try {
-        const resp = await fetch(
-          `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(value)}.json?access_token=${token}&proximity=-111.891,40.7608&limit=5&country=US`
-        );
-        if (!resp.ok) return;
-        const data = await resp.json();
-        setSearchResults(
-          (data.features || []).map((f: { place_name: string; center: [number, number] }) => ({
-            place_name: f.place_name,
-            center: f.center,
-          }))
-        );
-      } catch (err) {
-        devWarn('[MapboxMap] geocode failed', err);
-      }
-    }, 350);
-  }, []);
-
-  const handleSearchSelect = useCallback((center: [number, number], placeName: string) => {
+  useEffect(() => {
     const map = mapRef.current;
-    if (!map) return;
-    map.flyTo({ center, zoom: 16, duration: 1200 });
-    setSearchQuery(placeName);
-    setSearchResults([]);
-  }, []);
+    if (!map || !mapLoaded || mapLibreFallback) return;
+    const token = tokenRef.current;
+    if (!token) return;
+
+    // Don't double-add
+    if (geocoderRef.current) return;
+
+    const geocoder = new MapboxGeocoder({
+      accessToken: token,
+      mapboxgl: mapboxgl as any,
+      marker: true,
+      placeholder: 'Search address…',
+      proximity: { longitude: SLC_CENTER[0], latitude: SLC_CENTER[1] },
+      countries: 'US',
+      limit: 5,
+      collapsed: false,
+      clearOnBlur: false,
+      flyTo: { speed: 1.4, zoom: 16 },
+    });
+
+    map.addControl(geocoder, 'top-left');
+    geocoderRef.current = geocoder;
+
+    return () => {
+      try { map.removeControl(geocoder); } catch { /* map may already be destroyed */ }
+      geocoderRef.current = null;
+    };
+  }, [mapLoaded, mapLibreFallback]);
 
   // ── Sidebar Interactions ───────────────────────────────────────────────────
 
@@ -804,25 +843,41 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
 
   if (mapError && !mapLibreFallback) {
     return (
-      <div className="flex items-center justify-center h-full bg-surface-base">
+      <div className="flex items-center justify-center bg-surface-base" style={{ position: 'absolute', inset: 0 }}>
         <div className="bg-surface-raised border border-[#222222] p-6 max-w-md text-center" style={{ borderRadius: 2 }}>
-          <AlertTriangle className="w-10 h-10 text-[#d4a017] mx-auto mb-3" />
-          <h2 className="text-rmpg-200 text-sm font-semibold mb-2">MAP UNAVAILABLE</h2>
-          <p className="text-rmpg-400 text-xs mb-4">{mapError}</p>
-          <div className="flex flex-col gap-2 items-center">
-            <a
-              href="/admin?tab=integrations"
-              className="text-[#d4a017] text-xs underline hover:text-[#e8b84a]"
-            >
-              Configure in Admin → Integrations
-            </a>
-            <button
-              onClick={() => { setMapLibreFallback(true); }}
-              className="text-rmpg-400 text-xs hover:text-rmpg-200 transition-colors"
-            >
-              Use MapLibre fallback →
-            </button>
-          </div>
+           <AlertTriangle className="w-10 h-10 text-[#d4a017] mx-auto mb-3" />
+           <h2 className="text-rmpg-200 text-sm font-semibold mb-2">MAP UNAVAILABLE</h2>
+           <p className="text-rmpg-400 text-xs mb-4">{mapError}</p>
+           <div className="text-left bg-[#111] border border-[#1a1a1a] p-3 mb-4 text-[10px] text-rmpg-400" style={{ borderRadius: 2 }}>
+             <p className="font-semibold text-rmpg-300 mb-1">To fix this issue:</p>
+             <ol className="list-decimal list-inside space-y-1">
+               <li>Go to <a href="https://account.mapbox.com/access-tokens/" target="_blank" rel="noopener noreferrer" className="text-[#d4a017] underline">account.mapbox.com/access-tokens</a> and verify your token is active.</li>
+               <li>Ensure the token has the required scopes: <span className="font-mono text-rmpg-300">styles:read</span>, <span className="font-mono text-rmpg-300">styles:tiles</span>, <span className="font-mono text-rmpg-300">fonts:read</span>.</li>
+               <li>If expired or revoked, create a new public token and copy it.</li>
+               <li>Navigate to <a href="/admin?tab=integrations" className="text-[#d4a017] underline">Admin → Integrations → Mapbox</a> and paste the new token.</li>
+               <li>Alternatively, set the <span className="font-mono text-rmpg-300">MAPBOX_ACCESS_TOKEN</span> environment variable on the server.</li>
+             </ol>
+           </div>
+           <div className="flex flex-col gap-2 items-center">
+             <a
+               href="/admin?tab=integrations"
+               className="text-[#d4a017] text-xs underline hover:text-[#e8b84a]"
+             >
+               Configure in Admin → Integrations
+             </a>
+             <button
+               onClick={() => { setRetryNonce(n => n + 1); setMapError(null); setLoading(true); }}
+               className="text-[#d4a017] text-xs hover:text-[#e8b84a] transition-colors"
+             >
+               ↻ Retry Mapbox
+             </button>
+             <button
+               onClick={() => { setMapLibreFallback(true); }}
+               className="text-rmpg-400 text-xs hover:text-rmpg-200 transition-colors"
+             >
+               Use MapLibre fallback →
+             </button>
+           </div>
         </div>
       </div>
     );
@@ -831,7 +886,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   // ── Render ─────────────────────────────────────────────────────────────────
 
   return (
-    <div className="relative w-full h-full overflow-hidden bg-surface-base">
+    <div className="relative w-full overflow-hidden bg-surface-base" style={{ height: '100%', minHeight: '100%' }}>
       {/* Loading Overlay */}
       {loading && (
         <div className="absolute inset-0 z-50 flex items-center justify-center bg-surface-base/90">
@@ -842,8 +897,8 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         </div>
       )}
 
-      {/* Map Container */}
-      <div ref={mapContainerRef} className="absolute inset-0" />
+      {/* Map Container — explicit w/h ensures Mapbox GL gets a sized element */}
+      <div ref={mapContainerRef} className="absolute inset-0" style={{ width: '100%', height: '100%' }} />
 
       {/* MapLibre Fallback Banner */}
       {mapLibreFallback && (
@@ -866,52 +921,49 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         </div>
       )}
 
-      {/* Search Bar */}
-      <div className={`absolute top-3 z-30 ${sidebarOpen && !isMobile ? 'left-[296px]' : 'left-3'} transition-all duration-200`}>
-        <div className="relative">
-          <div
-            className="flex items-center bg-surface-raised/95 border border-[#222222] backdrop-blur-sm"
-            style={{ borderRadius: 2, width: isMobile ? 'calc(100vw - 24px)' : 280 }}
-          >
-            <Search className="w-3.5 h-3.5 text-rmpg-400 ml-2.5 shrink-0" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => handleSearchInput(e.target.value)}
-              placeholder="Search address…"
-              className="flex-1 bg-transparent text-rmpg-200 text-xs px-2 py-2 outline-none placeholder:text-rmpg-500 font-mono"
-            />
-            {searchQuery && (
-              <IconButton
-                aria-label="Clear search"
-                onClick={() => { setSearchQuery(''); setSearchResults([]); }}
-                className="mr-1 text-rmpg-400 hover:text-rmpg-200 p-1"
-              >
-                <X className="w-3 h-3" />
-              </IconButton>
-            )}
-          </div>
-
-          {/* Search Results Dropdown */}
-          {searchResults.length > 0 && (
-            <div
-              className="absolute top-full left-0 right-0 mt-1 bg-surface-raised border border-[#222222] overflow-hidden z-40"
-              style={{ borderRadius: 2 }}
-            >
-              {searchResults.map((r, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSearchSelect(r.center, r.place_name)}
-                  className="w-full text-left px-3 py-2 text-xs text-rmpg-300 hover:bg-[#1a1a1a] hover:text-rmpg-200 border-b border-[#1a1a1a] last:border-b-0 transition-colors"
-                >
-                  <MapPin className="w-3 h-3 inline mr-1.5 text-[#d4a017]" />
-                  {r.place_name}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
+      {/* Geocoder styling override for RMPG dark theme */}
+      <style>{`
+        .mapboxgl-ctrl-geocoder {
+          background: #141414 !important;
+          border: 1px solid #222222 !important;
+          border-radius: 2px !important;
+          color: #e0e0e0 !important;
+          font-family: ui-monospace, monospace !important;
+          font-size: 12px !important;
+          box-shadow: none !important;
+          min-width: 260px !important;
+        }
+        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input {
+          color: #e0e0e0 !important;
+          font-size: 12px !important;
+        }
+        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--input::placeholder {
+          color: #555 !important;
+        }
+        .mapboxgl-ctrl-geocoder .suggestions {
+          background: #141414 !important;
+          border: 1px solid #222222 !important;
+          border-radius: 2px !important;
+        }
+        .mapboxgl-ctrl-geocoder .suggestions > li > a {
+          color: #ccc !important;
+          font-size: 11px !important;
+        }
+        .mapboxgl-ctrl-geocoder .suggestions > .active > a,
+        .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
+          background: #1a1a1a !important;
+          color: #d4a017 !important;
+        }
+        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon-search {
+          fill: #d4a017 !important;
+        }
+        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--button {
+          background: transparent !important;
+        }
+        .mapboxgl-ctrl-geocoder .mapboxgl-ctrl-geocoder--icon-close {
+          fill: #888 !important;
+        }
+      `}</style>
 
       {/* Sidebar Toggle (when closed) */}
       {!sidebarOpen && (

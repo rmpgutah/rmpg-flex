@@ -36,7 +36,12 @@ const DARK_STYLE: maplibregl.StyleSpecification = {
     'carto-dark': {
       type: 'raster',
       tiles: [
+        // Primary: HiDPI tiles (512px for crisp rendering on Retina displays)
         'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+        // Fallback subdomain variants for better load balancing / resilience
+        'https://a.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+        'https://b.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
+        'https://c.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}@2x.png',
       ],
       tileSize: 256,
       attribution: '© CartoDB © OpenStreetMap contributors',
@@ -60,6 +65,20 @@ const DARK_STYLE: maplibregl.StyleSpecification = {
  * Uses CartoDB dark_matter tiles (same as existing offline tiles).
  */
 export function createMap(config: MapConfig): maplibregl.Map {
+  // Ensure the container element has explicit dimensions — MapLibre GL
+  // requires a non-zero-size container to render its WebGL canvas.
+  const el = typeof config.container === 'string'
+    ? document.getElementById(config.container)
+    : config.container;
+  if (el instanceof HTMLElement) {
+    if (!el.style.width) el.style.width = '100%';
+    if (!el.style.height) el.style.height = '100%';
+    // Inset-positioned containers inherit size from the parent — but if
+    // style computation yields 0 (e.g. parent hasn't painted yet), set a
+    // minimum so the GL context can initialise.
+    if (el.offsetHeight === 0) el.style.minHeight = '400px';
+  }
+
   const map = new maplibregl.Map({
     container: config.container,
     style: config.style || DARK_STYLE,
@@ -69,6 +88,8 @@ export function createMap(config: MapConfig): maplibregl.Map {
     pitch: config.pitch || 0,
     interactive: config.interactive !== false,
     attributionControl: false,
+    // Fail gracefully instead of throwing when WebGL is unavailable
+    failIfMajorPerformanceCaveat: false,
   });
 
   // Add compact attribution

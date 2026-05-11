@@ -9,6 +9,8 @@ import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { Maximize2, MapPin, Navigation, Wifi } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
+import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
+import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
@@ -151,6 +153,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const serveMarkersRef = useRef<mapboxgl.Marker[]>([]);
   const tokenRef = useRef<string | null>(null);
+  const geocoderRef = useRef<MapboxGeocoder | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mapBearing, setMapBearing] = useState(0);
@@ -293,6 +296,24 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       });
 
       mapRef.current = map;
+
+      // Add compact geocoder control
+      if (tokenRef.current && !geocoderRef.current) {
+        const geocoder = new MapboxGeocoder({
+          accessToken: tokenRef.current,
+          mapboxgl: mapboxgl as any,
+          marker: true,
+          placeholder: 'Search…',
+          proximity: { longitude: DEFAULT_CENTER[0], latitude: DEFAULT_CENTER[1] },
+          countries: 'US',
+          limit: 3,
+          collapsed: true,
+          clearOnBlur: true,
+          flyTo: { speed: 1.4, zoom: 16 },
+        });
+        map.addControl(geocoder, 'bottom-right');
+        geocoderRef.current = geocoder;
+      }
 
       // Track bearing for compass indicator
       map.on('rotate', () => {
@@ -588,6 +609,63 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       {/* Map container with tactical grid overlay */}
       <div style={{ position: 'relative', width: '100%', height: '100%' }}>
         <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
+        {/* Geocoder compact dark theme override */}
+        <style>{`
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder {
+            background: rgba(10,10,10,0.92) !important;
+            border: 1px solid #2b2b2b !important;
+            border-radius: 2px !important;
+            font-size: 9px !important;
+            min-width: 28px !important;
+            max-width: 180px !important;
+            box-shadow: none !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--input {
+            color: #ccc !important;
+            font-size: 9px !important;
+            height: 24px !important;
+            padding: 2px 24px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--input::placeholder {
+            color: #555 !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions {
+            background: #0a0a0a !important;
+            border: 1px solid #2b2b2b !important;
+            font-size: 9px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions > li > a {
+            color: #aaa !important;
+            font-size: 9px !important;
+            padding: 4px 8px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions > .active > a,
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
+            background: #1a1a1a !important;
+            color: #d4a017 !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--icon-search {
+            fill: #d4a017 !important;
+            width: 14px !important;
+            height: 14px !important;
+            top: 5px !important;
+            left: 5px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--icon-close {
+            fill: #666 !important;
+            width: 12px !important;
+            height: 12px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--button {
+            background: transparent !important;
+            width: 24px !important;
+            height: 24px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--collapsed {
+            min-width: 28px !important;
+            width: 28px !important;
+          }
+        `}</style>
         <div style={{
           position: 'absolute', inset: 0, pointerEvents: 'none',
           backgroundImage:

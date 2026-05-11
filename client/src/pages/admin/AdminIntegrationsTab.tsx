@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
+import { getMapboxToken } from '../../utils/mapboxApiKey';
 import AdminCustomIntegrationsSection from './AdminCustomIntegrationsSection';
 
 interface Props {
@@ -223,6 +224,11 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
       });
       setConfigured(prev => ({ ...prev, [configKey]: true }));
       setValues(prev => ({ ...prev, [configKey]: '' }));
+      // Invalidate client-side Mapbox token cache so the map page
+      // picks up the new token without a full page reload.
+      if (configKey.startsWith('mapbox_')) {
+        getMapboxToken(true);
+      }
     } catch { /* silent */ }
     setSaving(null);
   };

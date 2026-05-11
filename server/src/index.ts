@@ -615,7 +615,7 @@ app.get('/*splat', apiRateLimit, (req, res) => {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
-      if (err) {
+      if (err && !res.headersSent) {
         res.status(404).json({ error: 'Not found' });
       }
     });
@@ -709,8 +709,20 @@ try {
   initWebSocket(primaryServer);
   logger.info('WebSocket server initialized');
 
-  // Set up enhanced graceful shutdown for all servers
-  setupGracefulShutdown([primaryServer]);
+  // Set up enhanced graceful shutdown for all servers, including DB cleanup
+  setupGracefulShutdown([primaryServer], {
+    onShutdown: async () => {
+      try {
+        const db = getDb();
+        if (db) {
+          db.close();
+          logger.info('database connection closed');
+        }
+      } catch (e: any) {
+        logger.warn({ err: e }, 'shutdown DB cleanup error');
+      }
+    },
+  });
 
   // Run startup configuration checks
   runStartupChecks().then(({ passed, results }) => {
@@ -750,8 +762,11 @@ try {
     console.log('║                                                  ║');
     console.log(`║  Environment: ${config.nodeEnv.padEnd(35)}║`);
     console.log(`║  Domain:      ${config.primaryDomain.padEnd(35)}║`);
-    console.log(`║  ${config.ssl.enabled ? 'HTTPS' : 'HTTP'} Server: ${protocol}://${displayHost}:${String(listenPort).padEnd(1)}║`);
-    console.log(`║  WebSocket:   ${wsProtocol}://${displayHost}:${String(listenPort).padEnd(1)}║`);
+    const serverUrl = `${protocol}://${displayHost}:${listenPort}`;
+    const wsUrl = `${wsProtocol}://${displayHost}:${listenPort}`;
+    const serverLabel = config.ssl.enabled ? 'HTTPS' : 'HTTP';
+    console.log(`║  ${serverLabel} Server: ${serverUrl.padEnd(50 - 16 - serverLabel.length)}║`);
+    console.log(`║  WebSocket:   ${wsUrl.padEnd(35)}║`);
     console.log(`║  TLS/SSL:     ${(config.ssl.enabled ? 'ENABLED (TLSv1.2+)' : 'DISABLED').padEnd(35)}║`);
     console.log('║  API Base:    /api                               ║');
     console.log('║                                                  ║');
@@ -915,33 +930,7 @@ process.on('unhandledRejection', (reason) => {
   logger.fatal({ err: reason }, 'unhandled promise rejection — server continuing, investigate immediately');
 });
 
-// ─── Graceful Shutdown ────────────────────────────────
-// Close server and database connections cleanly on SIGTERM/SIGINT
-function gracefulShutdown(signal: string) {
-  logger.info({ signal }, 'graceful shutdown initiated');
-  const shutdownTimeout = setTimeout(() => {
-    logger.error('shutdown timed out after 15s — forcing exit');
-    process.exit(1);
-  }, 15000);
-
-  try {
-    // Close the HTTP(S) server — stop accepting new connections
-    // primaryServer is scoped in the try block above, so we use a module-level ref
-    const db = getDb();
-    if (db) {
-      db.close();
-      logger.info('database connection closed');
-    }
-  } catch (e: any) {
-    logger.warn({ err: e }, 'shutdown cleanup error');
-  }
-
-  clearTimeout(shutdownTimeout);
-  logger.info('shutdown complete');
-  process.exit(0);
-}
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// Graceful shutdown is handled by setupGracefulShutdown() (registered above),
+// which closes HTTP servers, runs shutdown callbacks (DB close), and exits cleanly.
 
 export default app;

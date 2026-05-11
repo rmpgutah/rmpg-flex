@@ -1979,13 +1979,15 @@ router.put('/third-party-keys', requireRole('admin'), (req: Request, res: Respon
       'traccar_url',
       'traccar_enabled',
       'traccar_poll_interval',
+      'mapbox_style_url',
+      'mapbox_username',
     ]);
     const stored = NON_SECRET_KEYS.has(key) ? value.trim() : encryptValue(value.trim());
     const now = localNow();
 
     const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;
     if (existing) {
-      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(stored, now, key);
+      db.prepare("UPDATE system_config SET config_value = ?, category = 'integrations', is_active = 1, updated_at = ? WHERE config_key = ?").run(stored, now, key);
     } else {
       db.prepare(
         "INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 1, ?, ?)"
