@@ -59,6 +59,10 @@ export async function getMapboxToken(forceRefresh = false): Promise<string | nul
   )
     .then((response) => {
       const token = typeof response?.accessToken === 'string' ? response.accessToken.trim() : '';
+      // Validate Mapbox token format: public tokens start with 'pk.', secret with 'sk.'
+      if (token && !/^(pk|sk)\./.test(token)) {
+        console.warn('[MapboxToken] Token has unexpected format (expected pk.* or sk.*). It may be invalid.');
+      }
       cachedMapboxToken = token || null;
       const rawStyleUrl = typeof response?.styleUrl === 'string' ? response.styleUrl.trim() : '';
       cachedMapboxStyleUrl = rawStyleUrl || null;

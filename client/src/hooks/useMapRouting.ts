@@ -50,6 +50,17 @@ function haversineMeters(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// ─── Coordinate Validation ──────────────────────────────────
+
+/** Validate that coordinates are within WGS84 bounds (Mapbox API requirement) */
+function isValidCoord(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) && Number.isFinite(lng) &&
+    lat >= -90 && lat <= 90 &&
+    lng >= -180 && lng <= 180
+  );
+}
+
 // ─── Constants ──────────────────────────────────────────────
 
 /** Minimum time between re-routing queries (ms) */
@@ -103,12 +114,41 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
       const token = getCachedMapboxToken();
       if (!token) return null;
 
+      // Validate coordinates before calling Mapbox Directions API (WGS84 bounds)
+      if (!isValidCoord(origin.lat, origin.lng) || !isValidCoord(destination.lat, destination.lng)) {
+        console.warn('[useMapRouting] Invalid coordinates, skipping Directions query', { origin, destination });
+        return null;
+      }
+
       setRouteLoading(true);
 
       try {
         const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?access_token=${token}&geometries=geojson&overview=full`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Directions failed: ${res.status}`);
+
+        // Retry with exponential backoff on 429 (rate limit) or 5xx (server error)
+        let res: Response | null = null;
+        const MAX_RETRIES = 3;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          res = await fetch(url);
+          if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
+            if (attempt < MAX_RETRIES) {
+              // Use X-Rate-Limit-Reset header if available, else exponential backoff
+              const resetHeader = res.headers.get('X-Rate-Limit-Reset');
+              let waitMs: number;
+              if (resetHeader) {
+                const resetTime = Number(resetHeader) * 1000;
+                waitMs = Math.max(resetTime - Date.now(), 1000);
+              } else {
+                waitMs = 1000 * 2 ** attempt; // 1s, 2s, 4s
+              }
+              console.warn(`[useMapRouting] Directions API ${res.status}, retrying in ${waitMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+              await new Promise(r => setTimeout(r, waitMs));
+              continue;
+            }
+          }
+          break;
+        }
+        if (!res || !res.ok) throw new Error(`Directions failed: ${res?.status ?? 'no response'}`);
         const data = await res.json();
         const route = data.routes?.[0];
         if (!route) return null;

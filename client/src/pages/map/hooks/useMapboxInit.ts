@@ -137,12 +137,23 @@ export function useMapboxInit(initialStyle: MapboxStyleId = 'dark'): UseMapboxIn
 
           // Check for auth errors (including style-fetch failures from bad tokens)
           const msgLower = msg.toLowerCase();
+          // 'failed to fetch' is a network/CORS error, not an auth error
+          const isNetworkErr =
+            msgLower.includes('failed to fetch') ||
+            msgLower.includes('networkerror') ||
+            msgLower.includes('network request failed');
+
           const isAuthErr =
             msg.includes('access token') || msg.includes('401') || msg.includes('403') ||
             msgLower.includes('not authorized') || msgLower.includes('unauthorized') ||
             msgLower.includes('forbidden') || msgLower.includes('invalid token') ||
-            msgLower.includes('failed to fetch') || msgLower.includes('style not found') ||
+            msgLower.includes('style not found') ||
             msgLower.includes('error status 4');
+
+          if (isNetworkErr && !mapDidLoad) {
+            devLog('[Mapbox] Network error during init (will retry):', msg);
+            return;
+          }
 
           if (isAuthErr) {
             devLog('[Mapbox] Auth error — activating MapLibre fallback');

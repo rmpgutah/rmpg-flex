@@ -109,6 +109,13 @@ let isLoaded = false;
  * 3D terrain, Standard style, and fullscreen control.
  */
 export function createMapboxMap(config: MapboxMapConfig): mapboxgl.Map {
+  // Clean up any stale singleton before creating a new instance
+  if (mapInstance) {
+    try { mapInstance.remove(); } catch { /* may already be destroyed */ }
+    mapInstance = null;
+    isLoaded = false;
+  }
+
   // Set the access token globally
   mapboxgl.accessToken = config.accessToken;
 

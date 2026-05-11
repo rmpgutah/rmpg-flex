@@ -14,7 +14,7 @@ import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
 import type maplibregl from 'maplibre-gl';
 import {
-  Shield, AlertTriangle, Search, X, Layers, MapPin, Navigation2,
+  Shield, AlertTriangle, Layers, MapPin, Navigation2,
   Eye, EyeOff, ChevronDown, ChevronUp, Loader2, RefreshCw,
   Map as MapIcon, PanelLeftClose, PanelLeftOpen, Crosshair, Mountain,
 } from 'lucide-react';
@@ -319,7 +319,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           const msgLower = msg.toLowerCase();
 
           // Broad auth-error detection: catch 401, 403, style-fetch
-           // failures, and common auth messages from Mapbox API
+           // failures, and common auth messages from Mapbox API.
+           // NOTE: 'failed to fetch' is a network/CORS error, NOT an auth error —
+           // triggering full fallback for transient network blips is wrong.
+           const isNetworkErr =
+            msgLower.includes('failed to fetch') ||
+            msgLower.includes('networkerror') ||
+            msgLower.includes('network request failed');
+
            const isAuthErr =
             status === 401 || status === 403 ||
             msgLower.includes('access token') ||
@@ -329,9 +336,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             msgLower.includes('invalid token') ||
             msgLower.includes('token is not authorized') ||
             msgLower.includes('not configured') ||
-            msgLower.includes('failed to fetch') ||
             msgLower.includes('style not found') ||
             msgLower.includes('error status 4');
+
+          if (isNetworkErr && !mapDidLoad) {
+            // Network error during init — don't fall back immediately;
+            // Mapbox GL retries tile fetches internally. Only log it.
+            devLog('[MapboxMap] Network error during init (will retry):', msg);
+            return;
+          }
 
           if (isAuthErr) {
             // Auth failure — defer destroy to next tick so Mapbox finishes
@@ -386,7 +399,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       callMarkersRef.current.forEach(m => m.remove());
       callMarkersRef.current.clear();
       selfMarkerRef.current?.remove();
-      if (searchTimeoutRef.current) clearTimeout(searchTimeoutRef.current);
+      geocoderRef.current = null;
     };
    // eslint-disable-next-line react-hooks/exhaustive-deps
    }, [mapLibreFallback, retryNonce]); // rerun on retry or when fallback cleared
@@ -763,8 +776,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       if (DARK_STYLES.includes(styleId)) addMapbox3DBuildings(map);
       // Re-add beat overlay (GeoJSON is local, doesn't need token)
       loadBeatOverlay(map);
+      // Re-apply 3D terrain if it was enabled before the style switch
+      if (terrainEnabled) addMapboxTerrain(map);
     });
-  }, [setMapStyleId, loadBeatOverlay]);
+  }, [setMapStyleId, loadBeatOverlay, terrainEnabled]);
 
   // ── Mapbox GL Geocoder Control (replaces custom address search) ─────────────
 
