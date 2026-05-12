@@ -30,6 +30,7 @@ import {
   mapboxMapMatch,
   mapboxDirections,
   mapboxTilequery,
+  mapboxOptimization,
 } from '../utils/mapboxApi';
 
 const router = Router();
@@ -260,6 +261,32 @@ router.get('/tilequery', async (req: Request, res: Response) => {
   } catch (err: any) {
     logger.warn({ err }, '[mapbox/tilequery] failed');
     res.status(502).json({ error: 'Tilequery failed' });
+  }
+});
+
+// ── Optimization (Traveling Salesman) ─────────────────────
+
+router.post('/optimization', async (req: Request, res: Response) => {
+  try {
+    const { coordinates, profile, steps, roundtrip, source, destination } = req.body;
+    if (!Array.isArray(coordinates) || coordinates.length < 2) {
+      return res.status(400).json({ error: 'At least 2 coordinates required' });
+    }
+    if (coordinates.length > 12) {
+      return res.status(400).json({ error: 'Maximum 12 waypoints for optimization' });
+    }
+
+    const data = await mapboxOptimization(coordinates, {
+      profile: profile || 'driving',
+      steps: steps ?? true,
+      roundtrip: roundtrip ?? true,
+      source: source || 'first',
+      destination: destination || 'last',
+    });
+    res.json(data);
+  } catch (err: any) {
+    logger.warn({ err }, '[mapbox/optimization] failed');
+    res.status(502).json({ error: 'Optimization request failed' });
   }
 });
 

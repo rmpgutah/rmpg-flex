@@ -247,3 +247,40 @@ export async function findNearestUnits(
 
   return results;
 }
+
+// ── Optimization (Traveling Salesman) ─────────────────────
+
+export interface MapboxOptimizationResponse {
+  trips: Array<{
+    geometry: { type: 'LineString'; coordinates: [number, number][] };
+    duration: number;
+    distance: number;
+    legs: Array<{
+      duration: number;
+      distance: number;
+      steps: Array<{
+        maneuver: { instruction: string; type: string };
+        duration: number;
+        distance: number;
+        name: string;
+      }>;
+    }>;
+  }>;
+  waypoints: Array<{
+    name: string;
+    location: [number, number];
+    trips_index: number;
+    waypoint_index: number;
+  }>;
+}
+
+export async function mapboxOptimization(
+  coordinates: Array<[number, number]>,
+  options?: { profile?: string; steps?: boolean; roundtrip?: boolean; source?: string; destination?: string }
+): Promise<MapboxOptimizationResponse> {
+  return apiFetch<MapboxOptimizationResponse>('/mapbox/optimization', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ coordinates, ...options }),
+  });
+}

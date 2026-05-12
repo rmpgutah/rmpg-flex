@@ -424,3 +424,62 @@ export async function mapboxDirections(
     `https://api.mapbox.com/directions/v5/mapbox/${profile}/${coordStr}?${params}`
   );
 }
+
+// ── Optimization API (Traveling Salesman) ─────────────────
+
+export interface MapboxOptimizationResult {
+  trips: Array<{
+    geometry: GeoJSON.LineString;
+    duration: number;
+    distance: number;
+    legs: Array<{
+      duration: number;
+      distance: number;
+      steps: Array<{
+        maneuver: { instruction: string; type: string };
+        duration: number;
+        distance: number;
+        name: string;
+      }>;
+    }>;
+  }>;
+  waypoints: Array<{
+    name: string;
+    location: [number, number];
+    trips_index: number;
+    waypoint_index: number;
+  }>;
+}
+
+/** Optimize a multi-stop route (traveling salesman) via Mapbox Optimization API */
+export async function mapboxOptimization(
+  coordinates: Array<[number, number]>,
+  options?: {
+    profile?: 'driving' | 'driving-traffic' | 'walking' | 'cycling';
+    steps?: boolean;
+    roundtrip?: boolean;
+    source?: 'any' | 'first';
+    destination?: 'any' | 'last';
+    geometries?: 'geojson' | 'polyline';
+    overview?: 'full' | 'simplified' | 'false';
+  }
+): Promise<MapboxOptimizationResult> {
+  const token = getMapboxAccessToken();
+  if (!token) throw new Error('Mapbox access token not configured');
+
+  const profile = options?.profile ?? 'driving';
+  const coordStr = coordinates.map(c => c.join(',')).join(';');
+  const params = new URLSearchParams({
+    access_token: token,
+    geometries: options?.geometries ?? 'geojson',
+    overview: options?.overview ?? 'full',
+    steps: String(options?.steps ?? false),
+    roundtrip: String(options?.roundtrip ?? true),
+  });
+  if (options?.source) params.set('source', options.source);
+  if (options?.destination) params.set('destination', options.destination);
+
+  return mapboxFetch(
+    `https://api.mapbox.com/optimized-trips/v1/mapbox/${profile}/${coordStr}?${params}`
+  );
+}

@@ -20,6 +20,8 @@ import {
   Clock, Locate, Flame, Car, Ruler, Satellite, PenTool, Hexagon,
   Circle, Trash2, Undo2, Grid3X3, Sun, Route, Users, Info,
   Radio, Volume2, Footprints, MapPinned,
+  Search, Compass, CloudRain, Star, Camera, Download, Clipboard,
+  Navigation, Globe, Zap, Hash,
 } from 'lucide-react';
 
 import {
@@ -64,6 +66,21 @@ import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
 import { useMapRouting } from '../../hooks/useMapRouting';
 import { useMultiUnitRouting } from '../../hooks/useMultiUnitRouting';
 import { useMapKeyboardShortcuts } from '../../hooks/useMapKeyboardShortcuts';
+import { useMapPlacesSearch, PLACE_CATEGORIES } from '../../hooks/useMapPlacesSearch';
+import { useMapDirectionsPanel } from '../../hooks/useMapDirectionsPanel';
+import { useMapCoordinateGrid } from '../../hooks/useMapCoordinateGrid';
+import { useMapWeatherRadar } from '../../hooks/useMapWeatherRadar';
+import { useMapBookmarks } from '../../hooks/useMapBookmarks';
+import { useMapPrintExport } from '../../hooks/useMapPrintExport';
+import { useGeoJsonLayers, GEO_LAYER_CONFIGS } from '../../hooks/useGeoJsonLayers';
+import { useMapFeatureInspect } from '../../hooks/useMapFeatureInspect';
+import { useMapMatchTrace } from '../../hooks/useMapMatchTrace';
+import { useMapProjection } from '../../hooks/useMapProjection';
+import { useMapAtmosphere } from '../../hooks/useMapAtmosphere';
+import { useMapCameraAnimation } from '../../hooks/useMapCameraAnimation';
+import { useMapSnapshot } from '../../hooks/useMapSnapshot';
+import { useMapOptimization } from '../../hooks/useMapOptimization';
+import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
 import MapLayersPanel from './components/MapLayersPanel';
 import type { LayerGroup } from './components/MapLayersPanel';
 
@@ -243,6 +260,19 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const infoPanel = useMapInfoPanel(mapRef.current, mapLoaded, units, calls);
   const routing = useMapRouting({ map: mapRef.current });
   const multiRouting = useMultiUnitRouting({ map: mapRef.current });
+  const placesSearch = useMapPlacesSearch(mapRef.current, mapLoaded);
+  const directionsPanel = useMapDirectionsPanel(mapRef.current, mapLoaded);
+  const coordGrid = useMapCoordinateGrid(mapRef.current, mapLoaded);
+  const weatherRadar = useMapWeatherRadar(mapRef.current, mapLoaded);
+  const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
+  const printExport = useMapPrintExport(mapRef.current, mapLoaded);
+  const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current });
+  const [deckEnabled, setDeckEnabled] = usePersistedState('rmpg_mapbox_deck', false);
+  const [showPlacesMenu, setShowPlacesMenu] = useState(false);
+  const [showDirectionsPanel, setShowDirectionsPanel] = useState(false);
+  const [showWeatherMenu, setShowWeatherMenu] = useState(false);
+  const [showBookmarksPanel, setShowBookmarksPanel] = useState(false);
+  const [showGeoLayersMenu, setShowGeoLayersMenu] = useState(false);
   const [autoPanEnabled, setAutoPanEnabled] = usePersistedState('rmpg_mapbox_autopan_p1', true);
   const [p1AudioEnabled, setP1AudioEnabled] = usePersistedState('rmpg_mapbox_p1_audio', true);
   const [layersPanelOpen, setLayersPanelOpen] = useState(false);
@@ -275,7 +305,58 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       clustering.toggle();
     },
     toggleDaylight: () => daylight.toggle(),
+    toggleGrid: () => coordGrid.toggle(),
   });
+
+  // ── Deck.gl GPU Overlay ────────────────────────────────────────────────────
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    if (deckEnabled) {
+      initMapboxDeckOverlay(map);
+
+      const incidents = calls
+        .filter(c => c.latitude != null && c.longitude != null)
+        .map(c => ({
+          position: [c.longitude!, c.latitude!] as [number, number],
+          priority: c.priority,
+          weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4,
+        }));
+
+      const unitPositions = units
+        .filter(u => u.latitude != null && u.longitude != null)
+        .map(u => ({
+          position: [u.longitude!, u.latitude!] as [number, number],
+          status: u.status,
+          callSign: u.call_sign,
+        }));
+
+      const arcs = units
+        .filter(u => u.latitude != null && u.longitude != null && u.current_call_type)
+        .map(u => {
+          const call = calls.find(c => c.call_number === u.call_number);
+          if (!call || call.latitude == null || call.longitude == null) return null;
+          return {
+            source: [u.longitude!, u.latitude!] as [number, number],
+            target: [call.longitude!, call.latitude!] as [number, number],
+          };
+        })
+        .filter(Boolean) as any[];
+
+      const layers = [
+        createMapboxIncidentLayer(incidents),
+        createMapboxUnitLayer(unitPositions),
+        ...(arcs.length > 0 ? [createMapboxArcLayer(arcs)] : []),
+      ];
+      updateMapboxDeckLayers(layers);
+    } else {
+      destroyMapboxDeckOverlay();
+    }
+
+    return () => { if (!deckEnabled) destroyMapboxDeckOverlay(); };
+  }, [deckEnabled, mapLoaded, calls, units]);
 
   // ── Data Fetching ──────────────────────────────────────────────────────────
 
@@ -1001,6 +1082,9 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'daylight', label: 'Day/Night', enabled: daylight.enabled, onToggle: daylight.toggle, color: '#f59e0b', description: 'Solar terminator (D)' },
         { id: 'geofences', label: 'Geofence Zones', enabled: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle, color: '#ef4444', description: 'Premise alerts on click' },
         { id: 'isochrone', label: 'Response Zones', enabled: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
+        { id: 'weather', label: 'Weather Radar', enabled: weatherRadar.enabled, onToggle: weatherRadar.toggle, color: '#3b82f6', description: 'Precipitation overlay' },
+        { id: 'grid', label: 'Coordinate Grid', enabled: coordGrid.enabled, onToggle: coordGrid.toggle, color: '#d4a017', description: 'Lat/Lng graticule (G)' },
+        { id: 'deck', label: 'GPU Overlay', enabled: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated' },
       ],
     },
     {
@@ -1020,7 +1104,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'p1audio', label: 'P1 Audio Alert', enabled: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled]);
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
@@ -1447,6 +1531,46 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                 title="P1 Audio Alert Chirp"
               >
                 <Volume2 className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={coordGrid.enabled ? 'Hide coordinate grid' : 'Show coordinate grid'}
+                onClick={() => coordGrid.toggle()}
+                className={`p-1.5 ${coordGrid.enabled ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                title="Coordinate Grid (G)"
+              >
+                <Hash className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={weatherRadar.enabled ? 'Hide weather radar' : 'Show weather radar'}
+                onClick={() => weatherRadar.toggle()}
+                className={`p-1.5 ${weatherRadar.enabled ? 'text-[#3b82f6]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                title="Weather Radar"
+              >
+                <CloudRain className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label="Bookmarks"
+                onClick={() => setShowBookmarksPanel(v => !v)}
+                className={`p-1.5 ${showBookmarksPanel ? 'text-[#f59e0b]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                title="Saved Bookmarks"
+              >
+                <Star className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label="Export map image"
+                onClick={() => printExport.exportImage()}
+                className="p-1.5 text-rmpg-400 hover:text-rmpg-200"
+                title="Export Map as Image"
+              >
+                <Download className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={deckEnabled ? 'Disable GPU overlay' : 'Enable GPU overlay'}
+                onClick={() => setDeckEnabled(v => !v)}
+                className={`p-1.5 ${deckEnabled ? 'text-[#a855f7]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                title="Deck.gl GPU Overlay"
+              >
+                <Zap className="w-3.5 h-3.5" />
               </IconButton>
             </div>
           </div>
