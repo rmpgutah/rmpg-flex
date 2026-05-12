@@ -126,6 +126,7 @@ import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
 import geocodeRoutes from './routes/geocode';
+import mapboxRoutes from './routes/mapbox';
 import drivingEventsRoutes from './routes/drivingEvents';
 import evidenceRoutes from './routes/evidence';
 import intelBulletinsRoutes from './routes/intelBulletins';
@@ -501,6 +502,7 @@ app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
 app.use('/api/pdf-tools', pdfToolsRoutes);
 app.use('/api/geocode', geocodeRoutes);
+app.use('/api/mapbox', mapboxRoutes);
 app.use('/api/intel-bulletins', intelBulletinsRoutes);
 app.use('/api/shift-briefings', shiftBriefingsRoutes);
 app.use('/api/docs', apiDocsRoutes);        // OpenAPI/Swagger interactive docs

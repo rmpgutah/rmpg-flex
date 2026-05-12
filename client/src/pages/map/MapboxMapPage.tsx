@@ -17,6 +17,9 @@ import {
   Shield, AlertTriangle, Layers, MapPin, Navigation2,
   Eye, EyeOff, ChevronDown, ChevronUp, Loader2, RefreshCw,
   Map as MapIcon, PanelLeftClose, PanelLeftOpen, Crosshair, Mountain,
+  Clock, Locate, Flame, Car, Ruler, Satellite, PenTool, Hexagon,
+  Circle, Trash2, Undo2, Grid3X3, Sun, Route, Users, Info,
+  Radio, Volume2, Footprints, MapPinned,
 } from 'lucide-react';
 
 import {
@@ -42,9 +45,27 @@ import {
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { formatEnumValue } from '../../utils/formatters';
 import { escapeHtml } from '../../utils/sanitize';
+import { mapboxIsochrone, findNearestUnits } from '../../services/mapboxApiService';
 import RmpgLogo from '../../components/RmpgLogo';
 import IconButton from '../../components/IconButton';
 import { devLog, devWarn } from '../../utils/devLog';
+import { useMapDrawing, type DrawingMode } from '../../hooks/useMapDrawing';
+import { useMapClustering } from '../../hooks/useMapClustering';
+import { useMapHeatmap } from '../../hooks/useMapHeatmap';
+import { useMapTraffic } from '../../hooks/useMapTraffic';
+import { useMapMeasure, type MeasureMode } from '../../hooks/useMapMeasure';
+import { useMapStreetView } from '../../hooks/useMapStreetView';
+import { useMapBreadcrumbs } from '../../hooks/useMapBreadcrumbs';
+import { useMapDaylight } from '../../hooks/useMapDaylight';
+import { useMapGeofenceAlerts } from '../../hooks/useMapGeofenceAlerts';
+import { useMapInfoPanel } from '../../hooks/useMapInfoPanel';
+import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
+import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
+import { useMapRouting } from '../../hooks/useMapRouting';
+import { useMultiUnitRouting } from '../../hooks/useMultiUnitRouting';
+import { useMapKeyboardShortcuts } from '../../hooks/useMapKeyboardShortcuts';
+import MapLayersPanel from './components/MapLayersPanel';
+import type { LayerGroup } from './components/MapLayersPanel';
 
 // ── Constants ──────────────────────────────────────────────────────────────────
 const SLC_CENTER: [number, number] = [-111.891, 40.7608];
@@ -177,6 +198,11 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const [showStyleMenu, setShowStyleMenu] = useState(false);
   const [selfPosVisible, setSelfPosVisible] = usePersistedState('rmpg_mapbox_self_pos', true);
   const [terrainEnabled, setTerrainEnabled] = usePersistedState('rmpg_mapbox_terrain', false);
+  const [isochroneEnabled, setIsochroneEnabled] = useState(false);
+  const [nearestUnitInfo, setNearestUnitInfo] = useState<string | null>(null);
+  const [showAdvancedToolbar, setShowAdvancedToolbar] = useState(false);
+  const [showDrawMenu, setShowDrawMenu] = useState(false);
+  const [showMeasureMenu, setShowMeasureMenu] = useState(false);
   const geocoderRef = useRef<MapboxGeocoder | null>(null);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
@@ -194,7 +220,62 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const isMobile    = useIsMobile();
   const { addToast } = useToast();
   const { isConnected, subscribe } = useWebSocket();
+
+  // ── Advanced Map Feature Hooks ─────────────────────────────────────────────
+  const drawing = useMapDrawing(mapRef.current, mapLoaded);
+  const clustering = useMapClustering(mapRef.current, mapLoaded);
+  const heatmap = useMapHeatmap(mapRef.current, mapLoaded);
+  const traffic = useMapTraffic(mapRef.current, mapLoaded);
+  const measure = useMapMeasure(mapRef.current, mapLoaded);
+  const streetView = useMapStreetView(mapRef.current, mapLoaded);
   const gps = useGpsTracking();
+
+  // ── Google Maps Parity Hooks ──────────────────────────────────────────────
+  const unitColorMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const u of units) m[u.id] = UNIT_STATUS_COLORS[u.status] || '#888';
+    return m;
+  }, [units]);
+  const unitIds = useMemo(() => units.map(u => u.id), [units]);
+  const breadcrumbs = useMapBreadcrumbs(mapRef.current, mapLoaded, unitIds, unitColorMap);
+  const daylight = useMapDaylight(mapRef.current, mapLoaded);
+  const geofenceAlerts = useMapGeofenceAlerts(mapRef.current, mapLoaded);
+  const infoPanel = useMapInfoPanel(mapRef.current, mapLoaded, units, calls);
+  const routing = useMapRouting({ map: mapRef.current });
+  const multiRouting = useMultiUnitRouting({ map: mapRef.current });
+  const [autoPanEnabled, setAutoPanEnabled] = usePersistedState('rmpg_mapbox_autopan_p1', true);
+  const [p1AudioEnabled, setP1AudioEnabled] = usePersistedState('rmpg_mapbox_p1_audio', true);
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
+
+  // Auto-pan to new P1 calls
+  useAutoPanToP1(mapRef.current, calls, { enabled: autoPanEnabled });
+
+  // P1 audio alert chirp
+  useP1AudioAlert(calls, { enabled: p1AudioEnabled });
+
+  // Keyboard shortcuts for map overlays
+  useMapKeyboardShortcuts({
+    toggleHeatmap: () => {
+      if (!heatmap.enabled) {
+        const heatPts = calls
+          .filter(c => c.latitude != null && c.longitude != null)
+          .map(c => ({ longitude: c.longitude!, latitude: c.latitude!, weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4 }));
+        heatmap.updatePoints(heatPts);
+      }
+      heatmap.toggle();
+    },
+    toggleBreadcrumbs: () => breadcrumbs.toggle(),
+    toggleClustering: () => {
+      if (!clustering.enabled) {
+        const clPts = calls
+          .filter(c => c.latitude != null && c.longitude != null)
+          .map(c => ({ id: c.id, longitude: c.longitude!, latitude: c.latitude!, priority: c.priority, label: c.call_number, color: PRIORITY_COLORS[c.priority] || '#888' }));
+        clustering.updatePoints(clPts);
+      }
+      clustering.toggle();
+    },
+    toggleDaylight: () => daylight.toggle(),
+  });
 
   // ── Data Fetching ──────────────────────────────────────────────────────────
 
@@ -842,6 +923,143 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     map.flyTo({ center: [gps.longitude, gps.latitude], zoom: 16, duration: 800 });
   }, [gps.latitude, gps.longitude, addToast]);
 
+  // ── Isochrone Overlay ──────────────────────────────────────────────────────
+
+  const toggleIsochrone = useCallback(async () => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+
+    if (isochroneEnabled) {
+      // Remove existing isochrone layers
+      ['isochrone-fill-0', 'isochrone-fill-1', 'isochrone-fill-2',
+       'isochrone-border-0', 'isochrone-border-1', 'isochrone-border-2'].forEach(id => {
+        if (map.getLayer(id)) map.removeLayer(id);
+      });
+      if (map.getSource('isochrone')) map.removeSource('isochrone');
+      setIsochroneEnabled(false);
+      return;
+    }
+
+    // Use GPS position or map center as origin
+    const lng = gps.longitude ?? map.getCenter().lng;
+    const lat = gps.latitude ?? map.getCenter().lat;
+
+    try {
+      const data = await mapboxIsochrone(lng, lat, {
+        profile: 'driving',
+        minutes: [5, 10, 15],
+      });
+
+      if (map.getSource('isochrone')) {
+        (map.getSource('isochrone') as mapboxgl.GeoJSONSource).setData(data as any);
+      } else {
+        map.addSource('isochrone', { type: 'geojson', data: data as any });
+      }
+
+      const colors = ['#22c55e', '#f59e0b', '#ef4444']; // 5min=green, 10min=yellow, 15min=red
+      data.features.forEach((_, idx) => {
+        const fillId = `isochrone-fill-${idx}`;
+        const borderId = `isochrone-border-${idx}`;
+        if (!map.getLayer(fillId)) {
+          map.addLayer({
+            id: fillId,
+            type: 'fill',
+            source: 'isochrone',
+            paint: { 'fill-color': colors[idx] || '#888', 'fill-opacity': 0.1 },
+            filter: ['==', ['get', 'contour'], (idx + 1) * 5],
+          });
+        }
+        if (!map.getLayer(borderId)) {
+          map.addLayer({
+            id: borderId,
+            type: 'line',
+            source: 'isochrone',
+            paint: { 'line-color': colors[idx] || '#888', 'line-width': 1.5, 'line-opacity': 0.6 },
+            filter: ['==', ['get', 'contour'], (idx + 1) * 5],
+          });
+        }
+      });
+
+      setIsochroneEnabled(true);
+      addToast('Response time zones: 5/10/15 min driving', 'info');
+    } catch (err) {
+      addToast('Failed to load isochrone data', 'error');
+    }
+  }, [mapLoaded, isochroneEnabled, gps.longitude, gps.latitude, addToast]);
+
+  // ── Layers Panel Groups ────────────────────────────────────────────────────
+
+  const layerGroups = useMemo<LayerGroup[]>(() => [
+    {
+      id: 'operational',
+      label: 'Operational Overlays',
+      layers: [
+        { id: 'heatmap', label: 'Crime Heatmap', enabled: heatmap.enabled, onToggle: heatmap.toggle, color: '#ef4444', description: 'Incident density (H)' },
+        { id: 'traffic', label: 'Live Traffic', enabled: traffic.enabled, onToggle: traffic.toggle, color: '#22c55e', description: 'Real-time congestion' },
+        { id: 'breadcrumbs', label: 'Unit Trails', enabled: breadcrumbs.enabled, onToggle: breadcrumbs.toggle, color: '#3b82f6', description: 'GPS history (B)' },
+        { id: 'clustering', label: 'Call Clusters', enabled: clustering.enabled, onToggle: clustering.toggle, color: '#d4a017', description: 'Group markers (C)' },
+        { id: 'daylight', label: 'Day/Night', enabled: daylight.enabled, onToggle: daylight.toggle, color: '#f59e0b', description: 'Solar terminator (D)' },
+        { id: 'geofences', label: 'Geofence Zones', enabled: geofenceAlerts.enabled, onToggle: geofenceAlerts.toggle, color: '#ef4444', description: 'Premise alerts on click' },
+        { id: 'isochrone', label: 'Response Zones', enabled: isochroneEnabled, onToggle: toggleIsochrone, color: '#22c55e', description: '5/10/15 min driving' },
+      ],
+    },
+    {
+      id: 'base',
+      label: 'Base Layers',
+      layers: [
+        { id: 'beats', label: 'Beat Boundaries', enabled: beatsVisible, onToggle: () => setBeatsVisible((v: boolean) => !v), color: '#d4a017' },
+        { id: 'terrain', label: '3D Terrain', enabled: terrainEnabled, onToggle: () => setTerrainEnabled((v: boolean) => !v), color: '#a855f7' },
+        { id: 'selfpos', label: 'My Position', enabled: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
+      ],
+    },
+    {
+      id: 'dispatch',
+      label: 'Dispatch Automation',
+      layers: [
+        { id: 'autopan', label: 'Auto-Pan P1', enabled: autoPanEnabled, onToggle: () => setAutoPanEnabled((v: boolean) => !v), color: '#ef4444', description: 'Pan to new Priority 1 calls' },
+        { id: 'p1audio', label: 'P1 Audio Alert', enabled: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls' },
+      ],
+    },
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled]);
+
+  // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
+
+  const showNearestUnit = useCallback(async (call: ActiveCall) => {
+    if (call.latitude == null || call.longitude == null) {
+      addToast('Call has no GPS coordinates', 'warning');
+      return;
+    }
+
+    const gpsUnits = units.filter(u => u.latitude != null && u.longitude != null);
+    if (gpsUnits.length === 0) {
+      addToast('No units with GPS available', 'warning');
+      return;
+    }
+
+    try {
+      const callCoord: [number, number] = [call.longitude, call.latitude];
+      const unitCoords: [number, number][] = gpsUnits.map(u => [u.longitude!, u.latitude!]);
+      const results = await findNearestUnits(callCoord, unitCoords);
+
+      if (results.length > 0) {
+        const nearest = gpsUnits[results[0].unitIndex];
+        const mins = Math.round(results[0].durationSec / 60);
+        setNearestUnitInfo(`${nearest.call_sign} — ${mins} min`);
+        addToast(`Nearest unit: ${nearest.call_sign} (${mins} min ETA)`, 'info');
+
+        // Fly to the nearest unit
+        const map = mapRef.current;
+        if (map && nearest.latitude && nearest.longitude) {
+          map.flyTo({ center: [nearest.longitude, nearest.latitude], zoom: 14, duration: 800 });
+          const marker = unitMarkersRef.current.get(nearest.id);
+          if (marker) marker.togglePopup();
+        }
+      }
+    } catch (err) {
+      addToast('Failed to calculate nearest unit', 'error');
+    }
+  }, [units, addToast]);
+
   // ── Computed Counts ────────────────────────────────────────────────────────
 
   const unitCounts = useMemo(() => {
@@ -1121,6 +1339,16 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                           ))}
                         </div>
                       )}
+                      {hasGps && (
+                        <div className="ml-4 mt-0.5">
+                          <span
+                            className="text-[8px] text-rmpg-400 hover:text-[#d4a017] cursor-pointer inline-flex items-center gap-0.5"
+                            onClick={(e) => { e.stopPropagation(); showNearestUnit(call); }}
+                          >
+                            <Locate className="w-2.5 h-2.5" /> NEAREST UNIT
+                          </span>
+                        </div>
+                      )}
                     </button>
                   );
                 })}
@@ -1129,45 +1357,356 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
           </div>
 
           {/* Sidebar Footer — quick actions */}
-          <div className="border-t border-[#222222] px-3 py-2 flex items-center gap-1">
-            <IconButton
-              aria-label="Refresh data"
-              onClick={silentRefresh}
-              className="text-rmpg-400 hover:text-[#d4a017] p-1.5"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </IconButton>
-            <IconButton
-              aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
-              onClick={() => setBeatsVisible(v => !v)}
-              className={`p-1.5 ${beatsVisible ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-            >
-              {beatsVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
-            </IconButton>
-            <IconButton
-              aria-label="Fly to my position"
-              onClick={flyToSelf}
-              className="text-rmpg-400 hover:text-[#d4a017] p-1.5"
-            >
-              <Crosshair className="w-3.5 h-3.5" />
-            </IconButton>
-            <IconButton
-              aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
-              onClick={() => setTerrainEnabled(v => !v)}
-              className={`p-1.5 ${terrainEnabled ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-            >
-              <Mountain className="w-3.5 h-3.5" />
-            </IconButton>
-            <IconButton
-              aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}
-              onClick={() => setSelfPosVisible(v => !v)}
-              className={`p-1.5 ${selfPosVisible ? 'text-blue-400' : 'text-rmpg-400 hover:text-rmpg-200'}`}
-            >
-              <Navigation2 className="w-3.5 h-3.5" />
-            </IconButton>
+          <div className="border-t border-[#222222] px-3 py-2">
+            <div className="flex items-center gap-1 flex-wrap">
+              <IconButton
+                aria-label="Refresh data"
+                onClick={silentRefresh}
+                className="text-rmpg-400 hover:text-[#d4a017] p-1.5"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={beatsVisible ? 'Hide beat boundaries' : 'Show beat boundaries'}
+                onClick={() => setBeatsVisible(v => !v)}
+                className={`p-1.5 ${beatsVisible ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+              >
+                {beatsVisible ? <Eye className="w-3.5 h-3.5" /> : <EyeOff className="w-3.5 h-3.5" />}
+              </IconButton>
+              <IconButton
+                aria-label="Fly to my position"
+                onClick={flyToSelf}
+                className="text-rmpg-400 hover:text-[#d4a017] p-1.5"
+              >
+                <Crosshair className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={terrainEnabled ? 'Disable 3D terrain' : 'Enable 3D terrain'}
+                onClick={() => setTerrainEnabled(v => !v)}
+                className={`p-1.5 ${terrainEnabled ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+              >
+                <Mountain className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={isochroneEnabled ? 'Hide response zones' : 'Show response time zones'}
+                onClick={toggleIsochrone}
+                className={`p-1.5 ${isochroneEnabled ? 'text-[#22c55e]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+              >
+                <Clock className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={selfPosVisible ? 'Hide my position' : 'Show my position'}
+                onClick={() => setSelfPosVisible(v => !v)}
+                className={`p-1.5 ${selfPosVisible ? 'text-blue-400' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+              >
+                <Navigation2 className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label="Layers panel"
+                onClick={() => setLayersPanelOpen(v => !v)}
+                className={`p-1.5 ${layersPanelOpen ? 'text-[#d4a017]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+              >
+                <Layers className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={breadcrumbs.enabled ? 'Hide unit trails' : 'Show unit trails'}
+                onClick={() => breadcrumbs.toggle()}
+                className={`p-1.5 ${breadcrumbs.enabled ? 'text-[#3b82f6]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                title="GPS Breadcrumb Trails (B)"
+              >
+                <Footprints className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={daylight.enabled ? 'Hide day/night overlay' : 'Show day/night overlay'}
+                onClick={() => daylight.toggle()}
+                className={`p-1.5 ${daylight.enabled ? 'text-[#f59e0b]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                title="Day/Night Terminator (D)"
+              >
+                <Sun className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={geofenceAlerts.enabled ? 'Disable premise alerts' : 'Enable premise alerts'}
+                onClick={() => geofenceAlerts.toggle()}
+                className={`p-1.5 ${geofenceAlerts.enabled ? 'text-[#ef4444]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                title="Premise / Geofence Alerts"
+              >
+                <MapPinned className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={autoPanEnabled ? 'Disable auto-pan P1' : 'Enable auto-pan P1'}
+                onClick={() => setAutoPanEnabled(v => !v)}
+                className={`p-1.5 ${autoPanEnabled ? 'text-[#ef4444]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                title="Auto-Pan to P1 Calls"
+              >
+                <Radio className="w-3.5 h-3.5" />
+              </IconButton>
+              <IconButton
+                aria-label={p1AudioEnabled ? 'Disable P1 audio alert' : 'Enable P1 audio alert'}
+                onClick={() => setP1AudioEnabled(v => !v)}
+                className={`p-1.5 ${p1AudioEnabled ? 'text-[#ef4444]' : 'text-rmpg-400 hover:text-rmpg-200'}`}
+                title="P1 Audio Alert Chirp"
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+              </IconButton>
+            </div>
           </div>
         </div>
       )}
+
+      {/* Advanced Map Tools Toolbar */}
+      {mapLoaded && !mapLibreFallback && (
+        <div className="absolute top-3 right-3 z-20 flex flex-col gap-1">
+          {/* Toggle advanced toolbar */}
+          <IconButton
+            aria-label="Advanced map tools"
+            onClick={() => setShowAdvancedToolbar(v => !v)}
+            className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
+              showAdvancedToolbar ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+            }`}
+            style={{ borderRadius: 2 }}
+          >
+            <Grid3X3 className="w-4 h-4" />
+          </IconButton>
+
+          {showAdvancedToolbar && (
+            <>
+              {/* Heatmap */}
+              <IconButton
+                aria-label={heatmap.enabled ? 'Hide heatmap' : 'Show heatmap'}
+                onClick={() => {
+                  if (!heatmap.enabled) {
+                    const heatPts = calls
+                      .filter(c => c.latitude != null && c.longitude != null)
+                      .map(c => ({
+                        longitude: c.longitude!,
+                        latitude: c.latitude!,
+                        weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4,
+                      }));
+                    heatmap.updatePoints(heatPts);
+                  }
+                  heatmap.toggle();
+                }}
+                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
+                  heatmap.enabled ? 'text-[#ef4444]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                }`}
+                style={{ borderRadius: 2 }}
+                title="Crime Heatmap"
+              >
+                <Flame className="w-4 h-4" />
+              </IconButton>
+
+              {/* Traffic */}
+              <IconButton
+                aria-label={traffic.enabled ? 'Hide traffic' : 'Show traffic'}
+                onClick={() => traffic.toggle()}
+                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
+                  traffic.enabled ? 'text-[#22c55e]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                }`}
+                style={{ borderRadius: 2 }}
+                title="Live Traffic"
+              >
+                <Car className="w-4 h-4" />
+              </IconButton>
+
+              {/* Clustering */}
+              <IconButton
+                aria-label={clustering.enabled ? 'Disable clustering' : 'Enable clustering'}
+                onClick={() => {
+                  if (!clustering.enabled) {
+                    const clPts = calls
+                      .filter(c => c.latitude != null && c.longitude != null)
+                      .map(c => ({
+                        id: c.id,
+                        longitude: c.longitude!,
+                        latitude: c.latitude!,
+                        priority: c.priority,
+                        label: c.call_number,
+                        color: PRIORITY_COLORS[c.priority] || '#888',
+                      }));
+                    clustering.updatePoints(clPts);
+                  }
+                  clustering.toggle();
+                }}
+                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
+                  clustering.enabled ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                }`}
+                style={{ borderRadius: 2 }}
+                title="Cluster Markers"
+              >
+                <Hexagon className="w-4 h-4" />
+              </IconButton>
+
+              {/* Satellite Peek (Street View equivalent) */}
+              <IconButton
+                aria-label={streetView.enabled ? 'Disable satellite peek' : 'Enable satellite peek'}
+                onClick={() => streetView.toggle()}
+                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
+                  streetView.enabled ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                }`}
+                style={{ borderRadius: 2 }}
+                title="Satellite Peek"
+              >
+                <Satellite className="w-4 h-4" />
+              </IconButton>
+
+              {/* Measure — dropdown for distance vs area */}
+              <div className="relative">
+                <IconButton
+                  aria-label="Measure tool"
+                  onClick={() => setShowMeasureMenu(v => !v)}
+                  className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
+                    measure.mode !== 'none' ? 'text-[#3b82f6]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                  }`}
+                  style={{ borderRadius: 2 }}
+                  title="Measure Distance / Area"
+                >
+                  <Ruler className="w-4 h-4" />
+                </IconButton>
+                {showMeasureMenu && (
+                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-[#222222] w-36 overflow-hidden" style={{ borderRadius: 2 }}>
+                    <button
+                      onClick={() => { measure.setMode('distance'); setShowMeasureMenu(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                        measure.mode === 'distance' ? 'text-[#3b82f6] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                      }`}
+                    >
+                      📏 Distance
+                    </button>
+                    <button
+                      onClick={() => { measure.setMode('area'); setShowMeasureMenu(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                        measure.mode === 'area' ? 'text-[#3b82f6] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                      }`}
+                    >
+                      📐 Area
+                    </button>
+                    {measure.mode !== 'none' && (
+                      <button
+                        onClick={() => { measure.clear(); setShowMeasureMenu(false); }}
+                        className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-[#1a1a1a]"
+                      >
+                        ✕ Clear
+                      </button>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Drawing — dropdown for polygon/polyline/circle */}
+              <div className="relative">
+                <IconButton
+                  aria-label="Drawing tools"
+                  onClick={() => setShowDrawMenu(v => !v)}
+                  className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
+                    drawing.mode !== 'none' ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                  }`}
+                  style={{ borderRadius: 2 }}
+                  title="Draw Shapes"
+                >
+                  <PenTool className="w-4 h-4" />
+                </IconButton>
+                {showDrawMenu && (
+                  <div className="absolute right-full top-0 mr-1 bg-surface-raised border border-[#222222] w-40 overflow-hidden" style={{ borderRadius: 2 }}>
+                    <button
+                      onClick={() => { drawing.setMode('polygon'); setShowDrawMenu(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                        drawing.mode === 'polygon' ? 'text-[#d4a017] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                      }`}
+                    >
+                      ▬ Polygon (geofence)
+                    </button>
+                    <button
+                      onClick={() => { drawing.setMode('polyline'); setShowDrawMenu(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                        drawing.mode === 'polyline' ? 'text-[#d4a017] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                      }`}
+                    >
+                      ╱ Polyline (route)
+                    </button>
+                    <button
+                      onClick={() => { drawing.setMode('circle'); setShowDrawMenu(false); }}
+                      className={`w-full text-left px-3 py-1.5 text-xs transition-colors ${
+                        drawing.mode === 'circle' ? 'text-[#d4a017] bg-[#1a1a1a]' : 'text-rmpg-300 hover:bg-[#1a1a1a]'
+                      }`}
+                    >
+                      ◯ Circle (perimeter)
+                    </button>
+                    <div className="border-t border-[#222]" />
+                    <button
+                      onClick={() => { drawing.undo(); }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-rmpg-400 hover:bg-[#1a1a1a]"
+                    >
+                      ↩ Undo last shape
+                    </button>
+                    <button
+                      onClick={() => { drawing.clearAll(); drawing.setMode('none'); setShowDrawMenu(false); }}
+                      className="w-full text-left px-3 py-1.5 text-xs text-red-400 hover:bg-[#1a1a1a]"
+                    >
+                      ✕ Clear all shapes
+                    </button>
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Measurement Result Banner */}
+      {measure.result && measure.mode === 'none' && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
+          <Ruler className="w-3.5 h-3.5 text-[#3b82f6]" />
+          <span className="text-rmpg-200 text-xs font-mono">
+            {measure.result.distanceFormatted}
+            {measure.result.areaFormatted && ` · ${measure.result.areaFormatted}`}
+          </span>
+          <button onClick={() => measure.clear()} className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕</button>
+        </div>
+      )}
+
+      {/* Drawing Mode Indicator */}
+      {drawing.mode !== 'none' && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#d4a017]/30 px-4 py-2 backdrop-blur-sm flex items-center gap-3" style={{ borderRadius: 2 }}>
+          <PenTool className="w-3.5 h-3.5 text-[#d4a017]" />
+          <span className="text-[#d4a017] text-xs font-mono">
+            DRAWING: {drawing.mode.toUpperCase()} — {drawing.mode === 'circle' ? 'Click center, then edge' : 'Click to add points, double-click to finish'}
+          </span>
+          <button onClick={() => drawing.setMode('none')} className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕ Cancel</button>
+        </div>
+      )}
+
+      {/* Drawing Shapes Count */}
+      {drawing.shapes.length > 0 && drawing.mode === 'none' && (
+        <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
+          <span className="text-rmpg-300 text-[10px] font-mono">{drawing.shapes.length} shape(s) drawn</span>
+          <button onClick={() => drawing.clearAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear all</button>
+        </div>
+      )}
+
+      {/* Active Route Panel */}
+      {routing.activeRoute && (
+        <div className="absolute bottom-10 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-4 py-2 backdrop-blur-sm flex items-center gap-4" style={{ borderRadius: 2 }}>
+          <Route className="w-4 h-4 text-[#d4a017]" />
+          <div className="text-xs font-mono">
+            <span className="text-rmpg-200 font-semibold">{routing.activeRoute.unitCallSign}</span>
+            <span className="text-rmpg-500 mx-1">→</span>
+            <span className="text-rmpg-200 font-semibold">{routing.activeRoute.callNumber}</span>
+          </div>
+          <div className="flex items-center gap-2 text-[10px]">
+            <span className="text-[#22c55e] font-semibold">{routing.activeRoute.eta}</span>
+            <span className="text-rmpg-500">·</span>
+            <span className="text-rmpg-300">{routing.activeRoute.distance}</span>
+          </div>
+          <button onClick={() => routing.clearRoute()} className="text-rmpg-400 hover:text-rmpg-200 text-xs">✕</button>
+        </div>
+      )}
+
+      {/* Layers Panel */}
+      <MapLayersPanel
+        open={layersPanelOpen}
+        onClose={() => setLayersPanelOpen(false)}
+        groups={layerGroups}
+      />
 
       {/* Map Style Selector */}
       <div className="absolute bottom-14 left-3 z-20">

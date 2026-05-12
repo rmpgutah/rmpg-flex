@@ -3228,6 +3228,28 @@ function generateGeneralIncident(doc: jsPDF, data: IncidentData) {
     const fy1 = addFieldPair(doc, 'Latitude', String(data.latitude), lx, y, hfw);
     const fy2 = addFieldPair(doc, 'Longitude', String(data.longitude), rx, y, hfw);
     y = Math.max(fy1, fy2);
+    // Embed static map image if available
+    if (data._mapImage && data._mapImage.dataUrl) {
+      y += SPACING.MD;
+      const mapW = Math.min(ffw, 120);
+      const mapH = mapW * 0.5;
+      y = checkPageBreak(doc, y, mapH + SPACING.SM, data.priority);
+      const mapX = lx + (ffw - mapW) / 2;
+      addImageToPage(doc, data._mapImage, mapX, y, mapW, mapH);
+      y += mapH + SPACING.SM;
+    }
+    y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
+  }
+
+  // ── Static Map in Dispatch Linkage (when call data present) ──
+  if (data.call_number && data.latitude != null && data.longitude != null && data._mapImage && data._mapImage.dataUrl) {
+    y = checkPageBreak(doc, y, 70, data.priority);
+    const sec = openAutoSection(doc, 'Incident Location Map', y); y = sec.contentY;
+    const mapW = Math.min(ffw, 120);
+    const mapH = mapW * 0.5;
+    const mapX = lx + (ffw - mapW) / 2;
+    addImageToPage(doc, data._mapImage, mapX, y, mapW, mapH);
+    y += mapH + SPACING.SM;
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
