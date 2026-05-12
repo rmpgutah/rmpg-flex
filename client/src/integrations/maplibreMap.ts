@@ -89,7 +89,7 @@ export function createMap(config: MapConfig): maplibregl.Map {
     interactive: config.interactive !== false,
     attributionControl: false,
     // Fail gracefully instead of throwing when WebGL is unavailable
-    failIfMajorPerformanceCaveat: false,
+    canvasContextAttributes: { failIfMajorPerformanceCaveat: false },
   });
 
   // Add compact attribution

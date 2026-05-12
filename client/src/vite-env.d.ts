@@ -1,5 +1,64 @@
 /// <reference types="vite/client" />
 
+// Module declarations for packages without bundled types
+declare module '@mapbox/mapbox-gl-geocoder' {
+  import type mapboxgl from 'mapbox-gl';
+
+  interface GeocoderOptions {
+    accessToken: string;
+    mapboxgl?: typeof mapboxgl;
+    marker?: boolean | object;
+    placeholder?: string;
+    proximity?: { longitude: number; latitude: number };
+    bbox?: [number, number, number, number];
+    countries?: string;
+    types?: string;
+    limit?: number;
+    language?: string;
+    zoom?: number;
+    flyTo?: boolean | object;
+    collapsed?: boolean;
+    clearAndBlurOnEsc?: boolean;
+    clearOnBlur?: boolean;
+    enableEventLogging?: boolean;
+    [key: string]: any;
+  }
+
+  class MapboxGeocoder implements mapboxgl.IControl {
+    constructor(options: GeocoderOptions);
+    onAdd(map: mapboxgl.Map): HTMLElement;
+    onRemove(): void;
+    query(query: string): this;
+    setInput(value: string): this;
+    setProximity(proximity: { longitude: number; latitude: number }): this;
+    getProximity(): { longitude: number; latitude: number };
+    setLanguage(language: string): this;
+    getLanguage(): string;
+    setZoom(zoom: number): this;
+    getZoom(): number;
+    setFlyTo(flyTo: boolean | object): this;
+    getFlyTo(): boolean | object;
+    setPlaceholder(placeholder: string): this;
+    getPlaceholder(): string;
+    setBbox(bbox: [number, number, number, number]): this;
+    getBbox(): [number, number, number, number];
+    setCountries(countries: string): this;
+    getCountries(): string;
+    setTypes(types: string): this;
+    getTypes(): string;
+    setLimit(limit: number): this;
+    getLimit(): number;
+    setFilter(filter: (feature: any) => boolean): this;
+    setOrigin(origin: string): this;
+    getOrigin(): string;
+    on(type: string, listener: (event: any) => void): this;
+    off(type: string, listener: (event: any) => void): this;
+    clear(): void;
+  }
+
+  export default MapboxGeocoder;
+}
+
 interface ImportMetaEnv {
 }
 
