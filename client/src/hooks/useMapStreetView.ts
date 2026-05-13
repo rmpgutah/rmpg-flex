@@ -90,7 +90,7 @@ export function useMapStreetView(map: mapboxgl.Map | null, mapLoaded: boolean): 
     } catch { /* keep coords */ }
 
     const safeAddress = escapeHtml(address);
-    const defaultZoomIdx = 0;
+    const activeZoom = ZOOM_TABS[0].zoom;
     const markers = [{ lng, lat, color: 'd4a017', label: '' }];
 
     const satSrc = buildImageSrc(lng, lat, ZOOM_TABS[defaultZoomIdx].zoom, 640, 400, 'mapbox/satellite-v9', true, markers);

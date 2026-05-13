@@ -666,7 +666,7 @@ export default function HelpPage() {
                     { label: 'Frontend', value: 'React + TypeScript + Vite' },
                     { label: 'Backend', value: 'Express + SQLite' },
                     { label: 'Real-time', value: 'WebSocket' },
-                    { label: 'Maps', value: 'Google Maps + Offline CartoDB' },
+                    { label: 'Maps', value: 'Mapbox GL JS + MapLibre GL fallback' },
                     { label: 'Auth', value: 'JWT + WebAuthn + TOTP 2FA' },
                     ...(healthData ? [
                       { label: 'Server Version', value: healthData.version || 'N/A' },
