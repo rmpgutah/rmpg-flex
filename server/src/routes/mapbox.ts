@@ -34,6 +34,16 @@ import {
 } from '../utils/mapboxApi';
 
 const router = Router();
+
+// Inject JWT from query string for <img> tags (which can't set Authorization headers)
+// This MUST run before authenticateToken so the token is available for auth.
+router.use('/static/image', (req: Request, _res: Response, next: NextFunction) => {
+  if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
+    req.headers['authorization'] = `Bearer ${req.query.token}`;
+  }
+  next();
+});
+
 router.use(authenticateToken);
 
 // ── Forward Geocode ───────────────────────────────────────
@@ -170,12 +180,7 @@ router.get('/static', (req: Request, res: Response) => {
 // ── Static Image Binary ──────────────────────────────────
 // Accept token from query string for <img> elements (can't set Authorization header)
 
-router.get('/static/image', (req: Request, _res: Response, next: NextFunction) => {
-  if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
-    req.headers['authorization'] = `Bearer ${req.query.token}`;
-  }
-  next();
-}, async (req: Request, res: Response) => {
+router.get('/static/image', async (req: Request, res: Response) => {
   try {
     const lng = parseFloat(String(req.query.lng || ''));
     const lat = parseFloat(String(req.query.lat || ''));
