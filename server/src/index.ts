@@ -405,6 +405,7 @@ app.use(liveBroadcast);
 // JWT-authenticated request with 403 "Invalid webhook token".
 import { traccarWebhookRouter, owntracksDeprecatedRouter } from './routes/dispatch/gps';
 import { startTraccarPoller } from './utils/traccarServerPoller';
+import { startCompetitorPoller } from './utils/competitorMonitorPoller';
 // NOTE: webhook router uses /:user/:device wildcards. It MUST be mounted
 // AFTER traccarRoutes (line below) so authenticated admin endpoints like
 // /api/traccar/historical/devices, /devices, /mappings, /credentials,
@@ -865,6 +866,13 @@ try {
       startTraccarPoller();
     } catch (err: any) {
       logger.warn({ err, scheduler: 'traccar-poller' }, 'failed to start scheduler');
+    }
+
+    // CRM Competitor Monitor poller — polls monitored URLs for content changes
+    try {
+      startCompetitorPoller();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'competitor-poller' }, 'failed to start scheduler');
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s
