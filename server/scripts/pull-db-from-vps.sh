@@ -11,9 +11,21 @@
 
 set -e
 
-VPS_IP="194.113.64.90"
-VPS_USER="root"
-REMOTE_DB="/opt/rmpg-flex/server/data/rmpg-flex.db"
+VPS_IP="${VPS_IP:?Environment variable VPS_IP not set}"
+VPS_USER="${VPS_USER:?Environment variable VPS_USER not set}"
+
+# Ensure that the script is not run as root and that the user is not 'root'
+if [ "$EUID" -eq 0 ]; then
+  echo "Error: This script should not be run as root."
+  exit 1
+fi
+
+if [ "$VPS_USER" = "root" ]; then
+  echo "Error: Do not use 'root' as VPS_USER. Please use a user with limited privileges."
+  exit 1
+fi
+
+REMOTE_DB="${REMOTE_DB_PATH:-/opt/rmpg-flex/server/data/rmpg-flex.db}"
 REMOTE_UPLOADS="/opt/rmpg-flex/server/uploads/"
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -79,7 +91,7 @@ SIZE=$(du -h "$LOCAL_DB" | cut -f1)
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
 echo "║  ✓ Full data restoration complete               ║"
-echo "║  Database: server/data/rmpg-flex.db ($SIZE)     ║"
-echo "║  Uploads:  server/uploads/ ($UPLOAD_COUNT files) ║"
+printf "║  Database: server/data/rmpg-flex.db (%-12s) ║\n" "$SIZE"
+printf "║  Uploads:  server/uploads/ (%-8s files) ║\n" "$UPLOAD_COUNT"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
