@@ -147,6 +147,7 @@ import jailRoutes from './routes/jail';
 import fireRmsRoutes from './routes/fireRms';
 import custodyLogRoutes from './routes/custodyLog';
 import accreditationRoutes from './routes/accreditations';
+import useOfForceRoutes from './routes/useOfForce';
 import { getSchedulerStatus, runJobNow } from './utils/scheduler';
 
 const app = express();
@@ -520,6 +521,7 @@ app.use('/api/jail', jailRoutes);
 app.use('/api/fire-rms', fireRmsRoutes);
 app.use('/api/custody-log', custodyLogRoutes);
 app.use('/api/accreditations', accreditationRoutes);
+app.use('/api/use-of-force', useOfForceRoutes);
 
 // ─── Scheduler status endpoint (admin) ────────────────────
 app.get('/api/admin/scheduler', authenticateToken, (_req, res) => {
