@@ -166,7 +166,7 @@ export default function MapLayersPanel({ open, onClose, groups }: MapLayersPanel
       {/* Keyboard shortcuts hint */}
       <div className="border-t border-[#222222] px-3 py-2">
         <div className="text-[9px] text-rmpg-500 font-mono">
-          H=Heatmap B=Breadcrumbs C=Cluster D=Daylight
+          H=Heatmap B=Trails C=Cluster D=Day/Night G=Grid
         </div>
       </div>
     </div>

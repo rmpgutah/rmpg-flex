@@ -267,7 +267,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const mapBookmarks = useMapBookmarks(mapRef.current, mapLoaded);
   const printExport = useMapPrintExport(mapRef.current, mapLoaded);
   const geoJsonLayers = useGeoJsonLayers({ map: mapRef.current });
+  const featureInspect = useMapFeatureInspect(mapRef.current, mapLoaded);
+  const mapMatchTrace = useMapMatchTrace(mapRef.current, mapLoaded);
+  const projection = useMapProjection(mapRef.current, mapLoaded);
+  const atmosphere = useMapAtmosphere(mapRef.current, mapLoaded);
+  const cameraAnimation = useMapCameraAnimation(mapRef.current, mapLoaded);
+  const snapshot = useMapSnapshot();
+  const optimization = useMapOptimization(mapRef.current, mapLoaded);
   const [deckEnabled, setDeckEnabled] = usePersistedState('rmpg_mapbox_deck', false);
+  const [buildings3dEnabled, setBuildings3dEnabled] = usePersistedState('rmpg_mapbox_3d_buildings', true);
   const [showPlacesMenu, setShowPlacesMenu] = useState(false);
   const [showDirectionsPanel, setShowDirectionsPanel] = useState(false);
   const [showWeatherMenu, setShowWeatherMenu] = useState(false);
@@ -784,6 +792,17 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
     });
   }, [beatsVisible, mapLoaded]);
 
+  // Toggle 3D buildings
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapLoaded) return;
+    if (buildings3dEnabled) {
+      addMapbox3DBuildings(map);
+    } else {
+      if (map.getLayer('3d-buildings')) map.removeLayer('3d-buildings');
+    }
+  }, [buildings3dEnabled, mapLoaded]);
+
   // Toggle 3D terrain
   useEffect(() => {
     const map = mapRef.current;
@@ -1085,7 +1104,22 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'weather', label: 'Weather Radar', enabled: weatherRadar.enabled, onToggle: weatherRadar.toggle, color: '#3b82f6', description: 'Precipitation overlay' },
         { id: 'grid', label: 'Coordinate Grid', enabled: coordGrid.enabled, onToggle: coordGrid.toggle, color: '#d4a017', description: 'Lat/Lng graticule (G)' },
         { id: 'deck', label: 'GPU Overlay', enabled: deckEnabled, onToggle: () => setDeckEnabled((v: boolean) => !v), color: '#a855f7', description: 'Deck.gl accelerated' },
+        { id: 'streetview', label: 'Street View', enabled: streetView.enabled, onToggle: streetView.toggle, color: '#14b8a6', description: 'Click to open street view' },
+        { id: 'inspect', label: 'Feature Inspector', enabled: featureInspect.enabled, onToggle: featureInspect.toggle, color: '#8b5cf6', description: 'Click features for details' },
+        { id: 'mapmatch', label: 'Map Match Trace', enabled: mapMatchTrace.collecting, onToggle: () => mapMatchTrace.collecting ? mapMatchTrace.clear() : mapMatchTrace.startCollecting(), color: '#fb923c', description: 'Snap GPS to roads' },
       ],
+    },
+    {
+      id: 'geojson',
+      label: 'GeoJSON Overlays',
+      layers: geoJsonLayers.configs.map(cfg => ({
+        id: `geo-${cfg.id}`,
+        label: cfg.label,
+        enabled: geoJsonLayers.layerStates[cfg.id]?.visible ?? false,
+        onToggle: () => geoJsonLayers.toggleGeoLayer(cfg.id),
+        color: cfg.style.strokeColor || cfg.style.fillColor,
+        description: cfg.file.replace('.geojson', ''),
+      })),
     },
     {
       id: 'base',
@@ -1093,7 +1127,10 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       layers: [
         { id: 'beats', label: 'Beat Boundaries', enabled: beatsVisible, onToggle: () => setBeatsVisible((v: boolean) => !v), color: '#d4a017' },
         { id: 'terrain', label: '3D Terrain', enabled: terrainEnabled, onToggle: () => setTerrainEnabled((v: boolean) => !v), color: '#a855f7' },
+        { id: 'buildings', label: '3D Buildings', enabled: buildings3dEnabled, onToggle: () => setBuildings3dEnabled((v: boolean) => !v), color: '#666666', description: 'Extruded building footprints' },
         { id: 'selfpos', label: 'My Position', enabled: selfPosVisible, onToggle: () => setSelfPosVisible((v: boolean) => !v), color: '#3b82f6' },
+        { id: 'projection', label: `Projection: ${projection.projection}`, enabled: projection.projection !== 'mercator', onToggle: projection.cycle, color: '#14b8a6', description: 'Globe / Mercator / Equal Earth' },
+        { id: 'atmosphere', label: `Atmosphere: ${atmosphere.preset}`, enabled: atmosphere.enabled, onToggle: atmosphere.cycle, color: '#a855f7', description: 'Fog, sky & star effects' },
       ],
     },
     {
@@ -1104,7 +1141,14 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         { id: 'p1audio', label: 'P1 Audio Alert', enabled: p1AudioEnabled, onToggle: () => setP1AudioEnabled((v: boolean) => !v), color: '#ef4444', description: 'Chirp on new P1 calls' },
       ],
     },
-  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled]);
+    {
+      id: 'camera',
+      label: 'Camera & Export',
+      layers: [
+        { id: 'orbit', label: 'Orbit Animation', enabled: cameraAnimation.animating, onToggle: () => cameraAnimation.animating ? cameraAnimation.stop() : cameraAnimation.orbit(), color: '#f59e0b', description: 'Cinematic map rotation' },
+      ],
+    },
+  ], [heatmap, traffic, breadcrumbs, clustering, daylight, geofenceAlerts, isochroneEnabled, toggleIsochrone, beatsVisible, terrainEnabled, selfPosVisible, autoPanEnabled, p1AudioEnabled, setBeatsVisible, setTerrainEnabled, setSelfPosVisible, setAutoPanEnabled, setP1AudioEnabled, weatherRadar, coordGrid, deckEnabled, setDeckEnabled, streetView, featureInspect, mapMatchTrace, geoJsonLayers, buildings3dEnabled, setBuildings3dEnabled, projection, atmosphere, cameraAnimation]);
 
   // ── Nearest Unit Dispatch ──────────────────────────────────────────────────
 
