@@ -2516,6 +2516,39 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_created ON field_interviews(created_at)`);
   } catch { /* table already exists */ }
 
+  // ── Use of Force Reports ──
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS use_of_force (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        incident_id INTEGER,
+        officer_id INTEGER NOT NULL,
+        subject_person_id INTEGER,
+        force_type TEXT,
+        force_level TEXT,
+        justification TEXT,
+        subject_injuries TEXT,
+        officer_injuries TEXT,
+        de_escalation_attempted INTEGER DEFAULT 0,
+        de_escalation_details TEXT,
+        weapons_used TEXT,
+        body_camera_active INTEGER DEFAULT 0,
+        witness_officers TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'draft',
+        reviewed_by INTEGER,
+        reviewed_at TEXT,
+        narrative TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (incident_id) REFERENCES incidents(id),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (subject_person_id) REFERENCES persons(id)
+      )
+    `).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_uof_incident ON use_of_force(incident_id)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_uof_officer ON use_of_force(officer_id)`).run();
+  } catch { /* table already exists */ }
+
   // ── Trespass / Exclusion Orders ──
   try {
     db.exec(`
