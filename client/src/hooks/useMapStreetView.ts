@@ -53,6 +53,9 @@ function buildImageSrc(
       `${m.lng},${m.lat},${m.color ?? 'd4a017'},${m.label ?? ''}`
     ).join(';'));
   }
+  // Append JWT for <img> tag auth — server accepts ?token= on this route
+  const token = localStorage.getItem('rmpg_token');
+  if (token) params.set('token', token);
   return `/api/mapbox/static/image?${params}`;
 }
 

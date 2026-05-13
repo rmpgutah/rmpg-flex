@@ -122,7 +122,7 @@ function CdocSearchPanel() {
             </button>
             <div className="flex gap-3 items-start">
               {selectedOffender.photo_url && (
-                <img src={selectedOffender.photo_url} alt="Mugshot" className="w-20 h-24 object-cover border border-rmpg-600" />
+                <img src={selectedOffender.photo_url} alt="Mugshot" className="w-20 h-24 object-cover border border-rmpg-600" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               )}
               <div className="flex-1">
                 <div className="text-sm font-bold text-white">{selectedOffender.last_name}, {selectedOffender.first_name}</div>
@@ -165,7 +165,7 @@ function CdocSearchPanel() {
               className="w-full text-left px-3 py-2 border-b border-rmpg-700/50 hover:bg-rmpg-700/30 transition-colors"
             >
               <div className="flex items-center gap-2">
-                {r.photo_url && <img src={r.photo_url} alt="" className="w-8 h-10 object-cover border border-rmpg-600 flex-shrink-0" />}
+                {r.photo_url && <img src={r.photo_url} alt="" className="w-8 h-10 object-cover border border-rmpg-600 flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold text-white truncate">{r.last_name}, {r.first_name}</div>
                   <div className="text-[10px] text-rmpg-400 font-mono">DOC# {r.doc_number}</div>
