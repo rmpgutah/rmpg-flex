@@ -508,13 +508,29 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
             msgLower.includes('invalid token') ||
             msgLower.includes('token is not authorized') ||
             msgLower.includes('not configured') ||
-            msgLower.includes('style not found') ||
             msgLower.includes('error status 4');
+
+           const isStyleErr = msgLower.includes('style not found') || msgLower.includes('style is not found');
 
           if (isNetworkErr && !mapDidLoad) {
             // Network error during init — don't fall back immediately;
             // Mapbox GL retries tile fetches internally. Only log it.
             devLog('[MapboxMap] Network error during init (will retry):', msg);
+            return;
+          }
+
+          // Style not found — retry with built-in dark style instead of
+          // falling all the way back to MapLibre. Custom style may have
+          // been deleted from the Mapbox account.
+          if (isStyleErr && !mapDidLoad) {
+            devLog('[MapboxMap] Custom style not found, retrying with default dark style');
+            clearTimeout(loadTimeout);
+            cancelled = true;
+            setTimeout(() => {
+              destroyMapboxMap(); mapRef.current = null;
+              setMapStyleId('dark' as MapStyleId);
+              setRetryNonce(n => n + 1);
+            }, 0);
             return;
           }
 
