@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import * as THREE from 'three';
 
 const SLC_LAT = 40.7608;
@@ -21,6 +21,7 @@ interface LoginGlobeProps {
 
 export default function LoginGlobe({ className }: LoginGlobeProps) {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [webGLSupported, setWebGLSupported] = useState(true);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -34,7 +35,13 @@ export default function LoginGlobe({ className }: LoginGlobeProps) {
     const camera = new THREE.PerspectiveCamera(42, width / height, 0.1, 200);
     camera.position.set(0, 0.4, 5.4);
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+    let renderer: THREE.WebGLRenderer;
+    try {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'low-power' });
+    } catch {
+      setWebGLSupported(false);
+      return;
+    }
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
     renderer.setSize(width, height);
     renderer.setClearColor(0x000000, 0);
@@ -236,6 +243,10 @@ export default function LoginGlobe({ className }: LoginGlobeProps) {
       }
     };
   }, []);
+
+  if (!webGLSupported) {
+    return <div className={className} aria-hidden="true" />;
+  }
 
   return <div ref={containerRef} className={className} aria-hidden="true" />;
 }
