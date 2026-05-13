@@ -594,6 +594,7 @@ export default function LoginPage() {
                   <input
                     ref={usernameRef}
                     id="username"
+                    name="username"
                     type="text"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Enter your username"
@@ -612,6 +613,7 @@ export default function LoginPage() {
                     <input
                       ref={passwordRef}
                       id="password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
                       className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 pr-8"
                       placeholder="Enter your password"
@@ -705,6 +707,7 @@ export default function LoginPage() {
                 <label className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
                   <input
                     type="checkbox"
+                    name="trust-device"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
                     className="w-4 h-4 rounded-sm accent-[#888888] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
@@ -817,6 +820,7 @@ export default function LoginPage() {
 
                 <input
                   type="text"
+                  name="backup-code"
                   className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 text-center font-mono tracking-widest uppercase"
                   placeholder="XXXX-XXXX"
                   value={backupCode}
@@ -951,6 +955,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="setup-code"
+                    name="setup-code"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -1018,6 +1023,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="new-pw"
+                    name="new-password"
                     type="password"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Enter new password"
@@ -1037,6 +1043,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="confirm-pw"
+                    name="confirm-password"
                     type="password"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Confirm new password"

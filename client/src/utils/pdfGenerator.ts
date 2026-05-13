@@ -2492,9 +2492,11 @@ interface IncidentData {
     status: string;
     created_at: string;
   }[];
+  // Map snapshot image (pre-resolved for PDF embedding)
+  _mapImage?: PdfImage;
 }
 
-// ── GPS Activity Log Section (shared across report templates) ──
+// ── GPS Activity Log Section
 
 function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, priority: string): number {
   const lx = getLeftX();

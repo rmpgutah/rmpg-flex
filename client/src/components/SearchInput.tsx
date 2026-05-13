@@ -69,6 +69,7 @@ export default function SearchInput({
       <input
         ref={inputRef}
         type="text"
+        name="search"
         value={localValue}
         onChange={handleChange}
         onKeyDown={handleKeyDown}

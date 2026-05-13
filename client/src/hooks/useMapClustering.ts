@@ -134,7 +134,7 @@ export function useMapClustering(map: mapboxgl.Map | null, mapLoaded: boolean): 
     }
 
     // Click to expand cluster
-    const onClusterClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapGeoJSONFeature[] }) => {
+    const onClusterClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.GeoJSONFeature[] }) => {
       const features = map.queryRenderedFeatures(e.point, { layers: [CLUSTER_CIRCLE] });
       if (!features.length) return;
       const clusterId = features[0].properties?.cluster_id;

@@ -50,7 +50,7 @@ export function useMapFeatureInspect(
           layer: f.layer?.id || 'unknown',
           distance: 0,
           properties: f.properties || {},
-          geometry: f.geometry,
+          geometry: f.geometry as { type: string; coordinates: unknown },
         }));
 
         // Also query via Tilequery API for deeper tile data

@@ -77,7 +77,8 @@ function formatCurrency(val: number | null | undefined): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 }
 
-function toDisplayLabel(s: string): string {
+function toDisplayLabel(s: string | undefined | null): string {
+  if (!s) return '—';
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 

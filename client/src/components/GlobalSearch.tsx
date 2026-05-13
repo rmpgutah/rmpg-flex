@@ -360,6 +360,7 @@ export const GlobalSearch: React.FC = () => {
           <input
             ref={inputRef}
             type="text"
+            name="global-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}

@@ -92,6 +92,14 @@ router.get('/active-routes', requireRole('admin', 'manager', 'supervisor', 'disp
     const db = getDb();
     const today = localToday();
 
+    // Check that required tables exist (may not yet on fresh deployments)
+    const tableExists = (name: string) =>
+      !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name);
+    if (!tableExists('serve_queue') || !tableExists('serve_routes')) {
+      res.json({ jobs: [], routes: [] });
+      return;
+    }
+
     // All pending/in-progress serve jobs for today (across all officers)
     const jobs = db.prepare(`
       SELECT sq.id, sq.officer_id, sq.recipient_name, sq.recipient_address,
@@ -99,9 +107,10 @@ router.get('/active-routes', requireRole('admin', 'manager', 'supervisor', 'disp
         sq.recipient_lat, sq.recipient_lng, sq.status, sq.priority,
         sq.deadline, sq.document_type, sq.sort_order, sq.call_id,
         sq.attempt_count, sq.max_attempts,
-        u.call_sign AS officer_call_sign, u.display_name AS officer_name
+        un.call_sign AS officer_call_sign, u.full_name AS officer_name
       FROM serve_queue sq
       LEFT JOIN users u ON u.id = sq.officer_id
+      LEFT JOIN units un ON un.officer_id = sq.officer_id
       WHERE (sq.serve_date = ? OR sq.status IN ('pending', 'in_progress'))
         AND sq.recipient_lat IS NOT NULL AND sq.recipient_lng IS NOT NULL
       ORDER BY sq.officer_id, sq.sort_order ASC, sq.priority DESC
@@ -110,9 +119,10 @@ router.get('/active-routes', requireRole('admin', 'manager', 'supervisor', 'disp
 
     // All routes for today or that have pending/in_progress jobs
     const routes = db.prepare(`
-      SELECT sr.*, u.call_sign AS officer_call_sign, u.display_name AS officer_name
+      SELECT sr.*, un.call_sign AS officer_call_sign, u.full_name AS officer_name
       FROM serve_routes sr
       LEFT JOIN users u ON u.id = sr.officer_id
+      LEFT JOIN units un ON un.officer_id = sr.officer_id
       WHERE sr.route_date = ?
         OR sr.officer_id IN (
           SELECT DISTINCT sq2.officer_id FROM serve_queue sq2

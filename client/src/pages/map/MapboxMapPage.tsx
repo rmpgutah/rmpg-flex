@@ -328,6 +328,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       const incidents = calls
         .filter(c => c.latitude != null && c.longitude != null)
         .map(c => ({
+          id: c.id,
           position: [c.longitude!, c.latitude!] as [number, number],
           priority: c.priority,
           weight: c.priority === '1' ? 1 : c.priority === '2' ? 0.7 : 0.4,
@@ -336,6 +337,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
       const unitPositions = units
         .filter(u => u.latitude != null && u.longitude != null)
         .map(u => ({
+          id: u.id,
           position: [u.longitude!, u.latitude!] as [number, number],
           status: u.status,
           callSign: u.call_sign,

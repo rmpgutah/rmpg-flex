@@ -83,6 +83,7 @@ export default function ForgotPasswordPage() {
                       <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
                       <input
                         id="reset-email"
+                        name="email"
                         type="email"
                         className="input-dark search-glow h-10 pl-9 w-full"
                         placeholder="officer@rmpgutah.us"

@@ -52,9 +52,12 @@ export function DebouncedInput({ value, onChange, debounceMs = 150, ...props }: 
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, []);
 
+  const inputName = props.name || props.placeholder?.toString().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'debounced-input';
+
   return (
     <input
       {...props}
+      name={inputName}
       value={localValue}
       onChange={handleChange}
       onBlur={handleBlur}
@@ -104,9 +107,12 @@ export function DebouncedTextarea({ value, onChange, debounceMs = 150, ...props 
     return () => { if (timerRef.current) clearTimeout(timerRef.current); };
   }, []);
 
+  const textareaName = props.name || props.placeholder?.toString().toLowerCase().replace(/[^a-z0-9]+/g, '-') || 'debounced-textarea';
+
   return (
     <textarea
       {...props}
+      name={textareaName}
       value={localValue}
       onChange={handleChange}
       onBlur={handleBlur}

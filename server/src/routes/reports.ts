@@ -2635,7 +2635,7 @@ router.get('/dashboard-calls-by-type', (req: Request, res: Response) => {
     const db = getDb();
 
     const byType = db.prepare(`
-      SELECT COALESCE(incident_type, call_type, 'Unknown') as type, COUNT(*) as count
+      SELECT COALESCE(incident_type, 'Unknown') as type, COUNT(*) as count
       FROM calls_for_service
       WHERE DATE(created_at) = DATE('now')
       GROUP BY type ORDER BY count DESC LIMIT 10
@@ -2661,7 +2661,7 @@ router.get('/dashboard-unit-status', (req: Request, res: Response) => {
     const activeUnits = db.prepare(`
       SELECT u.id, u.call_sign, u.status, u.current_call_id,
         us.full_name as officer_name, us.badge_number,
-        c.call_number, c.incident_type as call_type, c.location as call_location
+        c.call_number, c.incident_type as call_type, c.location_address as call_location
       FROM units u
       LEFT JOIN users us ON u.officer_id = us.id
       LEFT JOIN calls_for_service c ON u.current_call_id = c.id

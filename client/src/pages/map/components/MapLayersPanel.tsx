@@ -15,7 +15,7 @@ import {
   Map as MapIcon, Shield, Flame, Car, Navigation2,
   Sun, AlertTriangle, PenTool, Hexagon, Ruler, Satellite,
 } from 'lucide-react';
-import IconButton from '../../components/IconButton';
+import IconButton from '../../../components/IconButton';
 
 // ── Types ─────────────────────────────────────────────────
 
