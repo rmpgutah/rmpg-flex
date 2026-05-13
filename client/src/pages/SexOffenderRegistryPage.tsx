@@ -391,7 +391,7 @@ export default function SexOffenderRegistryPage() {
                     style={{ background: '#141414', border: '1px solid #2a2a2a' }}
                   >
                     {r.photo_url ? (
-                      <img src={r.photo_url} alt="" className="w-full h-full object-cover" />
+                      <img src={r.photo_url} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                     ) : (
                       <User size={20} className="text-rmpg-600" />
                     )}
@@ -490,7 +490,7 @@ export default function SexOffenderRegistryPage() {
             style={{ background: '#050505', border: '2px solid #2a2a2a' }}
           >
             {selected.photo_url ? (
-              <img src={selected.photo_url} alt="" className="w-full h-full object-cover" />
+              <img src={selected.photo_url} alt="" className="w-full h-full object-cover" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
             ) : (
               <User size={40} className="text-rmpg-600" />
             )}
