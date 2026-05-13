@@ -12,8 +12,11 @@ import { authenticateToken as authenticate, requireRole } from '../middleware/au
 import { firecrawlScrape, firecrawlSearch, firecrawlHealthCheck, firecrawlConnectionMode, hasFirecrawlApiKey } from '../utils/firecrawlClient';
 import { upsertLead, type LeadUpsertData } from '../utils/leadScraperBase';
 import { auditLog } from '../utils/auditLogger';
+import { broadcast } from '../utils/websocket';
 import { getDb } from '../models/database';
 import { localNow } from '../utils/timeUtils';
+import { createHash } from 'crypto';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 router.use(authenticate);
@@ -480,54 +483,279 @@ router.post(
   },
 );
 
-// ── GET /monitors ──────────────────────────────────────────
-// List CRM web monitors
+// ── Competitor Monitor: ensure tables ─────────────────────────
+function ensureMonitorTables(): void {
+  const db = getDb();
+  db.prepare(`CREATE TABLE IF NOT EXISTS firecrawl_monitored_urls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    label TEXT,
+    check_interval_minutes INTEGER DEFAULT 60,
+    is_enabled INTEGER DEFAULT 1,
+    last_check_at TEXT,
+    last_content_hash TEXT,
+    last_content TEXT,
+    consecutive_failures INTEGER DEFAULT 0,
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE TABLE IF NOT EXISTS firecrawl_url_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    monitored_url_id INTEGER NOT NULL,
+    old_hash TEXT,
+    new_hash TEXT,
+    significance TEXT DEFAULT 'minor',
+    content_snapshot TEXT,
+    acknowledged INTEGER DEFAULT 0,
+    detected_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (monitored_url_id) REFERENCES firecrawl_monitored_urls(id)
+  )`).run();
+}
+
+// ── GET /firecrawl/monitors ──────────────────────────────────
+// List all monitored URLs with unacknowledged change count
 
 router.get(
-  '/monitors',
+  '/firecrawl/monitors',
   requireRole('admin', 'manager'),
   (_req: Request, res: Response) => {
     try {
+      ensureMonitorTables();
       const db = getDb();
-      const tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='crm_monitors'").get();
-      if (!tableExists) { res.json([]); return; }
-      const monitors = db.prepare('SELECT * FROM crm_monitors ORDER BY created_at DESC').all();
-      res.json(monitors);
+      const rows = db.prepare(`
+        SELECT
+          m.*,
+          COALESCE(c.unack_count, 0) AS unacknowledged_changes
+        FROM firecrawl_monitored_urls m
+        LEFT JOIN (
+          SELECT monitored_url_id, COUNT(*) AS unack_count
+          FROM firecrawl_url_changes
+          WHERE acknowledged = 0
+          GROUP BY monitored_url_id
+        ) c ON c.monitored_url_id = m.id
+        ORDER BY m.created_at DESC
+      `).all();
+      res.json(rows);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[CRM] List monitors error:', msg);
       res.status(500).json({ error: 'Failed to list monitors', detail: msg });
     }
   },
 );
 
-// ── POST /monitors ─────────────────────────────────────────
-// Create a new CRM web monitor
+// ── POST /firecrawl/monitors ─────────────────────────────────
+// Add a URL to monitor
 
 router.post(
-  '/monitors',
+  '/firecrawl/monitors',
   requireRole('admin', 'manager'),
   (req: Request, res: Response) => {
+    const { url, label, check_interval_minutes } = req.body as {
+      url?: string;
+      label?: string;
+      check_interval_minutes?: number;
+    };
+
+    if (!url || typeof url !== 'string' || !url.trim()) {
+      res.status(400).json({ error: 'url is required', code: 'URL_IS_REQUIRED' });
+      return;
+    }
+
+    try { new URL(url.trim()); } catch {
+      res.status(400).json({ error: 'Invalid URL format', code: 'INVALID_URL_FORMAT' });
+      return;
+    }
+
+    const interval = Math.max(5, Math.min(check_interval_minutes || 60, 10080));
+
     try {
+      ensureMonitorTables();
       const db = getDb();
-      // Ensure table exists
-      db.exec(`CREATE TABLE IF NOT EXISTS crm_monitors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        url TEXT NOT NULL,
-        name TEXT,
-        check_interval INTEGER DEFAULT 86400,
-        last_checked_at TEXT,
-        status TEXT DEFAULT 'active',
-        created_at TEXT DEFAULT (datetime('now'))
-      )`);
-      const { url, name, check_interval } = req.body;
-      if (!url) { res.status(400).json({ error: 'URL required' }); return; }
-      const result = db.prepare('INSERT INTO crm_monitors (url, name, check_interval) VALUES (?, ?, ?)').run(url, name || null, check_interval || 86400);
-      res.status(201).json({ success: true, id: result.lastInsertRowid });
+      const now = localNow();
+      const userId = (req as any).user?.id;
+      const result = db.prepare(`
+        INSERT INTO firecrawl_monitored_urls (url, label, check_interval_minutes, is_enabled, consecutive_failures, created_by, created_at, updated_at)
+        VALUES (?, ?, ?, 1, 0, ?, ?, ?)
+      `).run(url.trim(), label?.trim() || null, interval, userId, now, now);
+      const id = Number(result.lastInsertRowid);
+      auditLog(req, 'CREATE', 'firecrawl_monitored_urls', id, `Added monitored URL: ${url.trim()}`);
+      res.status(201).json({ success: true, id });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error('[CRM] Create monitor error:', msg);
-      res.status(500).json({ error: 'Failed to create monitor', detail: msg });
+      res.status(500).json({ error: 'Failed to add monitored URL', detail: msg });
+    }
+  },
+);
+
+// ── DELETE /firecrawl/monitors/:id ───────────────────────────
+// Remove monitored URL + cascade changes
+
+router.delete(
+  '/firecrawl/monitors/:id',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    const id = parseInt(paramStr(req.params.id), 10);
+    if (!id || isNaN(id)) {
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
+      return;
+    }
+    try {
+      ensureMonitorTables();
+      const db = getDb();
+      const existing = db.prepare('SELECT url FROM firecrawl_monitored_urls WHERE id = ?').get(id) as { url: string } | undefined;
+      if (!existing) {
+        res.status(404).json({ error: 'Monitored URL not found', code: 'MONITORED_URL_NOT_FOUND' });
+        return;
+      }
+      db.prepare('DELETE FROM firecrawl_url_changes WHERE monitored_url_id = ?').run(id);
+      db.prepare('DELETE FROM firecrawl_monitored_urls WHERE id = ?').run(id);
+      auditLog(req, 'DELETE', 'firecrawl_monitored_urls', id, `Deleted monitored URL: ${existing.url}`);
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to delete monitored URL', detail: msg });
+    }
+  },
+);
+
+// ── GET /firecrawl/monitors/:id/changes ──────────────────────
+// Get change history for a monitored URL
+
+router.get(
+  '/firecrawl/monitors/:id/changes',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    const id = parseInt(paramStr(req.params.id), 10);
+    if (!id || isNaN(id)) {
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
+      return;
+    }
+    try {
+      ensureMonitorTables();
+      const db = getDb();
+      const rows = db.prepare(`
+        SELECT * FROM firecrawl_url_changes
+        WHERE monitored_url_id = ?
+        ORDER BY detected_at DESC
+        LIMIT 500
+      `).all(id);
+      res.json(rows);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to get change history', detail: msg });
+    }
+  },
+);
+
+// ── POST /firecrawl/monitors/:id/check ───────────────────────
+// Trigger immediate check for a monitored URL
+
+router.post(
+  '/firecrawl/monitors/:id/check',
+  requireRole('admin', 'manager'),
+  async (req: Request, res: Response) => {
+    const id = parseInt(paramStr(req.params.id), 10);
+    if (!id || isNaN(id)) {
+      res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' });
+      return;
+    }
+    try {
+      ensureMonitorTables();
+      const db = getDb();
+      const monitored = db.prepare('SELECT * FROM firecrawl_monitored_urls WHERE id = ?').get(id) as any;
+      if (!monitored) {
+        res.status(404).json({ error: 'Monitored URL not found', code: 'MONITORED_URL_NOT_FOUND' });
+        return;
+      }
+
+      const result = await firecrawlScrape({
+        url: monitored.url,
+        formats: ['markdown'],
+        onlyMainContent: true,
+      });
+
+      if (!result.success || !result.data?.markdown) {
+        res.status(502).json({ error: 'Scrape failed', detail: result.error || 'No content returned' });
+        return;
+      }
+
+      const markdown = result.data.markdown;
+      const contentHash = createHash('sha256').update(markdown).digest('hex');
+      const now = localNow();
+      const truncatedContent = markdown.slice(0, 50_000);
+
+      let changeDetected = false;
+      let changeId: number | null = null;
+
+      if (monitored.last_content_hash && contentHash !== monitored.last_content_hash) {
+        changeDetected = true;
+        const oldLen = (monitored.last_content || '').length || 1;
+        const diff = Math.abs(markdown.length - oldLen) / oldLen;
+        const significance = diff > 0.2 ? 'major' : diff > 0.05 ? 'moderate' : 'minor';
+
+        const changeResult = db.prepare(`
+          INSERT INTO firecrawl_url_changes (monitored_url_id, old_hash, new_hash, significance, content_snapshot, acknowledged, detected_at)
+          VALUES (?, ?, ?, ?, ?, 0, ?)
+        `).run(id, monitored.last_content_hash, contentHash, significance, truncatedContent, now);
+        changeId = Number(changeResult.lastInsertRowid);
+
+        broadcast('admin', 'competitor:change_detected', {
+          monitored_url_id: id,
+          url: monitored.url,
+          label: monitored.label,
+          significance,
+          change_id: changeId,
+          detected_at: now,
+        });
+      }
+
+      db.prepare(`
+        UPDATE firecrawl_monitored_urls
+        SET last_check_at = ?, last_content_hash = ?, last_content = ?, consecutive_failures = 0, updated_at = ?
+        WHERE id = ?
+      `).run(now, contentHash, truncatedContent, now, id);
+
+      auditLog(req, 'UPDATE', 'firecrawl_monitored_urls', id, `Manual check: ${changeDetected ? 'change detected' : 'no change'}`);
+
+      res.json({
+        success: true,
+        change_detected: changeDetected,
+        change_id: changeId,
+        content_hash: contentHash,
+      });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(502).json({ error: 'Check failed', detail: msg });
+    }
+  },
+);
+
+// ── POST /firecrawl/monitors/changes/:changeId/acknowledge ───
+// Acknowledge a detected change
+
+router.post(
+  '/firecrawl/monitors/changes/:changeId/acknowledge',
+  requireRole('admin', 'manager'),
+  (req: Request, res: Response) => {
+    const changeId = parseInt(paramStr(req.params.changeId), 10);
+    if (!changeId || isNaN(changeId)) {
+      res.status(400).json({ error: 'Invalid changeId', code: 'INVALID_CHANGEID' });
+      return;
+    }
+    try {
+      ensureMonitorTables();
+      const db = getDb();
+      const result = db.prepare('UPDATE firecrawl_url_changes SET acknowledged = 1 WHERE id = ?').run(changeId);
+      if (result.changes === 0) {
+        res.status(404).json({ error: 'Change not found', code: 'CHANGE_NOT_FOUND' });
+        return;
+      }
+      auditLog(req, 'UPDATE', 'firecrawl_url_changes', changeId, 'Acknowledged change');
+      res.json({ success: true });
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      res.status(500).json({ error: 'Failed to acknowledge change', detail: msg });
     }
   },
 );
