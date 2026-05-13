@@ -9,7 +9,6 @@
 // ============================================================
 
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { config } from '@mapbox/search-js-react';
 import { getMapboxTokenStatus } from '../utils/mapboxApiKey';
 
 // ── Types ──────────────────────────────────────────────────
@@ -52,20 +51,17 @@ export function useMapboxSearchBox(options?: {
   const [results, setResults] = useState<SearchBoxResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [available, setAvailable] = useState(false);
-  const tokenRef = useRef<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   const proximity = options?.proximity || SLC_PROXIMITY;
   const country = options?.country || 'US';
   const limit = options?.limit || 5;
 
-  // Resolve token
+  // Check if Mapbox is configured (server-side proxy handles the token)
   useEffect(() => {
     let cancelled = false;
     getMapboxTokenStatus().then(status => {
-      if (!cancelled && status.configured && status.token) {
-        tokenRef.current = status.token;
-        config.accessToken = status.token;
+      if (!cancelled && status.configured) {
         setAvailable(true);
       }
     }).catch(() => { /* no token */ });
@@ -73,7 +69,7 @@ export function useMapboxSearchBox(options?: {
   }, []);
 
   const search = useCallback(async (query: string): Promise<SearchBoxResult[]> => {
-    if (!tokenRef.current || !query.trim()) {
+    if (!available || !query.trim()) {
       setResults([]);
       return [];
     }
@@ -85,36 +81,31 @@ export function useMapboxSearchBox(options?: {
 
     setSearching(true);
     try {
-      // Use the Mapbox Geocoding API v6 (Search Box API)
+      // Route through server-side proxy to protect access token
       const params = new URLSearchParams({
         q: query.trim(),
-        access_token: tokenRef.current,
         country,
         limit: String(limit),
         proximity: proximity.join(','),
-        language: 'en',
       });
       if (options?.types?.length) params.set('types', options.types.join(','));
 
-      const resp = await fetch(
-        `https://api.mapbox.com/search/geocode/v6/forward?${params}`,
-        { signal: abort.signal }
+      // Use apiFetch for authenticated server-side geocoding
+      const { apiFetch } = await import('../hooks/useApi');
+      const data = await apiFetch<{ results: Array<{ name: string; full_address: string; latitude: number; longitude: number; place_type: string; relevance: number }> }>(
+        `/mapbox/geocode/forward?${params}`
       );
 
-      if (!resp.ok) {
-        setSearching(false);
-        return [];
-      }
+      if (abort.signal.aborted) return [];
 
-      const data = await resp.json();
-      const mapped: SearchBoxResult[] = (data.features || []).map((f: any) => ({
-        id: f.id || f.properties?.mapbox_id || '',
-        name: f.properties?.name || f.properties?.full_address || '',
-        full_address: f.properties?.full_address || '',
-        place_type: f.properties?.feature_type || f.type || '',
-        latitude: f.geometry?.coordinates?.[1] ?? 0,
-        longitude: f.geometry?.coordinates?.[0] ?? 0,
-        properties: f.properties || {},
+      const mapped: SearchBoxResult[] = (data.results || []).map((r, idx) => ({
+        id: `result-${idx}`,
+        name: r.name || r.full_address || '',
+        full_address: r.full_address || '',
+        place_type: r.place_type || '',
+        latitude: r.latitude ?? 0,
+        longitude: r.longitude ?? 0,
+        properties: r as unknown as Record<string, unknown>,
       }));
 
       if (!abort.signal.aborted) {

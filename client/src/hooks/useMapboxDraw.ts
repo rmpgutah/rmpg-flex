@@ -243,9 +243,10 @@ export function useMapboxDraw(
       }
       drawRef.current = null;
     };
-  }, [map, mapLoaded, enabled, updateFeatureCount]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- updateFeatureCount is stable (empty deps)
+  }, [map, mapLoaded, enabled]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount (safety net)
   useEffect(() => {
     return () => {
       if (drawRef.current && map) {
@@ -257,7 +258,8 @@ export function useMapboxDraw(
         drawRef.current = null;
       }
     };
-  }, [map]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount-only cleanup
+  }, []);
 
   const toggle = useCallback(() => setEnabled(v => !v), []);
   const enable = useCallback(() => setEnabled(true), []);

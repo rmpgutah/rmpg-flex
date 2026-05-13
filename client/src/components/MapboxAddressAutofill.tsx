@@ -108,7 +108,7 @@ export default function MapboxAddressAutofill({
       state: props.address_level1 || props.region || '',
       zip: props.postcode || '',
       country: props.country || country,
-      full_address: props.full_address || `${props.address_line1 || ''}, ${props.address_level2 || ''}, ${props.address_level1 || ''} ${props.postcode || ''}`.trim(),
+      full_address: props.full_address || [props.address_line1, props.address_level2, props.address_level1, props.postcode].filter(Boolean).join(', '),
       latitude: coords?.[1],
       longitude: coords?.[0],
     };

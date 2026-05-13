@@ -652,48 +652,52 @@ export async function mapboxDeleteDatasetFeature(
 // ── Datasets Helpers ──────────────────────────────────────
 
 let _cachedUsername: string | null = null;
+let _usernameResolving: Promise<string> | null = null;
 
 async function resolveMapboxUsername(token: string): Promise<string> {
   if (_cachedUsername) return _cachedUsername;
 
-  // Try to extract from token structure (pk tokens have username in payload)
-  // Fallback: call the tokens API to get account info
-  try {
-    const res = await fetch(`https://api.mapbox.com/tokens/v2?access_token=${encodeURIComponent(token)}`);
-    if (res.ok) {
-      const data = await res.json();
-      if (data.code === 'TokenValid' && data.token?.usage) {
-        // Try the v2/me endpoint instead
-        const meRes = await fetch(`https://api.mapbox.com/v2/me?access_token=${encodeURIComponent(token)}`);
-        if (meRes.ok) {
-          const me = await meRes.json();
-          if (me.id) {
-            _cachedUsername = me.id;
-            return me.id;
-          }
+  // Deduplicate concurrent resolution requests
+  if (_usernameResolving) return _usernameResolving;
+
+  _usernameResolving = (async () => {
+    // Try the v2/me endpoint directly — returns the account username
+    try {
+      const meRes = await fetch(`https://api.mapbox.com/v2/me?access_token=${encodeURIComponent(token)}`);
+      if (meRes.ok) {
+        const me = await meRes.json();
+        if (me.id) {
+          _cachedUsername = me.id;
+          return me.id;
         }
       }
+    } catch {
+      // Fallback below
     }
-  } catch {
-    // Fallback below
-  }
 
-  // Parse from token if it's a standard Mapbox token structure
-  // pk.{base64payload}.{signature} — the payload contains the username
-  try {
-    const parts = token.split('.');
-    if (parts.length >= 2) {
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
-      if (payload.u) {
-        _cachedUsername = payload.u;
-        return payload.u;
+    // Parse from token if it's a standard Mapbox token structure
+    // pk.{base64payload}.{signature} — the payload contains the username
+    try {
+      const parts = token.split('.');
+      if (parts.length >= 2) {
+        const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+        if (payload.u) {
+          _cachedUsername = payload.u;
+          return payload.u;
+        }
       }
+    } catch {
+      // Not a standard JWT-like token
     }
-  } catch {
-    // Not a standard JWT-like token
-  }
 
-  throw new Error('Could not resolve Mapbox username from access token');
+    throw new Error('Could not resolve Mapbox username from access token');
+  })();
+
+  try {
+    return await _usernameResolving;
+  } finally {
+    _usernameResolving = null;
+  }
 }
 
 async function mapboxFetchWithBody(url: string, method: string, body: unknown): Promise<any> {
