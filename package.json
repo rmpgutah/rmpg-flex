@@ -39,7 +39,7 @@
     "version:minor": "node scripts/bump-version.cjs minor",
     "version:patch": "node scripts/bump-version.cjs patch",
     "lint": "cd client && npx tsc --noEmit",
-    "clean": "rm -rf client/dist server/dist desktop/dist",
+    "clean": "node -e \"const fs=require('fs');['client/dist','server/dist','desktop/dist'].forEach(d=>{try{fs.rmSync(d,{recursive:true,force:true})}catch{}})\"",
     "test": "cd client && npm test && cd ../server && npm test",
     "health": "curl -sf https://rmpgutah.us/api/health",
     "prepare": "husky"
