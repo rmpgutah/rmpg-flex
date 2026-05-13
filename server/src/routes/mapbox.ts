@@ -299,4 +299,103 @@ router.post('/optimization', async (req: Request, res: Response) => {
   }
 });
 
+// ── Datasets API ──────────────────────────────────────────
+// Mapbox Developer Cheatsheet: Datasets API for managing custom vector data.
+// All dataset operations require admin/manager role.
+
+import {
+  mapboxListDatasets,
+  mapboxCreateDataset,
+  mapboxGetDataset,
+  mapboxDeleteDataset,
+  mapboxListDatasetFeatures,
+  mapboxPutDatasetFeature,
+  mapboxDeleteDatasetFeature,
+} from '../utils/mapboxApi';
+import { requireRole } from '../middleware/auth';
+
+router.get('/datasets', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const datasets = await mapboxListDatasets();
+    res.json({ datasets });
+  } catch (err: any) {
+    logger.warn({ err }, '[mapbox/datasets] list failed');
+    res.status(502).json({ error: 'Failed to list datasets' });
+  }
+});
+
+router.post('/datasets', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const { name, description } = req.body;
+    if (!name || typeof name !== 'string') {
+      return res.status(400).json({ error: 'Dataset name required' });
+    }
+    const dataset = await mapboxCreateDataset(name.trim(), description?.trim());
+    res.json(dataset);
+  } catch (err: any) {
+    logger.warn({ err }, '[mapbox/datasets] create failed');
+    res.status(502).json({ error: 'Failed to create dataset' });
+  }
+});
+
+router.get('/datasets/:datasetId', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const dataset = await mapboxGetDataset(String(req.params.datasetId));
+    res.json(dataset);
+  } catch (err: any) {
+    logger.warn({ err }, '[mapbox/datasets] get failed');
+    res.status(502).json({ error: 'Failed to get dataset' });
+  }
+});
+
+router.delete('/datasets/:datasetId', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    await mapboxDeleteDataset(String(req.params.datasetId));
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.warn({ err }, '[mapbox/datasets] delete failed');
+    res.status(502).json({ error: 'Failed to delete dataset' });
+  }
+});
+
+router.get('/datasets/:datasetId/features', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const limit = parseInt(String(req.query.limit || '100'), 10);
+    const start = req.query.start ? String(req.query.start) : undefined;
+    const features = await mapboxListDatasetFeatures(String(req.params.datasetId), { limit, start });
+    res.json(features);
+  } catch (err: any) {
+    logger.warn({ err }, '[mapbox/datasets/features] list failed');
+    res.status(502).json({ error: 'Failed to list features' });
+  }
+});
+
+router.put('/datasets/:datasetId/features/:featureId', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const { geometry, properties } = req.body;
+    if (!geometry) {
+      return res.status(400).json({ error: 'Feature geometry required' });
+    }
+    const feature = await mapboxPutDatasetFeature(
+      String(req.params.datasetId),
+      String(req.params.featureId),
+      { type: 'Feature', geometry, properties: properties || {} }
+    );
+    res.json(feature);
+  } catch (err: any) {
+    logger.warn({ err }, '[mapbox/datasets/features] put failed');
+    res.status(502).json({ error: 'Failed to update feature' });
+  }
+});
+
+router.delete('/datasets/:datasetId/features/:featureId', requireRole('admin'), async (req: Request, res: Response) => {
+  try {
+    await mapboxDeleteDatasetFeature(String(req.params.datasetId), String(req.params.featureId));
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.warn({ err }, '[mapbox/datasets/features] delete failed');
+    res.status(502).json({ error: 'Failed to delete feature' });
+  }
+});
+
 export default router;

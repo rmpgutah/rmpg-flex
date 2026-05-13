@@ -483,3 +483,236 @@ export async function mapboxOptimization(
     `https://api.mapbox.com/optimized-trips/v1/mapbox/${profile}/${coordStr}?${params}`
   );
 }
+
+// ── Datasets API ──────────────────────────────────────────
+// Mapbox Developer Cheatsheet: Datasets API for managing
+// custom vector data (create, read, update, delete features).
+// The dataset owner is derived from the access token.
+// ──────────────────────────────────────────────────────────
+
+export interface MapboxDataset {
+  id: string;
+  owner: string;
+  name: string;
+  description: string;
+  created: string;
+  modified: string;
+  features: number;
+  size: number;
+  bounds?: [number, number, number, number];
+}
+
+export interface MapboxDatasetFeature {
+  id: string;
+  type: 'Feature';
+  geometry: GeoJSON.Geometry;
+  properties: Record<string, unknown>;
+}
+
+/**
+ * List all datasets owned by the account associated with the access token.
+ */
+export async function mapboxListDatasets(): Promise<MapboxDataset[]> {
+  const token = getMapboxAccessToken();
+  if (!token) throw new Error('Mapbox access token not configured');
+
+  // Extract the username from the token (pk.eyXXX.username.XXXX)
+  // Mapbox tokens encode the owner in the payload
+  const username = await resolveMapboxUsername(token);
+  return mapboxFetch(
+    `https://api.mapbox.com/datasets/v1/${username}?access_token=${encodeURIComponent(token)}`
+  );
+}
+
+/**
+ * Create a new empty dataset.
+ */
+export async function mapboxCreateDataset(
+  name: string,
+  description?: string
+): Promise<MapboxDataset> {
+  const token = getMapboxAccessToken();
+  if (!token) throw new Error('Mapbox access token not configured');
+
+  const username = await resolveMapboxUsername(token);
+  return mapboxFetchWithBody(
+    `https://api.mapbox.com/datasets/v1/${username}?access_token=${encodeURIComponent(token)}`,
+    'POST',
+    { name, description: description || '' }
+  );
+}
+
+/**
+ * Get a single dataset's metadata.
+ */
+export async function mapboxGetDataset(datasetId: string): Promise<MapboxDataset> {
+  const token = getMapboxAccessToken();
+  if (!token) throw new Error('Mapbox access token not configured');
+
+  const username = await resolveMapboxUsername(token);
+  return mapboxFetch(
+    `https://api.mapbox.com/datasets/v1/${username}/${encodeURIComponent(datasetId)}?access_token=${encodeURIComponent(token)}`
+  );
+}
+
+/**
+ * Delete a dataset.
+ */
+export async function mapboxDeleteDataset(datasetId: string): Promise<void> {
+  const token = getMapboxAccessToken();
+  if (!token) throw new Error('Mapbox access token not configured');
+
+  const username = await resolveMapboxUsername(token);
+  await throttle();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/datasets/v1/${username}/${encodeURIComponent(datasetId)}?access_token=${encodeURIComponent(token)}`,
+      { method: 'DELETE', signal: controller.signal }
+    );
+    if (!res.ok && res.status !== 204) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Mapbox Datasets DELETE ${res.status}: ${body.slice(0, 200)}`);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+/**
+ * List features in a dataset.
+ */
+export async function mapboxListDatasetFeatures(
+  datasetId: string,
+  options?: { limit?: number; start?: string }
+): Promise<GeoJSON.FeatureCollection> {
+  const token = getMapboxAccessToken();
+  if (!token) throw new Error('Mapbox access token not configured');
+
+  const username = await resolveMapboxUsername(token);
+  const params = new URLSearchParams({
+    access_token: token,
+  });
+  if (options?.limit) params.set('limit', String(Math.min(options.limit, 100)));
+  if (options?.start) params.set('start', options.start);
+
+  return mapboxFetch(
+    `https://api.mapbox.com/datasets/v1/${username}/${encodeURIComponent(datasetId)}/features?${params}`
+  );
+}
+
+/**
+ * Insert or update a feature in a dataset.
+ */
+export async function mapboxPutDatasetFeature(
+  datasetId: string,
+  featureId: string,
+  feature: { type: 'Feature'; geometry: GeoJSON.Geometry; properties?: Record<string, unknown> }
+): Promise<MapboxDatasetFeature> {
+  const token = getMapboxAccessToken();
+  if (!token) throw new Error('Mapbox access token not configured');
+
+  const username = await resolveMapboxUsername(token);
+  return mapboxFetchWithBody(
+    `https://api.mapbox.com/datasets/v1/${username}/${encodeURIComponent(datasetId)}/features/${encodeURIComponent(featureId)}?access_token=${encodeURIComponent(token)}`,
+    'PUT',
+    feature
+  );
+}
+
+/**
+ * Delete a feature from a dataset.
+ */
+export async function mapboxDeleteDatasetFeature(
+  datasetId: string,
+  featureId: string
+): Promise<void> {
+  const token = getMapboxAccessToken();
+  if (!token) throw new Error('Mapbox access token not configured');
+
+  const username = await resolveMapboxUsername(token);
+  await throttle();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(
+      `https://api.mapbox.com/datasets/v1/${username}/${encodeURIComponent(datasetId)}/features/${encodeURIComponent(featureId)}?access_token=${encodeURIComponent(token)}`,
+      { method: 'DELETE', signal: controller.signal }
+    );
+    if (!res.ok && res.status !== 204) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Mapbox Datasets feature DELETE ${res.status}: ${body.slice(0, 200)}`);
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+// ── Datasets Helpers ──────────────────────────────────────
+
+let _cachedUsername: string | null = null;
+
+async function resolveMapboxUsername(token: string): Promise<string> {
+  if (_cachedUsername) return _cachedUsername;
+
+  // Try to extract from token structure (pk tokens have username in payload)
+  // Fallback: call the tokens API to get account info
+  try {
+    const res = await fetch(`https://api.mapbox.com/tokens/v2?access_token=${encodeURIComponent(token)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (data.code === 'TokenValid' && data.token?.usage) {
+        // Try the v2/me endpoint instead
+        const meRes = await fetch(`https://api.mapbox.com/v2/me?access_token=${encodeURIComponent(token)}`);
+        if (meRes.ok) {
+          const me = await meRes.json();
+          if (me.id) {
+            _cachedUsername = me.id;
+            return me.id;
+          }
+        }
+      }
+    }
+  } catch {
+    // Fallback below
+  }
+
+  // Parse from token if it's a standard Mapbox token structure
+  // pk.{base64payload}.{signature} — the payload contains the username
+  try {
+    const parts = token.split('.');
+    if (parts.length >= 2) {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString());
+      if (payload.u) {
+        _cachedUsername = payload.u;
+        return payload.u;
+      }
+    }
+  } catch {
+    // Not a standard JWT-like token
+  }
+
+  throw new Error('Could not resolve Mapbox username from access token');
+}
+
+async function mapboxFetchWithBody(url: string, method: string, body: unknown): Promise<any> {
+  await throttle();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => '');
+      throw new Error(`Mapbox API ${method} ${res.status}: ${text.slice(0, 200)}`);
+    }
+    return await res.json();
+  } finally {
+    clearTimeout(timeout);
+  }
+}

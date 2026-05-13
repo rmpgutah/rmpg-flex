@@ -80,6 +80,7 @@ import { useMapAtmosphere } from '../../hooks/useMapAtmosphere';
 import { useMapCameraAnimation } from '../../hooks/useMapCameraAnimation';
 import { useMapSnapshot } from '../../hooks/useMapSnapshot';
 import { useMapOptimization } from '../../hooks/useMapOptimization';
+import { useMapboxDraw } from '../../hooks/useMapboxDraw';
 import { initMapboxDeckOverlay, updateMapboxDeckLayers, destroyMapboxDeckOverlay, createMapboxIncidentLayer, createMapboxUnitLayer, createMapboxArcLayer } from '../../integrations/deckMapboxLayers';
 import MapLayersPanel from './components/MapLayersPanel';
 import type { LayerGroup } from './components/MapLayersPanel';
@@ -274,6 +275,7 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
   const cameraAnimation = useMapCameraAnimation(mapRef.current, mapLoaded);
   const snapshot = useMapSnapshot();
   const optimization = useMapOptimization(mapRef.current, mapLoaded);
+  const glDraw = useMapboxDraw(mapRef.current, mapLoaded);
   const [deckEnabled, setDeckEnabled] = usePersistedState('rmpg_mapbox_deck', false);
   const [buildings3dEnabled, setBuildings3dEnabled] = usePersistedState('rmpg_mapbox_3d_buildings', true);
   const [showPlacesMenu, setShowPlacesMenu] = useState(false);
@@ -1844,6 +1846,19 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
                   </div>
                 )}
               </div>
+
+              {/* GL Draw — Official Mapbox drawing with vertex editing */}
+              <IconButton
+                aria-label={glDraw.enabled ? 'Disable GL Draw tools' : 'Enable GL Draw tools'}
+                onClick={() => glDraw.toggle()}
+                className={`bg-surface-raised/95 border border-[#222222] p-2 backdrop-blur-sm ${
+                  glDraw.enabled ? 'text-[#d4a017]' : 'text-rmpg-300 hover:text-[#d4a017]'
+                }`}
+                style={{ borderRadius: 2 }}
+                title="GL Draw (vertex editing)"
+              >
+                <Grid3X3 className="w-4 h-4" />
+              </IconButton>
             </>
           )}
         </div>
@@ -1877,6 +1892,15 @@ export default function MapboxMapPage({ preferredEngine = 'mapbox' }: MapboxMapP
         <div className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#222222] px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
           <span className="text-rmpg-300 text-[10px] font-mono">{drawing.shapes.length} shape(s) drawn</span>
           <button onClick={() => drawing.clearAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear all</button>
+        </div>
+      )}
+
+      {/* GL Draw Feature Count */}
+      {glDraw.enabled && glDraw.featureCount > 0 && (
+        <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-surface-raised/95 border border-[#d4a017]/20 px-3 py-1.5 backdrop-blur-sm flex items-center gap-2" style={{ borderRadius: 2 }}>
+          <Grid3X3 className="w-3 h-3 text-[#d4a017]" />
+          <span className="text-rmpg-300 text-[10px] font-mono">{glDraw.featureCount} GL Draw feature(s)</span>
+          <button onClick={() => glDraw.deleteAll()} className="text-rmpg-400 hover:text-red-400 text-[10px]">Clear</button>
         </div>
       )}
 
