@@ -134,7 +134,7 @@ export function useMapStreetView(map: mapboxgl.Map | null, mapLoaded: boolean): 
         const btns = popupEl.querySelectorAll('[data-sat-zoom]');
         btns.forEach(btn => {
           btn.addEventListener('click', () => {
-            const zoom = parseInt(btn.getAttribute('data-sat-zoom') || '18', 10);
+            const zoom = parseInt(btn.getAttribute('data-sat-zoom') || String(ZOOM_TABS[0].zoom), 10);
             // Update image source with new zoom
             if (img) {
               img.style.opacity = '0.4';
