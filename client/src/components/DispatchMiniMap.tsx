@@ -11,7 +11,7 @@ import { useNavigate } from 'react-router-dom';
 import mapboxgl from 'mapbox-gl';
 import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
 import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
-import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
 import { getMapboxToken } from '../utils/mapboxApiKey';
 import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
 import type { CallForService, Unit, UnitStatus } from '../types';
@@ -288,15 +288,19 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       : DEFAULT_CENTER;
 
     if (!mapRef.current) {
-      const map = createMapboxMap({
+      mapboxgl.accessToken = tokenRef.current;
+      const map = new mapboxgl.Map({
         container: mapContainerRef.current,
+        style: 'mapbox://styles/mapbox/dark-v11',
         center,
         zoom: MINI_ZOOM,
-        style: 'dark',
-        accessToken: tokenRef.current,
+        interactive: true,
+        attributionControl: false,
+        dragRotate: false,
+        pitchWithRotate: false,
       });
 
-      mapRef.current = map;
+      map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
 
       // Add compact geocoder control
       if (tokenRef.current && !geocoderRef.current) {
@@ -315,6 +319,8 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         map.addControl(geocoder, 'bottom-right');
         geocoderRef.current = geocoder;
       }
+
+      mapRef.current = map;
 
       // Track bearing for compass indicator
       map.on('rotate', () => {

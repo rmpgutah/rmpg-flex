@@ -12,7 +12,7 @@ import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import MapboxMiniMap from '../../components/MapboxMiniMap';
-import { getResolvedEngine } from '../../utils/mapProvider';
+import { getResolvedEngine, detectMapEngine, type MapEngine } from '../../utils/mapProvider';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
 import NewCallModal from '../../components/NewCallModal';
@@ -638,6 +638,9 @@ export default function DispatchPage() {
   const [officers, setOfficers] = useState<{ id: string; full_name: string; badge_number?: string }[]>([]);
   // Disposition codes from admin config
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
+  // Map engine detection (ensure minimap knows whether to use Mapbox or MapLibre)
+  const [mapEngine, setMapEngine] = useState<MapEngine | null>(getResolvedEngine);
+  useEffect(() => { detectMapEngine().then(setMapEngine); }, []);
   // Mini-map visibility toggle
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
@@ -5408,7 +5411,7 @@ export default function DispatchPage() {
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-[#2b2b2b] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
             {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
-              getResolvedEngine() === 'mapbox' ? (
+              mapEngine === 'mapbox' ? (
                 <MapboxMiniMap
                   call={selectedCall}
                   units={units}

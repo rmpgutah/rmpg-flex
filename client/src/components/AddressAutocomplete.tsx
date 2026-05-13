@@ -129,19 +129,33 @@ export default function AddressAutocomplete({
   const skipNextChangeRef = useRef(false);
   const { identify } = useDistrictIdentify();
 
-  // Fetch Mapbox token on mount
+  // Fetch Mapbox token on mount (with retry for auth race conditions)
   useEffect(() => {
     let cancelled = false;
-    (async () => {
+    let attempt = 0;
+    const maxAttempts = 3;
+    const tryFetch = async () => {
       try {
-        const token = await getMapboxToken();
+        const token = await getMapboxToken(attempt > 0);
         if (cancelled) return;
-        if (token) setTokenReady(true);
-        else setLoadError(true);
+        if (token && token.startsWith('pk.')) {
+          setTokenReady(true);
+        } else if (++attempt < maxAttempts) {
+          setTimeout(() => { if (!cancelled) tryFetch(); }, attempt * 2000);
+        } else {
+          setLoadError(true);
+        }
       } catch {
-        if (!cancelled) setLoadError(true);
+        if (!cancelled) {
+          if (++attempt < maxAttempts) {
+            setTimeout(() => { if (!cancelled) tryFetch(); }, attempt * 2000);
+          } else {
+            setLoadError(true);
+          }
+        }
       }
-    })();
+    };
+    tryFetch();
     return () => { cancelled = true; };
   }, []);
 
@@ -160,13 +174,13 @@ export default function AddressAutocomplete({
   // Fetch suggestions from Mapbox Geocoding API
   const fetchSuggestions = useCallback(async (query: string) => {
     const token = getCachedMapboxToken();
-    if (!token || query.length < 3) {
+    if (!token || !token.startsWith('pk.') || query.length < 3) {
       setSuggestions([]);
       setShowDropdown(false);
       return;
     }
     try {
-      const types = addressOnly ? '&types=address' : '';
+      const types = addressOnly ? '&types=address,poi,place' : '';
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&proximity=${SLC_PROXIMITY[0]},${SLC_PROXIMITY[1]}&country=${country}&limit=5${types}`;
       const res = await fetch(url);
       if (!res.ok) return;
