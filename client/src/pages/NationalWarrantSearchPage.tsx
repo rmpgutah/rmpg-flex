@@ -669,6 +669,7 @@ function WarrantRow({ warrant }: { warrant: any }) {
           src={warrant.photo_url}
           alt=""
           className="w-10 h-12 rounded object-cover border border-[#1a1a1a] flex-shrink-0"
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
         />
       ) : (
         <div className="w-10 h-12 rounded bg-surface-sunken border border-[#1a1a1a] flex items-center justify-center flex-shrink-0">
