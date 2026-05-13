@@ -7540,7 +7540,7 @@ function seedData(): void {
     created_at TEXT DEFAULT (datetime('now','localtime')),
     updated_at TEXT DEFAULT (datetime('now','localtime'))
   )`).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alarm_permits_address ON alarm_permits(location_address)`).run();
+  try { db.prepare(`CREATE INDEX IF NOT EXISTS idx_alarm_permits_address ON alarm_permits(location_address)`).run(); } catch { /* column may not exist in older schemas */ }
 
   db.prepare(`CREATE TABLE IF NOT EXISTS alarm_activations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
