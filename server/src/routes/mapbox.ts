@@ -183,7 +183,16 @@ router.get('/static/image', async (req: Request, res: Response) => {
     const style = String(req.query.style || 'mapbox/dark-v11');
     const highRes = req.query.retina === 'true';
 
-    const buffer = await mapboxStaticImage({ lng, lat, zoom, width, height, style, highRes });
+    // Parse markers from query: markers=lng,lat,color,label;lng,lat,color,label
+    let markers: Array<{ lng: number; lat: number; color?: string; label?: string }> | undefined;
+    if (req.query.markers) {
+      markers = String(req.query.markers).split(';').map(m => {
+        const [mLng, mLat, color, label] = m.split(',');
+        return { lng: parseFloat(mLng), lat: parseFloat(mLat), color, label };
+      }).filter(m => Number.isFinite(m.lng) && Number.isFinite(m.lat));
+    }
+
+    const buffer = await mapboxStaticImage({ lng, lat, zoom, width, height, style, highRes, markers });
     res.set('Content-Type', 'image/png');
     res.set('Cache-Control', 'public, max-age=3600');
     res.send(buffer);

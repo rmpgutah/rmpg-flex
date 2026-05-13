@@ -218,15 +218,16 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
   }, []);
 
+  const activeRouteRef = useRef(activeRoute);
+  activeRouteRef.current = activeRoute;
+
   const updateOrigin = useCallback(async (lat: number, lng: number) => {
-    // Re-fetch route with new origin keeping same destination from call
     if (!call?.latitude || !call?.longitude) return;
     const map = mapRef.current;
     const token = tokenRef.current;
     if (!map || !token) return;
 
-    // Find the active route's unit callsign from current state
-    const currentRoute = activeRoute;
+    const currentRoute = activeRouteRef.current;
     if (!currentRoute) return;
 
     try {
@@ -250,7 +251,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     } catch {
       // Silently ignore routing errors
     }
-  }, [call?.latitude, call?.longitude, activeRoute]);
+  }, [call?.latitude, call?.longitude]);
 
   // ── Load Mapbox token and create map ──
   useEffect(() => {
@@ -323,17 +324,30 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       mapRef.current.setCenter(center);
     }
 
-    // Clear old markers
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current = [];
+    // Reconcile markers instead of destroying and recreating all
+    const existingMarkerMap = new Map<string, mapboxgl.Marker>();
+    markersRef.current.forEach(m => {
+      const ll = m.getLngLat();
+      existingMarkerMap.set(`${ll.lng.toFixed(6)},${ll.lat.toFixed(6)}`, m);
+    });
+
+    const nextMarkers: mapboxgl.Marker[] = [];
+    const neededKeys = new Set<string>();
 
     // Call marker (priority-colored pin)
     if (call?.latitude != null && call?.longitude != null && mapRef.current) {
-      const el = buildCallMarker(call.call_number || 'CALL', (call as any).priority);
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([call.longitude, call.latitude])
-        .addTo(mapRef.current);
-      markersRef.current.push(marker);
+      const key = `${call.longitude.toFixed(6)},${call.latitude.toFixed(6)}`;
+      neededKeys.add(key);
+      const existing = existingMarkerMap.get(key);
+      if (existing) {
+        nextMarkers.push(existing);
+      } else {
+        const el = buildCallMarker(call.call_number || 'CALL', (call as any).priority);
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([call.longitude, call.latitude])
+          .addTo(mapRef.current);
+        nextMarkers.push(marker);
+      }
     }
 
     // Assigned unit markers (status-colored)
@@ -343,13 +357,28 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
     for (const unit of assignedUnitsWithGps) {
       if (mapRef.current) {
-        const el = buildUnitMarker(unit.call_sign, (unit as any).status);
-        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-          .setLngLat([unit.longitude!, unit.latitude!])
-          .addTo(mapRef.current);
-        markersRef.current.push(marker);
+        const key = `${unit.longitude!.toFixed(6)},${unit.latitude!.toFixed(6)}`;
+        neededKeys.add(key);
+        const existing = existingMarkerMap.get(key);
+        if (existing) {
+          existing.setLngLat([unit.longitude!, unit.latitude!]);
+          nextMarkers.push(existing);
+        } else {
+          const el = buildUnitMarker(unit.call_sign, (unit as any).status);
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+            .setLngLat([unit.longitude!, unit.latitude!])
+            .addTo(mapRef.current);
+          nextMarkers.push(marker);
+        }
       }
     }
+
+    // Remove stale markers
+    existingMarkerMap.forEach((m, key) => {
+      if (!neededKeys.has(key)) m.remove();
+    });
+
+    markersRef.current = nextMarkers;
   }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
 
   // Track whether we have an active route via ref to avoid double-render from state dependency

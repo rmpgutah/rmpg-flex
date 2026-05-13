@@ -218,7 +218,7 @@ export default function RouteBuilderPage() {
     });
 
     return unsub;
-  }, [subscribe, waypoints]);
+  }, [subscribe]);
 
   // ─── Optimize Route ─────────────────────────────────────
 
@@ -259,7 +259,7 @@ export default function RouteBuilderPage() {
     } finally {
       setOptimizing(false);
     }
-  }, [selectedUnitId, priorityWeighted]);
+  }, [selectedUnitId, priorityWeighted, renderRoute]);
 
   // ─── Render Route on Map ────────────────────────────────
 
