@@ -105,6 +105,9 @@ const CrashReportsPage = lazyRetry(() => import('./pages/CrashReportsPage'));
 const TipsPage = lazyRetry(() => import('./pages/TipsPage'));
 const CommunityPortalPage = lazyRetry(() => import('./pages/CommunityPortalPage'));
 const AccreditationsPage = lazyRetry(() => import('./pages/AccreditationsPage'));
+const UseOfForcePage = lazyRetry(() => import('./pages/UseOfForcePage'));
+const SecurityDashboardPage = lazyRetry(() => import('./pages/SecurityDashboardPage'));
+const HelpPage = lazyRetry(() => import('./pages/HelpPage'));
 const RouteBuilderPage = lazyRetry(() => import('./pages/RouteBuilderPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
@@ -369,6 +372,9 @@ function AppRoutes() {
             <Route path="/tips" element={<RouteErrorBoundary><TipsPage /></RouteErrorBoundary>} />
             <Route path="/community-reports" element={<RouteErrorBoundary><CommunityPortalPage /></RouteErrorBoundary>} />
             <Route path="/accreditations" element={<RouteErrorBoundary><AccreditationsPage /></RouteErrorBoundary>} />
+            <Route path="/use-of-force" element={<RouteErrorBoundary><UseOfForcePage /></RouteErrorBoundary>} />
+            <Route path="/security-dashboard" element={<RouteErrorBoundary><SecurityDashboardPage /></RouteErrorBoundary>} />
+            <Route path="/help" element={<RouteErrorBoundary><HelpPage /></RouteErrorBoundary>} />
             <Route path="/admin" element={<RouteErrorBoundary><AdminPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
