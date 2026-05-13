@@ -1634,9 +1634,9 @@ router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervi
   }
 });
 
-// ── Manual priority escalation (auto-escalate timer was removed 2026-05-04) ────
+// ── Priority escalation ────
 // POST /api/dispatch/calls/:id/escalate - Bump priority by one level (P4→P3→P2→P1).
-// Triggered only by an explicit click in the dispatch console; never by a timer.
+// Called by auto-escalation timer (client-side, 30s interval) and manual click.
 router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
