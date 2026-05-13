@@ -68,38 +68,24 @@ function triggerDeploy(commitSha, branch, pusher) {
   const safePusher = String(pusher || '').replace(/[^\w.\-@]/g, '').slice(0, 64);
   log(`DEPLOY TRIGGERED — branch=${safeBranch}, commit=${safeSha}, by=${safePusher}`);
 
-  // Two sequential execFile calls instead of `bash -c` — DEPLOY_SCRIPT comes
-  // from env and could otherwise reach a shell parser (CodeQL flagged #2639
-  // js/shell-command-injection-from-environment, #2654 js/indirect-command-line-injection).
-  // The path is also validated at module load (line 19) — only [\w./-] allowed.
-  const pullChild = execFile('/usr/bin/git', ['pull', 'origin', 'main'], {
+  // Run the deploy script directly — it handles git fetch + reset, deps,
+  // build, restart, and health check internally. Using fetch+reset instead
+  // of `git pull` avoids "your local changes would be overwritten" failures
+  // when rsync or prior deploys have dirtied tracked files (Gotcha #48).
+  // The path is validated at module load (line 19) — only [\w./-] allowed.
+  const deployChild = execFile('/bin/bash', [DEPLOY_SCRIPT], {
     cwd: REPO_DIR,
-    timeout: 60_000,
+    timeout: 300_000,
     env: { ...process.env, HOME: '/root' },
-  }, (pullErr, pullOut, pullStderr) => {
-    if (pullErr) {
-      log(`GIT PULL FAILED — ${pullErr.message}`);
-      if (pullStderr) log(`PULL STDERR: ${pullStderr.slice(0, 500)}`);
-      return;
+  }, (error, stdout, stderr) => {
+    if (error) {
+      log(`DEPLOY FAILED — ${error.message}`);
+      if (stderr) log(`STDERR: ${stderr.slice(0, 500)}`);
+    } else {
+      log(`DEPLOY SUCCESS — output: ${(stdout || '').slice(0, 500)}`);
     }
-    log(`git pull ok: ${(pullOut || '').slice(0, 200)}`);
-
-    const deployChild = execFile('/bin/bash', [DEPLOY_SCRIPT], {
-      cwd: REPO_DIR,
-      timeout: 240_000,
-      env: { ...process.env, HOME: '/root' },
-    }, (error, stdout, stderr) => {
-      if (error) {
-        log(`DEPLOY FAILED — ${error.message}`);
-        if (stderr) log(`STDERR: ${stderr.slice(0, 500)}`);
-      } else {
-        log(`DEPLOY SUCCESS — output: ${(stdout || '').slice(0, 300)}`);
-      }
-    });
-    deployChild.unref();
   });
-
-  pullChild.unref();
+  deployChild.unref();
 }
 
 // ── HTTP Server ──

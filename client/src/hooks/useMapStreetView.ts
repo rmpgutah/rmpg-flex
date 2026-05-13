@@ -93,17 +93,26 @@ export function useMapStreetView(map: mapboxgl.Map | null, mapLoaded: boolean): 
     const activeZoom = ZOOM_TABS[0].zoom;
     const markers = [{ lng, lat, color: 'd4a017', label: '' }];
 
-    const satSrc = buildImageSrc(lng, lat, activeZoom, 640, 400, 'mapbox/satellite-v9', true, markers);
+    const satSrc = buildImageSrc(lng, lat, ZOOM_TABS[defaultZoomIdx].zoom, 640, 400, 'mapbox/satellite-v9', true, markers);
+
+    // Build zoom tab buttons
+    const zoomTabsHtml = ZOOM_TABS.map((tab, i) => {
+      const active = i === defaultZoomIdx;
+      const bg = active ? '#d4a017' : '#1a1a1a';
+      const fg = active ? '#0a0a0a' : '#888';
+      const border = active ? '#d4a017' : '#333';
+      return `<button data-sat-zoom="${tab.zoom}" data-sat-idx="${i}" style="padding:2px 8px;font-size:8px;font-family:ui-monospace,monospace;background:${bg};color:${fg};border:1px solid ${border};border-radius:2px;cursor:pointer;font-weight:${active ? '700' : '400'};">${escapeHtml(tab.label)}</button>`;
+    }).join('');
 
     const html = `
       <div style="background:#141414;border:1px solid #222;border-radius:2px;overflow:hidden;width:340px;">
-        <div style="padding:4px 8px;font-size:9px;color:#888;font-family:ui-monospace,monospace;border-bottom:1px solid #222;display:flex;gap:4px;align-items:center;">
+        <div style="padding:4px 8px;font-size:9px;color:#888;font-family:ui-monospace,monospace;border-bottom:1px solid #222;display:flex;gap:6px;align-items:center;justify-content:space-between;">
           <span style="color:#d4a017;font-weight:600;">SAT PEEK</span>
+          <span style="display:flex;gap:3px;" data-sat-tabs>${zoomTabsHtml}</span>
         </div>
-        <div style="position:relative;">
-          <img src="${satSrc}" alt="Satellite view"
-            style="width:340px;height:213px;object-fit:cover;display:block;background:#0a0a0a;"
-            onerror="this.parentElement.innerHTML='<div style=\\'padding:40px;color:#ef4444;text-align:center;font-size:10px;font-family:ui-monospace,monospace;\\'>Image failed to load</div>'" />
+        <div style="position:relative;" data-sat-img-wrap>
+          <img data-sat-img src="${satSrc}" alt="Satellite view"
+            style="width:340px;height:213px;object-fit:cover;display:block;background:#0a0a0a;" />
           <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,#0a0a0aCC);padding:6px 8px;">
             <div style="color:#d4a017;font-size:9px;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
               ${safeAddress}
@@ -117,6 +126,45 @@ export function useMapStreetView(map: mapboxgl.Map | null, mapLoaded: boolean): 
 
     if (popupRef.current === popup) {
       popup.setHTML(html);
+
+      // Wire up zoom tab click handlers
+      const popupEl = popup.getElement();
+      if (popupEl) {
+        const img = popupEl.querySelector('[data-sat-img]') as HTMLImageElement | null;
+        const btns = popupEl.querySelectorAll('[data-sat-zoom]');
+        btns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const zoom = parseInt(btn.getAttribute('data-sat-zoom') || String(ZOOM_TABS[0].zoom), 10);
+            // Update image source with new zoom
+            if (img) {
+              img.style.opacity = '0.4';
+              const newSrc = buildImageSrc(lng, lat, zoom, 640, 400, 'mapbox/satellite-v9', true, markers);
+              const tempImg = new Image();
+              tempImg.onload = () => { if (img) { img.src = newSrc; img.style.opacity = '1'; } };
+              tempImg.onerror = () => { if (img) { img.style.opacity = '1'; } };
+              tempImg.src = newSrc;
+            }
+            // Update active tab styling
+            btns.forEach(b => {
+              const isActive = b === btn;
+              (b as HTMLElement).style.background = isActive ? '#d4a017' : '#1a1a1a';
+              (b as HTMLElement).style.color = isActive ? '#0a0a0a' : '#888';
+              (b as HTMLElement).style.borderColor = isActive ? '#d4a017' : '#333';
+              (b as HTMLElement).style.fontWeight = isActive ? '700' : '400';
+            });
+          });
+        });
+
+        // Wire up image error handler
+        if (img) {
+          img.addEventListener('error', () => {
+            const wrap = popupEl.querySelector('[data-sat-img-wrap]');
+            if (wrap) {
+              wrap.innerHTML = '<div style="padding:40px;color:#ef4444;text-align:center;font-size:10px;font-family:ui-monospace,monospace;">Image failed to load</div>';
+            }
+          });
+        }
+      }
     }
     devLog('[StreetView] Satellite popup opened at', lng, lat);
   }, [map]);
