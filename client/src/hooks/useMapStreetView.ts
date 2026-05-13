@@ -10,6 +10,7 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { mapboxReverseGeocode } from '../services/mapboxApiService';
+import { escapeHtml } from '../utils/sanitize';
 import { devLog } from '../utils/devLog';
 
 // ── Types ─────────────────────────────────────────────────
@@ -88,6 +89,7 @@ export function useMapStreetView(map: mapboxgl.Map | null, mapLoaded: boolean): 
       if (results[0]?.full_address) address = results[0].full_address;
     } catch { /* keep coords */ }
 
+    const safeAddress = escapeHtml(address);
     const activeZoom = ZOOM_TABS[0].zoom;
     const markers = [{ lng, lat, color: 'd4a017', label: '' }];
 
@@ -104,7 +106,7 @@ export function useMapStreetView(map: mapboxgl.Map | null, mapLoaded: boolean): 
             onerror="this.parentElement.innerHTML='<div style=\\'padding:40px;color:#ef4444;text-align:center;font-size:10px;font-family:ui-monospace,monospace;\\'>Image failed to load</div>'" />
           <div style="position:absolute;bottom:0;left:0;right:0;background:linear-gradient(transparent,#0a0a0aCC);padding:6px 8px;">
             <div style="color:#d4a017;font-size:9px;font-family:ui-monospace,monospace;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">
-              ${address}
+              ${safeAddress}
             </div>
           </div>
         </div>

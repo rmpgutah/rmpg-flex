@@ -8013,6 +8013,33 @@ function seedData(): void {
   )`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_fire_hydrants_location ON fire_hydrants(latitude, longitude)`).run();
 
+  // ─── CRM Competitor Monitor ────────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS firecrawl_monitored_urls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    label TEXT,
+    check_interval_minutes INTEGER DEFAULT 60,
+    is_enabled INTEGER DEFAULT 1,
+    last_check_at TEXT,
+    last_content_hash TEXT,
+    last_content TEXT,
+    consecutive_failures INTEGER DEFAULT 0,
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE TABLE IF NOT EXISTS firecrawl_url_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    monitored_url_id INTEGER NOT NULL,
+    old_hash TEXT,
+    new_hash TEXT,
+    significance TEXT DEFAULT 'minor',
+    content_snapshot TEXT,
+    acknowledged INTEGER DEFAULT 0,
+    detected_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (monitored_url_id) REFERENCES firecrawl_monitored_urls(id)
+  )`).run();
+
   // ─── Seed default timer profile ─────────────────────
   db.prepare(`INSERT OR IGNORE INTO timer_profiles (name, call_type, warn_minutes, alert_minutes, critical_minutes, is_default) VALUES ('Default', NULL, 15, 30, 60, 1)`).run();
 }

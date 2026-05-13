@@ -264,7 +264,9 @@ export function mapboxStaticImageUrl(options: {
     const pins = allMarkers.map(m => {
       const color = (m.color ?? 'd4a017').replace('#', '');
       const label = m.label ?? '';
-      return `pin-s-${label}+${color}(${m.lng},${m.lat})`;
+      // Mapbox spec: pin-s+color for no label, pin-s-X+color for label X
+      const labelPart = label ? `-${label}` : '';
+      return `pin-s${labelPart}+${color}(${m.lng},${m.lat})`;
     }).join(',');
     overlayStr = `/${pins}`;
   }

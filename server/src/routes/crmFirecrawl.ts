@@ -18,6 +18,21 @@ import { localNow } from '../utils/timeUtils';
 import { createHash } from 'crypto';
 import { paramStr } from '../utils/reqHelpers';
 
+interface MonitoredUrlRow {
+  id: number;
+  url: string;
+  label: string | null;
+  check_interval_minutes: number;
+  is_enabled: number;
+  last_check_at: string | null;
+  last_content_hash: string | null;
+  last_content: string | null;
+  consecutive_failures: number;
+  created_by: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
 const router = Router();
 router.use(authenticate);
 
@@ -483,36 +498,6 @@ router.post(
   },
 );
 
-// ── Competitor Monitor: ensure tables ─────────────────────────
-function ensureMonitorTables(): void {
-  const db = getDb();
-  db.prepare(`CREATE TABLE IF NOT EXISTS firecrawl_monitored_urls (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    url TEXT NOT NULL,
-    label TEXT,
-    check_interval_minutes INTEGER DEFAULT 60,
-    is_enabled INTEGER DEFAULT 1,
-    last_check_at TEXT,
-    last_content_hash TEXT,
-    last_content TEXT,
-    consecutive_failures INTEGER DEFAULT 0,
-    created_by INTEGER,
-    created_at TEXT DEFAULT (datetime('now','localtime')),
-    updated_at TEXT DEFAULT (datetime('now','localtime'))
-  )`).run();
-  db.prepare(`CREATE TABLE IF NOT EXISTS firecrawl_url_changes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    monitored_url_id INTEGER NOT NULL,
-    old_hash TEXT,
-    new_hash TEXT,
-    significance TEXT DEFAULT 'minor',
-    content_snapshot TEXT,
-    acknowledged INTEGER DEFAULT 0,
-    detected_at TEXT DEFAULT (datetime('now','localtime')),
-    FOREIGN KEY (monitored_url_id) REFERENCES firecrawl_monitored_urls(id)
-  )`).run();
-}
-
 // ── GET /firecrawl/monitors ──────────────────────────────────
 // List all monitored URLs with unacknowledged change count
 
@@ -521,7 +506,6 @@ router.get(
   requireRole('admin', 'manager'),
   (_req: Request, res: Response) => {
     try {
-      ensureMonitorTables();
       const db = getDb();
       const rows = db.prepare(`
         SELECT
@@ -570,7 +554,6 @@ router.post(
     const interval = Math.max(5, Math.min(check_interval_minutes || 60, 10080));
 
     try {
-      ensureMonitorTables();
       const db = getDb();
       const now = localNow();
       const userId = (req as any).user?.id;
@@ -601,7 +584,6 @@ router.delete(
       return;
     }
     try {
-      ensureMonitorTables();
       const db = getDb();
       const existing = db.prepare('SELECT url FROM firecrawl_monitored_urls WHERE id = ?').get(id) as { url: string } | undefined;
       if (!existing) {
@@ -632,7 +614,6 @@ router.get(
       return;
     }
     try {
-      ensureMonitorTables();
       const db = getDb();
       const rows = db.prepare(`
         SELECT * FROM firecrawl_url_changes
@@ -661,9 +642,8 @@ router.post(
       return;
     }
     try {
-      ensureMonitorTables();
       const db = getDb();
-      const monitored = db.prepare('SELECT * FROM firecrawl_monitored_urls WHERE id = ?').get(id) as any;
+      const monitored = db.prepare('SELECT * FROM firecrawl_monitored_urls WHERE id = ?').get(id) as MonitoredUrlRow | undefined;
       if (!monitored) {
         res.status(404).json({ error: 'Monitored URL not found', code: 'MONITORED_URL_NOT_FOUND' });
         return;
@@ -744,7 +724,6 @@ router.post(
       return;
     }
     try {
-      ensureMonitorTables();
       const db = getDb();
       const result = db.prepare('UPDATE firecrawl_url_changes SET acknowledged = 1 WHERE id = ?').run(changeId);
       if (result.changes === 0) {
