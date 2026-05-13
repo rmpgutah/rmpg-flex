@@ -17,7 +17,7 @@
 //   GET  /api/mapbox/tilequery         — Query features near point
 // ============================================================
 
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { authenticateToken } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import {
@@ -170,7 +170,7 @@ router.get('/static', (req: Request, res: Response) => {
 // ── Static Image Binary ──────────────────────────────────
 // Accept token from query string for <img> elements (can't set Authorization header)
 
-router.get('/static/image', (req: Request, _res: Response, next: () => void) => {
+router.get('/static/image', (req: Request, _res: Response, next: NextFunction) => {
   if (!req.headers['authorization'] && typeof req.query.token === 'string' && req.query.token.length < 2048) {
     req.headers['authorization'] = `Bearer ${req.query.token}`;
   }
