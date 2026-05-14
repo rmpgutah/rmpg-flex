@@ -30,6 +30,7 @@
     "d3-force": "^3.0.0",
     "d3-selection": "^3.0.0",
     "d3-zoom": "^3.0.0",
+    "bwip-js": "^4.7.0",
     "idb": "^8.0.3",
     "jspdf": "^4.2.1",
     "leaflet": "^1.9.4",
@@ -39,6 +40,7 @@
     "react-force-graph-2d": "^1.29.1",
     "react-router-dom": "^6.28.0",
     "recharts": "^2.14.1",
+    "sanitize-html": "^2.17.0",
     "source-map": "^0.7.6"
   },
   "overrides": {
