@@ -5,6 +5,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { getMeaningfulPersonStatus } from './personStatus';
 import {
   addConfidentialWatermark,
   addClassificationBar,
@@ -1783,9 +1784,11 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
     addCheckboxField(doc, 'Active BOLO', !!data.bolo_active, flagX + SPACING.SM, y);
     y += 4;
     // Row 2: Gang Affiliation (1/3), Probation/Parole (2/3)
-    const probParole = `${data.probation_parole || ''}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
+    const gangAffiliation = getMeaningfulPersonStatus(data.gang_affiliation) || '';
+    const probationParoleStatus = getMeaningfulPersonStatus(data.probation_parole) || '';
+    const probParole = `${probationParoleStatus}${data.probation_parole_officer ? ` (Officer: ${data.probation_parole_officer})` : ''}`.trim();
     const thirdW = ffw / 3;
-    const f1 = addFieldPair(doc, 'Gang Affiliation', data.gang_affiliation || '', lx, y, thirdW);
+    const f1 = addFieldPair(doc, 'Gang Affiliation', gangAffiliation, lx, y, thirdW);
     const f2 = addFieldPair(doc, 'Probation / Parole', probParole, lx + thirdW, y, thirdW * 2);
     y = Math.max(f1, f2);
     // Row 3: Known Associates (if present)
