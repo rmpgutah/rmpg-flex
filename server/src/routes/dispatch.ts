@@ -9,6 +9,10 @@ import { geocodeCallIfNeeded, reverseGeocodeAddress, reverseGeocodeDetailed } fr
 import { identifyBeat } from '../utils/geofence';
 import { computeRiskScore } from '../utils/riskScoring';
 import { createNotification } from './notifications';
+import { getMeaningfulPersonStatus, isPreTrialSupervisionStatus } from '../utils/personStatus';
+import { emitDispatchEvent } from '../services/dispatch/dispatchEvents';
+import { createDispatchCall } from '../services/dispatch/createCall';
+import { listDispatchCalls, normalizeDispatchCallFilters } from '../services/dispatch/listCalls';
 
 const router = Router();
 
@@ -18,80 +22,15 @@ router.use(authenticateToken);
 // GET /api/dispatch/calls - List calls with filters
 router.get('/calls', (req: Request, res: Response) => {
   try {
-    const db = getDb();
-    const {
-      status,
-      priority,
-      startDate,
-      endDate,
-      propertyId,
-      archived,
-      page = '1',
-      limit = '50',
-    } = req.query;
+    const filters = normalizeDispatchCallFilters(req.query as Partial<Record<string, unknown>>);
+    const result = listDispatchCalls(filters);
 
-    let whereClause = 'WHERE 1=1';
-    const params: any[] = [];
-
-    if (status) {
-      whereClause += ' AND c.status = ?';
-      params.push(status);
-    }
-    if (priority) {
-      whereClause += ' AND c.priority = ?';
-      params.push(priority);
-    }
-    if (startDate) {
-      whereClause += ' AND c.created_at >= ?';
-      params.push(startDate);
-    }
-    if (endDate) {
-      whereClause += ' AND c.created_at <= ?';
-      params.push(endDate);
-    }
-    if (propertyId) {
-      whereClause += ' AND c.property_id = ?';
-      params.push(propertyId);
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
+      return;
     }
 
-    // Archive filter: exclude archived calls by default, include only when requested
-    if (archived === 'true') {
-      whereClause += " AND c.status = 'archived'";
-    } else if (archived !== 'all') {
-      whereClause += " AND c.status != 'archived'";
-    }
-
-    const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50));
-    const offset = (pageNum - 1) * limitNum;
-
-    const countRow = db.prepare(`SELECT COUNT(*) as total FROM calls_for_service c ${whereClause}`).get(...params) as any;
-
-    const calls = db.prepare(`
-      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name
-      FROM calls_for_service c
-      LEFT JOIN properties p ON c.property_id = p.id
-      LEFT JOIN users u ON c.dispatcher_id = u.id
-      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
-      ${whereClause}
-      ORDER BY
-        ${archived === 'true'
-          ? 'c.call_number DESC'
-          : "CASE c.priority WHEN 'P1' THEN 1 WHEN 'P2' THEN 2 WHEN 'P3' THEN 3 WHEN 'P4' THEN 4 END, c.created_at DESC"
-        }
-      LIMIT ? OFFSET ?
-    `).all(...params, limitNum, offset);
-
-    res.json({
-      data: calls,
-      pagination: {
-        page: pageNum,
-        limit: limitNum,
-        total: countRow.total,
-        totalPages: Math.ceil(countRow.total / limitNum),
-      },
-    });
+    res.json(result.data);
   } catch (error: any) {
     console.error('Get calls error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -103,192 +42,26 @@ router.get('/calls', (req: Request, res: Response) => {
 // onscene_at, cleared_at, closed_at, disposition — for entering past records.
 router.post('/calls', (req: Request, res: Response) => {
   try {
-    const db = getDb();
-    const {
-      incident_type, priority, caller_name, caller_phone, caller_relationship, caller_address,
-      location_address, property_id, latitude, longitude, description, notes, source,
-      cross_street, location_building, location_floor, location_room, zone_beat,
-      section_id, zone_id, beat_id,
-      weapons_involved, injuries_reported, num_subjects, num_victims,
-      subject_description, vehicle_description, direction_of_travel,
-      scene_safety, weather_conditions, lighting_conditions,
-      alcohol_involved, drugs_involved, domestic_violence,
-      supervisor_notified, le_notified, le_agency, le_case_number,
-      damage_estimate, damage_description, responding_officer, action_taken,
-      contract_id,
-      // Extended operational flags
-      mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
-      k9_requested, ems_requested, fire_requested, hazmat,
-      gang_related, evidence_collected, body_camera_active, photos_taken,
-      trespass_issued, vehicle_pursuit, foot_pursuit,
-      // PSO Client Request fields
-      pso_service_type, pso_authorization, pso_requestor_name,
-      pso_requestor_phone, pso_requestor_email, pso_billing_code,
-      // Process Service fields
-      process_service_type, process_served_to, process_served_address,
-      client_id: requestClientId,
-      // Historical entry fields (optional)
-      created_at: customCreatedAt,
-      status: customStatus,
-      dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, archived_at,
-      disposition: customDisposition,
-    } = req.body;
+    const result = createDispatchCall(req.body, {
+      userId: req.user!.userId,
+      username: req.user!.username,
+      ipAddress: req.ip || 'unknown',
+    });
 
-    if (!incident_type || !priority || !location_address) {
-      res.status(400).json({ error: 'incident_type, priority, and location_address are required' });
+    if (!result.ok) {
+      res.status(result.status).json({ error: result.error });
       return;
     }
 
-    // Normalize priority to uppercase to match CHECK constraint (P1, P2, P3, P4)
-    const normalizedPriority = String(priority).toUpperCase();
-
-    // Generate call number: CFS-YYYY-NNNNN
-    const callNumber = generateCallNumber(db);
-
-    // Determine status — allow historical entries to set any valid status
-    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
-    const status = customStatus && validStatuses.includes(customStatus) ? customStatus : 'pending';
-
-    // Auto-resolve client_id from property if not provided
-    let resolvedClientId = requestClientId || null;
-    if (!resolvedClientId && property_id) {
-      const prop = db.prepare('SELECT client_id FROM properties WHERE id = ?').get(property_id) as any;
-      if (prop) resolvedClientId = prop.client_id;
-    }
-
-    // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier dispatch districts ──
-    let autoZoneBeat = zone_beat || null;
-    let autoSectionId = section_id || null;
-    let autoZoneId = zone_id || null;
-    let autoBeatId = beat_id || null;
-    let autoDispatchCode: string | null = null;
-    let autoSectionName: string | null = null;
-    let autoZoneName: string | null = null;
-    let autoBeatName: string | null = null;
-    let autoBeatDescriptor: string | null = null;
-    if (latitude && longitude) {
-      try {
-        const beat = identifyBeat(Number(latitude), Number(longitude));
-        if (beat) {
-          if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
-
-          // Look up 3-tier dispatch district for richer naming
-          const district = db.prepare(
-            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-          ).get(beat.city_code, beat.district_letter) as any;
-
-          if (district) {
-            if (!autoSectionId) autoSectionId = district.section_id;
-            if (!autoZoneId) autoZoneId = district.zone_id;
-            if (!autoBeatId) autoBeatId = district.beat_id;
-            autoDispatchCode = district.dispatch_code;
-            autoSectionName = district.section_name;
-            autoZoneName = district.zone_name;
-            autoBeatName = district.beat_name;
-            autoBeatDescriptor = district.beat_descriptor;
-          } else {
-            // Fallback to raw geofence data
-            if (!autoBeatId) autoBeatId = beat.beat_id;
-            if (!autoZoneId) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
-            if (!autoSectionId) autoSectionId = beat.district_letter;
-          }
-        }
-      } catch { /* geofence not configured, skip */ }
-    }
-
-    const result = db.prepare(`
-      INSERT INTO calls_for_service (call_number, incident_type, priority, status, caller_name, caller_phone,
-        caller_relationship, caller_address, location_address, property_id, latitude, longitude, description, notes, source, dispatcher_id,
-        cross_street, location_building, location_floor, location_room, zone_beat,
-        section_id, zone_id, beat_id, dispatch_code,
-        section_name, zone_name, beat_name, beat_descriptor,
-        weapons_involved, injuries_reported, num_subjects, num_victims,
-        subject_description, vehicle_description, direction_of_travel,
-        scene_safety, weather_conditions, lighting_conditions,
-        alcohol_involved, drugs_involved, domestic_violence,
-        supervisor_notified, le_notified, le_agency, le_case_number,
-        damage_estimate, damage_description, responding_officer, action_taken,
-        mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
-        k9_requested, ems_requested, fire_requested, hazmat,
-        gang_related, evidence_collected, body_camera_active, photos_taken,
-        trespass_issued, vehicle_pursuit, foot_pursuit,
-        pso_service_type, pso_authorization, pso_requestor_name,
-        pso_requestor_phone, pso_requestor_email, pso_billing_code,
-        process_service_type, process_served_to, process_served_address,
-        contract_id, client_id,
-        created_at, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, archived_at, disposition)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              ?, ?, ?, ?, ?, ?, ?, ?, ?,
-              COALESCE(?, ?), ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      callNumber, incident_type, normalizedPriority, status, caller_name || null, caller_phone || null,
-      caller_relationship || null, caller_address || null, location_address, property_id || null,
-      latitude || null, longitude || null, description || null, notes || null,
-      source || 'phone', req.user!.userId,
-      cross_street || null, location_building || null, location_floor || null, location_room || null, autoZoneBeat,
-      autoSectionId, autoZoneId, autoBeatId, autoDispatchCode,
-      autoSectionName, autoZoneName, autoBeatName, autoBeatDescriptor,
-      weapons_involved || null, injuries_reported ? 1 : 0, num_subjects || null, num_victims || null,
-      subject_description || null, vehicle_description || null, direction_of_travel || null,
-      scene_safety || null, weather_conditions || null, lighting_conditions || null,
-      alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
-      supervisor_notified ? 1 : 0, le_notified ? 1 : 0, le_agency || null, le_case_number || null,
-      damage_estimate || null, damage_description || null, responding_officer || null, action_taken || null,
-      mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0, officer_safety_caution ? 1 : 0,
-      k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
-      gang_related ? 1 : 0, evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0,
-      trespass_issued ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
-      pso_service_type || null, pso_authorization || null, pso_requestor_name || null,
-      pso_requestor_phone || null, pso_requestor_email || null, pso_billing_code || null,
-      process_service_type || null, process_served_to || null, process_served_address || null,
-      contract_id || null, resolvedClientId,
-      // Historical timestamps
-      customCreatedAt || null,
-      localNow(),
-      dispatched_at || null, enroute_at || null, onscene_at || null,
-      cleared_at || null, closed_at || null, archived_at || null,
-      customDisposition || null,
+    geocodeCallIfNeeded(
+      result.data.call.id,
+      String(req.body.location_address),
+      req.body.latitude,
+      req.body.longitude,
     );
+    emitDispatchEvent(result.data.event);
 
-    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(result.lastInsertRowid) as any;
-
-    // Log activity
-    const isHistorical = !!customCreatedAt;
-    db.prepare(`
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'call_created', 'call', ?, ?, ?)
-    `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber}: ${incident_type}`, req.ip || 'unknown');
-
-    // If no coordinates were provided, geocode the address asynchronously
-    geocodeCallIfNeeded(call.id, location_address, latitude, longitude);
-
-    // Compute risk score and update call
-    try {
-      const riskScore = computeRiskScore(call.id);
-      db.prepare('UPDATE calls_for_service SET risk_score = ? WHERE id = ?').run(riskScore, call.id);
-      call.risk_score = riskScore;
-
-      // Auto-notify supervisors for high-risk calls (score >= 80)
-      if (riskScore >= 80) {
-        const supervisors = db.prepare(
-          "SELECT id FROM users WHERE role IN ('admin', 'supervisor') AND status = 'active'"
-        ).all() as any[];
-        for (const sup of supervisors) {
-          createNotification(
-            sup.id, 'high_risk_call', `HIGH RISK Call: ${callNumber}`,
-            `Risk score ${riskScore}/100 — ${incident_type} at ${location_address}`,
-            'call', call.id, 'critical'
-          );
-        }
-      }
-    } catch (e) { console.error('Risk scoring error:', e); }
-
-    // Broadcast to dispatch channel
-    broadcastDispatchUpdate({ action: 'call_created', call });
-
-    res.status(201).json(call);
+    res.status(201).json(result.data.call);
   } catch (error: any) {
     console.error('Create call error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -2289,6 +2062,8 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
       `).all(call.id) as any[];
 
       for (const person of linkedPersons) {
+        const gangAffiliation = getMeaningfulPersonStatus(person.gang_affiliation);
+        const probationStatus = getMeaningfulPersonStatus(person.probation_parole);
         if (person.caution_flags) {
           const flags = person.caution_flags.split(',').map((f: string) => f.trim()).filter(Boolean);
           for (const flag of flags) {
@@ -2303,14 +2078,14 @@ router.get('/calls/:id/warnings', (req: Request, res: Response) => {
         if (person.is_sex_offender) {
           warnings.push({ type: 'SEX_OFFENDER', label: 'SEX OFFENDER', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
         }
-        if (person.gang_affiliation) {
+        if (gangAffiliation) {
           warnings.push({ type: 'GANG', label: 'GANG AFFILIATED', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
         }
-        if (person.probation_parole) {
+        if (probationStatus) {
           warnings.push({ type: 'PROBATION', label: 'ON PROBATION/PAROLE', severity: 'high', source: `${person.first_name} ${person.last_name}` });
         }
         // Pre-Trial Supervision
-        if (person.probation_parole && person.probation_parole.toLowerCase().includes('pre-trial')) {
+        if (isPreTrialSupervisionStatus(probationStatus)) {
           warnings.push({ type: 'PTS', label: 'PRE-TRIAL SUPERVISION', severity: 'high', source: `${person.first_name} ${person.last_name}` });
         }
       }
