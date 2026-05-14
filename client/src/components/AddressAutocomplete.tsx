@@ -119,7 +119,6 @@ export default function AddressAutocomplete({
   autoFocus = false,
 }: AddressAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [tokenReady, setTokenReady] = useState(false);
   const [loadError, setLoadError] = useState(false);
   const [suggestions, setSuggestions] = useState<MapboxFeature[]>([]);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -139,7 +138,7 @@ export default function AddressAutocomplete({
         const token = await getMapboxToken(attempt > 0);
         if (cancelled) return;
         if (token && token.startsWith('pk.')) {
-          setTokenReady(true);
+          setLoadError(false);
         } else if (++attempt < maxAttempts) {
           setTimeout(() => { if (!cancelled) tryFetch(); }, attempt * 2000);
         } else {
@@ -180,7 +179,7 @@ export default function AddressAutocomplete({
       return;
     }
     try {
-      const types = addressOnly ? '&types=address,poi,place' : '';
+      const types = addressOnly ? '&types=address,street' : '';
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&proximity=${SLC_PROXIMITY[0]},${SLC_PROXIMITY[1]}&country=${country}&limit=5${types}`;
       const res = await fetch(url);
       if (!res.ok) return;

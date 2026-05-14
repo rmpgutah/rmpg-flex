@@ -54,19 +54,25 @@ export async function getMapboxToken(forceRefresh = false): Promise<string | nul
   if (!forceRefresh && cachedMapboxToken) return cachedMapboxToken;
   if (!forceRefresh && inflightMapboxToken) return inflightMapboxToken;
 
-  inflightMapboxToken = apiFetch<{ configured?: boolean; accessToken?: string; styleUrl?: string }>(
+  inflightMapboxToken = apiFetch<{ configured?: boolean; accessToken?: string; styleUrl?: string; error?: string }>(
     '/integrations/mapbox/client-key'
   )
     .then((response) => {
       const token = typeof response?.accessToken === 'string' ? response.accessToken.trim() : '';
-      // Validate Mapbox token format: public tokens start with 'pk.', secret with 'sk.'
-      if (token && !/^(pk|sk)\./.test(token)) {
-        console.warn('[MapboxToken] Token has unexpected format (expected pk.* or sk.*). It may be invalid.');
+      if (token.startsWith('sk.')) {
+        console.warn('[MapboxToken] Refusing to use a secret Mapbox token in the browser. Configure a public pk.* token for client rendering.');
+        cachedMapboxToken = null;
+        cachedMapboxStyleUrl = null;
+        lastMapboxTokenError = 'Mapbox client rendering requires a public pk.* token';
+        return null;
       }
-      cachedMapboxToken = token || null;
+      if (token && !token.startsWith('pk.')) {
+        console.warn('[MapboxToken] Token has unexpected format (expected public pk.* token). It may be invalid.');
+      }
+      cachedMapboxToken = token.startsWith('pk.') ? token : null;
       const rawStyleUrl = typeof response?.styleUrl === 'string' ? response.styleUrl.trim() : '';
       cachedMapboxStyleUrl = rawStyleUrl || null;
-      lastMapboxTokenError = null;
+      lastMapboxTokenError = cachedMapboxToken ? null : (response?.error || null);
       return cachedMapboxToken;
     })
     .catch((err: any) => {

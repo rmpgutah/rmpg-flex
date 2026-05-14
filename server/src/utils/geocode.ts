@@ -1,24 +1,5 @@
 import { getDb } from '../models/database';
 import { broadcastDispatchUpdate } from './websocket';
-import { resolveGoogleMapsApiKey } from './configEncryption';
-
-// Lazily resolved so the DB is ready when first used
-let _cachedGoogleKey: string | undefined;
-let _cacheTime = 0;
-let _cacheResolving = false;
-const CACHE_TTL_MS = 5 * 60 * 1000; // re-check every 5 min
-
-function getGoogleMapsApiKey(): string | undefined {
-  const now = Date.now();
-  if ((!_cachedGoogleKey || now - _cacheTime > CACHE_TTL_MS) && !_cacheResolving) {
-    _cacheResolving = true;
-    _cachedGoogleKey = resolveGoogleMapsApiKey();
-    _cacheTime = Date.now();
-    _cacheResolving = false;
-  }
-  return _cachedGoogleKey;
-}
-
 // [FIX 54] Add request timeout for geocode API calls
 const GEOCODE_TIMEOUT_MS = 10_000;
 
@@ -32,7 +13,9 @@ interface GeocodeResult {
 }
 
 /**
- * Geocode an address string using the Google Geocoding API.
+ * Geocode an address string using the current primary geocoding provider.
+ * The live implementation prefers Nominatim to avoid hard dependency on a
+ * configured Google key for basic address resolution.
  * Returns { latitude, longitude } or null if geocoding fails.
  */
 export async function geocodeAddress(address: string): Promise<GeocodeResult | null> {
@@ -79,7 +62,8 @@ async function geocodeWithNominatim(address: string): Promise<GeocodeResult | nu
 }
 
 /**
- * Reverse-geocode GPS coordinates to a street address using Google Geocoding API.
+ * Reverse-geocode GPS coordinates to a street address using the current
+ * reverse-geocoding provider.
  * Returns the formatted address string or null if reverse geocoding fails.
  */
 export async function reverseGeocodeAddress(lat: number, lng: number): Promise<string | null> {
@@ -109,7 +93,7 @@ export async function reverseGeocodeAddress(lat: number, lng: number): Promise<s
 
 // ─── Detailed Reverse Geocode ─────────────────────────────
 // Returns road name, nearest intersection, and formatted address
-// from Google's Geocoding API address_components.
+// from the current reverse-geocoding provider.
 
 export interface DetailedGeocodeResult {
   formatted_address: string;
@@ -119,8 +103,8 @@ export interface DetailedGeocodeResult {
 
 /**
  * Reverse-geocode GPS coordinates to get detailed road info.
- * Parses address_components for route (road name) and looks for
- * intersection data in secondary results.
+ * Uses provider-specific address metadata and approximates intersection data
+ * where an exact intersection field is unavailable.
  */
 export async function reverseGeocodeDetailed(lat: number, lng: number): Promise<DetailedGeocodeResult | null> {
   if (typeof lat !== 'number' || typeof lng !== 'number' || isNaN(lat) || isNaN(lng)) return null;

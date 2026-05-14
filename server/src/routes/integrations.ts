@@ -209,13 +209,16 @@ router.get('/mapbox/client-key', (_req: Request, res: Response) => {
       || getIntegrationConfigValue(db, 'mapbox_access_token')
       || null;
 
-    const accessToken = envToken || storedToken || '';
+    const rawAccessToken = envToken || storedToken || '';
+    const accessToken = rawAccessToken.startsWith('pk.') ? rawAccessToken : '';
+    const invalidClientToken = rawAccessToken.length > 0 && !rawAccessToken.startsWith('pk.');
 
     // Diagnostic logging for Mapbox token resolution
     logger.info({
       source: envToken ? 'env' : storedToken ? 'system_config' : 'missing',
       configured: accessToken.length > 0,
-      tokenPrefix: accessToken ? accessToken.substring(0, 6) + '...' : '(empty)',
+      tokenPrefix: rawAccessToken ? rawAccessToken.substring(0, 6) + '...' : '(empty)',
+      invalidClientToken,
     }, 'Mapbox client-key request');
 
     // Also return the custom style URL if configured
@@ -227,6 +230,7 @@ router.get('/mapbox/client-key', (_req: Request, res: Response) => {
       accessToken: accessToken || undefined,
       styleUrl,
       source: envToken ? 'env' : storedToken ? 'system_config' : 'missing',
+      error: invalidClientToken ? 'Mapbox client rendering requires a public pk.* token' : undefined,
     });
   } catch (error: any) {
     console.error('Mapbox token fetch error:', error);
@@ -246,11 +250,12 @@ router.get('/map-provider/status', (_req: Request, res: Response) => {
   try {
     const db = getDb();
 
-    const mapboxToken =
+    const rawMapboxToken =
       getIntegrationConfigValue(db, 'mapbox_api_key')
       || getIntegrationConfigValue(db, 'mapbox_access_token')
       || (process.env.MAPBOX_ACCESS_TOKEN || '').trim()
       || '';
+    const mapboxToken = rawMapboxToken.startsWith('pk.') ? rawMapboxToken : '';
 
     const engines: string[] = [];
     if (mapboxToken) engines.push('mapbox');
@@ -259,7 +264,10 @@ router.get('/map-provider/status', (_req: Request, res: Response) => {
     res.json({
       primary: engines[0] || 'maplibre',
       engines,
-      mapbox: { configured: !!mapboxToken },
+      mapbox: {
+        configured: !!mapboxToken,
+        error: rawMapboxToken && !mapboxToken ? 'Mapbox client rendering requires a public pk.* token' : undefined,
+      },
       maplibre: { configured: true },
     });
   } catch (error: any) {
