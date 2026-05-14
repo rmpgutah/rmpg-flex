@@ -55,8 +55,15 @@ export function readEncryptedConfig(configKey: string): string | undefined {
 
 /**
  * Resolve the Google Maps API key.
- * Priority: system_config (admin-managed) → GOOGLE_MAPS_API_KEY env var.
+ * Priority:
+ * 1. consolidated Google Maps Platform key
+ * 2. legacy google_maps_api_key
+ * 3. GOOGLE_MAPS_API_KEY env var
  */
 export function resolveGoogleMapsApiKey(): string | undefined {
-  return readEncryptedConfig('google_maps_api_key') || process.env.GOOGLE_MAPS_API_KEY;
+  return (
+    readEncryptedConfig('google_maps_platform_api_key') ||
+    readEncryptedConfig('google_maps_api_key') ||
+    process.env.GOOGLE_MAPS_API_KEY
+  );
 }
