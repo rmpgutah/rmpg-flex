@@ -3,8 +3,8 @@
 // ============================================================
 // Runtime key fetching for Mapbox GL JS. The Mapbox access token
 // is stored encrypted in system_config and served at runtime via
-// /api/integrations/mapbox/client-key — same pattern as the
-// Google Maps key (see googleMapsApiKey.ts).
+// /api/integrations/mapbox/client-key — same runtime-fetch
+// pattern used by other admin-managed integration keys.
 // ============================================================
 
 import { apiFetch } from '../hooks/useApi';

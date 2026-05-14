@@ -9,6 +9,7 @@ import { extractFolderGroups, type FolderGroup } from '../utils/dropFolders';
 import { formatPhoneInput } from '../utils/formatters';
 import BulkDefendantTable from '../components/serve/BulkDefendantTable';
 import RichTextArea from '../components/RichTextArea';
+import AddressAutocomplete, { type ParsedAddress } from '../components/AddressAutocomplete';
 import {
   Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2,
   Phone, X, ChevronRight, ArrowLeft, Gavel, Calendar, Briefcase, FileWarning,
@@ -116,6 +117,13 @@ function FieldRow({ label, icon: Icon, value, onChange, placeholder, multiline }
   );
 }
 
+function extractStreetNumber(street: string): string {
+  const trimmed = street.trim();
+  if (!trimmed) return '';
+  const match = trimmed.match(/^\d+[A-Za-z-]*/);
+  return match?.[0] || '';
+}
+
 const DOC_TYPE_OPTIONS = [
   { value: 'court_docket', label: 'Court Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
   { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
@@ -181,47 +189,25 @@ export default function ServeIntakePage() {
   // Confidence scores from parse
   const [confidence, setConfidence] = useState<Record<string, { score: number; source: string }>>({});
   const [overallConfidence, setOverallConfidence] = useState(0);
-  // Google Maps autocomplete
-  const addressAutocompleteRef = useRef<HTMLInputElement>(null);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  // Initialize Google Maps Places Autocomplete — only once when entering review step
-  const autocompleteInitialized = useRef(false);
-  useEffect(() => {
-    if (step !== 'review' || !addressAutocompleteRef.current || autocompleteInitialized.current) return;
-    const g = (window as any).google;
-    if (!g?.maps?.places) return;
-    autocompleteInitialized.current = true;
-    const ac = new g.maps.places.Autocomplete(addressAutocompleteRef.current, {
-      types: ['address'],
-      componentRestrictions: { country: 'us' },
-      fields: ['formatted_address', 'geometry', 'address_components'],
-    });
-    ac.addListener('place_changed', () => {
-      const place = ac.getPlace();
-      if (place.formatted_address) setEditAddress(place.formatted_address);
-      if (place.geometry?.location) {
-        setPreviewLat(String(place.geometry.location.lat()));
-        setPreviewLng(String(place.geometry.location.lng()));
-        setGeocodeFailed(false);
-      }
-      if (place.address_components) {
-        const get = (type: string) => place.address_components.find((c: any) => c.types.includes(type))?.long_name || '';
-        const getShort = (type: string) => place.address_components.find((c: any) => c.types.includes(type))?.short_name || '';
-        setEditAddressParts(prev => ({
-          ...prev,
-          building: get('street_number'),
-          city: get('locality') || get('sublocality'),
-          state: getShort('administrative_area_level_1'),
-          zip: get('postal_code'),
-          suite: prev.suite,
-        }));
-      }
-    });
-    return () => { autocompleteInitialized.current = false; };
-  }, [step]);
+  const handleAddressSelect = useCallback((address: ParsedAddress) => {
+    setEditAddress(address.formatted || address.street || '');
+    setEditAddressParts(prev => ({
+      ...prev,
+      building: extractStreetNumber(address.street) || prev.building,
+      city: address.city || prev.city,
+      state: address.state || prev.state,
+      zip: address.zip || prev.zip,
+    }));
+    if (address.latitude != null && address.longitude != null) {
+      setPreviewLat(String(address.latitude));
+      setPreviewLng(String(address.longitude));
+      setGeocodeFailed(false);
+    }
+  }, []);
 
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
     try {
@@ -751,10 +737,14 @@ export default function ServeIntakePage() {
                   <MapPin className="w-3 h-3" /> Full Address
                   {confidence.address && <ConfidenceBadge score={confidence.address.score} source={confidence.address.source} />}
                 </label>
-                <input ref={addressAutocompleteRef} className="input-dark text-xs w-full" value={editAddress}
-                  onChange={e => setEditAddress(e.target.value)}
-                  placeholder="Start typing address — Google Maps will suggest matches..." />
-                <p className="text-[8px] text-rmpg-600 mt-0.5">Google Maps autocomplete active — type to search. Selecting a result auto-fills coordinates.</p>
+                <AddressAutocomplete
+                  value={editAddress}
+                  onChange={setEditAddress}
+                  onSelect={handleAddressSelect}
+                  className="input-dark text-xs w-full"
+                  placeholder="Start typing address to search..."
+                />
+                <p className="text-[8px] text-rmpg-600 mt-0.5">Address suggestions use the shared map search flow. Selecting a result auto-fills coordinates.</p>
               </div>
               <div className="grid grid-cols-4 gap-2">
                 <FieldRow label="Building #" icon={Building2} value={editAddressParts.building} onChange={v => setEditAddressParts(p => ({ ...p, building: v }))} placeholder="5245" />
