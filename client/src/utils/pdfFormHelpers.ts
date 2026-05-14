@@ -6,7 +6,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
-import { sanitizePdfText, wordWrapText } from './pdfGenerator';
+import { fitPdfText, sanitizePdfText, wordWrapText } from './pdfGenerator';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   getGridStartX, getGridContentWidth,
@@ -100,7 +100,7 @@ export function drawFormCell(
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     // Strip numbered prefix patterns like "1. ", "12. " from labels
     const cleanLabel = cell.label.replace(/^\d+\.\s*/, '').toUpperCase();
-    doc.text(cleanLabel, x + pad, labelBaseY);
+    doc.text(fitPdfText(doc, cleanLabel, w - 2 * pad), x + pad, labelBaseY);
   }
 
   // Value area starts below label strip — 2mm gap between label and value
@@ -127,7 +127,7 @@ export function drawFormCell(
       doc.setFont('courier', 'normal');
       doc.setFontSize(cell.valueFontSize || FONT.SIZE_FORM_CELL_VALUE);
       doc.setTextColor(...COLOR.TEXT_PRIMARY);
-      doc.text(cell.value, cbX + cbSize + 1, cbY + cbSize - 0.3);
+      doc.text(fitPdfText(doc, cell.value, w - (cbX - x) - cbSize - 2), cbX + cbSize + 1, cbY + cbSize - 0.3);
     }
   } else if (cell.value) {
     doc.setFont('courier', cell.valueBold ? 'bold' : 'normal');
@@ -140,7 +140,7 @@ export function drawFormCell(
     const valueY = valueAreaTop + (valueAreaH + textH) / 2;
     const maxW = w - 2 * pad;
 
-    const displayVal = cell.value.toUpperCase();
+    const displayVal = fitPdfText(doc, cell.value.toUpperCase(), maxW);
     if (cell.align === 'center') {
       doc.text(displayVal, x + w / 2, valueY, { align: 'center', maxWidth: maxW });
     } else if (cell.align === 'right') {
@@ -500,6 +500,8 @@ export function drawNibrsHeader(
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - 2 * margin;
   let y = LAYOUT.HEADER_TOP;
+  const caseBoxW = LAYOUT.CASE_BOX_W;
+  const hasCaseBox = !!config.caseNumber;
 
   // ── Top accent bar ───────────────────
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
@@ -517,30 +519,32 @@ export function drawNibrsHeader(
   const textX = margin + (config.sealBase64 ? sealSize + 6 : 4);
   const headerH = LAYOUT.HEADER_HEIGHT;
   const midY = y + headerH / 2; // vertical center of header bar
+  const textMaxWidth = hasCaseBox
+    ? Math.max(20, contentW - (textX - margin) - caseBoxW - 6)
+    : Math.max(20, contentW - (textX - margin) - 4);
 
   // State identifier (small, above center)
   if (config.stateIdentifier) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_SUBHEADER);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
+    doc.text(fitPdfText(doc, config.stateIdentifier, textMaxWidth), textX, midY - 5);
   }
 
   // Agency name (main title, centered vertically)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
+  doc.text(fitPdfText(doc, config.agencyName || '', textMaxWidth), textX, midY + 0.5);
 
   // Form title (below center)
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_REPORT_TYPE);
   doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
+  doc.text(fitPdfText(doc, config.formTitle || '', textMaxWidth), textX, midY + 5.5);
 
   // Case number (right side — thin white border frame, white text)
   if (config.caseNumber) {
-    const caseBoxW = LAYOUT.CASE_BOX_W;
     const caseBoxH = headerH - 6;
     const caseBoxX = margin + contentW - caseBoxW - 2;
     const caseBoxY = y + 3;
@@ -554,13 +558,13 @@ export function drawNibrsHeader(
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
+    doc.text(fitPdfText(doc, config.caseNumberLabel || 'CASE NUMBER', caseBoxW - 4), caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
 
     // Case number value
     doc.setFont('courier', 'bold');
     doc.setFontSize(FONT.SIZE_CASE_NUMBER);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(sanitizePdfText(config.caseNumber), caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
+    doc.text(fitPdfText(doc, config.caseNumber, caseBoxW - 4), caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
   }
 
   y += LAYOUT.HEADER_HEIGHT;
@@ -577,7 +581,7 @@ export function drawNibrsHeader(
     doc.setFontSize(FONT.SIZE_SMALL_META);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     if (config.formNumber) {
-      doc.text(config.formNumber, margin + 2, y + 3);
+      doc.text(fitPdfText(doc, config.formNumber, contentW * 0.55), margin + 2, y + 3);
     }
     if (config.reportDate) {
       doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 3, { align: 'right' });

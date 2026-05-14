@@ -11,6 +11,7 @@ import { formatIncidentType } from '../../../utils/caseNumbers';
 import { UNIT_STATUS_HEX, UNIT_STATUS_LABELS, PRIORITY_HEX } from '../../../utils/statusColors';
 import type { ActiveCall } from '../utils/mapConstants';
 import type { ClosestUnitResult } from '../hooks/useClosestUnit';
+import MapboxDispatchConnections from './MapboxDispatchConnections';
 
 interface ClosestUnitPanelProps {
   call: ActiveCall;
@@ -122,6 +123,13 @@ export default function ClosestUnitPanel({
         </div>
       </div>
 
+      <MapboxDispatchConnections
+        call={call}
+        results={results}
+        matrixActive={results.length > 0}
+        directionsActive={results.some(result => Boolean(result.routeEtaText))}
+      />
+
       {/* Results List */}
       <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
         {results.length === 0 ? (
@@ -136,7 +144,7 @@ export default function ClosestUnitPanel({
           </div>
         ) : (
           results.map((result, idx) => {
-            const { unit, distanceMiles, estimatedMinutes } = result;
+            const { unit, distanceMiles, estimatedMinutes, routeDistanceText, routeEtaText } = result;
             const statusColor = UNIT_STATUS_HEX[unit.status] || '#666666';
             const statusLabel = UNIT_STATUS_LABELS[unit.status] || unit.status;
             const isDispatching = dispatchingUnitId === unit.id;
@@ -204,14 +212,14 @@ export default function ClosestUnitPanel({
                   {/* #42: Distance + ETA with tabular-nums for alignment */}
                   <div className="text-right shrink-0">
                     <div className="text-[10px] font-bold font-mono tabular-nums" style={{ color: '#aaaaaa' }}>
-                      {distanceMiles < 0.1
+                      {routeDistanceText || (distanceMiles < 0.1
                         ? '<0.1 mi'
-                        : `${distanceMiles.toFixed(1)} mi`}
+                        : `${distanceMiles.toFixed(1)} mi`)}
                     </div>
                     <div className="text-[8px] font-semibold font-mono tabular-nums" style={{ color: estimatedMinutes < 5 ? '#f59e0b' : '#999999' }}>
-                      ~{estimatedMinutes < 1
+                      {routeEtaText || `~${estimatedMinutes < 1
                         ? '<1 min'
-                        : `${Math.round(estimatedMinutes)} min`}
+                        : `${Math.round(estimatedMinutes)} min`}`}
                     </div>
                   </div>
                 </div>

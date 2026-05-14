@@ -129,6 +129,20 @@ export function sanitizePdfText(text: string): string {
     .toUpperCase(); // All PDF output is uppercase per police report standards
 }
 
+export function fitPdfText(doc: jsPDF, text: string, maxWidth: number): string {
+  const safeText = sanitizePdfText(text || '');
+  if (!safeText || maxWidth <= 0) return '';
+  if (doc.getTextWidth(safeText) <= maxWidth) return safeText;
+
+  const ellipsis = '...';
+  let trimmed = safeText;
+  while (trimmed.length > 0 && doc.getTextWidth(`${trimmed}${ellipsis}`) > maxWidth) {
+    trimmed = trimmed.slice(0, -1).trimEnd();
+  }
+
+  return trimmed ? `${trimmed}${ellipsis}` : ellipsis;
+}
+
 /**
  * Word-aware text wrapper — splits on spaces first, only breaking within
  * words as a last resort. Unlike jsPDF's splitTextToSize which can break
@@ -138,7 +152,33 @@ export function wordWrapText(doc: jsPDF, text: string, maxWidth: number): string
   const words = text.split(/(\s+)/);
   const lines: string[] = [];
   let currentLine = '';
+  const splitLongToken = (token: string): string[] => {
+    if (!token.trim() || doc.getTextWidth(token) <= maxWidth) return [token];
+    const parts: string[] = [];
+    let chunk = '';
+    for (const char of token) {
+      const next = chunk + char;
+      if (chunk && doc.getTextWidth(next) > maxWidth) {
+        parts.push(chunk);
+        chunk = char;
+      } else {
+        chunk = next;
+      }
+    }
+    if (chunk) parts.push(chunk);
+    return parts;
+  };
   for (const word of words) {
+    if (word && !/\s+/.test(word) && doc.getTextWidth(word) > maxWidth) {
+      if (currentLine.trim()) {
+        lines.push(currentLine.trimEnd());
+        currentLine = '';
+      }
+      const parts = splitLongToken(word);
+      for (let i = 0; i < parts.length - 1; i++) lines.push(parts[i]);
+      currentLine = parts[parts.length - 1] || '';
+      continue;
+    }
     const testLine = currentLine + word;
     if (doc.getTextWidth(testLine) > maxWidth && currentLine.trim()) {
       lines.push(currentLine.trimEnd());
@@ -158,6 +198,12 @@ let cachedLogoDark: string | null = null;
 // Active form key for footer form numbers
 let activeFormKey = '';
 export function setActiveFormKey(key: string) { activeFormKey = key; }
+
+function resolveFormNumber(formKey?: string): string {
+  if (!formKey) return '';
+  if (FORM_NUMBERS[formKey]) return FORM_NUMBERS[formKey];
+  return /^FORM\b/i.test(formKey.trim()) ? formKey.trim() : '';
+}
 
 // Active case number for continuation headers
 let activeCaseNumber = '';
@@ -314,22 +360,27 @@ export function addReportHeader(
     }
   }
 
+  const caseBoxH = LAYOUT.HEADER_HEIGHT - 2;
+  const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
+  const caseBoxY = LAYOUT.HEADER_TOP + 1;
+  const textMaxWidth = Math.max(20, caseBoxX - textStartX - SPACING.MD);
+
   // ── Line 1: Agency name ────────────────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_HEADER_TITLE);
   doc.setTextColor(headerTextColor[0], headerTextColor[1], headerTextColor[2]);
-  doc.text(agencyName || brand.report_header_text, textStartX, LAYOUT.HEADER_TOP + 6.5);
+  doc.text(fitPdfText(doc, agencyName || brand.report_header_text, textMaxWidth), textStartX, LAYOUT.HEADER_TOP + 6.5);
 
   // ── Line 2: Subheader ──────────────────────────────────
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SUBHEADER);
   doc.setTextColor(subheaderColor[0], subheaderColor[1], subheaderColor[2]);
-  doc.text(brand.report_subheader_text, textStartX, LAYOUT.HEADER_TOP + 11);
+  doc.text(fitPdfText(doc, brand.report_subheader_text, textMaxWidth), textStartX, LAYOUT.HEADER_TOP + 11);
 
   // ── Line 3: Report type | form# | rev | date ──────────
-  const formNum = FORM_NUMBERS[activeFormKey] || '';
+  const formNum = resolveFormNumber(activeFormKey);
   const reportDate = new Date().toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
-  const metaParts = [reportType.toUpperCase()];
+  const metaParts = [sanitizePdfText(reportType)];
   if (formNum) metaParts.push(formNum);
   metaParts.push(FORM_REVISION);
   metaParts.push(reportDate);
@@ -337,7 +388,7 @@ export function addReportHeader(
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setTextColor(headerMetaColor[0], headerMetaColor[1], headerMetaColor[2]);
-  doc.text(metaParts.join('  |  '), textStartX, LAYOUT.HEADER_TOP + 15);
+  doc.text(fitPdfText(doc, metaParts.join('  |  '), textMaxWidth), textStartX, LAYOUT.HEADER_TOP + 15);
 
   // ── Priority badge (inline, "P4 - Low" format) ─────────
   const prioKey = priority?.toLowerCase() || '';
@@ -355,20 +406,17 @@ export function addReportHeader(
         : pKey === 'P3' ? 'P3 - Routine' : pKey === 'P4' ? 'P4 - Low' : prio.label.replace('PRIORITY: ', ''));
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(5);
-    const prioW = doc.getTextWidth(prioLabelText) + 4;
+    const prioText = fitPdfText(doc, prioLabelText, textMaxWidth);
+    const prioW = Math.min(doc.getTextWidth(prioText) + 4, textMaxWidth);
     const prioX = textStartX;
     const prioY = LAYOUT.HEADER_TOP + 16.5;
     doc.setFillColor(prio.bg[0], prio.bg[1], prio.bg[2]);
     doc.roundedRect(prioX, prioY, prioW, 3, 0.5, 0.5, 'F');
     doc.setTextColor(prio.text[0], prio.text[1], prio.text[2]);
-    doc.text(prioLabelText, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
+    doc.text(prioText, prioX + prioW / 2, prioY + 2.2, { align: 'center' });
   }
 
   // ── Case number box (right) ────────────────────────────
-  const caseBoxH = LAYOUT.HEADER_HEIGHT - 2;
-  const caseBoxX = pageWidth - LAYOUT.PAGE_MARGIN - LAYOUT.CASE_BOX_W - SPACING.SM;
-  const caseBoxY = LAYOUT.HEADER_TOP + 1;
-
   doc.setFillColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.rect(caseBoxX, caseBoxY, LAYOUT.CASE_BOX_W, caseBoxH, 'F');
 
@@ -380,12 +428,12 @@ export function addReportHeader(
   doc.setFontSize(FONT.SIZE_SMALL_META);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...caseTextColor);
-  doc.text(caseBoxLabel, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 5, { align: 'center' });
+  doc.text(fitPdfText(doc, caseBoxLabel, LAYOUT.CASE_BOX_W - 4), caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 5, { align: 'center' });
 
   // Case number value
   doc.setFontSize(FONT.SIZE_CASE_NUMBER);
   doc.setFont('courier', 'bold');
-  doc.text(caseNumber, caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 12, { align: 'center' });
+  doc.text(fitPdfText(doc, caseNumber, LAYOUT.CASE_BOX_W - 4), caseBoxX + LAYOUT.CASE_BOX_W / 2, caseBoxY + 12, { align: 'center' });
 
   // ── Thin accent line below header (primary color only) ─
   const stripY = LAYOUT.HEADER_TOP + LAYOUT.HEADER_HEIGHT;
@@ -488,7 +536,7 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_FIELD_LABEL);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
-  doc.text(label.toUpperCase(), x + innerPad, y + 2);
+  doc.text(fitPdfText(doc, label, maxW), x + innerPad, y + 2);
 
   // Determine value text and line count — Courier for values
   doc.setFont('courier', 'normal');
@@ -502,6 +550,9 @@ export function addFieldPair(doc: jsPDF, label: string, value: string, x: number
   if (allFieldLines.length > maxLines && lines.length > 0) {
     const lastLn = lines[lines.length - 1];
     lines[lines.length - 1] = lastLn.length > 3 ? lastLn.slice(0, -3) + '...' : '...';
+  }
+  for (let i = 0; i < lines.length; i++) {
+    lines[i] = fitPdfText(doc, lines[i], maxW - 1);
   }
   const extraLines = Math.max(0, lines.length - 1);
   const boxH = baseBoxH + extraLines * lineStep;
@@ -649,7 +700,7 @@ export function addFlagBadges(
     doc.setTextColor(255, 255, 255);
     const pillCapH = fontSize * 0.35;
     const textY = curY + (pillH + pillCapH) / 2;
-    doc.text(text, curX + pillPadX, textY);
+    doc.text(fitPdfText(doc, text, Math.max(6, maxWidth - pillPadX * 2)), curX + pillPadX, textY);
 
     curX += pillW + pillGapX;
   }
@@ -822,9 +873,9 @@ export function addSignatureBlock(
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(FONT.SIZE_SIGNATURE_LABEL);
   doc.setTextColor(...COLOR.TEXT_TERTIARY);
-  doc.text('PRINTED NAME', x + SPACING.MD, row2Y + 2.2);
-  doc.text('BADGE NUMBER', x + colW + SPACING.MD, row2Y + 2.2);
-  doc.text('DATE/TIME', x + colW * 2 + SPACING.MD, row2Y + 2.2);
+  doc.text(fitPdfText(doc, 'PRINTED NAME', colW - SPACING.MD * 2), x + SPACING.MD, row2Y + 2.2);
+  doc.text(fitPdfText(doc, 'BADGE NUMBER', colW - SPACING.MD * 2), x + colW + SPACING.MD, row2Y + 2.2);
+  doc.text(fitPdfText(doc, 'DATE/TIME', colW - SPACING.MD * 2), x + colW * 2 + SPACING.MD, row2Y + 2.2);
 
   // Values — auto-fill from sigData
   const hasSigData = sigData?.printedName || sigData?.badgeNumber || sigData?.date;
@@ -833,12 +884,12 @@ export function addSignatureBlock(
     doc.setFontSize(8);
     doc.setTextColor(...COLOR.TEXT_PRIMARY);
     const valY = row2Y + infoRowH - 1.5;
-    if (sigData!.printedName) doc.text(sanitizePdfText(sigData!.printedName).toUpperCase(), x + SPACING.MD, valY);
-    if (sigData!.badgeNumber) doc.text(sanitizePdfText(sigData!.badgeNumber).toUpperCase(), x + colW + SPACING.MD, valY);
+    if (sigData!.printedName) doc.text(fitPdfText(doc, sigData!.printedName, colW - SPACING.MD * 2), x + SPACING.MD, valY);
+    if (sigData!.badgeNumber) doc.text(fitPdfText(doc, sigData!.badgeNumber, colW - SPACING.MD * 2), x + colW + SPACING.MD, valY);
     const now = new Date();
     const pad2 = (n: number) => String(n).padStart(2, '0');
     const dateStr = sigData!.date || `${pad2(now.getMonth() + 1)}/${pad2(now.getDate())}/${now.getFullYear()} ${pad2(now.getHours())}:${pad2(now.getMinutes())}:${pad2(now.getSeconds())}`;
-    doc.text(sanitizePdfText(dateStr), x + colW * 2 + SPACING.MD, valY);
+    doc.text(fitPdfText(doc, dateStr, colW - SPACING.MD * 2), x + colW * 2 + SPACING.MD, valY);
   }
 
   // Outer border
@@ -920,26 +971,37 @@ export function addPageFooter(doc: jsPDF, pageNum: number, totalPages: number, f
   const pageHeight = doc.internal.pageSize.getHeight();
   const cw = getContentWidth(doc);
   const fKey = formKey || activeFormKey;
-  const formNum = FORM_NUMBERS[fKey] || '';
+  const formNum = resolveFormNumber(fKey);
 
   // @ts-expect-error jsPDF GState — ensure full opacity
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  const accentRgb = hexToRgb(brand.accent_color);
-  const primaryRgb = hexToRgb(brand.primary_color);
-
-  // Footer text position — pushed up from edge for print margin safety
   const barY = pageHeight - LAYOUT.FOOTER_HEIGHT - 2;
   const textY = barY + 5;
+  const accentRgb = hexToRgb(brand.accent_color);
+
+  // Thin accent separator above footer text
+  doc.setDrawColor(...accentRgb);
+  doc.setLineWidth(BORDER.ACCENT_FOOTER);
+  doc.line(LAYOUT.PAGE_MARGIN, barY - 1.5, pageWidth - LAYOUT.PAGE_MARGIN, barY - 1.5);
 
   // Left: Form # + INTERNAL USE ONLY — bold, readable
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(7);
   doc.setTextColor(...COLOR.TEXT_SECONDARY);
   const leftParts = [formNum, 'INTERNAL USE ONLY'].filter(Boolean);
-  doc.text(leftParts.join('  |  '), LAYOUT.PAGE_MARGIN, textY);
+  doc.text(fitPdfText(doc, leftParts.join('  |  '), Math.max(20, cw * 0.58)), LAYOUT.PAGE_MARGIN, textY);
+
+  // Center: confidentiality marker
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(FONT.SIZE_FOOTER_SECONDARY);
+  doc.setTextColor(...COLOR.TEXT_MUTED);
+  doc.text('CONFIDENTIAL', pageWidth / 2, textY, { align: 'center' });
 
   // Right: Page X of Y — bold
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(FONT.SIZE_FOOTER_PRIMARY);
+  doc.setTextColor(...COLOR.TEXT_SECONDARY);
   doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - LAYOUT.PAGE_MARGIN, textY, { align: 'right' });
 }
 
@@ -1220,7 +1282,7 @@ export function addNarrativeSection(
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     const secCapH = FONT.SIZE_SECTION_TITLE * 0.35;
     const textYpos = newY + (SPACING.SECTION_HEADER_H + secCapH) / 2;
-    doc.text(contTitle, LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+    doc.text(fitPdfText(doc, contTitle, cw - SPACING.CONTENT_INSET * 2 - 2), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
     const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
     // Draw fresh background tint for remaining text on this page
     const remainH = pageH - contentStartY - LAYOUT.FOOTER_HEIGHT - 4;
@@ -1283,7 +1345,7 @@ function addSupplementsSection(doc: jsPDF, data: IncidentData, y: number): numbe
         doc.setTextColor(...COLOR.TEXT_INVERTED);
         const capH = FONT.SIZE_SECTION_TITLE * 0.35;
         const textYpos = newY + (SPACING.SECTION_HEADER_H + capH) / 2;
-        doc.text(sanitizePdfText(contTitle), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
+        doc.text(fitPdfText(doc, contTitle, cw - SPACING.CONTENT_INSET * 2 - 2), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, textYpos);
         const contentStartY = newY + SPACING.SECTION_HEADER_H + SPACING.SECTION_CONTENT_PAD + 2;
         doc.setTextColor(...COLOR.TEXT_PRIMARY);
         doc.setFont('courier', 'normal');
@@ -1415,7 +1477,7 @@ export function addImageGrid(
       doc.setFontSize(FONT.SIZE_FIELD_LABEL);
       doc.setTextColor(...COLOR.TEXT_TERTIARY);
       const caption = img.name.length > 40 ? img.name.substring(0, 37) + '...' : img.name;
-      doc.text(caption, x, y + h + 3);
+      doc.text(fitPdfText(doc, caption, imgMaxW), x, y + h + 3);
 
       maxRowH = Math.max(maxRowH, h);
     }
@@ -1474,15 +1536,20 @@ export function checkPageBreak(doc: jsPDF, y: number, needed: number, priority?:
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(FONT.SIZE_FIELD_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(sanitizePdfText(`${activeBranding.report_header_text} -- CONTINUED`), LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1, contTextY);
+    doc.text(
+      fitPdfText(doc, `${activeBranding.report_header_text} -- CONTINUED`, Math.max(20, cw * 0.5)),
+      LAYOUT.PAGE_MARGIN + SPACING.CONTENT_INSET + 1,
+      contTextY,
+    );
 
     // Form number + case number on right (also vertically centered)
     const rightParts: string[] = [];
-    const formNum = FORM_NUMBERS[activeFormKey] || '';
+    const formNum = resolveFormNumber(activeFormKey);
     if (formNum) rightParts.push(formNum);
     if (activeCaseNumber) rightParts.push(activeCaseNumber);
     if (rightParts.length > 0) {
-      doc.text(rightParts.join('  |  '), pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
+      const rightText = fitPdfText(doc, rightParts.join('  |  '), Math.max(20, cw * 0.42));
+      doc.text(rightText, pageWidth - LAYOUT.PAGE_MARGIN - SPACING.CONTENT_INSET, contTextY, { align: 'right' });
     }
 
     doc.setFont('courier', 'normal');
@@ -1554,8 +1621,9 @@ export function addTableWithShading(
     const fontSize = lightHdr ? FONT.SIZE_FIELD_LABEL : FONT.SIZE_TABLE_HEADER;
     const capH = fontSize * 0.35;  // approximate cap-height in mm
     const textY = atY + (headerRowH + capH) / 2;
-    for (const h of headers) {
-      doc.text(sanitizePdfText(h.label), h.x, textY);
+    for (let i = 0; i < headers.length; i++) {
+      const h = headers[i];
+      doc.text(fitPdfText(doc, h.label, Math.max(8, colWidths[i] || 20)), h.x, textY);
     }
     return atY + headerRowH;
   };
@@ -1623,7 +1691,7 @@ export function addTableWithShading(
       const lines = cellLines[c];
       let cellY = textStartY;
       for (const line of lines) {
-        doc.text(line, colPositions[c], cellY);
+        doc.text(fitPdfText(doc, line, (colWidths[c] || 30) - 1), colPositions[c], cellY);
         cellY += cellLineH;
       }
     }
