@@ -106,6 +106,7 @@ const CLOUD_STORAGE_KEYS: ApiKeyConfig[] = [
 ];
 
 const THIRD_PARTY_KEYS: ApiKeyConfig[] = [
+  { key: 'google_maps_platform_api_key', label: 'Google Maps Platform', desc: 'Used for consolidated Google Maps Platform services, including Maps, Places, Routes, Geocoding, Weather, and related APIs', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
   { key: 'lead_gen_rapidapi_key', label: 'Lead Generation (RapidAPI)', desc: 'Used by Overwatch → Firecrawl → Lead Gen tab', pattern: /^[a-f0-9]{40,64}$/i, formatHint: 'RapidAPI key — 40-64 hex characters' },
   { key: 'dl_ocr_rapidapi_key', label: 'DL OCR Scanner (RapidAPI)', desc: 'Used by Records → DL Search → Scan DL photo', pattern: /^[a-f0-9]{40,64}$/i, formatHint: 'RapidAPI key — 40-64 hex characters' },
   { key: 'plate_recognizer_api_key', label: 'Plate Recognizer', desc: 'Free tier: 2500/month — automatic license plate recognition from photos/video' },
