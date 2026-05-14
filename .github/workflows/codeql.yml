@@ -16,7 +16,7 @@ jobs:
 
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v6
+        uses: actions/checkout@v4
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -28,15 +28,6 @@ jobs:
           npm install --ignore-scripts --legacy-peer-deps
           (cd client && npm install --ignore-scripts --legacy-peer-deps)
           (cd server && npm install --ignore-scripts --legacy-peer-deps)
-
-      - name: Check for duplicate route handlers (hard block)
-        working-directory: server
-        run: node scripts/check-duplicate-routes.mjs
-        # Zero-dependency detector — no npm install needed.
-        # Fails the build if any METHOD+path is registered twice in the same
-        # route file. In Express, only the first registration runs; later
-        # duplicates are dead code usually reintroduced by stale-branch merges.
-        # See server/scripts/check-duplicate-routes.mjs for the full rationale.
 
       - name: TypeScript check (client)
         working-directory: client

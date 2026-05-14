@@ -9,14 +9,14 @@ RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management Sy
 - **Service**: `systemd` unit `rmpg-flex` (HTTPS on 443, HTTP redirect on 80)
 - **Database**: SQLite via `better-sqlite3` at `server/data/rmpg-flex.db`
 - **Timezone**: America/Denver (Mountain Time)
-- **Version**: 5.8.0 (server, client, desktop, root)
+- **Version**: 5.7.0 (server, client, desktop)
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
 | **Frontend** | React 18 + TypeScript + Vite 6 + Tailwind CSS |
-| **Backend** | Express 5 + TypeScript (tsx runtime) + better-sqlite3 |
+| **Backend** | Express 4 + TypeScript (tsx runtime) + better-sqlite3 |
 | **Auth** | JWT (access + refresh) + WebAuthn (FIDO2/YubiKey) + TOTP 2FA |
 | **Real-time** | WebSocket (ws) for live dispatch, GPS, presence |
 | **Maps** | Google Maps JS API + offline CartoDB dark_matter tiles + GeoJSON overlays |
@@ -123,74 +123,6 @@ export default function SomePage() {
 }
 ```
 
-### Client-side PDF smoke tests (introduced 2026-04-18)
-```typescript
-// Pattern for catching regressions in the large v1 PDF generators (which
-// lack structural test coverage). Smoke tests don't validate output
-// correctness — they verify each public generator accepts minimum-viable
-// data and completes without throwing. That's enough to catch the common
-// regressions: missing null-checks on optional fields, broken imports
-// after refactors, signature drift.
-
-// In tests/setup stub fetch for admin-branding endpoint to avoid jsdom
-// network calls. Stub once per beforeEach:
-vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-  if (url.includes('/api/admin/config/branding')) {
-    return new Response(JSON.stringify([]), { status: 200 });
-  }
-  return new Response('', { status: 404 });
-}));
-
-// Then exhaustively call each generator type with minimum-viable data:
-it('generates a call PDF from minimal data', async () => {
-  const doc = await generateRecordPdf('call', { call_number: 'X', incident_type: 'Y', priority: '3', status: 'CLEARED', description: '.' });
-  expect(doc.getNumberOfPages()).toBeGreaterThan(0);
-});
-```
-- Smoke test files live at `client/src/utils/__tests__/*.smoke.test.ts`
-- Current coverage: `recordPdfGenerator.smoke.test.ts` (15 tests — all 9 RecordPdfType values + BOLO + WarrantSummary + setActiveOfficerSignature), `pdfGenerator.smoke.test.ts` (9 tests — all 8 PdfReportType values + populated-fields variant)
-- **When touching the big v1 PDF files, the smoke suite is your safety net.** If you split a generator into a new module, a broken import will fail the smoke test before it reaches a user.
-- jsdom prints `HTMLCanvasElement.getContext()` warnings — these are benign (jsPDF's fallbacks handle it).
-
-### Structured Logging (pino — introduced 2026-04-18)
-```typescript
-// Server-side logging pattern — use the structured logger, not console.*
-import { logger } from '../utils/logger';
-
-logger.info('server started');                               // operational milestone
-logger.warn({ err, scheduler: 'x' }, 'scheduler failed');    // recoverable issue
-logger.error({ err }, 'database query failed');              // real error
-logger.fatal({ err }, 'uncaught exception');                 // crash-path only
-
-// Inside route handlers, prefer the per-request child logger (carries request ID):
-router.get('/foo', (req, res) => {
-  (req as any).log.info({ userId: req.user.id }, 'fetching foo');
-  // ...
-});
-```
-- **Structured over stringly-typed:** put variables in the object arg (`logger.info({ userId, ip }, 'msg')`), not in template strings. Pino indexes the JSON for search in production.
-- **Errors go under `err`:** `logger.error({ err }, 'message')` lets pino's serializer capture stack traces. Don't do `logger.error(err, ...)` or `logger.error({ error: err }, ...)`.
-- **Request IDs are automatic:** `httpLogger` middleware attaches `req.log` with a per-request ID, echoed back to clients via `X-Request-Id` response header. An `x-request-id` from nginx/upstream is honored if present.
-- **Tainted strings still need `logSafe`:** any string derived from request body, query params, or scraper output should be wrapped in `logSafe(value)` before logging (CR/LF stripping, length cap). Pino alone doesn't prevent log injection.
-- **Redaction:** `authorization`, `cookie`, `password*`, `token*`, `totp*` fields are auto-redacted at any nesting depth in the logger config.
-- **Noisy routes ignored:** `/api/health`, `/assets/*`, `/tiles/*`, `/sw.js`, `/favicon.ico` skip per-request logging.
-- **ASCII startup banner stays `console.log`** — one-shot decorative output, not machine-read.
-- **Existing 2,300+ console.* calls are NOT yet migrated** — they'll migrate opportunistically as other work touches those files. Only index.ts + auth middleware + global error handler went live with the introduction (2026-04-18). New code must use `logger`.
-
-### Icon-only buttons — use `<IconButton>` (introduced 2026-04-19)
-```tsx
-import IconButton from '../components/IconButton';
-
-<IconButton onClick={handleDelete} aria-label={`Delete ${row.name}`} className="...">
-  <Trash2 className="w-4 h-4" />
-</IconButton>
-```
-- **Rule**: any `<button>` whose visible content is a lucide icon with no accompanying text must use `IconButton`. Buttons that already contain visible text (`<button><X /> Close</button>`) stay as plain `<button>` — the text labels them.
-- `aria-label` is a **required TypeScript prop** — omitting it fails `tsc --noEmit` (the deploy gate). That is the enforcement; no ESLint a11y plugin is installed in `client/`.
-- `type="button"` is applied automatically, and the child icon is wrapped with `aria-hidden="true"` — don't repeat those.
-- Derive the label from (in order): existing `title` attribute, the `onClick` handler name, surrounding row context (include row identifiers: ``Delete ${warrant.number}``), or icon semantics (X→"Close"/"Remove", RefreshCw→"Refresh", Pencil→"Edit", Trash2→"Delete", Eye→"View", Plus→"Add").
-- **Migrated 2026-04-19**: 146 buttons across 23 page files. `client/src/pages/dispatch/DispatchPage.tsx` (6,386 lines) is intentionally deferred — migrate as you touch surrounding code. A handful of other pages may still contain holdouts; fix opportunistically.
-
 ### Design System (Spillman Flex / Motorola Solutions — Pure Black Theme)
 ```
 Surface colors: #0a0a0a (base), #141414 (raised), #050505 (sunken), #000000 (deep)
@@ -225,15 +157,6 @@ npm run dev              # Start both client (Vite :5173) and server (tsx :3001)
 npm run build            # Build client only (Vite → client/dist/)
 cd client && npx tsc --noEmit  # TypeScript typecheck (deploy script runs this)
 
-# Server regression gates — now wired into 3-layer defense (as of 2026-04-18):
-#   Layer 1: .husky/pre-push         — runs on every `git push` (local, fast)
-#   Layer 2: .github/workflows/pr-tests.yml — runs on PR + push to main (CI)
-#   Layer 3: deploy/deploy.sh        — runs before VPS rsync (self-heals missing node_modules)
-# Manual invocations still available:
-cd server && npx vitest run         # Full server suite — 461 tests across 39 files, ~3s (requires `npm install` in server/ first)
-cd server && npm run check:routes   # Route-collision guard — 114 files, 0 duplicate METHOD+path handlers expected
-cd server && npx tsc --noEmit       # 0 errors (fixed 2026-04-18 via paramStr() helper; now a hard gate in all 3 layers)
-
 # Desktop builds
 cd desktop && npm run build:all   # Build macOS DMG + Windows EXE
 node desktop/scripts/copyToDownloads.cjs  # Copy to server/downloads/
@@ -263,14 +186,12 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 
 ## Key Systems
 
-### Dispatch Geography (4-tier Miller drilldown)
-- `dispatch_areas` → `dispatch_sectors` → `dispatch_zones` → `dispatch_beats` (renamed from `dispatch_sections` in 2026-04-11 rebuild)
+### Dispatch Geography (3-tier + areas)
+- `dispatch_areas` → `dispatch_sections` → `dispatch_zones` → `dispatch_beats`
 - `dispatch_codes` — 68 pre-seeded 10-codes + signal codes
 - `premise_alerts` — persistent location-based warnings
-- GeoJSON beat polygons with sector-colored labels on map
-- API: `server/src/routes/dispatch/geography.ts` — CRUD for all 4 tiers + `/tree` (nested) + `/identify?lat&lng` (point lookup)
-- UI: `client/src/pages/GeographyPage.tsx` — 4-column Miller drilldown (Areas 180px → Sectors 200px → Zones 240px → Beats 240px → Detail pane)
-- Production runs legacy 5/46/166/427 classification; fresh DBs get the full 6/29/288/719 Utah GeoJSON seed (see Gotcha #41)
+- GeoJSON beat polygons with section-colored labels on map
+- API: `/api/dispatch/geography/*` (CRUD for all entities)
 
 ### Incident RMS (Spillman Flex)
 - `incident_offenses` — UCR/NIBRS codes, statute linkage, suspect/victim mapping
@@ -354,9 +275,6 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 - **Shift Plans**: `shift_plans`, `shift_swap_requests`
 - **Notification Rules**: `notification_rules` for custom alert automation
 
-### Map V2 (OpenLayers) — RETIRED 2026-04-22
-The OpenLayers parallel map surface at `/map-v2` was removed. `/map` is back to being the single Google Maps surface. `/map-v2` now 302-redirects to `/map` for any stale bookmarks. The `ol` dependency remains in `client/package.json` as unused weight; remove it on the next `npm install` pass. Dead code: `section15()` + `drawMapV2ArchDiagram()` in `dispatchGuidePdfGenerator.ts` (no longer referenced from the TOC). Original Phase 1 plan at `docs/plans/2026-04-19-openlayers-migration-phase1.md` is abandoned.
-
 ## Common Gotchas
 
 1. **JWT_SECRET must be permanent** — random-on-restart breaks TOTP decryption
@@ -379,7 +297,7 @@ The OpenLayers parallel map surface at `/map-v2` was removed. `/map` is back to 
 18. **PATH in Claude Code sessions** — `npx`/`node` may not be found. Prefix with `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`
 19. **edge-tts-universal** — must use `Function('return import("edge-tts-universal")')()` to avoid tsx ESM resolver crash at startup. Lazy-loads on first TTS request.
 20. **VPS npm install** — requires `--legacy-peer-deps` flag due to peer dependency conflicts
-21. **Deploy typecheck gate** — `deploy.sh` runs both server and client `npx tsc --noEmit` as hard gates (as of 2026-04-18). Both ship with 0 TS errors; if either gate fails, fix the errors rather than reaching for the "Direct deploy" bypass above — bypassing hides real regressions. The Express 5 `req.params.X: string | string[]` noise (previously 52 tolerated errors) is now handled via the `paramStr()` / `paramNum()` helpers in `server/src/utils/reqHelpers.ts` — use those at the read site (e.g. `parseInt(paramStr(req.params.id), 10)`) rather than `as string` casts so the coercion is visible.
+21. **Deploy typecheck gate** — `deploy.sh` runs `tsc --noEmit` which has pre-existing errors in pdfGenerator.ts and PersonsTab.tsx. Use direct rsync to bypass: `rsync -az --delete client/dist/ root@194.113.64.90:/opt/rmpg-flex/client/dist/`
 22. **Vite bundle splitting** — `vite.config.ts` has `manualChunks` for vendor-react, vendor-pdf, vendor-icons. Each gets 1-year immutable cache via nginx `/assets/` location block.
 23. **nginx gzip** — configured in `/etc/nginx/conf.d/performance.conf` (level 6), NOT in nginx.conf (those lines are commented out). Don't uncomment nginx.conf gzip — it creates duplicates.
 24. **calls_for_service columns** — 22+ columns added via addCol for PSO, tactical flags, timestamps. The redispatch INSERT has 74 columns — verify column count matches if modifying.
@@ -397,9 +315,3 @@ The OpenLayers parallel map surface at `/map-v2` was removed. `/map` is back to 
 36. **Dual CREATE TABLE in database.ts** — Some tables (e.g. `field_interviews`) have two `CREATE TABLE IF NOT EXISTS` blocks with different column names. The FIRST one wins on production. Phase 1 definitions (later in the file) are skipped. Always check which definition is actually active.
 37. **Server rsync drops** — `rsync --delete server/` to VPS frequently drops SSH mid-transfer. Use `rsync -az server/src/ root@194.113.64.90:/opt/rmpg-flex/server/src/` (src only, no --delete) as the reliable fallback.
 38. **Client-server field name audit** — When form saves fail silently (data missing after save), check that client form field names exactly match server INSERT column names. Known past mismatches: ForensicLab (`synopsis`→`description`, `incident_id`→`linked_incident_id`), FieldInterviews (`location`/`contact_reason`/`action_taken` vs Phase 1 aliases).
-39. **npm `overrides` with `>=` is a footgun** — `"path-to-regexp": ">=0.1.13"` tells npm "any version ≥ 0.1.13", which resolves to the *highest* matching version (e.g. 8.x). Under Express 4 that broke boot with `TypeError: pathRegexp is not a function` in `express/lib/router/layer.js` because Express 4 required the 0.1.x function-default export. **Always use EXACT pins in `overrides`** (e.g. `"lodash": "4.17.21"`) unless you explicitly want a range. `server/package.json` currently pins only `dompurify` defensively — the `path-to-regexp: "0.1.13"` override was **removed in the Express 5 migration** (2026-04-10, commit 1c65343d) because Express 5's bundled router 2.x ships path-to-regexp 8.x with the DoS already patched upstream. **Do NOT re-add the path-to-regexp override** under Express 5; it will break the router at boot.
-40. **`deploy.sh` uses `rsync -avz` WITHOUT `--delete`** (deliberate safety against wiping `server/data/` if an exclusion rule is wrong). Consequence: files you rename or delete locally stay on the VPS as zombies after a normal `bash deploy/deploy.sh`. After any file rename/deletion refactor, manually clean up on the VPS: `ssh root@194.113.64.90 'rm /opt/rmpg-flex/path/to/old-file'`. Verify the active router imports the new file first to confirm the zombie is truly dead. The "Direct deploy" block in the Development section DOES use `--delete` — use that only for `dist` and only when you've verified the file list.
-41. **Geography seed is idempotent and only runs on empty tables** — `database.ts:~2956` calls `seedGeographyFromGeoJSON()` which bails if any of `dispatch_areas`/`dispatch_sectors`/`dispatch_zones`/`dispatch_beats` have rows. Fresh DBs get the full 6-area / 29-sector / 288-zone / 719-beat Utah GeoJSON seed. Production preserves its legacy 5/46/166/427 classification and 144 live FK references from `calls_for_service`/`incidents`/`citations`. A true production reseed needs a deliberate data migration with FK remap by `sector_code`/`zone_code`/`beat_code` strings, not a `DELETE FROM` + server restart.
-42. **Security hook blocks the literal string `e``x``e``c(` in the Edit tool** — the tool-call hook treats any occurrence of that substring (without the backticks) as a potential `child_process` shell-execution call and rejects the edit, even inside better-sqlite3 code. For single-statement DDL in `server/src/models/database.ts`, use `db.prepare('CREATE TABLE IF NOT EXISTS ...').run()` instead of the better-sqlite3 bulk-execute shortcut method. Multi-statement DDL can be split into multiple `db.prepare().run()` calls or wrapped in `db.transaction(() => { ... })()`. The hook is defensive and works even when the substring appears inside documentation or comments, so you may need to split the word across backticks when writing about it.
-43. **Parallel worktree deploys silently clobber each other** — `deploy.sh` deploys **whatever branch the caller's worktree is on**, not `main`, and uses `rsync` to push source files to `/opt/rmpg-flex/`. If two Claude sessions are running in different worktrees, the last one to run `deploy.sh` wins, regardless of which branch has the newer work. This happened 2026-04-17: session A deployed PR #198 (SW v229) at 10:58 UTC, session B from a different worktree on the old `d1e88c90` hotfix branch ran `deploy.sh` at 11:10 UTC and clobbered prod back to pre-fix Layout.tsx + CSS bundle (SW v244 — higher *number* but stale *source*). **A higher CACHE_NAME version on prod does not prove your code is live.** Always verify the specific fix reached the VPS by greping source files directly: `ssh root@194.113.64.90 "grep -c '<distinctive-string-from-your-fix>' /opt/rmpg-flex/<path>"`. If that returns the wrong count, pull main locally, bump CACHE_NAME above prod's current value, and redeploy from the main workspace (not any sub-worktree). A deploy-lock (e.g. touch `/tmp/rmpg-deploy.lock` at start of `deploy.sh` with a 10-min expiry) would prevent this, but is not currently implemented.
-44. **Husky pre-push hook is silently bypassed in worktrees with a per-worktree `core.hooksPath` override** — Husky v9 sets `core.hooksPath=.husky/_` at the **repository** level (in `.git/config`), but `git worktree add` may write a **per-worktree** override at `.git/worktrees/<name>/config.worktree` pointing back at `.git/hooks`. The per-worktree value wins. Symptom: `git config core.hooksPath` returns `.git/hooks` (not `.husky/_`) and no `pre-push` fires on `git push`, so the full-suite gate added 2026-04-18 silently does nothing. Check with `git config --show-origin --get-all core.hooksPath` — if the `config.worktree` origin appears, fix with `git config --worktree --unset core.hooksPath` in that worktree. After fix, verify with `git hook run pre-push` (should print the husky hook's banner). This must be run **once per worktree** that was created before husky was installed. Worktrees created *after* husky's `prepare` has run inherit the repo-level config cleanly.
