@@ -1,20 +1,23 @@
 // ============================================================
 // RMPG Flex — Dispatch Mini-Map
-// Lightweight embeddable Google Maps panel showing the selected
+// Lightweight embeddable Mapbox GL panel showing the selected
 // call location and assigned unit positions. Used inline in the
 // Dispatch right column.
-//
-// When Google Maps fails to load (vehicle WiFi dead zones), falls
-// back to a compact Leaflet map using pre-cached offline tiles.
 // ============================================================
 
-import React, { useEffect, useRef, useState } from 'react';
-import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState, useCallback } from 'react';
+import { Maximize2, MapPin, Navigation, Wifi } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
-import { useMapRouting } from '../hooks/useMapRouting';
-import OfflineMapFallback from './OfflineMapFallback';
-import type { CallForService, Unit } from '../types';
+import mapboxgl from 'mapbox-gl';
+import MapboxGeocoder from '@mapbox/mapbox-gl-geocoder';
+import '@mapbox/mapbox-gl-geocoder/dist/mapbox-gl-geocoder.css';
+import { addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { getMapboxToken } from '../utils/mapboxApiKey';
+import { UNIT_STATUS_HEX, PRIORITY_HEX } from '../utils/statusColors';
+import type { CallForService, Unit, UnitStatus } from '../types';
+
+/** Priority color mapping — uses shared PRIORITY_HEX tokens */
+const MINI_PRIORITY_COLORS: Record<string, string> = PRIORITY_HEX;
 
 interface DispatchMiniMapProps {
   call: CallForService | null;
@@ -24,184 +27,364 @@ interface DispatchMiniMapProps {
   fullHeight?: boolean;
   /** Called when route ETA changes (for parent to display inline) */
   onRouteUpdate?: (info: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null) => void;
+  /** Serve route jobs to overlay on the mini map (for PSO calls) */
+  serveRouteJobs?: any[];
+  /** Serve route polyline data (optimized_order_json from serve_routes) */
+  serveRouteOrder?: number[] | null;
 }
 
-const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
-const MINI_ZOOM = 15;
+/** Active route info returned by inline routing */
+interface ActiveRouteInfo {
+  unitCallSign: string;
+  callNumber: string;
+  eta: string;
+  distance: string;
+}
 
-/** Build a call marker DOM element (red label with caret) */
-function buildCallMarker(label: string): HTMLElement {
+const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608]; // [lng, lat]
+const MINI_ZOOM = 15;
+const ROUTE_TRAIL_ID = 'dispatch-minimap-route';
+const SERVE_TRAIL_ID = 'dispatch-minimap-serve-route';
+
+/** Format seconds into a human-readable ETA */
+function formatEta(seconds: number): string {
+  if (seconds < 60) return '<1 min';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+}
+
+/** Format meters into a human-readable distance */
+function formatDistance(meters: number): string {
+  const miles = meters / 1609.344;
+  return miles < 0.1 ? `${Math.round(meters)} ft` : `${miles.toFixed(1)} mi`;
+}
+
+/** Build a call marker DOM element with priority-colored badge */
+function buildCallMarker(label: string, priority?: string): HTMLElement {
+  const color = MINI_PRIORITY_COLORS[priority || ''] || '#ef4444';
+  const isP1 = priority === 'P1';
+  const isP2 = priority === 'P2';
+
   const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.6));';
+
+  // Priority pulse animation for P1/P2
+  if (isP1 || isP2) {
+    wrapper.style.animation = isP1 ? 'minimap-pulse 1.2s ease-in-out infinite' : 'minimap-pulse 2.5s ease-in-out infinite';
+  }
 
   const tag = document.createElement('div');
-  /* #54: Call marker with subtle shadow for depth */
   tag.style.cssText =
-    'background:#ef4444;color:#fff;font-size:7px;font-weight:900;' +
-    "padding:1px 3px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
-  tag.textContent = label;
+    `background:${color};color:#fff;font-size:7px;font-weight:900;` +
+    "padding:2px 4px;border:1.5px solid rgba(255,255,255,0.9);white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;" +
+    `box-shadow:0 0 8px ${color}50, inset 0 1px 0 rgba(255,255,255,0.15);display:flex;align-items:center;gap:3px;border-radius:1px;`;
+
+  // Priority badge
+  if (priority) {
+    const priBadge = document.createElement('span');
+    priBadge.style.cssText = 'font-size:6px;opacity:0.85;letter-spacing:0.5px;';
+    priBadge.textContent = priority;
+    tag.appendChild(priBadge);
+
+    const sep = document.createElement('span');
+    sep.style.cssText = 'opacity:0.4;font-size:5px;';
+    sep.textContent = '\u00b7';
+    tag.appendChild(sep);
+  }
+
+  const labelSpan = document.createElement('span');
+  labelSpan.textContent = label;
+  tag.appendChild(labelSpan);
 
   const caret = document.createElement('div');
   caret.style.cssText =
-    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #ef4444;';
+    `width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:7px solid ${color};`;
 
   wrapper.appendChild(tag);
   wrapper.appendChild(caret);
   return wrapper;
 }
 
-/** Build a unit marker DOM element (blue chip) */
-function buildUnitMarker(callSign: string): HTMLElement {
-  const el = document.createElement('div');
-  /* #55: Unit marker with shadow */
-  el.style.cssText =
-    'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
-    "padding:1px 4px;border:1px solid #222222;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
-  el.textContent = callSign;
-  return el;
+/** Build a unit marker DOM element with status-colored indicator */
+function buildUnitMarker(callSign: string, status?: UnitStatus): HTMLElement {
+  const color = UNIT_STATUS_HEX[status || 'available'] || '#888888';
+
+  const wrapper = document.createElement('div');
+  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 1px 4px rgba(0,0,0,0.5));';
+
+  const tag = document.createElement('div');
+  tag.style.cssText =
+    `background:${color};color:#fff;font-size:8px;font-weight:900;` +
+    "padding:2px 5px;border:1.5px solid rgba(255,255,255,0.8);white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:1px;" +
+    `box-shadow:0 0 6px ${color}40, inset 0 1px 0 rgba(255,255,255,0.12);display:flex;align-items:center;gap:2px;`;
+
+  const csSpan = document.createElement('span');
+  csSpan.textContent = callSign;
+  tag.appendChild(csSpan);
+
+  // Tiny caret pointing down
+  const caret = document.createElement('div');
+  caret.style.cssText =
+    `width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;border-top:5px solid ${color};`;
+
+  wrapper.appendChild(tag);
+  wrapper.appendChild(caret);
+  return wrapper;
 }
 
-export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
+/** Inject minimap-specific keyframe animation (idempotent) */
+function injectMinimapKeyframes() {
+  if (document.getElementById('minimap-keyframes')) return;
+  const style = document.createElement('style');
+  style.id = 'minimap-keyframes';
+  style.textContent = `
+    @keyframes minimap-pulse { 0%,100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.06); opacity: 0.9; } }
+  `;
+  document.head.appendChild(style);
+}
+
+export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate, serveRouteJobs, serveRouteOrder }: DispatchMiniMapProps) {
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<any[]>([]);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const serveMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const tokenRef = useRef<string | null>(null);
+  const geocoderRef = useRef<MapboxGeocoder | null>(null);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [tilesStalled, setTilesStalled] = useState(false);
-  const [retryingGmaps, setRetryingGmaps] = useState(false);
-  const [gmapsRetry, setGmapsRetry] = useState(0);
-  const tileMonitorRef = useRef<(() => void) | null>(null);
+  const [mapBearing, setMapBearing] = useState(0);
 
-  // Classify error: auth/config vs connectivity
-  const isAuthError = error != null && (error.includes('key') || error.includes('configured'));
-  const showLeafletFallback = error != null && !isAuthError;
+  // Inline routing state (replaces useMapRouting)
+  const [activeRoute, setActiveRoute] = useState<ActiveRouteInfo | null>(null);
+  const lastAutoRouteRef = useRef<string>('');
 
-  // Routing (auto-route when a single assigned unit has GPS)
-  const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapRef.current });
-  const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
+  // Inject keyframes + Mapbox styles on mount
+  useEffect(() => { injectMinimapKeyframes(); injectMapboxStyles(); }, []);
 
-  // Load Google Maps script with retry + online auto-recovery
-  useEffect(() => {
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-    if (!apiKey) {
-      setError('Map key not configured');
-      return;
+  const visibleUnitCount = useMemo(() =>
+    units.filter(u =>
+      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
+    ).length,
+    [units, call?.assigned_units],
+  );
+
+  const isAuthError = error != null;
+
+  // ── Inline routing functions ──
+
+  const clearRoute = useCallback(() => {
+    const map = mapRef.current;
+    if (map) {
+      try { removeMapboxTrail(map, ROUTE_TRAIL_ID); } catch { /* layer may not exist */ }
     }
+    setActiveRoute(null);
+    lastAutoRouteRef.current = '';
+  }, []);
 
+  const showRoute = useCallback(async (
+    unitCallSign: string, callNumber: string,
+    originLat: number, originLng: number,
+    destLat: number, destLng: number,
+  ) => {
+    const map = mapRef.current;
+    const token = tokenRef.current;
+    if (!map || !token) return;
+
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${originLng},${originLat};${destLng},${destLat}?access_token=${token}&geometries=geojson&overview=full`;
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const route = data.routes?.[0];
+      if (!route) return;
+
+      const coords: [number, number][] = route.geometry.coordinates;
+      // Remove old route trail then add new one
+      try { removeMapboxTrail(map, ROUTE_TRAIL_ID); } catch { /* ok */ }
+      addMapboxTrail(map, ROUTE_TRAIL_ID, coords, '#22c55e', 3);
+
+      setActiveRoute({
+        unitCallSign,
+        callNumber,
+        eta: formatEta(route.duration),
+        distance: formatDistance(route.distance),
+      });
+    } catch {
+      // Routing fetch failed — silently ignore
+    }
+  }, []);
+
+  const activeRouteRef = useRef(activeRoute);
+  activeRouteRef.current = activeRoute;
+
+  const updateOrigin = useCallback(async (lat: number, lng: number) => {
+    if (!call?.latitude || !call?.longitude) return;
+    const map = mapRef.current;
+    const token = tokenRef.current;
+    if (!map || !token) return;
+
+    const currentRoute = activeRouteRef.current;
+    if (!currentRoute) return;
+
+    try {
+      const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${lng},${lat};${call.longitude},${call.latitude}?access_token=${token}&geometries=geojson&overview=full`;
+      const resp = await fetch(url);
+      if (!resp.ok) return;
+      const data = await resp.json();
+      const route = data.routes?.[0];
+      if (!route) return;
+
+      const coords: [number, number][] = route.geometry.coordinates;
+      try { removeMapboxTrail(map, ROUTE_TRAIL_ID); } catch { /* ok */ }
+      addMapboxTrail(map, ROUTE_TRAIL_ID, coords, '#22c55e', 3);
+
+      setActiveRoute({
+        unitCallSign: currentRoute.unitCallSign,
+        callNumber: currentRoute.callNumber,
+        eta: formatEta(route.duration),
+        distance: formatDistance(route.distance),
+      });
+    } catch {
+      // Silently ignore routing errors
+    }
+  }, [call?.latitude, call?.longitude]);
+
+  // ── Load Mapbox token and create map ──
+  useEffect(() => {
     let cancelled = false;
     setError(null);
+    setLoaded(false);
 
-    function attemptLoad(attempt: number) {
-      if (cancelled) return;
-      loadGoogleMaps(apiKey)
-        .then(() => { if (!cancelled) { setLoaded(true); setError(null); } })
-        .catch(() => {
-          if (cancelled) return;
-          if (attempt < 3) {
-            setTimeout(() => attemptLoad(attempt + 1), [3000, 6000, 12000][attempt]);
-          } else {
-            setError('Map load failed — check connection');
-          }
-        });
-    }
-    attemptLoad(0);
+    (async () => {
+      try {
+        const token = await getMapboxToken();
+        if (cancelled) return;
+        if (!token) {
+          setError('Mapbox token not configured');
+          return;
+        }
+        tokenRef.current = token;
+        setLoaded(true);
+      } catch (err: any) {
+        if (!cancelled) {
+          setError(err?.message || 'Failed to load Mapbox token');
+        }
+      }
+    })();
 
-    // Auto-retry when device comes back online
-    const unsubOnline = onOnlineRetryMaps(apiKey, () => {
-      if (!cancelled && !loaded) { setError(null); setLoaded(true); }
-    });
-
-    return () => { cancelled = true; unsubOnline(); };
-  }, [gmapsRetry]);
+    return () => { cancelled = true; };
+  }, []);
 
   // Initialize or update map
   useEffect(() => {
-    if (!loaded || !mapContainerRef.current) return;
+    if (!loaded || !mapContainerRef.current || !tokenRef.current) return;
 
-    const center = call?.latitude != null && call?.longitude != null
-      ? { lat: call.latitude, lng: call.longitude }
+    const center: [number, number] = call?.latitude != null && call?.longitude != null
+      ? [call.longitude, call.latitude]
       : DEFAULT_CENTER;
 
     if (!mapRef.current) {
-      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
-      const mapOptions: google.maps.MapOptions = {
+      mapboxgl.accessToken = tokenRef.current;
+      const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: 'mapbox://styles/mapbox/dark-v11',
         center,
         zoom: MINI_ZOOM,
-        styles: mapId ? undefined : DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
-        gestureHandling: 'cooperative',
-      };
-      if (mapId) (mapOptions as any).mapId = mapId;
-      const map = new google.maps.Map(mapContainerRef.current, mapOptions);
-      mapRef.current = map;
-      registerMapInstance(map);
+        interactive: true,
+        attributionControl: false,
+        dragRotate: false,
+        pitchWithRotate: false,
+      });
 
-      // Monitor tile loading for vehicle WiFi resilience
-      if (tileMonitorRef.current) tileMonitorRef.current();
-      tileMonitorRef.current = monitorTileLoading(map, {
-        onStalled: () => setTilesStalled(true),
-        onLoaded: () => setTilesStalled(false),
-        onRecovering: () => {},
+      map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+
+      // Add compact geocoder control
+      if (tokenRef.current && !geocoderRef.current) {
+        const geocoder = new MapboxGeocoder({
+          accessToken: tokenRef.current,
+          mapboxgl: mapboxgl as any,
+          marker: true,
+          placeholder: 'Search…',
+          proximity: { longitude: DEFAULT_CENTER[0], latitude: DEFAULT_CENTER[1] },
+          countries: 'US',
+          limit: 3,
+          collapsed: true,
+          clearOnBlur: true,
+          flyTo: { speed: 1.4, zoom: 16 },
+        });
+        map.addControl(geocoder, 'bottom-right');
+        geocoderRef.current = geocoder;
+      }
+
+      mapRef.current = map;
+
+      // Track bearing for compass indicator
+      map.on('rotate', () => {
+        setMapBearing(map.getBearing());
       });
     } else {
       mapRef.current.setCenter(center);
     }
 
-    // Clear old markers
+    // Reconcile markers instead of destroying and recreating all
+    const existingMarkerMap = new Map<string, mapboxgl.Marker>();
     markersRef.current.forEach(m => {
-      if (typeof m.setMap === 'function') m.setMap(null);
-      else if (typeof m.remove === 'function') m.remove();
+      const ll = m.getLngLat();
+      existingMarkerMap.set(`${ll.lng.toFixed(6)},${ll.lat.toFixed(6)}`, m);
     });
-    markersRef.current = [];
 
-    // Helper: create an OverlayView-based marker
-    const createOverlay = (map: google.maps.Map, pos: google.maps.LatLngLiteral, content: HTMLElement, zIndex: number) => {
-      const overlay = new google.maps.OverlayView();
-      let container: HTMLDivElement | null = null;
-      overlay.onAdd = () => {
-        container = document.createElement('div');
-        container.style.position = 'absolute';
-        container.style.zIndex = String(zIndex);
-        container.appendChild(content);
-        overlay.getPanes()?.overlayMouseTarget.appendChild(container);
-      };
-      overlay.draw = () => {
-        if (!container) return;
-        const proj = overlay.getProjection();
-        if (!proj) return;
-        const pt = proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat, pos.lng));
-        if (pt) {
-          container.style.left = `${pt.x}px`;
-          container.style.top = `${pt.y}px`;
-          container.style.transform = 'translate(-50%, -100%)';
-        }
-      };
-      overlay.onRemove = () => { container?.parentElement?.removeChild(container); container = null; };
-      overlay.setMap(map);
-      return overlay;
-    };
+    const nextMarkers: mapboxgl.Marker[] = [];
+    const neededKeys = new Set<string>();
 
-    // Call marker (red pin)
+    // Call marker (priority-colored pin)
     if (call?.latitude != null && call?.longitude != null && mapRef.current) {
-      const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL'), 100);
-      markersRef.current.push(m);
+      const key = `${call.longitude.toFixed(6)},${call.latitude.toFixed(6)}`;
+      neededKeys.add(key);
+      const existing = existingMarkerMap.get(key);
+      if (existing) {
+        nextMarkers.push(existing);
+      } else {
+        const el = buildCallMarker(call.call_number || 'CALL', (call as any).priority);
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([call.longitude, call.latitude])
+          .addTo(mapRef.current);
+        nextMarkers.push(marker);
+      }
     }
 
-    // Assigned unit markers (blue dots)
-    // assigned_units contains numeric unit IDs as strings (from mapDbCall parsing assigned_unit_ids)
-    const assignedUnits = units.filter(u =>
+    // Assigned unit markers (status-colored)
+    const assignedUnitsWithGps = units.filter(u =>
       call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
     );
 
-    for (const unit of assignedUnits) {
+    for (const unit of assignedUnitsWithGps) {
       if (mapRef.current) {
-        const m = createOverlay(mapRef.current, { lat: unit.latitude!, lng: unit.longitude! }, buildUnitMarker(unit.call_sign), 50);
-        markersRef.current.push(m);
+        const key = `${unit.longitude!.toFixed(6)},${unit.latitude!.toFixed(6)}`;
+        neededKeys.add(key);
+        const existing = existingMarkerMap.get(key);
+        if (existing) {
+          existing.setLngLat([unit.longitude!, unit.latitude!]);
+          nextMarkers.push(existing);
+        } else {
+          const el = buildUnitMarker(unit.call_sign, (unit as any).status);
+          const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+            .setLngLat([unit.longitude!, unit.latitude!])
+            .addTo(mapRef.current);
+          nextMarkers.push(marker);
+        }
       }
     }
+
+    // Remove stale markers
+    existingMarkerMap.forEach((m, key) => {
+      if (!neededKeys.has(key)) m.remove();
+    });
+
+    markersRef.current = nextMarkers;
   }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
 
   // Track whether we have an active route via ref to avoid double-render from state dependency
@@ -235,7 +418,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       // Multiple or zero assigned units — clear route
       if (hasActiveRouteRef.current) {
         clearRoute();
-        lastAutoRouteRef.current = '';
       }
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, call?.assigned_units, units, showRoute, clearRoute, updateOrigin]);
@@ -252,119 +434,155 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
   }, [activeRoute, onRouteUpdate]);
 
-  // Cleanup: unregister map instance + tile monitor on unmount
+  // Serve route overlay — show numbered markers + polyline for PSO calls
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !loaded) return;
+
+    // Clean up previous serve overlays
+    serveMarkersRef.current.forEach(m => m.remove());
+    serveMarkersRef.current = [];
+    try { removeMapboxTrail(map, SERVE_TRAIL_ID); } catch { /* ok */ }
+
+    if (!serveRouteJobs || serveRouteJobs.length === 0) return;
+
+    // Order jobs by route order if available
+    let orderedJobs = serveRouteJobs;
+    if (serveRouteOrder && serveRouteOrder.length > 0) {
+      const jobMap = new Map(serveRouteJobs.map((j: any) => [j.id, j]));
+      const ordered = serveRouteOrder.map(id => jobMap.get(id)).filter(Boolean);
+      const orderedIdSet = new Set(serveRouteOrder);
+      const remaining = serveRouteJobs.filter((j: any) => !orderedIdSet.has(j.id));
+      orderedJobs = [...ordered, ...remaining];
+    }
+
+    // Build coordinate path for polyline
+    const coords: [number, number][] = orderedJobs
+      .filter((j: any) => j.recipient_lat != null && j.recipient_lng != null)
+      .map((j: any) => [j.recipient_lng, j.recipient_lat] as [number, number]);
+
+    if (coords.length > 1) {
+      addMapboxTrail(map, SERVE_TRAIL_ID, coords, '#d4a017', 2);
+    }
+
+    // Numbered markers
+    orderedJobs.forEach((job: any, idx: number) => {
+      if (job.recipient_lat == null || job.recipient_lng == null) return;
+      const statusColor = job.status === 'served' ? '#22c55e'
+        : job.status === 'failed' ? '#ef4444'
+        : job.status === 'in_progress' ? '#eab308'
+        : '#d4a017';
+      const el = document.createElement('div');
+      el.style.cssText = 'display:flex;flex-direction:column;align-items:center;filter:drop-shadow(0 1px 2px rgba(0,0,0,0.5));';
+      const badge = document.createElement('div');
+      badge.style.cssText = `width:16px;height:16px;border-radius:50%;background:${statusColor};color:#000;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:900;font-family:'JetBrains Mono',monospace;border:1px solid #fff;`;
+      badge.textContent = String(idx + 1);
+      const caret = document.createElement('div');
+      caret.style.cssText = `width:0;height:0;border-left:3px solid transparent;border-right:3px solid transparent;border-top:4px solid ${statusColor};`;
+      el.appendChild(badge);
+      el.appendChild(caret);
+
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([job.recipient_lng, job.recipient_lat])
+        .addTo(map);
+      serveMarkersRef.current.push(marker);
+    });
+
+    // Fit bounds to include serve jobs + call location
+    if (coords.length > 0) {
+      const bounds = new mapboxgl.LngLatBounds();
+      if (call?.latitude != null && call?.longitude != null) {
+        bounds.extend([call.longitude, call.latitude]);
+      }
+      coords.forEach(c => bounds.extend(c));
+      map.fitBounds(bounds, { padding: 40 });
+    }
+  }, [loaded, serveRouteJobs, serveRouteOrder, call?.id]);
+
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      if (tileMonitorRef.current) { tileMonitorRef.current(); tileMonitorRef.current = null; }
-      if (mapRef.current) unregisterMapInstance(mapRef.current);
+      markersRef.current.forEach(m => m.remove());
+      serveMarkersRef.current.forEach(m => m.remove());
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, []);
 
-  // ── Leaflet fallback when Google Maps fails (connectivity) ──
-  if (showLeafletFallback) {
-    // Build assigned unit positions for the fallback
-    const assignedUnits = units
-      .filter(u => call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null)
-      .map(u => ({
-        call_sign: u.call_sign,
-        lat: u.latitude!,
-        lng: u.longitude!,
-        status: u.status,
-      }));
+  // Derive assigned unit count for status display
+  const assignedUnits = units.filter(u => call?.assigned_units?.includes(String(u.id)));
+  const assignedWithGpsCount = assignedUnits.filter(u => u.latitude != null && u.longitude != null).length;
 
-    // Build active call for the fallback
-    const fallbackCalls = call?.latitude != null && call?.longitude != null
-      ? [{
-          id: String(call.id),
-          call_number: call.call_number || 'CALL',
-          incident_type: call.incident_type || '',
-          location_address: call.location || '',
-          latitude: call.latitude,
-          longitude: call.longitude,
-          priority: call.priority || 'P3',
-        }]
-      : [];
-
-    return (
-      <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
-        {/* Toolbar (same as online mode) */}
-        <div style={{
-          position: 'absolute', top: 4, left: 4, right: 4, zIndex: 1001,
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          pointerEvents: 'none',
-        }}>
-          <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider px-1 py-0.5"
-            style={{ background: 'rgba(0,0,0,0.7)', pointerEvents: 'auto' }}>
-            <MapPin style={{ width: 8, height: 8, display: 'inline', marginRight: 3 }} />
-            Mini-Map
-          </span>
-          <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
-            <button type="button"
-              onClick={() => navigate('/map')}
-              className="text-rmpg-400 hover:text-white"
-              style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
-              title="Open full map"
-            >
-              <Maximize2 style={{ width: 10, height: 10 }} />
-            </button>
-            {onClose && (
-              <button type="button"
-                onClick={onClose}
-                className="text-rmpg-400 hover:text-white"
-                style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
-                title="Close mini-map"
-              >
-                ✕
-              </button>
-            )}
-          </div>
-        </div>
-
-        <OfflineMapFallback
-          className="absolute inset-0"
-          compact
-          unitPositions={assignedUnits}
-          activeCalls={fallbackCalls}
-          onRetry={() => {
-            setRetryingGmaps(true);
-            setError(null);
-            setLoaded(false);
-            setGmapsRetry(n => n + 1);
-            setTimeout(() => setRetryingGmaps(false), 5000);
-          }}
-          retrying={retryingGmaps}
-        />
-      </div>
-    );
-  }
-
-  // ── Auth error (config problem, not connectivity) ──
+  // ── Map error placeholder (sole error surface) ──
   if (isAuthError) {
     return (
-      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#050505' }}>
+      <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0b0b' }}>
         <span className="text-[9px] text-rmpg-500">{error}</span>
       </div>
     );
   }
 
+  const priorityColor = MINI_PRIORITY_COLORS[(call as any)?.priority] || '#888888';
+
   return (
-    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #0a0a0a' }}>
+    <div className="dispatch-minimap-container" style={{ position: 'relative', height: fullHeight ? '100%' : 180, borderTop: fullHeight ? undefined : '1px solid #141414' }}>
       {/* Toolbar */}
       <div style={{
         position: 'absolute', top: 4, left: 4, right: 4, zIndex: 10,
-        display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+        display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
         pointerEvents: 'none',
       }}>
-        <span className="text-[8px] font-bold text-rmpg-400 uppercase tracking-wider px-1 py-0.5"
-          style={{ background: 'rgba(0,0,0,0.7)', pointerEvents: 'auto' }}>
-          <MapPin style={{ width: 8, height: 8, display: 'inline', marginRight: 3 }} />
-          Mini-Map
-        </span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 2, pointerEvents: 'auto' }}>
+          {/* Title badge with priority accent */}
+          <span className="text-[8px] font-bold uppercase tracking-wider px-1.5 py-0.5"
+            style={{
+              background: 'rgba(0,0,0,0.8)',
+              backdropFilter: 'blur(4px)',
+              borderLeft: `2px solid ${priorityColor}`,
+              color: '#aaaaaa',
+              fontFamily: "'JetBrains Mono', monospace",
+              display: 'flex', alignItems: 'center', gap: 3,
+            }}>
+            <MapPin style={{ width: 8, height: 8, color: priorityColor }} />
+            Mini-Map
+            {(call as any)?.priority && (
+              <span style={{ fontSize: 7, color: priorityColor, fontWeight: 900 }}>{(call as any).priority}</span>
+            )}
+          </span>
+          {/* Unit count badge */}
+          {assignedUnits.length > 0 && (
+            <span className="text-[7px] font-bold px-1.5 py-0.5"
+              style={{
+                background: 'rgba(0,0,0,0.8)',
+                backdropFilter: 'blur(4px)',
+                color: '#666666',
+                fontFamily: "'JetBrains Mono', monospace",
+              }}>
+              {assignedWithGpsCount}/{assignedUnits.length} UNITS
+              {assignedWithGpsCount > 0 && <span style={{ color: '#22c55e', marginLeft: 3 }}>●</span>}
+            </span>
+          )}
+          {/* Serve route badge */}
+          {serveRouteJobs && serveRouteJobs.length > 0 && (
+            <span className="text-[7px] font-bold px-1.5 py-0.5"
+              style={{
+                background: 'rgba(0,0,0,0.8)',
+                backdropFilter: 'blur(4px)',
+                color: '#d4a017',
+                fontFamily: "'JetBrains Mono', monospace",
+                borderLeft: '2px solid #d4a017',
+              }}>
+              {serveRouteJobs.length} STOPS
+            </span>
+          )}
+        </div>
         <div style={{ display: 'flex', gap: 2, pointerEvents: 'auto' }}>
           <button type="button"
             onClick={() => navigate('/map')}
-            className="text-rmpg-400 hover:text-white"
-            style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+            className="text-rmpg-400 hover:text-white transition-colors"
+            style={{ background: 'rgba(0,0,0,0.8)', padding: '3px 5px', border: 'none', cursor: 'pointer', backdropFilter: 'blur(4px)' }}
             title="Open full map"
           >
             <Maximize2 style={{ width: 10, height: 10 }} />
@@ -372,8 +590,8 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           {onClose && (
             <button type="button"
               onClick={onClose}
-              className="text-rmpg-400 hover:text-white"
-              style={{ background: 'rgba(0,0,0,0.7)', padding: '2px 4px', border: 'none', cursor: 'pointer' }}
+              className="text-rmpg-400 hover:text-white transition-colors"
+              style={{ background: 'rgba(0,0,0,0.8)', padding: '3px 5px', border: 'none', cursor: 'pointer', backdropFilter: 'blur(4px)' }}
               title="Close mini-map"
             >
               ✕
@@ -382,49 +600,164 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         </div>
       </div>
 
-      {/* Route ETA badge (bottom-left) */}
-      {activeRoute && (
+      {/* Compass indicator (top-right, below buttons) */}
+      {loaded && mapBearing !== 0 && (
         <div style={{
-          position: 'absolute', bottom: 4, left: 4, zIndex: 10,
-          background: 'rgba(0,0,0,0.9)', border: '1px solid #88888850',
-          padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
-        }}>
-          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
-            {activeRoute.unitCallSign}→{activeRoute.callNumber}
-          </span>
-          <span style={{ fontSize: 9, color: '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-          <span style={{ fontSize: 8, color: '#666666' }}>{activeRoute.distance}</span>
-        </div>
-      )}
-
-      {/* Map container */}
-      <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
-
-      {/* Loading overlay */}
-      {!loaded && !error && (
-        <div style={{
-          position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-          background: '#050505',
-        }}>
-          <RefreshCw style={{ width: 14, height: 14, color: '#383838' }} className="animate-spin" />
-        </div>
-      )}
-
-      {/* Tile stall badge */}
-      {loaded && tilesStalled && (
-        <div style={{
-          position: 'absolute', bottom: activeRoute ? 28 : 4, right: 4, zIndex: 10,
+          position: 'absolute', top: 36, right: 4, zIndex: 10,
           pointerEvents: 'none',
         }}>
           <div style={{
-            background: 'rgba(0,0,0,0.85)', border: '1px solid #f59e0b40',
-            padding: '2px 6px', display: 'flex', alignItems: 'center', gap: 4,
+            width: 24, height: 24, borderRadius: '50%',
+            background: 'rgba(0,0,0,0.8)',
+            border: '1px solid #2b2b2b',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            backdropFilter: 'blur(4px)',
           }}>
-            <RefreshCw style={{ width: 8, height: 8, color: '#f59e0b' }} className="animate-spin" />
-            <span style={{ fontSize: 8, color: '#f59e0b', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
-              OFFLINE
-            </span>
+            <svg width="16" height="16" viewBox="0 0 16 16"
+              style={{ transform: `rotate(${-mapBearing}deg)`, transition: 'transform 0.3s ease' }}>
+              <polygon points="8,2 6.5,9 8,7.5 9.5,9" fill="#d4a017" />
+              <polygon points="8,14 6.5,7 8,8.5 9.5,7" fill="#555555" />
+              <text x="8" y="1.5" textAnchor="middle" fill="#d4a017" fontSize="3" fontFamily="monospace" fontWeight="bold">N</text>
+            </svg>
           </div>
+        </div>
+      )}
+
+      {/* Route ETA badge (bottom-left) — enhanced */}
+      {activeRoute && (
+        <div style={{
+          position: 'absolute', bottom: 4, left: 4, zIndex: 10,
+          background: 'rgba(0,0,0,0.92)', border: '1px solid #88888830',
+          backdropFilter: 'blur(4px)',
+          padding: '3px 8px', display: 'flex', alignItems: 'center', gap: 6,
+          borderLeft: '2px solid #22c55e',
+        }}>
+          <Navigation style={{ width: 8, height: 8, color: '#22c55e', transform: 'rotate(45deg)' }} />
+          <span style={{ fontSize: 8, color: '#aaaaaa', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>
+            {activeRoute.unitCallSign}→{activeRoute.callNumber}
+          </span>
+          <span style={{ fontSize: 10, color: '#fff', fontWeight: 900, fontFamily: "'JetBrains Mono', monospace" }}>{activeRoute.eta}</span>
+          <span style={{ fontSize: 8, color: '#666666', fontFamily: "'JetBrains Mono', monospace" }}>{activeRoute.distance}</span>
+        </div>
+      )}
+
+      {/* Map container with tactical grid overlay */}
+      <div style={{ position: 'relative', width: '100%', height: '100%' }}>
+        <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
+        {/* Geocoder compact dark theme override */}
+        <style>{`
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder {
+            background: rgba(10,10,10,0.92) !important;
+            border: 1px solid #2b2b2b !important;
+            border-radius: 2px !important;
+            font-size: 9px !important;
+            min-width: 28px !important;
+            max-width: 180px !important;
+            box-shadow: none !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--input {
+            color: #ccc !important;
+            font-size: 9px !important;
+            height: 24px !important;
+            padding: 2px 24px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--input::placeholder {
+            color: #555 !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions {
+            background: #0a0a0a !important;
+            border: 1px solid #2b2b2b !important;
+            font-size: 9px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions > li > a {
+            color: #aaa !important;
+            font-size: 9px !important;
+            padding: 4px 8px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions > .active > a,
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder .suggestions > li > a:hover {
+            background: #1a1a1a !important;
+            color: #d4a017 !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--icon-search {
+            fill: #d4a017 !important;
+            width: 14px !important;
+            height: 14px !important;
+            top: 5px !important;
+            left: 5px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--icon-close {
+            fill: #666 !important;
+            width: 12px !important;
+            height: 12px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--button {
+            background: transparent !important;
+            width: 24px !important;
+            height: 24px !important;
+          }
+          .dispatch-minimap-container .mapboxgl-ctrl-geocoder--collapsed {
+            min-width: 28px !important;
+            width: 28px !important;
+          }
+        `}</style>
+        <div style={{
+          position: 'absolute', inset: 0, pointerEvents: 'none',
+          backgroundImage:
+            'repeating-linear-gradient(0deg, transparent, transparent 39px, rgba(212,160,23,0.04) 39px, rgba(212,160,23,0.04) 40px),' +
+            'repeating-linear-gradient(90deg, transparent, transparent 39px, rgba(212,160,23,0.04) 39px, rgba(212,160,23,0.04) 40px)',
+        }} />
+      </div>
+
+      {/* Loading overlay — tactical radar sweep */}
+      {!loaded && !error && (
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 6,
+          background: '#0b0b0b',
+        }}>
+          <div style={{ position: 'relative', width: 32, height: 32 }}>
+            {/* Radar ring */}
+            <div style={{
+              position: 'absolute', inset: 0,
+              border: '1px solid #d4a01740', borderRadius: '50%',
+            }} />
+            {/* Sweep line */}
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%', width: 14, height: 1,
+              background: 'linear-gradient(90deg, #d4a017, transparent)',
+              transformOrigin: '0 0',
+              animation: 'rmpg-radar-sweep 2s linear infinite',
+            }} />
+            {/* Center dot */}
+            <div style={{
+              position: 'absolute', top: '50%', left: '50%',
+              width: 3, height: 3, borderRadius: '50%',
+              background: '#d4a017', transform: 'translate(-50%,-50%)',
+            }} />
+          </div>
+          <span style={{
+            fontSize: 7, color: '#333', fontWeight: 700,
+            fontFamily: "'JetBrains Mono', monospace", letterSpacing: '0.1em',
+          }}>
+            ACQUIRING
+          </span>
+        </div>
+      )}
+
+      {/* Connected indicator (green dot when map loaded) */}
+      {loaded && (
+        <div style={{
+          position: 'absolute', bottom: activeRoute ? 36 : 4, right: 4, zIndex: 10,
+          pointerEvents: 'none',
+          display: 'flex', alignItems: 'center', gap: 3,
+          background: 'rgba(0,0,0,0.7)', padding: '2px 5px', borderRadius: 2,
+        }}>
+          <div style={{
+            width: 5, height: 5, borderRadius: '50%',
+            background: '#22c55e', boxShadow: '0 0 4px rgba(34,197,94,0.5)',
+          }} />
+          <Wifi style={{ width: 7, height: 7, color: '#22c55e60' }} />
         </div>
       )}
     </div>

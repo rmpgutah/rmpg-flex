@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { toDisplayLabel, formatPhoneInput } from '../utils/formatters';
 import {
   X,
@@ -21,6 +21,7 @@ import {
   Monitor,
   RotateCcw,
   Key,
+  Volume2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
@@ -28,10 +29,12 @@ import TotpCodeInput from './TotpCodeInput';
 import SignaturePad from './SignaturePad';
 import TrustedDevicesList from './security/TrustedDevicesList';
 import LoginHistoryTable from './security/LoginHistoryTable';
+import VoicePersonaSettings from './settings/VoicePersonaSettings';
 import SecurityKeyManager from './security/SecurityKeyManager';
 import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
 import TwoFactorSetupWizard from './security/TwoFactorSetupWizard';
+import { applyThemePreference, normalizeThemePreference } from '../utils/theme';
 
 interface UserPreferences {
   notify_dispatch_email: number;
@@ -54,13 +57,14 @@ interface UserPreferences {
   default_map_style: string;
   dispatch_sort: string;
   dispatch_show_cleared: number;
+  theme_preference: 'dark' | 'light';
   [key: string]: any;
 }
 
 interface UserProfileModalProps {
   isOpen: boolean;
   onClose: () => void;
-  initialTab?: 'profile' | 'password' | 'sessions' | 'security' | 'preferences';
+  initialTab?: 'profile' | 'password' | 'sessions' | 'security' | 'preferences' | 'voice';
 }
 
 export default function UserProfileModal({ isOpen, onClose, initialTab = 'profile' }: UserProfileModalProps) {
@@ -478,6 +482,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const tabs = [
     { id: 'profile' as const, label: 'Profile', icon: User },
     { id: 'preferences' as const, label: 'Prefs', icon: Settings },
+    { id: 'voice' as const, label: 'Voice', icon: Volume2 },
     { id: 'password' as const, label: 'Password', icon: Lock },
     { id: 'security' as const, label: 'Security', icon: ShieldCheck },
     { id: 'sessions' as const, label: 'Sessions', icon: Key },
@@ -510,7 +515,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
         className="relative w-[520px] max-w-[95vw] max-h-[80vh] flex flex-col"
         style={{
           background: '#0a0a0a',
-          border: '1px solid #383838',
+          border: '1px solid #4d4d4d',
           borderTopColor: '#383838',
           borderLeftColor: '#383838',
           borderBottomColor: '#181818',
@@ -637,13 +642,13 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                 <div>
                   <label className="field-label">Username</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #181818' }}>
+                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #242424' }}>
                     {user.username}
                   </div>
                 </div>
                 <div>
                   <label className="field-label">Badge #</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #181818' }}>
+                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #242424' }}>
                     {user.badge_number || '—'}
                   </div>
                 </div>
@@ -672,7 +677,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         style={{
                           background: 'linear-gradient(135deg, #333333, #888888)',
                           color: '#fff',
-                          border: '2px solid #2a4a6e',
+                          border: '2px solid #454545',
                           borderRadius: 2,
                         }}
                       >
@@ -758,6 +763,10 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
             </>
           )}
 
+          {activeTab === 'voice' && (
+            <VoicePersonaSettings />
+          )}
+
           {activeTab === 'password' && (
             <>
               <div>
@@ -809,7 +818,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               </div>
 
               {pwPolicy.length > 0 && (
-                <div className="text-[10px] space-y-0.5 p-2" style={{ color: '#666666', background: '#030303', border: '1px solid #181818' }}>
+                <div className="text-[10px] space-y-0.5 p-2" style={{ color: '#666666', background: '#030303', border: '1px solid #242424' }}>
                   <div className="font-bold text-[9px] uppercase tracking-wider mb-1" style={{ color: '#888888' }}>
                     Password Requirements
                   </div>
@@ -853,7 +862,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         Notification Preferences
                       </span>
                     </div>
-                    <div className="space-y-1.5" style={{ background: '#050505', border: '1px solid #181818', padding: '8px 10px' }}>
+                    <div className="space-y-1.5" style={{ background: '#050505', border: '1px solid #242424', padding: '8px 10px' }}>
                       {[
                         { key: 'dispatch', label: 'Dispatch Alerts' },
                         { key: 'bolo', label: 'BOLO Alerts' },
@@ -890,7 +899,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                   </div>
 
                   {/* Feature 23: Notification sound toggle */}
-                  <div className="mt-3" style={{ background: '#050505', border: '1px solid #181818', padding: '8px 10px' }}>
+                  <div className="mt-3" style={{ background: '#050505', border: '1px solid #242424', padding: '8px 10px' }}>
                     <label className="flex items-center justify-between cursor-pointer">
                       <span className="text-[11px] text-rmpg-200">Enable Notification Sounds</span>
                       <div className="flex items-center gap-2">
@@ -951,10 +960,9 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         <select
                           value={prefs.theme_preference || 'dark'}
                           onChange={e => {
-                            const theme = e.target.value;
+                            const theme = normalizeThemePreference(e.target.value);
                             setPrefs({ ...prefs, theme_preference: theme });
-                            document.documentElement.classList.remove('theme-dark', 'theme-light');
-                            document.documentElement.classList.add(`theme-${theme}`);
+                            applyThemePreference(theme);
                           }}
                           className="input-dark text-[10px] py-0.5 px-1 w-24"
                         >
@@ -1298,7 +1306,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
               )}
 
               {/* Quick links to devices / history / keys */}
-              <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid #181818' }}>
+              <div className="flex gap-2 mt-3 pt-3 flex-wrap" style={{ borderTop: '1px solid #242424' }}>
                 <button type="button"
                   onClick={() => setSecurityView('keys')}
                   className="toolbar-btn flex-1 h-7 text-[10px] uppercase tracking-wider"
@@ -1337,7 +1345,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                     <div
                       key={session.session_id}
                       className="flex items-center justify-between p-2"
-                      style={{ background: '#050505', border: '1px solid #181818' }}
+                      style={{ background: '#050505', border: '1px solid #242424' }}
                     >
                       <div>
                         <div className="text-[11px] text-white font-mono">

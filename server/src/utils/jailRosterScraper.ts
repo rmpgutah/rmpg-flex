@@ -2408,7 +2408,7 @@ function upsertRosterRecords(county: string, entries: RosterEntry[]): { inserted
 
   // Get display name from config, falling back to formatted county key
   const config = getCountyConfig(county);
-  const displayName = config?.display_name || `${county.replace(/_/g, ' ')} Jail`;
+  const displayName = config?.display_name || `${county.replace(/_/g, ' ').toUpperCase()} Jail`;
   const state = config?.state || 'UT';
 
   const upsert = db.prepare(`

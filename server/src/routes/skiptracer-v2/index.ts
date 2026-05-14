@@ -158,9 +158,16 @@ router.get('/search', async (req: Request, res: Response) => {
     const profiles = resolveResults(successfulResults);
     const durationMs = Date.now() - startTime;
 
-    // Background-save resolved profiles to people_index
+    // Background-save resolved profiles to people_index. Swallowing ALL
+    // errors hid real persistence bugs (e.g. constraint violations meaning
+    // the index is silently incomplete). Log them as warn so they surface
+    // in journalctl without failing the user-facing search response.
     for (const profile of profiles) {
-      try { saveToPeopleIndex(profile); } catch (e) { /* non-critical */ }
+      try {
+        saveToPeopleIndex(profile);
+      } catch (e: any) {
+        console.warn('[Skiptracer] people_index save failed (non-blocking):', e?.message || e);
+      }
     }
 
     const result: UnifiedSearchResult = {
@@ -303,7 +310,7 @@ router.get('/dossiers', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const q = (req.query.q as string) || '';
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string)) || 100000));
     const offset = parseInt(req.query.offset as string) || 0;
 
     let sql = `
@@ -503,7 +510,7 @@ router.delete('/dossiers/:id', requireRole('admin'), (req: Request, res: Respons
 router.get('/history', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(req.query.limit as string) || 50, 200);
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string)) || 100000));
     const offset = parseInt(req.query.offset as string) || 0;
     const q = (req.query.q as string) || '';
 
@@ -675,7 +682,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
       doc.line(margin, y, margin + contentWidth, y);
       y += 5;
       doc.setTextColor(0, 0, 0);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.setFontSize(9);
     };
 
@@ -685,7 +692,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
       doc.setFont('helvetica', 'bold');
       doc.text(`${label}: `, margin, y);
       const labelWidth = doc.getTextWidth(`${label}: `);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       const lines = doc.splitTextToSize(value, contentWidth - labelWidth);
       doc.text(lines, margin + labelWidth, y);
       y += lines.length * 4 + 1;
@@ -694,6 +701,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
     const addListItems = (items: string[]) => {
       for (const item of items) {
         checkPage(5);
+        doc.setFont('courier', 'normal');
         const lines = doc.splitTextToSize(`  - ${item}`, contentWidth - 4);
         doc.text(lines, margin + 2, y);
         y += lines.length * 4 + 0.5;
@@ -713,7 +721,7 @@ router.get('/dossiers/:id/pdf', async (req: Request, res: Response) => {
 
     // ── Meta info ──
     doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.setTextColor(80, 80, 80);
     doc.text(`Subject: ${dossier.subject_name}`, margin, y); y += 4;
     doc.text(`Generated: ${generatedAt}`, margin, y); y += 4;

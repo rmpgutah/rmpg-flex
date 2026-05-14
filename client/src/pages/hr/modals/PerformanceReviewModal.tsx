@@ -3,11 +3,12 @@
 // Create or edit a performance review for an employee
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, TrendingUp, Star } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { localToday } from '../../../utils/dateUtils';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface UserOption {
   id: string;
   full_name: string;
@@ -184,7 +185,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div>
             <label className={labelClass}>Strengths</label>
-            <textarea
+            <RichTextArea
               value={strengths}
               onChange={e => setStrengths(e.target.value)}
               className={`${inputClass} h-16 resize-none`}
@@ -194,7 +195,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div>
             <label className={labelClass}>Areas for Improvement</label>
-            <textarea
+            <RichTextArea
               value={areasForImprovement}
               onChange={e => setAreasForImprovement(e.target.value)}
               className={`${inputClass} h-16 resize-none`}
@@ -204,7 +205,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div>
             <label className={labelClass}>Goals</label>
-            <textarea
+            <RichTextArea
               value={goals}
               onChange={e => setGoals(e.target.value)}
               className={`${inputClass} h-16 resize-none`}
@@ -214,7 +215,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div>
             <label className={labelClass}>Additional Comments</label>
-            <textarea
+            <RichTextArea
               value={comments}
               onChange={e => setComments(e.target.value)}
               className={`${inputClass} h-16 resize-none`}

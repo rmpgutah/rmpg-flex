@@ -110,24 +110,27 @@ describe('totpService.ts', () => {
     });
   });
 
+  // bcrypt rounds=12 hashing/verifying takes 200-500ms each on dev hw,
+  // and adds up across 4 tests. Bump the per-test timeout so warm-CI
+  // runs (where hash time spikes) don't flake the deploy gate.
   describe('hashBackupCode / verifyBackupCode', () => {
-    it('hashes and verifies a code correctly', () => {
+    it('hashes and verifies a code correctly', { timeout: 30000 }, () => {
       const code = 'ABCD-EF01';
       const hash = hashBackupCode(code);
       expect(verifyBackupCode(code, hash)).toBe(true);
     });
 
-    it('rejects a wrong code', () => {
+    it('rejects a wrong code', { timeout: 30000 }, () => {
       const hash = hashBackupCode('ABCD-EF01');
       expect(verifyBackupCode('ZZZZ-0000', hash)).toBe(false);
     });
 
-    it('is dash-insensitive', () => {
+    it('is dash-insensitive', { timeout: 30000 }, () => {
       const hash = hashBackupCode('ABCD-EF01');
       expect(verifyBackupCode('ABCDEF01', hash)).toBe(true);
     });
 
-    it('is case-insensitive', () => {
+    it('is case-insensitive', { timeout: 30000 }, () => {
       const hash = hashBackupCode('ABCD-EF01');
       expect(verifyBackupCode('abcd-ef01', hash)).toBe(true);
     });

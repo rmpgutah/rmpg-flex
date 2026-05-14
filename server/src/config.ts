@@ -63,6 +63,9 @@ if (!envSecret || envSecret === defaultSecret) {
 }
 
 // ─── SSL/TLS Certificate Detection ────────────────────
+// Set DISABLE_SSL=true when running behind a reverse proxy (e.g. nginx) that
+// terminates TLS upstream — otherwise both bind 443 and Flex hangs on EADDRINUSE.
+const sslDisabled = String(process.env.DISABLE_SSL || '').toLowerCase() === 'true';
 const sslCertPath = process.env.SSL_CERT_PATH || path.resolve(__dirname, '../certs/fullchain.pem');
 const sslKeyPath = process.env.SSL_KEY_PATH || path.resolve(__dirname, '../certs/privkey.pem');
 
@@ -70,14 +73,16 @@ let sslEnabled = false;
 let sslCert: string | undefined;
 let sslKey: string | undefined;
 
-try {
-  if (fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
-    sslCert = fs.readFileSync(sslCertPath, 'utf-8');
-    sslKey = fs.readFileSync(sslKeyPath, 'utf-8');
-    sslEnabled = true;
+if (!sslDisabled) {
+  try {
+    if (fs.existsSync(sslCertPath) && fs.existsSync(sslKeyPath)) {
+      sslCert = fs.readFileSync(sslCertPath, 'utf-8');
+      sslKey = fs.readFileSync(sslKeyPath, 'utf-8');
+      sslEnabled = true;
+    }
+  } catch (err) {
+    console.warn('⚠  SSL certificate files found but could not be read:', (err as Error).message);
   }
-} catch (err) {
-  console.warn('⚠  SSL certificate files found but could not be read:', (err as Error).message);
 }
 
 export const config = {

@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   FileText, Plus, ArrowLeft, Send, DollarSign, XCircle, Loader2, Trash2,
-  CheckCircle, AlertCircle, Clock, RefreshCw, Download, Printer, Hash,
-  CreditCard, Calendar, ChevronRight, Edit, Zap, Eye,
+  CheckCircle, AlertCircle, Clock, RefreshCw, Download, Printer, Hash, CreditCard,
+  Edit, Zap, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { toDisplayLabel } from '../../utils/formatters';
-import type { Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client } from '../../types';
+import type {
+  Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client,
+} from '../../types';
 import DocumentViewer from '../../components/DocumentViewer';
-import { localToday, dateToLocalYMD, formatDate } from '../../utils/dateUtils';
+import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
 
 function fmtShortDate(d: string | null | undefined): string {
   if (!d) return '\u2014';
@@ -58,20 +61,6 @@ function formatCurrency(n: number | undefined | null): string {
 // ============================================================
 // Component
 // ============================================================
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function AdminInvoiceTab({ clientId, clientName, client }: AdminInvoiceTabProps) {
   const [view, setView] = useState<'list' | 'detail' | 'create'>('list');
@@ -350,7 +339,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                   </td>
                   <td className="p-1.5">
                     <span className={`px-1.5 py-0.5 text-[9px] uppercase font-bold border rounded-sm ${STATUS_BADGE[inv.status] || STATUS_BADGE.draft}`}>
-                      {(inv.status || '').replace(/_/g, ' ')}
+                      {(inv.status || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="p-1.5 text-right font-mono text-white">{formatCurrency(inv.total)}</td>
@@ -407,7 +396,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         </div>
         <div>
           <label className="block text-[10px] uppercase text-rmpg-500 mb-1">Notes</label>
-          <textarea
+          <RichTextArea
             className="input-dark w-full text-xs min-h-[36px]"
             rows={2}
             value={createForm.notes}
@@ -698,7 +687,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         {/* Internal Notes */}
         <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
           <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 block">Internal Notes</span>
-          <textarea
+          <RichTextArea
             className="input-dark w-full text-xs min-h-[36px]"
             rows={3}
             defaultValue={inv.internal_notes || ''}

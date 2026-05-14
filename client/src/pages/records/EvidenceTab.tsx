@@ -24,12 +24,13 @@ import {
   Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { safeDateStr } from '../../utils/dateUtils';
+import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
 import { useAuth } from '../../context/AuthContext';
 import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import PrintRecordButton from '../../components/PrintRecordButton';
 import type { CustodyEntry, RecordEntityType } from '../../types';
 
 // ── Helpers ──────────────────────────────────────
@@ -514,21 +515,36 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
       {/* Status header */}
       <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
-        <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
-          <span className="px-1.5 py-0.5 font-bold bg-purple-900/40 text-purple-300 border border-purple-600/40 uppercase">
-            {(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ')}
-          </span>
-          {selectedEvidence.category && (
-            <span className="px-1.5 py-0.5 font-bold bg-rmpg-700 text-rmpg-300 border border-rmpg-600">
-              {selectedEvidence.category}
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3 text-[10px] text-rmpg-400 flex-1 min-w-0">
+            <span className="px-1.5 py-0.5 font-bold bg-purple-900/40 text-purple-300 border border-purple-600/40 uppercase">
+              {(selectedEvidence.evidence_type || 'physical').replace(/_/g, ' ').toUpperCase()}
             </span>
-          )}
-          {selectedEvidence.incident_number && (
-            <span className="flex items-center gap-1">
-              <Link2 className="w-3 h-3" />
-              Incident: <span className="font-mono text-white">{selectedEvidence.incident_number}</span>
-            </span>
-          )}
+            {selectedEvidence.category && (
+              <span className="px-1.5 py-0.5 font-bold bg-rmpg-700 text-rmpg-300 border border-rmpg-600">
+                {selectedEvidence.category}
+              </span>
+            )}
+            {selectedEvidence.incident_number && (
+              <span className="flex items-center gap-1">
+                <Link2 className="w-3 h-3" />
+                Incident: <span className="font-mono text-white">{selectedEvidence.incident_number}</span>
+              </span>
+            )}
+          </div>
+          {/* Print / Preview / Sign & Export — generates the v1 evidence PDF
+              (already implemented in recordPdfGenerator.ts as a `RecordPdfType`).
+              Wires entityType so attachment images auto-fetch into the PDF. */}
+          <div className="flex items-center gap-1 flex-shrink-0 print:hidden">
+            <PrintRecordButton
+              recordType="evidence"
+              recordData={selectedEvidence}
+              identifier={selectedEvidence.evidence_number}
+              entityType="evidence"
+              entityId={selectedEvidence.id}
+              iconOnly
+            />
+          </div>
         </div>
         {/* Status badges */}
         <div className="flex gap-2 mt-1.5">
@@ -628,7 +644,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                     collected: 'bg-green-500',
                     transferred: 'bg-gray-500',
                     checked_out: 'bg-amber-500',
-                    returned: 'bg-cyan-500',
+                    returned: 'bg-gray-500',
                     released: 'bg-purple-500',
                     destroyed: 'bg-red-500',
                   };
@@ -638,7 +654,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-bold text-white uppercase">{entry.action.replace(/_/g, ' ')}</span>
-                          <span className="text-[9px] text-rmpg-500">{entry.timestamp ? new Date(entry.timestamp).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : ''}</span>
+                          <span className="text-[9px] text-rmpg-500">{safeDateTimeStr(entry.timestamp, '')}</span>
                         </div>
                         <div className="text-xs text-rmpg-300 mt-0.5">
                           {entry.from_person && <span className="text-rmpg-400">From: {entry.from_person}</span>}
@@ -747,7 +763,7 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
                   <div
                     key={idx}
                     className="aspect-square bg-surface-sunken border border-rmpg-600 rounded-sm overflow-hidden cursor-pointer hover:border-brand-500 transition-colors"
-                    onClick={() => window.open(photo, '_blank')}
+                    onClick={() => window.open(photo, '_blank', 'noopener,noreferrer')}
                   >
                     <img src={photo} alt={`Evidence photo ${idx + 1}`} className="w-full h-full object-cover" loading="lazy" />
                   </div>
@@ -760,8 +776,8 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Created', selectedEvidence.created_at ? new Date(selectedEvidence.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
-            {renderInfoRow('Updated', selectedEvidence.updated_at ? new Date(selectedEvidence.updated_at).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false }) : null, Calendar)}
+            {renderInfoRow('Created', safeDateTimeStr(selectedEvidence.created_at, ''), Calendar)}
+            {renderInfoRow('Updated', safeDateTimeStr(selectedEvidence.updated_at, ''), Calendar)}
           </div>
         </CollapsibleSection>
 
@@ -785,20 +801,6 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 // ════════════════════════════════════════════════════
 // Legacy default export
 // ════════════════════════════════════════════════════
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function EvidenceTab(props: EvidenceTabProps) {
   const state = useEvidenceTab(props);

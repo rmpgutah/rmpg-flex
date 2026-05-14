@@ -198,6 +198,14 @@ export interface Property {
   utility_shutoffs?: string;
   known_hazards?: string;
   previous_incidents_count?: number;
+  // F5 additions (2026-05-04) — were silently dropped on load
+  alarm_system?: string;
+  secondary_contact_name?: string;
+  secondary_contact_phone?: string;
+  contact_email?: string;
+  opening_hours?: string;
+  closing_hours?: string;
+  patrol_frequency?: string;
 }
 
 // --- CAD / Dispatch ---
@@ -266,12 +274,12 @@ export interface CallForService {
   location_floor?: string;
   location_room?: string;
   zone_beat?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   // Dispatch district data (from geofence auto-fill)
   dispatch_code?: string;
-  section_name?: string;
+  sector_name?: string;
   zone_name?: string;
   beat_name?: string;
   beat_descriptor?: string;
@@ -355,11 +363,14 @@ export interface CallForService {
   archived_at?: string;
   previous_status?: CallStatus;
   created_by: string;
+  dispatcher_name?: string;
   updated_at: string;
   // Risk assessment
   risk_score?: number;
   // Visit history (PSO calls)
   visit_history?: VisitHistory[];
+  // Pinned-to-top flag (dispatcher sticky)
+  pinned?: number | boolean;
 }
 
 export interface PsoServiceWindows {
@@ -542,6 +553,17 @@ export interface Person {
   scar_description?: string;
   piercing_description?: string;
   distinguishing_features?: string;
+  // Extended contact + activity tracking (jail intake / FI cards)
+  email_secondary?: string;
+  date_last_seen?: string;
+  location_last_seen?: string;
+  alias_dob?: string;
+  home_phone?: string;
+  work_phone?: string;
+  // F3 jail-intake additions (2026-05-04)
+  voice_description?: string;
+  religion?: string;
+  dietary_restrictions?: string;
   watchlist_match?: string | null;
   watchlist_checked_at?: string | null;
   photo_url?: string;
@@ -599,6 +621,14 @@ export interface Vehicle {
   equipment_notes?: string;
   registered_owner?: string;
   registration_state?: string;
+  // F4 additions (2026-05-04) — were silently dropped on load
+  insurance_expiry?: string;
+  ncic_entry_number?: string;
+  tow_location?: string;
+  owner_dl_number?: string;
+  owner_dob?: string;
+  primary_driver_name?: string;
+  vehicle_use?: string;
   flags: (string | { type: string; severity?: string; count?: number; updated_at?: string })[];
   notes?: string;
   incident_ids: string[];
@@ -654,7 +684,7 @@ export interface CustodyEntry {
   timestamp: string;
 }
 
-export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident';
+export type RecordEntityType = 'person' | 'vehicle' | 'property' | 'evidence' | 'case' | 'incident' | 'warrant' | 'business';
 
 export interface RecordLink {
   id: string;
@@ -1415,11 +1445,15 @@ export interface FleetFuelLog {
   created_at: string;
   distance?: number;
   efficiency?: number;
+  partial_fill?: number;
   // Computed efficiency fields from backend
   mpg?: number | null;
   calc_distance?: number | null;
   cost_per_mile?: number | null;
   running_avg_mpg?: number | null;
+  // Optional backend-attached fields (not always present on every log row)
+  flags?: string;              // JSON-encoded flag array, e.g. '["outlier:mpg"]'
+  driver_officer_id?: string;  // officer who filled the tank (if tracked)
 }
 
 export interface FleetFuelSummary {
@@ -1433,6 +1467,124 @@ export interface FleetFuelSummary {
   total_distance?: number | null;
   cost_per_mile?: number | null;
   fuel_cost_per_day?: number | null;
+}
+
+// --- Fuel Analytics + Budget + Cost types (deploy-unblock placeholders) ---
+//
+// These exports exist to satisfy imports in fleet analytics pages/PDFs that
+// were merged to main without accompanying type definitions. The shapes
+// below mirror actual usage but are intentionally permissive (`[key: string]:
+// any`) so future refinement can tighten fields without a breaking migration.
+// TODO: replace with precise interfaces derived from the backend response
+// schemas once the analytics API contracts stabilize.
+
+export interface FuelAnalyticsOverview {
+  vehicles?: Array<Record<string, any>>;
+  top_stations?: Array<Record<string, any>>;
+  flagged_leaderboard?: Array<Record<string, any>>;
+  [key: string]: any;
+}
+
+export interface FuelAnalyticsByOfficer {
+  [key: string]: any;
+}
+
+export interface FuelAnalyticsByCard {
+  [key: string]: any;
+}
+
+export interface FleetFuelBudget {
+  id?: string;
+  // vehicle_id is numeric per the FuelBudgetModal signature (number | null).
+  // Keep this typed precisely — callers pass it to onSave which declares
+  // number | null, so widening to string | number causes assignability errors.
+  vehicle_id?: number | null;
+  period?: string;
+  budget_amount?: number;
+  [key: string]: any;
+}
+
+export type FuelBudgetPeriod = 'weekly' | 'monthly' | 'quarterly' | 'yearly' | string;
+
+export interface FleetFuelBudgetSummary {
+  total_budget?: number;
+  total_spent?: number;
+  variance?: number;
+  [key: string]: any;
+}
+
+export interface FleetLoan {
+  id?: string;
+  vehicle_id?: string;
+  lender?: string;
+  monthly_payment?: number;
+  [key: string]: any;
+}
+
+export interface FleetInsurancePolicy {
+  id?: string;
+  vehicle_id?: string;
+  carrier?: string;
+  policy_number?: string;
+  premium?: number;
+  [key: string]: any;
+}
+
+export interface FleetAccessory {
+  id?: string;
+  vehicle_id?: string;
+  name?: string;
+  cost?: number;
+  [key: string]: any;
+}
+
+export interface FleetUtilityCost {
+  id?: string;
+  vehicle_id?: string;
+  kind?: string;
+  cost?: number;
+  [key: string]: any;
+}
+
+export interface FleetCostSummary {
+  total?: number;
+  [key: string]: any;
+}
+
+// --- Fleet Expenses (non-fuel) ---
+
+export type FleetExpenseCategory = 'registration' | 'tolls' | 'parking' | 'car_wash' | 'tickets' | 'towing' | 'permits' | 'insurance' | 'equipment' | 'decals_wraps' | 'storage' | 'roadside_assistance' | 'inspection' | 'electronics' | 'accessories' | 'misc';
+
+export interface FleetExpense {
+  id?: string | number;
+  vehicle_id: number;
+  expense_date: string;
+  category: FleetExpenseCategory;
+  amount: number;
+  vendor?: string;
+  description?: string;
+  receipt_path?: string;
+  odometer_reading?: number;
+  recurring?: boolean | number;
+  recurring_frequency?: 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+  notes?: string;
+  created_by?: number;
+  created_by_name?: string;
+  created_at?: string;
+  updated_at?: string;
+  archived_at?: string;
+}
+
+export interface FleetExpenseSummary {
+  categories: Array<{
+    category: string;
+    count: number;
+    total: number;
+    avg_amount: number;
+    first_date: string;
+    last_date: string;
+  }>;
+  grand_total: number;
 }
 
 // --- Fleet Inspections ---
@@ -1644,6 +1796,11 @@ export interface DashboardStats {
   active_bolos: number;
   officers_on_duty: number;
   calls_by_hour: { hour: number; count: number }[];
+  // Optional dashboard stat-card metrics (added by feature waves)
+  active_warrants?: number;
+  pending_serve?: number;
+  open_cases?: number;
+  total_persons?: number;
 }
 
 // --- API Response ---
@@ -1692,6 +1849,11 @@ export type WSMessageType =
   | 'panic_alert'
   | 'panic_audio'
   | 'panic_audio_response'
+  | 'panic_acknowledged'
+  | 'panic_resolved'
+  | 'panic_cancelled'
+  | 'panic_false_alarm'
+  | 'panic_escalated'
   | 'dispatch_update'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
@@ -1755,6 +1917,7 @@ export type WSMessageType =
   | 'warrants_updated'
   | 'warrant_served'
   | 'warrant_recalled'
+  | 'scraper_event'
   // Trespass orders
   | 'trespass_order_violated'
   | 'trespass_order_created'
@@ -1775,8 +1938,16 @@ export type WSMessageType =
   | 'serve_attempt'
   | 'serve_created'
   // Radio events (for cross-integration)
+  | 'radio_check'
+  | 'radio_check_ack'
+  | 'radio_transmission'
+  | 'emergency_talkgroup_active'
+  | 'emergency_talkgroup_ended'
   // Security
-  | 'security:updated';
+  | 'security:updated'
+  // Speed tracking
+  | 'speed:alert'
+  | 'geofence:alert';
 
 export interface WSMessage {
   type: WSMessageType;
@@ -2102,7 +2273,7 @@ export interface TrespassOrder {
   linked_person_last?: string;
   linked_property_name?: string;
   notes?: string;
-  section_id?: string;
+  sector_id?: string;
   zone_id?: string;
   beat_id?: string;
   zone_beat?: string;
@@ -3013,8 +3184,8 @@ export interface DispatchArea {
 
 export interface DispatchSection {
   id: number;
-  section_code: string;
-  section_name: string;
+  sector_code: string;
+  sector_name: string;
   area_id?: number;
   area_code?: string;
   area_name?: string;
@@ -3032,9 +3203,9 @@ export interface DispatchZone {
   id: number;
   zone_code: string;
   zone_name: string;
-  section_id?: number;
-  section_code?: string;
-  section_name?: string;
+  sector_id?: number;
+  sector_code?: string;
+  sector_name?: string;
   color?: string;
   description?: string;
   primary_unit?: string;
@@ -3058,8 +3229,8 @@ export interface DispatchBeat {
   zone_id?: number;
   zone_code?: string;
   zone_name?: string;
-  section_code?: string;
-  section_name?: string;
+  sector_code?: string;
+  sector_name?: string;
   dispatch_code?: string;
   color?: string;
   assigned_unit?: string;

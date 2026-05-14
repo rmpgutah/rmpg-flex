@@ -5,19 +5,23 @@
 // ban zones, watch lists, and alert trigger workflows.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import { formatEnumValue } from '../utils/formatters';
+import RichTextArea from '../components/RichTextArea';
 import {
-  UserX, Search, Plus, AlertTriangle, Shield, MapPin, Clock, User,
-  X, Save, Loader2, Eye, Ban, ShieldAlert, ShieldCheck,
+  UserX, Search, Plus, AlertTriangle, Shield, MapPin, User, X, Save, Loader2,
+  Ban, ShieldAlert, ShieldCheck,
 } from 'lucide-react';
 import type { OffenderAlert, OffenderAlertType, AlertSeverity } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { getMapboxToken } from '../utils/mapboxApiKey';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -40,7 +44,7 @@ const TYPE_COLORS: Record<string, string> = {
   sex_offender: 'bg-purple-900/60 text-purple-300 border-purple-600/50',
   gang_member: 'bg-orange-900/50 text-orange-400 border-orange-700/50',
   probation: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
-  parole: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
+  parole: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   mental_health: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
   violent_history: 'bg-red-900/70 text-red-300 border-red-600/50',
   warrant_flag: 'bg-rose-900/50 text-rose-400 border-rose-700/50',
@@ -104,9 +108,9 @@ function CdocSearchPanel() {
             placeholder="First name"
             className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 outline-none focus:border-brand-600"
           />
-          <button type="button" onClick={searchCdoc} disabled={loading || !lastName.trim()} className="toolbar-btn toolbar-btn-primary px-2">
+          <IconButton onClick={searchCdoc} disabled={loading || !lastName.trim()} className="toolbar-btn toolbar-btn-primary px-2" aria-label="Search">
             {loading ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Search style={{ width: 11, height: 11 }} />}
-          </button>
+          </IconButton>
         </div>
       </div>
 
@@ -118,7 +122,7 @@ function CdocSearchPanel() {
             </button>
             <div className="flex gap-3 items-start">
               {selectedOffender.photo_url && (
-                <img src={selectedOffender.photo_url} alt="Mugshot" className="w-20 h-24 object-cover border border-rmpg-600" />
+                <img src={selectedOffender.photo_url} alt="Mugshot" className="w-20 h-24 object-cover border border-rmpg-600" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               )}
               <div className="flex-1">
                 <div className="text-sm font-bold text-white">{selectedOffender.last_name}, {selectedOffender.first_name}</div>
@@ -130,7 +134,7 @@ function CdocSearchPanel() {
                     selectedOffender.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                     'bg-gray-900/40 text-gray-400 border-gray-700/40'
                   }`}>
-                    {selectedOffender.status.toUpperCase()}
+                    {formatEnumValue(selectedOffender.status)}
                   </span>
                 )}
               </div>
@@ -161,7 +165,7 @@ function CdocSearchPanel() {
               className="w-full text-left px-3 py-2 border-b border-rmpg-700/50 hover:bg-rmpg-700/30 transition-colors"
             >
               <div className="flex items-center gap-2">
-                {r.photo_url && <img src={r.photo_url} alt="" className="w-8 h-10 object-cover border border-rmpg-600 flex-shrink-0" />}
+                {r.photo_url && <img src={r.photo_url} alt="" className="w-8 h-10 object-cover border border-rmpg-600 flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold text-white truncate">{r.last_name}, {r.first_name}</div>
                   <div className="text-[10px] text-rmpg-400 font-mono">DOC# {r.doc_number}</div>
@@ -172,7 +176,7 @@ function CdocSearchPanel() {
                     r.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                     'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                   }`}>
-                    {r.status.toUpperCase()}
+                    {formatEnumValue(r.status)}
                   </span>
                 )}
               </div>
@@ -199,20 +203,6 @@ function CdocSearchPanel() {
   );
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function OffenderRegistryPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -223,6 +213,7 @@ export default function OffenderRegistryPage() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
+  const [staticMapToken, setStaticMapToken] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -296,6 +287,20 @@ export default function OffenderRegistryPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useLiveSync('records', () => { fetchAlerts({ silent: true }); fetchStats(); });
 
+  useEffect(() => {
+    let cancelled = false;
+    getMapboxToken()
+      .then((token) => {
+        if (!cancelled) setStaticMapToken(token || '');
+      })
+      .catch(() => {
+        if (!cancelled) setStaticMapToken('');
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Person search debounce
   useEffect(() => {
     if (personSearch.length < 2) { setPersonResults([]); return; }
@@ -362,7 +367,7 @@ export default function OffenderRegistryPage() {
       {fetchError && (
         <div className="absolute left-0 right-0 z-10 mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3 flex-shrink-0" /> <span>{fetchError}</span>
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
+          <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300" aria-label="Dismiss error"><X style={{ width: 12, height: 12 }} /></IconButton>
         </div>
       )}
       {/* ── Left Panel ── */}
@@ -402,9 +407,9 @@ export default function OffenderRegistryPage() {
             <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
             <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search alerts..." aria-label="Search alerts..." className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 outline-none" />
             {searchQuery && (
-              <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+              <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
                 <X style={{ width: 12, height: 12 }} />
-              </button>
+              </IconButton>
             )}
           </div>
           <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none focus:border-brand-600">
@@ -447,12 +452,12 @@ export default function OffenderRegistryPage() {
                     </span>
                   </div>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${SEVERITY_COLORS[alert.severity] || ''}`}>
-                    {alert.severity.toUpperCase()}
+                    {formatEnumValue(alert.severity)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <span className={`px-1 border ${TYPE_COLORS[alert.alert_type] || ''}`}>
-                    {alert.alert_type.replace(/_/g, ' ')}
+                    {alert.alert_type.replace(/_/g, ' ').toUpperCase()}
                   </span>
                   <span className="truncate">{alert.description}</span>
                 </div>
@@ -484,7 +489,7 @@ export default function OffenderRegistryPage() {
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${SEVERITY_COLORS[selected.severity] || ''}`}>
-                  {selected.severity.toUpperCase()}
+                  {formatEnumValue(selected.severity)}
                 </span>
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${TYPE_COLORS[selected.alert_type] || ''}`}>
                   {selected.alert_type.replace(/_/g, ' ').toUpperCase()}
@@ -513,13 +518,15 @@ export default function OffenderRegistryPage() {
                     <MapPin size={10} className="text-red-400" />
                     Registered Address / Ban Zone
                   </div>
-                  <div className="h-40 bg-[#050505] relative">
-                    <img
-                      src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}&style=feature:all|element:geometry|color:0x242f3e&style=feature:all|element:labels.text.fill|color:0x746855`}
-                      alt="Ban zone map"
-                      className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
-                    />
+                  <div className="h-40 bg-[#0c0c0c] relative">
+                    {staticMapToken ? (
+                      <img
+                        src={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l-marker+ff0000(${selected.location_lng},${selected.location_lat})/${selected.location_lng},${selected.location_lat},15,0/600x200@2x?access_token=${staticMapToken}`}
+                        alt="Ban zone map"
+                        className="w-full h-full object-cover"
+                        onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+                      />
+                    ) : null}
                     {selected.restriction_radius_ft && (
                       <div className="absolute bottom-2 left-2 px-2 py-1 bg-red-900/80 text-red-300 text-[9px] font-bold border border-red-700/50">
                         <Ban size={10} className="inline mr-1" />
@@ -528,7 +535,7 @@ export default function OffenderRegistryPage() {
                     )}
                   </div>
                   {selected.location_address && (
-                    <div className="px-3 py-1.5 text-[10px] text-rmpg-300 flex items-center gap-1.5 border-t border-[#222222]">
+                    <div className="px-3 py-1.5 text-[10px] text-rmpg-300 flex items-center gap-1.5 border-t border-[#2b2b2b]">
                       <MapPin size={10} className="text-rmpg-500" />
                       {selected.location_address}
                     </div>
@@ -573,7 +580,7 @@ export default function OffenderRegistryPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Offender Alert" icon={Plus}>
-              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close form"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               {/* Person search */}
@@ -583,9 +590,9 @@ export default function OffenderRegistryPage() {
                   <div className="mt-1 flex items-center gap-2 px-2 py-1.5 bg-surface-sunken border border-rmpg-700">
                     <User style={{ width: 12, height: 12 }} className="text-rmpg-500" />
                     <span className="text-xs text-white">{selectedPerson.first_name} {selectedPerson.last_name}</span>
-                    <button type="button" onClick={() => { setSelectedPerson(null); setFormData(p => ({ ...p, person_id: '' })); setPersonSearch(''); }} className="ml-auto text-rmpg-500 hover:text-white">
+                    <IconButton onClick={() => { setSelectedPerson(null); setFormData(p => ({ ...p, person_id: '' })); setPersonSearch(''); }} className="ml-auto text-rmpg-500 hover:text-white" aria-label="Clear selected person">
                       <X style={{ width: 10, height: 10 }} />
-                    </button>
+                    </IconButton>
                   </div>
                 ) : (
                   <div className="relative">
@@ -625,7 +632,7 @@ export default function OffenderRegistryPage() {
 
               <div>
                 <label className="field-label">Description *</label>
-                <textarea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                <RichTextArea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {formErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.description}</p>}
               </div>
 

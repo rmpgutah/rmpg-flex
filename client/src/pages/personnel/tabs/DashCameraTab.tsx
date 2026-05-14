@@ -4,10 +4,10 @@
 // from ClearPathGPS. Sub-tabs: Devices | Events.
 // ============================================================
 
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  Car, Search, Cpu, Zap, AlertTriangle, MapPin, Gauge,
-  Video, Radio, Clock, RefreshCw, ExternalLink, Loader2,
+  Car, Search, Cpu, Zap, AlertTriangle, MapPin, Gauge, Video, Clock, RefreshCw,
+  ExternalLink, Loader2,
 } from 'lucide-react';
 import type { DashcamEvent, CpgDeviceMapping } from '../../../types';
 import { DASHCAM_EVENT_COLORS } from '../utils/personnelConstants';
@@ -40,20 +40,6 @@ interface Props {
 }
 
 // ── Component ────────────────────────────────────────────────
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function DashCameraTab({
   dashcamEvents, deviceMappings, loading = false,
@@ -147,7 +133,7 @@ export default function DashCameraTab({
   const SUMMARY_CARDS = [
     { label: 'Devices', value: stats.totalDevices, color: 'text-rmpg-300', bgClass: 'bg-surface-base', border: 'border-rmpg-700', topBorder: 'border-t-rmpg-500' },
     { label: 'Active', value: stats.activeDevices, color: 'text-green-400', bgClass: 'bg-surface-base', border: 'border-green-700/30', topBorder: 'border-t-green-500' },
-    { label: 'Events', value: stats.totalEvents, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-700/30', topBorder: 'border-t-blue-500' },
+    { label: 'Events', value: stats.totalEvents, color: 'text-gray-400', bgClass: 'bg-surface-base', border: 'border-gray-700/30', topBorder: 'border-t-gray-500' },
     { label: 'Hard Brakes', value: stats.hardBrakes, color: 'text-red-400', bgClass: 'bg-surface-base', border: 'border-red-700/30', topBorder: 'border-t-red-500' },
     { label: 'Speeding', value: stats.speeding, color: 'text-amber-400', bgClass: 'bg-surface-base', border: 'border-amber-700/30', topBorder: 'border-t-amber-500' },
     { label: 'Video Clips', value: stats.videoEvents, color: 'text-purple-400', bgClass: 'bg-surface-base', border: 'border-purple-700/30', topBorder: 'border-t-purple-500' },

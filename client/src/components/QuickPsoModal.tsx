@@ -5,6 +5,8 @@ import { PRIORITY_OPTIONS, PSO_SERVICE_TYPES, PROCESS_SERVICE_DOC_TYPES } from '
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { useDistrictIdentify } from '../hooks/useDistrictLookup';
 
+import RichTextArea from './RichTextArea';
+import { formatPhoneInput } from '../utils/formatters';
 interface QuickPsoModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -22,7 +24,7 @@ const DEFAULT_PSO_DATA = {
   location: '',
   latitude: null as number | null,
   longitude: null as number | null,
-  section_id: '',
+  sector_id: '',
   zone_id: '',
   beat_id: '',
   pso_requestor_name: '',
@@ -120,7 +122,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
         {/* Header — purple PSO theme */}
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-purple-700/50"
-          style={{ background: 'linear-gradient(180deg, #2d1b69 0%, #1a1525 100%)' }}
+          style={{ background: 'linear-gradient(180deg, #292929 0%, #181818 100%)' }}
         >
           <div className="flex items-center gap-2">
             <Shield className="w-4 h-4 text-purple-300" />
@@ -226,7 +228,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                   if (district) {
                     setFormData((prev) => ({
                       ...prev,
-                      section_id: district.section_id || prev.section_id,
+                      sector_id: district.sector_id || prev.sector_id,
                       zone_id: district.zone_id || prev.zone_id,
                       beat_id: district.beat_id || prev.beat_id,
                     }));
@@ -281,7 +283,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 className="input-dark"
                 placeholder="(801) 555-0100"
                 value={formData.pso_requestor_phone}
-                onChange={(e) => update('pso_requestor_phone', e.target.value)}
+                onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))}
                 style={{ borderColor: '#6b21a8' }}
               />
             </div>
@@ -303,7 +305,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           {/* Description */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
-            <textarea
+            <RichTextArea
               className="input-dark w-full"
               rows={2}
               placeholder="Brief description of request..."
@@ -379,8 +381,8 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 style={{
                   background: isSubmitting ? '#4a4a4a' : 'linear-gradient(180deg, #7c3aed 0%, #6b21a8 100%)',
                   borderColor: '#7c3aed',
-                  borderBottomColor: '#3b0764',
-                  borderRightColor: '#3b0764',
+                  borderBottomColor: '#212121',
+                  borderRightColor: '#212121',
                   color: '#ffffff',
                   opacity: !formData.location ? 0.5 : 1,
                 }}

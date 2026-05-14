@@ -1,11 +1,15 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { apiRateLimit } from '../middleware/rateLimiter';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
+import { logger } from '../utils/logger';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
+router.use(apiRateLimit);
 router.use(authenticateToken);
 
 // GET /api/use-of-force/stats — Dashboard stats
@@ -20,7 +24,7 @@ router.get('/stats', (req: Request, res: Response) => {
     const byLevel = db.prepare("SELECT force_level, COUNT(*) as count FROM use_of_force WHERE force_level IS NOT NULL GROUP BY force_level ORDER BY count DESC").all();
     res.json({ total, pending_review: pending, reviewed, this_month: thisMonth, by_type: byType, by_level: byLevel });
   } catch (error: any) {
-    console.error('UoF stats error:', error);
+    logger.error({ err: error }, 'UoF stats error');
     res.status(500).json({ error: 'Failed to get UoF stats', code: 'UOF_STATS_ERROR' });
   }
 });
@@ -29,9 +33,9 @@ router.get('/stats', (req: Request, res: Response) => {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, officer_id, force_type, force_level, page = '1', per_page = '50', search } = req.query;
+    const { status, officer_id, force_type, force_level, page = '1', per_page = '100000', search } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(100, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     let where = 'WHERE 1=1';
@@ -67,7 +71,7 @@ router.get('/', (req: Request, res: Response) => {
 
     res.json({ data: rows, pagination: { page: pageNum, per_page: perPage, total, totalPages: Math.ceil(total / perPage) } });
   } catch (error: any) {
-    console.error('List UoF error:', error);
+    logger.error({ err: error }, 'List UoF error');
     res.status(500).json({ error: 'Failed to list UoF reports', code: 'LIST_UOF_ERROR' });
   }
 });
@@ -92,7 +96,7 @@ router.get('/:id', (req: Request, res: Response) => {
     if (!row) { res.status(404).json({ error: 'UoF report not found', code: 'UOF_NOT_FOUND' }); return; }
     res.json({ data: row });
   } catch (error: any) {
-    console.error('Get UoF error:', error);
+    logger.error({ err: error }, 'Get UoF error');
     res.status(500).json({ error: 'Failed to get UoF report', code: 'GET_UOF_ERROR' });
   }
 });
@@ -138,7 +142,7 @@ router.post('/', (req: Request, res: Response) => {
     `).get(result.lastInsertRowid);
     res.status(201).json({ data: created });
   } catch (error: any) {
-    console.error('Create UoF error:', error);
+    logger.error({ err: error }, 'Create UoF error');
     res.status(500).json({ error: 'Failed to create UoF report', code: 'CREATE_UOF_ERROR' });
   }
 });
@@ -185,7 +189,7 @@ router.put('/:id', (req: Request, res: Response) => {
     `).get(req.params.id);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Update UoF error:', error);
+    logger.error({ err: error }, 'Update UoF error');
     res.status(500).json({ error: 'Failed to update UoF report', code: 'UPDATE_UOF_ERROR' });
   }
 });
@@ -206,7 +210,7 @@ router.put('/:id/review', requireRole('admin', 'manager', 'supervisor'), (req: R
     `).run(newStatus, req.user!.userId, now, now, req.params.id);
 
     auditLog(req, 'UPDATE', 'use_of_force', Number(req.params.id), `UoF report ${decision}: ${review_notes || ''}`);
-    broadcast('alerts', 'uof_reviewed', { id: parseInt(req.params.id as string), decision });
+    broadcast('alerts', 'uof_reviewed', { id: parseInt(paramStr(req.params.id), 10), decision });
 
     const updated = db.prepare(`
       SELECT uof.*, u.full_name as officer_name, r.full_name as reviewer_name
@@ -217,7 +221,7 @@ router.put('/:id/review', requireRole('admin', 'manager', 'supervisor'), (req: R
     `).get(req.params.id);
     res.json({ data: updated });
   } catch (error: any) {
-    console.error('Review UoF error:', error);
+    logger.error({ err: error }, 'Review UoF error');
     res.status(500).json({ error: 'Failed to review UoF report', code: 'REVIEW_UOF_ERROR' });
   }
 });
@@ -233,7 +237,7 @@ router.delete('/:id', requireRole('admin'), (req: Request, res: Response) => {
     auditLog(req, 'DELETE', 'use_of_force', Number(req.params.id), `UoF report deleted`);
     res.json({ success: true });
   } catch (error: any) {
-    console.error('Delete UoF error:', error);
+    logger.error({ err: error }, 'Delete UoF error');
     res.status(500).json({ error: 'Failed to delete UoF report', code: 'DELETE_UOF_ERROR' });
   }
 });
@@ -252,7 +256,7 @@ router.get('/by-officer/:officerId', requireRole('admin', 'manager', 'supervisor
     `).all(req.params.officerId);
     res.json({ data: rows });
   } catch (error: any) {
-    console.error('UoF by officer error:', error);
+    logger.error({ err: error }, 'UoF by officer error');
     res.status(500).json({ error: 'Failed to get officer UoF history', code: 'UOF_BY_OFFICER_ERROR' });
   }
 });

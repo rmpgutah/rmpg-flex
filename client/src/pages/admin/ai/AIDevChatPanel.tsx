@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User, Circle, Wifi, WifiOff } from 'lucide-react';
+import { MessageSquare, Plus, Trash2, Send, Loader2, FileCode, X, Bot, User, Circle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface ChatMessage {
   id?: number;
   role: 'user' | 'assistant';
@@ -65,11 +66,11 @@ function generateThinkingSteps(query: string): ThinkStep[] {
       icon: '🗺️',
       detail: 'Accessing geospatial architecture knowledge base...\n' +
         'Key components identified:\n' +
-        '  ├─ Google Maps JS API (dark styled) — primary map provider\n' +
-        '  ├─ CartoDB dark_matter tiles — offline fallback layer\n' +
+        '  ├─ Mapbox GL JS (dark styled) — mandatory map provider\n' +
+        '  ├─ MapLibre GL — free fallback layer\n' +
         '  ├─ GPS tracking via WebSocket (real-time unit positions)\n' +
         '  └─ Service Worker tile caching: Z7-Z15 coverage for SLC metro',
-      files: ['client/src/pages/map/MapPage.tsx', 'client/src/utils/googleMapsLoader.ts', 'server/src/utils/geocode.ts'],
+      files: ['client/src/pages/map/MapboxMapPage.tsx', 'client/src/utils/mapboxLoader.ts', 'server/src/utils/geocode.ts'],
     });
   } else if (q.includes('database') || q.includes('schema') || q.includes('table') || q.includes('sql') || q.includes('data')) {
     steps.push({
@@ -117,7 +118,7 @@ function generateThinkingSteps(query: string): ThinkStep[] {
       icon: '🎨',
       detail: 'Accessing design system knowledge base...\n' +
         'Theme: Spillman Flex / Motorola Solutions CAD aesthetic\n' +
-        '  ├─ Surfaces: #0a0a0a (base), #141414 (raised), #050505 (sunken)\n' +
+        '  ├─ Surfaces: #141414 (base), #181818 (raised), #0c0c0c (sunken)\n' +
         '  ├─ Brand: blue #888888, gold #d4a017\n' +
         '  ├─ Border-radius: 2px (flat retro console)\n' +
         '  ├─ Font: system sans-serif, monospace for data\n' +
@@ -226,11 +227,7 @@ export default function AIDevChatPanel() {
   }, [isStreaming]);
 
   // Generate session ID
-  const newSessionId = () => {
-    const arr = new Uint8Array(6);
-    crypto.getRandomValues(arr);
-    return `dev-${Date.now()}-${Array.from(arr, b => b.toString(16).padStart(2, '0')).join('')}`;
-  };
+  const newSessionId = () => `dev-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
   // Fetch sessions
   const fetchSessions = useCallback(async () => {
@@ -436,12 +433,12 @@ export default function AIDevChatPanel() {
         return (
           <div key={i} className="my-2">
             {lang && (
-              <div className="text-[10px] text-gray-500 bg-[#050505] border border-[#222222] border-b-0 rounded-t px-2 py-0.5 font-mono">
+              <div className="text-[10px] text-gray-500 bg-[#0c0c0c] border border-[#303030] border-b-0 rounded-t px-2 py-0.5 font-mono">
                 {lang}
               </div>
             )}
             <pre
-              className={`bg-[#050505] border border-[#222222] text-green-400 font-mono text-xs p-3 overflow-x-auto ${
+              className={`bg-[#0c0c0c] border border-[#303030] text-green-400 font-mono text-xs p-3 overflow-x-auto ${
                 lang ? 'rounded-b' : 'rounded'
               }`}
             >
@@ -456,7 +453,7 @@ export default function AIDevChatPanel() {
           {part.split(/(`[^`]+`)/g).map((seg, j) => {
             if (seg.startsWith('`') && seg.endsWith('`')) {
               return (
-                <code key={j} className="bg-[#050505] text-amber-400 px-1 py-0.5 rounded text-xs font-mono">
+                <code key={j} className="bg-[#0c0c0c] text-amber-400 px-1 py-0.5 rounded text-xs font-mono">
                   {seg.slice(1, -1)}
                 </code>
               );
@@ -483,13 +480,13 @@ export default function AIDevChatPanel() {
     <style>{`
       @keyframes shimmer { 0% { transform: translateX(-200%); } 100% { transform: translateX(400%); } }
     `}</style>
-    <div className="flex h-[calc(100dvh-280px)] min-h-[500px] bg-[#050505] rounded border border-[#222222] overflow-hidden">
+    <div className="flex h-[calc(100dvh-280px)] min-h-[500px] bg-[#0c0c0c] rounded border border-[#303030] overflow-hidden">
       {/* Session Sidebar */}
-      <div className="w-60 flex-shrink-0 bg-[#050505] border-r border-[#222222] flex flex-col">
-        <div className="p-3 border-b border-[#222222]">
+      <div className="w-60 flex-shrink-0 bg-[#0c0c0c] border-r border-[#303030] flex flex-col">
+        <div className="p-3 border-b border-[#303030]">
           <button
             onClick={createNewSession}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#666666] text-white text-xs font-medium rounded transition-colors"
+            className="w-full flex items-center justify-center gap-2 px-3 py-2 bg-[#888888] hover:bg-[#5a5a5a] text-white text-xs font-medium rounded transition-colors"
           >
             <Plus className="w-3.5 h-3.5" />
             New Chat
@@ -500,8 +497,8 @@ export default function AIDevChatPanel() {
             <div
               key={s.session_id}
               onClick={() => loadSession(s.session_id)}
-              className={`group flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-[#222222]/50 transition-colors ${
-                activeSession === s.session_id ? 'bg-[#222222]/50' : 'hover:bg-[#0a0a0a]'
+              className={`group flex items-start gap-2 px-3 py-2 cursor-pointer border-b border-[#303030]/50 transition-colors ${
+                activeSession === s.session_id ? 'bg-[#303030]/50' : 'hover:bg-[#141414]'
               }`}
             >
               <MessageSquare className="w-3.5 h-3.5 text-gray-500 mt-0.5 flex-shrink-0" />
@@ -526,7 +523,7 @@ export default function AIDevChatPanel() {
       {/* Chat Area */}
       <div className="flex-1 flex flex-col">
         {/* AI Status Bar */}
-        <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#222222] bg-[#0a0a0a]">
+        <div className="flex items-center justify-between px-4 py-1.5 border-b border-[#303030] bg-[#141414]">
           <div className="flex items-center gap-2">
             {aiStatus === 'checking' && <Loader2 className="w-3 h-3 text-yellow-500 animate-spin" />}
             {aiStatus === 'online' && <Circle className="w-2.5 h-2.5 text-green-500 fill-green-500" />}
@@ -567,7 +564,7 @@ export default function AIDevChatPanel() {
                       setInput(suggestion);
                       inputRef.current?.focus();
                     }}
-                    className="text-left text-[11px] text-gray-500 hover:text-gray-300 bg-[#0a0a0a] hover:bg-[#141414] border border-[#222222] rounded p-2 transition-colors"
+                    className="text-left text-[11px] text-gray-500 hover:text-gray-300 bg-[#141414] hover:bg-[#181818] border border-[#303030] rounded p-2 transition-colors"
                   >
                     {suggestion}
                   </button>
@@ -587,7 +584,7 @@ export default function AIDevChatPanel() {
                 className={`max-w-[80%] ${
                   msg.role === 'user'
                     ? 'bg-[#888888] text-white rounded-sm px-3 py-2'
-                    : 'bg-[#141414] text-gray-200 rounded-sm px-3 py-2 border border-[#222222]'
+                    : 'bg-[#181818] text-gray-200 rounded-sm px-3 py-2 border border-[#303030]'
                 }`}
               >
                 <div className="text-sm whitespace-pre-wrap leading-relaxed">
@@ -598,7 +595,7 @@ export default function AIDevChatPanel() {
                 ) : null}
               </div>
               {msg.role === 'user' && (
-                <div className="w-7 h-7 rounded bg-[#141414] flex items-center justify-center flex-shrink-0">
+                <div className="w-7 h-7 rounded bg-[#181818] flex items-center justify-center flex-shrink-0">
                   <User className="w-4 h-4 text-gray-300" />
                 </div>
               )}
@@ -614,12 +611,12 @@ export default function AIDevChatPanel() {
               <div className="max-w-[80%]">
                 {/* Thinking phase — rich visual reasoning display (stays visible during response) */}
                 {(isThinking || thinkingText) && (
-                  <div className={`bg-gradient-to-b from-[#141414] to-[#0a0a0a] rounded-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
+                  <div className={`bg-gradient-to-b from-[#181818] to-[#141414] rounded-sm border overflow-hidden mb-2 min-w-[340px] transition-all duration-300 ${
                     streamingContent ? 'border-amber-500/10 max-h-28' : 'border-amber-500/20'
                   }`}>
                     {/* Animated header bar */}
                     <div className="relative">
-                      <div className="h-1 bg-[#050505] overflow-hidden">
+                      <div className="h-1 bg-[#0c0c0c] overflow-hidden">
                         <div className="h-full bg-gradient-to-r from-amber-600 via-amber-400 to-amber-600"
                           style={{ width: '30%', animation: 'shimmer 1.2s infinite linear' }} />
                       </div>
@@ -651,7 +648,7 @@ export default function AIDevChatPanel() {
                     </div>
                     {/* Thinking content with terminal-style display */}
                     <div className="p-2">
-                      <div className={`text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#050505] rounded p-3 border border-[#222222] shadow-inner transition-all duration-300 ${
+                      <div className={`text-[11px] text-gray-300 whitespace-pre-wrap leading-[1.6] overflow-y-auto font-mono bg-[#0f0f0f] rounded p-3 border border-[#272727] shadow-inner transition-all duration-300 ${
                         streamingContent ? 'max-h-16 opacity-70' : 'max-h-48'
                       }`}
                         style={{ scrollBehavior: 'smooth' }}
@@ -662,7 +659,7 @@ export default function AIDevChatPanel() {
                             return <div key={i} className="text-amber-400 font-bold mt-2 first:mt-0">{line}</div>;
                           }
                           if (line.startsWith('  ├─') || line.startsWith('  └─')) {
-                            return <div key={i} className="text-cyan-400/80">{line}</div>;
+                            return <div key={i} className="text-gray-400/80">{line}</div>;
                           }
                           if (line.startsWith('📁')) {
                             return <div key={i} className="text-gray-400/70 text-[10px] mt-0.5">{line}</div>;
@@ -682,8 +679,8 @@ export default function AIDevChatPanel() {
 
                 {/* Response content — streams alongside reasoning */}
                 {streamingContent ? (
-                  <div className="bg-[#141414] text-gray-200 rounded-sm px-3 py-2 border border-gray-500/30">
-                    <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#222222]">
+                  <div className="bg-[#181818] text-gray-200 rounded-sm px-3 py-2 border border-gray-500/30">
+                    <div className="flex items-center gap-2 mb-1.5 pb-1.5 border-b border-[#303030]">
                       <div className="w-2 h-2 bg-gray-500 rounded-full animate-pulse" />
                       <span className="text-[10px] text-gray-400 font-bold tracking-[0.1em] uppercase">RESPONSE</span>
                       <span className="text-[10px] text-gray-600 font-mono ml-auto">{elapsedSec}s</span>
@@ -694,8 +691,8 @@ export default function AIDevChatPanel() {
                     </div>
                   </div>
                 ) : !thinkingText && (
-                  <div className="bg-[#141414] rounded-sm border border-gray-500/30 overflow-hidden">
-                    <div className="h-0.5 bg-[#050505] overflow-hidden">
+                  <div className="bg-[#181818] rounded-sm border border-gray-500/30 overflow-hidden">
+                    <div className="h-0.5 bg-[#0c0c0c] overflow-hidden">
                       <div className="h-full bg-gradient-to-r from-transparent via-gray-500 to-transparent"
                         style={{ width: '40%', animation: 'shimmer 1.5s infinite linear' }} />
                     </div>
@@ -721,14 +718,14 @@ export default function AIDevChatPanel() {
 
         {/* File context bar */}
         {showFileInput && (
-          <div className="px-4 py-2 border-t border-[#222222] bg-[#0a0a0a] flex items-center gap-2">
+          <div className="px-4 py-2 border-t border-[#303030] bg-[#141414] flex items-center gap-2">
             <FileCode className="w-4 h-4 text-gray-500" />
             <input
               type="text"
               value={fileContext}
               onChange={e => setFileContext(e.target.value)}
               placeholder="Enter file path for context (e.g., client/src/pages/AdminPage.tsx)"
-              className="flex-1 bg-[#050505] border border-[#222222] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-gray-500"
+              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-xs px-2 py-1.5 rounded focus:outline-none focus:border-gray-500"
             />
             <button
               onClick={() => {
@@ -743,7 +740,7 @@ export default function AIDevChatPanel() {
         )}
 
         {/* Input area */}
-        <div className="p-3 border-t border-[#222222] bg-[#0a0a0a]">
+        <div className="p-3 border-t border-[#303030] bg-[#141414]">
           <div className="flex items-end gap-2">
             <button
               onClick={() => setShowFileInput(!showFileInput)}
@@ -754,14 +751,14 @@ export default function AIDevChatPanel() {
             >
               <FileCode className="w-4 h-4" />
             </button>
-            <textarea
+            <RichTextArea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
               placeholder="Ask about the codebase, request changes, debug issues..."
               rows={1}
-              className="flex-1 bg-[#050505] border border-[#222222] text-white text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-gray-500 max-h-32"
+              className="flex-1 bg-[#0c0c0c] border border-[#303030] text-white text-sm px-3 py-2 rounded resize-none focus:outline-none focus:border-gray-500 max-h-32"
               style={{ minHeight: '36px' }}
               onInput={(e) => {
                 const el = e.currentTarget;
@@ -772,7 +769,7 @@ export default function AIDevChatPanel() {
             <button
               onClick={sendMessage}
               disabled={!input.trim() || isStreaming}
-              className="p-2 bg-gray-600 hover:bg-gray-700 disabled:bg-[#141414] disabled:text-gray-500 text-white rounded transition-colors"
+              className="p-2 bg-gray-600 hover:bg-gray-700 disabled:bg-[#181818] disabled:text-gray-500 text-white rounded transition-colors"
             >
               {isStreaming ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
             </button>

@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { AlertOctagon, Plus, CheckCircle, Calendar, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { localToday } from '../../../utils/dateUtils';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface Recall {
   id: number;
   vehicle_id: number;
@@ -89,7 +90,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
               <option value="standard">Standard</option><option value="safety">Safety</option><option value="critical">Critical</option>
             </select>
           </div>
-          <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
+          <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
           <input value={form.remedy} onChange={e => setForm(f => ({ ...f, remedy: e.target.value }))} className="input-field w-full text-xs" placeholder="Remedy..." />
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.recall_number.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Saving...' : 'Save'}</button>

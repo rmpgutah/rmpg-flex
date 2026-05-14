@@ -4,7 +4,7 @@
 // chronological criminal history timeline.
 // ============================================================
 
-import React, {useState, useCallback, useEffect} from 'react';
+import {useState, useCallback, useEffect} from 'react';
 import { Search, AlertTriangle, User, Shield, Calendar, MapPin, FileText, ChevronRight, Scale, List, Clock, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -40,20 +40,6 @@ interface HistoryEntry {
   officer_name?: string;
   location?: string;
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function CriminalHistoryPage() {
   const isMobile = useIsMobile();
@@ -232,7 +218,7 @@ export default function CriminalHistoryPage() {
 
       {/* Mobile search bar */}
       {isMobile && (
-        <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #222222' }}>
+        <div className="flex items-center gap-1.5 px-3 py-2 flex-shrink-0" style={{ background: '#050505', borderBottom: '1px solid #2b2b2b' }}>
           <select className="select-dark text-[10px] w-16 min-h-[36px]" value={searchType} onChange={(e) => setSearchType(e.target.value as any)}>
             <option value="name">Name</option>
             <option value="dob">DOB</option>
@@ -397,7 +383,7 @@ export default function CriminalHistoryPage() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
                             <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border ${typeColor(entry.type)}`}>
-                              {entry.type.replace(/_/g, ' ')}
+                              {entry.type.replace(/_/g, ' ').toUpperCase()}
                             </span>
                             <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
                             <span className="text-[9px] text-rmpg-500">{entry.date ? new Date(entry.date).toLocaleDateString() : ''}</span>
@@ -435,7 +421,7 @@ export default function CriminalHistoryPage() {
                             <div className="flex items-center gap-2">
                               {typeIcon(entry.type)}
                               <span className={`text-[8px] font-bold uppercase px-1 py-0.5 border ${typeColor(entry.type)}`}>
-                                {entry.type.replace(/_/g, ' ')}
+                                {entry.type.replace(/_/g, ' ').toUpperCase()}
                               </span>
                               <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
                             </div>

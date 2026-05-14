@@ -3,11 +3,12 @@
 // Create a new disciplinary action record
 // ============================================================
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { localToday } from '../../../utils/dateUtils';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface UserOption {
   id: string;
   full_name: string;
@@ -188,7 +189,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
           <div>
             <label className={labelClass}>Description *</label>
-            <textarea
+            <RichTextArea
               value={description}
               onChange={e => setDescription(e.target.value)}
               className={`${inputClass} h-20 resize-none`}
@@ -198,7 +199,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
           <div>
             <label className={labelClass}>Corrective Action</label>
-            <textarea
+            <RichTextArea
               value={correctiveAction}
               onChange={e => setCorrectiveAction(e.target.value)}
               className={`${inputClass} h-16 resize-none`}

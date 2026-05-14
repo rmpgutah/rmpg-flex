@@ -5,6 +5,7 @@ import { reverseGeocodeDetailed } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
 import { listDailyReports, getReportPath, generateAndSaveDailyReport } from '../utils/dailyReportGenerator';
 import { localNow, localToday } from '../utils/timeUtils';
+import { logger } from '../utils/logger';
 
 const router = Router();
 
@@ -743,7 +744,7 @@ router.post('/custom', requireRole('admin', 'manager'), (req: Request, res: Resp
 
     // Allowed sources and their column whitelists
     const ALLOWED_SOURCES: Record<string, string[]> = {
-      calls_for_service: ['id', 'call_number', 'incident_type', 'priority', 'status', 'caller_name', 'location_address', 'zone_beat', 'beat_id', 'zone_id', 'section_id', 'disposition', 'created_at', 'dispatched_at', 'onscene_at', 'cleared_at'],
+      calls_for_service: ['id', 'call_number', 'incident_type', 'priority', 'status', 'caller_name', 'location_address', 'zone_beat', 'beat_id', 'zone_id', 'sector_id', 'disposition', 'created_at', 'dispatched_at', 'onscene_at', 'cleared_at'],
       incidents: ['id', 'incident_number', 'incident_type', 'priority', 'status', 'location_address', 'narrative', 'officer_id', 'created_at', 'occurred_date', 'zone_beat', 'beat_id', 'zone_id', 'disposition', 'domestic_violence', 'weapons_involved'],
       citations: ['id', 'citation_number', 'type', 'violation_description', 'statute_citation', 'offense_level', 'location', 'status', 'fine_amount', 'officer_id', 'violation_date', 'created_at'],
       warrants: ['id', 'warrant_number', 'type', 'status', 'offense_level', 'charge_description', 'statute_citation', 'court_name', 'bail_amount', 'date_issued', 'expires_at', 'served_at', 'created_at'],
@@ -2020,8 +2021,10 @@ router.get('/daily-briefing', (req: Request, res: Response) => {
     `).all();
 
     const activeWarrants = db.prepare(`
-      SELECT id, warrant_number, type, charge_description, offense_level, bail_amount, subject_name
-      FROM warrants WHERE status = 'active' ORDER BY offense_level DESC, created_at DESC LIMIT 10
+      SELECT w.id, w.warrant_number, w.type, w.charge_description, w.offense_level, w.bail_amount,
+        COALESCE(p.first_name || ' ' || p.last_name, '') as subject_name
+      FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
+      WHERE w.status = 'active' ORDER BY w.offense_level DESC, w.created_at DESC LIMIT 10
     `).all();
 
     const recentIncidents = db.prepare(`
@@ -2358,61 +2361,6 @@ router.get('/overdue-reports', (req: Request, res: Response) => {
   }
 });
 
-// ══════════════════════════════════════════════════════════════════
-// REPORT UPGRADES
-// ══════════════════════════════════════════════════════════════════
-
-// ── Upgrade 26: Report templates CRUD ───────────────────────────
-router.get('/templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const templates = db.prepare(`
-      SELECT config_key, config_value, created_at, updated_at
-      FROM system_config
-      WHERE category = 'report_template' AND is_active = 1
-      ORDER BY sort_order ASC
-    `).all() as any[];
-
-    const parsed = templates.map(t => {
-      try {
-        return { id: t.config_key, ...JSON.parse(t.config_value), created_at: t.created_at, updated_at: t.updated_at };
-      } catch {
-        return { id: t.config_key, name: t.config_key, config: {}, created_at: t.created_at };
-      }
-    });
-
-    res.json({ data: parsed });
-  } catch (error: any) {
-    console.error('Get report templates error:', error);
-    res.status(500).json({ error: 'Failed to get report templates', code: 'GET_REPORT_TEMPLATES_ERROR' });
-  }
-});
-
-router.post('/templates', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { name, description, source, columns, filters, groupBy, sortBy, sortDir, schedule } = req.body;
-    if (!name) { res.status(400).json({ error: 'name is required', code: 'NAME_REQUIRED' }); return; }
-
-    const now = localNow();
-    const key = `rpt_${Date.now()}`;
-    const value = JSON.stringify({ name, description, source, columns, filters, groupBy, sortBy, sortDir, schedule });
-
-    const maxOrder = db.prepare(
-      "SELECT MAX(sort_order) as mx FROM system_config WHERE category = 'report_template'"
-    ).get() as any;
-
-    db.prepare(`
-      INSERT INTO system_config (config_key, config_value, category, sort_order, created_at, updated_at)
-      VALUES (?, ?, 'report_template', ?, ?, ?)
-    `).run(key, value, (maxOrder?.mx ?? -1) + 1, now, now);
-
-    res.status(201).json({ id: key, name, description });
-  } catch (error: any) {
-    console.error('Create report template error:', error);
-    res.status(500).json({ error: 'Failed to create report template', code: 'CREATE_REPORT_TEMPLATE_ERROR' });
-  }
-});
 
 router.put('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
@@ -2434,72 +2382,6 @@ router.put('/templates/:id', requireRole('admin', 'manager'), (req: Request, res
   }
 });
 
-router.delete('/templates/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    db.prepare("UPDATE system_config SET is_active = 0 WHERE config_key = ? AND category = 'report_template'")
-      .run(req.params.id);
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('Delete report template error:', error);
-    res.status(500).json({ error: 'Failed to delete report template', code: 'DELETE_REPORT_TEMPLATE_ERROR' });
-  }
-});
-
-// ── Upgrade 27: Report scheduling (save schedule configs) ───────
-router.get('/schedules', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const schedules = db.prepare(`
-      SELECT config_key, config_value, created_at, updated_at
-      FROM system_config
-      WHERE category = 'report_schedule' AND is_active = 1
-      ORDER BY created_at DESC
-    `).all() as any[];
-
-    const parsed = schedules.map(s => {
-      try {
-        return { id: s.config_key, ...JSON.parse(s.config_value), created_at: s.created_at };
-      } catch {
-        return { id: s.config_key, name: 'Unknown', created_at: s.created_at };
-      }
-    });
-
-    res.json({ data: parsed });
-  } catch (error: any) {
-    console.error('Get report schedules error:', error);
-    res.status(500).json({ error: 'Failed to get report schedules', code: 'GET_REPORT_SCHEDULES_ERROR' });
-  }
-});
-
-router.post('/schedules', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { name, template_id, frequency, day_of_week, day_of_month, time_of_day, recipients, enabled } = req.body;
-    if (!name || !frequency) { res.status(400).json({ error: 'name and frequency required', code: 'NAME_FREQUENCY_REQUIRED' }); return; }
-
-    const now = localNow();
-    const key = `sched_${Date.now()}`;
-    const value = JSON.stringify({
-      name, template_id, frequency, day_of_week, day_of_month, time_of_day,
-      recipients, enabled: enabled !== false, created_by: req.user!.userId,
-    });
-
-    db.prepare(`
-      INSERT INTO system_config (config_key, config_value, category, sort_order, created_at, updated_at)
-      VALUES (?, ?, 'report_schedule', 0, ?, ?)
-    `).run(key, value, now, now);
-
-    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-      VALUES (?, 'report_schedule_created', 'report_schedule', 0, ?, ?)`).run(
-      req.user!.userId, `Created report schedule: ${name} (${frequency})`, req.ip || 'unknown');
-
-    res.status(201).json({ id: key, name, frequency });
-  } catch (error: any) {
-    console.error('Create report schedule error:', error);
-    res.status(500).json({ error: 'Failed to create report schedule', code: 'CREATE_REPORT_SCHEDULE_ERROR' });
-  }
-});
 
 router.put('/schedules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
   try {
@@ -2515,17 +2397,6 @@ router.put('/schedules/:id', requireRole('admin', 'manager'), (req: Request, res
   }
 });
 
-router.delete('/schedules/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    db.prepare("UPDATE system_config SET is_active = 0 WHERE config_key = ? AND category = 'report_schedule'")
-      .run(req.params.id);
-    res.json({ success: true });
-  } catch (error: any) {
-    console.error('Delete report schedule error:', error);
-    res.status(500).json({ error: 'Failed to delete report schedule', code: 'DELETE_REPORT_SCHEDULE_ERROR' });
-  }
-});
 
 // ── Upgrade 28: Period comparison (this week vs last week, etc) ─
 router.get('/comparison', (req: Request, res: Response) => {
@@ -2698,8 +2569,8 @@ router.get('/officer-feed/:officerId', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { officerId } = req.params;
-    const { limit = '30' } = req.query;
-    const limitNum = Math.min(100, parseInt(limit as string, 10) || 30);
+    const { limit = '100000' } = req.query;
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
 
     const officer = db.prepare('SELECT id, full_name, badge_number FROM users WHERE id = ?').get(officerId) as any;
     if (!officer) { res.status(404).json({ error: 'Officer not found', code: 'OFFICER_NOT_FOUND' }); return; }
@@ -2716,6 +2587,93 @@ router.get('/officer-feed/:officerId', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Officer feed error:', error);
     res.status(500).json({ error: 'Failed to get officer feed', code: 'OFFICER_FEED_ERROR' });
+  }
+});
+
+// ── Dashboard Weekly Trend ──────────────────────────────────────────
+router.get('/dashboard-weekly-trend', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const dailyTrend = db.prepare(`
+      SELECT DATE(created_at) as date, COUNT(*) as count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-7 days')
+      GROUP BY DATE(created_at) ORDER BY date ASC
+    `).all();
+
+    const yesterday = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now', '-1 day')
+    `).get() as any;
+
+    const lastWeek = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now', '-7 days')
+    `).get() as any;
+
+    const today = db.prepare(`
+      SELECT COUNT(*) as count FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now')
+    `).get() as any;
+
+    res.json({
+      dailyTrend,
+      today: today.count,
+      yesterday: yesterday.count,
+      lastWeekSameDay: lastWeek.count,
+    });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Dashboard weekly trend error');
+    res.status(500).json({ error: 'Failed to get weekly trend', code: 'DASHBOARD_WEEKLY_TREND_ERROR' });
+  }
+});
+
+// ── Dashboard Calls by Type ─────────────────────────────────────────
+router.get('/dashboard-calls-by-type', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const byType = db.prepare(`
+      SELECT COALESCE(incident_type, 'Unknown') as type, COUNT(*) as count
+      FROM calls_for_service
+      WHERE DATE(created_at) = DATE('now')
+      GROUP BY type ORDER BY count DESC LIMIT 10
+    `).all();
+
+    res.json(byType);
+  } catch (error: any) {
+    logger.error({ err: error }, 'Dashboard calls by type error');
+    res.status(500).json({ error: 'Failed to get calls by type', code: 'DASHBOARD_CALLS_BY_TYPE_ERROR' });
+  }
+});
+
+// ── Dashboard Unit Status ───────────────────────────────────────────
+router.get('/dashboard-unit-status', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) as count FROM units
+      GROUP BY status ORDER BY count DESC
+    `).all();
+
+    const activeUnits = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.current_call_id,
+        us.full_name as officer_name, us.badge_number,
+        c.call_number, c.incident_type as call_type, c.location_address as call_location
+      FROM units u
+      LEFT JOIN users us ON u.officer_id = us.id
+      LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+      WHERE u.status != 'off_duty'
+      ORDER BY u.status, u.call_sign
+      LIMIT 50
+    `).all();
+
+    res.json({ statusCounts, activeUnits });
+  } catch (error: any) {
+    logger.error({ err: error }, 'Dashboard unit status error');
+    res.status(500).json({ error: 'Failed to get unit status', code: 'DASHBOARD_UNIT_STATUS_ERROR' });
   }
 });
 

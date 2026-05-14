@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
-import { X, Phone, AlertTriangle, Clock, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Phone, AlertTriangle, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
+import RichTextArea from './RichTextArea';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,
@@ -93,6 +94,8 @@ const DEFAULT_FORM_DATA = {
   caller_relationship: '',
   caller_address: '',
   location: '',
+  latitude: null as number | null,
+  longitude: null as number | null,
   property_id: '',
   client_id: '',
   description: '',
@@ -102,7 +105,7 @@ const DEFAULT_FORM_DATA = {
   location_floor: '',
   location_room: '',
   zone_beat: '',
-  section_id: '',
+  sector_id: '',
   zone_id: '',
   beat_id: '',
   weapons_involved: '',
@@ -380,8 +383,6 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
         num_victims: formData.num_victims ? Number(formData.num_victims) : undefined,
         damage_estimate: formData.damage_estimate ? Number(formData.damage_estimate) : undefined,
         status: formData.is_historical ? (formData.historical_status || 'closed') : 'pending',
-        assigned_units: [],
-        notes: [],
         ...historicalFields,
       } as any);
       // Only reset form on success (parent closes the modal)
@@ -407,7 +408,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
       {/* 78: Modal with deeper shadow for elevation */}
       <div className="relative w-full max-w-2xl mx-4 bg-surface-base border border-rmpg-600 animate-fade-in" style={{ boxShadow: '0 12px 48px rgba(0, 0, 0, 0.6)' }} onClick={(e) => e.stopPropagation()}>
         {/* Header - Toolbar style */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}>
+        <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600" style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}>
           <div className="flex items-center gap-2">
             {formData.is_historical ? <History className="w-4 h-4 text-amber-400" /> : <Phone className="w-4 h-4 text-brand-400" />}
             <h2 id={titleId} className="text-xs font-bold text-white uppercase tracking-wider">
@@ -493,7 +494,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
 
           {/* PSO Client Request fields — visible in both modes when PSO type is selected */}
           {formData.incident_type === 'pso_client_request' && (
-            <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: '#1a1525' }}>
+            <div className="border border-purple-700/40 p-3 space-y-3" style={{ background: '#181818' }}>
               <div className="text-[9px] font-bold text-purple-400 uppercase tracking-wider mb-1">PSO Client Request Details</div>
 
               {/* Client / Requestor dropdown — auto-fills name, phone, address */}
@@ -715,7 +716,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   if (district) {
                     setFormData((prev) => ({
                       ...prev,
-                      section_id: district.section_id || prev.section_id,
+                      sector_id: district.sector_id || prev.sector_id,
                       zone_id: district.zone_id || prev.zone_id,
                       beat_id: district.beat_id || prev.beat_id,
                     }));
@@ -741,7 +742,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Description — moved up for faster tab flow */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
-            <textarea
+            <RichTextArea
               className="textarea-dark"
               rows={mode === 'quick' ? 2 : 4}
               placeholder="Describe the situation..."
@@ -806,7 +807,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
             </div>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Section</label>
-              <select className="select-dark" value={formData.section_id} onChange={(e) => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+              <select className="select-dark" value={formData.sector_id} onChange={(e) => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                 <option value="">— Select —</option>
                 {sections.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
               </select>
@@ -815,7 +816,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Zone</label>
               <select className="select-dark" value={formData.zone_id} onChange={(e) => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                 <option value="">— Select —</option>
-                {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                {zonesForSection(formData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
               </select>
             </div>
             <div>
@@ -1066,7 +1067,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           </div>
 
           {/* Historical Entry Toggle */}
-          <div className="border border-rmpg-600 p-3" style={{ background: formData.is_historical ? '#1a1520' : 'transparent' }}>
+          <div className="border border-rmpg-600 p-3" style={{ background: formData.is_historical ? '#181818' : 'transparent' }}>
             <label className="flex items-center gap-2 cursor-pointer">
               <input
                 type="checkbox"

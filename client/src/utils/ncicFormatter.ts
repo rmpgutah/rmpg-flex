@@ -212,7 +212,8 @@ export function formatPersonResponse(
   }
 
   // ── Caution flags
-  if (person.caution_flags || person.is_sex_offender || person.gang_affiliation) {
+  const gangReal = person.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(person.gang_affiliation.toLowerCase().trim());
+  if (person.caution_flags || person.is_sex_offender || gangReal) {
     lines.push('');
     lines.push('  *** CAUTION ***');
     if (person.caution_flags) {
@@ -221,7 +222,7 @@ export function formatPersonResponse(
       });
     }
     if (person.is_sex_offender) lines.push('  >> REGISTERED SEX OFFENDER');
-    if (person.gang_affiliation) lines.push(`  >> GANG AFFILIATION: ${person.gang_affiliation.toUpperCase()}`);
+    if (gangReal) lines.push(`  >> GANG AFFILIATION: ${person.gang_affiliation!.toUpperCase()}`);
     if (person.probation_parole) lines.push(`  >> ${person.probation_parole.toUpperCase()}`);
   }
 
@@ -665,12 +666,13 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
       if (p.scars_marks_tattoos) lines.push(`  SMT/${p.scars_marks_tattoos.toUpperCase()}`);
 
       // Caution flags inline
-      if (p.caution_flags || p.is_sex_offender || p.gang_affiliation) {
+      const gangReal2 = p.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(p.gang_affiliation.toLowerCase().trim());
+      if (p.caution_flags || p.is_sex_offender || gangReal2) {
         hasWarnings = true;
         lines.push('  *** CAUTION ***');
         if (p.caution_flags) p.caution_flags.split(',').forEach(f => lines.push(`  >> ${f.trim().toUpperCase()}`));
         if (p.is_sex_offender) lines.push('  >> REGISTERED SEX OFFENDER');
-        if (p.gang_affiliation) lines.push(`  >> GANG: ${p.gang_affiliation.toUpperCase()}`);
+        if (gangReal2) lines.push(`  >> GANG: ${p.gang_affiliation!.toUpperCase()}`);
         if (p.probation_parole) lines.push(`  >> ${p.probation_parole.toUpperCase()}`);
       }
 

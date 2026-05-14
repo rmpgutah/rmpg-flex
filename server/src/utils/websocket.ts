@@ -57,7 +57,7 @@ function safeSend(ws: WebSocket, data: string): boolean {
 const AUTH_TIMEOUT_MS = 8_000;
 
 // All channels every authenticated client auto-subscribes to
-const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email', 'serve'];
+const DEFAULT_CHANNELS = ['dispatch', 'alerts', 'records', 'personnel', 'fleet', 'incidents', 'citations', 'patrol', 'admin', 'presence', 'messages', 'email', 'serve', 'scraper_events'];
 
 // ─── Radio State ────────────────────────────────────────────
 // Tracks which radio channel each client is on, and who is
@@ -266,39 +266,6 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
     };
     clients.set(clientId, client);
 
-    // URL token auth — DEPRECATED and disabled in production after 2026-04-15
-    // URL tokens are visible in server access logs and browser history, making them
-    // vulnerable to log exfiltration attacks. Use message-based auth instead.
-    const url = req.url || '';
-    const tokenMatch = url.match(/[?&]token=([^&]+)/);
-    if (tokenMatch) {
-      const isProductionMode = process.env.NODE_ENV === 'production';
-      const pastDeadline = Date.now() >= new Date('2026-04-15T07:00:00Z').getTime(); // 00:00 Mountain Time (UTC-7)
-      if (isProductionMode && pastDeadline) {
-        console.warn(`[WS] Rejected URL token auth (deprecated) from ${clientIp}`);
-        safeSend(ws, JSON.stringify({
-          type: 'error',
-          code: 'URL_TOKEN_REJECTED',
-          message: 'URL token authentication has been removed. Update your client.',
-        }));
-        // Decrement IP counter before early return — close handler isn't registered yet
-        const cnt = ipConnectionCounts.get(clientIp) || 1;
-        if (cnt <= 1) ipConnectionCounts.delete(clientIp);
-        else ipConnectionCounts.set(clientIp, cnt - 1);
-        clients.delete(clientId);
-        ws.close(4010, 'URL token auth removed');
-        return;
-      }
-      const token = decodeURIComponent(tokenMatch[1]);
-      console.warn(`[WS] Client authenticating via URL token (deprecated) from ${clientIp}`);
-      authenticateClient(client, token);
-      safeSend(ws, JSON.stringify({
-        type: 'warning',
-        code: 'URL_TOKEN_DEPRECATED',
-        message: 'URL token authentication is deprecated and will be removed on 2026-04-15. Use message-based auth.',
-      }));
-    }
-
     // Auto-disconnect unauthenticated clients after timeout
     const authTimer = setTimeout(() => {
       if (!client.authenticated) {
@@ -308,7 +275,8 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
           message: 'Authentication timeout',
         }));
         ws.close(4001, 'Authentication timeout');
-        clients.delete(clientId);
+        // Do NOT delete from clients here — the 'close' event handler performs
+        // cleanup. Deleting early causes the close handler to skip counter decrements.
       }
     }, AUTH_TIMEOUT_MS);
 
@@ -324,7 +292,9 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       if (rate.count > WS_RATE_LIMIT_MAX) {
         safeSend(ws, JSON.stringify({ type: 'error', code: 'RATE_LIMITED', message: 'Too many messages' }));
         ws.close(4008, 'Rate limit exceeded');
-        clients.delete(clientId);
+        // Do NOT delete from clients here — the 'close' event handler performs
+        // userConnectionCounts decrement and full cleanup. Deleting early causes
+        // the close handler to skip the decrement, permanently drifting the counter.
         clientMessageRates.delete(clientId);
         return;
       }
@@ -339,7 +309,8 @@ export function initWebSocket(server: Server | HttpsServer): WebSocketServer {
       if (ipRate.count > WS_IP_RATE_LIMIT_MAX) {
         safeSend(ws, JSON.stringify({ type: 'error', code: 'RATE_LIMITED', message: 'Too many messages from this IP' }));
         ws.close(4008, 'IP rate limit exceeded');
-        clients.delete(clientId);
+        // Do NOT delete from clients here — the 'close' event handler performs
+        // userConnectionCounts decrement and full cleanup.
         return;
       }
 
@@ -612,6 +583,73 @@ function handleClientMessage(clientId: string, message: any): void {
       // Relay audio chunk from panic sender to ALL other authenticated clients
       if (!client.authenticated) return;
       broadcastPanicAudio(clientId, message.data);
+
+      // ── Server-side panic audio recording (Task 4) ──
+      // Write incoming audio chunks to disk for post-incident review
+      if (message.data?.panicId) {
+        const panicUploadDir = path.join(__ws_dirname, '../../uploads/panic');
+        try {
+          if (!fs.existsSync(panicUploadDir)) {
+            fs.mkdirSync(panicUploadDir, { recursive: true });
+          }
+        } catch (mkdirErr) {
+          console.error('[Panic Audio] Failed to create uploads/panic directory:', mkdirErr);
+        }
+
+        if (message.data.chunk === true && message.data.audio) {
+          // Append base64-decoded audio chunk to raw file
+          try {
+            const rawPath = path.join(panicUploadDir, `${message.data.panicId}_raw.webm`);
+            const audioBuffer = Buffer.from(message.data.audio, 'base64');
+            fs.appendFileSync(rawPath, audioBuffer);
+          } catch (writeErr) {
+            console.error(`[Panic Audio] Failed to write chunk for panic #${message.data.panicId}:`, writeErr);
+          }
+        }
+
+        if (message.data.end === true) {
+          // Audio stream ended — create attachment record and link to panic
+          try {
+            const panicId = message.data.panicId;
+            const rawPath = path.join(panicUploadDir, `${panicId}_raw.webm`);
+            if (fs.existsSync(rawPath)) {
+              const stats = fs.statSync(rawPath);
+              const timestamp = Date.now();
+              const fileId = `panic_${panicId}_${timestamp}`;
+              const storedName = `${panicId}_raw.webm`;
+              const db = database.getDb();
+
+              db.prepare(`
+                INSERT INTO attachments (file_id, original_name, stored_name, file_path, mime_type, file_size, entity_type, entity_id, uploaded_by, created_at)
+                VALUES (?, ?, ?, ?, 'audio/webm', ?, 'panic_alert', ?, ?, datetime('now','localtime'))
+              `).run(
+                fileId,
+                `panic_${panicId}_audio.webm`,
+                storedName,
+                rawPath,
+                stats.size,
+                panicId,
+                client.userId || 0
+              );
+
+              // Link audio to panic_alerts record
+              const updateFields: string[] = ['audio_file_id = ?'];
+              const updateValues: any[] = [fileId];
+              if (message.data.duration != null) {
+                updateFields.push('audio_duration_seconds = ?');
+                updateValues.push(Math.round(message.data.duration));
+              }
+              updateValues.push(panicId);
+              db.prepare(`UPDATE panic_alerts SET ${updateFields.join(', ')}, updated_at = datetime('now','localtime') WHERE id = ?`)
+                .run(...updateValues);
+
+              console.log(`[Panic Audio] Saved ${stats.size} bytes for panic #${panicId} -> ${fileId}`);
+            }
+          } catch (endErr) {
+            console.error(`[Panic Audio] Failed to finalize audio for panic #${message.data.panicId}:`, endErr);
+          }
+        }
+      }
       break;
 
     case 'panic_audio_response':

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Car, Wrench, DollarSign, Calendar, Clock, Gauge, Shield, Radio, Settings, Tag, ArrowRight, Pencil, Trash2,
   AlertTriangle, TrendingUp, Fuel,
@@ -59,20 +59,6 @@ interface Props {
   onEditMaintenance?: (record: FleetMaintenance) => void;
   onDeleteMaintenance?: (record: FleetMaintenance) => void;
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function FleetOverviewTab({ detail, maintenance, onEditMaintenance, onDeleteMaintenance }: Props) {
   const [fuelEfficiency, setFuelEfficiency] = useState<any>(null);
@@ -322,7 +308,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                 <div className="text-[7px] text-rmpg-500 uppercase">Avg MPG</div>
               </div>
               <div className="text-center p-1.5 bg-surface-sunken rounded">
-                <div className="text-sm font-bold font-mono text-cyan-400">{fuelEfficiency.data?.length || 0}</div>
+                <div className="text-sm font-bold font-mono text-gray-400">{fuelEfficiency.data?.length || 0}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">Fill-ups</div>
               </div>
             </div>
@@ -354,7 +340,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                 <div className="text-[7px] text-rmpg-500 uppercase">Parts</div>
               </div>
               <div className="text-center p-1.5 bg-surface-sunken rounded">
-                <div className="text-sm font-bold font-mono text-cyan-400">${maintenanceCosts.total_labor_cost?.toLocaleString() || 0}</div>
+                <div className="text-sm font-bold font-mono text-gray-400">${maintenanceCosts.total_labor_cost?.toLocaleString() || 0}</div>
                 <div className="text-[7px] text-rmpg-500 uppercase">Labor</div>
               </div>
             </div>
@@ -437,7 +423,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
             <div className="space-y-2">
               {maintenance.map((m) => {
                 const typeColors: Record<string, string> = {
-                  oil_change: 'bg-gray-500', tire_rotation: 'bg-cyan-500',
+                  oil_change: 'bg-gray-500', tire_rotation: 'bg-gray-500',
                   brake_service: 'bg-red-500', inspection: 'bg-green-500',
                   repair: 'bg-amber-500', other: 'bg-rmpg-500',
                 };
@@ -451,7 +437,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
                       <div className="flex items-center gap-2 justify-between">
                         <div className="flex items-center gap-2">
                           <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase border bg-brand-900/30 text-brand-400 border-brand-700/30">
-                            {m.type.replace(/_/g, ' ')}
+                            {m.type.replace(/_/g, ' ').toUpperCase()}
                           </span>
                           <span className="text-[10px] text-rmpg-300 font-mono">
                             {formatMilitary(m.performed_at)}

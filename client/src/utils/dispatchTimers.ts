@@ -186,6 +186,21 @@ export function getCallAge(call: CallForService): number {
   return Number.isFinite(elapsed) ? Math.max(0, elapsed) : 0;
 }
 
+export interface ResponseTimeBreakdown {
+  pendingSeconds: number;
+  dispatchToEnrouteSeconds: number;
+  travelSeconds: number;
+  onsceneSeconds: number;
+  totalSeconds: number;
+}
+
+export interface OverdueCallInfo {
+  call: CallForService;
+  timerState: TimerState;
+  urgencyScore: number;
+  overdueBy: number;
+}
+
 export function getTimerState(call: CallForService): TimerState {
   const status = call.status;
   const label = STATUS_LABELS[status] || status.toUpperCase().slice(0, 4);
@@ -236,4 +251,85 @@ export function getTimerState(call: CallForService): TimerState {
     color: getTimerColor(severity),
     isOverdue: severity === 'overdue',
   };
+}
+
+// ── Upgrade 96: Response time breakdown ────────────────────
+
+function tsMs(v: string | undefined | null): number {
+  if (!v) return 0;
+  const t = new Date(v).getTime();
+  return Number.isFinite(t) ? t : 0;
+}
+
+function diffSec(a: number, b: number): number {
+  if (!a || !b || b <= a) return 0;
+  return Math.max(0, Math.floor((b - a) / 1000));
+}
+
+export function getResponseTimeBreakdown(call: CallForService): ResponseTimeBreakdown {
+  const created    = tsMs(call.created_at);
+  const dispatched = tsMs(call.dispatched_at);
+  const enroute    = tsMs(call.enroute_at);
+  const onscene    = tsMs(call.onscene_at);
+  const cleared    = tsMs(call.cleared_at) || tsMs((call as any).closed_at) || Date.now();
+
+  const pendingSeconds          = diffSec(created, dispatched || enroute || onscene || cleared);
+  const dispatchToEnrouteSeconds = diffSec(dispatched, enroute || onscene || cleared);
+  const travelSeconds           = diffSec(enroute, onscene || cleared);
+  const onsceneSeconds          = diffSec(onscene, cleared);
+  const totalSeconds            = created ? Math.max(0, Math.floor((cleared - created) / 1000)) : 0;
+
+  return { pendingSeconds, dispatchToEnrouteSeconds, travelSeconds, onsceneSeconds, totalSeconds };
+}
+
+// ── Upgrade 97: Call urgency score ─────────────────────────
+
+export function getCallUrgencyScore(call: CallForService): number {
+  const priorityBase: Record<string, number> = { P1: 80, P2: 60, P3: 40, P4: 20 };
+  const base = priorityBase[call.priority] ?? 40;
+  const threshold = getThreshold(call);
+  const elapsed = getStatusElapsed(call);
+  const bonus = threshold === Infinity ? 0 : Math.min(20, (elapsed / threshold) * 20);
+  return Math.min(100, Math.round(base + bonus));
+}
+
+// ── Upgrade 98: Human-readable elapsed ─────────────────────
+
+export function formatElapsedHuman(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return '0m ago';
+  if (seconds < 60) return `${Math.floor(seconds)}s ago`;
+
+  const days  = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const mins  = Math.floor((seconds % 3600) / 60);
+
+  if (days > 0) return `${days}d ago`;
+  if (hours > 0 && mins > 0) return `${hours}h ${mins}m ago`;
+  if (hours > 0) return `${hours}h ago`;
+  return `${mins}m ago`;
+}
+
+// ── Upgrade 99: Multi-call timer states ────────────────────
+
+export function getMultiCallTimerStates(calls: CallForService[]): Map<string | number, TimerState> {
+  const map = new Map<string | number, TimerState>();
+  for (const call of calls) {
+    map.set(call.id ?? call.call_number, getTimerState(call));
+  }
+  return map;
+}
+
+// ── Upgrade 100: Overdue calls ─────────────────────────────
+
+export function getOverdueCalls(calls: CallForService[]): OverdueCallInfo[] {
+  const result: OverdueCallInfo[] = [];
+  for (const call of calls) {
+    const timerState = getTimerState(call);
+    if (!timerState.isOverdue) continue;
+    const urgencyScore = getCallUrgencyScore(call);
+    const overdueBy = Math.max(0, timerState.elapsed - timerState.threshold);
+    result.push({ call, timerState, urgencyScore, overdueBy });
+  }
+  result.sort((a, b) => b.urgencyScore - a.urgencyScore);
+  return result;
 }

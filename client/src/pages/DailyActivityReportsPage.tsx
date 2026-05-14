@@ -6,14 +6,16 @@
 // submit → approve/return supervisor workflow.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { formatEnumValue } from '../utils/formatters';
+import RichTextArea from '../components/RichTextArea';
 import {
-  ClipboardCheck, Search, Plus, Clock, User, FileText,
-  X, Save, Loader2, CheckCircle, AlertTriangle, Send, RotateCcw,
-  Zap, Calendar, RefreshCw,
+  ClipboardCheck, Search, Plus, User, X, Save, Loader2, CheckCircle,
+  AlertTriangle, Send, RotateCcw, Zap, Calendar, RefreshCw,
 } from 'lucide-react';
 import type { DailyActivityReport, DARStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -27,20 +29,6 @@ const STATUS_COLORS: Record<string, string> = {
   approved: 'bg-green-900/50 text-green-400 border-green-700/50',
   returned: 'bg-red-900/50 text-red-400 border-red-700/50',
   archived: 'bg-rmpg-700/50 text-rmpg-400 border-rmpg-600/50',
-};
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 };
 
 export default function DailyActivityReportsPage() {
@@ -226,9 +214,9 @@ export default function DailyActivityReportsPage() {
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[380px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Daily Activity Reports" icon={ClipboardCheck}>
           <ExportButton exportUrl="/api/dar/export/csv" exportFilename="daily_activity_reports_export.csv" />
-          <button type="button" onClick={() => fetchDars({ silent: true })} className="toolbar-btn print:hidden" title="Refresh (R)">
+          <IconButton onClick={() => fetchDars({ silent: true })} className="toolbar-btn print:hidden" title="Refresh (R)" aria-label="Refresh">
             <RefreshCw style={{ width: 11, height: 11 }} />
-          </button>
+          </IconButton>
           <button type="button" onClick={() => { setCreateFormOpen(true); setAutoPopulateData(null); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
@@ -275,7 +263,7 @@ export default function DailyActivityReportsPage() {
                 <div className="flex items-center justify-between">
                   <span className="text-[11px] font-mono font-bold text-white">{dar.dar_number}</span>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${STATUS_COLORS[dar.status] || ''}`}>
-                    {dar.status.toUpperCase()}
+                    {formatEnumValue(dar.status)}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
@@ -328,7 +316,7 @@ export default function DailyActivityReportsPage() {
               {/* Status + Info */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${STATUS_COLORS[selected.status] || ''}`}>
-                  {selected.status.toUpperCase()}
+                  {formatEnumValue(selected.status)}
                 </span>
                 {selected.officer_name && (
                   <span className="text-[10px] px-2 py-1 border bg-rmpg-700/30 text-rmpg-300 border-rmpg-600/50">
@@ -404,15 +392,15 @@ export default function DailyActivityReportsPage() {
                     <div>
                       <label htmlFor="dar-narrative" className="text-[9px] text-rmpg-500">Narrative</label>
                       <p className="text-[8px] text-rmpg-600 mb-0.5">Describe all activities during this shift</p>
-                      <textarea id="dar-narrative" value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                      <RichTextArea id="dar-narrative" value={editNarrative} onChange={e => setEditNarrative(e.target.value)} rows={5} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                     <div>
                       <label htmlFor="dar-highlights" className="text-[9px] text-rmpg-500">Highlights</label>
-                      <textarea id="dar-highlights" value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                      <RichTextArea id="dar-highlights" value={editHighlights} onChange={e => setEditHighlights(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                     <div>
                       <label htmlFor="dar-issues" className="text-[9px] text-rmpg-500">Issues Encountered</label>
-                      <textarea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
+                      <RichTextArea id="dar-issues" value={editIssues} onChange={e => setEditIssues(e.target.value)} rows={2} className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none focus:border-brand-600 focus:ring-1 focus:ring-brand-500/30 transition-colors" />
                     </div>
                   </div>
                 ) : (
@@ -451,7 +439,7 @@ export default function DailyActivityReportsPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setCreateFormOpen(false)}>
           <div className="panel-surface w-full max-w-md mx-4 shadow-xl" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="New Daily Activity Report" icon={Plus}>
-              <button type="button" onClick={() => setCreateFormOpen(false)} className="toolbar-btn"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setCreateFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>

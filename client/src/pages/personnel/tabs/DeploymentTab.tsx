@@ -2,11 +2,8 @@
 // RMPG Flex — Personnel: Deployment Management Tab
 // ============================================================
 
-import React, { useState, useMemo } from 'react';
-import {
-  MapPinned, Plus, AlertTriangle, Users, Calendar, CheckCircle,
-  Loader2,
-} from 'lucide-react';
+import { useState, useMemo } from 'react';
+import { MapPinned, Plus, AlertTriangle, Loader2 } from 'lucide-react';
 import type { Deployment, CoverageGap, DeploymentStatus } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';
@@ -108,7 +105,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
           <p className="text-lg font-bold font-mono text-green-400">{activeCount}</p>
           <p className="text-[8px] uppercase text-green-400/70 font-bold tracking-wider">Active</p>
         </div>
-        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-blue-500">
+        <div className="panel-beveled p-2.5 text-center bg-surface-base border-t-2 border-t-gray-500">
           <p className="text-lg font-bold font-mono text-gray-400">{scheduledCount}</p>
           <p className="text-[8px] uppercase text-gray-400/70 font-bold tracking-wider">Scheduled</p>
         </div>

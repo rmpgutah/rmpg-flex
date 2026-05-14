@@ -39,7 +39,7 @@ interface RecentSearch {
 const ENTITY_CONFIG = {
   person: {
     icon: User,
-    label: 'Persons',
+    label: 'Individuals',
     route: '/records',
     color: 'text-brand-400',
   },
@@ -83,7 +83,7 @@ const ENTITY_CONFIG = {
     icon: Users,
     label: 'Personnel',
     route: '/personnel',
-    color: 'text-cyan-400',
+    color: 'text-gray-400',
   },
 };
 
@@ -98,7 +98,7 @@ export const GlobalSearch: React.FC = () => {
   const [isLoading, setIsLoading] = useState(false);
   const [selectedIndex, setSelectedIndex] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
-  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>();
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const navigate = useNavigate();
 
   // Load recent searches from localStorage
@@ -360,6 +360,7 @@ export const GlobalSearch: React.FC = () => {
           <input
             ref={inputRef}
             type="text"
+            name="global-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}

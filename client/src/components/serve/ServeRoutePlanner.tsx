@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
   Loader2, Navigation, Clock, DollarSign, Gauge, User,
 } from 'lucide-react';
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../../utils/googleMapsLoader';
+import mapboxgl from 'mapbox-gl';
+import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../../utils/mapboxLoader';
+import { getMapboxToken, getCachedMapboxToken } from '../../utils/mapboxApiKey';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
 
@@ -34,8 +36,6 @@ interface StopItem {
 }
 
 const IRS_MILEAGE_RATE = 0.67; // $/mile
-
-const GMAPS_API_KEY = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
 
 // ─── Marker Colors ──────────────────────────────────────────────────────
 
@@ -193,10 +193,10 @@ export default function ServeRoutePlanner({
   const [savedRouteLoaded, setSavedRouteLoaded] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-  const currentLocMarkerRef = useRef<google.maps.Marker | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const currentLocMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const routeTrailId = 'serve-route-planner-trail';
 
   // Initialize stops from jobs
   useEffect(() => {
@@ -265,52 +265,56 @@ export default function ServeRoutePlanner({
     return () => { cancelled = true; };
   }, [isOpen, savedRouteLoaded, selectedOfficerId, currentUserId, routeDate]);
 
-  // Initialize Google Maps
+  // Initialize Mapbox map
   useEffect(() => {
-    if (!isOpen || !GMAPS_API_KEY) return;
+    if (!isOpen) return;
 
     let cancelled = false;
 
-    loadGoogleMaps(GMAPS_API_KEY).then(() => {
-      if (cancelled || !mapContainerRef.current) return;
+    (async () => {
+      try {
+        const token = await getMapboxToken();
+        if (cancelled || !token) {
+          if (!cancelled) setError('Mapbox access token not configured');
+          return;
+        }
+        if (!mapContainerRef.current) return;
 
-      const center = currentLocation
-        || (geocodedJobs.length > 0
-          ? { lat: geocodedJobs[0].recipient_lat!, lng: geocodedJobs[0].recipient_lng! }
-          : { lat: 40.7608, lng: -111.891 }); // SLC fallback
+        injectMapboxStyles();
 
-      const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
-      const mapOptions: google.maps.MapOptions = {
-        center,
-        zoom: 11,
-        styles: mapId ? undefined : DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-      };
-      if (mapId) (mapOptions as any).mapId = mapId;
-      const map = new google.maps.Map(mapContainerRef.current, mapOptions);
+        const center: [number, number] = currentLocation
+          ? [currentLocation.lng, currentLocation.lat]
+          : geocodedJobs.length > 0
+            ? [geocodedJobs[0].recipient_lng!, geocodedJobs[0].recipient_lat!]
+            : [-111.891, 40.7608]; // SLC fallback
 
-      mapRef.current = map;
-      directionsRendererRef.current = new google.maps.DirectionsRenderer({
-        map,
-        suppressMarkers: true, // we draw our own numbered markers
-        polylineOptions: {
-          strokeColor: '#888888',
-          strokeWeight: 4,
-          strokeOpacity: 0.8,
-        },
-      });
+        const map = createMapboxMap({
+          container: mapContainerRef.current,
+          center,
+          zoom: 11,
+          accessToken: token,
+        });
 
-      setMapReady(true);
-    }).catch(() => {
-      if (!cancelled) setError('Failed to load Google Maps');
-    });
+        mapRef.current = map;
+
+        map.on('load', () => {
+          if (!cancelled) setMapReady(true);
+        });
+      } catch {
+        if (!cancelled) setError('Failed to load map');
+      }
+    })();
 
     return () => {
       cancelled = true;
+      markersRef.current.forEach(m => m.remove());
+      markersRef.current = [];
+      currentLocMarkerRef.current?.remove();
+      currentLocMarkerRef.current = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
       setMapReady(false);
     };
   }, [isOpen]);
@@ -318,63 +322,45 @@ export default function ServeRoutePlanner({
   // Update markers when stops change
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
+    const map = mapRef.current;
 
     // Clear old markers
-    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new mapboxgl.LngLatBounds();
 
     stops.forEach((stop, idx) => {
       if (!stop.selected) return;
-      const pos = { lat: stop.job.recipient_lat!, lng: stop.job.recipient_lng! };
-      bounds.extend(pos);
+      const lngLat: [number, number] = [stop.job.recipient_lng!, stop.job.recipient_lat!];
+      bounds.extend(lngLat);
 
       const color = markerColor(stop.job.status);
-      const marker = new google.maps.Marker({
-        position: pos,
-        map: mapRef.current!,
-        label: {
-          text: String(idx + 1),
-          color: '#ffffff',
-          fontSize: '11px',
-          fontWeight: 'bold',
-        },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 1.5,
-          scale: 14,
-        },
-        title: `${stop.job.recipient_name}\n${stop.job.recipient_address || ''}`,
-      });
+      const el = document.createElement('div');
+      el.style.cssText = `width:28px;height:28px;border-radius:50%;background:${color};display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:bold;color:#fff;border:1.5px solid #fff;cursor:pointer;box-shadow:0 0 6px ${color}80;`;
+      el.textContent = String(idx + 1);
+      el.title = `${stop.job.recipient_name}\n${stop.job.recipient_address || ''}`;
+
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat(lngLat)
+        .addTo(map);
       markersRef.current.push(marker);
     });
 
     // Current location marker
     if (currentLocation) {
-      if (currentLocMarkerRef.current) currentLocMarkerRef.current.setMap(null);
-      currentLocMarkerRef.current = new google.maps.Marker({
-        position: currentLocation,
-        map: mapRef.current,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: '#888888',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 2,
-          scale: 8,
-        },
-        title: 'Your Location',
-        zIndex: 999,
-      });
-      bounds.extend(currentLocation);
+      currentLocMarkerRef.current?.remove();
+      const el = document.createElement('div');
+      el.style.cssText = 'width:16px;height:16px;border-radius:50%;background:#888888;border:2px solid #fff;box-shadow:0 0 6px rgba(136,136,136,0.8);';
+      el.title = 'Your Location';
+      currentLocMarkerRef.current = new mapboxgl.Marker({ element: el })
+        .setLngLat([currentLocation.lng, currentLocation.lat])
+        .addTo(map);
+      bounds.extend([currentLocation.lng, currentLocation.lat]);
     }
 
     if (stops.some(s => s.selected)) {
-      mapRef.current.fitBounds(bounds, 60);
+      map.fitBounds(bounds, { padding: 60 });
     }
   }, [stops, mapReady, currentLocation]);
 
@@ -403,7 +389,7 @@ export default function ServeRoutePlanner({
   }, []);
 
   const optimizeRoute = useCallback(async () => {
-    if (!mapReady) return;
+    if (!mapReady || !mapRef.current) return;
 
     const selected = stops.filter(s => s.selected);
     if (selected.length < 2) {
@@ -415,12 +401,17 @@ export default function ServeRoutePlanner({
     setError(null);
 
     try {
-      const directionsService = new google.maps.DirectionsService();
-      const clusters = chainClusters(clusterStops(selected));
+      const token = getCachedMapboxToken();
+      if (!token) throw new Error('Mapbox token not available');
 
+      const clusters = chainClusters(clusterStops(selected));
       let allOrderedStops: StopItem[] = [];
       let totalDistM = 0;
       let totalDurS = 0;
+      const map = mapRef.current;
+
+      // Remove previous route trail
+      removeMapboxTrail(map, routeTrailId);
 
       for (const cluster of clusters) {
         if (cluster.length === 1) {
@@ -428,111 +419,53 @@ export default function ServeRoutePlanner({
           continue;
         }
 
-        // Determine origin: for first cluster, use current location if available
         const isFirstCluster = clusters.indexOf(cluster) === 0;
-        const origin = isFirstCluster && currentLocation
-          ? currentLocation
-          : { lat: cluster[0].job.recipient_lat!, lng: cluster[0].job.recipient_lng! };
+        const originCoord: [number, number] = isFirstCluster && currentLocation
+          ? [currentLocation.lng, currentLocation.lat]
+          : [cluster[0].job.recipient_lng!, cluster[0].job.recipient_lat!];
 
-        const destination = {
-          lat: cluster[cluster.length - 1].job.recipient_lat!,
-          lng: cluster[cluster.length - 1].job.recipient_lng!,
-        };
+        // Build coordinates string for Mapbox Directions API
+        // Mapbox supports up to 25 waypoints
+        const waypointCoords: [number, number][] = cluster.map(s => [s.job.recipient_lng!, s.job.recipient_lat!]);
+        const allCoords = isFirstCluster && currentLocation
+          ? [originCoord, ...waypointCoords]
+          : waypointCoords;
 
-        // Build waypoints (excluding origin stop if it's the first cluster with current location)
-        const waypointStops = isFirstCluster && currentLocation
-          ? cluster
-          : cluster.slice(1, -1);
+        const coordsStr = allCoords.map(c => `${c[0]},${c[1]}`).join(';');
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?access_token=${token}&geometries=geojson&overview=full`;
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Directions request failed: ${res.status}`);
+        const data = await res.json();
+        const route = data.routes?.[0];
+        if (!route) throw new Error('No route found');
 
-        const waypoints: google.maps.DirectionsWaypoint[] = waypointStops.map(s => ({
-          location: new google.maps.LatLng(s.job.recipient_lat!, s.job.recipient_lng!),
-          stopover: true,
-        }));
+        totalDistM += route.distance || 0;
+        totalDurS += route.duration || 0;
 
-        const destLocation = isFirstCluster && currentLocation
-          ? new google.maps.LatLng(cluster[cluster.length - 1].job.recipient_lat!, cluster[cluster.length - 1].job.recipient_lng!)
-          : new google.maps.LatLng(destination.lat, destination.lng);
-
-        const result = await new Promise<google.maps.DirectionsResult>((resolve, reject) => {
-          directionsService.route(
-            {
-              origin: isFirstCluster && currentLocation
-                ? new google.maps.LatLng(currentLocation.lat, currentLocation.lng)
-                : new google.maps.LatLng(cluster[0].job.recipient_lat!, cluster[0].job.recipient_lng!),
-              destination: destLocation,
-              waypoints: waypoints.length > 0 ? waypoints : undefined,
-              optimizeWaypoints: true,
-              travelMode: google.maps.TravelMode.DRIVING,
-            },
-            (res: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
-              if (status === 'OK' && res) resolve(res);
-              else reject(new Error(`Directions request failed: ${status}`));
-            },
-          );
-        });
-
-        // Apply waypoint order
-        const waypointOrder = result.routes[0]?.waypoint_order || [];
-        const reorderedWaypoints = waypointOrder.map((i: number) => waypointStops[i]);
-
-        if (isFirstCluster && currentLocation) {
-          // All stops were waypoints + destination
-          const reorderedClusterStops = [...reorderedWaypoints];
-          // The destination is the last stop (not reordered)
-          // But we need to check if destination was included in waypoints
-          allOrderedStops.push(...reorderedClusterStops);
-          // Add the destination stop (last in cluster)
-          if (!reorderedClusterStops.includes(cluster[cluster.length - 1])) {
-            allOrderedStops.push(cluster[cluster.length - 1]);
-          }
-        } else {
-          allOrderedStops.push(cluster[0], ...reorderedWaypoints, cluster[cluster.length - 1]);
-        }
-
-        // Sum distances and durations
-        const legs = result.routes[0]?.legs || [];
-        for (const leg of legs) {
-          totalDistM += leg.distance?.value || 0;
-          totalDurS += leg.duration?.value || 0;
-        }
-
-        // Render directions for the last cluster (show the full route)
-        if (clusters.indexOf(cluster) === clusters.length - 1 || clusters.length === 1) {
-          directionsRendererRef.current?.setDirections(result);
-        }
+        // Mapbox doesn't return waypoint reorder — use the cluster order as-is
+        allOrderedStops.push(...cluster);
       }
 
-      // If multiple clusters, re-render the full route for display
-      if (clusters.length > 1 && allOrderedStops.length >= 2) {
+      // Draw the full route polyline
+      if (allOrderedStops.length >= 2) {
+        const allCoords: [number, number][] = [];
+        if (currentLocation) allCoords.push([currentLocation.lng, currentLocation.lat]);
+        for (const s of allOrderedStops) {
+          allCoords.push([s.job.recipient_lng!, s.job.recipient_lat!]);
+        }
+        const coordsStr = allCoords.slice(0, 25).map(c => `${c[0]},${c[1]}`).join(';');
         try {
-          const fullWaypoints = allOrderedStops.slice(1, -1).slice(0, 23).map(s => ({
-            location: new google.maps.LatLng(s.job.recipient_lat!, s.job.recipient_lng!),
-            stopover: true,
-          }));
-
-          const fullResult = await new Promise<google.maps.DirectionsResult>((resolve, reject) => {
-            directionsService.route(
-              {
-                origin: currentLocation
-                  ? new google.maps.LatLng(currentLocation.lat, currentLocation.lng)
-                  : new google.maps.LatLng(allOrderedStops[0].job.recipient_lat!, allOrderedStops[0].job.recipient_lng!),
-                destination: new google.maps.LatLng(
-                  allOrderedStops[allOrderedStops.length - 1].job.recipient_lat!,
-                  allOrderedStops[allOrderedStops.length - 1].job.recipient_lng!,
-                ),
-                waypoints: fullWaypoints,
-                optimizeWaypoints: false, // already optimized
-                travelMode: google.maps.TravelMode.DRIVING,
-              },
-              (res: google.maps.DirectionsResult | null, status: google.maps.DirectionsStatus) => {
-                if (status === 'OK' && res) resolve(res);
-                else reject(new Error(`Full route render failed: ${status}`));
-              },
-            );
-          });
-          directionsRendererRef.current?.setDirections(fullResult);
+          const token2 = getCachedMapboxToken();
+          const fullRes = await fetch(`https://api.mapbox.com/directions/v5/mapbox/driving/${coordsStr}?access_token=${token2}&geometries=geojson&overview=full`);
+          if (fullRes.ok) {
+            const fullData = await fullRes.json();
+            const fullRoute = fullData.routes?.[0];
+            if (fullRoute?.geometry?.coordinates) {
+              addMapboxTrail(map, routeTrailId, fullRoute.geometry.coordinates, '#888888', 4);
+            }
+          }
         } catch {
-          // Non-fatal — individual cluster routes still valid
+          // Non-fatal — individual cluster data still valid
         }
       }
 
@@ -600,9 +533,9 @@ export default function ServeRoutePlanner({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
-      <div className="bg-[#0a0a0a] border border-[#222222] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
+      <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
         {/* ─── Header ─────────────────────────────────────────────── */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#222222] bg-[#050505]">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-[#d4a017]" />
             <h2 className="text-sm font-semibold text-white tracking-wider">ROUTE PLANNER</h2>
@@ -611,12 +544,12 @@ export default function ServeRoutePlanner({
             </span>
             {/* Officer selector (Step 3.1) */}
             {officers && officers.length > 0 && (
-              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#222222]">
+              <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#2b2b2b]">
                 <User size={12} className="text-rmpg-400" />
                 <select
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
-                  className="px-2 py-0.5 text-[11px] bg-[#050505] border border-[#222222] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
+                  className="px-2 py-0.5 text-[11px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
                   aria-label="Select officer for route"
                 >
                   {officers.map(o => (
@@ -629,13 +562,13 @@ export default function ServeRoutePlanner({
           <div className="flex items-center gap-2">
             <button type="button"
               onClick={handleApplyAndClose}
-              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(136,136,136,0.2)]"
+              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
             >
               Apply Route
             </button>
             <button type="button"
               onClick={onClose}
-              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#141414] focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
+              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#181818] focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
               aria-label="Close route planner"
             >
               <X size={16} />
@@ -646,9 +579,9 @@ export default function ServeRoutePlanner({
         {/* ─── Body (responsive: stacked mobile, side-by-side desktop) ─── */}
         <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
           {/* ─── Left Panel: Stop List ─────────────────────────────── */}
-          <div className="w-full lg:w-[380px] flex flex-col border-b lg:border-b-0 lg:border-r border-[#222222] bg-[#050505]">
+          <div className="w-full lg:w-[380px] flex flex-col border-b lg:border-b-0 lg:border-r border-[#2b2b2b] bg-[#0c0c0c]">
             {/* Controls */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#222222]">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={selectAll}
@@ -679,7 +612,7 @@ export default function ServeRoutePlanner({
 
             {/* Error */}
             {error && (
-              <div className="px-3 py-1.5 text-[11px] text-red-400 bg-red-900/20 border-b border-[#222222]">
+              <div className="px-3 py-1.5 text-[11px] text-red-400 bg-red-900/20 border-b border-[#2b2b2b]">
                 {error}
               </div>
             )}
@@ -695,7 +628,7 @@ export default function ServeRoutePlanner({
                 stops.map((stop, idx) => (
                   <div
                     key={stop.job.id}
-                    className={`flex items-center gap-2 px-3 py-2 border-b border-[#141414]/50 hover:bg-[#141414]/60 transition-all duration-100 ${
+                    className={`flex items-center gap-2 px-3 py-2 border-b border-[#181818]/50 hover:bg-[#181818]/60 transition-all duration-100 ${
                       !stop.selected ? 'opacity-40' : ''
                     } ${stop.job.status === 'served' ? 'bg-green-900/10' : ''}`}
                   >
@@ -757,7 +690,7 @@ export default function ServeRoutePlanner({
           <div className="flex-1 relative min-h-[300px]">
             <div ref={mapContainerRef} className="absolute inset-0" />
             {!mapReady && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#050505]">
+              <div className="absolute inset-0 flex items-center justify-center bg-[#0c0c0c]">
                 <div className="flex items-center gap-2 text-xs text-rmpg-400">
                   <Loader2 size={14} className="animate-spin" />
                   Loading map...
@@ -768,7 +701,7 @@ export default function ServeRoutePlanner({
         </div>
 
         {/* ─── Stats Bar ──────────────────────────────────────────── */}
-        <div className="flex items-center gap-6 px-4 py-2 border-t border-[#222222] bg-[#050505] text-xs" role="status" aria-label="Route statistics">
+        <div className="flex items-center gap-6 px-4 py-2 border-t border-[#2b2b2b] bg-[#0c0c0c] text-xs" role="status" aria-label="Route statistics">
           <div className="flex items-center gap-1.5 text-rmpg-400">
             <MapPin size={12} className="text-gray-400" />
             <span>Total stops:</span>

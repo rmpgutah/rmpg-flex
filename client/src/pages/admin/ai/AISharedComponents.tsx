@@ -84,14 +84,14 @@ export function ProviderCard({
 }) {
   const isAvailable = status?.available ?? false;
   return (
-    <div className="bg-[#0a0a12] border border-[#1a1a2e] rounded p-3 space-y-2">
+    <div className="bg-[#0b0b0b] border border-[#1c1c1c] rounded p-3 space-y-2">
       <div className="flex items-center gap-2">
         <div className={`w-2 h-2 rounded-full ${isAvailable ? 'bg-green-500' : 'bg-rmpg-600'}`} />
         <span className="text-xs font-medium text-white flex-1">{label}</span>
         <button
           onClick={onTest}
           disabled={testResult === 'loading'}
-          className="flex items-center gap-1 text-[10px] px-2 py-1 bg-[#0f1218] border border-[#1a1a2e] text-rmpg-300 hover:text-white hover:border-brand-500/50 rounded transition-colors disabled:opacity-50"
+          className="flex items-center gap-1 text-[10px] px-2 py-1 bg-[#121212] border border-[#1c1c1c] text-rmpg-300 hover:text-white hover:border-brand-500/50 rounded transition-colors disabled:opacity-50"
         >
           {testResult === 'loading' ? (
             <Loader2 className="w-3 h-3 animate-spin" />
@@ -134,7 +134,7 @@ export function KeyInput({
           value={value}
           onChange={e => onChange(e.target.value)}
           placeholder="Enter API key..."
-          className="w-full bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 pr-8 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
+          className="w-full bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 pr-8 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
         />
         <button
           type="button"
@@ -157,7 +157,7 @@ export function ModelInput({ value, onChange, placeholder }: { value: string; on
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="flex-1 bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
+        className="flex-1 bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none placeholder:text-rmpg-600 font-mono"
       />
     </div>
   );
@@ -251,7 +251,7 @@ export function ProviderSelect({
     <select
       value={value}
       onChange={e => onChange(e.target.value)}
-      className={`bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none ${className}`}
+      className={`bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1.5 focus:border-brand-500 focus:outline-none ${className}`}
     >
       <option value="auto">Auto (Fallback)</option>
       <option value="groq">Groq (LLaMA)</option>

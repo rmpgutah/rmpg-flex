@@ -69,7 +69,7 @@ export default function SecurityStatusCard() {
       icon: <Monitor className="w-3.5 h-3.5" />,
       label: 'Trusted Devices',
       value: `${status.trustedDevices} device${status.trustedDevices !== 1 ? 's' : ''}`,
-      led: status.trustedDevices > 0 ? 'led-gray' : 'led-off',
+      led: status.trustedDevices > 0 ? 'led-blue' : 'led-off',
     },
     {
       icon: <Clock className="w-3.5 h-3.5" />,
@@ -154,7 +154,7 @@ export default function SecurityStatusCard() {
       {status.passwordChangedAt && (
         <div
           className="px-3 py-1.5 text-[9px] font-mono"
-          style={{ borderTop: '1px solid #222222', color: '#555555' }}
+          style={{ borderTop: '1px solid #2b2b2b', color: '#555555' }}
         >
           Password last changed: {status.passwordChangedAt ? new Date(status.passwordChangedAt).toLocaleDateString() : 'N/A'}
         </div>

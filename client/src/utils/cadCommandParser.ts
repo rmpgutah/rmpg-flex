@@ -48,6 +48,25 @@ export type CommandAction =
   | { type: 'voice_priority' }
   | { type: 'lookup_code'; code: string; result?: { description: string; priority: string; category: string; requires_backup: boolean; officer_safety: boolean; ems_needed: boolean; fire_needed: boolean } }
   | { type: 'premise_alert'; address: string; alerts?: { title: string; alert_type: string; alert_level: string; description?: string }[] }
+  | { type: 'redispatch'; callNumber: string; unitCallSigns: string[] }
+  | { type: 'escalate_priority'; callNumber: string }
+  | { type: 'deescalate_priority'; callNumber: string }
+  | { type: 'request_backup'; callNumber: string; count: number }
+  | { type: 'transfer_call'; callNumber: string; dispatcher: string }
+  | { type: 'show_timeline'; callNumber: string }
+  | { type: 'show_workload'; callSign?: string }
+  | { type: 'show_hotspots' }
+  | { type: 'show_coverage' }
+  | { type: 'show_nearby'; callNumber: string }
+  | { type: 'supervisor_review'; callNumber: string; notes: string }
+  | { type: 'manage_premise_alert'; address: string }
+  | { type: 'show_shift_summary' }
+  | { type: 'check_recurring'; address: string }
+  | { type: 'cross_reference'; query: string }
+  | { type: 'handoff'; shiftType: string }
+  | { type: 'mutual_aid'; agency: string; reason?: string }
+  | { type: 'narrative'; callId: string; text: string }
+  | { type: 'quality_metrics'; days?: number }
   | { type: 'show_help' }
   | { type: 'none' };
 
@@ -114,7 +133,25 @@ const COMMANDS: Record<string, { usage: string; desc: string }> = {
   PENDING:  { usage: 'PENDING',                 desc: 'Announce pending call count and details' },
   PRIORITY: { usage: 'PRIORITY',                desc: 'Announce calls by priority breakdown' },
   CODE: { usage: 'CODE <10-code>',              desc: 'Lookup dispatch code (10-71, CODE-3, etc.)' },
-  PA:   { usage: 'PA <address>',                desc: 'Premise alerts — check location for warnings' },
+  PA:   { usage: 'PA <address>',                desc: 'Manage premise alert for address' },
+  RD:   { usage: 'RD <call#> <unit1> [unit2]', desc: 'Redispatch — reassign units to call' },
+  ESC:  { usage: 'ESC <call#>',               desc: 'Escalate call priority' },
+  DESC: { usage: 'DESC <call#>',              desc: 'De-escalate call priority' },
+  BK:   { usage: 'BK <call#> [count]',        desc: 'Request backup for call' },
+  TR:   { usage: 'TR <call#> <dispatcher>',   desc: 'Transfer call to another dispatcher' },
+  TL:   { usage: 'TL <call#>',               desc: 'Show call timeline' },
+  WL:   { usage: 'WL [unit]',                desc: 'Show workload (all or specific unit)' },
+  HS:   { usage: 'HS',                        desc: 'Show hot spots map' },
+  CV:   { usage: 'CV',                        desc: 'Show unit coverage map' },
+  NB:   { usage: 'NB <call#>',               desc: 'Show nearby calls' },
+  SR:   { usage: 'SR <call#> <notes>',        desc: 'Flag call for supervisor review' },
+  SS:   { usage: 'SS',                        desc: 'Show shift summary' },
+  RC:   { usage: 'RC <address>',              desc: 'Check recurring calls at address' },
+  XR:   { usage: 'XR <query>',               desc: 'Cross reference search' },
+  HO:   { usage: 'HO <shift_type>',          desc: 'Initiate shift handoff with auto-briefing' },
+  MA:   { usage: 'MA <agency> [reason]',      desc: 'Request mutual aid from agency' },
+  NAR:  { usage: 'NAR <call#> <text>',        desc: 'Add versioned narrative to call' },
+  QM:   { usage: 'QM [days]',                desc: 'Show dispatch quality metrics' },
   HELP: { usage: 'HELP',                       desc: 'Show command reference' },
 };
 
@@ -123,6 +160,7 @@ const COMMANDS: Record<string, { usage: string; desc: string }> = {
 export interface CadContext {
   units: Array<{ id: string; call_sign: string; status: string; current_call_id?: string }>;
   calls: Array<{ id: string; call_number: string; status: string }>;
+  currentUser?: string;
 }
 
 // ─── Fuzzy Matching ──────────────────────────────────────────
@@ -267,8 +305,8 @@ export async function executeCommand(
 
       try {
         await apiFetch(`/dispatch/units/${unit.id}/mileage`, {
-          method: 'POST',
-          body: JSON.stringify({ type: mileageType, mileage: mileageVal }),
+          method: 'PUT',
+          body: JSON.stringify({ mileage: mileageVal }),
         });
         return {
           success: true,
@@ -505,9 +543,19 @@ export async function executeCommand(
       }
 
       try {
-        await apiFetch(`/dispatch/calls/${call.id}/notes`, {
-          method: 'POST',
-          body: JSON.stringify({ content: noteText }),
+        // Fetch current call to get existing notes, then append
+        const current = await apiFetch<any>(`/dispatch/calls/${call.id}`);
+        let existingNotes: any[] = [];
+        try { existingNotes = JSON.parse(current.notes || '[]'); } catch { /* start fresh */ }
+        existingNotes.push({
+          id: String(Date.now()),
+          author: ctx.currentUser || 'Dispatch',
+          text: noteText,
+          timestamp: new Date().toISOString(),
+        });
+        await apiFetch(`/dispatch/calls/${call.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ notes: JSON.stringify(existingNotes) }),
         });
         return {
           success: true,
@@ -941,33 +989,271 @@ export async function executeCommand(
       }
     }
 
-    // ── Premise Alert Check ──
+    // ── Premise Alert Manage ──
     case 'PA':
     case 'PREMISE': {
       const address = args.join(' ');
       if (!address) {
         return { success: false, message: 'Usage: PA <address> (e.g., PA 123 Main St)', action: { type: 'none' } };
       }
-      try {
-        const alerts = await apiFetch<{ id: number; title: string; alert_type: string; alert_level: string; description?: string }[]>(
-          `/dispatch/geography/premise-alerts?address=${encodeURIComponent(address)}`
-        );
-        if (alerts && alerts.length > 0) {
-          const lines = alerts.map(a => `  ${a.alert_level === 'critical' ? '🔴' : a.alert_level === 'warning' ? '🟡' : '🔵'} ${a.title} (${a.alert_type})`).join('\n');
-          return {
-            success: true,
-            message: `⚠ PREMISE ALERTS for "${address}":\n${lines}`,
-            action: { type: 'premise_alert', address, alerts },
-          };
-        }
+      return {
+        success: true,
+        message: `Managing premise alert for "${address}"...`,
+        action: { type: 'manage_premise_alert', address },
+      };
+    }
+
+    // ── Redispatch ──
+    case 'RD': {
+      if (args.length < 2) {
+        return { success: false, message: 'Usage: RD <call#> <unit1> [unit2...]', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      const unitCallSigns = args.slice(1).map(s => s.toUpperCase());
+      return {
+        success: true,
+        message: `Redispatching ${call.call_number} → ${unitCallSigns.join(', ')}`,
+        action: { type: 'redispatch', callNumber: call.call_number, unitCallSigns },
+      };
+    }
+
+    // ── Escalate Priority ──
+    case 'ESC': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: ESC <call#>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Escalating priority for ${call.call_number}`,
+        action: { type: 'escalate_priority', callNumber: call.call_number },
+      };
+    }
+
+    // ── De-escalate Priority ──
+    case 'DESC': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: DESC <call#>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `De-escalating priority for ${call.call_number}`,
+        action: { type: 'deescalate_priority', callNumber: call.call_number },
+      };
+    }
+
+    // ── Request Backup ──
+    case 'BK': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: BK <call#> [count]', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      const count = args.length > 1 ? parseInt(args[1], 10) : 1;
+      return {
+        success: true,
+        message: `Requesting ${count} backup unit(s) for ${call.call_number}`,
+        action: { type: 'request_backup', callNumber: call.call_number, count: isNaN(count) ? 1 : count },
+      };
+    }
+
+    // ── Transfer Call ──
+    case 'TR': {
+      if (args.length < 2) {
+        return { success: false, message: 'Usage: TR <call#> <dispatcher>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      const dispatcher = args[1];
+      return {
+        success: true,
+        message: `Transferring ${call.call_number} to ${dispatcher}`,
+        action: { type: 'transfer_call', callNumber: call.call_number, dispatcher },
+      };
+    }
+
+    // ── Timeline ──
+    case 'TL': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: TL <call#>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Showing timeline for ${call.call_number}`,
+        action: { type: 'show_timeline', callNumber: call.call_number },
+      };
+    }
+
+    // ── Workload ──
+    case 'WL': {
+      if (args.length === 0) {
         return {
           success: true,
-          message: `No premise alerts for "${address}"`,
-          action: { type: 'premise_alert', address, alerts: [] },
+          message: 'Showing dispatcher workload overview',
+          action: { type: 'show_workload' },
         };
-      } catch {
-        return { success: false, message: `Failed to check premise alerts`, action: { type: 'none' } };
       }
+      const unit = fuzzyFindUnit(args[0], ctx.units);
+      if (!unit) {
+        return { success: false, message: `Unit "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Showing workload for ${unit.call_sign}`,
+        action: { type: 'show_workload', callSign: unit.call_sign },
+      };
+    }
+
+    // ── Hot Spots ──
+    case 'HS': {
+      return {
+        success: true,
+        message: 'Showing hot spots map',
+        action: { type: 'show_hotspots' },
+      };
+    }
+
+    // ── Coverage ──
+    case 'CV': {
+      return {
+        success: true,
+        message: 'Showing unit coverage map',
+        action: { type: 'show_coverage' },
+      };
+    }
+
+    // ── Nearby Calls ──
+    case 'NB': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: NB <call#>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      return {
+        success: true,
+        message: `Showing nearby calls for ${call.call_number}`,
+        action: { type: 'show_nearby', callNumber: call.call_number },
+      };
+    }
+
+    // ── Supervisor Review ──
+    case 'SR': {
+      if (args.length < 2) {
+        return { success: false, message: 'Usage: SR <call#> <notes...>', action: { type: 'none' } };
+      }
+      const call = fuzzyFindCall(args[0], ctx.calls);
+      if (!call) {
+        return { success: false, message: `Call "${args[0]}" not found`, action: { type: 'none' } };
+      }
+      const notes = args.slice(1).join(' ');
+      return {
+        success: true,
+        message: `Flagged ${call.call_number} for supervisor review: "${notes}"`,
+        action: { type: 'supervisor_review', callNumber: call.call_number, notes },
+      };
+    }
+
+    // ── Shift Summary ──
+    case 'SS': {
+      return {
+        success: true,
+        message: 'Showing shift summary',
+        action: { type: 'show_shift_summary' },
+      };
+    }
+
+    // ── Recurring Calls ──
+    case 'RC': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: RC <address...>', action: { type: 'none' } };
+      }
+      const address = args.join(' ');
+      return {
+        success: true,
+        message: `Checking recurring calls at "${address}"`,
+        action: { type: 'check_recurring', address },
+      };
+    }
+
+    // ── Cross Reference ──
+    case 'XR': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: XR <query...>', action: { type: 'none' } };
+      }
+      const query = args.join(' ');
+      return {
+        success: true,
+        message: `Cross referencing: ${query}...`,
+        action: { type: 'cross_reference', query },
+      };
+    }
+
+    // ── Shift Handoff ──
+    case 'HO': {
+      const shiftType = args[0] || 'day';
+      return {
+        success: true,
+        message: `Initiating shift handoff (${shiftType})...`,
+        action: { type: 'handoff', shiftType },
+      };
+    }
+
+    // ── Mutual Aid ──
+    case 'MA': {
+      if (args.length < 1) {
+        return { success: false, message: 'Usage: MA <agency> [reason]', action: { type: 'none' } };
+      }
+      const agency = args[0];
+      const reason = args.slice(1).join(' ') || undefined;
+      return {
+        success: true,
+        message: `Requesting mutual aid from ${agency}...`,
+        action: { type: 'mutual_aid', agency, reason },
+      };
+    }
+
+    // ── Narrative ──
+    case 'NAR': {
+      if (args.length < 2) {
+        return { success: false, message: 'Usage: NAR <call#> <text>', action: { type: 'none' } };
+      }
+      const callId = args[0];
+      const text = args.slice(1).join(' ');
+      return {
+        success: true,
+        message: `Adding narrative to call ${callId}...`,
+        action: { type: 'narrative', callId, text },
+      };
+    }
+
+    // ── Quality Metrics ──
+    case 'QM': {
+      const days = args[0] ? parseInt(args[0], 10) : undefined;
+      return {
+        success: true,
+        message: `Loading quality metrics${days ? ` (${days} days)` : ''}...`,
+        action: { type: 'quality_metrics', days },
+      };
     }
 
     // ── Help ──

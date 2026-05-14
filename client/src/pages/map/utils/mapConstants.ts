@@ -41,6 +41,20 @@ export interface ActiveCall {
   longitude: number | null;
   property_name: string | null;
   created_at?: string | null;
+  // ── Optional fields surfaced in marker info bubble (2026-04-30) ──
+  // All come from the calls_for_service / call_geography join; absent
+  // when the dispatcher hasn't filled them in. Treat every read as nullable.
+  cross_street?: string | null;
+  beat_name?: string | null;
+  sector_name?: string | null;
+  // Hazard / officer-safety boolean flags — aggregated into a single banner.
+  officer_safety_caution?: boolean | null;
+  weapons_involved?: string | null;
+  felony_in_progress?: boolean | null;
+  domestic_violence?: boolean | null;
+  hazmat?: boolean | null;
+  mental_health_crisis?: boolean | null;
+  gang_related?: boolean | null;
 }
 
 export interface MapProperty {
@@ -55,10 +69,11 @@ export interface MapProperty {
 // ── Constants ────────────────────────────────────────────────
 
 // Map style options
-export type MapStyleId = 'dark' | 'satellite' | 'hybrid' | 'streets' | 'terrain' | 'night_nav';
+export type MapStyleId = 'dark' | 'standard' | 'satellite' | 'hybrid' | 'streets' | 'terrain' | 'night_nav';
 
 export const MAP_STYLE_LABELS: Record<MapStyleId, string> = {
   dark: 'Dark',
+  standard: 'Standard',
   satellite: 'Satellite',
   hybrid: 'Hybrid',
   streets: 'Streets',
@@ -68,6 +83,7 @@ export const MAP_STYLE_LABELS: Record<MapStyleId, string> = {
 
 export const MAP_STYLE_DESCRIPTIONS: Record<MapStyleId, string> = {
   dark: 'Low-light tactical',
+  standard: 'Mapbox Standard 3D',
   satellite: 'Aerial imagery',
   hybrid: 'Satellite + labels',
   streets: 'Standard roads',
@@ -135,6 +151,7 @@ export function getIncidentCategory(type: string): { symbol: string; category: s
 
 export const MAP_STYLE_ICONS: Record<MapStyleId, string> = {
   dark: '\u{1F319}',        // crescent moon
+  standard: '\u{1F30F}',    // globe with meridians
   satellite: '\u{1F6F0}',   // satellite
   hybrid: '\u{1F30D}',      // globe
   streets: '\u{1F6E3}',     // motorway
@@ -156,7 +173,7 @@ export const INCIDENT_CATEGORY_COLORS: Record<string, string> = {
   MED: '#22c55e',
   SUSP: '#a855f7',
   ALM: '#eab308',
-  TRSP: '#6366f1',
+  TRSP: '#888888',
   DV: '#ec4899',
   DRUG: '#14b8a6',
   VNDL: '#f43f5e',

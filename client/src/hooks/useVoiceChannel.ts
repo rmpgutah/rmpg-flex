@@ -18,9 +18,17 @@ import { useWebSocket } from '../context/WebSocketContext';
 export interface UseVoiceChannelResult {
   state: VoiceChannelState;
   transcript: string;
+  /** True once the STT engine has committed the transcript as final.
+   *  False while the officer is still mid-sentence (interim partial). */
+  transcriptFinal: boolean;
   lastCommand: CommandResult | null;
   error: string | null;
   activateManualListen: () => void;
+  startHoldToTalk: () => void;
+  endHoldToTalk: () => void;
+  submitText: (text: string) => void;
+  setDriveMode: (active: boolean) => void;
+  refreshConfig: () => void;
   alert: (narrative: string, severity: AlertSeverity) => void;
   enabled: boolean;
   stressDetected: boolean;
@@ -30,6 +38,7 @@ export interface UseVoiceChannelResult {
 export function useVoiceChannel(): UseVoiceChannelResult {
   const [state, setState] = useState<VoiceChannelState>('idle');
   const [transcript, setTranscript] = useState('');
+  const [transcriptFinal, setTranscriptFinal] = useState(true);
   const [lastCommand, setLastCommand] = useState<CommandResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [enabled] = useState(() => isVoiceChannelEnabled());
@@ -49,10 +58,13 @@ export function useVoiceChannel(): UseVoiceChannelResult {
       onStateChange: (s) => setState(s),
       onTranscript: (text, isFinal) => {
         setTranscript(text);
-        // Clear transcript after 3s if final
+        setTranscriptFinal(isFinal);
         if (isFinal) {
           if (transcriptTimerRef.current) clearTimeout(transcriptTimerRef.current);
-          transcriptTimerRef.current = setTimeout(() => setTranscript(''), 3000);
+          transcriptTimerRef.current = setTimeout(() => {
+            setTranscript('');
+            setTranscriptFinal(true);
+          }, 3000);
         }
       },
       onCommandResult: (result) => {
@@ -96,32 +108,33 @@ export function useVoiceChannel(): UseVoiceChannelResult {
     };
   }, [enabled, subscribe]);
 
-  // V-key listener for manual listen activation
-  useEffect(() => {
-    if (!enabled) return;
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't trigger if user is typing in a form element
-      const target = e.target as HTMLElement;
-      const tagName = target.tagName;
-      if (tagName === 'INPUT' || tagName === 'TEXTAREA' || tagName === 'SELECT') return;
-      if (target.isContentEditable) return;
-
-      // Don't trigger with modifier keys
-      if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
-
-      if (e.key === 'v' || e.key === 'V') {
-        e.preventDefault();
-        channelRef.current?.activateManualListen();
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [enabled]);
+  // The global V-key handler is owned by VoiceChannelIndicator now —
+  // V held for 3 seconds opens the dispatch panel + auto-starts listening.
+  // Casual taps deliberately do nothing to prevent accidental opens.
+  // Push-to-talk inside the panel uses pointer events on the V button.
 
   const activateManualListen = useCallback(() => {
     channelRef.current?.activateManualListen();
+  }, []);
+
+  const startHoldToTalk = useCallback(() => {
+    channelRef.current?.startHoldToTalk();
+  }, []);
+
+  const endHoldToTalk = useCallback(() => {
+    channelRef.current?.endHoldToTalk();
+  }, []);
+
+  const submitText = useCallback((text: string) => {
+    channelRef.current?.submitText(text);
+  }, []);
+
+  const setDriveMode = useCallback((active: boolean) => {
+    channelRef.current?.setDriveMode(active);
+  }, []);
+
+  const refreshConfig = useCallback(() => {
+    channelRef.current?.refreshConfig();
   }, []);
 
   const alert = useCallback((narrative: string, severity: AlertSeverity) => {
@@ -133,9 +146,15 @@ export function useVoiceChannel(): UseVoiceChannelResult {
   return {
     state,
     transcript,
+    transcriptFinal,
     lastCommand,
     error,
     activateManualListen,
+    startHoldToTalk,
+    endHoldToTalk,
+    submitText,
+    setDriveMode,
+    refreshConfig,
     alert,
     enabled,
     stressDetected,

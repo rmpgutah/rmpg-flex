@@ -1,7 +1,8 @@
-import React, { useId, useEffect } from 'react';
+import { useId, useEffect } from 'react';
 import { Wrench } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 
+import RichTextArea from '../../../components/RichTextArea';
 export interface MaintenanceFormState {
   type: string;
   description: string;
@@ -74,7 +75,7 @@ export default function MaintenanceFormModal({ isOpen, mode = 'create', form, on
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Description *</label>
-              <textarea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.description}
+              <RichTextArea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.description}
                 onChange={(e) => setField('description', e.target.value)} maxLength={3000} placeholder="Describe the maintenance work performed..." />
               <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.description.length}/3000</div>
             </div>

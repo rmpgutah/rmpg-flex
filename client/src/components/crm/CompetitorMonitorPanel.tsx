@@ -3,19 +3,9 @@
 // Firecrawl-powered competitor URL monitoring + change detection
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
-  Eye,
-  Plus,
-  Trash2,
-  RefreshCw,
-  Check,
-  AlertTriangle,
-  Globe,
-  Clock,
-  X,
-  ChevronDown,
-  ChevronUp,
+  Eye, Plus, Trash2, RefreshCw, Check, Globe, Clock, X, ChevronDown, ChevronUp,
   Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';

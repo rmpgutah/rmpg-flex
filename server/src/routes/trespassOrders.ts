@@ -29,7 +29,7 @@ function generateOrderNumber(db: ReturnType<typeof getDb>): string {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, property_id, search, archived, page = '1', per_page = '50' } = req.query;
+    const { status, property_id, search, archived, page = '1', per_page = '100000' } = req.query;
 
     let where = 'WHERE 1=1';
     const params: any[] = [];
@@ -48,7 +48,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM trespass_orders t ${where}`).get(...params) as any;
@@ -153,7 +153,14 @@ router.post('/', (req: Request, res: Response) => {
       duration_days, effective_date, expiration_date,
       originating_call_id, originating_incident_id,
       authorized_by, notes,
+      // Previously silent-dropped (audit 2026-04-11):
+      // - District/beat columns (form sends section_id; legacy alias sector_id also accepted)
+      // - subject_photo_url (subject mugshot collected by the form)
+      // - served_at / served_by (when known at creation time)
+      section_id, sector_id, zone_id, beat_id, zone_beat,
+      subject_photo_url, served_at, served_by,
     } = req.body;
+    const resolvedSectionId = section_id || sector_id || null;
 
     if (!subject_first_name || !subject_last_name) return res.status(400).json({ error: 'Subject name is required', code: 'MISSING_NAME' });
     if (!location?.trim()) return res.status(400).json({ error: 'Location is required', code: 'MISSING_LOCATION' });
@@ -185,8 +192,13 @@ router.post('/', (req: Request, res: Response) => {
         duration_days, effective_date, expiration_date,
         originating_call_id, originating_incident_id,
         issued_by, issued_by_name, authorized_by, notes,
+        section_id, zone_id, beat_id, zone_beat,
+        subject_photo_url, served_at, served_by,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?)
     `).run(
       order_number, person_id || null, subject_first_name, subject_last_name, subject_dob || null, subject_description,
       property_id || null, property_name, location,
@@ -194,6 +206,8 @@ router.post('/', (req: Request, res: Response) => {
       duration_days || null, effective_date || now, exp,
       originating_call_id || null, originating_incident_id || null,
       user.userId || user.id, user.fullName || user.full_name, authorized_by, notes,
+      resolvedSectionId, zone_id || null, beat_id || null, zone_beat || null,
+      subject_photo_url || null, served_at || null, served_by || null,
       now, now
     );
 
@@ -242,6 +256,8 @@ router.put('/:id', (req: Request, res: Response) => {
       'served_at', 'served_by',
       'originating_call_id', 'originating_incident_id',
       'issued_by', 'issued_by_name',
+      // Previously dropped on edit (audit 2026-04-11):
+      'section_id', 'zone_id', 'beat_id', 'zone_beat', 'subject_photo_url',
     ];
 
     const setClauses: string[] = ['updated_at = ?'];
@@ -251,6 +267,11 @@ router.put('/:id', (req: Request, res: Response) => {
         setClauses.push(`${f} = ?`);
         params.push(req.body[f] || null);
       }
+    }
+    // Accept legacy alias `sector_id` as a fallback for `section_id`
+    if (req.body.sector_id !== undefined && req.body.section_id === undefined) {
+      setClauses.push('section_id = ?');
+      params.push(req.body.sector_id || null);
     }
 
     // God Mode: admin can edit expired trespass orders

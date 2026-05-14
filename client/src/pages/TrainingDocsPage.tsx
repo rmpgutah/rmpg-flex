@@ -2,22 +2,19 @@
 // RMPG Flex — Training & Docs: Company Policies, SOPs, Manuals
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2,
-  Edit2, Loader2, X, Upload, Link as LinkIcon, Star, Eye, EyeOff,
-  FileVideo, FileSpreadsheet, FileImage, File, Printer,
+  BookOpen, Plus, Search, FileText, ExternalLink, Download, Trash2, Edit2,
+  Loader2, X, Upload, Link as LinkIcon, Star, EyeOff, FileVideo, FileSpreadsheet,
+  FileImage, File, Printer,
 } from 'lucide-react';
-import { BLANK_FORMS, downloadBlankForm, type BlankFormDef } from '../utils/blankFormGenerator';
+import { BLANK_FORMS, downloadBlankForm } from '../utils/blankFormGenerator';
 import { useAuth } from '../context/AuthContext';
 import {
-  apiFetchCompanyDocuments,
-  apiCreateCompanyDocument,
-  apiUpdateCompanyDocument,
-  apiDeleteCompanyDocument,
-  apiUploadFiles,
+  apiFetchCompanyDocuments, apiCreateCompanyDocument, apiUpdateCompanyDocument,
+  apiDeleteCompanyDocument, apiUploadFiles,
 } from '../hooks/useApi';
-import { authUrl } from '../components/FileAttachments';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';
 import { useToast } from '../components/ToastProvider';
@@ -42,7 +39,7 @@ const CATEGORY_COLORS: Record<string, string> = {
   sop: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   training_manual: 'bg-green-900/40 text-green-400 border-green-700/50',
   form: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
-  reference: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50',
+  reference: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
   general: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
 };
 
@@ -311,7 +308,7 @@ export default function TrainingDocsPage() {
                     <span className={`inline-block px-1.5 py-0.5 text-[8px] font-bold uppercase border flex-shrink-0 ${
                       CATEGORY_COLORS[doc.category] || CATEGORY_COLORS.general
                     }`}>
-                      {doc.category?.replace(/_/g, ' ')}
+                      {doc.category?.replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </div>
 
@@ -478,7 +475,7 @@ function DocumentModal({ doc, onClose, onSaved }: ModalProps) {
           {/* Description */}
           <div>
             <label className="field-label mb-1 block">Description</label>
-            <textarea
+            <RichTextArea
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"

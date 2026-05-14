@@ -1,21 +1,39 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcast } from '../utils/websocket';
+import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/universalWarrantScanner';
 import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, searchUtahWarrantsLive, searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
+import { getSourceMetrics, getHealthSummary } from '../utils/scraperMetrics';
+import { paramStr } from '../utils/reqHelpers';
+import { logSafe } from '../utils/logSafe';
+import { ensureWarrantReviewColumns, ensureWarrantIndexes } from '../utils/warrantHelpers';
+import { pollMultiStateLive, type LivePollCriteria } from '../utils/liveWarrantPoller';
 
 const router = Router();
 
 // All warrant routes require authentication
 router.use(authenticateToken);
 
+// Guard: skip /:id routes when the param is not a numeric ID.
+// This prevents parameterized routes from shadowing literal-path routes
+// defined later in the file (e.g. /expiring, /summary-report, /person-intel).
+router.param('id', (req: Request, _res: Response, next: NextFunction, value: string) => {
+  if (!/^\d+$/.test(value)) {
+    next('route');
+    return;
+  }
+  next();
+});
+
 // GET /api/warrants - List warrants with filters
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureWarrantReviewColumns(db);
+    ensureWarrantIndexes(db);
     const {
       status,
       type,
@@ -30,7 +48,7 @@ router.get('/', (req: Request, res: Response) => {
       expiring_days,
       person_id,
       page = '1',
-      per_page = '50',
+      per_page = '100000',
     } = req.query;
 
     let whereClause = 'WHERE 1=1';
@@ -74,14 +92,6 @@ router.get('/', (req: Request, res: Response) => {
       whereClause += ' AND w.created_at <= ?';
       params.push(date_to);
     }
-    if (severity) {
-      whereClause += ' AND w.offense_level = ?';
-      params.push(severity);
-    }
-    if (source) {
-      whereClause += ' AND w.source = ?';
-      params.push(source);
-    }
     if (expiring_days) {
       const eDays = parseInt(expiring_days as string, 10);
       if (!isNaN(eDays) && eDays > 0) {
@@ -94,15 +104,62 @@ router.get('/', (req: Request, res: Response) => {
       params.push(person_id);
     }
 
+    // ── Phase 1 list UI filters (additive, AND-combined) ──
+    // priority_min: only warrants with priority_score >= N
+    if (req.query.priority_min != null && req.query.priority_min !== '') {
+      const pMin = parseInt(String(req.query.priority_min), 10);
+      if (!Number.isNaN(pMin)) {
+        whereClause += ' AND w.priority_score >= ?';
+        params.push(pMin);
+      }
+    }
+    // since_days: only warrants issued (or created) within last N days
+    if (req.query.since_days != null && req.query.since_days !== '') {
+      const sDays = parseInt(String(req.query.since_days), 10);
+      if (!Number.isNaN(sDays)) {
+        whereClause += " AND julianday('now') - julianday(COALESCE(w.issue_date, w.created_at)) <= ?";
+        params.push(sDays);
+      }
+    }
+    // matches_person=1: only warrants with a linked subject person
+    if (req.query.matches_person === '1') {
+      whereClause += ' AND w.subject_person_id IS NOT NULL';
+    }
+    // state=UT: match source prefix like 'ut_%' (e.g. ut_warrants)
+    if (typeof req.query.state === 'string' && req.query.state.length > 0) {
+      whereClause += ' AND lower(w.source) LIKE ?';
+      params.push(`${req.query.state.toLowerCase()}_%`);
+    }
+    // state_prefix: literal source prefix match
+    if (typeof req.query.state_prefix === 'string' && req.query.state_prefix.length > 0) {
+      whereClause += ' AND w.source LIKE ?';
+      params.push(`${req.query.state_prefix}%`);
+    }
+
     // Archive filter
-    if (archived === 'true') {
+    if (req.query.include_archived === '1') {
+      // no-op — include archived
+    } else if (archived === 'true') {
       whereClause += ' AND w.archived_at IS NOT NULL';
     } else if (archived !== 'all') {
       whereClause += ' AND w.archived_at IS NULL';
     }
 
+    // Sort: priority | age | freshness | alpha | (default: created_at DESC for back-compat)
+    const sortParam = typeof req.query.sort === 'string' ? req.query.sort : null;
+    const orderDir = req.query.order === 'asc' ? 'ASC' : 'DESC';
+    const sortMap: Record<string, string> = {
+      priority: 'w.priority_score',
+      age: "julianday('now') - julianday(COALESCE(w.issue_date, w.created_at))",
+      freshness: "julianday('now') - julianday(COALESCE(w.last_scraped_at, w.updated_at))",
+      alpha: 'w.warrant_number',
+    };
+    const orderBy = sortParam && sortMap[sortParam]
+      ? `${sortMap[sortParam]} ${orderDir}`
+      : 'w.created_at DESC';
+
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPageNum = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPageNum = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPageNum;
 
     const countRow = db.prepare(`
@@ -118,12 +175,15 @@ router.get('/', (req: Request, res: Response) => {
         p.last_name as subject_last_name,
         (p.first_name || ' ' || p.last_name) as subject_name,
         u.full_name as entered_by_name,
-        (SELECT COUNT(*) FROM warrant_service_attempts WHERE warrant_id = w.id) as service_attempt_count
+        (SELECT COUNT(*) FROM warrant_service_attempts WHERE warrant_id = w.id) as service_attempt_count,
+        CAST(julianday('now') - julianday(COALESCE(w.issue_date, w.created_at)) AS INTEGER) AS age_days,
+        CAST(julianday('now') - julianday(COALESCE(w.last_scraped_at, w.updated_at)) AS INTEGER) AS freshness_days,
+        CASE WHEN w.subject_person_id IS NOT NULL THEN 1 ELSE 0 END AS matches_person
       FROM warrants w
       LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id
       ${whereClause}
-      ORDER BY w.created_at DESC
+      ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `).all(...params, perPageNum, offset);
 
@@ -143,7 +203,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/export — Export warrants as CSV
-router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrants = db.prepare(`
@@ -579,7 +639,7 @@ router.get('/unified', (req: Request, res: Response) => {
 
     // Pagination
     const pageNum = parseInt(req.query.page as string, 10) || 1;
-    const perPage = parseInt(req.query.per_page as string, 10) || 50;
+    const perPage = Math.min(100000, Math.max(1, (parseInt(req.query.per_page as string, 10)) || 100000));
     const total = filtered.length;
     const paged = filtered.slice((pageNum - 1) * perPage, pageNum * perPage);
 
@@ -698,7 +758,7 @@ router.get('/scraped/status', (req: Request, res: Response) => {
 router.get('/watch/runs', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     const runs = db.prepare(`
       SELECT * FROM warrant_watch_runs
@@ -885,10 +945,360 @@ router.get('/national-coverage', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// ⚠️  ROUTE ORDER SENSITIVE — /:id below is parameterized and greedy.
+// All /scrapers/* routes MUST appear ABOVE router.get('/:id', ...).
+// See CLAUDE.md "Express Route Ordering" rule.
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/warrants/scrapers/health — cheap summary for header badge
+// MUST be defined BEFORE /scrapers/:source_key to avoid "health" matching :source_key
+router.get('/scrapers/health', (req: Request, res: Response) => {
+  try {
+    res.json(getHealthSummary());
+  } catch (err: any) {
+    console.error('GET /scrapers/health error:', err);
+    res.status(500).json({ error: 'Failed to fetch health', code: 'FETCH_HEALTH_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers/metrics/summary?window=24
+// Also defined BEFORE /scrapers/:source_key for the same reason.
+router.get('/scrapers/metrics/summary', (req: Request, res: Response) => {
+  try {
+    const window = Math.max(1, Math.min(720, parseInt((req.query.window as string) || '24', 10) || 24));
+    const db = getDb();
+    const sources = db.prepare('SELECT source_key FROM warrant_scraper_config WHERE enabled = 1').all() as { source_key: string }[];
+    const all = sources.map(s => getSourceMetrics(s.source_key, window));
+
+    const totalRuns = all.reduce((sum, m) => sum + m.total_runs, 0);
+    const totalInserted = all.reduce((sum, m) => sum + m.total_inserted, 0);
+    const totalUpdated = all.reduce((sum, m) => sum + m.total_updated, 0);
+    const totalSuccess = all.reduce((sum, m) => sum + m.successful_runs + m.unchanged_runs, 0);
+
+    const gradeDist: Record<string, number> = { A: 0, B: 0, C: 0, D: 0, F: 0 };
+    for (const m of all) gradeDist[m.health_grade] = (gradeDist[m.health_grade] ?? 0) + 1;
+
+    res.json({
+      window_hours: window,
+      total_sources: all.length,
+      total_runs: totalRuns,
+      total_warrants_inserted: totalInserted,
+      total_warrants_updated: totalUpdated,
+      avg_success_rate: totalRuns > 0 ? totalSuccess / totalRuns : 0,
+      grade_distribution: gradeDist,
+    });
+  } catch (err: any) {
+    console.error('GET /scrapers/metrics/summary error:', err);
+    res.status(500).json({ error: 'Failed to fetch summary', code: 'FETCH_SUMMARY_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers — list all sources with 24h metrics
+router.get('/scrapers', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const sources = db.prepare(`
+      SELECT source_key, display_name, state, county, source_url, source_type,
+        enabled, circuit_broken, priority, consecutive_errors,
+        last_scrape_at, last_success_at, last_error,
+        avg_parse_count, p95_latency_ms,
+        (SELECT COUNT(*) FROM scraped_warrants WHERE source_key = warrant_scraper_config.source_key) AS warrant_count
+      FROM warrant_scraper_config
+      ORDER BY priority, state, county
+    `).all() as any[];
+
+    const withMetrics = sources.map(s => ({
+      ...s,
+      metrics_24h: getSourceMetrics(s.source_key, 24),
+    }));
+    res.json({ sources: withMetrics });
+  } catch (err: any) {
+    console.error('GET /scrapers error:', err);
+    res.status(500).json({ error: 'Failed to fetch scrapers', code: 'FETCH_SCRAPERS_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers/:source_key — single source with 24h + 7d metrics
+router.get('/scrapers/:source_key', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const source = db.prepare('SELECT * FROM warrant_scraper_config WHERE source_key = ?').get(req.params.source_key);
+    if (!source) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+    res.json({
+      ...source,
+      metrics_24h: getSourceMetrics(paramStr(req.params.source_key), 24),
+      metrics_7d: getSourceMetrics(paramStr(req.params.source_key), 168),
+    });
+  } catch (err: any) {
+    console.error('GET /scrapers/:source_key error:', err);
+    res.status(500).json({ error: 'Failed to fetch source', code: 'FETCH_SOURCE_ERROR' });
+  }
+});
+
+// GET /api/warrants/scrapers/:source_key/runs?limit=50&offset=0
+router.get('/scrapers/:source_key/runs', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = Math.min(100000, Math.max(1, (parseInt((req.query.limit as string) || '50', 10)) || 100000));
+    const offset = Math.max(0, parseInt((req.query.offset as string) || '0', 10) || 0);
+    const runs = db.prepare(`
+      SELECT * FROM warrant_scraper_runs
+      WHERE source_key = ?
+      ORDER BY started_at DESC
+      LIMIT ? OFFSET ?
+    `).all(req.params.source_key, limit, offset);
+    res.json({ runs });
+  } catch (err: any) {
+    console.error('GET /scrapers/:source_key/runs error:', err);
+    res.status(500).json({ error: 'Failed to fetch runs', code: 'FETCH_RUNS_ERROR' });
+  }
+});
+
+// ── Scraper action endpoints (admin + manager) ─────────────
+// POST /api/warrants/scrapers/bulk — bulk enable/disable/reset/set_priority
+// Defined BEFORE /scrapers/:source_key/* routes so "bulk" doesn't match :source_key.
+router.post('/scrapers/bulk', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const { action, source_keys, priority } = req.body;
+    if (!Array.isArray(source_keys) || source_keys.length === 0) {
+      return res.status(400).json({ error: 'source_keys array required', code: 'MISSING_KEYS' });
+    }
+    if (source_keys.length > 200) {
+      return res.status(400).json({ error: 'max 200 sources per bulk op', code: 'TOO_MANY' });
+    }
+
+    const db = getDb();
+    const placeholders = source_keys.map(() => '?').join(',');
+    let result;
+
+    switch (action) {
+      case 'enable':
+        result = db.prepare(`UPDATE warrant_scraper_config SET enabled = 1 WHERE source_key IN (${placeholders})`).run(...source_keys);
+        break;
+      case 'disable':
+        result = db.prepare(`UPDATE warrant_scraper_config SET enabled = 0 WHERE source_key IN (${placeholders})`).run(...source_keys);
+        break;
+      case 'reset':
+        result = db.prepare(`UPDATE warrant_scraper_config SET consecutive_errors = 0, circuit_broken = 0 WHERE source_key IN (${placeholders})`).run(...source_keys);
+        break;
+      case 'set_priority': {
+        const p = parseInt(priority, 10);
+        if (![1, 2, 3, 4].includes(p)) return res.status(400).json({ error: 'priority must be 1-4', code: 'INVALID_PRIORITY' });
+        result = db.prepare(`UPDATE warrant_scraper_config SET priority = ? WHERE source_key IN (${placeholders})`).run(p, ...source_keys);
+        break;
+      }
+      default:
+        return res.status(400).json({ error: 'action must be enable|disable|reset|set_priority', code: 'INVALID_ACTION' });
+    }
+
+    auditLog(req, 'warrant_updated', 'config', 0, `Scraper bulk ${action}: ${source_keys.length} sources`);
+    return res.json({ success: true, affected: result.changes });
+  } catch (err: any) {
+    console.error('POST /scrapers/bulk error:', err);
+    return res.status(500).json({ error: 'Bulk op failed', code: 'BULK_ERROR' });
+  }
+});
+
+// POST /api/warrants/scrapers/:source_key/trigger — force immediate scrape
+router.post('/scrapers/:source_key/trigger', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const sourceKey = paramStr(req.params.source_key);
+    const db = getDb();
+    const exists = db.prepare('SELECT source_key FROM warrant_scraper_config WHERE source_key = ?').get(sourceKey);
+    if (!exists) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+
+    // Fire and forget — returns immediately so UI doesn't block on the scrape
+    const { syncSource } = await import('../utils/multiStateWarrantScraper');
+    syncSource(sourceKey).catch((e: Error) => console.error(`[Manual Trigger] ${logSafe(sourceKey)}: ${logSafe(e.message)}`));
+
+    auditLog(req, 'warrant_updated', 'config', 0, `Scraper manually triggered: ${sourceKey}`);
+    return res.json({ success: true, source_key: sourceKey, message: 'Scrape initiated' });
+  } catch (err: any) {
+    console.error('POST /scrapers/:source_key/trigger error:', err);
+    return res.status(500).json({ error: 'Trigger failed', code: 'TRIGGER_ERROR' });
+  }
+});
+
+// POST /api/warrants/scrapers/:source_key/test — dry-run parse (no DB write)
+router.post('/scrapers/:source_key/test', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const config = db.prepare('SELECT * FROM warrant_scraper_config WHERE source_key = ?').get(req.params.source_key) as any;
+    if (!config) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+    if (!config.source_url) return res.status(400).json({ error: 'Source has no URL', code: 'NO_URL' });
+
+    const { parseWithFallback } = await import('../utils/multiStateWarrantScraper');
+    const response = await fetch(config.source_url);
+    const html = await response.text();
+    const result = parseWithFallback(config, html);
+
+    return res.json({
+      source_key: req.params.source_key,
+      http_status: response.status,
+      bytes: html.length,
+      parser_used: result.parserUsed,
+      drift_signal: result.driftSignal || null,
+      entry_count: result.entries.length,
+      sample: result.entries.slice(0, 10),
+    });
+  } catch (err: any) {
+    console.error('POST /scrapers/:source_key/test error:', err);
+    return res.status(500).json({ error: err.message || 'Test failed', code: 'TEST_ERROR' });
+  }
+});
+
+// POST /api/warrants/scrapers/:source_key/reset-circuit — clear circuit breaker
+router.post('/scrapers/:source_key/reset-circuit', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const result = db.prepare(
+      'UPDATE warrant_scraper_config SET consecutive_errors = 0, circuit_broken = 0 WHERE source_key = ?'
+    ).run(req.params.source_key);
+    if (result.changes === 0) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+
+    auditLog(req, 'warrant_updated', 'config', 0, `Scraper circuit reset: ${req.params.source_key}`);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('POST /scrapers/:source_key/reset-circuit error:', err);
+    return res.status(500).json({ error: 'Reset failed', code: 'RESET_ERROR' });
+  }
+});
+
+// POST /api/warrants/scrapers/:source_key/preview — parse pasted HTML (no DB write, no fetch)
+router.post('/scrapers/:source_key/preview', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const { html } = req.body;
+    if (typeof html !== 'string' || html.length === 0) {
+      return res.status(400).json({ error: 'html body required', code: 'MISSING_HTML' });
+    }
+    if (html.length > 5_000_000) {
+      return res.status(413).json({ error: 'html too large (5MB max)', code: 'HTML_TOO_LARGE' });
+    }
+
+    const config = getDb().prepare('SELECT * FROM warrant_scraper_config WHERE source_key = ?').get(req.params.source_key) as any;
+    if (!config) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+
+    const { parseWithFallback } = await import('../utils/multiStateWarrantScraper');
+    const result = parseWithFallback(config, html);
+
+    return res.json({
+      parser_used: result.parserUsed,
+      drift_signal: result.driftSignal || null,
+      entry_count: result.entries.length,
+      entries: result.entries,
+    });
+  } catch (err: any) {
+    console.error('POST /scrapers/:source_key/preview error:', err);
+    return res.status(500).json({ error: err.message || 'Preview failed', code: 'PREVIEW_ERROR' });
+  }
+});
+
+// PUT /api/warrants/scrapers/:source_key — update priority/interval/enabled
+router.put('/scrapers/:source_key', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const { priority, scrape_interval_minutes, enabled } = req.body;
+    const updates: string[] = [];
+    const params: any[] = [];
+
+    if (priority !== undefined) {
+      const p = parseInt(priority, 10);
+      if (![1, 2, 3, 4].includes(p)) return res.status(400).json({ error: 'priority must be 1-4', code: 'INVALID_PRIORITY' });
+      updates.push('priority = ?'); params.push(p);
+    }
+    if (scrape_interval_minutes !== undefined) {
+      const m = parseInt(scrape_interval_minutes, 10);
+      if (Number.isNaN(m) || m < 5 || m > 1440) return res.status(400).json({ error: 'interval must be 5-1440 min', code: 'INVALID_INTERVAL' });
+      updates.push('scrape_interval_minutes = ?'); params.push(m);
+    }
+    if (enabled !== undefined) {
+      updates.push('enabled = ?'); params.push(enabled ? 1 : 0);
+    }
+    if (updates.length === 0) return res.status(400).json({ error: 'No fields to update', code: 'NO_UPDATES' });
+
+    params.push(req.params.source_key);
+    const result = getDb().prepare(
+      `UPDATE warrant_scraper_config SET ${updates.join(', ')} WHERE source_key = ?`
+    ).run(...params);
+    if (result.changes === 0) return res.status(404).json({ error: 'Source not found', code: 'SOURCE_NOT_FOUND' });
+
+    auditLog(req, 'warrant_updated', 'config', 0, `Scraper config updated: ${req.params.source_key} ${JSON.stringify(req.body)}`);
+    return res.json({ success: true });
+  } catch (err: any) {
+    console.error('PUT /scrapers/:source_key error:', err);
+    return res.status(500).json({ error: 'Update failed', code: 'UPDATE_ERROR' });
+  }
+});
+
+// ── Phase 1 bulk endpoints ─────────────────────────────────
+// Placed BEFORE /:id so the literal paths don't collide with the
+// greedy parameterized route.
+
+// POST /api/warrants/bulk-archive — archive up to 500 warrants by id
+router.post('/bulk-archive', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    ensureWarrantReviewColumns(db);
+    const ids = (Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [])
+      .map((x: any) => Number(x))
+      .filter((n: number) => Number.isInteger(n) && n > 0);
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'warrant_ids must be a non-empty array of integers', code: 'WARRANT_IDS_REQUIRED' });
+      return;
+    }
+    if (ids.length > 500) {
+      res.status(400).json({ error: 'Bulk operations limited to 500 warrants per request', code: 'BULK_LIMIT_EXCEEDED' });
+      return;
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    const now = localNow();
+    const userId = req.user!.userId;
+    const result = db
+      .prepare(`UPDATE warrants SET archived_at = ?, archived_by = ? WHERE id IN (${placeholders}) AND archived_at IS NULL`)
+      .run(now, userId, ...ids);
+    auditLog(req, 'warrant_updated', 'warrant', 0, `Bulk archived ${result.changes} of ${ids.length} warrants`);
+    res.json({ archived: result.changes, skipped: ids.length - result.changes });
+  } catch (err: any) {
+    console.error('[warrants] bulk-archive error:', err?.message);
+    res.status(500).json({ error: 'Bulk archive failed', code: 'BULK_ARCHIVE_ERROR' });
+  }
+});
+
+// POST /api/warrants/bulk-review — mark up to 500 warrants reviewed by current user
+router.post('/bulk-review', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    ensureWarrantReviewColumns(db);
+    const ids = (Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [])
+      .map((x: any) => Number(x))
+      .filter((n: number) => Number.isInteger(n) && n > 0);
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'warrant_ids must be a non-empty array of integers', code: 'WARRANT_IDS_REQUIRED' });
+      return;
+    }
+    if (ids.length > 500) {
+      res.status(400).json({ error: 'Bulk operations limited to 500 warrants per request', code: 'BULK_LIMIT_EXCEEDED' });
+      return;
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    const now = localNow();
+    const userId = req.user!.userId;
+    const result = db
+      .prepare(`UPDATE warrants SET reviewed_at = ?, reviewed_by = ? WHERE id IN (${placeholders})`)
+      .run(now, userId, ...ids);
+    auditLog(req, 'warrant_updated', 'warrant', 0, `Bulk marked ${result.changes} warrants as reviewed`);
+    res.json({ reviewed: result.changes });
+  } catch (err: any) {
+    console.error('[warrants] bulk-review error:', err?.message);
+    res.status(500).json({ error: 'Bulk review failed', code: 'BULK_REVIEW_ERROR' });
+  }
+});
+
 // GET /api/warrants/:id - Get single warrant with details
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureWarrantReviewColumns(db);
 
     const warrant = db.prepare(`
       SELECT w.*,
@@ -903,11 +1313,16 @@ router.get('/:id', (req: Request, res: Response) => {
         p.eye_color as subject_eye_color,
         p.address as subject_address,
         p.photo_url as subject_photo_url,
+        p.alias_nickname as subject_aliases,
+        p.scars_marks_tattoos as subject_scars_marks_tattoos,
+        p.distinguishing_features as subject_distinguishing_features,
         (p.first_name || ' ' || p.last_name) as subject_name,
+        s.short_title as statute_text,
         u_entered.full_name as entered_by_name,
         u_served.full_name as served_by_name
       FROM warrants w
       LEFT JOIN persons p ON w.subject_person_id = p.id
+      LEFT JOIN utah_statutes s ON s.id = w.statute_id
       LEFT JOIN users u_entered ON w.entered_by = u_entered.id
       LEFT JOIN users u_served ON w.served_by = u_served.id
       WHERE w.id = ?
@@ -925,13 +1340,107 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'warrant' AND al.entity_id = ?
       ORDER BY al.created_at DESC
-    
+
       LIMIT 1000
     `).all(warrant.id);
+
+    // Phase 1 detail joins: RMPG encounters, known associates, known vehicles.
+    // Each block is guarded — supplemental tables may not exist on fresh schemas.
+    const rmpg_encounters: any[] = [];
+    const known_associates: any[] = [];
+    const known_vehicles: any[] = [];
+
+    if (warrant.subject_person_id) {
+      // calls_for_service encounters via call_persons
+      try {
+        const callRows = db.prepare(`
+          SELECT c.created_at AS date, c.call_number AS context, pr.name AS property
+          FROM call_persons cp
+          JOIN calls_for_service c ON c.id = cp.call_id
+          LEFT JOIN properties pr ON pr.id = c.property_id
+          WHERE cp.person_id = ?
+          ORDER BY c.created_at DESC
+          LIMIT 20
+        `).all(warrant.subject_person_id);
+        rmpg_encounters.push(...callRows);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+      // incidents via incident_persons
+      try {
+        const incRows = db.prepare(`
+          SELECT i.created_at AS date, i.incident_number AS context, NULL AS property
+          FROM incident_persons ip
+          JOIN incidents i ON i.id = ip.incident_id
+          WHERE ip.person_id = ?
+          ORDER BY i.created_at DESC
+          LIMIT 20
+        `).all(warrant.subject_person_id);
+        rmpg_encounters.push(...incRows);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+      // field interviews
+      try {
+        const fiRows = db.prepare(`
+          SELECT created_at AS date, fi_number AS context, NULL AS property
+          FROM field_interviews
+          WHERE person_id = ?
+          ORDER BY created_at DESC
+          LIMIT 20
+        `).all(warrant.subject_person_id);
+        rmpg_encounters.push(...fiRows);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+      // Sort combined encounters by date DESC, cap at 20
+      rmpg_encounters.sort((a: any, b: any) => String(b.date || '').localeCompare(String(a.date || '')));
+      rmpg_encounters.splice(20);
+
+      try {
+        const a = db.prepare(`
+          SELECT p.first_name || ' ' || p.last_name AS name,
+                 pa.relationship_type AS relationship
+          FROM person_associates pa
+          JOIN persons p ON p.id = pa.associate_id
+          WHERE pa.person_id = ?
+          LIMIT 10
+        `).all(warrant.subject_person_id);
+        known_associates.push(...a);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+
+      try {
+        const v = db.prepare(`
+          SELECT plate_number AS plate,
+                 (COALESCE(year,'') || ' ' || COALESCE(make,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(color,'')) AS description
+          FROM vehicles_records
+          WHERE owner_person_id = ?
+          LIMIT 10
+        `).all(warrant.subject_person_id);
+        known_vehicles.push(...v);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+    }
 
     res.json({
       ...warrant,
       activity,
+      rmpg_encounters,
+      known_associates,
+      known_vehicles,
     });
   } catch (error: any) {
     console.error('Get warrant error:', error);
@@ -1035,6 +1544,17 @@ router.post('/', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (r
     broadcast('alerts', 'warrant', {
       action: 'created',
       warrant,
+    });
+    // Dispatcher Brain fan-in (Phase 2): also emit on the dispatch
+    // channel with a flat shape the brain's warrant-entered rule
+    // consumes. Severity is 'moderate' per design — warrants affect
+    // officer safety so they merit a spoken notice.
+    broadcastDispatchUpdate({
+      action: 'warrant_entered',
+      warrant_id: warrantId,
+      subject_name: warrant?.subject_name,
+      offense_class: warrant?.offense_level ?? warrant?.type,
+      bail_amount: warrant?.bail_amount,
     });
 
     res.status(201).json(warrant);
@@ -1253,11 +1773,12 @@ router.post('/:id/archive', (req: Request, res: Response) => {
     if (warrant.archived_at) { res.status(400).json({ error: 'Warrant is already archived', code: 'WARRANT_IS_ALREADY_ARCHIVED' }); return; }
 
     const now = localNow();
-    db.prepare('UPDATE warrants SET archived_at = ? WHERE id = ?').run(now, warrant.id);
+    const userId = req.user!.userId;
+    db.prepare('UPDATE warrants SET archived_at = ?, archived_by = ? WHERE id = ?').run(now, userId, warrant.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'warrant_archived', 'warrant', ?, ?, ?)`).run(
-      req.user!.userId, warrant.id, `Archived warrant ${warrant.warrant_number}`, req.ip || 'unknown');
+      userId, warrant.id, `Archived warrant ${warrant.warrant_number}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
       SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
@@ -1265,6 +1786,8 @@ router.post('/:id/archive', (req: Request, res: Response) => {
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
+
+    broadcast('alerts', 'warrant', { action: 'archived', warrant: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('Archive warrant error:', error);
@@ -1280,7 +1803,7 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
     if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
     if (!warrant.archived_at) { res.status(400).json({ error: 'Warrant is not archived', code: 'WARRANT_IS_NOT_ARCHIVED' }); return; }
 
-    db.prepare('UPDATE warrants SET archived_at = NULL WHERE id = ?').run(warrant.id);
+    db.prepare('UPDATE warrants SET archived_at = NULL, archived_by = NULL WHERE id = ?').run(warrant.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'warrant_unarchived', 'warrant', ?, ?, ?)`).run(
@@ -1292,6 +1815,8 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
+
+    broadcast('alerts', 'warrant', { action: 'unarchived', warrant: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive warrant error:', error);
@@ -1803,13 +2328,18 @@ router.post('/search-all', (req: Request, res: Response) => {
 
       if (firstName) { scrapedWhere += ' AND LOWER(first_name) LIKE LOWER(?)'; scrapedParams.push(`%${firstName}%`); }
       if (lastName) { scrapedWhere += ' AND LOWER(last_name) LIKE LOWER(?)'; scrapedParams.push(`%${lastName}%`); }
-      if (chargeKeyword) { scrapedWhere += ' AND LOWER(charges) LIKE LOWER(?)'; scrapedParams.push(`%${chargeKeyword}%`); }
+      // Audit 2026-04-24: column is `charge_description`, not `charges`;
+      // `scraped_warrants` has no `scraped_at` — use `last_seen_at` (updated on
+      // every scraper refresh). Every POST /api/warrants/search-all threw
+      // SQLITE_ERROR: the `ORDER BY scraped_at` clause fired on every call;
+      // the `LOWER(charges)` clause fired whenever a charge keyword was passed.
+      if (chargeKeyword) { scrapedWhere += ' AND LOWER(charge_description) LIKE LOWER(?)'; scrapedParams.push(`%${chargeKeyword}%`); }
       if (offenseLevel) { scrapedWhere += ' AND LOWER(offense_level) = LOWER(?)'; scrapedParams.push(offenseLevel); }
 
       const scrapedWarrants = db.prepare(`
         SELECT * FROM scraped_warrants
         ${scrapedWhere}
-        ORDER BY scraped_at DESC
+        ORDER BY last_seen_at DESC
         LIMIT 500
       `).all(...scrapedParams) as any[];
       sources.push('scraped');
@@ -1842,7 +2372,7 @@ router.post('/search-all', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/summary-report — Warrant summary/breakdown report
-router.get('/summary-report', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+router.get('/summary-report', requireRole('dispatcher', 'supervisor', 'admin', 'manager', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { from, to } = req.query;
@@ -2040,73 +2570,6 @@ router.post('/scraper/reset-all', requireRole('admin'), (req: Request, res: Resp
   }
 });
 
-// ── National Warrant Coverage ───────────────────────────
-// GET /api/warrants/national-coverage
-// Returns per-state coverage stats for the US map
-router.get('/national-coverage', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-
-    // Get source config grouped by state
-    const sources = db.prepare(`
-      SELECT state, source_key, display_name, source_type, enabled,
-             last_scrape_at, consecutive_errors, circuit_broken
-      FROM warrant_scraper_config
-      ORDER BY state, source_key
-    `).all() as any[];
-
-    // Get warrant counts per state from scraped_warrants
-    const warrantCounts = db.prepare(`
-      SELECT state, COUNT(*) as count
-      FROM scraped_warrants
-      WHERE status = 'active'
-      GROUP BY state
-    `).all() as { state: string; count: number }[];
-
-    const warrantMap: Record<string, number> = {};
-    for (const row of warrantCounts) {
-      warrantMap[row.state] = row.count;
-    }
-
-    // Build per-state status
-    const stateStatus: Record<string, string> = {};
-    const stateSources: Record<string, number> = {};
-    const stateWarrants: Record<string, number> = {};
-
-    for (const src of sources) {
-      const st = src.state;
-      if (!st) continue;
-      stateSources[st] = (stateSources[st] || 0) + 1;
-      stateWarrants[st] = warrantMap[st] || 0;
-
-      // Determine status: active (enabled + has data or recently scraped), pending (enabled, no data yet), disabled
-      if (src.enabled && !src.circuit_broken) {
-        if (stateWarrants[st] > 0 || src.last_scrape_at) {
-          stateStatus[st] = 'active';
-        } else if (!stateStatus[st] || stateStatus[st] === 'disabled') {
-          stateStatus[st] = 'pending';
-        }
-      } else if (!stateStatus[st]) {
-        stateStatus[st] = 'disabled';
-      }
-    }
-
-    const statesCovered = Object.values(stateStatus).filter(s => s === 'active').length;
-    const totalWarrants = Object.values(stateWarrants).reduce((a, b) => a + b, 0);
-
-    res.json({
-      sources: sources.length,
-      states_covered: statesCovered,
-      active_warrants: totalWarrants,
-      state_status: stateStatus,
-      state_sources: stateSources,
-      state_warrants: stateWarrants,
-    });
-  } catch (error: any) {
-    console.error('National coverage error:', error);
-    res.status(500).json({ error: 'Failed to get national coverage', code: 'NATIONAL_COVERAGE_ERROR' });
-  }
-});
 
 // ── National Warrant Search ─────────────────────────────
 // POST /api/warrants/national-search
@@ -2249,7 +2712,15 @@ router.post('/national-search', async (req: Request, res: Response) => {
           WHERE ${manualConditions.join(' AND ')}
           LIMIT 100
         `).all(...manualParams) as any[];
-      } catch (e) { /* warrants table may not have these columns */ }
+      } catch (e: any) {
+        // The legacy comment said "warrants table may not have these columns"
+        // but swallowing all errors hid genuine query bugs. Distinguish:
+        // missing-column = expected pre-migration; everything else = log warn.
+        const msg = e?.message || '';
+        if (!/no such column/i.test(msg)) {
+          console.warn('[Warrants] manual-search query error (non-blocking):', msg);
+        }
+      }
     }
 
     // ── Combine all results ──
@@ -2285,6 +2756,54 @@ router.post('/national-search', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('National search error:', error);
     res.status(500).json({ error: 'Failed to search national warrants', code: 'NATIONAL_SEARCH_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// POST /api/warrants/live-poll
+// ────────────────────────────────────────────────────────────
+// Unified multi-state live poll — queries Utah API, FBI API, and the
+// local 7k+ scraped_warrants cache in parallel, then scores each result
+// by name + DOB + age + sex against the supplied criteria.
+//
+// Request body:
+//   { first_name, last_name, dob?, sex?, age? }
+//
+// Response:
+//   {
+//     results: [{ source, match_score, match_tier, match_details, … }],
+//     sources: [{ source, status, raw_count, matched_count, error? }],
+//     total_ms
+//   }
+//
+// Score < 30 ('weak') is dropped server-side so dispatchers never see
+// surname-only collisions.  Tiers: strong ≥90, likely ≥60, potential ≥30.
+// ════════════════════════════════════════════════════════════
+router.post('/live-poll', async (req: Request, res: Response) => {
+  try {
+    const { first_name, last_name, dob, sex, age } = req.body ?? {};
+    if (typeof first_name !== 'string' || !first_name.trim()) {
+      res.status(400).json({ error: 'first_name is required', code: 'FIRST_NAME_REQUIRED' });
+      return;
+    }
+    if (typeof last_name !== 'string' || !last_name.trim()) {
+      res.status(400).json({ error: 'last_name is required', code: 'LAST_NAME_REQUIRED' });
+      return;
+    }
+
+    const criteria: LivePollCriteria = {
+      first_name: first_name.trim(),
+      last_name: last_name.trim(),
+      dob: typeof dob === 'string' && dob.trim() ? dob.trim() : null,
+      sex: typeof sex === 'string' && sex.trim() ? sex.trim() : null,
+      age: typeof age === 'number' && Number.isFinite(age) ? age : null,
+    };
+
+    const summary = await pollMultiStateLive(criteria);
+    res.json(summary);
+  } catch (err: any) {
+    console.error('Live poll error:', err);
+    res.status(500).json({ error: 'Live poll failed', code: 'LIVE_POLL_ERROR' });
   }
 });
 

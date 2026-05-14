@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
+import RichTextArea from '../../../components/RichTextArea';
 import {
-  Users, Shield, Clock, Phone, Mail, MapPin, Calendar, Award,
-  UserPlus, UserMinus, Plus, Trash2, Radio, Briefcase, ArrowRight,
-  AlertTriangle, CheckCircle, FileText, RefreshCw,
+  Users, Shield, Clock, Phone, Mail, MapPin, Calendar, Award, UserPlus,
+  UserMinus, Plus, Trash2, Radio, Briefcase, ArrowRight, FileText, RefreshCw,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetPersonnelData, FleetPersonnelNote, FleetAssignment, Unit } from '../../../types';
@@ -122,7 +122,7 @@ export default function FleetPersonnelTab({
           <div className="flex items-center gap-3">
             {/* Avatar */}
             <div className="flex-shrink-0 w-12 h-12 rounded-full border-2 border-brand-500/50 flex items-center justify-center"
-              style={{ background: 'linear-gradient(135deg, #1a1a1a, #0a0a0a)' }}>
+              style={{ background: 'linear-gradient(135deg, #272727, #131313)' }}>
               <span className="text-sm font-bold font-mono text-brand-400">{getInitials(officer?.full_name)}</span>
             </div>
 
@@ -284,8 +284,8 @@ export default function FleetPersonnelTab({
                 <div className="space-y-1">
                   {todaySchedule.map((s) => (
                     <div key={s.id} className="flex items-center gap-2 p-1.5 bg-surface-sunken border border-rmpg-700">
-                      <Clock className="w-3 h-3 text-cyan-400" />
-                      <span className="text-[10px] font-mono text-cyan-400">{s.start_time} - {s.end_time}</span>
+                      <Clock className="w-3 h-3 text-gray-400" />
+                      <span className="text-[10px] font-mono text-gray-400">{s.start_time} - {s.end_time}</span>
                       {s.property_name && (
                         <span className="text-[9px] text-rmpg-400 flex items-center gap-0.5">
                           <MapPin className="w-2.5 h-2.5" />{s.property_name}
@@ -349,12 +349,12 @@ export default function FleetPersonnelTab({
           {officer.dl_number && (
             <div className="px-3 py-2 border-b border-rmpg-700">
               <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-sm flex items-center justify-center bg-cyan-900/20 border border-cyan-700/40">
-                  <FileText className="w-4 h-4 text-cyan-400" />
+                <div className="w-8 h-8 rounded-sm flex items-center justify-center bg-gray-900/20 border border-gray-700/40">
+                  <FileText className="w-4 h-4 text-gray-400" />
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-bold text-cyan-400">DRIVER'S LICENSE</span>
+                    <span className="text-[10px] font-bold text-gray-400">DRIVER'S LICENSE</span>
                     <span className="text-[10px] font-mono text-rmpg-300">{officer.dl_state} {officer.dl_number}</span>
                     {dlDays != null && (
                       <span className={`px-1 py-0.5 text-[8px] font-bold uppercase border ${
@@ -398,7 +398,7 @@ export default function FleetPersonnelTab({
                     <Award className="w-3 h-3 text-rmpg-400" />
                     <span className="text-[10px] font-bold text-rmpg-200 truncate">{toDisplayLabel(cred.type)}</span>
                     <span className={`ml-auto px-1 py-0.5 text-[7px] font-bold uppercase border ${credentialStatusColor(cred.status)}`}>
-                      {cred.status.replace(/_/g, ' ')}
+                      {cred.status.replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </div>
                   <div className="text-[9px] text-rmpg-500 space-y-0.5">
@@ -427,7 +427,7 @@ export default function FleetPersonnelTab({
         {/* Add note form */}
         <div className="px-3 py-2 border-b border-rmpg-700">
           <div className="flex gap-2">
-            <textarea
+            <RichTextArea
               className="input-dark flex-1 text-[10px] h-14 resize-none min-h-[36px]"
               placeholder="Add a note about this vehicle's personnel..."
               value={noteText}
@@ -491,7 +491,7 @@ export default function FleetPersonnelTab({
         ) : (
           <div className="p-3">
             <div className="relative">
-              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #88888840, #181818)' }} />
+              <div className="absolute left-2 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #88888840, #242424)' }} />
               <div className="space-y-1.5">
                 {assignments.slice(0, 10).map((a) => {
                   const isActive = !a.unassigned_at;

@@ -49,7 +49,7 @@ export interface CallData {
   zone?: string;
   beat?: string;
   zone_beat?: string;
-  section_name?: string;
+  sector_name?: string;
   beat_descriptor?: string;
   // Subject / vehicle
   suspect_description?: string;
@@ -202,7 +202,7 @@ function buildZoneBeat(call: CallData): string | undefined {
   const zone = present(call.zone);
   const beat = present(call.beat);
   const zoneBeat = present(call.zone_beat);
-  const section = present(call.section_name);
+  const section = present(call.sector_name);
   const descriptor = present(call.beat_descriptor);
 
   if (zoneBeat) {
@@ -410,7 +410,7 @@ export function composeDispatchNarrative(
  * @returns Natural speech text
  */
 export function composeStatusNarrative(callSign: string, status: string): string {
-  const label = status.replace(/_/g, ' ');
+  const label = status.replace(/_/g, ' ').toUpperCase();
   return `${callSign}, ${label}.`;
 }
 

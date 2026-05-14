@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 
 // ============================================================
 // RMPG Flex — Debounce & Throttle Hooks
@@ -47,7 +47,7 @@ export function useDebouncedCallback<T extends (...args: any[]) => any>(
   delay: number,
 ): T & { cancel: () => void; flush: () => void } {
   const callbackRef = useRef(callback);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingArgsRef = useRef<Parameters<T> | null>(null);
 
   // Always use latest callback
@@ -111,7 +111,7 @@ export function useThrottledCallback<T extends (...args: any[]) => any>(
 ): T {
   const callbackRef = useRef(callback);
   const lastCallRef = useRef(0);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(() => {
     callbackRef.current = callback;

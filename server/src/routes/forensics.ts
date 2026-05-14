@@ -10,7 +10,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastRecordUpdate } from '../utils/websocket';
+import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
 
 const router = Router();
@@ -85,9 +85,9 @@ router.get('/stats', (_req: Request, res: Response) => {
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, case_type, priority, search, page = '1', limit = '50' } = req.query;
+    const { status, case_type, priority, search, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
@@ -325,6 +325,7 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
       exhibit_type = 'other', description, quantity = 1, condition_received,
       storage_location, storage_temp, collected_by, collected_date,
       collection_method, hash_md5, hash_sha256, notes,
+      examination_requested, // previously silent-dropped (gotcha #38)
     } = req.body;
 
     if (!description?.trim()) return res.status(400).json({ error: 'Description is required', code: 'DESCRIPTION_IS_REQUIRED' });
@@ -353,19 +354,28 @@ router.post('/:caseId/exhibits', (req: Request, res: Response) => {
         forensic_case_id, exhibit_number, exhibit_type, description, quantity,
         condition_received, storage_location, storage_temp, collected_by,
         collected_date, collection_method, hash_md5, hash_sha256,
-        chain_of_custody, notes, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        chain_of_custody, notes, examination_requested, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       req.params.caseId, exhibit_number, exhibit_type, description.trim(), quantity,
       condition_received || null, storage_location || null, storage_temp || null,
       collected_by || null, collected_date || null, collection_method || null,
       hash_md5 || null, hash_sha256 || null, initialCustody,
-      notes || null, now, now,
+      notes || null, examination_requested || null, now, now,
     );
 
     logActivity(parseInt(req.params.caseId as string), 'exhibit_added', `Exhibit ${exhibit_number}: ${description}`, user.id, user.full_name, result.lastInsertRowid as number);
 
     const newExhibit = db.prepare('SELECT * FROM forensic_exhibits WHERE id = ?').get(result.lastInsertRowid);
+
+    // Dispatcher Brain fan-in (Phase 2): evidence-logged rule. The tag
+    // number is the exhibit_number; case number is the forensic case id.
+    broadcastDispatchUpdate({
+      action: 'evidence_logged',
+      tag_number: exhibit_number,
+      case_number: req.params.caseId,
+    });
+
     res.status(201).json({ data: newExhibit });
   } catch (error: any) {
     console.error('Create exhibit error:', error);
@@ -1134,7 +1144,7 @@ router.post('/:caseId/links', (req: Request, res: Response) => {
       return;
     }
     const result = db.prepare(`
-      INSERT INTO forensic_case_links (forensic_case_id, linked_type, linked_id, relationship)
+      INSERT INTO forensic_case_links (case_id, linked_type, linked_id, linked_label)
       VALUES (?, ?, ?, ?)
     `).run(req.params.caseId, linked_type, linked_id, linked_label || null);
     res.status(201).json({ id: result.lastInsertRowid });

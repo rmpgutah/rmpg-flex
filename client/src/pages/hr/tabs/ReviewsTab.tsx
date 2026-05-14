@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../../components/RichTextArea';
 import {
   Star, Plus, Pencil, Trash2, Loader2, Search, TrendingUp, TrendingDown,
   Minus, Clock, AlertTriangle, BarChart3, MessageSquare, Check,
@@ -33,7 +34,7 @@ function StarRating({ rating, max = 5, size = 14 }: { rating: number; max?: numb
 const TYPE_COLORS: Record<ReviewType, string> = {
   annual: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   probationary: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
-  quarterly: 'bg-cyan-500/20 text-cyan-400 border-cyan-500/30',
+  quarterly: 'bg-gray-500/20 text-gray-400 border-gray-500/30',
   improvement_plan: 'bg-red-500/20 text-red-400 border-red-500/30',
 };
 
@@ -341,7 +342,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
                 {/* Acknowledge section */}
                 {review.status === 'submitted' && (
                   <div className="border-t border-rmpg-700 pt-3 mt-3 space-y-2">
-                    <textarea
+                    <RichTextArea
                       value={ackComment[review.id] ?? ''}
                       onChange={(e) =>
                         setAckComment((prev) => ({ ...prev, [review.id]: e.target.value }))

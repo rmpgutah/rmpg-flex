@@ -32,9 +32,9 @@ function nextEventNumber(): string {
 router.get('/events', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, event_type, date_from, date_to, officer_id, search, page = '1', limit = '50' } = req.query;
+    const { status, event_type, date_from, date_to, officer_id, search, page = '1', limit = '100000' } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(100, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let where = 'WHERE 1=1';
@@ -136,7 +136,7 @@ router.post('/events', (req: Request, res: Response) => {
     const now = localNow();
     const { event_type, event_date, event_time, court_name, courtroom, judge_name,
       court_case_number, citation_id, incident_id, case_id,
-      defendant_person_id, defendant_name, prosecutor, defense_attorney,
+      defendant_person_id, defendant_name, defendant_dob, prosecutor, defense_attorney,
       officers_required, notes } = req.body;
     if (!event_type || !event_date) return res.status(400).json({ error: 'Event type and date required', code: 'MISSING_FIELDS' });
 
@@ -154,14 +154,14 @@ router.post('/events', (req: Request, res: Response) => {
     const result = db.prepare(`
       INSERT INTO court_events (event_number, event_type, status, event_date, event_time,
         court_name, courtroom, judge_name, court_case_number,
-        citation_id, incident_id, case_id, defendant_person_id, defendant_name,
+        citation_id, incident_id, case_id, defendant_person_id, defendant_name, defendant_dob,
         prosecutor, defense_attorney, officers_required, notes,
         created_by, created_at, updated_at)
-      VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(event_number, event_type, event_date, event_time || null,
       court_name || null, courtroom || null, judge_name || null, court_case_number || null,
       citation_id || null, incident_id || null, case_id || null,
-      defendant_person_id || null, defendant_name || null,
+      defendant_person_id || null, defendant_name || null, defendant_dob || null,
       prosecutor || null, defense_attorney || null,
       JSON.stringify(officers_required || []), notes || null,
       req.user!.userId, now, now);
@@ -219,7 +219,7 @@ router.put('/events/:id', (req: Request, res: Response) => {
 
     const fields = ['event_type', 'status', 'event_date', 'event_time', 'court_name', 'courtroom',
       'judge_name', 'court_case_number', 'citation_id', 'incident_id', 'case_id',
-      'defendant_person_id', 'defendant_name', 'prosecutor', 'defense_attorney', 'notes'];
+      'defendant_person_id', 'defendant_name', 'defendant_dob', 'prosecutor', 'defense_attorney', 'notes'];
     const updates: string[] = ['updated_at = ?'];
     const params: any[] = [now];
     for (const f of fields) {
@@ -748,15 +748,15 @@ router.post('/events/:id/clone', (req: Request, res: Response) => {
     const result = db.prepare(`
       INSERT INTO court_events (event_number, event_type, status, event_date, event_time,
         court_name, courtroom, judge_name, court_case_number,
-        citation_id, incident_id, case_id, defendant_person_id, defendant_name,
+        citation_id, incident_id, case_id, defendant_person_id, defendant_name, defendant_dob,
         prosecutor, defense_attorney, officers_required, notes,
         created_by, created_at, updated_at)
-      VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       event_number, evt.event_type, new_date, new_time || evt.event_time,
       evt.court_name, evt.courtroom, evt.judge_name, evt.court_case_number,
       evt.citation_id, evt.incident_id, evt.case_id,
-      evt.defendant_person_id, evt.defendant_name,
+      evt.defendant_person_id, evt.defendant_name, evt.defendant_dob || null,
       evt.prosecutor, evt.defense_attorney, evt.officers_required,
       cloneNotes, req.user!.userId, now, now
     );
@@ -897,18 +897,25 @@ router.post('/subpoenas', (req: Request, res: Response) => {
     if (!officer_id || !hearing_date) return res.status(400).json({ error: 'officer_id and hearing_date required', code: 'MISSING_SUBPOENA_FIELDS' });
 
     // Store as court event of type 'subpoena'
+    // Audit 2026-04-11: dropped subpoena_served_date / subpoena_served_method
+    // bindings — neither column exists in court_events, so every POST threw a
+    // SQLite "no such column" error and the entire feature was unusable.
+    // Service-of-process metadata is folded into notes until a proper schema
+    // migration adds dedicated columns.
     const event_number = nextEventNumber();
+    const servedNote = (served_date || served_method)
+      ? `[Served: ${served_date || 'date n/a'}${served_method ? ` via ${served_method}` : ''}]`
+      : '';
+    const combinedNotes = [servedNote, notes].filter(Boolean).join(' ').trim() || null;
     const result = db.prepare(`
       INSERT INTO court_events (event_number, event_type, status, event_date, event_time,
         court_name, court_case_number, officers_required,
-        subpoena_served_date, subpoena_served_method,
         notes, created_by, created_at, updated_at)
-      VALUES (?, 'subpoena', 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, 'subpoena', 'scheduled', ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(event_number, hearing_date, hearing_time || null,
       court_name || null, court_case_number || null,
       JSON.stringify([officer_id]),
-      served_date || null, served_method || null,
-      notes || null, req.user!.userId, now, now);
+      combinedNotes, req.user!.userId, now, now);
 
     // Notify the officer
     createNotification(

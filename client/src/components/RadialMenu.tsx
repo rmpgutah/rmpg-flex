@@ -1,4 +1,5 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import RichTextArea from './RichTextArea';
 import {
   Radio, AlertTriangle, StickyNote, Shield, MapPin,
   Camera, CheckCircle, UserPlus, X, Zap,
@@ -24,7 +25,7 @@ const SEGMENTS: MenuSegment[] = [
   { label: 'Note', icon: StickyNote, color: '#22c55e', action: 'note' },
   { label: 'Backup', icon: Shield, color: '#f97316', action: 'backup' },
   { label: 'On Scene', icon: MapPin, color: '#a855f7', action: 'onscene' },
-  { label: 'Body Cam', icon: Camera, color: '#06b6d4', action: 'bodycam' },
+  { label: 'Body Cam', icon: Camera, color: '#888888', action: 'bodycam' },
   { label: 'Arrived', icon: CheckCircle, color: '#84cc16', action: 'arrived' },
   { label: 'Supervisor', icon: UserPlus, color: '#d4a017', action: 'supervisor' },
 ];
@@ -34,7 +35,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
   const [showNote, setShowNote] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [feedback, setFeedback] = useState('');
-  const longPressTimer = useRef<ReturnType<typeof setTimeout>>();
+  const longPressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const showFeedback = (msg: string) => {
@@ -54,7 +55,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
           if (onPanic) { onPanic(); return; }
           if (confirm('TRIGGER PANIC ALERT?')) {
             const pos = await new Promise<GeolocationPosition>((resolve, reject) =>
-              navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+              navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 })
             ).catch(() => null);
             await apiFetch('/dispatch/panic', {
               method: 'POST',
@@ -70,7 +71,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
           break;
         case 'backup':
           const bPos = await new Promise<GeolocationPosition>((resolve, reject) =>
-            navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 5000 })
+            navigator.geolocation.getCurrentPosition(resolve, reject, { enableHighAccuracy: true, timeout: 5000 })
           ).catch(() => null);
           await apiFetch('/dispatch/request-backup', {
             method: 'POST',
@@ -224,7 +225,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
         >
           <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
             {/* Center circle */}
-            <circle cx={cx} cy={cy} r={innerR} fill="rgba(20,30,43,0.98)" stroke="#4b5563" strokeWidth="1" />
+            <circle cx={cx} cy={cy} r={innerR} fill="rgba(20,30,43,0.98)" stroke="#545454" strokeWidth="1" />
             <text x={cx} y={cy + 3} textAnchor="middle" fill="#9ca3af" fontSize="8" fontFamily="monospace">ACTIONS</text>
             {renderSegments()}
           </svg>
@@ -262,7 +263,7 @@ export default function RadialMenu({ onStatusChange, onPanic, onAddNote }: Radia
               <X style={{ width: 12, height: 12 }} />
             </button>
           </div>
-          <textarea
+          <RichTextArea
             value={noteText}
             onChange={(e) => setNoteText(e.target.value)}
             placeholder="Type your note..."

@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface GaugeRingProps {
   value: number;
   max: number;

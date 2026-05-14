@@ -1,10 +1,13 @@
-import React, { useRef, useState, useEffect, useCallback } from 'react';
+import { useRef, useState, useEffect, useCallback } from 'react';
 import {
-  X, Zap, Star, Shield, Clock, Award, Calendar, User, Activity, GraduationCap, MapPinned,
-  Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw, Coffee, Printer, ChevronDown, Radio,
+  X, Zap, Star, Shield, Pencil, Trash2, LogIn, LogOut, Archive, RotateCcw,
+  Coffee, Printer, ChevronDown, Radio,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import type { Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';
+import type {
+  Credential, Schedule, TimeEntry, TrainingRecord, Deployment, OfficerEquipment,
+  BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping,
+} from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
 import { calcYearsOfService } from './utils/personnelFormatters';
 import { DETAIL_TABS, ROLE_COLORS, type DetailTab } from './utils/personnelConstants';

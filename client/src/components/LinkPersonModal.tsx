@@ -5,6 +5,7 @@ import PersonFormModal, { type PersonFormData } from './PersonFormModal';
 import { apiFetch } from '../hooks/useApi';
 import type { PersonRole } from '../types';
 
+import RichTextArea from './RichTextArea';
 interface LinkPersonModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -302,7 +303,7 @@ export default function LinkPersonModal({ isOpen, onClose, incidentId, onLinked 
       {/* Notes */}
       <div>
         <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes (Optional)</label>
-        <textarea
+        <RichTextArea
           className="textarea-dark"
           rows={2}
           placeholder="Additional details about this person's involvement..."

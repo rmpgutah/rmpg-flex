@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Brain, Loader2, Server, Zap, Activity, Shield, LayoutDashboard, MessageSquareCode,
+  Brain, Server, Zap, Activity, Shield, LayoutDashboard, MessageSquareCode,
   SlidersHorizontal, FlaskConical, Settings2,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';

@@ -10,6 +10,8 @@ import { identifyBeat } from '../../utils/geofence';
 import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
 import { auditLog } from '../../utils/auditLogger';
+import { computeRiskScore } from '../../utils/riskScoring';
+import { paramStr } from '../../utils/reqHelpers';
 import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 import { buildThreatContext } from '../../utils/threatContext';
@@ -183,7 +185,7 @@ router.get('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(500, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM calls_for_service c ${whereClause}`).get(...params) as any;
@@ -243,7 +245,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       incident_type, priority, caller_name, caller_phone, caller_relationship, caller_address,
       location_address, property_id, latitude, longitude, description, notes, source,
       cross_street, location_building, location_floor, location_room, zone_beat,
-      section_id, zone_id, beat_id, dispatch_code: requestDispatchCode,
+      sector_id, zone_id, beat_id, dispatch_code: requestDispatchCode,
       weapons_involved, injuries_reported, num_subjects, num_victims,
       subject_description, vehicle_description, direction_of_travel,
       scene_safety, weather_conditions, lighting_conditions,
@@ -396,7 +398,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier dispatch districts ──
     let autoZoneBeat = zone_beat || null;
-    let autoSectionId = section_id || null;
+    let autoSectionId = sector_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
     let autoDispatchCode: string | null = requestDispatchCode || null;
@@ -410,42 +412,73 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         if (beat) {
           if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
 
-          // Look up 3-tier dispatch district for richer naming
-          const district = db.prepare(
-            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-          ).get(beat.city_code, beat.district_letter) as any;
+          // Look up 3-tier geography for richer naming
+          const district = db.prepare(`
+            SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                   dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+            FROM dispatch_beats db2
+            JOIN dispatch_zones dz ON dz.id = db2.zone_id
+            JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+            WHERE db2.beat_code = ? LIMIT 1
+          `).get(beat.beat_code) as any;
 
           if (district) {
-            if (!autoSectionId) autoSectionId = district.section_id;
-            if (!autoZoneId) autoZoneId = district.zone_id;
-            if (!autoBeatId) autoBeatId = district.beat_id;
-            autoDispatchCode = district.dispatch_code;
-            autoSectionName = district.section_name;
+            if (!autoSectionId) autoSectionId = district.sector_code;
+            if (!autoZoneId) autoZoneId = district.zone_code;
+            if (!autoBeatId) autoBeatId = district.beat_code;
+            autoDispatchCode = district.beat_code;
+            autoSectionName = district.sector_name;
             autoZoneName = district.zone_name;
             autoBeatName = district.beat_name;
             autoBeatDescriptor = district.beat_descriptor;
           } else {
-            // Fallback to raw geofence data
-            if (!autoBeatId) autoBeatId = beat.beat_id;
-            if (!autoZoneId) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
-            if (!autoSectionId) autoSectionId = beat.district_letter;
+            // Geofence found a polygon but no exact dispatch_beats row
+            // (typically unincorporated, or beat_code drift). Fall back to
+            // looking up the zone by city_code suffix (e.g. geofence
+            // city_code="MUR" → zone_code "SL1-MUR"). Writes canonical
+            // sector + zone; leaves beat null for dispatcher to pick.
+            try {
+              const zoneMatch = db.prepare(`
+                SELECT dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+                FROM dispatch_zones dz
+                JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+                WHERE dz.zone_code LIKE ? ESCAPE '\\' LIMIT 1
+              `).get(`%-${beat.city_code}`) as any;
+              if (zoneMatch) {
+                if (!autoSectionId) autoSectionId = zoneMatch.sector_code;
+                if (!autoZoneId) autoZoneId = zoneMatch.zone_code;
+                autoSectionName = zoneMatch.sector_name;
+                autoZoneName = zoneMatch.zone_name;
+              }
+            } catch { /* skip */ }
+            if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
           }
         }
       } catch (geoErr) { console.error('[Calls] Geofence lookup error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
     }
 
-    // If S/Z/B are set but dispatch_code wasn't resolved (no GPS), look up district table
+    // If S/Z/B are set but dispatch_code wasn't resolved (no GPS), look up geography tables
     if (autoSectionId && autoZoneId && autoBeatId && !autoDispatchCode) {
-      const districtMatch = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
-      ).get(autoSectionId, autoZoneId, autoBeatId) as any;
-      if (districtMatch) {
-        autoDispatchCode = districtMatch.dispatch_code;
-        if (!autoSectionName) autoSectionName = districtMatch.section_name;
-        if (!autoZoneName) autoZoneName = districtMatch.zone_name;
-        if (!autoBeatName) autoBeatName = districtMatch.beat_name;
-        if (!autoBeatDescriptor) autoBeatDescriptor = districtMatch.beat_descriptor;
-      } else {
+      try {
+        const districtMatch = db.prepare(`
+          SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                 dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+          FROM dispatch_beats db2
+          JOIN dispatch_zones dz ON dz.id = db2.zone_id
+          JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+          WHERE ds.sector_code = ? AND dz.zone_code = ? AND db2.beat_code = ? LIMIT 1
+        `).get(autoSectionId, autoZoneId, autoBeatId) as any;
+        if (districtMatch) {
+          // beat_code is already in chart format ("SL1-SLC/A").
+          autoDispatchCode = districtMatch.beat_code;
+          if (!autoSectionName) autoSectionName = districtMatch.sector_name;
+          if (!autoZoneName) autoZoneName = districtMatch.zone_name;
+          if (!autoBeatName) autoBeatName = districtMatch.beat_name;
+          if (!autoBeatDescriptor) autoBeatDescriptor = districtMatch.beat_descriptor;
+        } else {
+          autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
+        }
+      } catch {
         autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
       }
     }
@@ -512,11 +545,11 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         location_floor: location_floor || null,
         location_room: location_room || null,
         zone_beat: autoZoneBeat,
-        section_id: autoSectionId,
+        sector_id: autoSectionId,
         zone_id: autoZoneId,
         beat_id: autoBeatId,
         dispatch_code: autoDispatchCode,
-        section_name: autoSectionName,
+        sector_name: autoSectionName,
         zone_name: autoZoneName,
         beat_name: autoBeatName,
         beat_descriptor: autoBeatDescriptor,
@@ -875,6 +908,30 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       return;
     }
 
+    // Fill geography parents from beat_id when the call was saved with only a
+    // beat selected (auto-lookup skipped because lat/lng wasn't used).
+    if (call.beat_id && (!call.sector_name || !call.zone_name || !call.beat_descriptor)) {
+      try {
+        const parents = db.prepare(`
+          SELECT db.beat_descriptor, dz.zone_name, ds.sector_name, da.area_name
+          FROM dispatch_beats db
+          LEFT JOIN dispatch_zones dz ON db.zone_id = dz.id
+          LEFT JOIN dispatch_sectors ds ON dz.sector_id = ds.id
+          LEFT JOIN dispatch_areas da ON ds.area_id = da.id
+          WHERE db.beat_code = ?
+          LIMIT 1
+        `).get(call.beat_id) as any;
+        if (parents) {
+          if (!call.sector_name) call.sector_name = parents.sector_name || '';
+          if (!call.zone_name) call.zone_name = parents.zone_name || '';
+          if (!call.beat_descriptor) call.beat_descriptor = parents.beat_descriptor || '';
+          if (!call.area_name) call.area_name = parents.area_name || '';
+        }
+      } catch (joinErr) {
+        (req as any).log?.warn?.({ err: joinErr }, 'geography parent lookup failed');
+      }
+    }
+
     // Get assigned units with officer info
     let assignedUnits: any[] = [];
     try {
@@ -952,7 +1009,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       weapons_involved, injuries_reported, num_subjects,
       subject_description, vehicle_description, direction_of_travel,
       case_number, case_id,
-      source, caller_address, zone_beat, section_id, zone_id, beat_id, responding_officer, secondary_type,
+      source, caller_address, zone_beat, sector_id, zone_id, beat_id, responding_officer, secondary_type,
       contact_method, scene_safety, weather_conditions, lighting_conditions,
       num_victims, alcohol_involved, drugs_involved, domestic_violence,
       supervisor_notified, le_notified, le_agency, le_case_number,
@@ -983,7 +1040,7 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
 
     // ── Auto-fill Beat / Zone / Sector when coords change + 3-Tier lookup ──
     let autoZoneBeat = zone_beat;
-    let autoSectionId = section_id;
+    let autoSectionId = sector_id;
     let autoZoneId = zone_id;
     let autoBeatId = beat_id;
     const effectiveLat = latitude !== undefined ? latitude : call.latitude;
@@ -994,37 +1051,43 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
         if (beat) {
           if (autoZoneBeat === undefined && !call.zone_beat) autoZoneBeat = beat.beat_code;
 
-          // Look up 3-tier dispatch district for richer naming
-          const district = db.prepare(
-            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-          ).get(beat.city_code, beat.district_letter) as any;
+          // Look up 3-tier geography for richer naming
+          const district = db.prepare(`
+            SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                   dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+            FROM dispatch_beats db2
+            JOIN dispatch_zones dz ON dz.id = db2.zone_id
+            JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+            WHERE db2.beat_code = ? LIMIT 1
+          `).get(beat.beat_code) as any;
 
           if (district) {
-            if (autoBeatId === undefined && !call.beat_id) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
-            if (autoZoneId === undefined && !call.zone_id) autoZoneId = district.zone_name;
-            if (autoSectionId === undefined && !call.section_id) autoSectionId = district.section_id;
+            if (autoBeatId === undefined && !call.beat_id) autoBeatId = district.beat_code;
+            if (autoZoneId === undefined && !call.zone_id) autoZoneId = district.zone_code;
+            if (autoSectionId === undefined && !call.sector_id) autoSectionId = district.sector_code;
           } else {
-            if (autoBeatId === undefined && !call.beat_id) autoBeatId = beat.beat_id;
-            if (autoZoneId === undefined && !call.zone_id) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
-            if (autoSectionId === undefined && !call.section_id) autoSectionId = beat.district_letter;
+            // Fallback: look up zone by city_code suffix (see POST path).
+            try {
+              const zoneMatch = db.prepare(`
+                SELECT dz.zone_code, ds.sector_code
+                FROM dispatch_zones dz
+                JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+                WHERE dz.zone_code LIKE ? ESCAPE '\\' LIMIT 1
+              `).get(`%-${beat.city_code}`) as any;
+              if (zoneMatch) {
+                if (autoZoneId === undefined && !call.zone_id) autoZoneId = zoneMatch.zone_code;
+                if (autoSectionId === undefined && !call.sector_id) autoSectionId = zoneMatch.sector_code;
+              }
+            } catch { /* skip */ }
           }
 
           // If coords explicitly changed, always update beat data
           if (latitude !== undefined) {
             if (autoZoneBeat === undefined) autoZoneBeat = beat.beat_code;
-
-            const districtForce = db.prepare(
-              'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-            ).get(beat.city_code, beat.district_letter) as any;
-
-            if (districtForce) {
-              autoBeatId = autoBeatId !== undefined ? autoBeatId : `${districtForce.beat_name} — ${districtForce.beat_descriptor}`;
-              autoZoneId = autoZoneId !== undefined ? autoZoneId : districtForce.zone_name;
-              autoSectionId = autoSectionId !== undefined ? autoSectionId : districtForce.section_id;
-            } else {
-              autoBeatId = autoBeatId !== undefined ? autoBeatId : beat.beat_id;
-              autoZoneId = autoZoneId !== undefined ? autoZoneId : `${beat.city} ${beat.district_letter}${beat.beat_number}`;
-              autoSectionId = autoSectionId !== undefined ? autoSectionId : beat.district_letter;
+            if (district) {
+              autoBeatId = autoBeatId !== undefined ? autoBeatId : district.beat_code;
+              autoZoneId = autoZoneId !== undefined ? autoZoneId : district.zone_code;
+              autoSectionId = autoSectionId !== undefined ? autoSectionId : district.sector_code;
             }
           }
         }
@@ -1122,26 +1185,35 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('source', source);
     addField('caller_address', caller_address);
     addField('zone_beat', autoZoneBeat);
-    addField('section_id', autoSectionId);
+    addField('sector_id', autoSectionId);
     addField('zone_id', autoZoneId);
     addField('beat_id', autoBeatId);
 
     // Auto-resolve dispatch_code + district names from S/Z/B IDs
-    const finalSectionId = autoSectionId !== undefined ? autoSectionId : call.section_id;
+    const finalSectionId = autoSectionId !== undefined ? autoSectionId : call.sector_id;
     const finalZoneId = autoZoneId !== undefined ? autoZoneId : call.zone_id;
     const finalBeatId = autoBeatId !== undefined ? autoBeatId : call.beat_id;
     if (finalSectionId && finalZoneId && finalBeatId) {
-      const districtMatch = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE section_id = ? AND zone_id = ? AND beat_id = ?'
-      ).get(finalSectionId, finalZoneId, finalBeatId) as any;
-      if (districtMatch) {
-        addField('dispatch_code', districtMatch.dispatch_code);
-        addField('section_name', districtMatch.section_name);
-        addField('zone_name', districtMatch.zone_name);
-        addField('beat_name', districtMatch.beat_name);
-        addField('beat_descriptor', districtMatch.beat_descriptor);
-      } else {
-        // Build dispatch_code from IDs even without a district record
+      try {
+        const districtMatch = db.prepare(`
+          SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                 dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+          FROM dispatch_beats db2
+          JOIN dispatch_zones dz ON dz.id = db2.zone_id
+          JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+          WHERE ds.sector_code = ? AND dz.zone_code = ? AND db2.beat_code = ? LIMIT 1
+        `).get(finalSectionId, finalZoneId, finalBeatId) as any;
+        if (districtMatch) {
+          // beat_code is already in chart format ("SL1-SLC/A").
+          addField('dispatch_code', districtMatch.beat_code);
+          addField('sector_name', districtMatch.sector_name);
+          addField('zone_name', districtMatch.zone_name);
+          addField('beat_name', districtMatch.beat_name);
+          addField('beat_descriptor', districtMatch.beat_descriptor);
+        } else {
+          addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
+        }
+      } catch {
         addField('dispatch_code', `${finalSectionId}-${finalZoneId}/${finalBeatId}`);
       }
     } else if ((finalSectionId || finalZoneId) && !call.dispatch_code) {
@@ -1442,7 +1514,7 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
         pso_service_type, pso_billing_code, pso_authorization,
         pso_service_windows,
         process_service_type, process_served_to, process_served_address,
-        dispatch_code, section_id, section_name, zone_id, zone_name,
+        dispatch_code, sector_id, sector_name, zone_id, zone_name,
         beat_id, beat_name, beat_descriptor, contract_id,
         num_subjects, num_victims, direction_of_travel,
         subject_description, vehicle_description,
@@ -1487,7 +1559,7 @@ router.post('/calls/:id/redispatch', validateParamIdMiddleware, requireRole('adm
       parentCall.pso_service_type, parentCall.pso_billing_code, parentCall.pso_authorization,
       parentCall.pso_service_windows,
       parentCall.process_service_type, parentCall.process_served_to, parentCall.process_served_address,
-      parentCall.dispatch_code, parentCall.section_id, parentCall.section_name, parentCall.zone_id, parentCall.zone_name,
+      parentCall.dispatch_code, parentCall.sector_id, parentCall.sector_name, parentCall.zone_id, parentCall.zone_name,
       parentCall.beat_id, parentCall.beat_name, parentCall.beat_descriptor, parentCall.contract_id,
       parentCall.num_subjects, parentCall.num_victims, parentCall.direction_of_travel,
       parentCall.subject_description, parentCall.vehicle_description,
@@ -1899,7 +1971,7 @@ router.get('/calls/search', requireRole('admin', 'manager', 'supervisor', 'offic
       return;
     }
 
-    const searchLimit = Math.min(100, Math.max(1, parseInt(limitStr as string, 10) || 25));
+    const searchLimit = Math.min(100000, Math.max(1, (parseInt(limitStr as string, 10)) || 100000));
     const term = `%${escapeLike(String(q).trim())}%`;
 
     // Upgrade 24: Search across call_number, location_address, narrative/notes, caller info, description, disposition
@@ -2206,6 +2278,640 @@ router.get('/calls/:id/notes-analysis', validateParamIdMiddleware, requireRole('
   } catch (error: any) {
     console.error('Notes analysis error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to analyze notes', code: 'NOTES_ANALYSIS_ERROR' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/risk-score - Recalculate risk score for a call
+router.get('/calls/:id/risk-score', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const riskScore = computeRiskScore(call.id);
+    db.prepare('UPDATE calls_for_service SET risk_score = ? WHERE id = ?').run(riskScore, call.id);
+
+    res.json({ call_id: call.id, risk_score: riskScore });
+  } catch (error: any) {
+    console.error('[Calls] Risk score error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to compute risk score', code: 'RISK_SCORE_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 20 new route handlers (batch upgrade)
+// ═══════════════════════════════════════════════════════════════════════════
+
+// 1. GET /calls/nearby — Find calls near lat/lng within radius (Haversine)
+router.get('/calls/nearby', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const lat = parseFloat(req.query.lat as string);
+    const lng = parseFloat(req.query.lng as string);
+    const radiusMeters = parseFloat(req.query.radiusMeters as string) || 1000;
+    if (isNaN(lat) || isNaN(lng)) { res.status(400).json({ error: 'lat and lng are required', code: 'INVALID_COORDINATES' }); return; }
+
+    const db = getDb();
+    const calls = db.prepare(`SELECT * FROM calls_for_service WHERE latitude IS NOT NULL AND longitude IS NOT NULL`).all() as any[];
+
+    const toRad = (deg: number) => deg * Math.PI / 180;
+    const R = 6371000; // Earth radius in meters
+    const results = calls
+      .map(c => {
+        const dLat = toRad(c.latitude - lat);
+        const dLng = toRad(c.longitude - lng);
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat)) * Math.cos(toRad(c.latitude)) * Math.sin(dLng / 2) ** 2;
+        const distance = R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return { ...c, distance_meters: Math.round(distance) };
+      })
+      .filter(c => c.distance_meters <= radiusMeters)
+      .sort((a, b) => a.distance_meters - b.distance_meters)
+      .slice(0, 50);
+
+    res.json(results);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to find nearby calls', code: 'NEARBY_CALLS_ERROR' });
+  }
+});
+
+// 2. GET /calls/recurring — Addresses with 3+ calls in last 30 days
+router.get('/calls/recurring', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    const calls = db.prepare(`SELECT address, incident_type, created_at FROM calls_for_service WHERE created_at >= ? AND address IS NOT NULL AND address != ''`).all(cutoff) as any[];
+
+    const grouped: Record<string, { count: number; incident_types: Set<string>; latest: string }> = {};
+    for (const c of calls) {
+      const norm = normalizeAddress(c.address);
+      if (!grouped[norm]) grouped[norm] = { count: 0, incident_types: new Set(), latest: '' };
+      grouped[norm].count++;
+      if (c.incident_type) grouped[norm].incident_types.add(c.incident_type);
+      if (c.created_at > grouped[norm].latest) grouped[norm].latest = c.created_at;
+    }
+
+    const results = Object.entries(grouped)
+      .filter(([, v]) => v.count >= 3)
+      .map(([address, v]) => ({ address, call_count: v.count, incident_types: Array.from(v.incident_types), latest_call: v.latest }))
+      .sort((a, b) => b.call_count - a.call_count);
+
+    res.json(results);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to find recurring calls', code: 'RECURRING_CALLS_ERROR' });
+  }
+});
+
+// 3. GET /calls/priority-queue — Active calls sorted by priority score + age weight
+router.get('/calls/priority-queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const activeCalls = db.prepare(`SELECT * FROM calls_for_service WHERE status NOT IN ('CLEARED', 'CANCELED', 'CLOSED') ORDER BY created_at ASC`).all() as any[];
+
+    const now = Date.now();
+    const scored = activeCalls.map(c => {
+      const elapsedHours = (now - new Date(c.created_at).getTime()) / (1000 * 60 * 60);
+      const ageWeight = Math.min(20, elapsedHours * 2);
+      const priorityScore = calculatePriorityScore(c.priority, c.incident_type, c);
+      return { ...c, priority_score: priorityScore, age_weight: Math.round(ageWeight * 100) / 100, combined_score: Math.round((priorityScore + ageWeight) * 100) / 100 };
+    }).sort((a, b) => b.combined_score - a.combined_score);
+
+    res.json(scored);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to build priority queue', code: 'PRIORITY_QUEUE_ERROR' });
+  }
+});
+
+// 4. POST /calls/:id/escalate — Escalate priority P4→P3→P2→P1
+router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const escalation: Record<string, string> = { P4: 'P3', P3: 'P2', P2: 'P1' };
+    const newPriority = escalation[call.priority];
+    if (!newPriority) { res.status(400).json({ error: 'Call is already at highest priority', code: 'ALREADY_HIGHEST_PRIORITY' }); return; }
+
+    const now = localNow();
+    db.prepare('UPDATE calls_for_service SET priority = ?, updated_at = ? WHERE id = ?').run(newPriority, now, call.id);
+    auditLog(req, 'ESCALATE', 'calls_for_service', call.id, { priority: call.priority }, { priority: newPriority });
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, priority: newPriority, updated_at: now } });
+
+    res.json({ success: true, previous_priority: call.priority, new_priority: newPriority });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to escalate call', code: 'ESCALATE_ERROR' });
+  }
+});
+
+// 5. POST /calls/:id/de-escalate — De-escalate priority P1→P2→P3→P4
+router.post('/calls/:id/de-escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const deescalation: Record<string, string> = { P1: 'P2', P2: 'P3', P3: 'P4' };
+    const newPriority = deescalation[call.priority];
+    if (!newPriority) { res.status(400).json({ error: 'Call is already at lowest priority', code: 'ALREADY_LOWEST_PRIORITY' }); return; }
+
+    const now = localNow();
+    db.prepare('UPDATE calls_for_service SET priority = ?, updated_at = ? WHERE id = ?').run(newPriority, now, call.id);
+    auditLog(req, 'DE_ESCALATE', 'calls_for_service', call.id, { priority: call.priority }, { priority: newPriority });
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, priority: newPriority, updated_at: now } });
+
+    res.json({ success: true, previous_priority: call.priority, new_priority: newPriority });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to de-escalate call', code: 'DE_ESCALATE_ERROR' });
+  }
+});
+
+// 6. GET /calls/officer-workload — Count active calls per officer
+router.get('/calls/officer-workload', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const activeCalls = db.prepare(`SELECT assigned_unit_ids FROM calls_for_service WHERE status NOT IN ('CLEARED', 'CANCELED', 'CLOSED') AND assigned_unit_ids IS NOT NULL AND assigned_unit_ids != ''`).all() as any[];
+
+    const workload: Record<string, number> = {};
+    for (const c of activeCalls) {
+      const unitIds = (c.assigned_unit_ids || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+      for (const uid of unitIds) {
+        workload[uid] = (workload[uid] || 0) + 1;
+      }
+    }
+
+    const results = Object.entries(workload)
+      .map(([unit_id, active_call_count]) => ({ unit_id, active_call_count }))
+      .sort((a, b) => b.active_call_count - a.active_call_count);
+
+    res.json(results);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to compute officer workload', code: 'OFFICER_WORKLOAD_ERROR' });
+  }
+});
+
+// 7. POST /calls/:id/transfer — Transfer dispatcher_id
+router.post('/calls/:id/transfer', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const { new_dispatcher_id } = req.body;
+    if (!new_dispatcher_id) { res.status(400).json({ error: 'new_dispatcher_id is required', code: 'MISSING_DISPATCHER_ID' }); return; }
+
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const dispatcher = db.prepare('SELECT id, username FROM users WHERE id = ?').get(new_dispatcher_id) as any;
+    if (!dispatcher) { res.status(404).json({ error: 'Dispatcher not found', code: 'DISPATCHER_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    db.prepare('UPDATE calls_for_service SET dispatcher_id = ?, updated_at = ? WHERE id = ?').run(new_dispatcher_id, now, call.id);
+    auditLog(req, 'TRANSFER', 'calls_for_service', call.id, { dispatcher_id: call.dispatcher_id }, { dispatcher_id: new_dispatcher_id });
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, dispatcher_id: new_dispatcher_id, updated_at: now } });
+
+    res.json({ success: true, previous_dispatcher_id: call.dispatcher_id, new_dispatcher_id });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to transfer call', code: 'TRANSFER_ERROR' });
+  }
+});
+
+// 8. GET /calls/enhanced-duplicate-check — Find duplicate calls by address within time window
+router.get('/calls/enhanced-duplicate-check', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const address = req.query.address as string;
+    if (!address) { res.status(400).json({ error: 'address is required', code: 'MISSING_ADDRESS' }); return; }
+    const windowMinutes = Math.max(1, Math.min(1440, parseInt(req.query.windowMinutes as string, 10) || 60));
+
+    const db = getDb();
+    const cutoff = new Date(Date.now() - windowMinutes * 60 * 1000).toISOString();
+    const calls = db.prepare(`SELECT * FROM calls_for_service WHERE created_at >= ? AND address IS NOT NULL AND address != '' ORDER BY created_at DESC`).all(cutoff) as any[];
+
+    const normalizedInput = normalizeAddress(address);
+    const matches = calls.filter(c => normalizeAddress(c.address) === normalizedInput);
+
+    res.json({ query_address: address, normalized: normalizedInput, window_minutes: windowMinutes, matches });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to check duplicates', code: 'DUPLICATE_CHECK_ERROR' });
+  }
+});
+
+// 9. GET /calls/timeline/:id — Full status change timeline with durations
+router.get('/calls/timeline/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const events: { status: string; timestamp: string | null }[] = [
+      { status: 'CREATED', timestamp: call.created_at },
+      { status: 'DISPATCHED', timestamp: call.dispatched_at },
+      { status: 'ENROUTE', timestamp: call.enroute_at },
+      { status: 'ON_SCENE', timestamp: call.on_scene_at },
+      { status: 'CLEARED', timestamp: call.cleared_at },
+    ];
+
+    const timeline = [];
+    let prevTime: number | null = null;
+    for (const ev of events) {
+      if (!ev.timestamp) continue;
+      const ts = new Date(ev.timestamp).getTime();
+      const duration_seconds = prevTime !== null ? Math.round((ts - prevTime) / 1000) : null;
+      timeline.push({ status: ev.status, timestamp: ev.timestamp, duration_from_previous_seconds: duration_seconds });
+      prevTime = ts;
+    }
+
+    const totalSeconds = (timeline.length >= 2)
+      ? Math.round((new Date(timeline[timeline.length - 1].timestamp).getTime() - new Date(timeline[0].timestamp).getTime()) / 1000)
+      : null;
+
+    res.json({ call_id: call.id, call_number: call.call_number, timeline, total_duration_seconds: totalSeconds });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to build timeline', code: 'TIMELINE_ERROR' });
+  }
+});
+
+// 10. POST /calls/:id/flag — Set tactical flag on call
+router.post('/calls/:id/flag', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const { flag, value } = req.body;
+    const allowedFlags = [
+      'weapons_involved', 'domestic_violence', 'mental_health_crisis', 'officer_safety_caution',
+      'gang_related', 'hazmat', 'pursuit', 'juvenile_involved', 'injuries_reported', 'felony_in_progress',
+    ];
+    if (!flag || !allowedFlags.includes(flag)) { res.status(400).json({ error: `Invalid flag. Allowed: ${allowedFlags.join(', ')}`, code: 'INVALID_FLAG' }); return; }
+
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const boolVal = value ? 1 : 0;
+    const now = localNow();
+    db.prepare(`UPDATE calls_for_service SET ${flag} = ?, updated_at = ? WHERE id = ?`).run(boolVal, now, call.id);
+    auditLog(req, 'FLAG', 'calls_for_service', call.id, { [flag]: call[flag] }, { [flag]: boolVal });
+    broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, [flag]: boolVal, updated_at: now } });
+
+    res.json({ success: true, flag, value: boolVal });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to update flag', code: 'FLAG_ERROR' });
+  }
+});
+
+// 11. GET /calls/by-beat — Group active calls by beat_id with counts
+router.get('/calls/by-beat', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`SELECT beat_id, COUNT(*) as call_count FROM calls_for_service WHERE status NOT IN ('CLEARED', 'CANCELED', 'CLOSED') AND beat_id IS NOT NULL GROUP BY beat_id ORDER BY call_count DESC`).all() as any[];
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get calls by beat', code: 'CALLS_BY_BEAT_ERROR' });
+  }
+});
+
+// 12. GET /calls/aging-report — Calls exceeding response thresholds
+router.get('/calls/aging-report', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const activeCalls = db.prepare(`SELECT * FROM calls_for_service WHERE status NOT IN ('CLEARED', 'CANCELED', 'CLOSED') ORDER BY created_at ASC`).all() as any[];
+
+    const thresholds: Record<string, number> = { P1: 5, P2: 240, P3: 20, P4: 1440 }; // minutes
+    const now = Date.now();
+
+    const aging = activeCalls
+      .map(c => {
+        const elapsedMinutes = (now - new Date(c.created_at).getTime()) / (1000 * 60);
+        const threshold = thresholds[c.priority] || 60;
+        return { ...c, elapsed_minutes: Math.round(elapsedMinutes), threshold_minutes: threshold, overdue_minutes: Math.round(elapsedMinutes - threshold) };
+      })
+      .filter(c => c.overdue_minutes > 0)
+      .sort((a, b) => b.overdue_minutes - a.overdue_minutes);
+
+    res.json(aging);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate aging report', code: 'AGING_REPORT_ERROR' });
+  }
+});
+
+// 13. POST /calls/:id/link-incident — Link call to incident
+router.post('/calls/:id/link-incident', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const { incident_id } = req.body;
+    if (!incident_id) { res.status(400).json({ error: 'incident_id is required', code: 'MISSING_INCIDENT_ID' }); return; }
+
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const incident = db.prepare('SELECT id FROM incidents WHERE id = ?').get(incident_id) as any;
+    if (!incident) { res.status(404).json({ error: 'Incident not found', code: 'INCIDENT_NOT_FOUND' }); return; }
+
+    // Try incident_links table first
+    const hasTable = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='incident_links'`).get() as any;
+    const now = localNow();
+    if (hasTable) {
+      const existing = db.prepare('SELECT id FROM incident_links WHERE incident_id = ? AND linked_type = ? AND linked_id = ?').get(incident_id, 'call', call.id) as any;
+      if (existing) { res.status(409).json({ error: 'Link already exists', code: 'LINK_EXISTS' }); return; }
+      db.prepare('INSERT INTO incident_links (incident_id, linked_type, linked_id, created_at) VALUES (?, ?, ?, ?)').run(incident_id, 'call', call.id, now);
+    } else {
+      const notes = call.notes ? `${call.notes}\n[Linked to incident #${incident_id} at ${now}]` : `[Linked to incident #${incident_id} at ${now}]`;
+      db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?').run(notes, now, call.id);
+    }
+
+    auditLog(req, 'LINK_INCIDENT', 'calls_for_service', call.id, null, { incident_id });
+    res.json({ success: true, call_id: call.id, incident_id });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to link incident', code: 'LINK_INCIDENT_ERROR' });
+  }
+});
+
+// 14. GET /calls/volume-by-hour — Call counts grouped by hour of day for last N days
+router.get('/calls/volume-by-hour', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const db = getDb();
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    const rows = db.prepare(`SELECT strftime('%H', created_at) as hour, COUNT(*) as call_count FROM calls_for_service WHERE created_at >= ? GROUP BY hour ORDER BY hour`).all(cutoff) as any[];
+
+    const hourly = Array.from({ length: 24 }, (_, i) => ({
+      hour: i,
+      hour_label: `${String(i).padStart(2, '0')}:00`,
+      call_count: 0,
+    }));
+    for (const r of rows) {
+      const h = parseInt(r.hour, 10);
+      if (h >= 0 && h < 24) hourly[h].call_count = r.call_count;
+    }
+
+    res.json({ days, hourly });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to compute volume by hour', code: 'VOLUME_BY_HOUR_ERROR' });
+  }
+});
+
+// 15. POST /calls/:id/supervisor-review — Mark call as supervisor-reviewed
+router.post('/calls/:id/supervisor-review', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const { notes } = req.body;
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    db.prepare('UPDATE calls_for_service SET supervisor_reviewed = 1, supervisor_notes = ?, supervisor_id = ?, reviewed_at = ?, updated_at = ? WHERE id = ?')
+      .run(notes || null, req.user!.userId, now, now, call.id);
+
+    auditLog(req, 'SUPERVISOR_REVIEW', 'calls_for_service', call.id,
+      { supervisor_reviewed: call.supervisor_reviewed, supervisor_notes: call.supervisor_notes },
+      { supervisor_reviewed: 1, supervisor_notes: notes || null, supervisor_id: req.user!.userId });
+
+    res.json({ success: true, call_id: call.id, reviewed_at: now });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to submit supervisor review', code: 'SUPERVISOR_REVIEW_ERROR' });
+  }
+});
+
+// 16. GET /calls/hot-spots — Top 10 addresses by call count in last 90 days
+router.get('/calls/hot-spots', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const cutoff = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+    const calls = db.prepare(`SELECT address, incident_type, priority FROM calls_for_service WHERE created_at >= ? AND address IS NOT NULL AND address != ''`).all(cutoff) as any[];
+
+    const grouped: Record<string, { count: number; types: Set<string>; priorities: Record<string, number> }> = {};
+    for (const c of calls) {
+      const norm = normalizeAddress(c.address);
+      if (!grouped[norm]) grouped[norm] = { count: 0, types: new Set(), priorities: {} };
+      grouped[norm].count++;
+      if (c.incident_type) grouped[norm].types.add(c.incident_type);
+      grouped[norm].priorities[c.priority] = (grouped[norm].priorities[c.priority] || 0) + 1;
+    }
+
+    const results = Object.entries(grouped)
+      .map(([address, v]) => ({ address, call_count: v.count, incident_types: Array.from(v.types), priority_breakdown: v.priorities }))
+      .sort((a, b) => b.call_count - a.call_count)
+      .slice(0, 10);
+
+    res.json(results);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to compute hot spots', code: 'HOT_SPOTS_ERROR' });
+  }
+});
+
+// 17. POST /calls/:id/attach-premise-alert — Create premise_alerts row from call's address
+router.post('/calls/:id/attach-premise-alert', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const { alert_type, alert_level, description } = req.body;
+    if (!alert_type || !description) { res.status(400).json({ error: 'alert_type and description are required', code: 'MISSING_FIELDS' }); return; }
+
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+    if (!call.address) { res.status(400).json({ error: 'Call has no address', code: 'NO_ADDRESS' }); return; }
+
+    const now = localNow();
+    const result = db.prepare(`INSERT INTO premise_alerts (address, latitude, longitude, alert_type, alert_level, description, source_call_id, created_by, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+      .run(call.address, call.latitude || null, call.longitude || null, alert_type, alert_level || 'caution', description, call.id, req.user!.userId, now, now);
+
+    auditLog(req, 'CREATE', 'premise_alerts', result.lastInsertRowid as number, null, { address: call.address, alert_type, alert_level, description });
+
+    res.json({ success: true, premise_alert_id: result.lastInsertRowid, address: call.address });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to create premise alert', code: 'PREMISE_ALERT_ERROR' });
+  }
+});
+
+// 18. GET /calls/unit-response-metrics — Avg response time per unit
+router.get('/calls/unit-response-metrics', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`SELECT assigned_unit_ids, response_time_seconds FROM calls_for_service WHERE response_time_seconds IS NOT NULL AND response_time_seconds > 0 AND assigned_unit_ids IS NOT NULL AND assigned_unit_ids != ''`).all() as any[];
+
+    const metrics: Record<string, { total: number; count: number; min: number; max: number }> = {};
+    for (const r of rows) {
+      const unitIds = (r.assigned_unit_ids || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+      for (const uid of unitIds) {
+        if (!metrics[uid]) metrics[uid] = { total: 0, count: 0, min: Infinity, max: 0 };
+        metrics[uid].total += r.response_time_seconds;
+        metrics[uid].count++;
+        metrics[uid].min = Math.min(metrics[uid].min, r.response_time_seconds);
+        metrics[uid].max = Math.max(metrics[uid].max, r.response_time_seconds);
+      }
+    }
+
+    const results = Object.entries(metrics)
+      .map(([unit_id, m]) => ({
+        unit_id,
+        avg_response_seconds: Math.round(m.total / m.count),
+        min_response_seconds: m.min,
+        max_response_seconds: m.max,
+        call_count: m.count,
+      }))
+      .sort((a, b) => a.avg_response_seconds - b.avg_response_seconds);
+
+    res.json(results);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to compute response metrics', code: 'RESPONSE_METRICS_ERROR' });
+  }
+});
+
+// 19. POST /calls/:id/request-backup — Broadcast backup request
+router.post('/calls/:id/request-backup', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const { message, urgency } = req.body;
+    const db = getDb();
+    const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
+    if (!call) { res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    broadcastDispatchUpdate({
+      action: 'backup_requested',
+      call_id: call.id,
+      call_number: call.call_number,
+      address: call.address,
+      incident_type: call.incident_type,
+      priority: call.priority,
+      message: message || 'Backup requested',
+      urgency: urgency || 'normal',
+      requested_by: req.user!.userId,
+      requested_at: now,
+    });
+
+    // Create notification for dispatchers
+    createNotificationForRoles(
+      ['admin', 'manager', 'supervisor', 'dispatcher'],
+      'backup_request',
+      `Backup requested for ${call.call_number}`,
+      `${call.address || 'unknown location'}${message ? ': ' + message : ''}`,
+      'call',
+      call.id,
+      urgency === 'critical' ? 'critical' : 'high',
+      'dispatch.backup_requested',
+      req.user!.userId
+    );
+
+    auditLog(req, 'BACKUP_REQUEST', 'calls_for_service', call.id, null, { message, urgency });
+    res.json({ success: true, call_id: call.id, requested_at: now });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to request backup', code: 'BACKUP_REQUEST_ERROR' });
+  }
+});
+
+// 20. GET /calls/cross-reference — Find calls linked via call_persons/call_vehicles
+router.get('/calls/cross-reference', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const personId = req.query.person_id as string;
+    const vehiclePlate = req.query.vehicle_plate as string;
+    if (!personId && !vehiclePlate) { res.status(400).json({ error: 'person_id or vehicle_plate is required', code: 'MISSING_SEARCH_PARAM' }); return; }
+
+    const db = getDb();
+    const callIds = new Set<number>();
+
+    if (personId) {
+      const hasPersonsTable = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='call_persons'`).get();
+      if (hasPersonsTable) {
+        const rows = db.prepare('SELECT call_id FROM call_persons WHERE person_id = ?').all(parseInt(personId, 10)) as any[];
+        for (const r of rows) callIds.add(r.call_id);
+      }
+    }
+
+    if (vehiclePlate) {
+      const hasVehiclesTable = db.prepare(`SELECT name FROM sqlite_master WHERE type='table' AND name='call_vehicles'`).get();
+      if (hasVehiclesTable) {
+        const plate = vehiclePlate.toUpperCase().trim();
+        const rows = db.prepare('SELECT call_id FROM call_vehicles WHERE UPPER(plate) = ?').all(plate) as any[];
+        for (const r of rows) callIds.add(r.call_id);
+      }
+    }
+
+    if (callIds.size === 0) { res.json([]); return; }
+
+    const placeholders = Array.from(callIds).map(() => '?').join(',');
+    const calls = db.prepare(`SELECT * FROM calls_for_service WHERE id IN (${placeholders}) ORDER BY created_at DESC`).all(...Array.from(callIds)) as any[];
+
+    res.json(calls);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to cross-reference calls', code: 'CROSS_REFERENCE_ERROR' });
+  }
+});
+
+// ── Upgrade: Call Narratives (versioned history) ──
+
+// POST /api/dispatch/calls/:id/narratives — Add a narrative version
+router.post('/calls/:id/narratives', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const callId = parseInt(paramStr(req.params.id), 10);
+    if (isNaN(callId)) { res.status(400).json({ error: 'Invalid call ID' }); return; }
+
+    const userId = (req as any).user.id;
+    const userName = (req as any).user.full_name || (req as any).user.username;
+    const { narrative_text, change_summary } = req.body;
+
+    if (!narrative_text) { res.status(400).json({ error: 'narrative_text is required' }); return; }
+
+    const call = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(callId);
+    if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+
+    // Wrap in transaction to prevent version race conditions
+    const insertNarrative = db.transaction(() => {
+      const latest = db.prepare('SELECT MAX(version) as max_ver FROM call_narratives WHERE call_id = ?').get(callId) as any;
+      const nextVersion = (latest?.max_ver || 0) + 1;
+
+      const result = db.prepare(`
+        INSERT INTO call_narratives (call_id, version, narrative_text, editor_id, editor_name, change_summary)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(callId, nextVersion, narrative_text, userId, userName, change_summary || null);
+
+      return { id: result.lastInsertRowid, version: nextVersion };
+    });
+
+    const { id: narrativeId, version: nextVersion } = insertNarrative();
+
+    auditLog(req, 'CREATE', 'call_narratives', narrativeId as number, null, { call_id: callId, version: nextVersion });
+    broadcastDispatchUpdate({ action: 'narrative_updated', call_id: callId, version: nextVersion });
+
+    res.json({ success: true, id: narrativeId, version: nextVersion });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to add narrative', details: err?.message });
+  }
+});
+
+// GET /api/dispatch/calls/:id/narratives — Get all narrative versions for a call
+router.get('/calls/:id/narratives', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const callId = parseInt(paramStr(req.params.id), 10);
+    if (isNaN(callId)) { res.status(400).json({ error: 'Invalid call ID' }); return; }
+
+    const narratives = db.prepare(`
+      SELECT n.*, u.badge_number as editor_badge
+      FROM call_narratives n
+      LEFT JOIN users u ON n.editor_id = u.id
+      WHERE n.call_id = ?
+      ORDER BY n.version DESC
+    `).all(callId);
+
+    res.json(narratives);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to get narratives', details: err?.message });
+  }
+});
+
+// GET /api/dispatch/calls/:id/narratives/latest — Get latest narrative
+router.get('/calls/:id/narratives/latest', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const callId = parseInt(paramStr(req.params.id), 10);
+    if (isNaN(callId)) { res.status(400).json({ error: 'Invalid call ID' }); return; }
+
+    const narrative = db.prepare(`
+      SELECT n.*, u.badge_number as editor_badge
+      FROM call_narratives n
+      LEFT JOIN users u ON n.editor_id = u.id
+      WHERE n.call_id = ?
+      ORDER BY n.version DESC
+      LIMIT 1
+    `).get(callId);
+
+    res.json(narrative || null);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to get latest narrative', details: err?.message });
   }
 });
 

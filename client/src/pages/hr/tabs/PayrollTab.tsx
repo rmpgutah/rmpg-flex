@@ -5,11 +5,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  DollarSign, Calendar, Plus, RefreshCw, Loader2, Users, Clock,
-  ChevronDown, ChevronRight, Edit3, Trash2, Check, X, AlertTriangle,
-  Banknote, TrendingUp, FileText, Download,
+  DollarSign, Calendar, Plus, RefreshCw, Loader2, Users, Clock, ChevronRight,
+  Edit3, Trash2, Check, X, AlertTriangle, Banknote, TrendingUp, FileText, Download,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import IconButton from '../../../components/IconButton';
 import { localToday } from '../../../utils/dateUtils';
 
 // ─── Types ────────────────────────────────────────────────────
@@ -567,12 +567,12 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                       <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                         {period.status === 'open' && (
                           <>
-                            <button type="button" onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
-                              className="p-1 text-rmpg-500 hover:text-cyan-400 transition-colors"><Users size={13} /></button>
-                            <button type="button" onClick={() => handleClosePeriod(period.id)} title="Close period"
-                              className="p-1 text-rmpg-500 hover:text-green-400 transition-colors"><Check size={13} /></button>
-                            <button type="button" onClick={() => handleDeletePeriod(period.id)} title="Delete"
-                              className="p-1 text-rmpg-500 hover:text-red-400 transition-colors"><Trash2 size={13} /></button>
+                            <IconButton onClick={() => handlePopulatePeriod(period.id)} title="Auto-populate employees"
+                              className="p-1 text-rmpg-500 hover:text-gray-400 transition-colors" aria-label="Auto-populate employees"><Users size={13} /></IconButton>
+                            <IconButton onClick={() => handleClosePeriod(period.id)} title="Close period"
+                              className="p-1 text-rmpg-500 hover:text-green-400 transition-colors" aria-label="Close period"><Check size={13} /></IconButton>
+                            <IconButton onClick={() => handleDeletePeriod(period.id)} title="Delete"
+                              className="p-1 text-rmpg-500 hover:text-red-400 transition-colors" aria-label="Delete period"><Trash2 size={13} /></IconButton>
                           </>
                         )}
                         <ChevronRight size={14} className="text-rmpg-600" />
@@ -710,7 +710,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
               setSelectedPeriod(p || null);
             }} className="bg-surface-base border border-rmpg-700 rounded-sm px-2 py-1 text-xs text-white">
               <option value="">Select pay period...</option>
-              {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status})</option>)}
+              {periods.map(p => <option key={p.id} value={p.id}>{p.name} ({p.status?.replace(/_/g, ' ').toUpperCase()})</option>)}
             </select>
             {selectedPeriod && entries.length > 0 && (
               <button type="button"
@@ -779,7 +779,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                           <>
                             <td className="px-2 py-2 text-right text-white font-mono">{entry.regular_hours}</td>
                             <td className="px-2 py-2 text-right text-amber-400 font-mono">{entry.overtime_hours || '—'}</td>
-                            <td className="px-2 py-2 text-right text-cyan-400 font-mono">{entry.holiday_hours || '—'}</td>
+                            <td className="px-2 py-2 text-right text-gray-400 font-mono">{entry.holiday_hours || '—'}</td>
                             <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entry.pto_hours || '—'}</td>
                             <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entry.sick_hours || '—'}</td>
                           </>
@@ -796,13 +796,13 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                             <div className="flex items-center justify-center gap-1">
                               {isEditing ? (
                                 <>
-                                  <button type="button" onClick={() => handleSaveEntry(entry.id)} className="p-0.5 text-green-400 hover:text-green-300"><Check size={13} /></button>
-                                  <button type="button" onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-white"><X size={13} /></button>
+                                  <IconButton onClick={() => handleSaveEntry(entry.id)} className="p-0.5 text-green-400 hover:text-green-300" aria-label="Save entry"><Check size={13} /></IconButton>
+                                  <IconButton onClick={() => setEditingEntry(null)} className="p-0.5 text-rmpg-500 hover:text-white" aria-label="Cancel editing"><X size={13} /></IconButton>
                                 </>
                               ) : (
                                 <>
-                                  <button type="button" onClick={() => startEditing(entry)} className="p-0.5 text-rmpg-500 hover:text-brand-400" title="Edit hours"><Edit3 size={13} /></button>
-                                  <button type="button" onClick={() => handleApproveEntry(entry.id)} className="p-0.5 text-rmpg-500 hover:text-green-400" title="Approve"><Check size={13} /></button>
+                                  <IconButton onClick={() => startEditing(entry)} className="p-0.5 text-rmpg-500 hover:text-brand-400" title="Edit hours" aria-label="Edit hours"><Edit3 size={13} /></IconButton>
+                                  <IconButton onClick={() => handleApproveEntry(entry.id)} className="p-0.5 text-rmpg-500 hover:text-green-400" title="Approve" aria-label="Approve entry"><Check size={13} /></IconButton>
                                 </>
                               )}
                             </div>
@@ -820,7 +820,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
                       <td className="px-2 py-2" />
                       <td className="px-2 py-2 text-right text-white font-mono font-bold">{entries.reduce((s, e) => s + e.regular_hours, 0)}</td>
                       <td className="px-2 py-2 text-right text-amber-400 font-mono font-bold">{entries.reduce((s, e) => s + e.overtime_hours, 0) || '—'}</td>
-                      <td className="px-2 py-2 text-right text-cyan-400 font-mono font-bold">{entries.reduce((s, e) => s + e.holiday_hours, 0) || '—'}</td>
+                      <td className="px-2 py-2 text-right text-gray-400 font-mono font-bold">{entries.reduce((s, e) => s + e.holiday_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entries.reduce((s, e) => s + e.pto_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-rmpg-400 font-mono">{entries.reduce((s, e) => s + e.sick_hours, 0) || '—'}</td>
                       <td className="px-2 py-2 text-right text-green-400 font-mono font-bold">{formatCurrency(entries.reduce((s, e) => s + e.gross_pay, 0))}</td>

@@ -8,7 +8,7 @@
 // all telemetry updates second-by-second during playback.
 // ============================================================
 
-import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Maximize2, Minimize2, Edit2 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 
@@ -109,7 +109,6 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   const containerRef = useRef<HTMLDivElement>(null);
   const [liveAddress, setLiveAddress] = useState<string | null>(null);
   const lastGeocodedPos = useRef<{ lat: number; lng: number } | null>(null);
-  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
   const geocodeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const gpsTrack = useMemo(() => parseGpsTrack(video?.cpg_gps_track), [video?.cpg_gps_track]);
@@ -117,25 +116,31 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
   useEffect(() => { setLiveAddress(null); lastGeocodedPos.current = null; }, [video?.id]);
 
-  const reverseGeocode = useCallback((lat: number, lng: number) => {
+  const reverseGeocode = useCallback(async (lat: number, lng: number) => {
     const key = cacheKey(lat, lng);
     const cached = geocodeCache.get(key);
     if (cached) { setLiveAddress(cached); lastGeocodedPos.current = { lat, lng }; return; }
-    if (typeof google === 'undefined' || !google.maps) return;
-    if (!geocoderRef.current) geocoderRef.current = new google.maps.Geocoder();
-    geocoderRef.current.geocode({ location: { lat, lng } }, (results, status) => {
-      if (status === 'OK' && results?.[0]) {
-        const c = results[0].address_components;
-        const num = c?.find(x => x.types.includes('street_number'))?.short_name || '';
-        const route = c?.find(x => x.types.includes('route'))?.short_name || '';
-        const city = c?.find(x => x.types.includes('locality'))?.short_name || '';
-        let addr = num && route ? `${num} ${route}` : route || (results[0].formatted_address || '').split(',')[0];
-        if (city) addr += `, ${city}`;
-        geocodeCacheSet(key, addr);
-        setLiveAddress(addr);
-        lastGeocodedPos.current = { lat, lng };
-      }
-    });
+    try {
+      const { getCachedMapboxToken } = await import('../utils/mapboxApiKey');
+      const token = getCachedMapboxToken();
+      if (!token) return;
+      const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${lng},${lat}.json?access_token=${token}&limit=1&types=address`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const feature = data.features?.[0];
+      if (!feature) return;
+      const text = feature.text || '';
+      const addr_num = feature.address || '';
+      const ctx = feature.context || [];
+      const city = ctx.find((c: any) => c.id.startsWith('place'))?.text || '';
+      let addr = addr_num && text ? `${addr_num} ${text}` : text || feature.place_name?.split(',')[0] || '';
+      if (city) addr += `, ${city}`;
+      geocodeCacheSet(key, addr);
+      setLiveAddress(addr);
+      lastGeocodedPos.current = { lat, lng };
+    } catch {
+      // Geocoding failed — silently degrade
+    }
   }, []);
 
   useEffect(() => {
@@ -219,7 +224,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
         onClick={e => e.stopPropagation()}
       >
         {/* ── Header Bar ── */}
-        <div className="flex items-center justify-between h-7 px-2 bg-[var(--surface-sunken)] border-b border-[#222222]">
+        <div className="flex items-center justify-between h-7 px-2 bg-[var(--surface-sunken)] border-b border-[#2b2b2b]">
           <div className="flex items-center gap-2 min-w-0">
             <span className="text-[9px] font-mono font-bold text-amber-500/80 uppercase tracking-widest truncate">
               {video.title}
@@ -284,9 +289,9 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
               </div>
 
               {/* ── Bottom: Evidence Strip (full-width, 2-row, solid) ── */}
-              <div className={`absolute left-0 right-0 ${isFullscreen ? 'bottom-14' : 'bottom-10'} bg-black/90 border-t border-[#222222]`}>
+              <div className={`absolute left-0 right-0 ${isFullscreen ? 'bottom-14' : 'bottom-10'} bg-black/90 border-t border-[#2b2b2b]`}>
                 {/* Row 1 — Primary evidence data */}
-                <div className="flex items-center h-6 divide-x divide-[#222222]">
+                <div className="flex items-center h-6 divide-x divide-[#2b2b2b]">
                   {/* Timestamp */}
                   <div className="px-2 font-mono text-[11px] text-white/80 font-bold tabular-nums tracking-wider whitespace-nowrap">
                     {formatHudTime(currentTime)}
@@ -318,7 +323,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
                 </div>
 
                 {/* Row 2 — Secondary context */}
-                <div className="flex items-center h-5 divide-x divide-[#222222] border-t border-[#222222]/50">
+                <div className="flex items-center h-5 divide-x divide-[#2b2b2b] border-t border-[#2b2b2b]/50">
                   {/* Vehicle */}
                   <div className="flex-1 px-2 font-mono text-[9px] text-white/40 tracking-wider truncate">
                     VEH #{video.vehicle_number || '--'} {vehDesc}
@@ -352,7 +357,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
         {/* ── Metadata Bar (below video) ── */}
         <div className="panel-inset bg-[var(--surface-sunken)]">
           {/* Primary data row */}
-          <div className="flex items-center h-6 divide-x divide-[#222222]">
+          <div className="flex items-center h-6 divide-x divide-[#2b2b2b]">
             <span className="px-2 text-[9px] font-mono text-white/30 uppercase tracking-wider">
               <span className="text-white/15 mr-1">VEH</span>
               <span className="text-white/50">{video.vehicle_number ? `#${video.vehicle_number}` : '--'}</span>
@@ -386,7 +391,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
 
           {/* Detail lines */}
           {(displayAddress || video.notes || hasLiveGps) && (
-            <div className="px-2 pb-1.5 space-y-0.5 border-t border-[#222222]/50">
+            <div className="px-2 pb-1.5 space-y-0.5 border-t border-[#2b2b2b]/50">
               {displayAddress && (
                 <div className="flex items-center gap-1 text-[8px] font-mono text-white/25 pt-1">
                   <span className="text-white/12">LOC</span>

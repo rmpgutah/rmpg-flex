@@ -102,20 +102,6 @@ interface DashcamEvent {
   officer_name: string | null;
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }: Props) {
   // Status
   const [status, setStatus] = useState<CpgStatus | null>(null);
@@ -871,7 +857,7 @@ export default function AdminClearPathGpsTab({ LoadingSpinner, error, setError }
                   >
                     <Camera className="w-3 h-3 text-rmpg-400 shrink-0" />
                     <span className={`px-1.5 py-0.5 rounded-sm text-[9px] font-mono uppercase border ${typeColor}`}>
-                      {evt.event_type.replace(/_/g, ' ')}
+                      {evt.event_type.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     {evt.call_sign && (
                       <span className="text-brand-400 font-mono font-medium">{evt.call_sign}</span>

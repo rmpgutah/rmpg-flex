@@ -5,7 +5,7 @@
 // dispatchers must select a disposition on every call clear.
 // ============================================================
 
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { AlertTriangle, X, Check, FileText } from 'lucide-react';
 
 interface DispositionCode {

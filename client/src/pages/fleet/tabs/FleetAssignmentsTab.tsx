@@ -1,4 +1,3 @@
-import React from 'react';
 import { Radio, Clock, User, ArrowRight } from 'lucide-react';
 import type { FleetAssignment } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
@@ -49,7 +48,7 @@ export default function FleetAssignmentsTab({ assignments }: Props) {
       ) : (
         <div className="panel-beveled p-3 bg-surface-base">
           <div className="relative">
-            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #f59e0b40, #181818)' }} />
+            <div className="absolute left-3 top-0 bottom-0 w-px" style={{ background: 'linear-gradient(to bottom, #f59e0b40, #242424)' }} />
             <div className="space-y-2">
               {assignments.map((a) => {
                 const isActive = !a.unassigned_at;

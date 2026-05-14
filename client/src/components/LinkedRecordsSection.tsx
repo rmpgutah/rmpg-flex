@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Link2,
   Plus,
@@ -36,9 +36,9 @@ const TYPE_COLOR_MAP: Record<string, { text: string; bg: string; border: string 
     border: 'border-gray-700/50',
   },
   vehicle: {
-    text: 'text-cyan-400',
-    bg: 'bg-cyan-900/30',
-    border: 'border-cyan-700/50',
+    text: 'text-gray-300',
+    bg: 'bg-[#1f1f1f]',
+    border: 'border-[#2e2e2e]',
   },
   property: {
     text: 'text-green-400',

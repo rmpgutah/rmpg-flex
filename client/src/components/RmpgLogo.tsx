@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface RmpgLogoProps {
   className?: string;
   /** Height in pixels — width auto-scales to preserve aspect ratio */

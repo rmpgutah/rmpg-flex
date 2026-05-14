@@ -270,7 +270,7 @@ export default function FleetGpsTab({ vehicleId }: Props) {
                             alert.severity === 'high' ? 'bg-amber-900/40 text-amber-400' :
                             'bg-rmpg-700 text-rmpg-400'
                           }`}>
-                            {alert.severity}
+                            {alert.severity?.replace(/_/g, ' ').toUpperCase() || 'UNKNOWN'}
                           </span>
                         </div>
                         {alert.message && (

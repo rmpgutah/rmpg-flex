@@ -17,6 +17,13 @@ VPS_USER="root"
 APP_DIR="/opt/rmpg-flex"
 DOMAIN="rmpgutah.us"
 
+# Deploy-lock acquisition lives further down (see "Acquiring deploy lock..." block)
+# and uses an ownership-checked EXIT trap. The earlier duplicate implementation
+# was removed 2026-04-24 — its unconditional `rm -f` on EXIT clobbered sibling
+# locks, turning concurrent deploys into a lock-churn storm where every attempt
+# failed with BUSY while no code actually shipped. See memory:
+# project_deploy_sh_lock_race_bug.md.
+
 # Get the project root (parent of deploy/)
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 
@@ -72,21 +79,77 @@ if ! ssh -o ConnectTimeout=5 -o BatchMode=yes "$VPS_USER@$VPS_IP" "echo ok" >/de
 fi
 echo "    SSH connection OK"
 
+# ─── Deploy Lock (Gotcha #43 — prevent parallel worktree clobbers) ──
+# Holds /tmp/rmpg-deploy.lock on the VPS for the duration of this deploy.
+# A stale lock older than 15 min is auto-cleared. Other deploys running
+# concurrently fail fast instead of racing.
+LOCK_FILE="/tmp/rmpg-deploy.lock"
+LOCK_ID="$(hostname)-$$-$(date +%s)"
+LOCK_MAX_AGE_SEC=900
+
+echo ">>> Acquiring deploy lock..."
+LOCK_RESULT=$(ssh "$VPS_USER@$VPS_IP" "bash -s" <<LOCKEOF
+  set -e
+  if [ -f "$LOCK_FILE" ]; then
+    AGE=\$(( \$(date +%s) - \$(stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0) ))
+    if [ "\$AGE" -lt "$LOCK_MAX_AGE_SEC" ]; then
+      HOLDER=\$(cat "$LOCK_FILE" 2>/dev/null || echo unknown)
+      echo "BUSY: held by \$HOLDER (age \${AGE}s)"
+      exit 1
+    else
+      echo "STALE: clearing lock (age \${AGE}s > ${LOCK_MAX_AGE_SEC}s)"
+    fi
+  fi
+  echo "$LOCK_ID" > "$LOCK_FILE"
+  echo "OK"
+LOCKEOF
+) || {
+  echo ""
+  echo "ERROR: Another deploy is in progress on the VPS."
+  echo "       $LOCK_RESULT"
+  echo ""
+  echo "If you're sure no other deploy is running, clear the stale lock:"
+  echo "  ssh $VPS_USER@$VPS_IP 'rm $LOCK_FILE'"
+  echo ""
+  exit 1
+}
+echo "    Lock acquired: $LOCK_ID"
+
+# Release lock on exit regardless of success/failure
+trap 'ssh "$VPS_USER@$VPS_IP" "[ \"\$(cat $LOCK_FILE 2>/dev/null)\" = \"$LOCK_ID\" ] && rm -f $LOCK_FILE" >/dev/null 2>&1 || true' EXIT
+
 # ─── Pre-deploy Quality Gates ────────────────────────────
+# Self-heal in worktrees: if node_modules is missing, install before gating
+# so the gate fails on *code quality*, not on setup.
+ensure_deps() {
+  local dir="$1"
+  if [ ! -d "$dir/node_modules" ]; then
+    echo "    (installing $dir deps — worktree missing node_modules)"
+    (cd "$dir" && npm install --silent --no-audit --no-fund) \
+      || { echo "FAILED: npm install in $dir — fix before deploying"; exit 1; }
+  fi
+}
+
 if [ "$UPLOAD_CODE" = true ]; then
   echo ""
   echo ">>> Running pre-deploy quality gates..."
+  ensure_deps "$PROJECT_DIR/client"
+  ensure_deps "$PROJECT_DIR/server"
 
-  echo "    [1/3] Client typecheck..."
+  echo "    [1/4] Server typecheck..."
+  (cd "$PROJECT_DIR/server" && npx tsc --noEmit) || { echo "FAILED: Server typecheck errors — fix before deploying"; exit 1; }
+  echo "          ✓ Server types OK"
+
+  echo "    [2/4] Client typecheck..."
   (cd "$PROJECT_DIR/client" && npx tsc --noEmit) || { echo "FAILED: Client typecheck errors — fix before deploying"; exit 1; }
   echo "          ✓ Client types OK"
 
-  echo "    [2/3] Server tests..."
-  (cd "$PROJECT_DIR/server" && npm test --silent) || { echo "FAILED: Server tests — fix before deploying"; exit 1; }
+  echo "    [3/4] Server tests (461 tests across 39 files)..."
+  (cd "$PROJECT_DIR/server" && npm test --silent) || { echo "FAILED: Server tests — run 'cd server && npx vitest run' to see failures"; exit 1; }
   echo "          ✓ Server tests pass"
 
-  echo "    [3/3] Client tests..."
-  (cd "$PROJECT_DIR/client" && npm test --silent) || { echo "FAILED: Client tests — fix before deploying"; exit 1; }
+  echo "    [4/4] Client tests..."
+  (cd "$PROJECT_DIR/client" && npm test --silent) || { echo "FAILED: Client tests — run 'cd client && npx vitest run' to see failures"; exit 1; }
   echo "          ✓ Client tests pass"
 
   echo ""
@@ -331,21 +394,36 @@ SVCEOF
   cd "$APP_DIR"
 
   echo ">>> Installing server dependencies..."
-  cd server && npm install --production 2>&1 | tail -3 && cd ..
+  cd server
+  if [ -f package-lock.json ]; then
+    # Production still boots via `npx tsx server/src/index.ts`, so keep tsx available.
+    npm ci
+  else
+    npm install
+  fi
+  cd ..
 
   echo ">>> Installing client dependencies..."
-  cd client && npm install 2>&1 | tail -3 && cd ..
+  cd client
+  if [ -f package-lock.json ]; then
+    npm ci
+  else
+    npm install
+  fi
+  cd ..
 
   echo ">>> Building client..."
-  cd client && npx vite build 2>&1 | tail -5 && cd ..
+  cd client && npx vite build && cd ..
 
   # ── Create .env if missing ──
   if [ ! -f server/.env ]; then
     echo ">>> Generating production .env..."
     JWT_SECRET=$(openssl rand -hex 64)
+    TOTP_ENCRYPTION_KEY=$(openssl rand -hex 32)
 
     cat > server/.env << ENVEOF
 JWT_SECRET=${JWT_SECRET}
+TOTP_ENCRYPTION_KEY=${TOTP_ENCRYPTION_KEY}
 JWT_ACCESS_EXPIRY=15m
 JWT_REFRESH_EXPIRY=7d
 NODE_ENV=production

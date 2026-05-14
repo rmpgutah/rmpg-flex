@@ -2,7 +2,7 @@
 // Feature 27: Column Visibility Toggle
 // Let users show/hide table columns
 // ═══════════════════════════════════════════════════════════════
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Columns, Eye, EyeOff } from 'lucide-react';
 
 export interface ColumnDef {
@@ -50,8 +50,8 @@ export default function ColumnVisibilityToggle({ columns, onChange, className = 
         Columns
       </button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[180px] bg-surface-base border border-[#2e2e2e] shadow-xl py-1">
-          <div className="px-3 py-1.5 border-b border-[#222222] flex items-center justify-between">
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[180px] bg-surface-base border border-[#2a2a2a] shadow-xl py-1">
+          <div className="px-3 py-1.5 border-b border-[#2b2b2b] flex items-center justify-between">
             <span className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider">Columns</span>
             <button type="button" onClick={showAll} className="text-[9px] text-brand-400 hover:text-brand-300">Show All</button>
           </div>

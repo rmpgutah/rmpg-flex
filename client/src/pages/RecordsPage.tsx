@@ -16,6 +16,7 @@ import {
   DollarSign,
   X,
   Users,
+  Briefcase,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { usePersistedTab } from '../hooks/usePersistedState';
@@ -38,28 +39,15 @@ import { usePersonsTab, PersonsTabList, PersonsTabDetail, mapDbPerson } from './
 import { useVehiclesTab, VehiclesTabList, VehiclesTabDetail, mapDbVehicle } from './records/VehiclesTab';
 import { usePropertiesTab, PropertiesTabList, PropertiesTabDetail, mapDbProperty } from './records/PropertiesTab';
 import { useEvidenceTab, EvidenceTabList, EvidenceTabDetail } from './records/EvidenceTab';
+import { useBusinessTab, BusinessTabList, BusinessTabDetail } from './records/BusinessTab';
 
 // ============================================================
 // Constants
 // ============================================================
 
-type TabId = 'persons' | 'vehicles' | 'properties' | 'evidence';
+type TabId = 'persons' | 'vehicles' | 'properties' | 'businesses' | 'evidence';
 
 // ============================================================
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 // Component
 // ============================================================
 
@@ -67,7 +55,7 @@ export default function RecordsPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
   const [urlParams] = useSearchParams();
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'evidence'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_records_tab', 'persons' as TabId, ['persons', 'vehicles', 'properties', 'businesses', 'evidence'] as const);
   const [searchQuery, setSearchQuery] = useState('');
   const [showArchived, setShowArchived] = useState(false);
   const [showDuplicatesModal, setShowDuplicatesModal] = useState(false);
@@ -76,7 +64,7 @@ export default function RecordsPage() {
   useEffect(() => {
     const tab = urlParams.get('tab');
     const personId = urlParams.get('personId');
-    if (tab && ['persons', 'vehicles', 'properties', 'evidence'].includes(tab)) {
+    if (tab && ['persons', 'vehicles', 'properties', 'businesses', 'evidence'].includes(tab)) {
       setActiveTab(tab as TabId);
     }
     if (personId && tab === 'persons') {
@@ -122,7 +110,7 @@ export default function RecordsPage() {
   const fetchPersons = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoadingPersons(true); setError(null); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100&archived=${showArchived}`);
+      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/persons?limit=100000&archived=${showArchived}`);
       setPersons((Array.isArray(res?.data) ? res.data : []).map(mapDbPerson));
     } catch (err) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load persons');
@@ -134,7 +122,7 @@ export default function RecordsPage() {
   const fetchVehicles = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) { setLoadingVehicles(true); setError(null); }
     try {
-      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100&archived=${showArchived}`);
+      const res = await apiFetch<{ data: Record<string, unknown>[]; pagination: unknown }>(`/records/vehicles?limit=100000&archived=${showArchived}`);
       setVehicles((Array.isArray(res?.data) ? res.data : []).map(mapDbVehicle));
     } catch (err) {
       if (!options?.silent) setError(err instanceof Error ? err.message : 'Failed to load vehicles');
@@ -158,7 +146,7 @@ export default function RecordsPage() {
   const fetchEvidence = useCallback(async (options?: { silent?: boolean }) => {
     if (!options?.silent) setLoadingEvidence(true);
     try {
-      const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=200&archived=${showArchived}`);
+      const res = await apiFetch<{ data: any[]; pagination: any }>(`/records/evidence?limit=100000&archived=${showArchived}`);
       setEvidence(res?.data || []);
     } catch {
       setEvidence([]);
@@ -235,7 +223,7 @@ export default function RecordsPage() {
 
   // ── Archive / Unarchive ──────────────────────────────
 
-  const handleArchiveRecord = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
+  const handleArchiveRecord = async (type: string, id: string) => {
     try {
       await apiFetch(`/records/${type}/${id}/archive`, { method: 'POST' });
       if (type === 'persons') { await fetchPersons(); }
@@ -248,7 +236,7 @@ export default function RecordsPage() {
     }
   };
 
-  const handleUnarchiveRecord = async (type: 'persons' | 'vehicles' | 'properties' | 'evidence', id: string) => {
+  const handleUnarchiveRecord = async (type: string, id: string) => {
     try {
       await apiFetch(`/records/${type}/${id}/unarchive`, { method: 'POST' });
       if (type === 'persons') { await fetchPersons(); }
@@ -297,14 +285,21 @@ export default function RecordsPage() {
     fetchEvidence, openNewTrigger: newEvidenceTrigger,
   });
 
+  const businessState = useBusinessTab({
+    searchQuery, setSearchQuery, showArchived, setError,
+    setDeleteTarget, linkRefreshKey,
+    openLinkModal, handleArchiveRecord, handleUnarchiveRecord,
+  });
+
   // ── Derived ──────────────────────────────────────────
 
   const isLoading = loadingPersons || loadingVehicles || loadingProperties || loadingEvidence;
 
   const tabs: { id: TabId; label: string; icon: React.ElementType; count: number }[] = [
-    { id: 'persons', label: 'Persons', icon: UserCircle, count: persons.length },
+    { id: 'persons', label: 'Individuals', icon: UserCircle, count: persons.length },
     { id: 'vehicles', label: 'Vehicles', icon: Car, count: vehicles.length },
     { id: 'properties', label: 'Properties', icon: Building2, count: properties.length },
+    { id: 'businesses', label: 'Businesses', icon: Briefcase, count: 0 },
     { id: 'evidence', label: 'Evidence', icon: Package, count: evidence.length },
   ];
 
@@ -360,6 +355,10 @@ export default function RecordsPage() {
       const p = propertiesState.selectedProperty;
       return { recordType: 'property' as const, recordData: p, identifier: p.name, entityType: 'property' as const, entityId: p.id };
     }
+    if (activeTab === 'businesses' && businessState.selectedBusiness) {
+      const b = businessState.selectedBusiness;
+      return { recordType: 'business' as const, recordData: b, identifier: b.name, entityType: 'business' as const, entityId: b.id };
+    }
     if (activeTab === 'evidence' && evidenceState.selectedEvidence) {
       const e = evidenceState.selectedEvidence;
       return { recordType: 'evidence' as const, recordData: e, identifier: e.evidence_number, entityType: 'evidence' as const, entityId: e.id };
@@ -410,6 +409,15 @@ export default function RecordsPage() {
               <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => setNewPropertyTrigger(t => t + 1)}>
                 <Plus className="w-3.5 h-3.5" />
                 New Property
+              </button>
+            )}
+          </>
+        )}
+        {activeTab === 'businesses' && (
+          <>
+            {!showArchived && (
+              <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={() => businessState.setShowFormModal(true)}>
+                <Plus className="w-3.5 h-3.5" /> New Business
               </button>
             )}
           </>
@@ -497,8 +505,8 @@ export default function RecordsPage() {
           <>
             <div className="w-px h-2.5 bg-rmpg-600" />
             <div className="flex items-center gap-1">
-              <Warehouse className="w-2.5 h-2.5 text-cyan-400" />
-              <span className="text-cyan-400 font-bold">{evidenceInStorage}</span>
+              <Warehouse className="w-2.5 h-2.5 text-gray-400" />
+              <span className="text-gray-400 font-bold">{evidenceInStorage}</span>
             </div>
             <div className="flex items-center gap-1">
               <FlaskConical className="w-2.5 h-2.5 text-purple-400" />
@@ -552,6 +560,7 @@ export default function RecordsPage() {
         {activeTab === 'persons' && !loadingPersons && <PersonsTabList state={personsState} />}
         {activeTab === 'vehicles' && !loadingVehicles && <VehiclesTabList state={vehiclesState} />}
         {activeTab === 'properties' && !loadingProperties && <PropertiesTabList state={propertiesState} />}
+        {activeTab === 'businesses' && <BusinessTabList state={businessState} />}
         {activeTab === 'evidence' && !loadingEvidence && <EvidenceTabList state={evidenceState} />}
       </div>
     </div>
@@ -594,6 +603,7 @@ export default function RecordsPage() {
         {activeTab === 'persons' && <PersonsTabDetail state={personsState} />}
         {activeTab === 'vehicles' && <VehiclesTabDetail state={vehiclesState} />}
         {activeTab === 'properties' && <PropertiesTabDetail state={propertiesState} />}
+        {activeTab === 'businesses' && <BusinessTabDetail state={businessState} />}
         {activeTab === 'evidence' && <EvidenceTabDetail state={evidenceState} />}
       </div>
     </div>

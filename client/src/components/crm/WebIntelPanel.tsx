@@ -4,7 +4,7 @@
 // Saved searches, recent history, bulk import
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Globe,
   Search,

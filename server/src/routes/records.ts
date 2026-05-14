@@ -3,11 +3,13 @@ import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastRecordUpdate } from '../utils/websocket';
+import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { config } from '../config';
+import { paramStr } from '../utils/reqHelpers';
+import { encryptAlarmField } from '../utils/businessEncryption';
 
 const router = Router();
 
@@ -77,9 +79,9 @@ router.use(authenticateToken);
 router.get('/persons', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', flags, archived } = req.query;
+    const { page = '1', limit = '100000', flags, archived } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -192,7 +194,7 @@ router.get('/persons/export', requireRole('admin', 'manager', 'supervisor'), (re
 router.get('/persons/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const personId = parseInt(req.params.id as string, 10);
+    const personId = parseInt(paramStr(req.params.id), 10);
     if (isNaN(personId)) { res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' }); return; }
     let person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
 
@@ -414,15 +416,20 @@ router.post('/persons', (req: Request, res: Response) => {
       phone_secondary, social_media,
       probation_parole, probation_parole_officer, known_associates,
       emergency_contact_relationship, caution_flags,
+      photo_url, flags, notes,
+      // Extended identification, medical, military, LE fields — these
+      // correspond to inputs in PersonFormModal.tsx that were previously
+      // being silently dropped by this route.
       ncic_number, sor_number, fbi_number, state_id_number,
       passport_number, passport_country, immigration_status,
       disability_flags, mental_health_flags, substance_abuse, medication_notes,
       education_level, military_branch, military_status, tribal_affiliation,
       identifying_marks_location, tattoo_description, scar_description,
       piercing_description, distinguishing_features,
-      photo_url, flags, notes,
       email_secondary, date_last_seen, location_last_seen, alias_dob,
       home_phone, work_phone,
+      // F3 advanced detail (jail intake + descriptor)
+      voice_description, religion, dietary_restrictions,
     } = req.body;
 
     if (!first_name || !last_name) {
@@ -443,16 +450,26 @@ router.post('/persons', (req: Request, res: Response) => {
         phone_secondary, social_media,
         probation_parole, probation_parole_officer, known_associates,
         emergency_contact_relationship, caution_flags,
+        photo_url, flags, notes,
         ncic_number, sor_number, fbi_number, state_id_number,
         passport_number, passport_country, immigration_status,
         disability_flags, mental_health_flags, substance_abuse, medication_notes,
         education_level, military_branch, military_status, tribal_affiliation,
         identifying_marks_location, tattoo_description, scar_description,
         piercing_description, distinguishing_features,
-        photo_url, flags, notes,
         email_secondary, date_last_seen, location_last_seen, alias_dob,
-        home_phone, work_phone)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        home_phone, work_phone,
+        voice_description, religion, dietary_restrictions)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?, ?,
+        ?, ?,
+        ?, ?, ?)
     `).run(
       first_name, last_name, middle_name || null, alias_nickname || null,
       dob || null, gender || null, race || null,
@@ -470,15 +487,16 @@ router.post('/persons', (req: Request, res: Response) => {
       phone_secondary || null, social_media || null,
       probation_parole || null, probation_parole_officer || null, known_associates || null,
       emergency_contact_relationship || null, caution_flags || null,
+      photo_url || null, JSON.stringify(flags || []), notes || null,
       ncic_number || null, sor_number || null, fbi_number || null, state_id_number || null,
       passport_number || null, passport_country || null, immigration_status || null,
       disability_flags || null, mental_health_flags || null, substance_abuse || null, medication_notes || null,
       education_level || null, military_branch || null, military_status || null, tribal_affiliation || null,
       identifying_marks_location || null, tattoo_description || null, scar_description || null,
       piercing_description || null, distinguishing_features || null,
-      photo_url || null, JSON.stringify(flags || []), notes || null,
       email_secondary || null, date_last_seen || null, location_last_seen || null, alias_dob || null,
       home_phone || null, work_phone || null,
+      voice_description || null, religion || null, dietary_restrictions || null,
     );
 
     db.prepare(`
@@ -491,6 +509,7 @@ router.post('/persons', (req: Request, res: Response) => {
 
     // SELECT after screening so watchlist_match is included in response
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(result.lastInsertRowid);
+    broadcastRecordUpdate({ action: 'person_created', id: result.lastInsertRowid, entity: 'person' });
     res.status(201).json(person);
   } catch (error: any) {
     console.error('Create person error:', error);
@@ -521,12 +540,6 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       phone_secondary, social_media,
       probation_parole, probation_parole_officer, known_associates,
       emergency_contact_relationship, caution_flags,
-      ncic_number, sor_number, fbi_number, state_id_number,
-      passport_number, passport_country, immigration_status,
-      disability_flags, mental_health_flags, substance_abuse, medication_notes,
-      education_level, military_branch, military_status, tribal_affiliation,
-      identifying_marks_location, tattoo_description, scar_description,
-      piercing_description, distinguishing_features,
       photo_url, flags, notes,
     } = req.body;
 
@@ -565,21 +578,40 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       probation_parole: v => v ?? null, probation_parole_officer: v => v ?? null,
       known_associates: v => v ?? null,
       emergency_contact_relationship: v => v ?? null, caution_flags: v => v ?? null,
-      ncic_number: v => v ?? null, sor_number: v => v ?? null,
-      fbi_number: v => v ?? null, state_id_number: v => v ?? null,
-      passport_number: v => v ?? null, passport_country: v => v ?? null,
-      immigration_status: v => v ?? null,
-      disability_flags: v => v ?? null, mental_health_flags: v => v ?? null,
-      substance_abuse: v => v ?? null, medication_notes: v => v ?? null,
-      education_level: v => v ?? null, military_branch: v => v ?? null,
-      military_status: v => v ?? null, tribal_affiliation: v => v ?? null,
-      identifying_marks_location: v => v ?? null, tattoo_description: v => v ?? null,
-      scar_description: v => v ?? null, piercing_description: v => v ?? null,
-      distinguishing_features: v => v ?? null,
       photo_url: v => v ?? null, notes: v => v ?? null,
-      email_secondary: v => v ?? null, date_last_seen: v => v ?? null,
-      location_last_seen: v => v ?? null, alias_dob: v => v ?? null,
-      home_phone: v => v ?? null, work_phone: v => v ?? null,
+      // Extended identification, medical, military, LE fields — added
+      // to match the full PersonFormModal input set so edits no longer
+      // silently drop values the user typed.
+      ncic_number: v => v ?? null,
+      sor_number: v => v ?? null,
+      fbi_number: v => v ?? null,
+      state_id_number: v => v ?? null,
+      passport_number: v => v ?? null,
+      passport_country: v => v ?? null,
+      immigration_status: v => v ?? null,
+      disability_flags: v => v ?? null,
+      mental_health_flags: v => v ?? null,
+      substance_abuse: v => v ?? null,
+      medication_notes: v => v ?? null,
+      education_level: v => v ?? null,
+      military_branch: v => v ?? null,
+      military_status: v => v ?? null,
+      tribal_affiliation: v => v ?? null,
+      identifying_marks_location: v => v ?? null,
+      tattoo_description: v => v ?? null,
+      scar_description: v => v ?? null,
+      piercing_description: v => v ?? null,
+      distinguishing_features: v => v ?? null,
+      email_secondary: v => v ?? null,
+      date_last_seen: v => v ?? null,
+      location_last_seen: v => v ?? null,
+      alias_dob: v => v ?? null,
+      home_phone: v => v ?? null,
+      work_phone: v => v ?? null,
+      // F3 advanced detail (jail intake + descriptor)
+      voice_description: v => v ?? null,
+      religion: v => v ?? null,
+      dietary_restrictions: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -615,6 +647,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
     }
 
     const updated = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id);
+    broadcastRecordUpdate({ action: 'person_updated', id: Number(req.params.id), entity: 'person' });
     res.json(updated);
   } catch (error: any) {
     console.error('Update person error:', error);
@@ -623,7 +656,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id - Delete person
-router.delete('/persons/:id', (req: Request, res: Response) => {
+router.delete('/persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
@@ -728,9 +761,9 @@ router.post('/persons/:id/unarchive', (req: Request, res: Response) => {
 router.get('/vehicles', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', archived } = req.query;
+    const { page = '1', limit = '100000', archived } = req.query;
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(200, Math.max(1, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -852,69 +885,108 @@ router.get('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/vehicles - Create vehicle
+// Shared fieldMap for vehicles_records — used by BOTH POST and PUT so adding
+// a new writable field only requires editing ONE place. Previously this route
+// had a hand-written INSERT with positional args, which silently dropped any
+// body field not in the destructure list. 17 fields that the client form
+// renders were being lost on every save.
+const VEHICLE_FIELD_MAP: Record<string, (v: any) => any> = {
+  plate_number: v => v ?? null,
+  state: v => v ?? null,
+  make: v => v ?? null,
+  model: v => v ?? null,
+  year: v => v ?? null,
+  color: v => v ?? null,
+  secondary_color: v => v ?? null,
+  body_style: v => v ?? null,
+  doors: v => v ?? null,
+  vin: v => v ?? null,
+  owner_person_id: v => v ?? null,
+  insurance_company: v => v ?? null,
+  insurance_policy: v => v ?? null,
+  insurance_expiry: v => v ?? null,
+  registration_expiry: v => v ?? null,
+  registration_state: v => v ?? null,
+  damage_description: v => v ?? null,
+  distinguishing_features: v => v ?? null,
+  trim: v => v ?? null,
+  engine_type: v => v ?? null,
+  fuel_type: v => v ?? null,
+  transmission: v => v ?? null,
+  drive_type: v => v ?? null,
+  tow_status: v => v ?? null,
+  tow_company: v => v ?? null,
+  tow_date: v => v ?? null,
+  tow_location: v => v ?? null,
+  plate_type: v => v ?? null,
+  commercial_vehicle: v => v ? 1 : 0,
+  hazmat: v => v ? 1 : 0,
+  odometer: v => v ?? null,
+  owner_address: v => v ?? null,
+  owner_phone: v => v ?? null,
+  owner_name: v => v ?? null,
+  owner_dl_number: v => v ?? null,
+  owner_dob: v => v ?? null,
+  primary_driver_name: v => v ?? null,
+  registered_owner: v => v ?? null,
+  lien_holder: v => v ?? null,
+  stolen_status: v => v ?? null,
+  stolen_date: v => v ?? null,
+  recovery_date: v => v ?? null,
+  title_status: v => v ?? null,
+  exterior_condition: v => v ?? null,
+  interior_condition: v => v ?? null,
+  estimated_value: v => v ?? null,
+  window_tint: v => v ?? null,
+  modifications: v => v ?? null,
+  equipment_notes: v => v ?? null,
+  vehicle_use: v => v ?? null,
+  ncic_entry_number: v => v ?? null,
+  notes: v => v ?? null,
+};
+
 router.post('/vehicles', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const {
-      plate_number, state, make, model, year, color, secondary_color,
-      body_style, doors, vin, owner_person_id,
-      insurance_company, insurance_policy, registration_expiry,
-      damage_description, distinguishing_features,
-      trim, engine_type, fuel_type, transmission, drive_type,
-      tow_status, tow_company, tow_date, plate_type,
-      commercial_vehicle, hazmat, odometer,
-      owner_address, owner_phone, lien_holder,
-      stolen_status, stolen_date, recovery_date,
-      title_status, exterior_condition, interior_condition, estimated_value,
-      window_tint, modifications, equipment_notes,
-      owner_name, registered_owner, registration_state,
-      flags, notes,
-      insurance_expiry, owner_dob, owner_dl_number, tow_location,
-      ncic_entry_number, primary_driver_name, vehicle_use,
-    } = req.body;
+    const bodyKeys = Object.keys(req.body || {});
 
-    const result = db.prepare(`
-      INSERT INTO vehicles_records (plate_number, state, make, model, year, color, secondary_color,
-        body_style, doors, vin, owner_person_id,
-        insurance_company, insurance_policy, registration_expiry,
-        damage_description, distinguishing_features,
-        trim, engine_type, fuel_type, transmission, drive_type,
-        tow_status, tow_company, tow_date, plate_type,
-        commercial_vehicle, hazmat, odometer,
-        owner_address, owner_phone, lien_holder,
-        stolen_status, stolen_date, recovery_date,
-        title_status, exterior_condition, interior_condition, estimated_value,
-        window_tint, modifications, equipment_notes,
-        owner_name, registered_owner, registration_state,
-        flags, notes,
-        insurance_expiry, owner_dob, owner_dl_number, tow_location,
-        ncic_entry_number, primary_driver_name, vehicle_use)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      plate_number || null, state || null, make || null, model || null,
-      year || null, color || null, secondary_color || null,
-      body_style || null, doors || null, vin || null, owner_person_id || null,
-      insurance_company || null, insurance_policy || null, registration_expiry || null,
-      damage_description || null, distinguishing_features || null,
-      trim || null, engine_type || null, fuel_type || null, transmission || null, drive_type || null,
-      tow_status || null, tow_company || null, tow_date || null, plate_type || null,
-      commercial_vehicle ? 1 : 0, hazmat ? 1 : 0, odometer || null,
-      owner_address || null, owner_phone || null, lien_holder || null,
-      stolen_status || null, stolen_date || null, recovery_date || null,
-      title_status || null, exterior_condition || null, interior_condition || null, estimated_value || null,
-      window_tint || null, modifications || null, equipment_notes || null,
-      owner_name || null, registered_owner || null, registration_state || null,
-      JSON.stringify(flags || []), notes || null,
-      insurance_expiry || null, owner_dob || null, owner_dl_number || null, tow_location || null,
-      ncic_entry_number || null, primary_driver_name || null, vehicle_use || null,
-    );
+    // Dynamic INSERT driven by VEHICLE_FIELD_MAP — includes every key from
+    // the body that matches an allowlisted field, plus the always-present
+    // flags column (JSON-stringified) and timestamps.
+    const columns: string[] = [];
+    const placeholders: string[] = [];
+    const values: any[] = [];
 
-    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid);
+    for (const [key, transform] of Object.entries(VEHICLE_FIELD_MAP)) {
+      if (bodyKeys.includes(key)) {
+        columns.push(key);
+        placeholders.push('?');
+        values.push(transform(req.body[key]));
+      }
+    }
+
+    // flags is always set (defaults to empty array)
+    columns.push('flags');
+    placeholders.push('?');
+    values.push(JSON.stringify(req.body.flags || []));
+
+    columns.push('created_at');
+    placeholders.push('?');
+    values.push(localNow());
+    columns.push('updated_at');
+    placeholders.push('?');
+    values.push(localNow());
+
+    const result = db.prepare(
+      `INSERT INTO vehicles_records (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+    ).run(...values);
+
+    const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(result.lastInsertRowid) as any;
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'vehicle_created', 'vehicle', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created vehicle: ${plate_number || 'No plate'} ${make || ''} ${model || ''}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created vehicle: ${vehicle?.plate_number || 'No plate'} ${vehicle?.make || ''} ${vehicle?.model || ''}`, req.ip || 'unknown');
 
     res.status(201).json(vehicle);
   } catch (error: any) {
@@ -933,56 +1005,14 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
       return;
     }
 
-    const {
-      plate_number, state, make, model, year, color, secondary_color,
-      body_style, doors, vin, owner_person_id,
-      insurance_company, insurance_policy, registration_expiry,
-      damage_description, distinguishing_features,
-      trim, engine_type, fuel_type, transmission, drive_type,
-      tow_status, tow_company, tow_date, plate_type,
-      commercial_vehicle, hazmat, odometer,
-      owner_address, owner_phone, lien_holder,
-      stolen_status, stolen_date, recovery_date,
-      title_status, exterior_condition, interior_condition, estimated_value,
-      window_tint, modifications, equipment_notes,
-      owner_name, registered_owner, registration_state,
-      flags, notes,
-    } = req.body;
-
-    // Build dynamic SET clause — only update fields explicitly provided
+    // Build dynamic SET clause — only update fields explicitly provided.
+    // Uses the shared VEHICLE_FIELD_MAP so POST and PUT always accept the
+    // same field set; previously they diverged and PUT dropped 17 fields.
     const fields: string[] = [];
     const values: any[] = [];
     const bodyKeys = Object.keys(req.body);
 
-    const vFieldMap: Record<string, (v: any) => any> = {
-      plate_number: v => v ?? null, state: v => v ?? null, make: v => v ?? null,
-      model: v => v ?? null, year: v => v ?? null, color: v => v ?? null,
-      secondary_color: v => v ?? null, body_style: v => v ?? null, doors: v => v ?? null,
-      vin: v => v ?? null, owner_person_id: v => v ?? null,
-      insurance_company: v => v ?? null, insurance_policy: v => v ?? null,
-      registration_expiry: v => v ?? null, damage_description: v => v ?? null,
-      distinguishing_features: v => v ?? null, trim: v => v ?? null,
-      engine_type: v => v ?? null, fuel_type: v => v ?? null,
-      transmission: v => v ?? null, drive_type: v => v ?? null,
-      tow_status: v => v ?? null, tow_company: v => v ?? null,
-      tow_date: v => v ?? null, plate_type: v => v ?? null,
-      commercial_vehicle: v => v ? 1 : 0, hazmat: v => v ? 1 : 0,
-      odometer: v => v ?? null, owner_address: v => v ?? null,
-      owner_phone: v => v ?? null, lien_holder: v => v ?? null,
-      stolen_status: v => v ?? null, stolen_date: v => v ?? null,
-      recovery_date: v => v ?? null, notes: v => v ?? null,
-      title_status: v => v ?? null, exterior_condition: v => v ?? null,
-      interior_condition: v => v ?? null, estimated_value: v => v ?? null,
-      window_tint: v => v ?? null, modifications: v => v ?? null,
-      equipment_notes: v => v ?? null, owner_name: v => v ?? null,
-      registered_owner: v => v ?? null, registration_state: v => v ?? null,
-      insurance_expiry: v => v ?? null, owner_dob: v => v ?? null,
-      owner_dl_number: v => v ?? null, tow_location: v => v ?? null,
-      ncic_entry_number: v => v ?? null, primary_driver_name: v => v ?? null,
-      vehicle_use: v => v ?? null,
-    };
-
-    for (const [key, transform] of Object.entries(vFieldMap)) {
+    for (const [key, transform] of Object.entries(VEHICLE_FIELD_MAP)) {
       if (bodyKeys.includes(key)) {
         fields.push(`${key} = ?`);
         values.push(transform(req.body[key]));
@@ -990,7 +1020,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
     }
     if (bodyKeys.includes('flags')) {
       fields.push('flags = ?');
-      values.push(JSON.stringify(flags ?? []));
+      values.push(JSON.stringify(req.body.flags ?? []));
     }
 
     if (fields.length > 0) {
@@ -1015,7 +1045,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/vehicles/:id - Delete vehicle
-router.delete('/vehicles/:id', (req: Request, res: Response) => {
+router.delete('/vehicles/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -1033,6 +1063,7 @@ router.delete('/vehicles/:id', (req: Request, res: Response) => {
       `).run(req.user!.userId, vehicle.id, `Deleted vehicle: ${vehicle.plate_number || 'No plate'} ${vehicle.make || ''} ${vehicle.model || ''}`, req.ip || 'unknown');
     });
     deleteTx();
+    broadcastRecordUpdate({ action: 'vehicle_deleted', id: vehicle.id, entity: 'vehicle' });
     res.json({ message: 'Vehicle deleted' });
   } catch (error: any) {
     console.error('Delete vehicle error:', error);
@@ -1166,6 +1197,69 @@ router.get('/properties/:id', (req: Request, res: Response) => {
 });
 
 // POST /api/records/properties - Create property
+// Shared allowlist for property POST + PUT so both accept the exact same
+// field set. Previously POST and PUT each handled a tiny subset (17 of 44
+// fields from PropertyFormModal) and silently dropped everything else,
+// including key holder info, alarm/camera details, building metadata,
+// security features, patrol settings, and after-hours contacts.
+// Audit 2026-04-11.
+const PROPERTY_FIELD_MAP: Record<string, (v: any) => any> = {
+  // Identity + location
+  client_id: v => v || null,
+  name: v => v ?? null,
+  address: v => v ?? null,
+  city: v => v ?? null,
+  state: v => v ?? null,
+  zip: v => v ?? null,
+  latitude: v => v === '' || v == null ? null : v,
+  longitude: v => v === '' || v == null ? null : v,
+  property_type: v => v ?? null,
+  is_active: v => v ? 1 : 0,
+  notes: v => v ?? null,
+  // Access + dispatch alerts
+  gate_code: v => v ?? null,
+  alarm_code: v => v ?? null,
+  emergency_contact: v => v ?? null,
+  post_orders: v => v ?? null,
+  hazard_notes: v => v ?? null,
+  access_instructions: v => v ?? null,
+  // Building metadata
+  business_type: v => v ?? null,
+  structure_type: v => v ?? null,
+  occupancy_status: v => v ?? null,
+  year_built: v => v === '' || v == null ? null : parseInt(v, 10) || null,
+  square_footage: v => v ?? null,
+  number_of_stories: v => v ?? null,
+  // Security features
+  security_features: v => v ?? null,
+  alarm_company: v => v ?? null,
+  alarm_account: v => v ?? null,
+  // F5: alarm system architecture (None / Self-Monitored / Pro-Monitored / Smart-Home / Wireless / Wired / Hybrid)
+  alarm_system: v => v ?? null,
+  camera_system: v => v ?? null,
+  // Key holder
+  key_holder_name: v => v ?? null,
+  key_holder_phone: v => v ?? null,
+  key_holder_relationship: v => v ?? null,
+  owner_name: v => v ?? null,
+  owner_phone: v => v ?? null,
+  // Inspection
+  last_inspection_date: v => v ?? null,
+  inspection_status: v => v ?? null,
+  // Access routes + hazards
+  parking_info: v => v ?? null,
+  roof_access: v => v ?? null,
+  utility_shutoffs: v => v ?? null,
+  known_hazards: v => v ?? null,
+  // Contacts + schedule
+  contact_email: v => v ?? null,
+  secondary_contact_name: v => v ?? null,
+  secondary_contact_phone: v => v ?? null,
+  patrol_frequency: v => v ?? null,
+  opening_hours: v => v ?? null,
+  closing_hours: v => v ?? null,
+};
+
 router.post('/properties', (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -1176,13 +1270,13 @@ router.post('/properties', (req: Request, res: Response) => {
       business_type, structure_type, occupancy_status, year_built, square_footage,
       number_of_stories, security_features, key_holder_name, key_holder_phone,
       key_holder_relationship, owner_name, owner_phone, last_inspection_date,
-      inspection_status, alarm_company, alarm_account, camera_system, parking_info,
-      roof_access, utility_shutoffs, known_hazards,
-      contact_email, secondary_contact_name, secondary_contact_phone,
-      patrol_frequency, opening_hours, closing_hours,
     } = req.body;
 
-    if (!name || !address) {
+    if (!req.body.client_id) {
+      res.status(400).json({ error: 'client_id is required', code: 'CLIENTID_IS_REQUIRED' });
+      return;
+    }
+    if (!req.body.name || !req.body.address) {
       res.status(400).json({ error: 'name and address are required', code: 'NAME_AND_ADDRESS_ARE' });
       return;
     }
@@ -1192,36 +1286,25 @@ router.post('/properties', (req: Request, res: Response) => {
         gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active, notes,
         business_type, structure_type, occupancy_status, year_built, square_footage,
         number_of_stories, security_features, key_holder_name, key_holder_phone,
-        key_holder_relationship, owner_name, owner_phone, last_inspection_date,
-        inspection_status, alarm_company, alarm_account, camera_system, parking_info,
-        roof_access, utility_shutoffs, known_hazards,
-        contact_email, secondary_contact_name, secondary_contact_phone,
-        patrol_frequency, opening_hours, closing_hours)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        key_holder_relationship, owner_name, owner_phone, last_inspection_date)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       client_id, name, address, city || null, state || null, zip || null,
       latitude || null, longitude || null,
       property_type || null, gate_code || null, alarm_code || null,
       emergency_contact || null, post_orders || null, hazard_notes || null,
-      access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1,
-      notes || null,
+      access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1, notes || null,
       business_type || null, structure_type || null, occupancy_status || null,
       year_built || null, square_footage || null, number_of_stories || null,
       security_features || null, key_holder_name || null, key_holder_phone || null,
       key_holder_relationship || null, owner_name || null, owner_phone || null,
-      last_inspection_date || null, inspection_status || null,
-      alarm_company || null, alarm_account || null, camera_system || null,
-      parking_info || null, roof_access || null,
-      utility_shutoffs || null, known_hazards || null,
-      contact_email || null, secondary_contact_name || null, secondary_contact_phone || null,
-      patrol_frequency || null, opening_hours || null, closing_hours || null,
+      last_inspection_date || null,
     );
 
-    // Activity log
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'property_created', 'property', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created property: ${name}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created property: ${req.body.name}`, req.ip || 'unknown');
 
     const property = db.prepare(`
       SELECT p.*, c.name as client_name
@@ -1298,13 +1381,350 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// BUSINESSES CRUD
+// ═══════════════════════════════════════════════════════════════
+
+router.get('/businesses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const archived = req.query.archived === 'true';
+    const sql = archived
+      ? `SELECT * FROM businesses WHERE archived_at IS NOT NULL ORDER BY name`
+      : `SELECT * FROM businesses WHERE archived_at IS NULL AND is_active = 1 ORDER BY name`;
+    const rows = db.prepare(sql).all();
+    res.json(rows);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load businesses' });
+  }
+});
+
+// Subject picker / dispatcher search — name prefix, exact phone/EIN, address substring.
+// Open to all authenticated roles. MUST be registered above /businesses/:id so the :id
+// param doesn't shadow /search.
+router.get('/businesses/search',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer', 'client_viewer', 'human_resources', 'contract_manager'),
+  (req: Request, res: Response) => {
+    try {
+      const q = paramStr(req.query.q as string | string[] | undefined, '').trim();
+      const limit = Math.min(parseInt(paramStr(req.query.limit as string | string[] | undefined, '20'), 10) || 20, 100);
+      if (q.length < 2) { res.json([]); return; }
+
+      const db = getDb();
+      const like = `%${q}%`;
+      const exact = q;
+      const prefix = `${q}%`;
+      const rows = db.prepare(`
+        SELECT * FROM businesses
+        WHERE archived_at IS NULL
+          AND (name LIKE ? OR dba_name LIKE ? OR phone = ? OR ein = ? OR address LIKE ?)
+        ORDER BY
+          CASE WHEN name LIKE ? THEN 0 ELSE 1 END,
+          name
+        LIMIT ?
+      `).all(like, like, exact, exact, like, prefix, limit);
+      res.json(rows);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) { res.json([]); return; }
+      res.status(500).json({ error: 'Failed to search businesses' });
+    }
+  }
+);
+
+// Person dossier — risk-first aggregation across warrants, trespasses,
+// arrests, incidents, calls, citations, and field interviews. Powers the
+// court-packet appendix rendered into person PDFs. MUST be registered
+// before /persons/:id so the :id route does not shadow it.
+router.get('/persons/:id/dossier', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(paramStr(req.params.id as any), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+    const db = getDb();
+    const { buildPersonDossier } = await import('../utils/personDossier');
+    const dossier = buildPersonDossier(db, id);
+    if (!dossier) { res.status(404).json({ error: 'Person not found' }); return; }
+    auditLog(req, 'VIEW', 'person_dossier', id, null, {
+      riskLevel: dossier.summary.riskLevel,
+      sectionCounts: {
+        warrants: dossier.warrants.count,
+        arrests: dossier.arrests.count,
+        incidents: dossier.incidents.count,
+        calls: dossier.calls.count,
+        citations: dossier.citations.count,
+      },
+    });
+    res.json(dossier);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to build person dossier', detail: err?.message });
+  }
+});
+
+// Vehicle dossier — incidents, calls, citations, FIs aggregated for the
+// vehicle PDF appendix. Mirrors person dossier shape.
+router.get('/vehicles/:id/dossier', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(paramStr(req.params.id as any), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+    const db = getDb();
+    const { buildVehicleDossier } = await import('../utils/vehicleDossier');
+    const dossier = buildVehicleDossier(db, id);
+    if (!dossier) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    auditLog(req, 'VIEW', 'vehicle_dossier', id, null, {
+      riskLevel: dossier.summary.riskLevel,
+      sectionCounts: {
+        incidents: dossier.incidents.count,
+        calls: dossier.calls.count,
+        citations: dossier.citations.count,
+      },
+    });
+    res.json(dossier);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to build vehicle dossier', detail: err?.message });
+  }
+});
+
+// Business dossier — multi-panel aggregated payload (Task 1.18). MUST be
+// registered before /businesses/:id so the :id route does not shadow it.
+router.get('/businesses/:id/dossier', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(paramStr(req.params.id as any), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+    const db = getDb();
+    const { buildBusinessDossier } = await import('../utils/businessAggregation');
+    const userRole = (req as any).user?.role;
+    const dossier = buildBusinessDossier(db, id, userRole);
+    if (!dossier) { res.status(404).json({ error: 'Business not found' }); return; }
+    auditLog(req, 'VIEW', 'business_dossier', id, null, { sections: Object.keys(dossier) });
+    res.json(dossier);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to build dossier', detail: err?.message });
+  }
+});
+
+router.get('/businesses/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM businesses WHERE id = ?').get(req.params.id);
+    if (!row) { res.status(404).json({ error: 'Business not found' }); return; }
+    res.json(row);
+  } catch { res.status(500).json({ error: 'Failed to get business' }); }
+});
+
+router.post('/businesses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes, alarm_panel_code, alarm_passphrase } = req.body;
+    if (!name) { res.status(400).json({ error: 'Business name required' }); return; }
+    const now = localNow();
+    // Alarm fields are AES-256-GCM encrypted at rest. encryptAlarmField returns
+    // null for null/empty input — safe to call directly.
+    const encPanel = encryptAlarmField(alarm_panel_code ?? null);
+    const encPass  = encryptAlarmField(alarm_passphrase ?? null);
+    const result = db.prepare(`INSERT INTO businesses (name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes, alarm_panel_code, alarm_passphrase, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      name, dba_name || null, business_type || null, ein || null, license_number || null,
+      address || null, city || null, state || null, zip || null,
+      phone || null, email || null, website || null,
+      owner_name || null, owner_phone || null, contact_name || null, contact_phone || null, contact_email || null,
+      industry || null, employee_count || null, annual_revenue || null, notes || null,
+      encPanel, encPass, now, now);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) { res.status(500).json({ error: 'Failed to create business: ' + err.message }); }
+});
+
+router.put('/businesses/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    const fields = ['name', 'dba_name', 'business_type', 'ein', 'license_number', 'address', 'city', 'state', 'zip', 'phone', 'email', 'website', 'owner_name', 'owner_phone', 'contact_name', 'contact_phone', 'contact_email', 'industry', 'employee_count', 'annual_revenue', 'notes', 'status'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]); }
+    }
+    // Alarm fields go through AES-256-GCM encryption. Use `in` rather than
+    // `!== undefined` so an explicit null in the body clears the column.
+    if ('alarm_panel_code' in req.body) {
+      updates.push('alarm_panel_code = ?');
+      values.push(encryptAlarmField(req.body.alarm_panel_code ?? null));
+    }
+    if ('alarm_passphrase' in req.body) {
+      updates.push('alarm_passphrase = ?');
+      values.push(encryptAlarmField(req.body.alarm_passphrase ?? null));
+    }
+    if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    updates.push('updated_at = ?'); values.push(localNow()); values.push(id);
+    db.prepare(`UPDATE businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: 'Failed to update business: ' + err.message }); }
+});
+
+router.delete('/businesses/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM businesses WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to delete business' }); }
+});
+
+// ── Business archive/unarchive (Task 1.12) ──
+// Soft-archive a business. Archived businesses are excluded from
+// /businesses/search but the record (and all linked junction rows) is
+// preserved for historical reporting.
+router.post('/businesses/:id/archive',
+  requireRole('admin', 'manager', 'supervisor'),
+  (req: Request, res: Response) => {
+    try {
+      const id = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const db = getDb();
+      const before = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id) as any;
+      if (!before) { res.status(404).json({ error: 'Business not found' }); return; }
+      db.prepare(`UPDATE businesses SET archived_at = datetime('now','localtime') WHERE id = ?`).run(id);
+      const after = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id);
+      auditLog(req, 'ARCHIVE', 'business', id, before, after);
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to archive business: ' + err.message });
+    }
+  }
+);
+
+router.post('/businesses/:id/unarchive',
+  requireRole('admin', 'manager', 'supervisor'),
+  (req: Request, res: Response) => {
+    try {
+      const id = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const db = getDb();
+      const before = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id) as any;
+      if (!before) { res.status(404).json({ error: 'Business not found' }); return; }
+      db.prepare('UPDATE businesses SET archived_at = NULL WHERE id = ?').run(id);
+      const after = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id);
+      auditLog(req, 'UNARCHIVE', 'business', id, before, after);
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to unarchive business: ' + err.message });
+    }
+  }
+);
+
+// ── Business ↔ Person linking endpoints (Task 1.9) ──
+// Manage business_persons table: create / update / delete person-to-business
+// associations with a role + optional dates + notes. Used by the Subject
+// picker and Business detail page.
+const VALID_BIZ_PERSON_ROLES = [
+  'owner', 'officer_director', 'manager', 'key_holder',
+  'security_contact', 'employee', 'vendor', 'other'
+] as const;
+
+router.post('/businesses/:id/persons',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const businessId = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const { person_id, role, start_date, end_date, notes } = req.body;
+      if (!VALID_BIZ_PERSON_ROLES.includes(role)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_BIZ_PERSON_ROLES] });
+        return;
+      }
+      const db = getDb();
+      const biz = db.prepare('SELECT id FROM businesses WHERE id = ?').get(businessId);
+      if (!biz) { res.status(404).json({ error: 'Business not found' }); return; }
+      const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(person_id);
+      if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+      try {
+        const result = db.prepare(`
+          INSERT INTO business_persons (business_id, person_id, role, start_date, end_date, notes, added_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(businessId, person_id, role, start_date || null, end_date || null, notes || null, req.user?.userId ?? null);
+        const row = db.prepare('SELECT * FROM business_persons WHERE id = ?').get(result.lastInsertRowid);
+        auditLog(req, 'CREATE', 'business_person_link', Number(result.lastInsertRowid), null, row);
+        broadcastDispatchUpdate({ action: 'business_persons_updated', business_id: businessId });
+        res.status(201).json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Person already linked to this business with this role' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create business-person link: ' + err.message });
+    }
+  }
+);
+
+router.put('/businesses/:id/persons/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const businessId = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as string | string[] | undefined), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM business_persons WHERE id = ? AND business_id = ?').get(linkId, businessId) as any;
+      if (!existing) { res.status(404).json({ error: 'Business-person link not found' }); return; }
+
+      const { role, start_date, end_date, notes } = req.body;
+      if (role !== undefined && !VALID_BIZ_PERSON_ROLES.includes(role)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_BIZ_PERSON_ROLES] });
+        return;
+      }
+
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role !== undefined)       { updates.push('role = ?');       values.push(role); }
+      if (start_date !== undefined) { updates.push('start_date = ?'); values.push(start_date || null); }
+      if (end_date !== undefined)   { updates.push('end_date = ?');   values.push(end_date || null); }
+      if (notes !== undefined)      { updates.push('notes = ?');      values.push(notes || null); }
+      if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      values.push(linkId);
+
+      try {
+        db.prepare(`UPDATE business_persons SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+        const row = db.prepare('SELECT * FROM business_persons WHERE id = ?').get(linkId);
+        auditLog(req, 'UPDATE', 'business_person_link', linkId, existing, row);
+        broadcastDispatchUpdate({ action: 'business_persons_updated', business_id: businessId });
+        res.json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Person already linked to this business with this role' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update business-person link: ' + err.message });
+    }
+  }
+);
+
+router.delete('/businesses/:id/persons/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const businessId = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as string | string[] | undefined), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM business_persons WHERE id = ? AND business_id = ?').get(linkId, businessId);
+      if (!existing) { res.status(404).json({ error: 'Business-person link not found' }); return; }
+
+      db.prepare('DELETE FROM business_persons WHERE id = ?').run(linkId);
+      auditLog(req, 'DELETE', 'business_person_link', linkId, existing, null);
+      broadcastDispatchUpdate({ action: 'business_persons_updated', business_id: businessId });
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete business-person link: ' + err.message });
+    }
+  }
+);
+
 // GET /api/records/evidence - List all evidence with incident info
 router.get('/evidence', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { page = '1', limit = '50', archived } = req.query;
+    const { page = '1', limit = '100000', archived } = req.query;
     const pageNum = parseInt(page as string, 10);
-    const limitNum = parseInt(limit as string, 10);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -1343,6 +1763,45 @@ router.get('/evidence', (req: Request, res: Response) => {
 });
 
 // PUT /api/records/evidence/:id - Update evidence
+// Shared allowlist for evidence POST + PUT. Previously POST handled 20
+// fields and PUT handled 20 — but EvidenceFormModal collects 27, so
+// location_found, condition, quantity, is_biological, narcotics_flag,
+// and temperature_sensitive were silently dropped on both create and
+// update. Audit 2026-04-11.
+const EVIDENCE_FIELD_MAP: Record<string, (v: any) => any> = {
+  incident_id: v => v || null,
+  description: v => v ?? null,
+  evidence_type: v => v ?? null,
+  category: v => v ?? null,
+  storage_location: v => v ?? null,
+  collected_date: v => v ?? null,
+  packaging_type: v => v ?? null,
+  serial_number: v => v ?? null,
+  brand: v => v ?? null,
+  model: v => v ?? null,
+  estimated_value: v => v ?? null,
+  dimensions: v => v ?? null,
+  weight: v => v ?? null,
+  photo_taken: v => v ? 1 : 0,
+  lab_submitted: v => v ? 1 : 0,
+  lab_case_number: v => v ?? null,
+  lab_name: v => v ?? null,
+  disposal_method: v => v ?? null,
+  disposal_date: v => v ?? null,
+  disposal_authorized_by: v => v ?? null,
+  notes: v => v ?? null,
+  // Previously silent-dropped (audit 2026-04-11)
+  location_found: v => v ?? null,
+  condition: v => v ?? null,
+  quantity: v => v === '' || v == null ? null : parseInt(v, 10) || null,
+  is_biological: v => v ? 1 : 0,
+  narcotics_flag: v => v ? 1 : 0,
+  temperature_sensitive: v => v ? 1 : 0,
+  // F6 advanced detail (chain-of-custody-context fields)
+  collection_context: v => v ?? null,
+  court_hold_reference: v => v ?? null,
+};
+
 router.put('/evidence/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -1352,29 +1811,13 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
       return;
     }
 
-    // Build dynamic SET clause — only update fields explicitly provided
+    // Build dynamic SET clause — uses shared EVIDENCE_FIELD_MAP so POST
+    // and PUT always accept the same field set.
     const eFields: string[] = [];
     const eValues: any[] = [];
     const eBodyKeys = Object.keys(req.body);
 
-    const eFieldMap: Record<string, (v: any) => any> = {
-      description: v => v ?? null, evidence_type: v => v ?? null,
-      storage_location: v => v ?? null, collected_date: v => v ?? null,
-      category: v => v ?? null, packaging_type: v => v ?? null,
-      serial_number: v => v ?? null, brand: v => v ?? null, model: v => v ?? null,
-      estimated_value: v => v ?? null, dimensions: v => v ?? null, weight: v => v ?? null,
-      photo_taken: v => v ? 1 : 0, lab_submitted: v => v ? 1 : 0,
-      lab_case_number: v => v ?? null, lab_name: v => v ?? null,
-      disposal_method: v => v ?? null, disposal_date: v => v ?? null,
-      disposal_authorized_by: v => v ?? null, notes: v => v ?? null,
-      location_found: v => v ?? null, condition: v => v ?? null,
-      quantity: v => v != null && v !== '' ? parseInt(v, 10) : null,
-      is_biological: v => v ? 1 : 0,
-      narcotics_flag: v => v ? 1 : 0,
-      temperature_sensitive: v => v ? 1 : 0,
-    };
-
-    for (const [key, transform] of Object.entries(eFieldMap)) {
+    for (const [key, transform] of Object.entries(EVIDENCE_FIELD_MAP)) {
       if (eBodyKeys.includes(key)) {
         eFields.push(`${key} = ?`);
         eValues.push(transform(req.body[key]));
@@ -1409,7 +1852,7 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/evidence/:id - Delete evidence
-router.delete('/evidence/:id', (req: Request, res: Response) => {
+router.delete('/evidence/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -1527,41 +1970,6 @@ router.post('/evidence/:id/custody', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Add custody entry error:', error);
     res.status(500).json({ error: 'Failed to add custody entry', code: 'ADD_CUSTODY_ENTRY_ERROR' });
-  }
-});
-
-// GET /api/records/evidence/export — CSV export
-router.get('/evidence/export', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { archived } = req.query;
-    let whereClause = 'WHERE 1=1';
-    if (archived === 'true') {
-      whereClause += ' AND e.archived_at IS NOT NULL';
-    } else {
-      whereClause += ' AND e.archived_at IS NULL';
-    }
-    const rows = db.prepare(`
-      SELECT e.evidence_number, e.description, e.evidence_type, e.status, e.storage_location,
-             e.collected_by, e.collected_at, e.incident_number, e.case_number, e.notes, e.created_at
-      FROM evidence e
-      ${whereClause}
-      ORDER BY e.created_at DESC
-      LIMIT 10000
-    `).all() as any[];
-    const headers = ['Evidence #', 'Description', 'Type', 'Status', 'Location', 'Collected By', 'Collected At', 'Incident #', 'Case #', 'Notes', 'Created'];
-    const csvRows = rows.map((r: any) => [
-      r.evidence_number, (r.description || '').replace(/"/g, '""'), r.evidence_type, r.status,
-      r.storage_location, r.collected_by, r.collected_at, r.incident_number, r.case_number,
-      (r.notes || '').replace(/"/g, '""'), r.created_at,
-    ]);
-    const csv = [headers.join(','), ...csvRows.map((r: any[]) => r.map(v => `"${v || ''}"`).join(','))].join('\n');
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="evidence_${new Date().toISOString().slice(0, 10)}.csv"`);
-    res.send(csv);
-  } catch (err: any) {
-    console.error('Evidence export error:', err?.message);
-    res.status(500).json({ error: 'Failed to export evidence', code: 'EXPORT_EVIDENCE_ERROR' });
   }
 });
 
@@ -2113,7 +2521,11 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       return;
     }
 
-    // Build dynamic SET clause — only update fields explicitly provided
+    // Build dynamic SET clause — uses the shared PROPERTY_FIELD_MAP so POST
+    // and PUT always accept the exact same field set. Previously this PUT
+    // only handled 17 of the 44 fields PropertyFormModal collects, so
+    // ~27 fields (key holder, alarm company, camera system, building
+    // metadata, patrol frequency, etc.) were silently dropped on edit.
     const pFields: string[] = [];
     const pValues: any[] = [];
     const pBodyKeys = Object.keys(req.body);
@@ -2125,25 +2537,16 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       property_type: v => v ?? null, gate_code: v => v ?? null,
       alarm_code: v => v ?? null, emergency_contact: v => v ?? null,
       post_orders: v => v ?? null, hazard_notes: v => v ?? null,
-      access_instructions: v => v ?? null,
+      access_instructions: v => v ?? null, notes: v => v ?? null,
       is_active: v => v ? 1 : 0,
       client_id: v => v || null,
-      notes: v => v ?? null,
       business_type: v => v ?? null, structure_type: v => v ?? null,
       occupancy_status: v => v ?? null, year_built: v => v ?? null,
       square_footage: v => v ?? null, number_of_stories: v => v ?? null,
       security_features: v => v ?? null, key_holder_name: v => v ?? null,
       key_holder_phone: v => v ?? null, key_holder_relationship: v => v ?? null,
       owner_name: v => v ?? null, owner_phone: v => v ?? null,
-      last_inspection_date: v => v ?? null, inspection_status: v => v ?? null,
-      alarm_company: v => v ?? null, alarm_account: v => v ?? null,
-      camera_system: v => v ?? null, parking_info: v => v ?? null,
-      roof_access: v => v ?? null, utility_shutoffs: v => v ?? null,
-      known_hazards: v => v ?? null,
-      contact_email: v => v ?? null, secondary_contact_name: v => v ?? null,
-      secondary_contact_phone: v => v ?? null,
-      patrol_frequency: v => v ?? null, opening_hours: v => v ?? null,
-      closing_hours: v => v ?? null,
+      last_inspection_date: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(pFieldMap)) {
@@ -2180,7 +2583,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/properties/:id - Delete property
-router.delete('/properties/:id', (req: Request, res: Response) => {
+router.delete('/properties/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -2255,10 +2658,11 @@ router.post('/evidence', (req: Request, res: Response) => {
       disposal_method, disposal_date, disposal_authorized_by,
       serial_number, brand, model, estimated_value, category, notes,
       location_found, condition, quantity, is_biological,
-      narcotics_flag, temperature_sensitive,
+      // F6 advanced detail (collection-context + court hold binding)
+      collection_context, court_hold_reference,
     } = req.body;
 
-    if (!description || !evidence_type) {
+    if (!req.body.description || !req.body.evidence_type) {
       res.status(400).json({ error: 'description and evidence_type are required', code: 'DESCRIPTION_AND_EVIDENCETYPE_ARE' });
       return;
     }
@@ -2284,7 +2688,7 @@ router.post('/evidence', (req: Request, res: Response) => {
         disposal_method, disposal_date, disposal_authorized_by,
         serial_number, brand, model, estimated_value, category, notes,
         location_found, condition, quantity, is_biological,
-        narcotics_flag, temperature_sensitive
+        collection_context, court_hold_reference
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
@@ -2295,19 +2699,14 @@ router.post('/evidence', (req: Request, res: Response) => {
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
       serial_number || null, brand || null, model || null, estimated_value || null, category || null,
       notes || null,
-      location_found || null,
-      condition || null,
-      quantity != null && quantity !== '' ? parseInt(quantity, 10) : 1,
-      is_biological ? 1 : 0,
-      narcotics_flag ? 1 : 0,
-      temperature_sensitive ? 1 : 0,
+      location_found || null, condition || null, quantity ?? 1, is_biological ? 1 : 0,
+      collection_context || null, court_hold_reference || null
     );
 
-    // Activity log
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'evidence_created', 'evidence', ?, ?, ?)
-    `).run(req.user!.userId, result.lastInsertRowid, `Created evidence: ${evidenceNumber} - ${description}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created evidence: ${evidenceNumber} - ${req.body.description}`, req.ip || 'unknown');
 
     const created = db.prepare(`
       SELECT e.*, i.incident_number, u.full_name as collected_by_name
@@ -2345,30 +2744,6 @@ function getRecordLabel(db: any, type: string, id: number): string {
         const e = db.prepare('SELECT evidence_number, description FROM evidence WHERE id = ?').get(id) as any;
         return e ? `${e.evidence_number || ''} ${e.description || ''}`.trim() : `Evidence #${id}`;
       }
-      case 'incident': {
-        const i = db.prepare('SELECT incident_number, incident_type FROM incidents WHERE id = ?').get(id) as any;
-        return i ? `${i.incident_number} — ${i.incident_type || ''}`.trim() : `Incident #${id}`;
-      }
-      case 'call': {
-        const c = db.prepare('SELECT call_number, incident_type FROM calls_for_service WHERE id = ?').get(id) as any;
-        return c ? `${c.call_number} — ${c.incident_type || ''}`.trim() : `Call #${id}`;
-      }
-      case 'case': {
-        const cs = db.prepare('SELECT case_number, case_type FROM cases WHERE id = ?').get(id) as any;
-        return cs ? `${cs.case_number} — ${cs.case_type || ''}`.trim() : `Case #${id}`;
-      }
-      case 'warrant': {
-        const w = db.prepare('SELECT warrant_number, charge_description FROM warrants WHERE id = ?').get(id) as any;
-        return w ? `${w.warrant_number} — ${(w.charge_description || '').substring(0, 40)}`.trim() : `Warrant #${id}`;
-      }
-      case 'citation': {
-        const ct = db.prepare('SELECT citation_number, violation_description FROM citations WHERE id = ?').get(id) as any;
-        return ct ? `${ct.citation_number} — ${(ct.violation_description || '').substring(0, 40)}`.trim() : `Citation #${id}`;
-      }
-      case 'arrest': {
-        const ar = db.prepare('SELECT booking_number, charges FROM arrest_records WHERE id = ?').get(id) as any;
-        return ar ? `${ar.booking_number || `Arrest #${id}`}`.trim() : `Arrest #${id}`;
-      }
       default:
         return `${type} #${id}`;
     }
@@ -2381,7 +2756,8 @@ function getRecordLabel(db: any, type: string, id: number): string {
 router.get('/links', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { type, id } = req.query;
+    const type = req.query.type || req.query.source_type;
+    const id = req.query.id || req.query.source_id;
 
     if (!type || !id) {
       res.status(400).json({ error: 'type and id query parameters are required', code: 'TYPE_AND_ID_QUERY' });
@@ -2467,7 +2843,7 @@ router.post('/links', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/links/:id - Remove a record link
-router.delete('/links/:id', (req: Request, res: Response) => {
+router.delete('/links/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM record_links WHERE id = ?').get(req.params.id) as any;
@@ -2487,76 +2863,6 @@ router.delete('/links/:id', (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('Delete record link error:', error);
     res.status(500).json({ error: 'Failed to delete record link', code: 'DELETE_RECORD_LINK_ERROR' });
-  }
-});
-
-// ─── CONNECTIONS HUB — All records connected to an entity ────
-router.get('/connections/:type/:id', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { type, id } = req.params;
-
-    // Direct record links (bidirectional)
-    let links: any[] = [];
-    try {
-      links = db.prepare(`
-        SELECT rl.*, u.full_name as created_by_name
-        FROM record_links rl LEFT JOIN users u ON rl.created_by = u.id
-        WHERE (rl.source_type = ? AND rl.source_id = ?) OR (rl.target_type = ? AND rl.target_id = ?)
-        ORDER BY rl.created_at DESC
-      `).all(type, id, type, id) as any[];
-    } catch { /* table may not exist */ }
-
-    const enrichedLinks = links.map((link: any) => {
-      const isSource = link.source_type === type && String(link.source_id) === String(id);
-      const linkedType = isSource ? link.target_type : link.source_type;
-      const linkedId = isSource ? link.target_id : link.source_id;
-      return { ...link, linked_type: linkedType, linked_id: linkedId, linked_label: getRecordLabel(db, linkedType, linkedId) };
-    });
-
-    // Type-specific cross-references
-    let incidents: any[] = [], calls: any[] = [], warrants: any[] = [], citations: any[] = [], arrests: any[] = [], associates: any[] = [];
-    let trespassOrders: any[] = [];
-
-    if (type === 'person') {
-      try { incidents = db.prepare('SELECT i.id, i.incident_number, i.incident_type, i.status, ip.role, i.created_at FROM incident_persons ip JOIN incidents i ON i.id = ip.incident_id WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 50').all(id); } catch {}
-      try { calls = db.prepare('SELECT c.id, c.call_number, c.incident_type, c.status, cp.role, c.created_at FROM call_persons cp JOIN calls_for_service c ON c.id = cp.call_id WHERE cp.person_id = ? ORDER BY c.created_at DESC LIMIT 50').all(id); } catch {}
-      try { warrants = db.prepare('SELECT id, warrant_number, type, status, charge_description, created_at FROM warrants WHERE subject_person_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
-      try { citations = db.prepare('SELECT id, citation_number, type, status, violation_description, created_at FROM citations WHERE person_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
-      try { arrests = db.prepare('SELECT id, booking_number, charges, booking_date FROM arrest_records WHERE person_id = ? ORDER BY booking_date DESC LIMIT 20').all(id); } catch {}
-      try {
-        associates = db.prepare(`
-          SELECT pa.*, p.first_name, p.last_name, p.photo_url
-          FROM person_associates pa LEFT JOIN persons p ON pa.associate_person_id = p.id
-          WHERE pa.person_id = ?
-          UNION
-          SELECT pa.*, p.first_name, p.last_name, p.photo_url
-          FROM person_associates pa LEFT JOIN persons p ON pa.person_id = p.id
-          WHERE pa.associate_person_id = ?
-          ORDER BY created_at DESC
-        `).all(id, id);
-      } catch {}
-    }
-
-    if (type === 'vehicle') {
-      try { incidents = db.prepare('SELECT i.id, i.incident_number, i.incident_type, i.status, iv.role, i.created_at FROM incident_vehicles iv JOIN incidents i ON i.id = iv.incident_id WHERE iv.vehicle_id = ? ORDER BY i.created_at DESC LIMIT 50').all(id); } catch {}
-      try { calls = db.prepare('SELECT c.id, c.call_number, c.incident_type, c.status, cv.role, c.created_at FROM call_vehicles cv JOIN calls_for_service c ON c.id = cv.call_id WHERE cv.vehicle_id = ? ORDER BY c.created_at DESC LIMIT 50').all(id); } catch {}
-      try { citations = db.prepare('SELECT id, citation_number, type, status, violation_description, created_at FROM citations WHERE vehicle_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
-    }
-
-    if (type === 'property') {
-      try { incidents = db.prepare('SELECT id, incident_number, incident_type, status, created_at FROM incidents WHERE property_id = ? ORDER BY created_at DESC LIMIT 50').all(id); } catch {}
-      try { calls = db.prepare('SELECT id, call_number, incident_type, status, created_at FROM calls_for_service WHERE property_id = ? ORDER BY created_at DESC LIMIT 50').all(id); } catch {}
-      try { trespassOrders = db.prepare('SELECT id, order_number, status, subject_name, created_at FROM trespass_orders WHERE property_id = ? ORDER BY created_at DESC LIMIT 20').all(id); } catch {}
-    }
-
-    res.json({
-      links: enrichedLinks,
-      incidents, calls, warrants, citations, arrests, associates, trespassOrders,
-      total: enrichedLinks.length + incidents.length + calls.length + warrants.length + citations.length + arrests.length + associates.length + trespassOrders.length,
-    });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Failed to load connections' });
   }
 });
 
@@ -2720,35 +3026,41 @@ router.post('/persons/:id/criminal-history', (req: Request, res: Response) => {
 router.put('/criminal-history/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const {
-      record_type, offense, offense_level, statute, case_number,
-      agency, jurisdiction, offense_date, disposition, disposition_date,
-      sentence, source, notes,
-    } = req.body;
-
-    db.prepare(`
-      UPDATE criminal_history SET
-        record_type = COALESCE(?, record_type),
-        offense = COALESCE(?, offense),
-        offense_level = ?,
-        statute = ?,
-        case_number = ?,
-        agency = ?,
-        jurisdiction = ?,
-        offense_date = ?,
-        disposition = ?,
-        disposition_date = ?,
-        sentence = ?,
-        source = ?,
-        notes = ?,
-        updated_at = datetime('now','localtime')
-      WHERE id = ?
-    `).run(
-      record_type, offense, offense_level || null, statute || null,
-      case_number || null, agency || null, jurisdiction || null,
-      offense_date || null, disposition || null, disposition_date || null,
-      sentence || null, source || null, notes || null, req.params.id,
-    );
+    // Audit 2026-04-11: previous handler hard-overwrote every column with
+    // its current request value, including any field the form omitted —
+    // so editing one field would null out all the others. Switched to a
+    // dynamic SET clause that only updates keys actually present in the
+    // request body.
+    const fieldMap: Record<string, (v: any) => any> = {
+      record_type: v => v ?? null,
+      offense: v => v ?? null,
+      offense_level: v => v ?? null,
+      statute: v => v ?? null,
+      case_number: v => v ?? null,
+      agency: v => v ?? null,
+      jurisdiction: v => v ?? null,
+      offense_date: v => v ?? null,
+      disposition: v => v ?? null,
+      disposition_date: v => v ?? null,
+      sentence: v => v ?? null,
+      source: v => v ?? null,
+      notes: v => v ?? null,
+    };
+    const sets: string[] = [];
+    const values: any[] = [];
+    for (const [key, transform] of Object.entries(fieldMap)) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        sets.push(`${key} = ?`);
+        values.push(transform(req.body[key]));
+      }
+    }
+    if (sets.length === 0) {
+      res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' });
+      return;
+    }
+    sets.push("updated_at = datetime('now','localtime')");
+    values.push(req.params.id);
+    db.prepare(`UPDATE criminal_history SET ${sets.join(', ')} WHERE id = ?`).run(...values);
 
     const updated = db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(req.params.id);
     res.json(updated);
@@ -2759,7 +3071,7 @@ router.put('/criminal-history/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/criminal-history/:id
-router.delete('/criminal-history/:id', (req: Request, res: Response) => {
+router.delete('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
@@ -2916,7 +3228,7 @@ router.put('/client-persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/client-persons/:id - Remove link
-router.delete('/client-persons/:id', (req: Request, res: Response) => {
+router.delete('/client-persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare(`
@@ -3226,34 +3538,6 @@ router.get('/ncic-query', (req: Request, res: Response) => {
 // Feature 21: Person Merge Tool — Detect and merge duplicate persons
 // ═══════════════════════════════════════════════════════════════════
 
-// POST /api/records/persons/check-duplicates — Lightweight duplicate check before creating a person
-router.post('/persons/check-duplicates', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { first_name, last_name, dob } = req.body;
-    if (!first_name || !last_name) {
-      res.status(400).json({ error: 'first_name and last_name required', code: 'NAME_REQUIRED' });
-      return;
-    }
-    const params: any[] = [last_name.toLowerCase(), first_name.toLowerCase()];
-    let dobClause = '';
-    if (dob) { dobClause = ' OR p.dob = ?'; params.push(dob); }
-    const matches = db.prepare(`
-      SELECT p.id, p.first_name, p.last_name, p.dob, p.address, p.phone, p.dl_number
-      FROM persons p
-      WHERE p.archived_at IS NULL
-        AND LOWER(p.last_name) = ?
-        AND (LOWER(p.first_name) = ?${dobClause})
-      ORDER BY p.last_name, p.first_name
-      LIMIT 5
-    `).all(...params);
-    res.json({ matches });
-  } catch (error: any) {
-    console.error('Check duplicates error:', error);
-    res.status(500).json({ error: 'Failed to check duplicates', code: 'CHECK_DUPLICATES_ERROR' });
-  }
-});
-
 // GET /api/records/persons/duplicates - Find potential duplicate persons
 router.get('/persons/duplicates', (req: Request, res: Response) => {
   try {
@@ -3378,7 +3662,7 @@ router.get('/reports/approval-queue', (req: Request, res: Response) => {
 router.post('/reports/:id/approve', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const now = localNow();
@@ -3410,7 +3694,7 @@ router.post('/reports/:id/approve', (req: Request, res: Response) => {
 router.post('/reports/:id/return', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { reason } = req.body;
@@ -3444,7 +3728,7 @@ router.post('/reports/:id/return', (req: Request, res: Response) => {
 router.get('/cases/:id/solvability', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as any;
@@ -3573,7 +3857,7 @@ router.get('/vehicles/bolo-check', (req: Request, res: Response) => {
 router.post('/persons/:id/photo', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { photo } = req.body; // Base64 data URL
@@ -3583,12 +3867,15 @@ router.post('/persons/:id/photo', (req: Request, res: Response) => {
     }
 
     const now = localNow();
-    db.prepare('UPDATE persons SET photo = ?, updated_at = ? WHERE id = ?').run(photo, now, id);
+    // Write to photo_url (the column the rest of the app reads). The
+    // legacy `photo` column existed but nothing reads it, so prior writes
+    // were silently invisible. Audit 2026-04-11.
+    db.prepare('UPDATE persons SET photo_url = ?, updated_at = ? WHERE id = ?').run(photo, now, id);
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'photo_uploaded', 'person', ?, ?, ?)`).run(
       req.user!.userId, id, 'Person photo uploaded', req.ip || 'unknown');
 
-    res.json({ success: true });
+    res.json({ success: true, photo_url: photo });
   } catch (error: any) {
     console.error('Photo upload error:', error);
     res.status(500).json({ error: 'Failed to photo upload', code: 'PHOTO_UPLOAD_ERROR' });
@@ -3628,7 +3915,7 @@ router.get('/location-suggest', (req: Request, res: Response) => {
 router.post('/cases/:id/assign', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id) || id < 1) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
 
     const { detective_id } = req.body;
@@ -4081,10 +4368,13 @@ router.post('/persons/:id/associates', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id/associates/:linkId - Remove associate link
-router.delete('/persons/:id/associates/:linkId', (req: Request, res: Response) => {
+router.delete('/persons/:id/associates/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.linkId, req.params.id) as any;
+    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.linkId);
+    auditLog(req, 'DELETE', 'person_associate', parseInt(paramStr(req.params.linkId)), `Removed associate from person #${paramStr(req.params.id)}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Remove associate error:', error);
@@ -4171,11 +4461,29 @@ router.get('/evidence/:id/temperature', (req: Request, res: Response) => {
 // ════════════════════════════════════════════════════════════
 // UPGRADE 1: Person Alias Tracking
 // ════════════════════════════════════════════════════════════
-try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_aliases (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, alias_name TEXT NOT NULL, alias_type TEXT DEFAULT 'aka', notes TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+// Audit 2026-04-11: the original module-load `try { getDb(); ... }`
+// silently failed because getDb() throws before initDatabase() runs, so
+// the table was never created and every alias write threw "no such table:
+// person_aliases". Switched to a lazy idempotent creator called from each
+// handler.
+function ensurePersonAliasesTable(db: any) {
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS person_aliases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+      alias_name TEXT NOT NULL,
+      alias_type TEXT DEFAULT 'aka',
+      notes TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )`
+  ).run();
+}
 
 router.get('/persons/:id/aliases', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAliasesTable(db);
     const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
     if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
     const aliases = db.prepare('SELECT pa.*, u.full_name as created_by_name FROM person_aliases pa LEFT JOIN users u ON pa.created_by = u.id WHERE pa.person_id = ? ORDER BY pa.created_at DESC').all(req.params.id);
@@ -4186,6 +4494,7 @@ router.get('/persons/:id/aliases', (req: Request, res: Response) => {
 router.post('/persons/:id/aliases', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAliasesTable(db);
     const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
     if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
     const { alias_name, alias_type, notes } = req.body;
@@ -4197,13 +4506,14 @@ router.post('/persons/:id/aliases', (req: Request, res: Response) => {
   } catch (error: any) { console.error('Create alias error:', error); res.status(500).json({ error: 'Failed to create alias', code: 'CREATE_ALIAS_ERROR' }); }
 });
 
-router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => {
+router.delete('/persons/:id/aliases/:aliasId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAliasesTable(db);
     const alias = db.prepare('SELECT * FROM person_aliases WHERE id = ? AND person_id = ?').get(req.params.aliasId, req.params.id) as any;
     if (!alias) { res.status(404).json({ error: 'Alias not found', code: 'ALIAS_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_aliases WHERE id = ?').run(req.params.aliasId);
-    auditLog(req, 'DELETE', 'person_alias', parseInt(req.params.aliasId as string), `Removed alias "${alias.alias_name}" from person #${req.params.id}`);
+    auditLog(req, 'DELETE', 'person_alias', parseInt(paramStr(req.params.aliasId)), `Removed alias "${alias.alias_name}" from person #${paramStr(req.params.id)}`);
     res.json({ success: true });
   } catch (error: any) { console.error('Delete alias error:', error); res.status(500).json({ error: 'Failed to delete alias', code: 'DELETE_ALIAS_ERROR' }); }
 });
@@ -4211,54 +4521,43 @@ router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 2: Known Associates
 // ════════════════════════════════════════════════════════════
-try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_associates (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, associate_person_id INTEGER REFERENCES persons(id) ON DELETE SET NULL, associate_name TEXT NOT NULL, relationship_type TEXT DEFAULT 'associate', notes TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+// Audit 2026-04-11: removed dead module-load CREATE TABLE that defined a
+// stale schema (associate_person_id/associate_name) different from the
+// authoritative one in database.ts (associate_id). The IF NOT EXISTS made
+// it a no-op against an already-created table; the only effect was a
+// silent error in the try/catch at module load. The real schema lives in
+// database.ts and is used by the handlers above.
 
-router.get('/persons/:id/associates', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
-    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
-    const associates = db.prepare(`SELECT pa.*, p.first_name as assoc_first, p.last_name as assoc_last, p.photo_url as assoc_photo, p.dob as assoc_dob, p.flags as assoc_flags FROM person_associates pa LEFT JOIN persons p ON pa.associate_person_id = p.id WHERE pa.person_id = ? ORDER BY pa.created_at DESC`).all(req.params.id);
-    const reverseAssociates = db.prepare(`SELECT pa.*, p.first_name as owner_first, p.last_name as owner_last, p.photo_url as owner_photo FROM person_associates pa LEFT JOIN persons p ON pa.person_id = p.id WHERE pa.associate_person_id = ? ORDER BY pa.created_at DESC`).all(req.params.id);
-    res.json({ data: { associates, reverse_associates: reverseAssociates } });
-  } catch (error: any) { console.error('Get associates error:', error); res.status(500).json({ error: 'Failed to get associates', code: 'GET_ASSOCIATES_ERROR' }); }
-});
-
-router.post('/persons/:id/associates', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
-    if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
-    const { associate_person_id, associate_name, relationship_type, notes } = req.body;
-    if (!associate_name?.trim() && !associate_person_id) { res.status(400).json({ error: 'associate_name or associate_person_id required', code: 'MISSING_ASSOCIATE' }); return; }
-    let name = associate_name || '';
-    if (associate_person_id && !name) { const ap = db.prepare('SELECT first_name, last_name FROM persons WHERE id = ?').get(associate_person_id) as any; if (ap) name = `${ap.first_name} ${ap.last_name}`; }
-    const now = localNow();
-    const result = db.prepare('INSERT INTO person_associates (person_id, associate_person_id, associate_name, relationship_type, notes, created_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(req.params.id, associate_person_id || null, name, relationship_type || 'associate', notes || null, req.user!.userId, now);
-    auditLog(req, 'CREATE', 'person_associate', Number(result.lastInsertRowid), `Added associate "${name}" to person #${req.params.id}`);
-    res.status(201).json({ data: { id: result.lastInsertRowid } });
-  } catch (error: any) { console.error('Create associate error:', error); res.status(500).json({ error: 'Failed to create associate', code: 'CREATE_ASSOCIATE_ERROR' }); }
-});
-
-router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.assocId, req.params.id) as any;
-    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
-    db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.assocId);
-    auditLog(req, 'DELETE', 'person_associate', parseInt(req.params.assocId as string), `Removed associate from person #${req.params.id}`);
-    res.json({ success: true });
-  } catch (error: any) { console.error('Delete associate error:', error); res.status(500).json({ error: 'Failed to delete associate', code: 'DELETE_ASSOCIATE_ERROR' }); }
-});
 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 3: Last Known Address Tracking
 // ════════════════════════════════════════════════════════════
-try { const db = getDb(); db.exec(`CREATE TABLE IF NOT EXISTS person_address_history (id INTEGER PRIMARY KEY AUTOINCREMENT, person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE, address TEXT NOT NULL, city TEXT, state TEXT, zip TEXT, address_type TEXT DEFAULT 'residential', source TEXT DEFAULT 'manual', verified INTEGER DEFAULT 0, effective_from TEXT, effective_to TEXT, created_by INTEGER, created_at TEXT NOT NULL)`); } catch { /* already exists */ }
+// Audit 2026-04-11: same module-load init failure as person_aliases.
+// Switched to a lazy idempotent creator.
+function ensurePersonAddressHistoryTable(db: any) {
+  db.prepare(
+    `CREATE TABLE IF NOT EXISTS person_address_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
+      address TEXT NOT NULL,
+      city TEXT,
+      state TEXT,
+      zip TEXT,
+      address_type TEXT DEFAULT 'residential',
+      source TEXT DEFAULT 'manual',
+      verified INTEGER DEFAULT 0,
+      effective_from TEXT,
+      effective_to TEXT,
+      created_by INTEGER,
+      created_at TEXT NOT NULL
+    )`
+  ).run();
+}
 
 router.get('/persons/:id/addresses', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAddressHistoryTable(db);
     const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
     if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
     const addresses = db.prepare('SELECT pah.*, u.full_name as created_by_name FROM person_address_history pah LEFT JOIN users u ON pah.created_by = u.id WHERE pah.person_id = ? ORDER BY pah.effective_from DESC, pah.created_at DESC').all(req.params.id);
@@ -4269,6 +4568,7 @@ router.get('/persons/:id/addresses', (req: Request, res: Response) => {
 router.post('/persons/:id/addresses', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensurePersonAddressHistoryTable(db);
     const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(req.params.id);
     if (!person) { res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }); return; }
     const { address, city, state, zip, address_type, source, effective_from } = req.body;
@@ -4573,743 +4873,5 @@ router.post('/plate-check', async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Plate check failed', code: 'PLATE_CHECK_ERROR' });
   }
 });
-
-// ══════════════════════════════════════════════════════════════════════════════
-// COMPOUND SEARCH — NCIC-style multi-field search across persons and vehicles
-// ══════════════════════════════════════════════════════════════════════════════
-
-router.get('/compound-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const {
-      name, dob_from, dob_to, race, gender,
-      height_min, height_max, weight_min, weight_max,
-      hair_color, eye_color, build,
-      address, alias, ssn_last4,
-      plate, dl_number, flags, limit,
-    } = req.query;
-
-    const limitNum = Math.min(parseInt(limit as string, 10) || 50, 200);
-
-    // ── Build person query ──
-    const personConditions: string[] = [];
-    const personParams: any[] = [];
-    let paramCount = 0;
-
-    if (name) {
-      const nameStr = (name as string).replace(/\*/g, '%');
-      personConditions.push("(last_name LIKE ? OR first_name LIKE ? OR (last_name || ', ' || first_name) LIKE ?)");
-      personParams.push(nameStr, nameStr, nameStr);
-      paramCount++;
-    }
-    if (dob_from) {
-      personConditions.push('dob >= ?');
-      personParams.push(dob_from as string);
-      paramCount++;
-    }
-    if (dob_to) {
-      personConditions.push('dob <= ?');
-      personParams.push(dob_to as string);
-      paramCount++;
-    }
-    if (race) {
-      personConditions.push('race = ?');
-      personParams.push(race as string);
-      paramCount++;
-    }
-    if (gender) {
-      personConditions.push('gender = ?');
-      personParams.push(gender as string);
-      paramCount++;
-    }
-    if (height_min) {
-      personConditions.push('(COALESCE(height_feet,0) * 12 + COALESCE(height_inches,0)) >= ?');
-      personParams.push(parseInt(height_min as string, 10));
-      paramCount++;
-    }
-    if (height_max) {
-      personConditions.push('(COALESCE(height_feet,0) * 12 + COALESCE(height_inches,0)) <= ?');
-      personParams.push(parseInt(height_max as string, 10));
-      paramCount++;
-    }
-    if (weight_min) {
-      personConditions.push('CAST(weight AS INTEGER) >= ?');
-      personParams.push(parseInt(weight_min as string, 10));
-      paramCount++;
-    }
-    if (weight_max) {
-      personConditions.push('CAST(weight AS INTEGER) <= ?');
-      personParams.push(parseInt(weight_max as string, 10));
-      paramCount++;
-    }
-    if (hair_color) {
-      personConditions.push('hair_color = ?');
-      personParams.push(hair_color as string);
-      paramCount++;
-    }
-    if (eye_color) {
-      personConditions.push('eye_color = ?');
-      personParams.push(eye_color as string);
-      paramCount++;
-    }
-    if (build) {
-      personConditions.push('build = ?');
-      personParams.push(build as string);
-      paramCount++;
-    }
-    if (address) {
-      personConditions.push('address LIKE ?');
-      personParams.push(`%${address}%`);
-      paramCount++;
-    }
-    if (alias) {
-      personConditions.push('alias_nickname LIKE ?');
-      personParams.push(`%${alias}%`);
-      paramCount++;
-    }
-    if (ssn_last4) {
-      personConditions.push('ssn_last4 = ?');
-      personParams.push(ssn_last4 as string);
-      paramCount++;
-    }
-    if (dl_number) {
-      personConditions.push('dl_number LIKE ?');
-      personParams.push(`%${dl_number}%`);
-      paramCount++;
-    }
-
-    // Flags filter: comma-separated flag names to check in JSON flags column
-    if (flags) {
-      const flagList = (flags as string).split(',').map(f => f.trim()).filter(Boolean);
-      for (const flag of flagList) {
-        personConditions.push('flags LIKE ?');
-        personParams.push(`%"${flag}"%`);
-        paramCount++;
-      }
-    }
-
-    let persons: any[] = [];
-    if (personConditions.length > 0) {
-      try {
-        const whereClause = personConditions.join(' AND ');
-        persons = db.prepare(`
-          SELECT * FROM persons
-          WHERE ${whereClause}
-          ORDER BY last_name, first_name
-          LIMIT ?
-        `).all(...personParams, limitNum);
-
-        // Compute match_score for each person
-        persons = persons.map((p: any) => {
-          let score = 0;
-          if (name) {
-            const nameStr = (name as string).replace(/\*/g, '').toUpperCase();
-            if ((p.last_name || '').toUpperCase().includes(nameStr) || (p.first_name || '').toUpperCase().includes(nameStr)) score++;
-          }
-          if (dob_from || dob_to) score++;
-          if (race && p.race === race) score++;
-          if (gender && p.gender === gender) score++;
-          if (height_min || height_max) score++;
-          if (weight_min || weight_max) score++;
-          if (hair_color && p.hair_color === hair_color) score++;
-          if (eye_color && p.eye_color === eye_color) score++;
-          if (build && p.build === build) score++;
-          if (address) score++;
-          if (alias) score++;
-          if (ssn_last4) score++;
-          if (dl_number) score++;
-          if (flags) score++;
-          return { ...p, match_score: score };
-        });
-
-        // Sort by match_score descending
-        persons.sort((a: any, b: any) => b.match_score - a.match_score);
-      } catch (e) {
-        console.warn('[Compound Search] Person query error:', (e as Error).message);
-      }
-    }
-
-    // ── Build vehicle query (only if plate provided) ──
-    let vehicles: any[] = [];
-    if (plate) {
-      try {
-        const plateStr = (plate as string).replace(/\*/g, '%');
-        vehicles = db.prepare(`
-          SELECT * FROM vehicles_records
-          WHERE plate_number LIKE ?
-          ORDER BY plate_number
-          LIMIT ?
-        `).all(plateStr, limitNum);
-
-        vehicles = vehicles.map((v: any) => ({
-          ...v,
-          match_score: 1,
-        }));
-      } catch (e) {
-        console.warn('[Compound Search] Vehicle query error:', (e as Error).message);
-      }
-    }
-
-    res.json({
-      persons,
-      vehicles,
-      total: persons.length + vehicles.length,
-      params_used: paramCount,
-    });
-  } catch (err: any) {
-    console.error('[Compound Search] Error:', err);
-    res.status(500).json({ error: 'Compound search failed', code: 'COMPOUND_SEARCH_ERROR' });
-  }
-});
-
-
-// ══════════════════════════════════════════════════════════════════════════════
-// UNIVERSAL SEARCH — Single search bar across all record types
-// ══════════════════════════════════════════════════════════════════════════════
-
-router.get('/universal-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { q, limit } = req.query;
-
-    if (!q || (q as string).length < 2) {
-      res.status(400).json({ error: 'Search query must be at least 2 characters', code: 'QUERY_TOO_SHORT' });
-      return;
-    }
-
-    const searchTerm = `%${q}%`;
-    const limitNum = Math.min(parseInt(limit as string, 10) || 5, 50);
-
-    // ── Persons ──
-    let persons: any[] = [];
-    try {
-      const rows = db.prepare(`
-        SELECT id, first_name, last_name, middle_name, dob, gender, race
-        FROM persons
-        WHERE (first_name || ' ' || last_name) LIKE ? OR alias_nickname LIKE ? OR dl_number LIKE ?
-        ORDER BY last_name, first_name
-        LIMIT ?
-      `).all(searchTerm, searchTerm, searchTerm, limitNum);
-      persons = rows.map((r: any) => ({
-        id: r.id,
-        type: 'person',
-        label: `${(r.last_name || '').toUpperCase()}, ${(r.first_name || '').toUpperCase()}${r.middle_name ? ' ' + (r.middle_name as string).charAt(0).toUpperCase() : ''}`,
-        subtitle: `DOB: ${r.dob || 'UNK'} | ${r.gender || '?'}/${r.race || '?'}`,
-      }));
-    } catch (e) { console.warn('[Universal Search] persons query failed:', (e as Error).message); }
-
-    // ── Vehicles ──
-    let vehicles: any[] = [];
-    try {
-      const rows = db.prepare(`
-        SELECT id, plate_number, plate_state, vin, year, make, model, color
-        FROM vehicles_records
-        WHERE plate_number LIKE ? OR vin LIKE ? OR (make || ' ' || model) LIKE ?
-        ORDER BY plate_number
-        LIMIT ?
-      `).all(searchTerm, searchTerm, searchTerm, limitNum);
-      vehicles = rows.map((r: any) => ({
-        id: r.id,
-        type: 'vehicle',
-        label: `${r.plate_state || ''} ${r.plate_number || r.vin || 'NO PLATE'}`.trim(),
-        subtitle: `${r.year || ''} ${r.make || ''} ${r.model || ''} ${(r.color || '').toUpperCase()}`.trim(),
-      }));
-    } catch (e) { console.warn('[Universal Search] vehicles query failed:', (e as Error).message); }
-
-    // ── Properties ──
-    let properties: any[] = [];
-    try {
-      const rows = db.prepare(`
-        SELECT id, address, name
-        FROM properties
-        WHERE address LIKE ? OR name LIKE ?
-        ORDER BY address
-        LIMIT ?
-      `).all(searchTerm, searchTerm, limitNum);
-      properties = rows.map((r: any) => ({
-        id: r.id,
-        type: 'property',
-        label: r.address || r.name || 'Unknown Property',
-        subtitle: r.name || '',
-      }));
-    } catch (e) { console.warn('[Universal Search] properties query failed:', (e as Error).message); }
-
-    // ── Calls for Service ──
-    let calls: any[] = [];
-    try {
-      const rows = db.prepare(`
-        SELECT id, call_number, incident_type, location_address, status
-        FROM calls_for_service
-        WHERE call_number LIKE ? OR location_address LIKE ?
-        ORDER BY created_at DESC
-        LIMIT ?
-      `).all(searchTerm, searchTerm, limitNum);
-      calls = rows.map((r: any) => ({
-        id: r.id,
-        type: 'call',
-        label: r.call_number || `CFS-${r.id}`,
-        subtitle: `${r.incident_type || 'Unknown'} - ${r.location_address || ''}`.trim(),
-      }));
-    } catch (e) { console.warn('[Universal Search] calls query failed:', (e as Error).message); }
-
-    // ── Incidents ──
-    let incidents: any[] = [];
-    try {
-      const rows = db.prepare(`
-        SELECT id, incident_number, incident_type, status
-        FROM incidents
-        WHERE incident_number LIKE ?
-        ORDER BY created_at DESC
-        LIMIT ?
-      `).all(searchTerm, limitNum);
-      incidents = rows.map((r: any) => ({
-        id: r.id,
-        type: 'incident',
-        label: r.incident_number || `INC-${r.id}`,
-        subtitle: `${r.incident_type || 'Unknown'} [${(r.status || '').toUpperCase()}]`,
-      }));
-    } catch (e) { console.warn('[Universal Search] incidents query failed:', (e as Error).message); }
-
-    // ── Warrants ──
-    let warrants: any[] = [];
-    try {
-      const rows = db.prepare(`
-        SELECT id, warrant_number, type, status, charge_description
-        FROM warrants
-        WHERE warrant_number LIKE ? OR charge_description LIKE ?
-        ORDER BY created_at DESC
-        LIMIT ?
-      `).all(searchTerm, searchTerm, limitNum);
-      warrants = rows.map((r: any) => ({
-        id: r.id,
-        type: 'warrant',
-        label: r.warrant_number || `WRN-${r.id}`,
-        subtitle: `${r.type || 'Warrant'} - ${r.charge_description || ''} [${(r.status || '').toUpperCase()}]`.trim(),
-      }));
-    } catch (e) { console.warn('[Universal Search] warrants query failed:', (e as Error).message); }
-
-    // ── Citations ──
-    let citations: any[] = [];
-    try {
-      const rows = db.prepare(`
-        SELECT id, citation_number, type, status
-        FROM citations
-        WHERE citation_number LIKE ?
-        ORDER BY created_at DESC
-        LIMIT ?
-      `).all(searchTerm, limitNum);
-      citations = rows.map((r: any) => ({
-        id: r.id,
-        type: 'citation',
-        label: r.citation_number || `CIT-${r.id}`,
-        subtitle: `${r.type || 'Citation'} [${(r.status || '').toUpperCase()}]`,
-      }));
-    } catch (e) { console.warn('[Universal Search] citations query failed:', (e as Error).message); }
-
-    // ── Cases ──
-    let cases: any[] = [];
-    try {
-      const rows = db.prepare(`
-        SELECT id, case_number, case_type, status
-        FROM cases
-        WHERE case_number LIKE ?
-        ORDER BY created_at DESC
-        LIMIT ?
-      `).all(searchTerm, limitNum);
-      cases = rows.map((r: any) => ({
-        id: r.id,
-        type: 'case',
-        label: r.case_number || `CASE-${r.id}`,
-        subtitle: `${r.case_type || 'Case'} [${(r.status || '').toUpperCase()}]`,
-      }));
-    } catch (e) { console.warn('[Universal Search] cases query failed:', (e as Error).message); }
-
-    // ── Arrests ──
-    let arrests: any[] = [];
-    try {
-      const rows = db.prepare(`
-        SELECT id, booking_number, full_name, charges, status
-        FROM arrest_records
-        WHERE booking_number LIKE ? OR full_name LIKE ?
-        ORDER BY booking_date DESC
-        LIMIT ?
-      `).all(searchTerm, searchTerm, limitNum);
-      arrests = rows.map((r: any) => ({
-        id: r.id,
-        type: 'arrest',
-        label: r.booking_number || `ARR-${r.id}`,
-        subtitle: `${r.full_name || 'Unknown'} - ${r.charges || ''}`.trim(),
-      }));
-    } catch (e) { console.warn('[Universal Search] arrests query failed:', (e as Error).message); }
-
-    const total = persons.length + vehicles.length + properties.length + calls.length +
-      incidents.length + warrants.length + citations.length + cases.length + arrests.length;
-
-    res.json({
-      persons,
-      vehicles,
-      properties,
-      calls,
-      incidents,
-      warrants,
-      citations,
-      cases,
-      arrests,
-      total,
-    });
-  } catch (err: any) {
-    console.error('[Universal Search] Error:', err);
-    res.status(500).json({ error: 'Universal search failed', code: 'UNIVERSAL_SEARCH_ERROR' });
-  }
-});
-
-
-// ══════════════════════════════════════════════════════════════════════════════
-// PERSON DOSSIER — Master Name Index complete intelligence package
-// ══════════════════════════════════════════════════════════════════════════════
-
-router.get('/persons/:id/dossier', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const personId = parseInt(req.params.id as string, 10);
-    if (isNaN(personId)) {
-      res.status(400).json({ error: 'Invalid person ID', code: 'INVALID_PERSON_ID' });
-      return;
-    }
-
-    // ── 1. Person record ──
-    const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(personId) as any;
-    if (!person) {
-      res.status(404).json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' });
-      return;
-    }
-
-    // ── 2. Criminal history ──
-    let criminal_history: any[] = [];
-    try {
-      criminal_history = db.prepare('SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC').all(personId);
-    } catch (e) { console.warn('[Dossier] criminal_history query failed:', (e as Error).message); }
-
-    // ── 3. Warrants ──
-    let warrants: any[] = [];
-    try {
-      warrants = db.prepare('SELECT * FROM warrants WHERE subject_person_id = ? ORDER BY created_at DESC').all(personId);
-    } catch (e) { console.warn('[Dossier] warrants query failed:', (e as Error).message); }
-
-    // ── 4. Field interviews ──
-    let field_interviews: any[] = [];
-    try {
-      field_interviews = db.prepare(`
-        SELECT fi.*, u.full_name as officer_name
-        FROM field_interviews fi
-        LEFT JOIN users u ON fi.officer_id = u.id
-        WHERE fi.person_id = ?
-        ORDER BY fi.date DESC
-      `).all(personId);
-    } catch (e) { console.warn('[Dossier] field_interviews query failed:', (e as Error).message); }
-
-    // ── 5. Calls for service ──
-    let calls: any[] = [];
-    try {
-      calls = db.prepare(`
-        SELECT c.id, c.call_number, c.incident_type, c.status, c.location_address,
-               cp.role, c.created_at
-        FROM call_persons cp
-        JOIN calls_for_service c ON c.id = cp.call_id
-        WHERE cp.person_id = ?
-        ORDER BY c.created_at DESC
-        LIMIT 50
-      `).all(personId);
-    } catch (e) { console.warn('[Dossier] calls query failed:', (e as Error).message); }
-
-    // ── 6. Incidents ──
-    let incidents: any[] = [];
-    try {
-      incidents = db.prepare(`
-        SELECT i.id, i.incident_number, i.incident_type, i.status,
-               ip.role, i.created_at
-        FROM incident_persons ip
-        JOIN incidents i ON i.id = ip.incident_id
-        WHERE ip.person_id = ?
-        ORDER BY i.created_at DESC
-        LIMIT 50
-      `).all(personId);
-    } catch (e) { console.warn('[Dossier] incidents query failed:', (e as Error).message); }
-
-    // ── 7. Vehicles owned ──
-    let vehicles: any[] = [];
-    try {
-      vehicles = db.prepare('SELECT * FROM vehicles_records WHERE owner_person_id = ?').all(personId);
-    } catch (e) { console.warn('[Dossier] vehicles query failed:', (e as Error).message); }
-
-    // ── 8. Cases ──
-    let cases: any[] = [];
-    try {
-      cases = db.prepare(`
-        SELECT c.id, c.case_number, c.case_type, c.status, cp.role
-        FROM case_persons cp
-        JOIN cases c ON c.id = cp.case_id
-        WHERE cp.person_id = ?
-        ORDER BY c.created_at DESC
-      `).all(personId);
-    } catch (e) { console.warn('[Dossier] cases query failed:', (e as Error).message); }
-
-    // ── 9. Citations ──
-    let citations: any[] = [];
-    try {
-      citations = db.prepare(`
-        SELECT id, citation_number, type, status, violation_description, created_at
-        FROM citations
-        WHERE person_id = ?
-        ORDER BY created_at DESC
-      `).all(personId);
-    } catch (e) { console.warn('[Dossier] citations query failed:', (e as Error).message); }
-
-    // ── 10. Arrests ──
-    let arrests: any[] = [];
-    try {
-      arrests = db.prepare(`
-        SELECT id, booking_number, charges, booking_date, status
-        FROM arrest_records
-        WHERE person_id = ?
-        ORDER BY booking_date DESC
-      `).all(personId);
-    } catch (e) { console.warn('[Dossier] arrests query failed:', (e as Error).message); }
-
-    // ── 11. Associates (both directions) ──
-    let associates: any[] = [];
-    try {
-      associates = db.prepare(`
-        SELECT pa.id as link_id, pa.relationship_type, pa.notes,
-               CASE WHEN pa.person_id = ? THEN pa.associate_id ELSE pa.person_id END as associate_person_id,
-               p.first_name, p.last_name, p.dob, p.gender, p.race
-        FROM person_associates pa
-        JOIN persons p ON p.id = CASE WHEN pa.person_id = ? THEN pa.associate_id ELSE pa.person_id END
-        WHERE pa.person_id = ? OR pa.associate_id = ?
-        ORDER BY pa.created_at DESC
-      `).all(personId, personId, personId, personId);
-    } catch (e) { console.warn('[Dossier] associates query failed:', (e as Error).message); }
-
-    // ── 12. Photos / uploads ──
-    let photos: any[] = [];
-    try {
-      photos = db.prepare("SELECT * FROM uploads WHERE entity_type = 'person' AND entity_id = ?").all(personId);
-    } catch (e) { console.warn('[Dossier] photos query failed:', (e as Error).message); }
-
-    // ── Build flags summary ──
-    const flags_summary = {
-      active_warrants: warrants.filter((w: any) => w.status === 'active').length,
-      total_warrants: warrants.length,
-      criminal_records: criminal_history.length,
-      field_contacts: field_interviews.length,
-      calls_involved: calls.length,
-      incidents_involved: incidents.length,
-      vehicles_owned: vehicles.length,
-      is_sex_offender: !!(person.is_sex_offender),
-      has_gang_affiliation: !!(person.gang_affiliation && person.gang_affiliation !== 'None'),
-    };
-
-    res.json({
-      person,
-      criminal_history,
-      warrants,
-      field_interviews,
-      calls,
-      incidents,
-      vehicles,
-      cases,
-      citations,
-      arrests,
-      associates,
-      photos,
-      flags_summary,
-    });
-  } catch (err: any) {
-    console.error('[Person Dossier] Error:', err);
-    res.status(500).json({ error: 'Failed to build person dossier', code: 'DOSSIER_ERROR' });
-  }
-});
-
-
-// ══════════════════════════════════════════════════════════════════════════════
-// SAVED SEARCHES — CRUD for user-saved search queries
-// ══════════════════════════════════════════════════════════════════════════════
-
-// GET /api/records/saved-searches — List user's saved + shared searches
-router.get('/saved-searches', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = req.user!.userId;
-
-    const searches = db.prepare(`
-      SELECT ss.*, u.full_name as creator_name
-      FROM saved_searches ss
-      LEFT JOIN users u ON ss.user_id = u.id
-      WHERE ss.user_id = ? OR ss.is_shared = 1
-      ORDER BY ss.use_count DESC, ss.last_used_at DESC
-    `).all(userId);
-
-    res.json(searches);
-  } catch (err: any) {
-    console.error('[Saved Searches] List error:', err);
-    res.status(500).json({ error: 'Failed to list saved searches', code: 'SAVED_SEARCHES_LIST_ERROR' });
-  }
-});
-
-// POST /api/records/saved-searches — Create a new saved search
-router.post('/saved-searches', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = req.user!.userId;
-    const { name, search_type, query_params, is_shared } = req.body;
-
-    if (!name || !query_params) {
-      res.status(400).json({ error: 'Name and query_params are required', code: 'MISSING_FIELDS' });
-      return;
-    }
-
-    const paramsStr = typeof query_params === 'string' ? query_params : JSON.stringify(query_params);
-
-    const result = db.prepare(`
-      INSERT INTO saved_searches (user_id, name, search_type, query_params, is_shared, created_at)
-      VALUES (?, ?, ?, ?, ?, datetime('now','localtime'))
-    `).run(userId, name, search_type || 'compound', paramsStr, is_shared ? 1 : 0);
-
-    res.json({ success: true, id: result.lastInsertRowid });
-  } catch (err: any) {
-    console.error('[Saved Searches] Create error:', err);
-    res.status(500).json({ error: 'Failed to create saved search', code: 'SAVED_SEARCH_CREATE_ERROR' });
-  }
-});
-
-// PUT /api/records/saved-searches/:id — Update a saved search (owner or admin)
-router.put('/saved-searches/:id', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = req.user!.userId;
-    const searchId = parseInt(req.params.id as string, 10);
-    if (isNaN(searchId)) {
-      res.status(400).json({ error: 'Invalid search ID', code: 'INVALID_SEARCH_ID' });
-      return;
-    }
-
-    const existing = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(searchId) as any;
-    if (!existing) {
-      res.status(404).json({ error: 'Saved search not found', code: 'SEARCH_NOT_FOUND' });
-      return;
-    }
-
-    // Only owner or admin can update
-    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as any;
-    if (existing.user_id !== userId && user?.role !== 'admin') {
-      res.status(403).json({ error: 'Not authorized to update this search', code: 'UNAUTHORIZED' });
-      return;
-    }
-
-    const { name, query_params, is_shared } = req.body;
-    const paramsStr = query_params
-      ? (typeof query_params === 'string' ? query_params : JSON.stringify(query_params))
-      : existing.query_params;
-
-    db.prepare(`
-      UPDATE saved_searches
-      SET name = ?, query_params = ?, is_shared = ?
-      WHERE id = ?
-    `).run(
-      name || existing.name,
-      paramsStr,
-      is_shared !== undefined ? (is_shared ? 1 : 0) : existing.is_shared,
-      searchId,
-    );
-
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error('[Saved Searches] Update error:', err);
-    res.status(500).json({ error: 'Failed to update saved search', code: 'SAVED_SEARCH_UPDATE_ERROR' });
-  }
-});
-
-// DELETE /api/records/saved-searches/:id — Delete a saved search (owner or admin)
-router.delete('/saved-searches/:id', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const userId = req.user!.userId;
-    const searchId = parseInt(req.params.id as string, 10);
-    if (isNaN(searchId)) {
-      res.status(400).json({ error: 'Invalid search ID', code: 'INVALID_SEARCH_ID' });
-      return;
-    }
-
-    const existing = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(searchId) as any;
-    if (!existing) {
-      res.status(404).json({ error: 'Saved search not found', code: 'SEARCH_NOT_FOUND' });
-      return;
-    }
-
-    // Only owner or admin can delete
-    const user = db.prepare('SELECT role FROM users WHERE id = ?').get(userId) as any;
-    if (existing.user_id !== userId && user?.role !== 'admin') {
-      res.status(403).json({ error: 'Not authorized to delete this search', code: 'UNAUTHORIZED' });
-      return;
-    }
-
-    db.prepare('DELETE FROM saved_searches WHERE id = ?').run(searchId);
-    res.json({ success: true });
-  } catch (err: any) {
-    console.error('[Saved Searches] Delete error:', err);
-    res.status(500).json({ error: 'Failed to delete saved search', code: 'SAVED_SEARCH_DELETE_ERROR' });
-  }
-});
-
-// POST /api/records/saved-searches/:id/run — Run a saved search (increment use_count, return params)
-router.post('/saved-searches/:id/run', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const searchId = parseInt(req.params.id as string, 10);
-    if (isNaN(searchId)) {
-      res.status(400).json({ error: 'Invalid search ID', code: 'INVALID_SEARCH_ID' });
-      return;
-    }
-
-    const existing = db.prepare('SELECT * FROM saved_searches WHERE id = ?').get(searchId) as any;
-    if (!existing) {
-      res.status(404).json({ error: 'Saved search not found', code: 'SEARCH_NOT_FOUND' });
-      return;
-    }
-
-    // Verify access: must be owner or search must be shared
-    const userId = req.user!.userId;
-    if (existing.user_id !== userId && !existing.is_shared) {
-      res.status(403).json({ error: 'Not authorized to run this search', code: 'UNAUTHORIZED' });
-      return;
-    }
-
-    // Increment use_count and update last_used_at
-    db.prepare(`
-      UPDATE saved_searches
-      SET use_count = use_count + 1, last_used_at = datetime('now','localtime')
-      WHERE id = ?
-    `).run(searchId);
-
-    let query_params: any;
-    try {
-      query_params = JSON.parse(existing.query_params);
-    } catch {
-      query_params = existing.query_params;
-    }
-
-    res.json({
-      id: existing.id,
-      name: existing.name,
-      search_type: existing.search_type,
-      query_params,
-      use_count: existing.use_count + 1,
-    });
-  } catch (err: any) {
-    console.error('[Saved Searches] Run error:', err);
-    res.status(500).json({ error: 'Failed to run saved search', code: 'SAVED_SEARCH_RUN_ERROR' });
-  }
-});
-
 
 export default router;

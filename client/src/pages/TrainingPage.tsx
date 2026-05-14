@@ -5,17 +5,20 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  GraduationCap, Plus, Search, CheckCircle, AlertTriangle, Clock,
-  BookOpen, Loader2, X, Edit2, Trash2, Archive, Users, Shield,
-  Calendar, BarChart3, Target, Award, FileText, ChevronDown,
-  ChevronRight, RefreshCw, Filter,
+  GraduationCap, Plus, Search, CheckCircle, AlertTriangle, Clock, BookOpen,
+  Loader2, X, Edit2, Trash2, Archive, Users, Shield, Calendar, BarChart3, Target,
+  FileText, ChevronRight, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
-import { formatDateTime, formatDate, parseTimestamp } from '../utils/dateUtils';
-import type { TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus } from '../types';
+import { formatDate, parseTimestamp } from '../utils/dateUtils';
+import type {
+  TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus,
+} from '../types';
 
 // ── Constants ──────────────────────────────────────────────
 const CATEGORIES: TrainingCategory[] = [
@@ -29,8 +32,8 @@ const CATEGORY_COLORS: Record<string, string> = {
   first_aid: 'bg-green-900/40 text-green-400 border-green-700/50',
   legal: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
   communication: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
-  driving: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/50',
-  technology: 'bg-indigo-900/40 text-indigo-400 border-indigo-700/50',
+  driving: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+  technology: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
   leadership: 'bg-brand-900/40 text-brand-400 border-brand-700/50',
   compliance: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
   other: 'bg-rmpg-700/40 text-rmpg-300 border-rmpg-600/50',
@@ -57,20 +60,6 @@ interface Officer {
 }
 
 // ── Main Component ─────────────────────────────────────────
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function TrainingPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
@@ -249,9 +238,9 @@ export default function TrainingPage() {
           </span>
         </div>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={fetchData} className="toolbar-btn p-1.5" title="Refresh">
+          <IconButton onClick={fetchData} className="toolbar-btn p-1.5" title="Refresh" aria-label="Refresh">
             <RefreshCw className="w-3.5 h-3.5" />
-          </button>
+          </IconButton>
           {isAdmin && (
             <>
               <button type="button"
@@ -356,9 +345,9 @@ export default function TrainingPage() {
               <h2 className="text-sm font-bold text-rmpg-100 uppercase flex items-center gap-2">
                 <Users className="w-4 h-4 text-brand-400" /> Bulk Training Assignment
               </h2>
-              <button type="button" onClick={() => setShowBulkAssign(false)} className="text-rmpg-500 hover:text-rmpg-300">
+              <IconButton onClick={() => setShowBulkAssign(false)} className="text-rmpg-500 hover:text-rmpg-300" aria-label="Close bulk assign">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
             <div className="space-y-2">
               <div>
@@ -370,7 +359,7 @@ export default function TrainingPage() {
                 <div>
                   <label className="text-[9px] text-rmpg-400 uppercase font-bold">Category</label>
                   <select value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="input-dark w-full mt-1 text-xs">
-                    {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
+                    {CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>)}
                   </select>
                 </div>
                 <div>
@@ -557,7 +546,7 @@ function DashboardTab({ records, requirements, officers }: {
               return (
                 <div key={cat.category} className="flex items-center gap-3">
                   <span className={`w-24 text-[10px] font-bold uppercase border px-1.5 py-0.5 ${CATEGORY_COLORS[cat.category]}`}>
-                    {cat.category.replace(/_/g, ' ')}
+                    {cat.category.replace(/_/g, ' ').toUpperCase()}
                   </span>
                   <div className="flex-1 h-1.5 bg-rmpg-700 rounded-sm overflow-hidden">
                     <div
@@ -634,7 +623,7 @@ function DashboardTab({ records, requirements, officers }: {
                   <span className="text-rmpg-500">—</span>
                   <span className="text-rmpg-300">{r.course_name}</span>
                   <span className={`ml-auto text-[9px] font-bold uppercase px-1.5 py-0.5 ${STATUS_COLORS[r.status].bg} ${STATUS_COLORS[r.status].text} border ${STATUS_COLORS[r.status].border}`}>
-                    {r.status}
+                    {String(r.status).replace(/_/g, ' ').toUpperCase()}
                   </span>
                 </div>
               ))}
@@ -873,9 +862,9 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
             className={`input-dark text-[11px] pl-6 ${search ? 'pr-7' : 'pr-2'} py-1 w-40 min-h-[36px]`}
           />
           {search && (
-            <button type="button" onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
+            <IconButton onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-rmpg-300" aria-label="Clear search">
               <X className="w-3 h-3" />
-            </button>
+            </IconButton>
           )}
         </div>
         <select
@@ -898,7 +887,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
         >
           <option value="all">All Categories</option>
           {CATEGORIES.map(c => (
-            <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
+            <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>
           ))}
         </select>
         <select
@@ -941,7 +930,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                   <td className="py-1.5 px-2 text-rmpg-100 font-medium">{record.course_name}</td>
                   <td className="py-1.5 px-2">
                     <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase border ${CATEGORY_COLORS[record.category] || CATEGORY_COLORS.other}`}>
-                      {record.category.replace(/_/g, ' ')}
+                      {record.category.replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="py-1.5 px-2 text-rmpg-400">{record.provider || '—'}</td>
@@ -974,12 +963,12 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                   {isAdmin && (
                     <td className="py-1.5 px-2 text-center">
                       <div className="flex items-center justify-center gap-1">
-                        <button type="button" onClick={() => onEdit(record)} className="toolbar-btn p-1" title="Edit">
+                        <IconButton onClick={() => onEdit(record)} className="toolbar-btn p-1" title="Edit" aria-label={`Edit training record ${record.id}`}>
                           <Edit2 className="w-3 h-3" />
-                        </button>
-                        <button type="button" onClick={() => onDelete(record.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete">
+                        </IconButton>
+                        <IconButton onClick={() => onDelete(record.id)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" title="Delete" aria-label={`Delete training record ${record.id}`}>
                           <Trash2 className="w-3 h-3" />
-                        </button>
+                        </IconButton>
                       </div>
                     </td>
                   )}
@@ -1038,7 +1027,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                     <h3 className="text-sm font-bold text-rmpg-100">{req.course_name}</h3>
                     <div className="flex items-center gap-2 mt-1">
                       <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase border ${CATEGORY_COLORS[req.category] || CATEGORY_COLORS.other}`}>
-                        {req.category.replace(/_/g, ' ')}
+                        {req.category.replace(/_/g, ' ').toUpperCase()}
                       </span>
                       {req.is_mandatory && (
                         <span className="text-[8px] font-bold uppercase bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5">
@@ -1049,12 +1038,12 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                   </div>
                   {isAdmin && (
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => onEdit(req)} className="toolbar-btn p-1" title="Edit">
+                      <IconButton onClick={() => onEdit(req)} className="toolbar-btn p-1" title="Edit" aria-label={`Edit requirement ${req.id}`}>
                         <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button type="button" onClick={() => onDelete(req.id)} className="toolbar-btn p-1 text-red-400" title="Delete">
+                      </IconButton>
+                      <IconButton onClick={() => onDelete(req.id)} className="toolbar-btn p-1 text-red-400" title="Delete" aria-label={`Delete requirement ${req.id}`}>
                         <Trash2 className="w-3 h-3" />
-                      </button>
+                      </IconButton>
                     </div>
                   )}
                 </div>
@@ -1066,7 +1055,7 @@ function RequirementsTab({ requirements, records, officers, isAdmin, onAdd, onEd
                 <div className="grid grid-cols-3 gap-2 text-[10px] text-rmpg-400 mb-2">
                   <div>
                     <span className="text-rmpg-500">Roles: </span>
-                    <span className="text-rmpg-300">{(Array.isArray(req.required_for_roles) ? req.required_for_roles : (() => { try { return JSON.parse(req.required_for_roles || '[]'); } catch { return []; } })()).map((r: string) => r.replace(/_/g, ' ')).join(', ') || '—'}</span>
+                    <span className="text-rmpg-300">{(Array.isArray(req.required_for_roles) ? req.required_for_roles : (() => { try { return JSON.parse(req.required_for_roles || '[]'); } catch { return []; } })()).map((r: string) => r.replace(/_/g, ' ').toUpperCase()).join(', ') || '—'}</span>
                   </div>
                   <div>
                     <span className="text-rmpg-500">Min Hours: </span>
@@ -1249,7 +1238,7 @@ function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold uppercase ${s.bg} ${s.text} border ${s.border}`}>
       <Icon className="w-2.5 h-2.5" />
-      {status.replace(/_/g, ' ')}
+      {status.replace(/_/g, ' ').toUpperCase()}
     </span>
   );
 }
@@ -1316,7 +1305,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           <h2 className="text-sm font-bold text-rmpg-100">
             {isEdit ? 'Edit Training Record' : 'Add Training Record'}
           </h2>
-          <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+          <IconButton onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="p-4 space-y-3">
@@ -1363,7 +1352,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
                 className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
-                  <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
+                  <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>
                 ))}
               </select>
             </div>
@@ -1460,7 +1449,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           {/* Notes */}
           <div>
             <label className="field-label mb-1 block">Notes</label>
-            <textarea
+            <RichTextArea
               value={form.notes}
               onChange={e => update('notes', e.target.value)}
               className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"
@@ -1527,7 +1516,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           <h2 className="text-sm font-bold text-rmpg-100">
             {isEdit ? 'Edit Requirement' : 'Add Training Requirement'}
           </h2>
-          <button type="button" onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+          <IconButton onClick={onClose} className="toolbar-btn p-1" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
 
         <div className="p-4 space-y-3">
@@ -1553,7 +1542,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                 className="input-dark w-full text-[11px] px-2 py-1.5 min-h-[36px]"
               >
                 {CATEGORIES.map(c => (
-                  <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
+                  <option key={c} value={c}>{c.replace(/_/g, ' ').toUpperCase()}</option>
                 ))}
               </select>
             </div>
@@ -1584,7 +1573,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
                     form.required_for_roles.includes(role) ? 'toolbar-btn-primary' : 'toolbar-btn'
                   }`}
                 >
-                  {role.replace(/_/g, ' ')}
+                  {role.replace(/_/g, ' ').toUpperCase()}
                 </button>
               ))}
             </div>
@@ -1621,7 +1610,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           {/* Description */}
           <div>
             <label className="field-label mb-1 block">Description</label>
-            <textarea
+            <RichTextArea
               value={form.description}
               onChange={e => update('description', e.target.value)}
               className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"

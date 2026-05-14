@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Calendar, ChevronLeft, ChevronRight, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import IconButton from '../../../components/IconButton';
 
 interface Shift {
   id: number;
@@ -71,9 +72,9 @@ export default function CalendarTab() {
       <div className="flex items-center justify-between">
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><Calendar className="w-4 h-4" /> Schedule Calendar</h2>
         <div className="flex items-center gap-2">
-          <button type="button" onClick={prevMonth} className="toolbar-btn p-1"><ChevronLeft className="w-3.5 h-3.5" /></button>
+          <IconButton aria-label="Previous month" onClick={prevMonth} className="toolbar-btn p-1"><ChevronLeft className="w-3.5 h-3.5" /></IconButton>
           <span className="text-xs text-white font-bold w-36 text-center">{MONTHS[month - 1]} {year}</span>
-          <button type="button" onClick={nextMonth} className="toolbar-btn p-1"><ChevronRight className="w-3.5 h-3.5" /></button>
+          <IconButton aria-label="Next month" onClick={nextMonth} className="toolbar-btn p-1"><ChevronRight className="w-3.5 h-3.5" /></IconButton>
         </div>
       </div>
 
@@ -94,7 +95,7 @@ export default function CalendarTab() {
                 const dayShifts = day ? shiftsByDate[String(day)] || [] : [];
                 return (
                   <div key={di} className={`min-h-[60px] p-1 border-r border-rmpg-800 last:border-r-0 ${
-                    day ? 'bg-surface-sunken' : 'bg-[#0a0d12]'
+                    day ? 'bg-surface-sunken' : 'bg-[#0d0d0d]'
                   } ${isToday(day || 0) ? 'ring-1 ring-inset ring-brand-500' : ''}`}>
                     {day && (
                       <>

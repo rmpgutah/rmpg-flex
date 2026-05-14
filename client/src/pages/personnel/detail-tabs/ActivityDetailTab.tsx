@@ -2,7 +2,6 @@
 // RMPG Flex — Officer Activity Detail Tab
 // ============================================================
 
-import React from 'react';
 import { Activity } from 'lucide-react';
 import { ACTION_COLORS } from '../utils/personnelConstants';
 
@@ -31,7 +30,7 @@ function borderColor(action: string): string {
   if (action === 'clock_in' || action === 'user_login') return 'border-l-2 border-l-green-500';
   if (action === 'clock_out' || action === 'user_logout') return 'border-l-2 border-l-amber-500';
   if (action.startsWith('incident')) return 'border-l-2 border-l-brand-500';
-  if (action.startsWith('call')) return 'border-l-2 border-l-blue-500';
+  if (action.startsWith('call')) return 'border-l-2 border-l-gray-500';
   return 'border-l-2 border-l-rmpg-600';
 }
 
@@ -45,20 +44,6 @@ function formatTimestamp(dateStr: string): string {
     hour12: false,
   });
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function ActivityDetailTab({ activity }: Props) {
   return (
@@ -93,7 +78,7 @@ export default function ActivityDetailTab({ activity }: Props) {
                         <span
                           className={`font-mono uppercase text-[10px] font-bold tracking-wider ${actionColor}`}
                         >
-                          {entry.action.replace(/_/g, ' ')}
+                          {entry.action.replace(/_/g, ' ').toUpperCase()}
                         </span>
                       </span>
                       <span className="font-mono text-[9px] text-rmpg-500 flex-shrink-0">

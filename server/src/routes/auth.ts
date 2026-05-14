@@ -958,7 +958,15 @@ function verify2FAHandler(req: Request, res: Response) {
     const userAgent = req.headers['user-agent'] || 'unknown';
 
     // Try TOTP code first
-    const secret = decryptSecret(user.totp_secret_enc);
+    let secret: string;
+    try {
+      secret = decryptSecret(user.totp_secret_enc);
+    } catch (decErr) {
+      console.error(`[Auth] TOTP secret decryption failed for user ${user.id}:`, decErr);
+      res.status(500).json({ error: 'Authentication configuration error. Contact an administrator.', code: 'TOTP_DECRYPT_ERROR' });
+      return;
+    }
+
     let codeValid = verifyTotpCode(secret, code);
 
     // If TOTP fails, try backup code
@@ -974,7 +982,18 @@ function verify2FAHandler(req: Request, res: Response) {
     }
 
     if (!codeValid) {
-      res.status(401).json({ error: 'Invalid verification code', code: 'INVALID_VERIFICATION_CODE' });
+      console.warn(`[Auth] TOTP verification failed for user ${user.id} from ${ip}`);
+      // Log failed 2FA attempt
+      try {
+        db.prepare(`
+          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+          VALUES (?, 'totp_failed', 'user', ?, '2FA code rejected', ?)
+        `).run(user.id, user.id, ip);
+      } catch { /* non-critical */ }
+      res.status(401).json({
+        error: 'Invalid verification code. Ensure your authenticator app is synced and try the latest code.',
+        code: 'INVALID_VERIFICATION_CODE',
+      });
       return;
     }
 
@@ -1500,6 +1519,17 @@ router.put('/profile-image', authenticateToken, (req: Request, res: Response) =>
   try {
     const db = getDb();
     const { url } = req.body;
+    // Security: validate URL scheme to prevent javascript: or data: URLs
+    if (url) {
+      try {
+        const parsed = new URL(url);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          res.status(400).json({ error: 'Invalid URL scheme — must be http or https' }); return;
+        }
+      } catch {
+        res.status(400).json({ error: 'Invalid URL format' }); return;
+      }
+    }
     db.prepare('UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?')
       .run(url || null, localNow(), req.user!.userId);
     res.json({ success: true, url: url || null });

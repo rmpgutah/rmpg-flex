@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, AlertOctagon, Clock, CheckCircle, Search, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, AlertOctagon, CheckCircle, Search, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface Grievance {
   id: number;
   officer_id: number;
@@ -25,7 +26,7 @@ const STATUS_COLORS: Record<string, string> = {
   filed: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   under_review: 'bg-amber-900/50 text-amber-400 border border-amber-700/50',
   investigation: 'bg-purple-900/50 text-purple-400 border border-purple-700/50',
-  mediation: 'bg-cyan-900/50 text-cyan-400 border border-cyan-700/50',
+  mediation: 'bg-gray-900/50 text-gray-400 border border-gray-700/50',
   resolved: 'bg-green-900/50 text-green-400 border border-green-700/50',
   dismissed: 'bg-rmpg-700 text-rmpg-400 border border-rmpg-700',
   appealed: 'bg-red-900/50 text-red-400 border border-red-700/50',
@@ -111,7 +112,7 @@ export default function GrievancesTab() {
           </div>
           <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} className="input-field text-xs py-1 px-2">
             <option value="all">All Statuses</option>
-            {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+            {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
           </select>
           <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
         </div>
@@ -147,7 +148,7 @@ export default function GrievancesTab() {
           </div>
           <div>
             <label className="field-label">Description *</label>
-            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={4} placeholder="Detailed description of the grievance..." />
+            <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={4} placeholder="Detailed description of the grievance..." />
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.subject.trim() || !form.description.trim()} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Submitting...</> : 'Submit Grievance'}</button>

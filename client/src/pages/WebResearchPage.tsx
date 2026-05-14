@@ -4,7 +4,8 @@
 // with saved results, notes, and entity linking
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   Globe,
   Search,
@@ -48,20 +49,6 @@ interface SavedResult {
 type LinkEntityType = 'incident' | 'person' | 'case';
 
 // ── Component ────────────────────────────────────────────────
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function WebResearchPage() {
   const isMobile = useIsMobile();
@@ -556,7 +543,7 @@ export default function WebResearchPage() {
                       </span>
                       {result.linked_entity_type && (
                         <span className="shrink-0 px-1.5 py-0.5 text-[9px] font-mono uppercase bg-green-500/20 text-green-400 border border-green-500/30 rounded-sm">
-                          {(result.linked_entity_type || '').replace(/_/g, ' ')} #{result.linked_entity_id}
+                          {(result.linked_entity_type || '').replace(/_/g, ' ').toUpperCase()} #{result.linked_entity_id}
                         </span>
                       )}
                     </div>
@@ -606,7 +593,7 @@ export default function WebResearchPage() {
                 {/* Notes textarea */}
                 <div>
                   {editingNotesId === result.id ? (
-                    <textarea
+                    <RichTextArea
                       className="input-dark w-full text-xs resize-none min-h-[36px]"
                       rows={2}
                       placeholder="Add notes..."

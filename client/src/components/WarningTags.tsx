@@ -1,5 +1,5 @@
 import React from 'react';
-import { AlertTriangle, Shield, Skull, Flame, Siren, Heart, UserX, AlertOctagon, Eye } from 'lucide-react';
+import { AlertTriangle, Shield, Skull, Flame, Heart, UserX, AlertOctagon, Eye } from 'lucide-react';
 
 export interface WarningTag {
   type: string;
@@ -27,7 +27,7 @@ const SEVERITY_STYLES: Record<string, { bg: string; border: string; text: string
     glow: '0 0 4px rgba(245, 158, 11, 0.3)',
   },
   medium: {
-    bg: 'rgba(59, 130, 246, 0.15)',
+    bg: 'rgba(136, 136, 136, 0.15)',
     border: '#888888',
     text: '#cccccc',
     glow: 'none',

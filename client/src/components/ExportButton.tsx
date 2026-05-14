@@ -3,7 +3,7 @@
 // Toolbar button with dropdown for CSV export and print view
 // ============================================================
 
-import React, { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { Download, Printer, ChevronDown, Loader2, Check } from 'lucide-react';
 import ProgressBar from './ui/ProgressBar';
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { RefreshCw, Loader2, Activity } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
@@ -43,7 +43,7 @@ export default function AIActivityPanel() {
         <select
           value={filter}
           onChange={e => setFilter(e.target.value)}
-          className="ml-auto bg-[#0a0a12] border border-[#1a1a2e] text-white text-xs rounded px-2 py-1 focus:border-brand-500 focus:outline-none"
+          className="ml-auto bg-[#0b0b0b] border border-[#1c1c1c] text-white text-xs rounded px-2 py-1 focus:border-brand-500 focus:outline-none"
         >
           {taskTypes.map(t => (
             <option key={t} value={t}>{t === 'all' ? 'All Types' : t}</option>
@@ -60,9 +60,9 @@ export default function AIActivityPanel() {
         </button>
       </div>
 
-      <div className="bg-[#0f1218] border border-[#1a1a2e] rounded overflow-hidden">
+      <div className="bg-[#121212] border border-[#1c1c1c] rounded overflow-hidden">
         {/* Header row */}
-        <div className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 bg-[#0a0a12] border-b border-[#1a1a2e] text-[10px] text-rmpg-500 uppercase font-medium">
+        <div className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 bg-[#0b0b0b] border-b border-[#1c1c1c] text-[10px] text-rmpg-500 uppercase font-medium">
           <div>Timestamp</div>
           <div>Task Type</div>
           <div>Provider</div>
@@ -78,9 +78,9 @@ export default function AIActivityPanel() {
         ) : filtered.length === 0 ? (
           <div className="px-3 py-8 text-center text-xs text-rmpg-500">No activity records found</div>
         ) : (
-          <div className="divide-y divide-[#1a1a2e] max-h-[500px] overflow-y-auto">
+          <div className="divide-y divide-[#1c1c1c] max-h-[500px] overflow-y-auto">
             {filtered.map((a, i) => (
-              <div key={a.id || i} className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 text-xs hover:bg-[#0a0a12]/50">
+              <div key={a.id || i} className="grid grid-cols-[140px_1fr_80px_70px_60px_1fr] gap-2 px-3 py-2 text-xs hover:bg-[#0b0b0b]/50">
                 <div className="text-rmpg-500 font-mono text-[10px] truncate">
                   {a.created_at ? new Date(a.created_at).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
                 </div>

@@ -69,20 +69,6 @@ const getActionIcon = (action: string): React.ElementType => {
   return ScrollText;
 };
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 const AuditLogPage: React.FC = () => {
   const { addToast } = useToast();
 
@@ -314,11 +300,11 @@ const AuditLogPage: React.FC = () => {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden mb-6">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #9ca4ad 30%, #9ca4ad 70%, #1a1a1a)' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Audit Log</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#6f747b' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -391,10 +377,10 @@ const AuditLogPage: React.FC = () => {
             </div>
             <div className="panel-beveled p-3" style={{ background: '#050505' }}>
               <div className="flex items-center gap-2 mb-2">
-                <Filter className="w-4 h-4 text-cyan-400" />
+                <Filter className="w-4 h-4 text-gray-400" />
                 <span className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Top User (30d)</span>
               </div>
-              <div className="text-sm font-bold truncate font-mono text-cyan-400">
+              <div className="text-sm font-bold truncate font-mono text-gray-400">
                 {stats.topUsers[0]?.user_name || 'N/A'}
               </div>
               <div className="text-[10px] text-rmpg-500 mt-0.5">
@@ -484,7 +470,7 @@ const AuditLogPage: React.FC = () => {
             >
               <option value="">All Actions</option>
               {uniqueActions.map(action => (
-                <option key={action} value={action}>{action}</option>
+                <option key={action} value={action}>{action.replace(/_/g, ' ').toUpperCase()}</option>
               ))}
             </select>
           </div>
@@ -499,7 +485,7 @@ const AuditLogPage: React.FC = () => {
             >
               <option value="">All Types</option>
               {uniqueEntityTypes.map(type => (
-                <option key={type} value={type}>{type}</option>
+                <option key={type} value={type}>{type.replace(/_/g, ' ').toUpperCase()}</option>
               ))}
             </select>
           </div>

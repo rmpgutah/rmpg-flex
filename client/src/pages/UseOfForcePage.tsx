@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Shield, Plus, Search, Loader2, Eye, CheckCircle, XCircle, AlertTriangle, User, FileText, Activity } from 'lucide-react';
+import { Shield, Plus, Search, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import SplitPanel from '../components/SplitPanel';
 import ConfirmDialog from '../components/ConfirmDialog';
@@ -9,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 
+import RichTextArea from '../components/RichTextArea';
 interface UofReport {
   id: number; incident_id?: number; officer_id: number; subject_person_id?: number;
   force_type: string; force_level?: string; justification?: string;
@@ -144,7 +145,17 @@ export default function UseOfForcePage() {
         {loading && <div className="flex justify-center py-8"><Loader2 className="w-5 h-5 animate-spin text-rmpg-400" /></div>}
         {!loading && reports.length === 0 && <EmptyState icon={Shield} title="No Reports" description="No use of force reports found" />}
         {reports.map(r => (
-          <div key={r.id} onClick={() => setSelected(r)}
+          <div
+            key={r.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => setSelected(r)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                setSelected(r);
+              }
+            }}
             className={`px-3 py-2 border-b border-rmpg-800 cursor-pointer transition-colors ${selected?.id === r.id ? 'bg-surface-raised border-l-2 border-l-red-500' : 'hover:bg-surface-raised'}`}>
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 flex-shrink-0" style={{ background: STATUS_COLORS[r.status] || '#888', borderRadius: '1px' }} />
@@ -179,7 +190,7 @@ export default function UseOfForcePage() {
         <div className="w-3 h-3" style={{ background: STATUS_COLORS[selected.status] || '#888', borderRadius: '1px' }} />
         <h2 className="text-sm font-bold text-white uppercase">{(selected.force_type || '').replace(/_/g, ' ')} — UoF #{selected.id}</h2>
         <span className="ml-auto text-[9px] font-bold uppercase px-2 py-0.5 border" style={{ color: STATUS_COLORS[selected.status], borderColor: STATUS_COLORS[selected.status] + '60' }}>
-          {selected.status}
+          {selected.status?.replace(/_/g, ' ').toUpperCase() || 'UNKNOWN'}
         </span>
       </div>
 
@@ -312,7 +323,7 @@ export default function UseOfForcePage() {
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Justification</label>
-                <textarea className="input-dark text-xs w-full mt-1" rows={3} value={form.justification} onChange={e => setForm(f => ({ ...f, justification: e.target.value }))} placeholder="Legal justification for use of force..." />
+                <RichTextArea className="input-dark text-xs w-full mt-1" rows={3} value={form.justification} onChange={e => setForm(f => ({ ...f, justification: e.target.value }))} placeholder="Legal justification for use of force..." />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
@@ -347,12 +358,12 @@ export default function UseOfForcePage() {
               {form.de_escalation_attempted && (
                 <div>
                   <label className="text-[10px] text-rmpg-400 uppercase font-semibold">De-escalation Details</label>
-                  <textarea className="input-dark text-xs w-full mt-1" rows={2} value={form.de_escalation_details} onChange={e => setForm(f => ({ ...f, de_escalation_details: e.target.value }))} />
+                  <RichTextArea className="input-dark text-xs w-full mt-1" rows={2} value={form.de_escalation_details} onChange={e => setForm(f => ({ ...f, de_escalation_details: e.target.value }))} />
                 </div>
               )}
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Narrative</label>
-                <textarea className="input-dark text-xs w-full mt-1" rows={4} value={form.narrative} onChange={e => setForm(f => ({ ...f, narrative: e.target.value }))} placeholder="Detailed account of the incident..." />
+                <RichTextArea className="input-dark text-xs w-full mt-1" rows={4} value={form.narrative} onChange={e => setForm(f => ({ ...f, narrative: e.target.value }))} placeholder="Detailed account of the incident..." />
               </div>
               <div className="flex justify-end gap-3 pt-3 border-t border-rmpg-700">
                 <button type="button" onClick={() => setShowForm(false)} className="toolbar-btn" style={{ padding: '4px 12px' }}>Cancel</button>

@@ -6,6 +6,15 @@ import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
+import RichTextArea from './RichTextArea';
+import {
+  VEHICLE_BODY_STYLE_OPTIONS, VEHICLE_COLOR_OPTIONS,
+  VEHICLE_FUEL_OPTIONS, VEHICLE_TRANSMISSION_OPTIONS,
+  VEHICLE_DRIVE_OPTIONS, VEHICLE_USE_OPTIONS,
+  PLATE_TYPE_OPTIONS, STOLEN_STATUS_OPTIONS,
+  TOW_STATUS_OPTIONS, TITLE_STATUS_OPTIONS,
+  VEHICLE_CONDITION_OPTIONS,
+} from '../constants/lawEnforcementEnums';
 interface VehicleFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -123,16 +132,15 @@ const EMPTY_FORM: VehicleFormData = {
   vehicle_use: '',
 };
 
-const BODY_STYLES = [
-  'Sedan', 'Coupe', 'SUV', 'Truck', 'Van', 'Minivan', 'Wagon',
-  'Hatchback', 'Convertible', 'Crossover', 'Motorcycle', 'Bus', 'RV', 'Trailer', 'Other',
-];
-
-const COLOR_OPTIONS = [
-  'Black', 'White', 'Silver', 'Gray', 'Red', 'Blue', 'Green', 'Brown', 'Tan',
-  'Gold', 'Orange', 'Yellow', 'Purple', 'Maroon', 'Beige', 'Other',
-];
-
+// US_STATES and COMMON_MAKES kept local — broad reference data
+// not specific to LE workflows. ENGINE_OPTIONS and WINDOW_TINT_OPTIONS
+// also stay local; F2 module focuses on NCIC/NIBRS-aligned values
+// and these are vehicle-mechanical, not enforcement classifications.
+//
+// Body style, color, fuel, transmission, drive, vehicle use, plate
+// type, stolen status, tow status, title status, condition — all
+// migrated to client/src/constants/lawEnforcementEnums.ts (richer
+// NCIC option lists, single source of truth across modals).
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
   'LA','ME','MD','MA','MI','MN','MS','MO','MT','NE','NV','NH','NJ','NM','NY','NC','ND',
@@ -147,17 +155,7 @@ const COMMON_MAKES = [
 ];
 
 const ENGINE_OPTIONS = ['4-Cylinder', 'V6', 'V8', 'V10', 'V12', 'Electric', 'Hybrid', 'Diesel', 'Rotary', 'Other'];
-const FUEL_OPTIONS = ['Gasoline', 'Diesel', 'Electric', 'Hybrid', 'Flex Fuel', 'Other'];
-const TRANSMISSION_OPTIONS = ['Automatic', 'Manual', 'CVT', 'Other'];
-const DRIVE_OPTIONS = ['FWD', 'RWD', 'AWD', '4WD'];
-const TOW_STATUS_OPTIONS = ['None', 'Towed', 'Impounded', 'Released'];
-const PLATE_TYPE_OPTIONS = ['Regular', 'Temporary', 'Dealer', 'Government', 'Military', 'Disabled', 'Other'];
-const STOLEN_STATUS_OPTIONS = ['None', 'Stolen', 'Recovered', 'Attempt'];
-const TITLE_STATUS_OPTIONS = ['Clean', 'Salvage', 'Rebuilt', 'Flood', 'Lemon', 'Bonded', 'Junk', 'Unknown'];
-const CONDITION_OPTIONS = ['Excellent', 'Good', 'Fair', 'Poor', 'Totaled', 'Unknown'];
 const WINDOW_TINT_OPTIONS = ['None', 'Factory', 'Light (50%+)', 'Medium (35-50%)', 'Dark (20-35%)', 'Limo (5-20%)', 'Illegal (<5%)', 'Unknown'];
-
-const VEHICLE_USE_OPTIONS = ['Personal', 'Commercial', 'Government', 'Law Enforcement', 'Emergency Services', 'Rental', 'Leased', 'Fleet', 'Other'];
 
 export default function VehicleFormModal({
   isOpen,
@@ -337,7 +335,7 @@ export default function VehicleFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Body Style</label>
               <select name="body_style" className="select-dark mt-1" value={form.body_style} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {BODY_STYLES.map((b) => <option key={b} value={b}>{b}</option>)}
+                {VEHICLE_BODY_STYLE_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
             </div>
           </div>
@@ -348,14 +346,14 @@ export default function VehicleFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Primary Color</label>
               <select name="color" className="select-dark mt-1" value={form.color} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {COLOR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                {VEHICLE_COLOR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Secondary Color</label>
               <select name="secondary_color" className="select-dark mt-1" value={form.secondary_color} onChange={handleChange}>
                 <option value="">None</option>
-                {COLOR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                {VEHICLE_COLOR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
@@ -396,7 +394,7 @@ export default function VehicleFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Fuel Type</label>
               <select name="fuel_type" className="select-dark mt-1" value={form.fuel_type} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {FUEL_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
+                {VEHICLE_FUEL_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
             </div>
           </div>
@@ -405,14 +403,14 @@ export default function VehicleFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Transmission</label>
               <select name="transmission" className="select-dark mt-1" value={form.transmission} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {TRANSMISSION_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+                {VEHICLE_TRANSMISSION_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Drive Type</label>
               <select name="drive_type" className="select-dark mt-1" value={form.drive_type} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {DRIVE_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+                {VEHICLE_DRIVE_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
             </div>
             <div>
@@ -606,14 +604,14 @@ export default function VehicleFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Exterior Condition</label>
               <select name="exterior_condition" className="select-dark mt-1" value={form.exterior_condition} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {CONDITION_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
+                {VEHICLE_CONDITION_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Interior Condition</label>
               <select name="interior_condition" className="select-dark mt-1" value={form.interior_condition} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {CONDITION_OPTIONS.map((c) => <option key={`int-${c}`} value={c}>{c}</option>)}
+                {VEHICLE_CONDITION_OPTIONS.map((c) => <option key={`int-${c}`} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
@@ -639,18 +637,18 @@ export default function VehicleFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications</label>
-              <textarea name="modifications" rows={2} className="input-dark mt-1" placeholder="Lift kit, exhaust, aftermarket bumper, etc." value={form.modifications} onChange={handleChange} maxLength={2000} />
+              <RichTextArea name="modifications" rows={2} className="input-dark mt-1" placeholder="Lift kit, exhaust, aftermarket bumper, etc." value={form.modifications} onChange={handleChange} maxLength={2000} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes</label>
-              <textarea name="equipment_notes" rows={2} className="input-dark mt-1" placeholder="Aftermarket parts, accessories, etc." value={form.equipment_notes} onChange={handleChange} maxLength={2000} />
+              <RichTextArea name="equipment_notes" rows={2} className="input-dark mt-1" placeholder="Aftermarket parts, accessories, etc." value={form.equipment_notes} onChange={handleChange} maxLength={2000} />
             </div>
           </div>
 
           {/* Notes */}
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
-            <textarea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
+            <RichTextArea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
             <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </>

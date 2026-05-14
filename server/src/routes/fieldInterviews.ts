@@ -30,7 +30,7 @@ router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const {
-      page = '1', per_page = '50',
+      page = '1', per_page = '100000',
       officer_id, person_id, date_from, date_to,
       disposition, contact_reason, archived, search,
     } = req.query;
@@ -55,7 +55,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPage = Math.min(200, Math.max(1, parseInt(per_page as string, 10) || 50));
+    const perPage = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPage;
 
     const countRow = db.prepare(
@@ -311,6 +311,9 @@ router.post('/', (req: Request, res: Response) => {
       subject_hair, subject_eye, subject_clothing, subject_description,
       vehicle_plate, vehicle_description,
       gang_affiliation, associated_call_id, associated_incident_id,
+      // District/beat association — previously silent-dropped (audit 2026-04-11)
+      // Form sends these so map layers and geofence reports can locate FIs.
+      section_id, zone_id, beat_id, zone_beat,
     } = req.body;
 
     // Resolve field name aliases
@@ -343,8 +346,9 @@ router.post('/', (req: Request, res: Response) => {
         subject_hair, subject_eye, subject_clothing, subject_description,
         vehicle_plate, vehicle_description,
         gang_affiliation, associated_call_id, associated_incident_id,
+        section_id, zone_id, beat_id, zone_beat,
         created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       fi_number, date, user.userId, person_id || null, vehicle_id || null,
       resolvedLocation, latitude || null, longitude || null,
@@ -354,6 +358,7 @@ router.post('/', (req: Request, res: Response) => {
       subject_hair || null, subject_eye || null, subject_clothing || null, subject_description || null,
       vehicle_plate || null, vehicle_description || null,
       gang_affiliation || null, associated_call_id || null, associated_incident_id || null,
+      section_id || null, zone_id || null, beat_id || null, zone_beat || null,
       now, now,
     );
 
@@ -428,6 +433,11 @@ router.put('/:id', (req: Request, res: Response) => {
       gang_affiliation: 'gang_affiliation',
       associated_call_id: 'associated_call_id',
       associated_incident_id: 'associated_incident_id',
+      // District/beat — previously dropped on edit (audit 2026-04-11)
+      section_id: 'section_id',
+      zone_id: 'zone_id',
+      beat_id: 'beat_id',
+      zone_beat: 'zone_beat',
     };
 
     const setClauses: string[] = [];

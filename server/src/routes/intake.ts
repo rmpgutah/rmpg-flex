@@ -15,6 +15,7 @@ import { auditLogSystem } from '../utils/auditLogger';
 import { hashApiKey } from '../utils/apiKeyHash';
 import { localNow } from '../utils/timeUtils';
 import { createServeQueueFromCall } from '../utils/serveQueueLinker';
+import { logSafe } from '../utils/logSafe';
 
 const router = Router();
 
@@ -291,7 +292,7 @@ router.post('/', (req: Request, res: Response) => {
       console.error('[Intake] Auto-send to serve queue failed (non-fatal):', serveErr instanceof Error ? serveErr.message : serveErr);
     }
 
-    console.log(`[Intake] Process service received: ${call_number} (source_id: ${body.source_id}, key_id: ${apiKeyRow.id})`);
+    console.log(`[Intake] Process service received: ${logSafe(call_number)} (source_id: ${logSafe(body.source_id)}, key_id: ${apiKeyRow.id})`);
 
     res.status(201).json({
       success: true,

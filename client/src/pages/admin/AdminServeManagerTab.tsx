@@ -18,20 +18,6 @@ interface Props {
   setError: (e: string | null) => void;
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function AdminServeManagerTab({ LoadingSpinner, error, setError }: Props) {
   // ── Status ──
   const [status, setStatus] = useState<SMIntegrationStatus | null>(null);
@@ -616,7 +602,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
                     <tr
                       key={job.id}
                       onClick={() => handleViewJob(job.id)}
-                      className="border-b border-rmpg-800 hover:bg-[#141414]/60 cursor-pointer transition-all duration-100"
+                      className="border-b border-rmpg-800 hover:bg-[#181818]/60 cursor-pointer transition-all duration-100"
                     >
                       <td className="py-1 pr-2 font-mono text-brand-400">{job.sm_job_number}</td>
                       <td className="py-1 pr-2 text-rmpg-200 max-w-[120px] truncate">{job.recipient_name || '—'}</td>

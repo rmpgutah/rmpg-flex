@@ -13,8 +13,19 @@ import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { sendCsv } from '../../utils/csvExport';
 import { isLegalTransition, LEGAL_TRANSITIONS } from './callLifecycle';
 import { startWelfareWatch, clearWelfareWatch } from '../../utils/officerWelfare';
+import { paramStr } from '../../utils/reqHelpers';
 
 const router = Router();
+
+const NON_WARNING_PLACEHOLDERS = new Set(['', '0', 'none', 'n/a', 'na', 'null', 'false', 'unknown', 'unspecified']);
+
+function getMeaningfulWarningValue(value: unknown): string | null {
+  if (value == null) return null;
+  const normalized = String(value).trim();
+  if (!normalized) return null;
+  if (NON_WARNING_PLACEHOLDERS.has(normalized.toLowerCase())) return null;
+  return normalized;
+}
 
 // ── PSO Service Window Classification ──────────────────────────────
 // Required attempt windows for PSO due diligence:
@@ -227,7 +238,7 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
     // Reject off-duty or out-of-service units
     if (['off_duty', 'out_of_service'].includes(unit.status)) {
       res.status(409).json({
-        error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')} and cannot be assigned`,
+        error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ').toUpperCase()} and cannot be assigned`,
         code: 'UNIT_UNAVAILABLE',
       });
       return;
@@ -652,7 +663,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
         if (unitRow?.officer_id && unitRow.officer_id !== req.user!.userId) {
           createNotification(
             unitRow.officer_id, 'dispatch',
-            `Call ${call.call_number}: ${status.replace(/_/g, ' ')}`,
+            `Call ${call.call_number}: ${status.replace(/_/g, ' ').toUpperCase()}`,
             `${call.incident_type} — status changed to ${status}`,
             'call', call.id, status === 'cancelled' ? 'high' : 'normal',
           );
@@ -944,7 +955,7 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
       const result = db.prepare(`
         INSERT INTO incidents (incident_number, call_id, incident_type, priority, status,
           location_address, property_id, latitude, longitude, narrative, officer_id,
-          zone_beat, section_id, zone_id, beat_id, domestic_violence, weapons_involved,
+          zone_beat, sector_id, zone_id, beat_id, domestic_violence, weapons_involved,
           injuries)
         VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
@@ -959,7 +970,7 @@ router.post('/calls/:id/promote-to-incident', validateParamIdMiddleware, require
         fullNarrative,
         req.user!.userId,
         call.zone_beat || null,
-        call.section_id || null,
+        call.sector_id || null,
         call.zone_id || null,
         call.beat_id || null,
         call.domestic_violence ?? 0,
@@ -1159,10 +1170,12 @@ router.post('/calls/:id/persons', validateParamIdMiddleware, requireRole('admin'
       const fullPerson = db.prepare('SELECT caution_flags, is_sex_offender, gang_affiliation, probation_parole, flags FROM persons WHERE id = ?').get(person_id) as any;
       if (fullPerson) {
         const alerts: string[] = [];
+        const gangAffiliation = getMeaningfulWarningValue(fullPerson.gang_affiliation);
+        const probationParole = getMeaningfulWarningValue(fullPerson.probation_parole);
         if (fullPerson.caution_flags) alerts.push(`CAUTION: ${fullPerson.caution_flags}`);
         if (fullPerson.is_sex_offender) alerts.push('SEX OFFENDER');
-        if (fullPerson.gang_affiliation) alerts.push(`GANG: ${fullPerson.gang_affiliation}`);
-        if (fullPerson.probation_parole) alerts.push('PROBATION/PAROLE');
+        if (gangAffiliation) alerts.push(`GANG: ${gangAffiliation}`);
+        if (probationParole) alerts.push('PROBATION/PAROLE');
         if (fullPerson.flags && String(fullPerson.flags).includes('ACTIVE_WARRANT')) alerts.push('ACTIVE WARRANT');
         if (alerts.length > 0) responseData._safety_alerts = alerts;
       }
@@ -1242,6 +1255,95 @@ router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRo
     res.status(500).json({ error: 'Failed to unlink call person', code: 'UNLINK_CALL_PERSON_ERROR' });
   }
 });
+
+// ═══════════════════════════════════════════════════════════
+// CALL BUSINESSES — Link/unlink business records to dispatch calls (Task 1.11)
+// Mirrors call_persons pattern. Schema has no role CHECK — accept arbitrary
+// role strings; schema DEFAULT 'involved' applies if omitted.
+// ═══════════════════════════════════════════════════════════
+
+router.post('/calls/:id/businesses',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  (req: Request, res: Response) => {
+    try {
+      const callId = parseInt(paramStr(req.params.id as any), 10);
+      const { business_id, role, notes } = req.body;
+      const db = getDb();
+      const call = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(callId);
+      if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+      const business = db.prepare('SELECT id FROM businesses WHERE id = ?').get(business_id);
+      if (!business) { res.status(404).json({ error: 'Business not found' }); return; }
+
+      try {
+        const result = db.prepare(`
+          INSERT INTO call_businesses (call_id, business_id, role, notes, added_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(callId, business_id, role ?? 'involved', notes || null, req.user?.userId ?? null);
+        const row = db.prepare('SELECT * FROM call_businesses WHERE id = ?').get(result.lastInsertRowid);
+        auditLog(req, 'CREATE', 'call_business_link', Number(result.lastInsertRowid), null, row);
+        broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+        res.status(201).json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Business already linked to this call' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create call-business link: ' + err.message });
+    }
+  }
+);
+
+router.put('/calls/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  (req: Request, res: Response) => {
+    try {
+      const callId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM call_businesses WHERE id = ? AND call_id = ?').get(linkId, callId) as any;
+      if (!existing) { res.status(404).json({ error: 'Call-business link not found' }); return; }
+
+      const { role, notes } = req.body;
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role !== undefined)  { updates.push('role = ?');  values.push(role); }
+      if (notes !== undefined) { updates.push('notes = ?'); values.push(notes || null); }
+      if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      values.push(linkId);
+
+      db.prepare(`UPDATE call_businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      const row = db.prepare('SELECT * FROM call_businesses WHERE id = ?').get(linkId);
+      auditLog(req, 'UPDATE', 'call_business_link', linkId, existing, row);
+      broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update call-business link: ' + err.message });
+    }
+  }
+);
+
+router.delete('/calls/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  (req: Request, res: Response) => {
+    try {
+      const callId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM call_businesses WHERE id = ? AND call_id = ?').get(linkId, callId);
+      if (!existing) { res.status(404).json({ error: 'Call-business link not found' }); return; }
+
+      db.prepare('DELETE FROM call_businesses WHERE id = ?').run(linkId);
+      auditLog(req, 'DELETE', 'call_business_link', linkId, existing, null);
+      broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete call-business link: ' + err.message });
+    }
+  }
+);
 
 // ═══════════════════════════════════════════════════════════
 // CALL VEHICLES — Link/unlink vehicle records to dispatch calls
@@ -1532,9 +1634,10 @@ router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervi
   }
 });
 
-// ── Feature 1: Call Priority Escalation Timer ────────────────────
-// POST /api/dispatch/calls/:id/escalate - Auto-escalate call priority
-router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+// ── Priority escalation ────
+// POST /api/dispatch/calls/:id/escalate - Bump priority by one level (P4→P3→P2→P1).
+// Called by auto-escalation timer (client-side, 30s interval) and manual click.
+router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -1851,6 +1954,386 @@ router.delete('/calls/:id/notes/:noteId', validateParamIdMiddleware, requireRole
   } catch (error: any) {
     console.error('Delete note error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to delete note', code: 'DELETE_NOTE_ERROR' });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════
+// Voice Command Endpoints — Task 15
+// These endpoints support the client-side voice command executor
+// (voiceCommandExecutor.ts) for hands-free dispatch operations.
+// ══════════════════════════════════════════════════════════════
+
+/** Shared helper: fetch call by ID or 404 */
+function getCallOrNull(id: string | number): any {
+  const db = getDb();
+  return db.prepare(`
+    SELECT c.*, u.full_name as dispatcher_name
+    FROM calls_for_service c
+    LEFT JOIN users u ON c.dispatcher_id = u.id
+    WHERE c.id = ?
+  `).get(id) || null;
+}
+
+// POST /api/dispatch/calls/:id/backup — Request backup for a call
+router.post('/calls/:id/backup', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = getCallOrNull(paramStr(req.params.id));
+    if (!call) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    const { urgency, reason } = req.body;
+    const now = localNow();
+    const userName = (req.user as any)?.fullName || (req.user as any)?.username || 'Unknown';
+
+    // Append to call notes
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { notes = []; }
+    notes.push({
+      id: crypto.randomUUID(),
+      text: `BACKUP REQUESTED${urgency ? ` (${urgency})` : ''}${reason ? ': ' + reason : ''} — by ${userName}`,
+      author: userName,
+      timestamp: now,
+      type: 'backup_request',
+    });
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(notes), now, call.id);
+
+    auditLog(req, 'backup_requested', 'call', call.id,
+      `Backup requested on call ${call.call_number} by ${userName}`);
+
+    const updated = getCallOrNull(call.id);
+    broadcastDispatchUpdate({
+      action: 'backup_request',
+      call: updated,
+      call_sign: userName,
+      location: call.location_address,
+      requested_by: userName,
+      urgency: urgency || 'routine',
+    });
+
+    res.json({ success: true, message: 'Backup request transmitted' });
+  } catch (error: any) {
+    console.error('[CallActions] backup request error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to request backup', code: 'BACKUP_REQUEST_ERROR' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/ems — Request EMS for a call
+router.post('/calls/:id/ems', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = getCallOrNull(paramStr(req.params.id));
+    if (!call) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    const { reason, injuries } = req.body;
+    const now = localNow();
+    const userName = (req.user as any)?.fullName || (req.user as any)?.username || 'Unknown';
+
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { notes = []; }
+    notes.push({
+      id: crypto.randomUUID(),
+      text: `EMS REQUESTED${reason ? ': ' + reason : ''}${injuries ? ` (${injuries} injuries)` : ''} — by ${userName}`,
+      author: userName,
+      timestamp: now,
+      type: 'ems_request',
+    });
+    db.prepare('UPDATE calls_for_service SET injuries_reported = 1, notes = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(notes), now, call.id);
+
+    auditLog(req, 'ems_requested', 'call', call.id,
+      `EMS requested on call ${call.call_number} by ${userName}`);
+
+    const updated = getCallOrNull(call.id);
+    broadcastDispatchUpdate({
+      action: 'ems_request',
+      call: updated,
+      call_sign: userName,
+      requested_by: userName,
+      reason: reason || undefined,
+    });
+
+    res.json({ success: true, message: 'EMS request transmitted' });
+  } catch (error: any) {
+    console.error('[CallActions] EMS request error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to request EMS', code: 'EMS_REQUEST_ERROR' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/k9 — Request K-9 unit for a call
+router.post('/calls/:id/k9', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = getCallOrNull(paramStr(req.params.id));
+    if (!call) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    const { reason } = req.body;
+    const now = localNow();
+    const userName = (req.user as any)?.fullName || (req.user as any)?.username || 'Unknown';
+
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { notes = []; }
+    notes.push({
+      id: crypto.randomUUID(),
+      text: `K-9 UNIT REQUESTED${reason ? ': ' + reason : ''} — by ${userName}`,
+      author: userName,
+      timestamp: now,
+      type: 'k9_request',
+    });
+    db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?')
+      .run(JSON.stringify(notes), now, call.id);
+
+    auditLog(req, 'k9_requested', 'call', call.id,
+      `K-9 requested on call ${call.call_number} by ${userName}`);
+
+    const updated = getCallOrNull(call.id);
+    broadcastDispatchUpdate({
+      action: 'k9_request',
+      call: updated,
+      call_sign: userName,
+      requested_by: userName,
+    });
+
+    res.json({ success: true, message: 'K-9 request transmitted' });
+  } catch (error: any) {
+    console.error('[CallActions] K-9 request error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to request K-9', code: 'K9_REQUEST_ERROR' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/acknowledge — Acknowledge a dispatched call
+router.post('/calls/:id/acknowledge', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = getCallOrNull(paramStr(req.params.id));
+    if (!call) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    const now = localNow();
+    const userName = (req.user as any)?.fullName || (req.user as any)?.username || 'Unknown';
+
+    // Set acknowledged_at timestamp on the call
+    db.prepare('UPDATE calls_for_service SET acknowledged_at = ?, updated_at = ? WHERE id = ? AND acknowledged_at IS NULL')
+      .run(now, now, call.id);
+
+    // Append acknowledgment note
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { notes = []; }
+    notes.push({
+      id: crypto.randomUUID(),
+      text: `Call acknowledged by ${userName}`,
+      author: userName,
+      timestamp: now,
+      type: 'acknowledgment',
+    });
+    db.prepare('UPDATE calls_for_service SET notes = ? WHERE id = ?')
+      .run(JSON.stringify(notes), call.id);
+
+    auditLog(req, 'call_acknowledged', 'call', call.id,
+      `Call ${call.call_number} acknowledged by ${userName}`);
+
+    const updated = getCallOrNull(call.id);
+    broadcastDispatchUpdate({
+      action: 'call_acknowledged',
+      call: updated,
+      acknowledged_by: userName,
+      acknowledged_at: now,
+    });
+
+    res.json({ success: true, message: 'Call acknowledged' });
+  } catch (error: any) {
+    console.error('[CallActions] acknowledge error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to acknowledge call', code: 'ACKNOWLEDGE_ERROR' });
+  }
+});
+
+// POST /api/dispatch/calls/:id/pursuit — Initiate pursuit on a call
+router.post('/calls/:id/pursuit', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const call = getCallOrNull(paramStr(req.params.id));
+    if (!call) {
+      res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+      return;
+    }
+
+    const { vehicle_description, direction, speed } = req.body;
+    const now = localNow();
+    const userName = (req.user as any)?.fullName || (req.user as any)?.username || 'Unknown';
+
+    // Escalate call to P1 and flag as pursuit
+    db.prepare(`
+      UPDATE calls_for_service
+      SET priority = 'P1',
+          vehicle_pursuit = 1,
+          officer_safety_caution = 1,
+          updated_at = ?
+      WHERE id = ?
+    `).run(now, call.id);
+
+    // Append pursuit note with details
+    let notes: any[] = [];
+    try { notes = JSON.parse(call.notes || '[]'); } catch { notes = []; }
+    const details = [
+      vehicle_description ? `Vehicle: ${vehicle_description}` : null,
+      direction ? `Direction: ${direction}` : null,
+      speed ? `Speed: ${speed}` : null,
+    ].filter(Boolean).join(', ');
+    notes.push({
+      id: crypto.randomUUID(),
+      text: `PURSUIT INITIATED by ${userName}${details ? ' — ' + details : ''}`,
+      author: userName,
+      timestamp: now,
+      type: 'pursuit',
+    });
+    db.prepare('UPDATE calls_for_service SET notes = ? WHERE id = ?')
+      .run(JSON.stringify(notes), call.id);
+
+    auditLog(req, 'pursuit_initiated', 'call', call.id,
+      `Pursuit initiated on call ${call.call_number} by ${userName}${details ? ': ' + details : ''}`);
+
+    const updated = getCallOrNull(call.id);
+    broadcastDispatchUpdate({
+      action: 'pursuit_started',
+      call: updated,
+      initiated_by: userName,
+      vehicle_description: vehicle_description || undefined,
+      direction: direction || undefined,
+      speed: speed || undefined,
+    });
+
+    // Notify all supervisors/managers of pursuit
+    try {
+      createNotificationForRoles(
+        ['admin', 'manager', 'supervisor'],
+        'pursuit',
+        `PURSUIT initiated on ${call.call_number}`,
+        `Pursuit initiated by ${userName}${details ? ': ' + details : ''}`,
+        'call',
+        call.id,
+        'critical',
+      );
+    } catch { /* non-critical */ }
+
+    res.json({ success: true, message: 'Pursuit initiated — priority escalated to P1' });
+  } catch (error: any) {
+    console.error('[CallActions] pursuit error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to initiate pursuit', code: 'PURSUIT_ERROR' });
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────
+// Dispatch advanced UX endpoints (audit trail, closest unit, pin)
+// ─────────────────────────────────────────────────────────────────────
+
+// GET /api/dispatch/calls/:id/audit-trail — chronological status events for a call
+router.get('/calls/:id/audit-trail', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = paramStr(req.params.id);
+    const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+
+    const rows = db.prepare(`
+      SELECT al.id, al.action, al.entity_type, al.entity_id, al.details,
+             al.created_at, al.user_id, u.full_name AS user_name, u.username
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE (al.entity_type = 'call' AND al.entity_id = ?)
+         OR (al.entity_type = 'call' AND al.entity_id = ?)
+      ORDER BY al.created_at ASC
+      LIMIT 500
+    `).all(String(id), String(call.call_number || ''));
+
+    res.json({ call_id: call.id, call_number: call.call_number, events: rows });
+  } catch (error: any) {
+    console.error('[CallActions] audit-trail error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to load audit trail', code: 'AUDIT_TRAIL_ERROR' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/closest-unit — suggest nearest AVAILABLE unit
+router.get('/calls/:id/closest-unit', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = paramStr(req.params.id);
+    const call = db.prepare('SELECT id, call_number, latitude, longitude FROM calls_for_service WHERE id = ?').get(id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+    if (call.latitude == null || call.longitude == null) {
+      return res.status(400).json({ error: 'Call has no GPS coordinates', code: 'NO_CALL_COORDS' });
+    }
+
+    const units = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude,
+             usr.full_name AS officer_name, usr.id AS officer_id
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status = 'available'
+        AND u.latitude IS NOT NULL
+        AND u.longitude IS NOT NULL
+    `).all() as any[];
+
+    if (units.length === 0) {
+      return res.json({ call_id: call.id, suggestion: null, reason: 'No available units with GPS' });
+    }
+
+    // Haversine distance in miles
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 3958.7613;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    };
+
+    const ranked = units.map(u => ({
+      ...u,
+      distance_miles: haversineMiles(call.latitude, call.longitude, u.latitude, u.longitude),
+    })).sort((a, b) => a.distance_miles - b.distance_miles);
+
+    res.json({
+      call_id: call.id,
+      call_number: call.call_number,
+      suggestion: ranked[0],
+      alternatives: ranked.slice(1, 3),
+    });
+  } catch (error: any) {
+    console.error('[CallActions] closest-unit error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to compute closest unit', code: 'CLOSEST_UNIT_ERROR' });
+  }
+});
+
+// PATCH /api/dispatch/calls/:id/pin — toggle pinned flag
+router.patch('/calls/:id/pin', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = paramStr(req.params.id);
+    const call = db.prepare('SELECT id, call_number, pinned FROM calls_for_service WHERE id = ?').get(id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+
+    const desired = typeof req.body?.pinned === 'boolean' ? req.body.pinned : !call.pinned;
+    const next = desired ? 1 : 0;
+    db.prepare('UPDATE calls_for_service SET pinned = ? WHERE id = ?').run(next, id);
+
+    auditLog(req, 'call_updated', 'call', call.id, { pinned: !!call.pinned }, { pinned: !!next });
+    broadcastDispatchUpdate({ action: 'call_pinned', call_id: call.id, call_number: call.call_number, pinned: !!next });
+
+    res.json({ success: true, id: call.id, pinned: !!next });
+  } catch (error: any) {
+    console.error('[CallActions] pin error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to toggle pin', code: 'PIN_ERROR' });
   }
 });
 

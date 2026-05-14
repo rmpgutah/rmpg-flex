@@ -1,11 +1,14 @@
 // ============================================================
 // RMPG Flex — useMapRouting Hook
-// Provides Google Maps Directions routing between a unit and
+// Provides Mapbox Directions routing between a unit and
 // a dispatch call location. Renders a polyline on the map with
 // ETA and distance, auto-updates when unit GPS changes.
 // ============================================================
 
 import { useRef, useState, useCallback, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
+import { addMapboxTrail, removeMapboxTrail } from '../utils/mapboxLoader';
+import { getCachedMapboxToken } from '../utils/mapboxApiKey';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -25,8 +28,8 @@ export interface RouteInfo {
 }
 
 interface UseMapRoutingOptions {
-  /** Google Maps instance — must be set before calling showRoute */
-  map: google.maps.Map | null;
+  /** Mapbox map instance — must be set before calling showRoute */
+  map: mapboxgl.Map | null;
 }
 
 // ─── Haversine (quick distance check to avoid unnecessary re-queries) ───
@@ -47,6 +50,17 @@ function haversineMeters(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+// ─── Coordinate Validation ──────────────────────────────────
+
+/** Validate that coordinates are within WGS84 bounds (Mapbox API requirement) */
+function isValidCoord(lat: number, lng: number): boolean {
+  return (
+    Number.isFinite(lat) && Number.isFinite(lng) &&
+    lat >= -90 && lat <= 90 &&
+    lng >= -180 && lng <= 180
+  );
+}
+
 // ─── Constants ──────────────────────────────────────────────
 
 /** Minimum time between re-routing queries (ms) */
@@ -55,8 +69,23 @@ const REROUTE_THROTTLE_MS = 30_000;
 /** Minimum movement before re-routing (meters) */
 const REROUTE_DISTANCE_THRESHOLD = 100;
 
-/** Route polyline color (matches unit blue) */
-const ROUTE_COLOR = '#888888';
+const ROUTE_TRAIL_ID = 'map-routing-trail';
+
+/** Format seconds into a human-readable ETA */
+function formatEta(seconds: number): string {
+  if (seconds < 60) return '<1 min';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  const hrs = Math.floor(mins / 60);
+  const rem = mins % 60;
+  return rem > 0 ? `${hrs}h ${rem}m` : `${hrs}h`;
+}
+
+/** Format meters into a human-readable distance */
+function formatDistance(meters: number): string {
+  const miles = meters / 1609.344;
+  return miles < 0.1 ? `${Math.round(meters)} ft` : `${miles.toFixed(1)} mi`;
+}
 
 // ─── Hook ───────────────────────────────────────────────────
 
@@ -65,8 +94,6 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
   const [routeLoading, setRouteLoading] = useState(false);
 
   // Internal refs — survive re-renders without triggering them
-  const rendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-  const serviceRef = useRef<google.maps.DirectionsService | null>(null);
   const lastOriginRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastQueryTimeRef = useRef<number>(0);
   const destRef = useRef<{ lat: number; lng: number } | null>(null);
@@ -75,82 +102,69 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     callNumber: '',
   });
 
-  // ── Lazily create DirectionsService & Renderer ──────────
-
-  const ensureService = useCallback(() => {
-    if (!serviceRef.current) {
-      serviceRef.current = new google.maps.DirectionsService();
-    }
-    return serviceRef.current;
-  }, []);
-
-  const ensureRenderer = useCallback(() => {
-    if (!rendererRef.current) {
-      rendererRef.current = new google.maps.DirectionsRenderer({
-        suppressMarkers: true, // we already render our own markers
-        preserveViewport: true, // don't auto-zoom when route drawn
-        polylineOptions: {
-          strokeColor: ROUTE_COLOR,
-          strokeWeight: 4,
-          strokeOpacity: 0.8,
-        },
-      });
-    }
-    return rendererRef.current;
-  }, []);
-
-  // ── Query the Directions API ─────────────────────────────
+  // ── Query the Mapbox Directions API ─────────────────────
 
   const queryRoute = useCallback(
     async (
-      origin: google.maps.LatLngLiteral,
-      destination: google.maps.LatLngLiteral,
+      origin: { lat: number; lng: number },
+      destination: { lat: number; lng: number },
     ): Promise<RouteInfo | null> => {
       if (!map) return null;
 
-      const svc = ensureService();
-      const renderer = ensureRenderer();
+      const token = getCachedMapboxToken();
+      if (!token) return null;
+
+      // Validate coordinates before calling Mapbox Directions API (WGS84 bounds)
+      if (!isValidCoord(origin.lat, origin.lng) || !isValidCoord(destination.lat, destination.lng)) {
+        console.warn('[useMapRouting] Invalid coordinates, skipping Directions query', { origin, destination });
+        return null;
+      }
 
       setRouteLoading(true);
 
       try {
-        const result = await new Promise<google.maps.DirectionsResult>(
-          (resolve, reject) => {
-            svc.route(
-              {
-                origin,
-                destination,
-                travelMode: google.maps.TravelMode.DRIVING,
-                drivingOptions: {
-                  departureTime: new Date(), // real-time traffic ETA
-                  trafficModel: google.maps.TrafficModel.BEST_GUESS,
-                },
-                provideRouteAlternatives: false,
-              },
-              (res, status) => {
-                if (status === google.maps.DirectionsStatus.OK && res) {
-                  resolve(res);
-                } else {
-                  reject(new Error(`Directions failed: ${status}`));
-                }
-              },
-            );
-          },
-        );
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?access_token=${token}&geometries=geojson&overview=full`;
 
-        renderer.setMap(map);
-        renderer.setDirections(result);
+        // Retry with exponential backoff on 429 (rate limit) or 5xx (server error)
+        let res: Response | null = null;
+        const MAX_RETRIES = 3;
+        for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+          res = await fetch(url);
+          if (res.status === 429 || (res.status >= 500 && res.status < 600)) {
+            if (attempt < MAX_RETRIES) {
+              // Use X-Rate-Limit-Reset header if available, else exponential backoff
+              const resetHeader = res.headers.get('X-Rate-Limit-Reset');
+              let waitMs: number;
+              if (resetHeader) {
+                const resetTime = Number(resetHeader) * 1000;
+                waitMs = Math.max(resetTime - Date.now(), 1000);
+              } else {
+                waitMs = 1000 * 2 ** attempt; // 1s, 2s, 4s
+              }
+              console.warn(`[useMapRouting] Directions API ${res.status}, retrying in ${waitMs}ms (attempt ${attempt + 1}/${MAX_RETRIES})`);
+              await new Promise(r => setTimeout(r, waitMs));
+              continue;
+            }
+          }
+          break;
+        }
+        if (!res || !res.ok) throw new Error(`Directions failed: ${res?.status ?? 'no response'}`);
+        const data = await res.json();
+        const route = data.routes?.[0];
+        if (!route) return null;
 
-        const leg = result.routes[0]?.legs[0];
-        if (!leg) return null;
+        // Draw the route polyline on the map
+        if (route.geometry?.coordinates) {
+          addMapboxTrail(map, ROUTE_TRAIL_ID, route.geometry.coordinates, '#888888', 4);
+        }
 
         const info: RouteInfo = {
           unitCallSign: metaRef.current.unitCallSign,
           callNumber: metaRef.current.callNumber,
-          eta: leg.duration_in_traffic?.text || leg.duration?.text || '—',
-          distance: leg.distance?.text || '—',
-          durationSec: leg.duration_in_traffic?.value || leg.duration?.value || 0,
-          distanceMeters: leg.distance?.value || 0,
+          eta: formatEta(route.duration || 0),
+          distance: formatDistance(route.distance || 0),
+          durationSec: route.duration || 0,
+          distanceMeters: route.distance || 0,
         };
 
         lastOriginRef.current = origin;
@@ -165,7 +179,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         setRouteLoading(false);
       }
     },
-    [map, ensureService, ensureRenderer],
+    [map],
   );
 
   // ── Public API ────────────────────────────────────────────
@@ -192,14 +206,14 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
 
   /** Clear the active route */
   const clearRoute = useCallback(() => {
-    if (rendererRef.current) {
-      rendererRef.current.setMap(null);
+    if (map) {
+      removeMapboxTrail(map, ROUTE_TRAIL_ID);
     }
     setActiveRoute(null);
     lastOriginRef.current = null;
     destRef.current = null;
     metaRef.current = { unitCallSign: '', callNumber: '' };
-  }, []);
+  }, [map]);
 
   /**
    * Update the route origin when unit GPS changes.
@@ -231,13 +245,11 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
 
   useEffect(() => {
     return () => {
-      if (rendererRef.current) {
-        rendererRef.current.setMap(null);
-        rendererRef.current = null;
+      if (map) {
+        removeMapboxTrail(map, ROUTE_TRAIL_ID);
       }
-      serviceRef.current = null;
     };
-  }, []);
+  }, [map]);
 
   return {
     activeRoute,

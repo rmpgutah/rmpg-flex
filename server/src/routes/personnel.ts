@@ -136,8 +136,15 @@ router.get('/', (req: Request, res: Response) => {
 // GET /api/personnel/:id - Get user details
 router.get('/:id', (req: Request, res: Response, next) => {
   try {
-    // Check for route conflicts with sub-paths handled by mountScheduleRoutes
-    const subPaths = ['schedules', 'time', 'credentials', 'expiring-credentials', 'training', 'training-requirements', 'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos'];
+    // Check for route conflicts with sub-paths handled by mountScheduleRoutes / training routes.
+    // When this list drifts, the shadowed literal route silently 404s (see the
+    // 2026-04-14 training-completion regression). Every literal-child GET route
+    // on the personnel router MUST be listed here.
+    const subPaths = [
+      'schedules', 'time', 'credentials', 'expiring-credentials',
+      'training', 'training-requirements', 'training-completion', 'training-materials', 'training-alerts',
+      'deployments', 'coverage-gaps', 'analytics', 'activity', 'equipment', 'body-cameras', 'bodycam-videos',
+    ];
     if (subPaths.includes(String(req.params.id))) {
       return next('route');
     }
@@ -1863,7 +1870,7 @@ export function mountScheduleRoutes(parentRouter: Router): void {
   parentRouter.get('/personnel/activity/:userId', authenticateToken, (req: Request, res: Response) => {
     try {
       const db = getDb();
-      const limit = parseInt(req.query.limit as string, 10) || 50;
+      const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
       const activity = db.prepare(`
         SELECT al.*, u.full_name as user_name, u.badge_number

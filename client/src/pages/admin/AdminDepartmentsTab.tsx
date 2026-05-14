@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Building2, Plus, Edit2, Trash2, Users, Loader2, X, Search,
   ChevronRight, UserCircle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import ConfirmDialog from '../../components/ConfirmDialog';
+import IconButton from '../../components/IconButton';
 import type { User } from '../../types';
 
 // ============================================================
@@ -202,8 +204,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
-                  <button type="button" onClick={() => openEdit(dept)} className="toolbar-btn p-1" aria-label={`Edit ${dept.name}`} title="Edit department"><Edit2 className="w-3 h-3" /></button>
-                  <button type="button" onClick={() => setDeleteTarget(dept)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" aria-label={`Delete ${dept.name}`} title="Delete department"><Trash2 className="w-3 h-3" /></button>
+                  <IconButton onClick={() => openEdit(dept)} className="toolbar-btn p-1" aria-label={`Edit ${dept.name}`} title="Edit department"><Edit2 className="w-3 h-3" /></IconButton>
+                  <IconButton onClick={() => setDeleteTarget(dept)} className="toolbar-btn p-1 text-red-400 hover:text-red-300" aria-label={`Delete ${dept.name}`} title="Delete department"><Trash2 className="w-3 h-3" /></IconButton>
                 </div>
               </div>
               <div className="flex items-center gap-3 text-[10px] text-rmpg-400">
@@ -223,8 +225,8 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="text-[9px] text-rmpg-500">{sub.user_count} personnel</span>
-                        <button type="button" onClick={() => openEdit(sub)} className="toolbar-btn p-0.5"><Edit2 className="w-2.5 h-2.5" /></button>
-                        <button type="button" onClick={() => setDeleteTarget(sub)} className="toolbar-btn p-0.5 text-red-400"><Trash2 className="w-2.5 h-2.5" /></button>
+                        <IconButton onClick={() => openEdit(sub)} className="toolbar-btn p-0.5" aria-label={`Edit ${sub.name}`}><Edit2 className="w-2.5 h-2.5" /></IconButton>
+                        <IconButton onClick={() => setDeleteTarget(sub)} className="toolbar-btn p-0.5 text-red-400" aria-label={`Delete ${sub.name}`}><Trash2 className="w-2.5 h-2.5" /></IconButton>
                       </div>
                     </div>
                   ))}
@@ -239,11 +241,11 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
       {showForm && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in" onClick={() => setShowForm(false)} role="dialog" aria-modal="true" aria-label={editing ? 'Edit department' : 'New department'}>
           <div className="bg-surface-base panel-beveled w-full max-w-md mx-4" onClick={(e) => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#181818]">
+            <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#242424]">
               <h3 className="text-xs font-bold uppercase tracking-wider text-rmpg-200">
                 {editing ? 'Edit Department' : 'New Department'}
               </h3>
-              <button type="button" onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></button>
+              <IconButton onClick={() => setShowForm(false)} className="p-1 text-rmpg-400 hover:text-white hover:bg-rmpg-700 transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-brand-500/50" aria-label="Close dialog"><X className="w-4 h-4" /></IconButton>
             </div>
             <div className="p-4 space-y-3">
               <div>
@@ -276,7 +278,7 @@ export default function AdminDepartmentsTab({ users, LoadingSpinner, error, setE
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Description</label>
-                <textarea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[60px] resize-y" placeholder="Department description..." />
+                <RichTextArea value={form.description} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} className="input-dark w-full text-xs min-h-[60px] resize-y" placeholder="Department description..." />
               </div>
             </div>
             <div className="flex items-center justify-end gap-2 px-4 py-2.5 border-t border-rmpg-700">

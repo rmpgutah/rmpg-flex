@@ -6,15 +6,15 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Microscope, Plus, Search, Filter, ChevronRight, ChevronDown,
-  FileText, Clock, AlertTriangle, CheckCircle, XCircle,
-  Loader2, Eye, ArrowRight, Beaker, Hash, Link2, Activity,
-  Fingerprint, Cpu, FlaskConical, Camera, Shield, Network,
-  HelpCircle, ChevronLeft, Package, Upload, Trash2, RefreshCw,
-  Info, Edit3, Send, Unlink, HardDrive, ArrowDownUp, X,
+  Microscope, Plus, Search, Filter, ChevronRight, FileText, Clock, AlertTriangle,
+  CheckCircle, XCircle, Loader2, Eye, ArrowRight, Beaker, Hash, Link2, Activity,
+  Fingerprint, Cpu, FlaskConical, Shield, Network, ChevronLeft, Package, Trash2,
+  RefreshCw, Info, Edit3, Send, Unlink, HardDrive, ArrowDownUp, X,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import FormModal from '../components/FormModal';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -48,7 +48,7 @@ const PRIORITIES = [
 const STATUS_CONFIG: Record<string, { label: string; color: string; bgColor: string; nextAction: string }> = {
   submitted: { label: 'Submitted', color: '#aaaaaa', bgColor: 'bg-gray-900/20', nextAction: 'Case will be reviewed and assigned to an examiner' },
   intake: { label: 'Intake', color: '#a78bfa', bgColor: 'bg-purple-900/20', nextAction: 'Evidence is being cataloged and checked in' },
-  assigned: { label: 'Assigned', color: '#aaaaaa', bgColor: 'bg-sky-900/20', nextAction: 'Examiner is preparing to begin analysis' },
+  assigned: { label: 'Assigned', color: '#aaaaaa', bgColor: 'bg-gray-900/20', nextAction: 'Examiner is preparing to begin analysis' },
   in_progress: { label: 'In Progress', color: '#fbbf24', bgColor: 'bg-amber-900/20', nextAction: 'Analysis is underway — check back for updates' },
   analysis_complete: { label: 'Analysis Complete', color: '#34d399', bgColor: 'bg-emerald-900/20', nextAction: 'Results are available — report being drafted' },
   report_draft: { label: 'Report Draft', color: '#a3e635', bgColor: 'bg-lime-900/20', nextAction: 'Report is being reviewed before finalization' },
@@ -250,20 +250,6 @@ const EMPTY_WIZARD: WizardData = {
 
 // ─── Component ───────────────────────────────────────────
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function ForensicLabPage() {
   const navigate = useNavigate();
   const isMobile = useIsMobile();
@@ -284,7 +270,7 @@ export default function ForensicLabPage() {
   const [showFilters, setShowFilters] = useState(false);
   // Analysis modal
   const [showAnalysisModal, setShowAnalysisModal] = useState(false);
-  const [analysisForm, setAnalysisForm] = useState({ analysis_type: 'digital_extraction', methodology: '', notes: '' });
+  const [analysisForm, setAnalysisForm] = useState({ analysis_type: 'digital_extraction', methodology: '', equipment_used: '', notes: '' });
   // Exhibit modal
   const [showExhibitModal, setShowExhibitModal] = useState(false);
   const [exhibitForm, setExhibitForm] = useState({ description: '', exhibit_type: '', condition_received: '', examination_requested: '' });
@@ -497,7 +483,7 @@ export default function ForensicLabPage() {
         body: JSON.stringify(analysisForm),
       });
       setShowAnalysisModal(false);
-      setAnalysisForm({ analysis_type: 'digital_extraction', methodology: '', notes: '' });
+      setAnalysisForm({ analysis_type: 'digital_extraction', methodology: '', equipment_used: '', notes: '' });
       fetchCaseDetail(selectedCase.id);
     } catch (err) {
       console.error('Add analysis error:', err);
@@ -790,9 +776,9 @@ export default function ForensicLabPage() {
       <div className="flex flex-col h-full bg-surface-base">
         {/* Detail Header */}
         <div className="flex items-center gap-2 px-3 py-2 border-b border-rmpg-700 bg-surface-sunken">
-          <button type="button" onClick={() => { setSelectedCase(null); setDetailTab('overview'); }} className="text-rmpg-400 hover:text-white transition-colors">
+          <IconButton onClick={() => { setSelectedCase(null); setDetailTab('overview'); }} className="text-rmpg-400 hover:text-white transition-colors" aria-label="Back to case list">
             <ChevronLeft size={16} />
-          </button>
+          </IconButton>
           <Microscope size={16} className="text-brand-400" />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
@@ -922,7 +908,7 @@ export default function ForensicLabPage() {
                       <div className="text-[9px] text-rmpg-500 uppercase">Links</div>
                     </div>
                     <div className="text-center">
-                      <div className="text-xl font-bold font-mono text-cyan-400">{hashes.length}</div>
+                      <div className="text-xl font-bold font-mono text-gray-400">{hashes.length}</div>
                       <div className="text-[9px] text-rmpg-500 uppercase">Hashes</div>
                     </div>
                   </div>
@@ -955,7 +941,7 @@ export default function ForensicLabPage() {
                 return (
                   <div className="panel-beveled bg-surface-sunken p-3 space-y-3">
                     <div className="flex items-center gap-2">
-                      <Cpu size={14} className="text-cyan-400" />
+                      <Cpu size={14} className="text-gray-400" />
                       <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wider">Device Analysis</div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -1449,7 +1435,7 @@ export default function ForensicLabPage() {
                     <option value="positive_control">Positive Control</option>
                     <option value="negative_control">Negative Control</option>
                   </select>
-                  <textarea value={qcForm.reviewer_notes} onChange={e => setQcForm(f => ({ ...f, reviewer_notes: e.target.value }))}
+                  <RichTextArea value={qcForm.reviewer_notes} onChange={e => setQcForm(f => ({ ...f, reviewer_notes: e.target.value }))}
                     className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 rounded-sm text-white h-16 resize-none"
                     placeholder="Reviewer notes..." />
                   <div className="flex items-center gap-4">
@@ -1591,7 +1577,7 @@ export default function ForensicLabPage() {
                   <div className="mt-2 space-y-1 max-h-[200px] overflow-y-auto">
                     {linkSearchResults.map((r: any, i: number) => (
                       <div key={`${r.type}-${r.id}-${i}`} className="flex items-center gap-2 p-2 bg-surface-base rounded-sm border border-rmpg-700 hover:border-brand-500/50 transition-colors">
-                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{r.type}</span>
+                        <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-brand-900/20 text-brand-400">{String(r.type).replace(/_/g, ' ')}</span>
                         <span className="text-xs text-rmpg-200 flex-1 truncate">{r.label || r.name || r.title || `#${r.id}`}</span>
                         <button type="button" onClick={() => handleLinkEntity(r.type, r.id)} className="text-[9px] px-2 py-0.5 bg-green-900/20 text-green-400 border border-green-700/40 rounded-sm hover:bg-green-900/40 transition-colors">
                           <Link2 size={10} className="inline mr-1" />Link
@@ -1616,9 +1602,9 @@ export default function ForensicLabPage() {
                       <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm bg-purple-900/20 text-purple-400">{link.entity_type}</span>
                       <span className="text-xs text-rmpg-200 flex-1">{link.entity_label || `${link.entity_type} #${link.entity_id}`}</span>
                       <span className="text-[9px] text-rmpg-500">{link.relationship}</span>
-                      <button type="button" onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link">
+                      <IconButton onClick={() => handleUnlinkEntity(link.id)} className="text-rmpg-500 hover:text-red-400 transition-colors" title="Remove link" aria-label="Remove link">
                         <Unlink size={12} />
-                      </button>
+                      </IconButton>
                     </div>
                   ))}
                 </div>
@@ -1654,7 +1640,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Methodology</label>
-                <textarea
+                <RichTextArea
                   value={analysisForm.methodology}
                   onChange={e => setAnalysisForm(f => ({ ...f, methodology: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
@@ -1662,8 +1648,18 @@ export default function ForensicLabPage() {
                 />
               </div>
               <div>
+                <label className="block text-[11px] text-rmpg-400 mb-1">Equipment Used</label>
+                <input
+                  type="text"
+                  value={analysisForm.equipment_used}
+                  onChange={e => setAnalysisForm(f => ({ ...f, equipment_used: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none"
+                  placeholder="e.g. Cellebrite UFED, FTK Imager, GC-MS"
+                />
+              </div>
+              <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
-                <textarea
+                <RichTextArea
                   value={analysisForm.notes}
                   onChange={e => setAnalysisForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-16"
@@ -1755,7 +1751,7 @@ export default function ForensicLabPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Synopsis</label>
-                <textarea
+                <RichTextArea
                   value={editForm.description}
                   onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
@@ -1764,7 +1760,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Findings</label>
-                <textarea
+                <RichTextArea
                   value={editForm.findings}
                   onChange={e => setEditForm(f => ({ ...f, findings: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
@@ -1773,7 +1769,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Conclusion</label>
-                <textarea
+                <RichTextArea
                   value={editForm.conclusion}
                   onChange={e => setEditForm(f => ({ ...f, conclusion: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-20"
@@ -1791,7 +1787,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
-                <textarea
+                <RichTextArea
                   value={editForm.notes}
                   onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-16"
@@ -1857,7 +1853,7 @@ export default function ForensicLabPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-rmpg-400 mb-1">Notes</label>
-                <textarea
+                <RichTextArea
                   value={custodyForm.notes}
                   onChange={e => setCustodyForm(f => ({ ...f, notes: e.target.value }))}
                   className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-16"
@@ -1881,7 +1877,7 @@ export default function ForensicLabPage() {
       {fetchError && (
         <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
           <AlertTriangle className="w-3 h-3" /> {fetchError}
-          <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
+          <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-400 hover:text-red-300" aria-label="Dismiss error"><X className="w-3 h-3" /></IconButton>
         </div>
       )}
       {/* Header */}
@@ -2204,7 +2200,7 @@ export default function ForensicLabPage() {
 
                 <div>
                   <label className="block text-[11px] text-rmpg-400 mb-1">Synopsis</label>
-                  <textarea
+                  <RichTextArea
                     value={wizardData.synopsis}
                     onChange={e => setWizardData(d => ({ ...d, synopsis: e.target.value }))}
                     className="w-full px-3 py-2 text-sm bg-surface-sunken border border-rmpg-700 rounded-sm text-white focus:border-brand-500 focus:outline-none h-24"

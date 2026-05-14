@@ -137,8 +137,8 @@ export default function ModuleTileBar({
       className="flex items-center gap-1 px-3 shrink-0 relative"
       style={{
         height: 58,
-        background: 'linear-gradient(180deg, #0f1722 0%, #050505 100%)',
-        borderBottom: '1px solid #1c2d44',
+        background: 'linear-gradient(180deg, #050505 0%, #000000 100%)',
+        borderBottom: '1px solid #1d1d1d',
         zIndex: 40,
       }}
     >
@@ -199,15 +199,16 @@ export default function ModuleTileBar({
                 borderRadius: 0,
                 cursor: 'pointer',
                 transition: 'all 120ms ease',
-                background: active ? 'rgba(136,136,136,0.15)' : 'transparent',
-                color: active ? '#aaaaaa' : '#666666',
-                borderBottom: active ? '2px solid #888888' : '2px solid transparent',
+                background: active ? 'linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.02) 100%)' : 'transparent',
+                color: active ? '#d1d5db' : '#666666',
+                borderBottom: active ? '2px solid #6f6f6f' : '2px solid transparent',
+                boxShadow: active ? 'inset 0 1px 0 rgba(255,255,255,0.03), 0 0 10px rgba(255,255,255,0.04)' : 'none',
               }}
               onMouseEnter={(e) => {
                 if (!active) {
-                  (e.currentTarget as HTMLButtonElement).style.background = 'rgba(136,136,136,0.08)';
-                  (e.currentTarget as HTMLButtonElement).style.boxShadow = '0 0 8px rgba(136,136,136,0.15)';
-                  (e.currentTarget as HTMLButtonElement).style.color = '#999999';
+                  (e.currentTarget as HTMLButtonElement).style.background = 'linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%)';
+                  (e.currentTarget as HTMLButtonElement).style.boxShadow = 'inset 0 1px 0 rgba(255,255,255,0.02), 0 0 8px rgba(255,255,255,0.04)';
+                  (e.currentTarget as HTMLButtonElement).style.color = '#b5b5b5';
                 }
               }}
               onMouseLeave={(e) => {
@@ -267,9 +268,9 @@ export default function ModuleTileBar({
                   left: 0,
                   zIndex: 50,
                   minWidth: 180,
-                  background: 'var(--surface-raised, #0a0a0a)',
-                  border: '1px solid var(--border-default, #1c2d44)',
-                  borderTop: '2px solid #888888',
+                  background: 'var(--surface-raised, #0b0b0b)',
+                  border: '1px solid #242424',
+                  borderTop: '2px solid #6f6f6f',
                   boxShadow: '0 6px 20px rgba(0,0,0,0.6)',
                   padding: '4px 0',
                 }}
@@ -290,19 +291,19 @@ export default function ModuleTileBar({
                       style={{
                         padding: '6px 12px',
                         fontSize: 12,
-                        color: childActive ? '#aaaaaa' : '#999999',
-                        background: 'transparent',
-                        borderLeft: childActive ? '2px solid #888888' : '2px solid transparent',
+                        color: childActive ? '#d1d5db' : '#9a9a9a',
+                        background: childActive ? 'rgba(255,255,255,0.05)' : 'transparent',
+                        borderLeft: childActive ? '2px solid #6f6f6f' : '2px solid transparent',
                         cursor: 'pointer',
                         transition: 'all 120ms ease',
                       }}
                       onMouseEnter={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(136,136,136,0.12)';
-                        (e.currentTarget as HTMLButtonElement).style.color = '#aaaaaa';
+                        (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)';
+                        (e.currentTarget as HTMLButtonElement).style.color = '#d1d5db';
                       }}
                       onMouseLeave={(e) => {
-                        (e.currentTarget as HTMLButtonElement).style.background = 'transparent';
-                        (e.currentTarget as HTMLButtonElement).style.color = childActive ? '#aaaaaa' : '#999999';
+                        (e.currentTarget as HTMLButtonElement).style.background = childActive ? 'rgba(255,255,255,0.05)' : 'transparent';
+                        (e.currentTarget as HTMLButtonElement).style.color = childActive ? '#d1d5db' : '#9aa4af';
                       }}
                     >
                       <CIcon size={14} />

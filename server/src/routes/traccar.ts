@@ -368,7 +368,7 @@ router.get('/dashcam-events', requireRole('admin', 'manager', 'supervisor', 'off
   try {
     const db = getDb();
     const { from, to, device_id, event_type, limit: limitStr } = req.query;
-    const limit = Math.min(parseInt(limitStr as string, 10) || 100, 500);
+    const limit = Math.min(100000, Math.max(1, (parseInt(limitStr as string, 10)) || 100000));
 
     let query = `
       SELECT d.*, u.call_sign, usr.full_name as officer_name
@@ -421,7 +421,7 @@ router.get('/dashcam-events/by-officer/:officerId', requireRole('admin', 'manage
     if (isNaN(officerId)) { res.status(400).json({ error: 'Invalid officer ID' }); return; }
 
     const { from, to, event_type, limit: limitStr } = req.query;
-    const limit = Math.min(parseInt(String(limitStr), 10) || 100, 500);
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(limitStr), 10)) || 100000));
 
     const units = db.prepare('SELECT id FROM units WHERE officer_id = ?').all(officerId) as { id: number }[];
     if (units.length === 0) { res.json({ events: [], total: 0 }); return; }
@@ -477,6 +477,122 @@ router.get('/dashcam-events/:id', requireRole('admin', 'manager'), (req: Request
     console.error('Traccar fetch dashcam event error:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
+});
+
+// ============================================================
+// Historical Bulk Import — preserves all Traccar columns
+// ============================================================
+// Targets traccar_devices, traccar_positions, traccar_events,
+// traccar_trips, traccar_stops, traccar_geofences (see
+// server/src/models/traccarSchema.ts).
+
+import {
+  startHistoricalSync,
+  getSyncJob,
+  listSyncJobs,
+  cancelSyncJob,
+} from '../utils/traccarHistoricalSync';
+import { paramStr } from '../utils/reqHelpers';
+
+router.post('/historical/sync', requireRole('admin', 'manager'), async (req: Request, res: Response) => {
+  try {
+    const { from, to, deviceIds, include } = req.body ?? {};
+    if (!from || !to) {
+      res.status(400).json({ error: 'from and to (ISO 8601) are required' });
+      return;
+    }
+    const jobId = await startHistoricalSync({
+      fromIso: String(from),
+      toIso: String(to),
+      deviceIds: Array.isArray(deviceIds) ? deviceIds.map(Number).filter(n => !Number.isNaN(n)) : undefined,
+      include,
+      triggeredByUserId: req.user!.userId,
+    });
+    res.json({ success: true, jobId });
+  } catch (err: any) {
+    console.error('Traccar historical sync start error:', err);
+    res.status(500).json({ error: err?.message || 'Failed to start historical sync' });
+  }
+});
+
+router.get('/historical/jobs', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  try { res.json(listSyncJobs(50)); } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.get('/historical/jobs/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  const job = getSyncJob(parseInt(paramStr(req.params.id), 10));
+  if (!job) { res.status(404).json({ error: 'Job not found' }); return; }
+  res.json(job);
+});
+
+router.post('/historical/jobs/:id/cancel', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  const ok = cancelSyncJob(parseInt(paramStr(req.params.id), 10));
+  res.json({ success: ok });
+});
+
+router.get('/historical/devices', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(
+      `SELECT d.*, fv.vehicle_number AS fleet_unit_number, fv.plate_number AS fleet_plate
+       FROM traccar_devices d
+       LEFT JOIN fleet_vehicles fv ON d.vehicle_id = fv.id
+       ORDER BY d.name ASC`
+    ).all();
+    res.json(rows);
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Failed' }); }
+});
+
+router.post('/historical/link', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  const { traccarId, vehicleId } = req.body ?? {};
+  if (typeof traccarId !== 'number') { res.status(400).json({ error: 'traccarId required' }); return; }
+  const db = getDb();
+  db.prepare(`UPDATE traccar_devices SET vehicle_id = ? WHERE traccar_id = ?`).run(vehicleId ?? null, traccarId);
+  db.prepare(`UPDATE traccar_positions SET vehicle_id = ? WHERE traccar_device_id = ?`).run(vehicleId ?? null, traccarId);
+  db.prepare(`UPDATE traccar_events SET vehicle_id = ? WHERE traccar_device_id = ?`).run(vehicleId ?? null, traccarId);
+  db.prepare(`UPDATE traccar_trips SET vehicle_id = ? WHERE traccar_device_id = ?`).run(vehicleId ?? null, traccarId);
+  db.prepare(`UPDATE traccar_stops SET vehicle_id = ? WHERE traccar_device_id = ?`).run(vehicleId ?? null, traccarId);
+  res.json({ success: true });
+});
+
+router.get('/historical/positions', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const deviceId = req.query.deviceId ? parseInt(String(req.query.deviceId), 10) : null;
+    const vehicleId = req.query.vehicleId ? parseInt(String(req.query.vehicleId), 10) : null;
+    const from = req.query.from ? String(req.query.from) : null;
+    const to = req.query.to ? String(req.query.to) : null;
+    const limit = Math.min(parseInt(String(req.query.limit ?? '5000'), 10) || 5000, 50000);
+    if (!from || !to) { res.status(400).json({ error: 'from and to (ISO) are required' }); return; }
+    const where: string[] = [`fix_time BETWEEN ? AND ?`];
+    const args: any[] = [from, to];
+    if (deviceId) { where.push(`traccar_device_id = ?`); args.push(deviceId); }
+    if (vehicleId) { where.push(`vehicle_id = ?`); args.push(vehicleId); }
+    const rows = db.prepare(
+      `SELECT id, traccar_id, traccar_device_id, vehicle_id, fix_time, latitude, longitude,
+              altitude, speed, course, address, accuracy, attributes_json
+       FROM traccar_positions WHERE ${where.join(' AND ')}
+       ORDER BY fix_time ASC LIMIT ?`
+    ).all(...args, limit);
+    res.json({ count: rows.length, positions: rows });
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Query failed' }); }
+});
+
+router.get('/historical/stats', requireRole('admin', 'manager', 'supervisor'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const stats = {
+      devices: (db.prepare(`SELECT COUNT(*) AS n FROM traccar_devices`).get() as any).n,
+      positions: (db.prepare(`SELECT COUNT(*) AS n FROM traccar_positions`).get() as any).n,
+      events: (db.prepare(`SELECT COUNT(*) AS n FROM traccar_events`).get() as any).n,
+      trips: (db.prepare(`SELECT COUNT(*) AS n FROM traccar_trips`).get() as any).n,
+      stops: (db.prepare(`SELECT COUNT(*) AS n FROM traccar_stops`).get() as any).n,
+      geofences: (db.prepare(`SELECT COUNT(*) AS n FROM traccar_geofences`).get() as any).n,
+      earliest: (db.prepare(`SELECT MIN(fix_time) AS t FROM traccar_positions`).get() as any).t,
+      latest: (db.prepare(`SELECT MAX(fix_time) AS t FROM traccar_positions`).get() as any).t,
+    };
+    res.json(stats);
+  } catch (err: any) { res.status(500).json({ error: err?.message || 'Stats failed' }); }
 });
 
 export default router;

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { X, Key, Copy, Check, Loader2, AlertCircle, Clock } from 'lucide-react';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import { toDisplayLabel } from '../utils/formatters';
@@ -107,7 +107,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
         className="w-full max-w-md mx-4"
         style={{
           background: '#0a0a0a',
-          border: '1px solid #222222',
+          border: '1px solid #2b2b2b',
           borderTop: '3px solid #d97706',
         }}
       >

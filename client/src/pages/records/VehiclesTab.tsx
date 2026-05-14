@@ -1,34 +1,26 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
-  Car,
-  Shield,
-  MapPin,
-  Loader2,
-  Trash2,
-  Pencil,
-  FileText,
-  ExternalLink,
-  X,
-  Phone,
-  AlertTriangle,
-  Hash,
-  Calendar,
-  Archive,
-  RotateCcw,
+  Search, Car, Shield, MapPin, Loader2, Trash2, Pencil, FileText, ExternalLink,
+  X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
+import { safeDateStr } from '../../utils/dateUtils';
 import VehicleFormModal from '../../components/VehicleFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import StatusBadge from '../../components/StatusBadge';
 import AlertBanner from '../../components/AlertBanner';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import PrintRecordButton from '../../components/PrintRecordButton';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 import type { VehicleFormData } from '../../components/VehicleFormModal';
-import { titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType, cleanDisplay } from '../../utils/statusLabels';
+import type { VehiclePdfData } from '../../utils/recordPdfGenerator';
+import {
+  titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType,
+  cleanDisplay,
+} from '../../utils/statusLabels';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -87,6 +79,25 @@ export function mapDbVehicle(row: Record<string, unknown>): Vehicle {
     stolen_status: row.stolen_status ? String(row.stolen_status) : undefined,
     stolen_date: row.stolen_date ? String(row.stolen_date) : undefined,
     recovery_date: row.recovery_date ? String(row.recovery_date) : undefined,
+    // F4 additions (2026-05-04) — previously dropped on load even though
+    // persisted in DB: insurance_expiry / NCIC stolen-vehicle entry # /
+    // detailed tow_location for impound chain. registration_state +
+    // owner_dl_number + owner_dob round out the registration block.
+    insurance_expiry: row.insurance_expiry ? String(row.insurance_expiry) : undefined,
+    ncic_entry_number: row.ncic_entry_number ? String(row.ncic_entry_number) : undefined,
+    tow_location: row.tow_location ? String(row.tow_location) : undefined,
+    registration_state: row.registration_state ? String(row.registration_state) : undefined,
+    owner_dl_number: row.owner_dl_number ? String(row.owner_dl_number) : undefined,
+    owner_dob: row.owner_dob ? String(row.owner_dob) : undefined,
+    primary_driver_name: row.primary_driver_name ? String(row.primary_driver_name) : undefined,
+    vehicle_use: row.vehicle_use ? String(row.vehicle_use) : undefined,
+    title_status: row.title_status ? String(row.title_status) : undefined,
+    exterior_condition: row.exterior_condition ? String(row.exterior_condition) : undefined,
+    interior_condition: row.interior_condition ? String(row.interior_condition) : undefined,
+    estimated_value: row.estimated_value ? String(row.estimated_value) : undefined,
+    window_tint: row.window_tint ? String(row.window_tint) : undefined,
+    modifications: row.modifications ? String(row.modifications) : undefined,
+    equipment_notes: row.equipment_notes ? String(row.equipment_notes) : undefined,
     flags: parseFlags(row.flags),
     notes: row.notes ? String(row.notes) : undefined,
     incident_ids: [],
@@ -118,6 +129,88 @@ function renderInfoRow(label: string, value?: string | null, icon?: React.Elemen
       <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
     </div>
   );
+}
+
+function safeVehicleDate(value?: string | null): string | null {
+  const formatted = safeDateStr(value, '');
+  return formatted || null;
+}
+
+/** Build a VehiclePdfData payload from the client-side Vehicle object + optional history data */
+function buildVehiclePdfData(
+  v: Vehicle,
+  history?: { incidents?: any[]; citations?: any[]; calls?: any[] },
+): VehiclePdfData {
+  const flagStrings = v.flags.map(f => typeof f === 'object' ? (f.type || 'FLAG') : f);
+  return {
+    id: v.id,
+    license_plate: v.license_plate,
+    plate_state: v.plate_state,
+    plate_type: v.plate_type,
+    vin: v.vin,
+    make: v.make,
+    model: v.model,
+    year: v.year || undefined,
+    body_style: v.body_style,
+    trim: v.trim,
+    doors: v.doors,
+    color: v.color,
+    secondary_color: v.secondary_color,
+    engine_type: v.engine_type,
+    fuel_type: v.fuel_type,
+    transmission: v.transmission,
+    drive_type: v.drive_type,
+    odometer: v.odometer,
+    owner_name: v.owner_name,
+    owner_address: v.owner_address,
+    owner_phone: v.owner_phone,
+    owner_dl_number: v.owner_dl_number,
+    owner_dob: v.owner_dob,
+    registered_owner: v.registered_owner,
+    primary_driver_name: v.primary_driver_name,
+    vehicle_use: v.vehicle_use,
+    commercial_vehicle: v.commercial_vehicle,
+    hazmat: v.hazmat,
+    insurance_company: v.insurance_company,
+    insurance_policy: v.insurance_policy,
+    insurance_expiry: v.insurance_expiry,
+    registration_expiry: v.registration_expiry,
+    registration_state: v.registration_state,
+    ncic_entry_number: v.ncic_entry_number,
+    stolen_status: v.stolen_status,
+    stolen_date: v.stolen_date,
+    recovery_date: v.recovery_date,
+    tow_status: v.tow_status,
+    tow_company: v.tow_company,
+    tow_date: v.tow_date,
+    tow_location: v.tow_location,
+    lien_holder: v.lien_holder,
+    title_status: v.title_status,
+    exterior_condition: v.exterior_condition,
+    interior_condition: v.interior_condition,
+    estimated_value: v.estimated_value,
+    window_tint: v.window_tint,
+    modifications: v.modifications,
+    equipment_notes: v.equipment_notes,
+    distinguishing_features: v.distinguishing_features,
+    damage_description: v.damage_description,
+    flags: flagStrings,
+    notes: v.notes,
+    created_at: v.created_at,
+    updated_at: v.updated_at,
+    incidents: history?.incidents?.map(inc => ({
+      incident_number: inc.incident_number || '',
+      incident_type: inc.incident_type || '',
+      status: inc.status || '',
+      created_at: inc.created_at || inc.occurred_at || '',
+    })),
+    citations: history?.citations?.map(c => ({
+      citation_number: c.citation_number || '',
+      type: c.violation_description || c.type || '',
+      status: c.status || '',
+      violation_date: c.violation_date || '',
+    })),
+  };
 }
 
 // ── Props ──────────────────────────────────────────
@@ -409,7 +502,7 @@ function PlateLookupPanel({ onAutoFill }: { onAutoFill?: (data: Partial<Vehicle>
                   <div className="flex items-center justify-between">
                     <div className="font-bold text-green-400 font-mono">{v.plate_number || v.license_plate} {v.state || v.plate_state}</div>
                     <div className="flex items-center gap-1.5">
-                      <span className="text-[8px] px-1 py-0.5 bg-[#141414] text-rmpg-400 rounded-sm">{v.source}</span>
+                      <span className="text-[8px] px-1 py-0.5 bg-[#181818] text-rmpg-400 rounded-sm">{v.source}</span>
                       {onAutoFill && (
                         <button
                           type="button"
@@ -453,6 +546,34 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
     vehicleModalOpen, editingVehicle, vehicleSubmitting, vehicleSubmitError, handleVehicleSubmit, closeModal,
   } = state;
 
+  // ── Sort + filter ──
+  const [sortBy, setSortBy] = useState<'plate' | 'make' | 'newest'>('plate');
+  const [filterFlag, setFilterFlag] = useState<string | null>(null);
+
+  const displayVehicles = React.useMemo(() => {
+    let list = [...filteredVehicles];
+    if (filterFlag) {
+      list = list.filter(v => {
+        if (filterFlag === 'stolen') return v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered';
+        if (filterFlag === 'towed') return v.tow_status && v.tow_status !== 'None';
+        if (filterFlag === 'commercial') return v.commercial_vehicle;
+        if (filterFlag === 'expired') return v.registration_expiry && new Date(v.registration_expiry) < new Date();
+        return true;
+      });
+    }
+    if (sortBy === 'plate') list.sort((a, b) => (a.license_plate || '').localeCompare(b.license_plate || ''));
+    else if (sortBy === 'make') list.sort((a, b) => (a.make || '').localeCompare(b.make || '') || (a.model || '').localeCompare(b.model || ''));
+    else if (sortBy === 'newest') list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    return list;
+  }, [filteredVehicles, sortBy, filterFlag]);
+
+  const stats = React.useMemo(() => ({
+    total: filteredVehicles.length,
+    stolen: filteredVehicles.filter(v => v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered').length,
+    towed: filteredVehicles.filter(v => v.tow_status && v.tow_status !== 'None').length,
+    commercial: filteredVehicles.filter(v => v.commercial_vehicle).length,
+  }), [filteredVehicles]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
@@ -487,9 +608,36 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
         } as Vehicle);
       }} />
 
+      {/* Stats + Sort + Filter */}
+      <div className="px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-4 text-[9px] flex-wrap">
+        <span className="text-rmpg-400 flex items-center gap-1"><Car className="w-3 h-3" /> <strong className="text-white">{stats.total}</strong> Vehicles</span>
+        {stats.stolen > 0 && <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> <strong>{stats.stolen}</strong> Stolen</span>}
+        {stats.towed > 0 && <span className="text-amber-400"><strong>{stats.towed}</strong> Towed</span>}
+        {stats.commercial > 0 && <span className="text-gray-400"><strong>{stats.commercial}</strong> Commercial</span>}
+        <div className="ml-auto flex items-center gap-1">
+          <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
+          {(['plate', 'make', 'newest'] as const).map(s => (
+            <button key={s} type="button" onClick={() => setSortBy(s)}
+              className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+              {s === 'plate' ? 'Plate' : s === 'make' ? 'Make' : 'Newest'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-1.5 text-[9px] flex-wrap">
+        <Filter className="w-3 h-3 text-rmpg-500" />
+        {[{ key: null, label: 'All' }, { key: 'stolen', label: 'Stolen' }, { key: 'towed', label: 'Towed' }, { key: 'commercial', label: 'Commercial' }, { key: 'expired', label: 'Expired Reg' }].map(f => (
+          <button key={f.key || 'all'} type="button" onClick={() => setFilterFlag(f.key)}
+            className={`px-2 py-0.5 font-medium border transition-all ${filterFlag === f.key ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-rmpg-700/50 text-rmpg-500 hover:text-rmpg-300 hover:border-rmpg-500'}`}>
+            {f.label}
+          </button>
+        ))}
+        {filterFlag && <span className="text-rmpg-500 ml-1">({displayVehicles.length})</span>}
+      </div>
+
       {/* Vehicle List */}
       <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Vehicle records">
-        {filteredVehicles.length === 0 && (
+        {displayVehicles.length === 0 && (
           <div className="text-center py-16">
             <Car className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
             <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No vehicles match your search.' : 'No vehicle records found.'}</p>
@@ -498,7 +646,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             </p>
           </div>
         )}
-        {filteredVehicles.map((v, idx) => (
+        {displayVehicles.map((v, idx) => (
           <div
             key={v.id}
             role="listitem"
@@ -622,12 +770,26 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 
   // ── Feature 41: Vehicle History Report ──
   const [vehicleHistory, setVehicleHistory] = React.useState<any>(null);
+  const [pdfHistory, setPdfHistory] = React.useState<any>(null);
+
+  const fetchVehicleHistory = React.useCallback(async (vId: string) => {
+    const data = await apiFetch<any>(`/records/vehicles/${vId}/history`);
+    return data?.data || data;
+  }, []);
+
   const handleLoadHistory = async (vId: string) => {
     try {
-      const data = await apiFetch<any>(`/records/vehicles/${vId}/history`);
-      setVehicleHistory(data?.data || data);
+      setVehicleHistory(await fetchVehicleHistory(vId));
     } catch { /* ignore */ }
   };
+
+  // Pre-fetch history for PDF enrichment when vehicle changes
+  React.useEffect(() => {
+    if (!selectedVehicle?.id) { setPdfHistory(null); return; }
+    fetchVehicleHistory(selectedVehicle.id)
+      .then(setPdfHistory)
+      .catch(() => setPdfHistory(null));
+  }, [selectedVehicle?.id, fetchVehicleHistory]);
 
   // ── Feature 44: Stolen Vehicle Check ──
   const [stolenCheckResult, setStolenCheckResult] = React.useState<any>(null);
@@ -658,6 +820,15 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         </div>
         {/* Feature 41+44 Action Buttons */}
         <div className="flex gap-1 mt-1">
+          <PrintRecordButton
+            recordType="vehicle"
+            recordData={buildVehiclePdfData(selectedVehicle, pdfHistory ?? undefined)}
+            identifier={selectedVehicle.license_plate || selectedVehicle.id}
+            entityType="vehicle"
+            entityId={selectedVehicle.id}
+            label="Print PDF"
+            className="text-[9px] px-2 py-0.5 bg-[#d4a017]/10 border border-[#d4a017]/30 text-[#d4a017] hover:bg-[#d4a017]/20"
+          />
           <button type="button" onClick={() => handleLoadHistory(selectedVehicle.id)} className="text-[9px] px-2 py-0.5 bg-gray-900/30 border border-gray-700/50 text-gray-400 hover:bg-gray-900/50">
             <FileText style={{ width: 10, height: 10, display: 'inline' }} /> History Report
           </button>
@@ -716,7 +887,6 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('Body Style', selectedVehicle.body_style)}
             {renderInfoRow('Doors', selectedVehicle.doors ? String(selectedVehicle.doors) : null)}
             {renderInfoRow('Owner', selectedVehicle.owner_name)}
-            {renderInfoRow('Registered Owner', selectedVehicle.registered_owner)}
           </div>
           {selectedVehicle.vin && (
             <div className="mt-2 text-xs"><span className="text-rmpg-400">VIN:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedVehicle.vin}</span></div>
@@ -745,32 +915,31 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Registration & Insurance ────────── */}
         <CollapsibleSection title="Registration & Insurance" icon={Shield} defaultOpen>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Reg. Expiry', selectedVehicle.registration_expiry, Calendar)}
+            {renderInfoRow('Reg. Expiry', safeVehicleDate(selectedVehicle.registration_expiry), Calendar)}
             {renderInfoRow('Reg. State', selectedVehicle.registration_state)}
-            {renderInfoRow('Title Status', selectedVehicle.title_status)}
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
+            {renderInfoRow('Insurance Expiry', safeVehicleDate(selectedVehicle.insurance_expiry), Calendar)}
+            {renderInfoRow('NCIC Entry #', selectedVehicle.ncic_entry_number, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
             {renderInfoRow('Owner Address', selectedVehicle.owner_address ? formatAddressDisplay(selectedVehicle.owner_address) : undefined, MapPin)}
             {renderInfoRow('Owner Phone', selectedVehicle.owner_phone ? formatPhoneDisplay(selectedVehicle.owner_phone) : undefined, Phone)}
+            {renderInfoRow('Owner DL #', selectedVehicle.owner_dl_number, Hash)}
+            {renderInfoRow('Owner DOB', safeVehicleDate(selectedVehicle.owner_dob), Calendar)}
+            {renderInfoRow('Primary Driver', selectedVehicle.primary_driver_name)}
+            {renderInfoRow('Vehicle Use', selectedVehicle.vehicle_use)}
           </div>
         </CollapsibleSection>
 
-        {/* ── Condition & Value (conditional) ──── */}
-        {(selectedVehicle.exterior_condition || selectedVehicle.interior_condition || selectedVehicle.estimated_value || selectedVehicle.window_tint || selectedVehicle.modifications || selectedVehicle.equipment_notes) && (
-          <CollapsibleSection title="Condition & Value" icon={Hash}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        {/* ── Vehicle Condition (conditional) ──── */}
+        {(selectedVehicle.title_status || selectedVehicle.exterior_condition || selectedVehicle.interior_condition || selectedVehicle.estimated_value) && (
+          <CollapsibleSection title="Vehicle Condition" icon={Car} defaultOpen={false}>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {renderInfoRow('Title Status', selectedVehicle.title_status)}
               {renderInfoRow('Exterior', selectedVehicle.exterior_condition)}
               {renderInfoRow('Interior', selectedVehicle.interior_condition)}
               {renderInfoRow('Est. Value', selectedVehicle.estimated_value ? `$${selectedVehicle.estimated_value}` : undefined)}
-              {renderInfoRow('Window Tint', selectedVehicle.window_tint)}
             </div>
-            {selectedVehicle.modifications && (
-              <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedVehicle.modifications}</span></div>
-            )}
-            {selectedVehicle.equipment_notes && (
-              <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedVehicle.equipment_notes}</span></div>
-            )}
           </CollapsibleSection>
         )}
 
@@ -779,18 +948,19 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
           <CollapsibleSection title="Stolen / Tow Status" icon={AlertTriangle}>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
               {renderInfoRow('Stolen Status', selectedVehicle.stolen_status)}
-              {renderInfoRow('Stolen Date', selectedVehicle.stolen_date, Calendar)}
-              {renderInfoRow('Recovery Date', selectedVehicle.recovery_date, Calendar)}
+              {renderInfoRow('Stolen Date', safeVehicleDate(selectedVehicle.stolen_date), Calendar)}
+              {renderInfoRow('Recovery Date', safeVehicleDate(selectedVehicle.recovery_date), Calendar)}
               {renderInfoRow('Tow Status', selectedVehicle.tow_status)}
               {renderInfoRow('Tow Company', selectedVehicle.tow_company)}
-              {renderInfoRow('Tow Date', selectedVehicle.tow_date, Calendar)}
+              {renderInfoRow('Tow Date', safeVehicleDate(selectedVehicle.tow_date), Calendar)}
+              {renderInfoRow('Tow Location', selectedVehicle.tow_location, MapPin)}
             </div>
           </CollapsibleSection>
         )}
 
         {/* ── Damage & Features (conditional) ──── */}
-        {(selectedVehicle.damage_description || selectedVehicle.distinguishing_features) && (
-          <CollapsibleSection title="Damage & Features" icon={AlertTriangle}>
+        {(selectedVehicle.damage_description || selectedVehicle.distinguishing_features || selectedVehicle.window_tint || selectedVehicle.modifications || selectedVehicle.equipment_notes) && (
+          <CollapsibleSection title="Damage, Features & Modifications" icon={AlertTriangle}>
             {selectedVehicle.damage_description && (
               <div className="mb-2">
                 <label className="text-[10px] text-red-400 uppercase font-semibold">Damage:</label>
@@ -798,9 +968,27 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
               </div>
             )}
             {selectedVehicle.distinguishing_features && (
-              <div>
+              <div className="mb-2">
                 <label className="text-[10px] text-amber-400 uppercase font-semibold">Distinguishing Features:</label>
                 <p className="text-xs text-amber-300/80 mt-0.5">{selectedVehicle.distinguishing_features}</p>
+              </div>
+            )}
+            {selectedVehicle.window_tint && (
+              <div className="mb-2">
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Window Tint:</label>
+                <p className="text-xs text-rmpg-200 mt-0.5">{selectedVehicle.window_tint}</p>
+              </div>
+            )}
+            {selectedVehicle.modifications && (
+              <div className="mb-2">
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications:</label>
+                <p className="text-xs text-rmpg-200 mt-0.5">{selectedVehicle.modifications}</p>
+              </div>
+            )}
+            {selectedVehicle.equipment_notes && (
+              <div>
+                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes:</label>
+                <p className="text-xs text-rmpg-200 mt-0.5">{selectedVehicle.equipment_notes}</p>
               </div>
             )}
           </CollapsibleSection>
@@ -827,7 +1015,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
                   </span>
                   <span className="text-rmpg-300">{humanizeType(inc.incident_type)}</span>
                   <StatusBadge status={inc.status} type="incident_status" size="sm" />
-                  <span className="text-rmpg-400 ml-auto">{inc.created_at ? new Date(inc.created_at).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' }) : ''}</span>
+                  <span className="text-rmpg-400 ml-auto">{safeDateStr(inc.created_at, '')}</span>
                 </div>
               ))}
             </div>

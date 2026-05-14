@@ -9,9 +9,9 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import {
-  Search, Loader2, Network, X, User, Car, Building2,
-  Briefcase, FileText, Package, ChevronDown, ChevronRight,
-  ZoomIn, ZoomOut, RotateCcw, Maximize2, Minus, Plus, Eye, EyeOff,
+  Search, Loader2, Network, X, User, Car, Building2, Briefcase, FileText,
+  Package, ChevronDown, ChevronRight, RotateCcw, Maximize2, Minus, Plus, Eye,
+  EyeOff,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -26,7 +26,7 @@ const NODE_PALETTE: Record<string, { primary: string; glow: string; dark: string
   vehicle:  { primary: '#ffb74d', glow: '#ff9800', dark: '#6e4a1a' },
   property: { primary: '#4dd0a0', glow: '#00c853', dark: '#1a6e4a' },
   case:     { primary: '#ff6b6b', glow: '#ff1744', dark: '#6e1a1a' },
-  incident: { primary: '#ce93d8', glow: '#aa00ff', dark: '#4a1a6e' },
+  incident: { primary: '#ce93d8', glow: '#aa00ff', dark: '#323232' },
   evidence: { primary: '#999999', glow: '#666666', dark: '#2a2a2a' },
 };
 
@@ -97,7 +97,7 @@ function SeedSelector({ onSelect, loading }: {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [searching, setSearching] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
-  const debounceRef = useRef<ReturnType<typeof setTimeout>>();
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   const wrapperRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -258,7 +258,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
   onToggleTypeFilter: (type: string) => void;
   loading: boolean;
 }) {
-  const graphRef = useRef<any>();
+  const graphRef = useRef<any>(undefined);
   const containerRef = useRef<HTMLDivElement>(null);
   const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
 
@@ -443,7 +443,7 @@ function GraphPanel({ graph, selectedNodeId, onSelectNode, depth, onDepthChange,
       // Pill badge at high zoom
       const fontSize = Math.max(7 / globalScale, 2);
       ctx.font = `bold ${fontSize}px system-ui, sans-serif`;
-      const text = link.relationship.replace(/_/g, ' ');
+      const text = link.relationship.replace(/_/g, ' ').toUpperCase();
       const textWidth = ctx.measureText(text).width;
       const padX = 3 / globalScale;
       const padY = 1.5 / globalScale;

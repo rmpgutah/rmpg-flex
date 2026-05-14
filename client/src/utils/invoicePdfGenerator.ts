@@ -6,33 +6,22 @@
 
 import jsPDF from 'jspdf';
 import {
-  hexToRgb,
-  addReportHeader,
-  openAutoSection,
-  closeAutoSection,
-  addFieldPair,
-  addPageFooter,
-  addConfidentialWatermark,
-  addWrappedText,
-  addTableWithShading,
-  checkPageBreak,
-  setGenerationTimestamp,
-  fetchPdfBranding,
-  setActiveBranding,
-  setActiveFormKey,
-  setActiveCaseNumber,
-  getActiveBranding,
-  loadPdfAssets,
-  sanitizePdfText,
-  addSignatureBlock,
-  wordWrapText,
+  hexToRgb, openAutoSection, closeAutoSection, addFieldPair, addPageFooter,
+  addConfidentialWatermark, addWrappedText, addTableWithShading, checkPageBreak,
+  setGenerationTimestamp, fetchPdfBranding, setActiveBranding, setActiveFormKey,
+  setActiveCaseNumber, getActiveBranding, loadPdfAssets, sanitizePdfText,
+  addSignatureBlock, wordWrapText,
 } from './pdfGenerator';
 import {
-  LAYOUT, SPACING, FONT, COLOR, BORDER,
-  getContentWidth, getHalfWidth, getFullFieldWidth,
-  getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
+  LAYOUT, SPACING, FONT, COLOR, BORDER, getContentWidth, getFullFieldWidth,
+  getLeftX, getRightColumnX, getHalfFieldWidth,
+  applyPrintTarget, type PrintTarget,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
+
+export interface InvoicePdfOptions {
+  printTarget?: PrintTarget;
+}
 import { FORM_NUMBERS } from './pdfAssets';
 
 // ── Data interface ────────────────────────────────────────
@@ -86,7 +75,7 @@ function fmt(n: number | null | undefined): string {
 
 // ── PDF Generation ────────────────────────────────────────
 
-export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
+export async function generateInvoicePdf(data: InvoicePdfData, options: InvoicePdfOptions = {}): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
   await loadPdfAssets();
@@ -98,6 +87,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   }));
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageWidth = doc.internal.pageSize.getWidth();
   const cw = getContentWidth(doc);
   const lx = getLeftX();
@@ -265,7 +255,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const totX = pageWidth - LAYOUT.PAGE_MARGIN - 60;
   const totVX = pageWidth - LAYOUT.PAGE_MARGIN;
   const addTotal = (label: string, value: string, bold = false, color?: readonly [number, number, number]) => {
-    doc.setFont('helvetica', bold ? 'bold' : 'normal');
+    doc.setFont('courier', bold ? 'bold' : 'normal');
     doc.setFontSize(bold ? FONT.SIZE_TOTAL_LABEL : FONT.SIZE_FIELD_VALUE);
     doc.setTextColor(...COLOR.TEXT_SECONDARY);
     doc.text(label, totX, y, { align: 'right' });
@@ -294,7 +284,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   const balBoxW = totVX - balBoxX + 3;
   const balBoxH = 9; // Balance due box height
   doc.rect(balBoxX, y - 2, balBoxW, balBoxH);
-  doc.setFont('helvetica', 'bold');
+  doc.setFont('courier', 'bold');
   doc.setFontSize(FONT.SIZE_BALANCE_DUE);
   doc.setTextColor(primaryRgb[0], primaryRgb[1], primaryRgb[2]);
   doc.text('BALANCE DUE:', totX, y + 4, { align: 'right' });
@@ -396,12 +386,12 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: 'Helvetica Neue', Arial, sans-serif; color: #333; background: #fff; padding: 30px; max-width: 800px; margin: 0 auto; }
     @media print { body { padding: 0; } }
-    .header { background: #222222; color: #fff; padding: 16px 20px; margin-bottom: 0; display: flex; align-items: center; gap: 14px; }
+    .header { background: #2b2b2b; color: #fff; padding: 16px 20px; margin-bottom: 0; display: flex; align-items: center; gap: 14px; }
     .header img { width: 42px; height: 42px; border-radius: 50%; }
     .header-text h1 { font-size: 16px; margin-bottom: 1px; letter-spacing: 1px; }
     .header-text p { font-size: 10px; color: #d4a017; letter-spacing: 2px; text-transform: uppercase; }
     .accent-line { height: 3px; background: #d4a017; margin-bottom: 16px; }
-    .section-bar { background: #222222; color: #fff; padding: 4px 10px; font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-top: 16px; border: 2px solid #222222; }
+    .section-bar { background: #2b2b2b; color: #fff; padding: 4px 10px; font-size: 10px; font-weight: bold; letter-spacing: 1px; text-transform: uppercase; margin-top: 16px; border: 2px solid #2b2b2b; }
     .section-body { border: 1px solid #ccc; border-top: none; padding: 12px; margin-bottom: 0; }
     .field-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; }
     .field-box { border: 1px solid #ccc; padding: 4px 6px; min-height: 32px; }
@@ -411,7 +401,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
     .invoice-title h2 { font-size: 24px; color: #888888; font-weight: 900; }
     .invoice-number { background: #888888; color: #fff; padding: 6px 16px; font-size: 13px; font-weight: bold; border: 2px solid #fff; outline: 2px solid #888888; }
     table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
-    th { background: #222222; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
+    th { background: #2b2b2b; color: #fff; padding: 6px 8px; text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.5px; }
     .totals { margin-left: auto; width: 280px; margin-top: 12px; }
     .totals tr td { padding: 3px 8px; font-size: 12px; }
     .totals .total-row { border-top: 2px solid #333; font-size: 14px; font-weight: bold; }
@@ -511,9 +501,9 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 }
 
 /** Generate invoice PDF and return a blob URL for in-app preview */
-export async function generateInvoicePdfBlobUrl(data: InvoicePdfData): Promise<string> {
+export async function generateInvoicePdfBlobUrl(data: InvoicePdfData, options: InvoicePdfOptions = {}): Promise<string> {
   try {
-    const doc = await generateInvoicePdf(data);
+    const doc = await generateInvoicePdf(data, options);
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
   } catch (err) {

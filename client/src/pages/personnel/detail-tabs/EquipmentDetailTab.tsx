@@ -2,7 +2,7 @@
 // RMPG Flex — Officer Equipment Detail Tab
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { Package, Plus, Edit2, Trash2, Loader2, Box, LogIn, LogOut, Clock } from 'lucide-react';
 import type { OfficerEquipment } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
@@ -16,20 +16,6 @@ interface Props {
   onDelete: (eqId: string) => void;
   loading: boolean;
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function EquipmentDetailTab({
   equipment,
@@ -91,7 +77,7 @@ export default function EquipmentDetailTab({
   const topBorderColor = (status: string) => {
     switch (status) {
       case 'issued': return 'border-t-2 border-t-green-500';
-      case 'maintenance': return 'border-t-2 border-t-blue-500';
+      case 'maintenance': return 'border-t-2 border-t-gray-500';
       case 'lost': return 'border-t-2 border-t-red-500';
       case 'damaged': return 'border-t-2 border-t-amber-500';
       default: return 'border-t-2 border-t-rmpg-600';

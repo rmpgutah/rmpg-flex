@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  WifiOff, Wifi, RefreshCw, Key, Clock, Users, Database,
-  AlertTriangle, Check, Loader2, Shield, Trash2,
+  WifiOff, Wifi, RefreshCw, Key, Clock, Database, AlertTriangle, Check, Loader2,
+  Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useOfflineMode } from '../../hooks/useOfflineMode';
@@ -22,20 +22,6 @@ interface PinSecret {
   has_secret: boolean;
   created_at: string | null;
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function AdminOfflineTab({ LoadingSpinner, error, setError }: AdminOfflineTabProps) {
   const {
@@ -205,7 +191,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               className="mt-2 flex items-center gap-1 px-2 py-1 text-[10px] transition-colors"
               style={{
                 background: '#222222',
-                border: '1px solid #2e2e2e',
+                border: '1px solid #2a2a2a',
                 color: isSyncing ? '#383838' : '#888888',
               }}
             >
@@ -249,7 +235,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
               className="flex items-center gap-1 px-3 py-1.5 text-[10px] transition-colors"
               style={{
                 background: '#222222',
-                border: '1px solid #2e2e2e',
+                border: '1px solid #2a2a2a',
                 color: generatingAll ? '#383838' : '#888888',
               }}
             >
@@ -314,7 +300,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         className="text-[10px] px-2 py-0.5 transition-colors"
                         style={{
                           background: '#222222',
-                          border: '1px solid #2e2e2e',
+                          border: '1px solid #2a2a2a',
                           color: generatingSingle === s.user_id ? '#383838' : '#d97706',
                         }}
                       >
@@ -329,7 +315,7 @@ export default function AdminOfflineTab({ LoadingSpinner, error, setError }: Adm
                         onClick={() => handleGenerateSecret(s.user_id)}
                         disabled={generatingSingle === s.user_id}
                         className="text-[10px] px-2 py-0.5 text-rmpg-500 hover:text-amber-400 transition-colors"
-                        style={{ background: '#0a0a0a', border: '1px solid #222222' }}
+                        style={{ background: '#0a0a0a', border: '1px solid #2b2b2b' }}
                         title="Rotate secret (invalidates current PINs)"
                       >
                         {generatingSingle === s.user_id ? (

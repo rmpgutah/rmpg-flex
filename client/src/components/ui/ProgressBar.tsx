@@ -1,8 +1,6 @@
 // ═══════════════════════════════════════════════════════════════
 // Feature 25: Linear Progress Bar for long operations
 // ═══════════════════════════════════════════════════════════════
-import React from 'react';
-
 interface ProgressBarProps {
   value?: number;         // 0-100, undefined for indeterminate
   label?: string;
@@ -33,7 +31,7 @@ export default function ProgressBar({
         </div>
       )}
       <div
-        className="w-full bg-surface-sunken border border-[#222222] rounded-sm overflow-hidden"
+        className="w-full bg-surface-sunken border border-[#2b2b2b] rounded-sm overflow-hidden"
         style={{ height }}
       >
         {isIndeterminate ? (

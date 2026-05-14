@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Plus, Search, ShieldBan, MapPin, User, Clock, Ban, Calendar,
-  Archive, RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
+  Plus, Search, ShieldBan, MapPin, User, Ban, Calendar, RotateCcw, X, Save,
+  Loader2, CheckCircle, AlertTriangle,
 } from 'lucide-react';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -45,21 +47,7 @@ const EMPTY_FORM = {
   order_type: 'trespass_warning' as TrespassOrderType,
   reason: '', conditions: '', duration_days: '', notes: '',
   authorized_by: '', person_id: '', property_id: '',
-  section_id: '', zone_id: '', beat_id: '',
-};
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  sector_id: '', zone_id: '', beat_id: '',
 };
 
 export default function TrespassOrdersPage() {
@@ -204,7 +192,7 @@ export default function TrespassOrdersPage() {
       authorized_by: order.authorized_by || '',
       person_id: order.person_id ? String(order.person_id) : '',
       property_id: order.property_id ? String(order.property_id) : '',
-      section_id: order.section_id || '',
+      sector_id: order.sector_id || '',
       zone_id: order.zone_id || '',
       beat_id: order.beat_id || '',
     });
@@ -226,7 +214,7 @@ export default function TrespassOrdersPage() {
         person_id: formData.person_id ? parseInt(formData.person_id, 10) : null,
         property_id: formData.property_id ? parseInt(formData.property_id, 10) : null,
         duration_days: formData.duration_days ? parseInt(formData.duration_days, 10) : null,
-        section_id: formData.section_id || null,
+        sector_id: formData.sector_id || null,
         zone_id: formData.zone_id || null,
         beat_id: formData.beat_id || null,
         zone_beat: (formData.zone_id && formData.beat_id) ? `${formData.zone_id}-${formData.beat_id}` : formData.zone_id || formData.beat_id || null,
@@ -340,7 +328,7 @@ export default function TrespassOrdersPage() {
       <PanelTitleBar icon={ShieldBan} title="TRESPASS ORDERS">
         <span className="text-[9px] font-mono text-rmpg-400">{totalCount} TOTAL</span>
         <span className="toolbar-separator" />
-        <ExportButton exportUrl="/trespass-orders/export/csv" exportFilename="trespass_orders_export.csv" />
+        <ExportButton exportUrl="/trespass-orders?per_page=9999" exportFilename="trespass_orders_export.csv" />
         {/* Feature 18: Expiration Calendar */}
         <button type="button" onClick={handleLoadExpirationCalendar} className="toolbar-btn" title="Expiration calendar">
           <Calendar style={{ width: 11, height: 11 }} /> Expirations
@@ -359,7 +347,7 @@ export default function TrespassOrdersPage() {
         <div className="px-3 py-2 border-b border-amber-700/50 bg-amber-900/10 text-xs">
           <div className="flex justify-between items-center mb-1">
             <span className="text-amber-400 font-bold text-[10px] uppercase">Expiring Orders ({expirationCalendar.total})</span>
-            <button type="button" onClick={() => setExpirationCalendar(null)} className="text-amber-500 hover:text-amber-300"><X style={{ width: 12, height: 12 }} /></button>
+            <IconButton onClick={() => setExpirationCalendar(null)} className="text-amber-500 hover:text-amber-300" aria-label="Close expiration calendar"><X style={{ width: 12, height: 12 }} /></IconButton>
           </div>
           {Object.entries(expirationCalendar.by_month || {}).map(([month, orders]: [string, any]) => (
             <div key={month} className="mb-1">
@@ -384,7 +372,7 @@ export default function TrespassOrdersPage() {
         <div className="px-3 py-2 border-b border-gray-700/50 bg-gray-900/10 text-xs">
           <div className="flex justify-between items-center mb-1">
             <span className="text-gray-400 font-bold text-[10px] uppercase">Bulk Trespass Order Creation</span>
-            <button type="button" onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-gray-500 hover:text-gray-300"><X style={{ width: 12, height: 12 }} /></button>
+            <IconButton onClick={() => { setBulkMode(false); setBulkPersons([]); }} className="text-gray-500 hover:text-gray-300" aria-label="Cancel bulk mode"><X style={{ width: 12, height: 12 }} /></IconButton>
           </div>
           <div className="space-y-1 mb-2">
             {bulkPersons.map((p, i) => (
@@ -393,7 +381,7 @@ export default function TrespassOrdersPage() {
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], first_name: e.target.value }; setBulkPersons(arr); }} />
                 <input className="input-dark flex-1 text-xs min-h-[36px]" placeholder="Last name" value={p.last_name}
                   onChange={e => { const arr = [...bulkPersons]; arr[i] = { ...arr[i], last_name: e.target.value }; setBulkPersons(arr); }} />
-                <button type="button" onClick={() => setBulkPersons(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-300 px-1"><X style={{ width: 10, height: 10 }} /></button>
+                <IconButton onClick={() => setBulkPersons(prev => prev.filter((_, j) => j !== i))} className="text-red-500 hover:text-red-300 px-1" aria-label={`Remove person ${i + 1}`}><X style={{ width: 10, height: 10 }} /></IconButton>
               </div>
             ))}
           </div>
@@ -430,7 +418,7 @@ export default function TrespassOrdersPage() {
           >
             {showActiveOnly ? 'ACTIVE ONLY' : 'ALL ORDERS'}
           </button>
-          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setShowActiveOnly(false); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter by status">
+          <select className={`select-dark ${isMobile ? 'flex-1 text-sm py-2' : 'text-xs'}`} value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setShowActiveOnly(false); setPage(1); }} style={isMobile ? { minHeight: 44 } : undefined}>
             <option value="">All Statuses</option>
             <option value="active">Active</option>
             <option value="served">Served</option>
@@ -444,18 +432,10 @@ export default function TrespassOrdersPage() {
         </div>
       </div>
 
-      {/* Error Banner */}
-      {error && (
-        <div className="px-4 py-2 bg-red-900/30 border-b border-red-700/50 text-red-300 text-xs flex items-center gap-2">
-          <AlertTriangle className="w-3 h-3" /> {error}
-          <button type="button" onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-300"><X className="w-3 h-3" /></button>
-        </div>
-      )}
-
       {/* Content */}
       <div className="flex flex-1 overflow-hidden">
         {/* List */}
-        <div className={`${selectedOrder && !isMobile ? 'w-[40%]' : 'w-full'} overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent border-r border-rmpg-700`}>
+        <div className={`${selectedOrder && !isMobile ? 'w-[40%]' : 'w-full'} overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent border-r border-rmpg-700`}>
           {loading && orders.length === 0 ? (
             <div className="flex items-center justify-center h-32 text-rmpg-400"><Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading...</div>
           ) : orders.length === 0 ? (
@@ -467,7 +447,17 @@ export default function TrespassOrdersPage() {
             />
           ) : (
             orders.map(order => (
-              <div key={order.id} onClick={() => setSelectedOrder(order)}
+              <div
+                key={order.id}
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedOrder(order)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setSelectedOrder(order);
+                  }
+                }}
                 className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedOrder?.id === order.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                 style={isMobile ? { minHeight: 56 } : undefined}
               >
@@ -494,8 +484,8 @@ export default function TrespassOrdersPage() {
                   <span>{order.issued_by_name || order.issued_by_display}</span>
                   <span>•</span>
                   <span>{safeDateStr(order.created_at)}</span>
-                  {(order.section_id || order.zone_id || order.beat_id) && (
-                    <span className="font-mono text-rmpg-500">{[order.section_id, order.zone_id, order.beat_id].filter(Boolean).join('/')}</span>
+                  {(order.sector_id || order.zone_id || order.beat_id) && (
+                    <span className="font-mono text-rmpg-500">{[order.sector_id, order.zone_id, order.beat_id].filter(Boolean).join('/')}</span>
                   )}
                   {order.expiration_date && <span className="text-amber-500/70">Exp: {safeDateStr(order.expiration_date)}</span>}
                 </div>
@@ -513,7 +503,7 @@ export default function TrespassOrdersPage() {
 
         {/* Detail panel */}
         {selectedOrder && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
             <div className="flex items-center justify-between mb-3">
               <div>
                 <h2 className="text-sm font-bold text-white font-mono">{selectedOrder.order_number}</h2>
@@ -555,9 +545,9 @@ export default function TrespassOrdersPage() {
                     <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} /> Delete
                   </button>
                 )}
-                <button type="button" onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }}>
+                <IconButton onClick={() => setSelectedOrder(null)} className="toolbar-btn" style={{ fontSize: isMobile ? '12px' : '10px', minHeight: isMobile ? 48 : undefined }} aria-label="Close details">
                   <X style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />
-                </button>
+                </IconButton>
               </div>
             </div>
 
@@ -583,8 +573,8 @@ export default function TrespassOrdersPage() {
               <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? new Date(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-white">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Authorized By</span><div className="text-white">{selectedOrder.authorized_by || '—'}</div></div>
-              {(selectedOrder.section_id || selectedOrder.zone_id || selectedOrder.beat_id) && (
-                <div><span className="text-rmpg-500 text-[10px] uppercase">S/Z/B</span><div className="text-white font-mono">{[selectedOrder.section_id, selectedOrder.zone_id, selectedOrder.beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
+              {(selectedOrder.sector_id || selectedOrder.zone_id || selectedOrder.beat_id) && (
+                <div><span className="text-rmpg-500 text-[10px] uppercase">S/Z/B</span><div className="text-white font-mono">{[selectedOrder.sector_id, selectedOrder.zone_id, selectedOrder.beat_id].filter(Boolean).join(' / ') || '—'}</div></div>
               )}
               {selectedOrder.served_at && (
                 <>
@@ -619,10 +609,10 @@ export default function TrespassOrdersPage() {
       {/* Form Modal */}
       {formOpen && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
-          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
+          <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
               <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
-              <button type="button" onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white"><X style={{ width: 14, height: 14 }} /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
               {/* Person search */}
@@ -632,7 +622,7 @@ export default function TrespassOrdersPage() {
                   <input type="text" className="input-dark text-xs w-full min-h-[36px]" placeholder="Search person records..." aria-label="Search person records..."
                     value={personSearch} onChange={e => setPersonSearch(e.target.value)} />
                   {personResults.length > 0 && (
-                    <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+                    <div className="absolute z-10 w-full mt-1 bg-surface-raised border border-rmpg-600 max-h-40 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
                       {personResults.map((p: any) => (
                         <button key={p.id} type="button" onClick={() => selectPerson(p)}
                           className="w-full text-left px-3 py-1.5 text-xs text-white hover:bg-rmpg-700 flex items-center gap-2">
@@ -674,23 +664,23 @@ export default function TrespassOrdersPage() {
               <div className="grid grid-cols-3 gap-2">
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                  <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
-                    value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
+                  <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
+                    value={formData.sector_id || ''} onChange={e => { update('sector_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                  <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
                     <option value="">—</option>
-                    {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                    {zonesForSection(formData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                  <select className="w-full bg-[#141414] border border-[#2e2e2e] rounded-sm px-2 py-1.5 text-sm text-white"
+                  <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
                     value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
                     <option value="">—</option>
                     {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
@@ -711,16 +701,16 @@ export default function TrespassOrdersPage() {
               </div>
 
               <div><label className="field-label">Reason</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
 
               <div><label className="field-label">Conditions / Exceptions</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
 
               <div><label className="field-label">Notes</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
-                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(136,136,136,0.3)', borderColor: 'rgba(136,136,136,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
+                <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(212,160,23,0.25)', borderColor: 'rgba(212,160,23,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>

@@ -1,8 +1,9 @@
-import React, { useId, useEffect } from 'react';
+import { useId, useEffect } from 'react';
 import { ClipboardCheck } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { InspectionType, InspectionResult, InspectionItemStatus, InspectionItem } from '../../../types';
 
+import RichTextArea from '../../../components/RichTextArea';
 export interface InspectionFormState {
   inspection_type: InspectionType;
   inspector_name: string;
@@ -194,7 +195,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
           {/* Overall notes */}
           <div>
             <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Additional Notes</label>
-            <textarea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
+            <RichTextArea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
               onChange={(e) => setField('notes', e.target.value)} maxLength={3000} />
             <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
           </div>

@@ -1,22 +1,41 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2,
-  Search, Reply, ReplyAll, Forward, Paperclip, X, ChevronLeft,
-  AlertTriangle, Download, Eye, Flag, MailOpen, Plus,
-  Folder, FileText, WifiOff, FolderInput, Bold, Italic, Link,
-  Settings2, ChevronDown, ChevronRight as ChevronRightIcon,
-  MessageSquare, CheckSquare, Square, CheckCircle, EyeOff,
-  FolderPlus, Edit3, Trash, PanelLeftClose, PanelLeftOpen, Image,
-  Clock, FileStack, Users, Printer, Bell, BellOff,
-  Link2, Unlink, CalendarClock, Filter, SlidersHorizontal,
-  ExternalLink, Shield, Hash, Upload,
+  Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2, Search, Reply,
+  ReplyAll, Forward, Paperclip, X, ChevronLeft, AlertTriangle, Download, Eye, Flag,
+  MailOpen, Plus, Folder, FileText, WifiOff, FolderInput, Bold, Italic, Link,
+  Settings2, ChevronDown, ChevronRight as ChevronRightIcon, MessageSquare,
+  CheckSquare, Square, CheckCircle, EyeOff, FolderPlus, Edit3, Trash,
+  PanelLeftClose, PanelLeftOpen, Image, Clock, FileStack, Users, Printer, Bell,
+  BellOff, Link2, CalendarClock, SlidersHorizontal, Shield, Hash, Upload,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
+import IconButton from '../components/IconButton';
 import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
+import sanitizeHtml from 'sanitize-html';
+import EnrollmentBanner from '../components/email/EnrollmentBanner';
+
+// Shared sanitize-html options for email HTML content
+const EMAIL_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+    'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+    'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
+  ]),
+  allowedAttributes: {
+    a: ['href', 'name', 'target', 'rel'],
+    img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
+    '*': ['style', 'class']
+  },
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  allowedSchemesByTag: {
+    img: ['http', 'https']
+  },
+  disallowedTagsMode: 'discard'
+};
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -89,9 +108,9 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
     <div className="border-t border-border-subtle pt-2 mt-2 space-y-1.5">
       <div className="flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Email Signature</span>
-        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
-      <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
+      <RichTextArea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
         className="input-dark w-full text-xs font-mono resize-y min-h-[36px]" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
       <div className="flex justify-end gap-1.5">
         <button type="button" onClick={onClose} className="btn-secondary text-[10px] px-2 py-0.5">Cancel</button>
@@ -207,7 +226,7 @@ function ContactAutocompleteInput({
         className="input-dark w-full text-xs min-h-[36px]"
       />
       {showSuggestions && suggestions.length > 0 && (
-        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent py-1">
+        <div className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-lg max-h-48 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
           {suggestions.map((contact, idx) => (
             <button type="button"
               key={`${contact.email}-${idx}`}
@@ -273,7 +292,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
     <div ref={ref} className="absolute left-0 top-full mt-1 z-50 w-72 bg-surface-base border border-border-strong rounded-sm shadow-xl">
       <div className="px-3 py-2 border-b border-border-subtle flex items-center justify-between">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Email Templates</span>
-        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
       {/* Category filter */}
       <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 flex-wrap">
@@ -284,7 +303,7 @@ function TemplatePicker({ onSelect, onClose }: { onSelect: (template: EmailTempl
             className={`text-[9px] px-1.5 py-0.5 rounded-sm capitalize ${filter === cat ? 'bg-brand-500/20 text-brand-400' : 'text-rmpg-500 hover:text-white'}`}>{cat}</button>
         ))}
       </div>
-      <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent py-1">
+      <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
         {loading ? (
           <div className="py-4 text-center"><Loader2 className="w-4 h-4 animate-spin text-brand-400 mx-auto" role="status" aria-label="Loading" /></div>
         ) : filtered.length === 0 ? (
@@ -340,7 +359,7 @@ function ScheduleSendModal({ onSchedule, onClose }: { onSchedule: (dateTime: str
       <div className="bg-surface-base border border-border-subtle rounded-sm w-80 mx-4">
         <div className="px-4 py-2 border-b border-border-subtle flex items-center justify-between">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2"><Clock className="w-4 h-4 text-brand-400" /> Schedule Send</h3>
-          <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+          <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
         </div>
         <div className="p-4 space-y-3">
           {/* Quick presets */}
@@ -636,34 +655,47 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
 
 // ============================================================
 // Email Body Frame — renders HTML email in a blob: URL iframe
-// Uses blob: instead of srcdoc so the iframe inherits the page origin,
-// allowing external images to load (srcdoc has null origin which many CDNs reject).
+// blob: URLs inherit the parent page origin, allowing external images.
+// Scripts blocked via CSP meta tag. Images explicitly allowed.
 // ============================================================
+/** Rewrite external image URLs to go through our server-side proxy.
+ *  This bypasses referrer/origin checks on government and corporate image servers. */
+function proxyEmailImages(html: string): string {
+  const token = localStorage.getItem('rmpg_token') || '';
+  // Rewrite src="http..." on img tags to go through /api/email/image-proxy
+  return html.replace(
+    /(<img\b[^>]*?\bsrc\s*=\s*["'])(https?:\/\/[^"']+)(["'])/gi,
+    (_match, before, url, after) => {
+      // Skip data: URLs and already-proxied URLs
+      if (url.startsWith('data:') || url.includes('/api/email/image-proxy')) return _match;
+      const proxyUrl = `/api/email/image-proxy?url=${encodeURIComponent(url)}&token=${encodeURIComponent(token)}`;
+      return `${before}${proxyUrl}${after}`;
+    }
+  );
+}
+
 const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; onLoad?: () => void }>(
   ({ bodyHtml, onLoad }, ref) => {
-    const srcdocHtml = React.useMemo(() => {
-      // Sanitize: strip <script> tags + inline event handlers (keep images/styles intact)
-      const sanitized = bodyHtml
-        .replace(/<script[\s\S]*?<\/script\s*>/gi, '')
-        .replace(/\bon\w+\s*=/gi, 'data-blocked=');
-      return `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
-        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #050505; margin: 16px; line-height: 1.6; word-wrap: break-word; }
-        a { color: #888888; text-decoration: underline; } a:hover { color: #999999; } img { max-width: 100%; height: auto; display: inline-block; } table { border-collapse: collapse; max-width: 100%; }
-        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #222222; margin: 8px 0; padding: 4px 12px; color: #999999; }
-        pre { background: #0a0a0a; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #222222; margin: 16px 0; }
-      </style></head><body>${sanitized}</body></html>`;
+    const [blobUrl, setBlobUrl] = React.useState<string | null>(null);
+    React.useEffect(() => {
+      // Use a vetted sanitizer instead of regex stripping to avoid incomplete
+      // multi-character sanitization bypasses.
+      const sanitized = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
+      // Proxy all external images through our server
+      const proxied = proxyEmailImages(sanitized);
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
+        body { font-family: Segoe UI, Arial, sans-serif; font-size: 13px; color: #c0d0e0; background: #0c0c0c; margin: 16px; line-height: 1.6; word-wrap: break-word; }
+        a { color: #888888; text-decoration: underline; } a:hover { color: #a0a0a0; } img { max-width: 100%; height: auto; } table { border-collapse: collapse; max-width: 100%; }
+        td, th { padding: 4px 8px; } blockquote { border-left: 3px solid #2b2b2b; margin: 8px 0; padding: 4px 12px; color: #8899aa; }
+        pre { background: #141414; padding: 8px; border-radius: 2px; overflow-x: auto; } hr { border: none; border-top: 1px solid #2b2b2b; margin: 16px 0; }
+      </style></head><body>${proxied}</body></html>`;
+      const blob = new Blob([html], { type: 'text/html' });
+      const url = URL.createObjectURL(blob);
+      setBlobUrl(url);
+      return () => URL.revokeObjectURL(url);
     }, [bodyHtml]);
-    return (
-      <iframe
-        ref={ref}
-        srcDoc={srcdocHtml}
-        sandbox="allow-same-origin allow-popups"
-        onLoad={onLoad}
-        className="w-full border-0"
-        style={{ minHeight: 200 }}
-        title="Email body"
-      />
-    );
+    if (!blobUrl) return null;
+    return <iframe ref={ref} src={blobUrl} onLoad={onLoad} sandbox="allow-same-origin allow-popups" className="w-full border-0" style={{ minHeight: 200 }} title="Email body" />;
   }
 );
 EmailBodyFrame.displayName = 'EmailBodyFrame';
@@ -724,11 +756,12 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   bodyDiv.className = 'body-content';
   if (bodyHtml) {
     // Use a sandboxed iframe approach: render HTML body inside an iframe for print
-    // This is the same HTML we already render from the email server in a sandboxed iframe
+    // Sanitize the HTML the same way EmailBodyFrame does before injecting into srcdoc
+    const cleanHtml = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
+    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${cleanHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');
@@ -796,7 +829,7 @@ function SearchFilterPanel({
     <div ref={ref} className="absolute left-0 right-0 top-full mt-1 z-50 bg-surface-base border border-border-strong rounded-sm shadow-xl p-3 space-y-2">
       <div className="flex items-center justify-between mb-1">
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider">Search Filters</span>
-        <button type="button" onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+        <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
 
       <div>
@@ -863,9 +896,12 @@ function setNotificationsEnabled(enabled: boolean) {
 async function requestNotificationPermission(): Promise<boolean> {
   if (!('Notification' in window)) return false;
   if (Notification.permission === 'granted') return true;
-  if (Notification.permission === 'denied') return false;
-  const result = await Notification.requestPermission();
-  return result === 'granted';
+  try {
+    const result = await Notification.requestPermission();
+    return result === 'granted';
+  } catch {
+    return (Notification.permission as string) === 'granted';
+  }
 }
 
 function showDesktopNotification(title: string, body: string) {
@@ -1088,13 +1124,13 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm" onKeyDown={handleKeyDown}>
       <div
-        className={`bg-[#0a0a0a] border border-[#222222] rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#0a0a0a]' : ''}`}
+        className={`bg-[#141414] border border-[#2b2b2b] rounded-t-sm sm:rounded-sm w-full max-w-2xl sm:mx-4 flex flex-col max-h-[95vh] sm:max-h-[85vh] shadow-md transition-all ${isDragOver ? 'ring-2 ring-brand-500 ring-offset-2 ring-offset-[#141414]' : ''}`}
         onDragOver={e => { e.preventDefault(); setIsDragOver(true); }}
         onDragLeave={() => setIsDragOver(false)}
         onDrop={handleDrop}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#222222] bg-[#050505] rounded-t-sm">
+        <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c] rounded-t-sm">
           <h3 className="text-sm font-semibold text-white flex items-center gap-2">
             {mode === 'reply' ? <Reply className="w-4 h-4 text-brand-400" /> :
              mode === 'reply-all' ? <ReplyAll className="w-4 h-4 text-brand-400" /> :
@@ -1104,7 +1140,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </h3>
           <div className="flex items-center gap-1">
             {draftStatus && <span className="text-[9px] text-green-500 italic mr-2">{draftStatus}</span>}
-            <button type="button" onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" aria-label="Close" title="Close"><X className="w-4 h-4" /></button>
+            <IconButton onClick={onClose} className="p-1 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" aria-label="Close" title="Close"><X className="w-4 h-4" /></IconButton>
           </div>
         </div>
 
@@ -1157,7 +1193,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           </div>
         </div>
 
-        <div className="border-t border-[#222222] mx-4 my-0" />
+        <div className="border-t border-[#2b2b2b] mx-4 my-0" />
 
         {/* Formatting toolbar */}
         <div className="flex items-center gap-0.5 px-4 py-1">
@@ -1170,8 +1206,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
           <div className="w-px h-4 bg-rmpg-700 mx-1" />
           <button type="button" onClick={() => fileInputRef.current?.click()}
             className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Attach file"><Paperclip className="w-3.5 h-3.5" /></button>
-          <button type="button" onClick={handleInlineImage}
-            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image"><Image className="w-3.5 h-3.5" /></button>
+          <IconButton onClick={handleInlineImage}
+            className="p-1.5 text-rmpg-500 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors" title="Insert inline image" aria-label="Insert inline image"><Image className="w-3.5 h-3.5" /></IconButton>
           <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
           <div className="flex-1" />
           <div className="relative">
@@ -1188,8 +1224,8 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
         </div>
 
         {/* Body */}
-        <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
-          <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
+        <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          <RichTextArea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
             className="w-full bg-transparent text-xs text-rmpg-200 resize-none outline-none placeholder:text-rmpg-600 leading-relaxed"
             placeholder="Write your message here...
 
@@ -1201,7 +1237,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
 
         {/* Reply context */}
         {replyMessage && (mode === 'reply' || mode === 'reply-all') && (
-          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#050505] border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
+          <div className="mx-4 mb-2 text-[10px] text-rmpg-500 bg-[#0c0c0c] border-l-2 border-l-brand-500/30 rounded-sm p-2.5">
             <div className="flex items-center gap-1.5 mb-1">
               <Reply className="w-3 h-3 text-brand-400" />
               <span className="text-rmpg-400 font-medium">{replyMessage.fromName || replyMessage.fromAddress}</span>
@@ -1228,7 +1264,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
                 const isPdf = ext === 'pdf';
                 const fileColor = isImage ? '#22c55e' : isPdf ? '#ef4444' : '#8b5cf6';
                 return (
-                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#050505] border border-[#222222] rounded-sm text-[10px] text-rmpg-300 group">
+                  <div key={idx} className="flex items-center gap-1.5 px-2.5 py-1.5 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm text-[10px] text-rmpg-300 group">
                     <div className="w-5 h-5 rounded-sm flex items-center justify-center text-[7px] font-bold uppercase"
                       style={{ backgroundColor: fileColor + '15', color: fileColor }}>{ext.slice(0, 3)}</div>
                     <span className="truncate max-w-[100px]">{att.name}</span>
@@ -1242,7 +1278,7 @@ Drag & drop files to attach • Ctrl+Enter to send" />
         )}
 
         {/* Footer */}
-        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#222222] bg-[#050505] rounded-b-sm">
+        <div className="flex items-center justify-between px-4 py-2.5 border-t border-[#2b2b2b] bg-[#0c0c0c] rounded-b-sm">
           <div className="text-[9px] text-rmpg-600">
             <span className="hidden sm:inline">Signature auto-appended • Markdown formatting supported</span>
             <span className="sm:hidden">Ctrl+Enter to send</span>
@@ -1301,7 +1337,7 @@ function MoveToFolderDropdown({ folders, currentFolder, onMove }: { folders: Ema
     <div className="relative" ref={ref}>
       <button type="button" onClick={() => setOpen(!open)} className="p-1 text-rmpg-500 hover:text-white" title="Move to folder"><FolderInput className="w-3.5 h-3.5" /></button>
       {open && (
-        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] bg-surface-base border border-border-strong rounded-sm shadow-lg py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
             const Icon = FOLDER_ICONS[f.displayName] || Folder;
             return (
@@ -1385,7 +1421,7 @@ function ContextMenu({
           <FolderInput className="w-3 h-3" /> Move to <ChevronRightIcon className="w-3 h-3 ml-auto" />
         </div>
         {showMoveMenu && (
-          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="absolute left-full top-0 min-w-[150px] bg-surface-base border border-border-strong rounded-sm shadow-xl py-1 max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {folders.filter(f => getFolderKey(f) !== currentFolder).map(f => {
               const Icon = FOLDER_ICONS[f.displayName] || Folder;
               return (
@@ -1426,9 +1462,19 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
 
   if (!expanded) {
     return (
-      <div className="border-t border-[#222222] bg-[#050505]">
-        <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
-          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#222222] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
+      <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded(true);
+              setTimeout(() => inputRef.current?.focus(), 50);
+            }
+          }}
+          className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#2b2b2b] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
           <Reply className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
           <span>Click here to reply...</span>
         </div>
@@ -1437,13 +1483,13 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
   }
 
   return (
-    <div className="border-t border-[#222222] bg-[#050505]">
-      <div className="mx-4 my-3 border border-[#222222] rounded-sm bg-[#0a0a0a] overflow-hidden focus-within:border-brand-500/40 transition-colors">
-        <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
+    <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
+      <div className="mx-4 my-3 border border-[#2b2b2b] rounded-sm bg-[#141414] overflow-hidden focus-within:border-brand-500/40 transition-colors">
+        <RichTextArea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
           placeholder="Type your reply..." autoFocus />
-        <div className="flex items-center justify-between px-3 py-2 bg-[#050505]/50">
+        <div className="flex items-center justify-between px-3 py-2 bg-[#0c0c0c]/50">
           <span className="text-[9px] text-rmpg-600 font-mono">Ctrl+Enter to send &middot; Esc to cancel</span>
           <div className="flex items-center gap-1.5">
             <button type="button" onClick={() => { setExpanded(false); setBody(''); }} className="px-2.5 py-1 text-[10px] text-rmpg-400 hover:text-white hover:bg-rmpg-700/50 rounded-sm transition-colors">Cancel</button>
@@ -1481,20 +1527,6 @@ function groupByConversation(messages: EmailMessage[]): ThreadGroup[] {
 
 interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function EmailPage() {
   const { subscribe } = useWebSocket();
   const { addToast } = useToast();
@@ -1502,6 +1534,25 @@ export default function EmailPage() {
 
   // Status
   const [status, setStatus] = useState<{ configured: boolean; enabled: boolean; authorized: boolean } | null>(null);
+
+  // Phase 4: per-user enrollment gate
+  const [enrolled, setEnrolled] = useState<boolean | null>(null);
+
+  // Fetch enrollment status on mount
+  useEffect(() => {
+    apiFetch<{ enrolled: boolean }>('/api/email/status')
+      .then(s => setEnrolled(s.enrolled))
+      .catch(() => setEnrolled(false));
+  }, []);
+
+  // Handle ?enrolled=1 callback after Microsoft consent
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('enrolled') === '1') {
+      setEnrolled(true);
+      window.history.replaceState({}, '', '/email');
+    }
+  }, []);
 
   // Folders
   const [folders, setFolders] = useState<EmailFolder[]>([]);
@@ -1534,6 +1585,11 @@ export default function EmailPage() {
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Task 2.4: FTS search — debounced call to /api/email/messages/search
+  // When searchResults is non-null, it replaces the folder message list
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<EmailMessage[] | null>(null);
 
   // Compose
   const [composing, setComposing] = useState<'new' | 'reply' | 'reply-all' | 'forward' | null>(null);
@@ -1633,47 +1689,10 @@ export default function EmailPage() {
     setLoadingMessage(true);
     try {
       const msg = await apiFetch<EmailMessage>(`/email/messages/${id}`);
-      let atts: EmailAttachment[] = [];
-      try { atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); } catch { /* no attachments */ }
-      setAttachments(atts);
-
-      // Resolve cid: inline image references → data URLs
-      let resolvedHtml = msg.bodyHtml || '';
-      if (resolvedHtml && atts.length > 0) {
-        const inlineAtts = atts.filter(a => a.isInline && a.contentId && a.contentType?.startsWith('image/'));
-        if (inlineAtts.length > 0) {
-          const token = localStorage.getItem('rmpg_token');
-          const authHeader = token ? `Bearer ${token}` : '';
-          const cidReplacements = await Promise.allSettled(
-            inlineAtts.map(async (att) => {
-              try {
-                const res = await fetch(`/api/email/messages/${id}/attachments/${att.id}`, {
-                  headers: authHeader ? { Authorization: authHeader } : {},
-                });
-                if (!res.ok) return null;
-                const blob = await res.blob();
-                return new Promise<{ cid: string; dataUrl: string } | null>((resolve) => {
-                  const reader = new FileReader();
-                  reader.onloadend = () => resolve({ cid: att.contentId!, dataUrl: reader.result as string });
-                  reader.onerror = () => resolve(null);
-                  reader.readAsDataURL(blob);
-                });
-              } catch { return null; }
-            })
-          );
-          for (const result of cidReplacements) {
-            if (result.status === 'fulfilled' && result.value) {
-              const { cid, dataUrl } = result.value;
-              // Replace all cid: variations (with or without angle brackets, URL-encoded)
-              resolvedHtml = resolvedHtml
-                .replace(new RegExp(`src=["']cid:${cid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`)
-                .replace(new RegExp(`src=["']cid:${cid.replace(/@.*$/, '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}["']`, 'gi'), `src="${dataUrl}"`);
-            }
-          }
-        }
-      }
-      setFullMessage({ ...msg, bodyHtml: resolvedHtml });
+      setFullMessage(msg);
       setMessages(prev => prev.map(m => m.id === id ? { ...m, isRead: true } : m));
+      try { const atts = await apiFetch<EmailAttachment[]>(`/email/messages/${id}/attachments`); setAttachments(atts); }
+      catch (err) { console.warn('[EmailPage] fetch attachments failed:', err); setAttachments([]); }
     } catch (e) { console.warn('[Email] fetch message failed:', e); } finally { setLoadingMessage(false); }
   }, []);
 
@@ -1716,6 +1735,36 @@ export default function EmailPage() {
     }, 500);
     return () => { if (searchTimerRef.current) clearTimeout(searchTimerRef.current); };
   }, [searchInput, search, selectedFolder, fetchMessages]);
+
+  // Task 2.4: Debounced FTS search (300ms, ≥2 chars) — populates searchResults
+  useEffect(() => {
+    if (searchQuery.length < 2) { setSearchResults(null); return; }
+    const t = setTimeout(() => {
+      const folder = selectedFolder;
+      apiFetch<{ results: any[] }>(`/email/messages/search?q=${encodeURIComponent(searchQuery)}&folder=${encodeURIComponent(folder || '')}`)
+        .then(r => {
+          // FTS endpoint returns raw snake_case DB rows — map to EmailMessage camelCase shape
+          const mapped: EmailMessage[] = (r.results || []).map((row: any) => ({
+            id: row.graph_id || row.id,
+            conversationId: row.conversation_id,
+            subject: row.subject || '',
+            fromAddress: row.from_address || '',
+            fromName: row.from_name || '',
+            toAddresses: [],
+            ccAddresses: [],
+            bodyPreview: row.body_preview || '',
+            hasAttachments: !!row.has_attachments,
+            isRead: !!row.is_read,
+            isFlagged: !!row.is_flagged,
+            importance: 'normal',
+            receivedAt: row.received_at || '',
+          }));
+          setSearchResults(mapped);
+        })
+        .catch(() => setSearchResults([]));
+    }, 300);
+    return () => clearTimeout(t);
+  }, [searchQuery, selectedFolder]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -1779,14 +1828,19 @@ export default function EmailPage() {
 
   const handleSelectFolder = (folderId: string) => {
     setSelectedFolder(folderId); setSelectedMessage(null); setFullMessage(null); setSelectedIds(new Set()); setPage(1);
-    fetchMessages(1, folderId, search);
+    // Task 2.4: clear FTS search on folder change — simpler & more predictable UX
+    setSearchQuery(''); setSearchInput(''); setSearch(''); setSearchResults(null);
+    fetchMessages(1, folderId, '');
   };
 
   const handleSelectMessage = (msg: EmailMessage) => {
     setSelectedMessage(msg); setMobileView('detail'); fetchFullMessage(msg.id);
   };
 
-  const handleClearSearch = () => { setSearchInput(''); setSearch(''); setPage(1); fetchMessages(1, selectedFolder, ''); };
+  const handleClearSearch = () => {
+    setSearchInput(''); setSearch(''); setSearchQuery(''); setSearchResults(null);
+    setPage(1); fetchMessages(1, selectedFolder, '');
+  };
   const handleRefresh = () => { fetchFolders(); fetchMessages(1, selectedFolder, search); };
 
   const handleToggleRead = async (msg: EmailMessage) => {
@@ -1992,9 +2046,12 @@ export default function EmailPage() {
   // Top-level folders only (no parentFolderId, or parentFolderId points to root)
   const topLevelFolders = sortedFolders.filter(f => !f.parentFolderId || WELL_KNOWN_FOLDERS.includes(f.displayName));
 
+  // Task 2.4: When FTS search is active, searchResults replaces the folder message list
+  const displayedMessages: EmailMessage[] = searchResults ?? messages;
+
   // Apply client-side search filters
   const filteredMessages = hasActiveFilters(searchFilters)
-    ? messages.filter(msg => {
+    ? displayedMessages.filter(msg => {
         if (searchFilters.sender) {
           const s = searchFilters.sender.toLowerCase();
           if (!msg.fromName.toLowerCase().includes(s) && !msg.fromAddress.toLowerCase().includes(s)) return false;
@@ -2006,7 +2063,7 @@ export default function EmailPage() {
         if (searchFilters.dateTo && msg.receivedAt > searchFilters.dateTo + 'T23:59:59') return false;
         return true;
       })
-    : messages;
+    : displayedMessages;
 
   const conversationThreads = groupByConversation(filteredMessages);
   const unreadCount = messages.filter(m => !m.isRead).length;
@@ -2077,15 +2134,19 @@ export default function EmailPage() {
 
   // ─── Render ───
 
+  // Phase 4: per-user enrollment gate
+  if (enrolled === false) return <EnrollmentBanner />;
+  if (enrolled === null) return <div className="p-8 text-center text-xs text-gray-500">Checking enrollment...</div>;
+
   return (
     <div className="flex h-full overflow-hidden">
       {/* ─── Folder Panel ─── */}
       <div className={`flex-shrink-0 border-r border-border-subtle bg-surface-sunken hidden md:flex flex-col transition-all ${folderCollapsed ? 'w-12' : 'w-48'}`}>
         {/* Collapse toggle + compose */}
         <div className="px-2 py-2 border-b border-border-subtle flex items-center gap-1">
-          <button type="button" onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-white" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
+          <IconButton onClick={toggleFolderCollapse} className="p-1 text-rmpg-500 hover:text-white" title={folderCollapsed ? 'Expand folders' : 'Collapse folders'} aria-label={folderCollapsed ? 'Expand folders' : 'Collapse folders'}>
             {folderCollapsed ? <PanelLeftOpen className="w-3.5 h-3.5" /> : <PanelLeftClose className="w-3.5 h-3.5" />}
-          </button>
+          </IconButton>
           {!folderCollapsed && (
             <button type="button" onClick={() => setComposing('new')} className="flex-1 text-xs py-1.5 flex items-center justify-center gap-1.5 bg-brand-500 hover:bg-brand-600 text-white font-semibold rounded-sm transition-all shadow-sm shadow-brand-500/20 hover:shadow-md hover:shadow-brand-500/30">
               <Plus className="w-3.5 h-3.5" /> Compose
@@ -2104,7 +2165,7 @@ export default function EmailPage() {
         )}
 
         {/* Folder list */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent py-1">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent py-1">
           {topLevelFolders.map(f => renderFolderItem(f))}
         </div>
 
@@ -2148,7 +2209,7 @@ export default function EmailPage() {
               const newState = !notificationsOn;
               if (newState) {
                 const granted = await requestNotificationPermission();
-                if (!granted) { showSnackbar('Notifications blocked by browser', 'error'); return; }
+                if (!granted) { showSnackbar('Notifications blocked — click the lock icon in the address bar → Allow notifications, then reload', 'error'); return; }
               }
               setNotificationsEnabled(newState);
               setNotificationsOn(newState);
@@ -2196,7 +2257,7 @@ export default function EmailPage() {
           <select
             value={selectedFolder}
             onChange={e => handleSelectFolder(e.target.value)}
-            className="flex-1 text-xs bg-[#050505] border border-[#222222] rounded-sm px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
+            className="flex-1 text-xs bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm px-2 py-1.5 text-white focus:border-brand-500 focus:outline-none"
           >
             {sortedFolders.map(f => {
               const key = getFolderKey(f);
@@ -2215,16 +2276,16 @@ export default function EmailPage() {
           }`}>
             {snackbar.type === 'success' ? <CheckCircle className="w-3 h-3" /> : <AlertTriangle className="w-3 h-3" />}
             <span className="flex-1">{snackbar.text}</span>
-            <button type="button" onClick={dismissSnackbar} className="opacity-60 hover:opacity-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+            <IconButton onClick={dismissSnackbar} className="opacity-60 hover:opacity-100" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
           </div>
         )}
 
         {/* Batch action bar OR Search bar */}
         {selectedIds.size > 0 ? (
           <div className="px-2 py-1.5 border-b border-border-subtle flex items-center gap-1 bg-brand-500/5">
-            <button type="button" onClick={selectAll} className="p-1 text-brand-400 hover:text-brand-300" title="Toggle select all">
+            <IconButton onClick={selectAll} className="p-1 text-brand-400 hover:text-brand-300" title="Toggle select all" aria-label="Toggle select all">
               {selectedIds.size === messages.length ? <CheckSquare className="w-3.5 h-3.5" /> : <Square className="w-3.5 h-3.5" />}
-            </button>
+            </IconButton>
             <span className="text-[10px] text-brand-400 font-medium">{selectedIds.size} selected</span>
             <div className="flex-1" />
             <button type="button" onClick={() => handleBatchAction('archive')} className="p-1 text-rmpg-400 hover:text-white" title="Archive"><Archive className="w-3.5 h-3.5" /></button>
@@ -2238,10 +2299,10 @@ export default function EmailPage() {
             <div className="flex items-center gap-1.5">
               <div className="flex-1 relative">
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3 h-3 text-rmpg-500" />
-                <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search emails..." aria-label="Search emails..."
+                <input value={searchInput} onChange={e => { setSearchInput(e.target.value); setSearchQuery(e.target.value); }} placeholder="Search emails (subject, body, from)..." aria-label="Search emails..."
                   className="input-dark w-full text-[11px] pl-7 pr-7 py-1 min-h-[36px]" />
                 {searchInput && (
-                  <button type="button" onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></button>
+                  <IconButton onClick={handleClearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white" aria-label="Clear search" title="Clear"><X className="w-3 h-3" /></IconButton>
                 )}
                 {showSearchFilters && (
                   <SearchFilterPanel filters={searchFilters} onChange={setSearchFilters} onClose={() => setShowSearchFilters(false)} />
@@ -2253,11 +2314,11 @@ export default function EmailPage() {
                 <SlidersHorizontal className="w-3.5 h-3.5" />
               </button>
               {unreadCount > 0 && (
-                <button type="button" onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Mark all as read"><Eye className="w-3.5 h-3.5" /></button>
+                <IconButton onClick={handleMarkAllRead} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Mark all as read" aria-label="Mark all as read"><Eye className="w-3.5 h-3.5" /></IconButton>
               )}
-              <button type="button" onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh">
+              <IconButton onClick={handleRefresh} className="p-1 text-rmpg-500 hover:text-white rounded-sm" title="Refresh" aria-label="Refresh">
                 <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-              </button>
+              </IconButton>
               {/* Feature 25: Thread View Toggle */}
               <button type="button"
                 onClick={() => { const next = viewMode === 'messages' ? 'threads' : 'messages'; setViewMode(next); if (next === 'threads') fetchThreads(); }}
@@ -2277,6 +2338,10 @@ export default function EmailPage() {
               </button>
               <button type="button" onClick={() => setComposing('new')} className="p-1 text-brand-400 hover:text-brand-300 rounded-sm md:hidden" title="Compose"><Plus className="w-3.5 h-3.5" /></button>
             </div>
+            {/* Task 2.4: FTS search result count */}
+            {searchResults !== null && (
+              <div className="text-[10px] text-rmpg-500">{searchResults.length} result{searchResults.length === 1 ? '' : 's'}</div>
+            )}
             {/* Active filter indicators */}
             {hasActiveFilters(searchFilters) && (
               <div className="flex items-center gap-1 flex-wrap">
@@ -2304,13 +2369,13 @@ export default function EmailPage() {
         )}
 
         {/* Message List (threaded) */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
-          {loading && messages.length === 0 ? (
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
+          {loading && displayedMessages.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
-          ) : messages.length === 0 ? (
+          ) : displayedMessages.length === 0 ? (
             <div className="text-center py-12 text-rmpg-500 text-xs">
               <Mail className="w-8 h-8 mx-auto mb-3 opacity-40" />
-              {search ? (<><div>No results for &ldquo;{search}&rdquo;</div><button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button></>) : 'No messages'}
+              {(search || searchQuery) ? (<><div>No results for &ldquo;{searchQuery || search}&rdquo;</div><button type="button" onClick={handleClearSearch} className="text-brand-400 hover:text-brand-300 mt-1">Clear search</button></>) : 'No messages'}
             </div>
           ) : (
             <>
@@ -2333,7 +2398,7 @@ export default function EmailPage() {
 
                     {displayMessages.map(msg => {
                       // Generate consistent avatar color from sender
-                      const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
+                      const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#888888','#14b8a6','#f97316'];
                       const senderKey = (msg.fromAddress || msg.fromName || '').toLowerCase();
                       const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
                       const avatarInitial = (msg.fromName || msg.fromAddress || '?').charAt(0).toUpperCase();
@@ -2368,7 +2433,18 @@ export default function EmailPage() {
                             )}
                           </div>
 
-                          <div className="flex-1 min-w-0" onClick={() => handleSelectMessage(msg)}>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className="flex-1 min-w-0"
+                            onClick={() => handleSelectMessage(msg)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSelectMessage(msg);
+                              }
+                            }}
+                          >
                             <div className="flex items-center gap-1.5 mb-0.5">
                               <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-white font-semibold'}`}>
                                 {msg.fromName || msg.fromAddress}
@@ -2417,7 +2493,7 @@ export default function EmailPage() {
                   </div>
                 );
               })}
-              {hasMore && (
+              {hasMore && searchResults === null && (
                 <button type="button" onClick={() => fetchMessages(page + 1, selectedFolder, search)} disabled={loadingMore} className="w-full py-2 text-[10px] text-brand-400 hover:text-brand-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-1.5">
                   {loadingMore ? <><Loader2 size={10} className="animate-spin" /> Loading...</> : 'Load more...'}</button>
               )}
@@ -2448,7 +2524,7 @@ export default function EmailPage() {
               {/* Sender info with avatar */}
               {(() => {
                 const senderKey = (fullMessage.fromAddress || '').toLowerCase();
-                const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#6366f1','#14b8a6','#f97316'];
+                const AVATAR_COLORS = ['#888888','#8b5cf6','#22c55e','#10b981','#f59e0b','#ef4444','#ec4899','#888888','#14b8a6','#f97316'];
                 const avatarColor = AVATAR_COLORS[Math.abs([...senderKey].reduce((a, c) => a + c.charCodeAt(0), 0)) % AVATAR_COLORS.length];
                 return (
                   <div className="flex items-start gap-3 px-4 pb-2">
@@ -2542,7 +2618,7 @@ export default function EmailPage() {
             </div>
 
             {/* Message Body */}
-            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+            <div className="flex-1 overflow-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
               {loadingMessage ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2"><Loader2 className="w-5 h-5 text-brand-400 animate-spin" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading data...</span></div>
               ) : fullMessage.bodyHtml ? (

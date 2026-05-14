@@ -86,6 +86,58 @@ router.get('/stats/summary', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Re
   }
 });
 
+// ── GET /active-routes — Today's active serve jobs + routes for map/dispatch overlays ──
+router.get('/active-routes', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localToday();
+
+    // Check that required tables exist (may not yet on fresh deployments)
+    const tableExists = (name: string) =>
+      !!db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(name);
+    if (!tableExists('serve_queue') || !tableExists('serve_routes')) {
+      res.json({ jobs: [], routes: [] });
+      return;
+    }
+
+    // All pending/in-progress serve jobs for today (across all officers)
+    const jobs = db.prepare(`
+      SELECT sq.id, sq.officer_id, sq.recipient_name, sq.recipient_address,
+        sq.recipient_city, sq.recipient_state, sq.recipient_zip,
+        sq.recipient_lat, sq.recipient_lng, sq.status, sq.priority,
+        sq.deadline, sq.document_type, sq.sort_order, sq.call_id,
+        sq.attempt_count, sq.max_attempts,
+        un.call_sign AS officer_call_sign, u.full_name AS officer_name
+      FROM serve_queue sq
+      LEFT JOIN users u ON u.id = sq.officer_id
+      LEFT JOIN units un ON un.officer_id = sq.officer_id
+      WHERE (sq.serve_date = ? OR sq.status IN ('pending', 'in_progress'))
+        AND sq.recipient_lat IS NOT NULL AND sq.recipient_lng IS NOT NULL
+      ORDER BY sq.officer_id, sq.sort_order ASC, sq.priority DESC
+      LIMIT 2000
+    `).all(today);
+
+    // All routes for today or that have pending/in_progress jobs
+    const routes = db.prepare(`
+      SELECT sr.*, un.call_sign AS officer_call_sign, u.full_name AS officer_name
+      FROM serve_routes sr
+      LEFT JOIN users u ON u.id = sr.officer_id
+      LEFT JOIN units un ON un.officer_id = sr.officer_id
+      WHERE sr.route_date = ?
+        OR sr.officer_id IN (
+          SELECT DISTINCT sq2.officer_id FROM serve_queue sq2
+          WHERE sq2.status IN ('pending', 'in_progress')
+            AND sq2.officer_id IS NOT NULL
+        )
+    `).all(today);
+
+    res.json({ jobs, routes });
+  } catch (err: any) {
+    console.error('[SERVE] Active routes error:', err);
+    res.status(500).json({ error: 'Failed to fetch active routes', code: 'FAILED_TO_FETCH_ACTIVE' });
+  }
+});
+
 // ── GET /routes/:date — Get route for officer + date ────────
 router.get('/routes/:date', requireRole(...WRITE_ROLES, 'dispatcher'), (req: Request, res: Response) => {
   try {
@@ -212,9 +264,9 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
         recipient_address, recipient_city, recipient_state, recipient_zip,
         recipient_lat, recipient_lng, document_type, case_number,
         court_name, jurisdiction, client_name, attorney_name,
-        priority, deadline, max_attempts, service_instructions, notes,
+        priority, time_window, deadline, max_attempts, service_instructions, notes,
         status, attempt_count, sort_order, created_at, updated_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', 0, 999, ?, ?)
     `);
 
     const imported: any[] = [];
@@ -242,7 +294,7 @@ router.post('/sync-from-sm', requireRole('admin', 'manager', 'supervisor'), (req
           sm.recipient_name || '', addr, city, state, zip, lat, lng,
           'civil', sm.court_case_number || '',
           '', '', sm.client_company_name || '', '',
-          sm.rush ? 'urgent' : 'normal', sm.due_date || null,
+          sm.rush ? 'urgent' : 'normal', null, sm.due_date || null,
           3, sm.service_instructions || '', sm.notes_local || '',
           now, now,
         );

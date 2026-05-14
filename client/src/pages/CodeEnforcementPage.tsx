@@ -5,14 +5,18 @@
 // tabbed interface, status workflows, and fine tracking.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Construction, Search, Plus, Truck, MapPin, Clock, User,
-  X, Save, Loader2, AlertTriangle, DollarSign, FileText,
-  ChevronDown, Eye, Hash, CheckCircle, Calendar,
+  Construction, Search, Plus, Truck, MapPin, X, Save, Loader2, AlertTriangle,
+  Calendar,
 } from 'lucide-react';
-import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus, TowReason } from '../types';
+import type {
+  CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus,
+  TowReason,
+} from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
@@ -43,7 +47,7 @@ const VIOLATION_STATUS_COLORS: Record<string, string> = {
 
 const TOW_STATUS_COLORS: Record<string, string> = {
   ordered: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
-  dispatched: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
+  dispatched: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   in_progress: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   completed: 'bg-green-900/50 text-green-400 border-green-700/50',
   released: 'bg-teal-900/50 text-teal-400 border-teal-700/50',
@@ -60,27 +64,13 @@ const TOW_REASONS: { value: TowReason; label: string }[] = [
 const EMPTY_VIOLATION = {
   violation_type: 'other' as ViolationType, location: '', description: '',
   code_section: '', severity: 'low', fine_amount: '', compliance_deadline: '', notes: '',
-  section_id: '', zone_id: '', beat_id: '',
+  sector_id: '', zone_id: '', beat_id: '',
 };
 
 const EMPTY_TOW = {
   vehicle_year: '', vehicle_make: '', vehicle_model: '', vehicle_color: '',
   vehicle_plate: '', vehicle_vin: '', tow_from: '', tow_to: '',
   tow_reason: 'parking_violation' as TowReason, tow_company: '', tow_fee: '', storage_fee: '', notes: '',
-};
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 };
 
 export default function CodeEnforcementPage() {
@@ -267,7 +257,7 @@ export default function CodeEnforcementPage() {
   const handleViolationStatus = async (id: number, status: string) => {
     try {
       await apiFetch(`/code-enforcement/violations/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-      addToast(`Violation → ${status.replace(/_/g, ' ')}`, 'success');
+      addToast(`Violation → ${status.replace(/_/g, ' ').toUpperCase()}`, 'success');
       fetchViolations({ silent: true }); fetchStats();
       if (selectedViolation?.id === id) {
         const updated = await apiFetch<{ data: CodeViolation }>(`/code-enforcement/violations/${id}`);
@@ -297,7 +287,7 @@ export default function CodeEnforcementPage() {
   const handleTowStatus = async (id: number, status: string) => {
     try {
       await apiFetch(`/code-enforcement/tows/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
-      addToast(`Tow → ${status.replace(/_/g, ' ')}`, 'success');
+      addToast(`Tow → ${status.replace(/_/g, ' ').toUpperCase()}`, 'success');
       fetchTows({ silent: true }); fetchStats();
       if (selectedTow?.id === id) {
         const updated = await apiFetch<{ data: VehicleTow }>(`/code-enforcement/tows/${id}`);
@@ -384,9 +374,9 @@ export default function CodeEnforcementPage() {
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
                 <input value={vSearch} onChange={e => { setVSearch(e.target.value); setVPage(1); }} placeholder="Search violations..." aria-label="Search violations..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
               </div>
-              <select value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter violations by status">
+              <select value={vFilterStatus} onChange={e => { setVFilterStatus(e.target.value); setVPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
-                {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                {Object.keys(VIOLATION_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
               </select>
             </>
           ) : (
@@ -395,16 +385,16 @@ export default function CodeEnforcementPage() {
                 <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
                 <input value={tSearch} onChange={e => { setTSearch(e.target.value); setTPage(1); }} placeholder="Search tows..." aria-label="Search tows..." className={`w-full pl-7 pr-2 ${isMobile ? 'py-2.5 text-sm' : 'py-1 text-xs'} bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} />
               </div>
-              <select value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined} aria-label="Filter tows by status">
+              <select value={tFilterStatus} onChange={e => { setTFilterStatus(e.target.value); setTPage(1); }} className={`${isMobile ? 'text-sm py-2' : 'text-[10px]'} bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none`} style={isMobile ? { minHeight: 44 } : undefined}>
                 <option value="">All</option>
-                {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                {Object.keys(TOW_STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ').toUpperCase()}</option>)}
               </select>
             </>
           )}
         </div>
 
         {/* List */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           {activeTab === 'violations' ? (
             vLoading ? <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div> :
             violations.length === 0 ? <EmptyState icon={Construction} title="No violations found" description="Try adjusting your filters or create a new one." /> :
@@ -440,8 +430,8 @@ export default function CodeEnforcementPage() {
                   <MapPin style={{ width: 9, height: 9 }} />
                   <span className="truncate">{formatAddressDisplay(v.location)}</span>
                   {v.fine_amount && !isNaN(Number(v.fine_amount)) && <span className="text-amber-400">${Number(v.fine_amount).toFixed(0)}</span>}
-                  {((v as any).section_id || (v as any).zone_id || (v as any).beat_id) && (
-                    <span className="font-mono text-rmpg-400">{[(v as any).section_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>
+                  {((v as any).sector_id || (v as any).zone_id || (v as any).beat_id) && (
+                    <span className="font-mono text-rmpg-400">{[(v as any).sector_id, (v as any).zone_id, (v as any).beat_id].filter(Boolean).join('/')}</span>
                   )}
                 </div>
               </button>
@@ -483,7 +473,7 @@ export default function CodeEnforcementPage() {
           <>
             <PanelTitleBar title={selectedViolation.violation_number} icon={Construction}>
             </PanelTitleBar>
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${VIOLATION_STATUS_COLORS[selectedViolation.status] || ''}`}>
                   {selectedViolation.status.replace(/_/g, ' ').toUpperCase()}
@@ -498,7 +488,7 @@ export default function CodeEnforcementPage() {
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['notice_sent', 'reinspection', 'resolved', 'referred', 'voided'].filter(s => s !== selectedViolation.status).map(s => (
                     <button type="button" key={s} onClick={() => handleViolationStatus(selectedViolation.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
-                      {s.replace(/_/g, ' ')}
+                      {s.replace(/_/g, ' ').toUpperCase()}
                     </button>
                   ))}
                 </div>
@@ -531,9 +521,9 @@ export default function CodeEnforcementPage() {
                     >
                       {schedulingReinspection ? 'Scheduling...' : 'Confirm'}
                     </button>
-                    <button type="button" onClick={() => { setShowReinspection(false); setReinspectionDate(''); }} className="text-rmpg-500 hover:text-white">
+                    <IconButton onClick={() => { setShowReinspection(false); setReinspectionDate(''); }} className="text-rmpg-500 hover:text-white" aria-label="Cancel reinspection">
                       <X style={{ width: 12, height: 12 }} />
-                    </button>
+                    </IconButton>
                   </div>
                 )}
                 {(selectedViolation as any).reinspection_date && (
@@ -572,7 +562,7 @@ export default function CodeEnforcementPage() {
                   ['Severity', selectedViolation.severity ? selectedViolation.severity.charAt(0).toUpperCase() + selectedViolation.severity.slice(1) : '—'],
                   ['Fine Amount', selectedViolation.fine_amount && !isNaN(Number(selectedViolation.fine_amount)) ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
                   ['Compliance Deadline', selectedViolation.compliance_deadline ? new Date(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
-                  ['S/Z/B', [(selectedViolation as any).section_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
+                  ['S/Z/B', [(selectedViolation as any).sector_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
                   ['Created', selectedViolation.created_at ? new Date(selectedViolation.created_at).toLocaleString() : '—'],
                 ].map(([label, value]) => (
                   <div key={label as string}>
@@ -587,7 +577,7 @@ export default function CodeEnforcementPage() {
           <>
             <PanelTitleBar title={selectedTow.tow_number} icon={Truck}>
             </PanelTitleBar>
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border font-bold ${TOW_STATUS_COLORS[selectedTow.status] || ''}`}>
                   {selectedTow.status.replace(/_/g, ' ').toUpperCase()}
@@ -601,7 +591,7 @@ export default function CodeEnforcementPage() {
                 <div className={`flex flex-wrap ${isMobile ? 'gap-2' : 'gap-1'}`}>
                   {['dispatched', 'in_progress', 'completed', 'released', 'cancelled'].filter(s => s !== selectedTow.status).map(s => (
                     <button type="button" key={s} onClick={() => handleTowStatus(selectedTow.id, s)} className={`${isMobile ? 'text-xs px-3 py-2' : 'text-[10px] px-2 py-1'} border border-rmpg-600 text-rmpg-300 hover:bg-rmpg-700/40 transition-colors`} style={isMobile ? { minHeight: 48 } : undefined}>
-                      {s.replace(/_/g, ' ')}
+                      {s.replace(/_/g, ' ').toUpperCase()}
                     </button>
                   ))}
                 </div>
@@ -640,7 +630,7 @@ export default function CodeEnforcementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Code Violation" icon={Plus}>
-              <button type="button" onClick={() => setVFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setVFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -664,7 +654,7 @@ export default function CodeEnforcementPage() {
               </div>
               <div>
                 <label className="field-label">Description *</label>
-                <textarea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                <RichTextArea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {vFormErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.description}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -681,7 +671,7 @@ export default function CodeEnforcementPage() {
                 <div>
                   <label className="field-label">Section</label>
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600"
-                    value={vFormData.section_id || ''} onChange={e => setVFormData(p => ({...p, section_id: e.target.value, zone_id: '', beat_id: ''}))}>
+                    value={vFormData.sector_id || ''} onChange={e => setVFormData(p => ({...p, sector_id: e.target.value, zone_id: '', beat_id: ''}))}>
                     <option value="">—</option>
                     {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
                   </select>
@@ -691,7 +681,7 @@ export default function CodeEnforcementPage() {
                   <select className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600"
                     value={vFormData.zone_id || ''} onChange={e => setVFormData(p => ({...p, zone_id: e.target.value, beat_id: ''}))}>
                     <option value="">—</option>
-                    {zonesForSection(vFormData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
+                    {zonesForSection(vFormData.sector_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
                   </select>
                 </div>
                 <div>
@@ -720,7 +710,7 @@ export default function CodeEnforcementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Tow Order" icon={Truck}>
-              <button type="button" onClick={() => setTFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setTFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">

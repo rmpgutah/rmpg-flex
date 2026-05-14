@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   MessageSquare,
   AlertTriangle,
@@ -233,20 +234,6 @@ function groupMessagesIntoThreads(messages: Message[]): MessageThread[] {
 // ============================================================
 
 type Panel = 'messages' | 'bolos' | 'activity';
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function CommunicationsPage() {
   const isMobile = useIsMobile();
@@ -698,11 +685,11 @@ export default function CommunicationsPage() {
       {/* Portal Header */}
       <div className="panel-beveled bg-surface-base overflow-hidden">
         <div className="flex items-center gap-4 px-4 py-2.5 relative">
-          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #888888 30%, #888888 70%, #1a1a1a)' }} />
+          <div className="absolute top-0 left-0 right-0 h-[2px]" style={{ background: 'linear-gradient(90deg, #1a1a1a, #9ca4ad 30%, #9ca4ad 70%, #1a1a1a)' }} />
           <RmpgLogo height={64} />
           <div className="flex-1">
             <h1 className="text-sm font-bold tracking-wider uppercase" style={{ color: '#d0d0d0' }}>Communications Center</h1>
-            <p className="text-[9px] tracking-wide" style={{ color: '#383838' }}>Rocky Mountain Protective Group, LLC</p>
+            <p className="text-[9px] tracking-wide" style={{ color: '#6f747b' }}>Rocky Mountain Protective Group, LLC</p>
           </div>
         </div>
       </div>
@@ -955,7 +942,7 @@ export default function CommunicationsPage() {
                     </div>
 
                     {/* Messages in thread */}
-                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent px-4 py-3 space-y-3">
+                    <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent px-4 py-3 space-y-3">
                       {selectedThread.messages.map((msg, idx) => {
                         const isOwnMessage = msg.from_user_id === currentUserId;
 
@@ -970,9 +957,9 @@ export default function CommunicationsPage() {
                                   <div
                                     className="w-6 h-6 flex items-center justify-center text-[9px] font-bold flex-shrink-0"
                                     style={{
-                                      background: isOwnMessage ? 'linear-gradient(135deg, #d4a017, #888888)' : 'linear-gradient(135deg, #333333, #888888)',
+                                      background: isOwnMessage ? 'linear-gradient(135deg, #3a3a3a, #888888)' : 'linear-gradient(135deg, #333333, #888888)',
                                       color: '#fff',
-                                      border: isOwnMessage ? '1px solid #999999' : '1px solid #aaaaaa',
+                                      border: isOwnMessage ? '1px solid #a0a0a0' : '1px solid #aaaaaa',
                                       borderRadius: 2,
                                     }}
                                   >
@@ -1045,7 +1032,7 @@ export default function CommunicationsPage() {
                         </span>
                       </div>
                       <div className="flex gap-2">
-                        <textarea
+                        <RichTextArea
                           className="textarea-dark flex-1"
                           rows={2}
                           placeholder="Write your reply..."
@@ -1086,7 +1073,7 @@ export default function CommunicationsPage() {
 
         {/* BOLOs Panel */}
         {activePanel === 'bolos' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
             {/* New BOLO Form */}
             {showNewBOLO && (
               <form onSubmit={handleCreateBOLO} className="bg-surface-base border border-red-700/40 p-4 animate-fade-in">
@@ -1129,7 +1116,7 @@ export default function CommunicationsPage() {
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Description:</label>
-                    <textarea className="textarea-dark" rows={3} placeholder="Detailed description..." value={boloDescription} onChange={(e) => setBoloDescription(e.target.value)} />
+                    <RichTextArea className="textarea-dark" rows={3} placeholder="Detailed description..." value={boloDescription} onChange={(e) => setBoloDescription(e.target.value)} />
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Photo (optional):</label>
@@ -1306,7 +1293,7 @@ export default function CommunicationsPage() {
                   <span className="text-xs text-rmpg-400">({activities.length} of {activitiesTotal} entries)</span>
                 )}
               </div>
-              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
                 {activitiesLoading ? (
                   <Spinner label="Loading activity..." />
                 ) : (
@@ -1373,7 +1360,7 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Message:</label>
-          <textarea className="textarea-dark" rows={5} placeholder="Type your message..." value={composeContent} onChange={(e) => setComposeContent(e.target.value)} required />
+          <RichTextArea className="textarea-dark" rows={5} placeholder="Type your message..." value={composeContent} onChange={(e) => setComposeContent(e.target.value)} required />
         </div>
         {/* Feature 26: Save as Draft button */}
         <button

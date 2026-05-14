@@ -4,11 +4,13 @@
 // device info, then 2FA / setup / password change flows.
 // ============================================================
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense, lazy } from 'react';
 import {
-  Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock,
-  KeyRound, Usb, Fingerprint, Monitor, Server, Wifi, Clock,
+  Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock, KeyRound, Usb, Monitor,
+  Server, Wifi, Clock,
 } from 'lucide-react';
+
+const LoginGlobe = lazy(() => import('../components/login/LoginGlobe'));
 import { useAuth, type LoginStep } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
 import PasswordStrengthMeter from '../components/security/PasswordStrengthMeter';
@@ -20,6 +22,16 @@ const BUILD_TIME: string =
   typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
 
 type TwoFactorMode = 'choose' | 'totp' | 'webauthn' | 'backup';
+
+// ── Performance detection ─────────────────────────
+/** True when the device is likely too slow for heavy login visuals (WebGL globe, stacked CSS animations). */
+function isLowPerfDevice(): boolean {
+  // Honour OS / browser reduced-motion preference
+  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return true;
+  // Very low core-count (≤2) usually means a truly low-power device / Toughbook
+  if (typeof navigator.hardwareConcurrency === 'number' && navigator.hardwareConcurrency <= 2) return true;
+  return false;
+}
 
 // ── Device detection helpers ──────────────────────
 function getDeviceInfo() {
@@ -132,12 +144,15 @@ export default function LoginPage() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Clock
+  // Performance tier (computed once)
+  const lowPerf = useMemo(() => isLowPerfDevice(), []);
+
+  // Clock — update every 60s on low-perf, every 1s otherwise
   const [clock, setClock] = useState(getCurrentTime());
   useEffect(() => {
-    const iv = setInterval(() => setClock(getCurrentTime()), 1000);
+    const iv = setInterval(() => setClock(getCurrentTime()), lowPerf ? 60_000 : 1000);
     return () => clearInterval(iv);
-  }, []);
+  }, [lowPerf]);
 
   // Device info (computed once)
   const device = useMemo(() => getDeviceInfo(), []);
@@ -324,20 +339,111 @@ export default function LoginPage() {
 
   // ── Info row item ──────────────────────────────
   const InfoRow = ({ label, value }: { label: string; value: string }) => (
-    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #050505' }}>
+    <div className="flex items-center justify-between py-[3px]" style={{ borderBottom: '1px solid #0c0c0c' }}>
       <span className="text-[8px] uppercase tracking-wider font-bold" style={{ color: '#666666' }}>{label}</span>
       <span className="text-[9px] font-mono" style={{ color: '#888888' }}>{value}</span>
     </div>
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #050505 0%, #0a0a0a 100%)' }}>
-      {/* Animated grid background */}
-      <div className="login-grid-bg" />
+    <div className={`min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden${lowPerf ? ' login-lite' : ''}`} style={{ background: 'radial-gradient(ellipse at center, #0b0b0b 0%, #050505 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
+      {/* Ambient 3D globe — skip on low-perf devices (biggest GPU hog) */}
+      {!lowPerf && (
+        <Suspense fallback={null}>
+          <div
+            className="absolute inset-0 pointer-events-none"
+            style={{ zIndex: 0, opacity: 0.65 }}
+            aria-hidden="true"
+          >
+            <LoginGlobe className="w-full h-full" />
+          </div>
+        </Suspense>
+      )}
+
+      {/* Animated grid overlay — skip on low-perf */}
+      {!lowPerf && <div className="login-grid-bg" style={{ zIndex: 1 }} />}
+
+      {/* Radar sweep behind everything (decorative) — skip on low-perf */}
+      {!lowPerf && <div className="login-radar" aria-hidden="true" />}
+
+      {/* HUD corner brackets — skip on low-perf */}
+      {!lowPerf && (
+        <>
+          <div className="login-corner tl" aria-hidden="true" />
+          <div className="login-corner tr" aria-hidden="true" />
+          <div className="login-corner bl" aria-hidden="true" />
+          <div className="login-corner br" aria-hidden="true" />
+        </>
+      )}
+
+      {/* Scanline overlay — skip on low-perf */}
+      {!lowPerf && <div className="login-scanline" aria-hidden="true" />}
+
+      {/* Vignette to keep card readable over globe */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          zIndex: 1,
+          background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 22%, rgba(0,0,0,0.55) 65%, rgba(0,0,0,0.92) 100%)',
+        }}
+        aria-hidden="true"
+      />
+
+      {/* HUD readout panel — top left (system) — hidden on low-perf */}
+      {!lowPerf && (
+      <div className="hidden md:block absolute top-4 left-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
+        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1" style={{ color: '#d4a017' }}>◆ Command Console</div>
+        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
+          <div className="flex justify-between gap-3"><span>NODE</span><span style={{ color: '#c5c5c5' }}>RMPG-PRIMARY</span></div>
+          <div className="flex justify-between gap-3"><span>UPLINK</span><span className="login-data-flicker" style={{ color: '#22c55e' }}>● SECURE</span></div>
+          <div className="flex justify-between gap-3"><span>TLS</span><span style={{ color: '#c5c5c5' }}>1.3 / AES-256</span></div>
+          <div className="flex justify-between gap-3"><span>SECTOR</span><span style={{ color: '#c5c5c5' }}>UTAH · MTN</span></div>
+        </div>
+      </div>
+      )}
+
+      {/* HUD readout panel — top right (clock + threat level) — hidden on low-perf */}
+      {!lowPerf && (
+      <div className="hidden md:block absolute top-4 right-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
+        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1 text-right" style={{ color: '#d4a017' }}>Tactical Status ◆</div>
+        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
+          <div className="flex justify-between gap-3"><span>TIME</span><span style={{ color: '#c5c5c5' }}>{clock} MT</span></div>
+          <div className="flex justify-between gap-3"><span>DATE</span><span style={{ color: '#c5c5c5' }}>{new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: '2-digit', year: 'numeric' })}</span></div>
+          <div className="flex justify-between gap-3"><span>DEFCON</span><span style={{ color: '#22c55e' }}>● NORMAL</span></div>
+          <div className="flex justify-between gap-3"><span>PATROL</span><span className="login-data-flicker" style={{ color: '#c5c5c5' }}>ACTIVE</span></div>
+        </div>
+      </div>
+      )}
+
+      {/* HUD readout panel — bottom left (system telemetry) — hidden on low-perf */}
+      {!lowPerf && (
+      <div className="hidden md:block absolute bottom-4 left-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
+        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1" style={{ color: '#d4a017' }}>◆ Telemetry</div>
+        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
+          <div className="flex justify-between gap-3"><span>CAD/RMS</span><span style={{ color: '#22c55e' }}>● ONLINE</span></div>
+          <div className="flex justify-between gap-3"><span>DISPATCH</span><span style={{ color: '#22c55e' }}>● ONLINE</span></div>
+          <div className="flex justify-between gap-3"><span>NCIC</span><span style={{ color: '#22c55e' }}>● LINKED</span></div>
+          <div className="flex justify-between gap-3"><span>EVIDENCE</span><span style={{ color: '#22c55e' }}>● SIGNED</span></div>
+        </div>
+      </div>
+      )}
+
+      {/* HUD readout panel — bottom right (region) — hidden on low-perf */}
+      {!lowPerf && (
+      <div className="hidden md:block absolute bottom-4 right-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
+        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1 text-right" style={{ color: '#d4a017' }}>Coverage ◆</div>
+        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
+          <div className="flex justify-between gap-3"><span>AREAS</span><span style={{ color: '#c5c5c5' }}>6</span></div>
+          <div className="flex justify-between gap-3"><span>SECTORS</span><span style={{ color: '#c5c5c5' }}>29</span></div>
+          <div className="flex justify-between gap-3"><span>ZONES</span><span style={{ color: '#c5c5c5' }}>288</span></div>
+          <div className="flex justify-between gap-3"><span>BEATS</span><span style={{ color: '#c5c5c5' }}>719</span></div>
+        </div>
+      </div>
+      )}
 
       {/* ── Security Warning Banner ─────────────────── */}
       <div
-        className="w-full max-w-lg mb-2 sm:mb-3 px-3 sm:px-0 relative z-10"
+        className="w-full max-w-lg mb-1 sm:mb-3 px-3 sm:px-0 relative z-10"
         role="alert"
         aria-label="Security warning"
       >
@@ -364,22 +470,22 @@ export default function LoginPage() {
       {/* ── Main Content ─────────────────────────────── */}
       <div className="relative w-full max-w-lg px-2 sm:px-0 z-10">
         {/* Logo */}
-        <div className="text-center mb-2">
+        <div className="text-center mb-1 sm:mb-2">
           <div className="inline-flex items-center justify-center">
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
-              className="drop-shadow-[0_0_15px_rgba(136,136,136,0.25)]"
+              className="login-badge-anim"
               style={{
-                height: 'clamp(56px, 14vw, 88px)',
-                width: 'clamp(56px, 14vw, 88px)',
+                height: 'clamp(48px, 12vw, 88px)',
+                width: 'clamp(48px, 12vw, 88px)',
                 objectFit: 'contain',
               }}
               draggable={false}
               loading="eager"
             />
           </div>
-          <div className="flex items-center justify-center gap-2 mt-1">
+          <div className="flex items-center justify-center gap-2 mt-0.5 sm:mt-1">
             <div className="h-px w-8 sm:w-12" style={{ background: 'linear-gradient(90deg, transparent, #333333)' }} />
             <p className="text-[7px] sm:text-[8px] tracking-[0.15em] uppercase font-bold" style={{ color: 'rgba(136, 136, 136, 0.65)' }}>
               Secure Authentication
@@ -389,7 +495,7 @@ export default function LoginPage() {
         </div>
 
         {/* ── Login Card ──────────────────────────────── */}
-        <div className="shadow-md relative overflow-hidden panel-beveled bg-surface-base" role="form" aria-label="Authentication form">
+        <div className="shadow-md relative overflow-hidden panel-beveled bg-surface-base login-card-frame" role="form" aria-label="Authentication form">
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
             <ShieldCheck className="w-3 h-3" style={{ color: '#888888' }} />
@@ -411,8 +517,8 @@ export default function LoginPage() {
                   <span className="text-[8px] uppercase tracking-wide" style={{ color: '#4ade80' }}>Password OK</span>
                 </div>
               )}
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838', borderBottom: '1px solid #181818' }} aria-hidden="true">_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838', borderBottom: '1px solid #181818' }} aria-hidden="true">&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d', borderBottom: '1px solid #242424' }} aria-hidden="true">&#9633;</div>
             </div>
           </div>
 
@@ -427,13 +533,13 @@ export default function LoginPage() {
                 </div>
               </div>
             )}
-            {/* Max session duration message */}
+            {/* Max session duration message — neutral info style (not gold/warning) */}
             {showSessionExpired && (
-              <div className="mb-3 p-2.5 bg-gray-900/25 border border-gray-700/50 flex items-start gap-2" role="status" aria-live="polite">
-                <Lock className="w-3.5 h-3.5 text-gray-400 flex-shrink-0 mt-0.5" aria-hidden="true" />
+              <div className="mb-3 p-2.5 bg-[#141414] border border-[#2e2e2e] flex items-start gap-2" role="status" aria-live="polite">
+                <Lock className="w-3.5 h-3.5 text-[#888888] flex-shrink-0 mt-0.5" aria-hidden="true" />
                 <div>
-                  <p className="text-[10px] text-gray-300 font-semibold">Session Duration Limit</p>
-                  <p className="text-[9px] text-gray-400/80">Your session reached the maximum duration. Please sign in again.</p>
+                  <p className="text-[10px] text-[#cccccc] font-semibold">Session Duration Limit</p>
+                  <p className="text-[9px] text-[#888888]">Your session reached the maximum duration. Please sign in again.</p>
                 </div>
               </div>
             )}
@@ -469,6 +575,11 @@ export default function LoginPage() {
                   {error.includes('attempt') && (
                     <p className="text-[10px] mt-0.5" style={{ color: '#f87171' }}>Too many failed attempts will lock your account.</p>
                   )}
+                  {(error.includes('Invalid verification') || error.includes('invalid verification')) && pending2FA && (
+                    <p className="text-[10px] mt-0.5" style={{ color: '#f87171' }}>
+                      Tip: Wait for a fresh code in your authenticator app and ensure your device clock is accurate.
+                    </p>
+                  )}
                 </div>
               </div>
             )}
@@ -483,6 +594,7 @@ export default function LoginPage() {
                   <input
                     ref={usernameRef}
                     id="username"
+                    name="username"
                     type="text"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Enter your username"
@@ -501,6 +613,7 @@ export default function LoginPage() {
                     <input
                       ref={passwordRef}
                       id="password"
+                      name="password"
                       type={showPassword ? 'text' : 'password'}
                       className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 pr-8"
                       placeholder="Enter your password"
@@ -594,6 +707,7 @@ export default function LoginPage() {
                 <label className="flex items-center gap-2 cursor-pointer select-none py-1 group min-h-[44px]">
                   <input
                     type="checkbox"
+                    name="trust-device"
                     checked={trustThisDevice}
                     onChange={(e) => setTrustThisDevice(e.target.checked)}
                     className="w-4 h-4 rounded-sm accent-[#888888] cursor-pointer focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
@@ -606,7 +720,7 @@ export default function LoginPage() {
                 </label>
 
                 {/* Alternative methods */}
-                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid #222222' }}>
+                <div className="flex items-center justify-between pt-2" style={{ borderTop: '1px solid #2b2b2b' }}>
                   <button
                     type="button"
                     onClick={handleBackWebAuthn}
@@ -706,6 +820,7 @@ export default function LoginPage() {
 
                 <input
                   type="text"
+                  name="backup-code"
                   className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0 text-center font-mono tracking-widest uppercase"
                   placeholder="XXXX-XXXX"
                   value={backupCode}
@@ -827,7 +942,7 @@ export default function LoginPage() {
                   {showManualKey && manualKey && (
                     <div
                       className="mt-2 p-2 font-mono text-xs tracking-wider break-all select-all cursor-text"
-                      style={{ background: '#050505', border: '1px solid #222222', color: '#e0e0e0' }}
+                      style={{ background: '#050505', border: '1px solid #2b2b2b', color: '#e0e0e0' }}
                     >
                       {manualKey}
                     </div>
@@ -840,6 +955,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="setup-code"
+                    name="setup-code"
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
@@ -907,6 +1023,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="new-pw"
+                    name="new-password"
                     type="password"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Enter new password"
@@ -926,6 +1043,7 @@ export default function LoginPage() {
                   </label>
                   <input
                     id="confirm-pw"
+                    name="confirm-password"
                     type="password"
                     className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
                     placeholder="Confirm new password"
@@ -958,7 +1076,7 @@ export default function LoginPage() {
               </form>
             )}
 
-            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #222222' }} aria-hidden="true" />
+            <div className="mt-3 pt-2" style={{ borderTop: '1px solid #2b2b2b' }} aria-hidden="true" />
           </div>
 
           {/* Status bar */}
@@ -977,8 +1095,9 @@ export default function LoginPage() {
         </div>
 
         {/* ── System Info + Device Info Panels ─────────── */}
+        {/* Hidden on phones to keep login form above fold. Uses CSS class. */}
         {isCredentialStep && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+          <div className="login-system-info grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
             {/* System Info */}
             <div className="panel-beveled bg-surface-base overflow-hidden">
               <div className="panel-title-bar flex items-center gap-1.5">
@@ -1032,8 +1151,8 @@ export default function LoginPage() {
           <div
             className="text-center py-1.5 px-3"
             style={{
-              background: '#050505',
-              border: '1px solid #222222',
+              background: '#0b0b0b',
+              border: '1px solid #2b2b2b',
               borderTop: '2px solid #333333',
             }}
           >

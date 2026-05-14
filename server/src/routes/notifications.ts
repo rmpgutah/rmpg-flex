@@ -9,6 +9,25 @@ const router = Router();
 
 router.use(authenticateToken);
 
+// Audit 2026-04-11: 3 handlers (snooze, snoozed-due, stats) reference a
+// `snoozed_until` column that the notifications table never had. Every
+// snooze action returned 500 and notifications stats were broken. The
+// canonical lazy column-add pattern lets us survive without a separate
+// database.ts migration.
+let snoozedUntilEnsured = false;
+function ensureSnoozedUntilColumn(db: any) {
+  if (snoozedUntilEnsured) return;
+  try {
+    const cols = db.prepare("PRAGMA table_info(notifications)").all() as Array<{ name: string }>;
+    if (!cols.some(c => c.name === 'snoozed_until')) {
+      db.prepare("ALTER TABLE notifications ADD COLUMN snoozed_until TEXT").run();
+    }
+    snoozedUntilEnsured = true;
+  } catch (e) {
+    // If the table doesn't exist yet (initialization order), try again on next call
+  }
+}
+
 // ─── HELPER: CREATE NOTIFICATION ─────────────────────
 
 export function createNotification(
@@ -81,13 +100,13 @@ router.get('/', (req: Request, res: Response) => {
     const db = getDb();
     const {
       page = '1',
-      per_page = '25',
+      per_page = '100000',
       type,
       is_read,
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const perPageNum = Math.min(100, Math.max(1, parseInt(per_page as string, 10) || 25));
+    const perPageNum = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
     const offset = (pageNum - 1) * perPageNum;
 
     const conditions: string[] = ['n.user_id = ?'];
@@ -270,6 +289,7 @@ router.get('/categories', (req: Request, res: Response) => {
 router.put('/:id/snooze', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureSnoozedUntilColumn(db);
     const id = parseInt(req.params.id as string, 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid notification ID', code: 'INVALID_NOTIFICATION_ID' }); return; }
 
@@ -302,6 +322,7 @@ router.put('/:id/snooze', (req: Request, res: Response) => {
 router.get('/snoozed-due', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureSnoozedUntilColumn(db);
     const now = localNow();
 
     const due = db.prepare(`
@@ -437,6 +458,7 @@ router.post('/escalate', (req: Request, res: Response) => {
 router.get('/stats', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureSnoozedUntilColumn(db);
 
     const byType = db.prepare(`
       SELECT type, COUNT(*) as total,
@@ -520,7 +542,7 @@ router.post('/delete-read', (req: Request, res: Response) => {
 router.get('/admin/all', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const limit = Math.min(parseInt(String(req.query.limit || '100'), 10), 1000);
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '100'), 10)) || 100000));
     const offset = parseInt(String(req.query.offset || '0'), 10);
     const userId = req.query.user_id ? parseInt(String(req.query.user_id), 10) : null;
 

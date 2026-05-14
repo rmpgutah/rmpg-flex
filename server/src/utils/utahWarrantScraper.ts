@@ -91,6 +91,56 @@ async function sleep(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+/**
+ * Strip diacritics + non-ASCII characters from a name before sending to
+ * warrants.utah.gov. The API rejects any non-ASCII payload with HTTP 400
+ * ("Invalid request body"), so JOSÉ → JOSE, Müller → Muller, etc.
+ *
+ * Uses Unicode NFD decomposition to separate base characters from combining
+ * marks, then strips the combining-mark range (U+0300–U+036F) and any
+ * remaining non-printable-ASCII codepoints. Pure-ASCII input is unchanged.
+ */
+export function asciiFoldName(input: string): string {
+  return input
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    // Keep printable ASCII (space..tilde) only — drops emoji, smart quotes, etc.
+    .replace(/[^\x20-\x7E]/g, '')
+    .trim();
+}
+
+/**
+ * Heuristic: does this row in the `persons` table look like an organization
+ * (CRM lead, business entity) rather than a real human? warrants.utah.gov
+ * only accepts person names; org-shaped rows like "Capital One, N.A., …"
+ * with last_name "(Organization)" return HTTP 400 and waste rate-limit budget.
+ *
+ * Kept separate from the SQL filter so handlers that bypass the SQL (e.g.
+ * direct API queries from the UI) can apply the same rule.
+ */
+export function looksLikeOrganization(firstName: string, lastName: string): boolean {
+  const both = `${firstName} ${lastName}`;
+  // Parentheses or commas are the strongest signal — real names rarely have them.
+  if (/[(),]/.test(both)) return true;
+  // Real first/last names rarely exceed ~30 chars; long strings are usually
+  // business descriptions concatenated into a single field.
+  if (firstName.length > 30 || lastName.length > 30) return true;
+  return false;
+}
+
+/** Compute age from DOB (YYYY-MM-DD) using month/day precision, not just year. */
+export function computeAgeFromDob(dob: string, now: Date = new Date()): number | null {
+  if (!dob) return null;
+  const d = new Date(dob);
+  if (isNaN(d.getTime())) return null;
+  let age = now.getFullYear() - d.getFullYear();
+  const beforeBirthday =
+    now.getMonth() < d.getMonth() ||
+    (now.getMonth() === d.getMonth() && now.getDate() < d.getDate());
+  if (beforeBirthday) age -= 1;
+  return age;
+}
+
 // Track if our IP is blocked by CloudFront WAF
 let _ipBlocked = false;
 let _ipBlockedUntil = 0;
@@ -186,7 +236,16 @@ export async function searchUtahWarrantsLive(
   firstName: string,
   lastName: string
 ): Promise<UtahWarrantResult[] | null> {
-  if (!firstName.trim() || !lastName.trim()) return [];
+  // Skip CRM/business rows that snuck into `persons` — the API returns 400
+  // for names with parens/commas or excess length and we'd waste rate budget.
+  if (looksLikeOrganization(firstName, lastName)) return [];
+
+  // Strip diacritics + non-ASCII before sending. The Utah API rejects any
+  // non-ASCII payload outright with HTTP 400, so we fold to ASCII rather
+  // than giving up the search entirely.
+  const first = asciiFoldName(firstName).toUpperCase();
+  const last = asciiFoldName(lastName).toUpperCase();
+  if (!first || !last) return [];
 
   const results: UtahWarrantResult[] = [];
 
@@ -194,10 +253,7 @@ export async function searchUtahWarrantsLive(
   const personData = await fetchJson<{ persons?: UtahApiPerson[] }>(PERSONS_URL, {
     method: 'POST',
     body: JSON.stringify({
-      name: {
-        first: firstName.trim().toUpperCase(),
-        last: lastName.trim().toUpperCase(),
-      },
+      name: { first, last },
     }),
   });
 
@@ -435,6 +491,82 @@ export async function runWarrantWatchScan(): Promise<{
   }
 }
 
+// ── Lazy schema migration ────────────────────────────────────
+// Older production DBs were seeded with a strict CHECK constraint:
+//   event TEXT NOT NULL CHECK(event IN ('warrant_found','warrant_cleared'))
+// We later added a third event type ('potential_match') for DOB-boundary
+// analyst review. SQLite doesn't support ALTER TABLE … DROP CHECK, so
+// we detect the legacy constraint via sqlite_master and rebuild the
+// table without it. The TypeScript code is the source of truth for
+// allowed event values.
+//
+// Idempotent: skipped on databases whose CREATE TABLE already lacks the
+// strict CHECK (i.e. fresh installs from current source). Must be called
+// from each handler that writes to warrant_watch_log — see CLAUDE.md
+// gotcha #24 (no module-level getDb()).
+let _watchLogMigrated = false;
+
+export function ensureWarrantWatchLogSchema(db: ReturnType<typeof getDb>): void {
+  if (_watchLogMigrated) return;
+  try {
+    const row = db
+      .prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='warrant_watch_log'")
+      .get() as { sql?: string } | undefined;
+    const sql = row?.sql ?? '';
+    // Detect the legacy strict CHECK; if absent we're already on the
+    // new schema and have nothing to do.
+    if (!/CHECK\s*\(\s*event\s+IN\s*\(/i.test(sql)) {
+      _watchLogMigrated = true;
+      return;
+    }
+    const migrate = db.transaction(() => {
+      db.prepare(`
+        CREATE TABLE warrant_watch_log__new (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          person_id INTEGER,
+          person_name TEXT,
+          event TEXT NOT NULL,
+          utah_warrant_id TEXT,
+          utah_person_id TEXT,
+          court_name TEXT,
+          case_id TEXT,
+          charges TEXT,
+          issue_date TEXT,
+          scan_run_id TEXT,
+          created_at TEXT DEFAULT (datetime('now','localtime')),
+          run_id INTEGER
+        )
+      `).run();
+      db.prepare(`
+        INSERT INTO warrant_watch_log__new
+          (id, person_id, person_name, event, utah_warrant_id, utah_person_id,
+           court_name, case_id, charges, issue_date, scan_run_id, created_at, run_id)
+        SELECT id, person_id, person_name, event, utah_warrant_id, utah_person_id,
+               court_name, case_id, charges, issue_date, scan_run_id, created_at, run_id
+        FROM warrant_watch_log
+      `).run();
+      db.prepare('DROP TABLE warrant_watch_log').run();
+      db.prepare('ALTER TABLE warrant_watch_log__new RENAME TO warrant_watch_log').run();
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_person ON warrant_watch_log(person_id)').run();
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_event ON warrant_watch_log(event, created_at)').run();
+      db.prepare('CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_run ON warrant_watch_log(run_id)').run();
+    });
+    migrate();
+    console.log('[Warrant Watch] Migrated warrant_watch_log: dropped strict event CHECK constraint');
+    _watchLogMigrated = true;
+  } catch (err: any) {
+    // Leave _watchLogMigrated=false so we retry next call. The next INSERT
+    // will still raise the original CHECK error — a loud signal rather
+    // than a silent miss.
+    console.warn(`[Warrant Watch] Schema migration failed: ${err?.message ?? err}`);
+  }
+}
+
+// Exposed for tests
+export function _resetWatchLogMigrationForTests(): void {
+  _watchLogMigrated = false;
+}
+
 async function _runWarrantWatchScanImpl(): Promise<{
   personsChecked: number;
   newWarrants: number;
@@ -442,6 +574,7 @@ async function _runWarrantWatchScanImpl(): Promise<{
   errors: number;
 }> {
   const db = getDb();
+  ensureWarrantWatchLogSchema(db);
   const now = localNow();
   const runId = generateRunId();
 
@@ -459,13 +592,25 @@ async function _runWarrantWatchScanImpl(): Promise<{
   let errors = 0;
 
   try {
-    // Get all persons with first + last name (required by Utah API)
-    // Include DOB for age-based verification to reduce false positive warrant matches
+    // Get all persons with first + last name (required by Utah API).
+    // Include DOB for age-based verification to reduce false positive matches.
+    //
+    // Filter rules (mirror looksLikeOrganization() — keep in sync):
+    //   - parens / commas in either name → CRM org rows like
+    //     "Capital One, N.A., …" with last_name "(Organization)"
+    //   - >30 char names → business descriptions concatenated into one field
+    // These rows return HTTP 400 from warrants.utah.gov and burn rate budget.
     const persons = db.prepare(`
       SELECT id, first_name, last_name, dob
       FROM persons
       WHERE first_name IS NOT NULL AND first_name != ''
         AND last_name IS NOT NULL AND last_name != ''
+        AND first_name NOT LIKE '%(%' AND first_name NOT LIKE '%)%'
+        AND first_name NOT LIKE '%,%'
+        AND last_name NOT LIKE '%(%' AND last_name NOT LIKE '%)%'
+        AND last_name NOT LIKE '%,%'
+        AND length(first_name) <= 30
+        AND length(last_name) <= 30
         AND archived_at IS NULL
       ORDER BY last_name, first_name
     `).all() as { id: number; first_name: string; last_name: string; dob: string | null }[];
@@ -531,18 +676,30 @@ async function _runWarrantWatchScanImpl(): Promise<{
 
           if (!nameMatch) continue;
 
-          // DOB verification — if both records have DOB, require match to reduce false positives
+          // DOB verification — STRICT tolerance per user policy (2026-04-14)
+          // If we have DOB on our side and Utah returns age, require exact age match.
+          // This reduces false positives at the cost of rejecting valid matches near
+          // the birthday boundary. Mitigation: missed matches surface on the next scan
+          // cycle after the person's birthday passes.
           if (person.dob && r.age != null) {
-            // Utah API returns age, not DOB directly. Verify age matches ±1 year
-            const personDob = new Date(person.dob);
-            if (!isNaN(personDob.getTime())) {
-              const now = new Date();
-              const expectedAge = now.getFullYear() - personDob.getFullYear();
-              const ageDiff = Math.abs(expectedAge - r.age);
-              if (ageDiff > 1) {
-                // Age mismatch by more than 1 year — likely a different person
-                continue;
-              }
+            const expectedAge = computeAgeFromDob(person.dob);
+            if (expectedAge !== null && expectedAge !== r.age) {
+              // Log potential match for analyst review (birthday-boundary cases often
+              // appear here). Don't insert the warrant, but emit a trackable event.
+              insertLog.run(
+                person.id,
+                `${person.first_name} ${person.last_name}`,
+                'potential_match',
+                r.utah_warrant_id,
+                r.utah_person_id,
+                r.court_name,
+                r.case_id,
+                r.charges,
+                r.issue_date,
+                runId,
+                now
+              );
+              continue;
             }
           }
 

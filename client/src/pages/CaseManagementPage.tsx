@@ -6,18 +6,21 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { formatEnumValue } from '../utils/formatters';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
-  X, Save, Loader2, AlertTriangle, Target, MessageSquare,
-  ArrowRight, CheckCircle, Pause, Hash, FolderOpen, ShieldCheck, RotateCcw, Send, Link, ExternalLink,
+  Briefcase, Search, Plus, User, X, Save, Loader2, AlertTriangle, Target,
+  MessageSquare, ArrowRight, CheckCircle, FolderOpen, ShieldCheck, RotateCcw, Send,
+  Link,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import StatusBadge from '../components/StatusBadge';
 import EmptyState from '../components/EmptyState';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
+import FileAttachments from '../components/FileAttachments';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
@@ -26,7 +29,7 @@ import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabe
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
-  { value: 'assigned', label: 'Assigned', color: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50' },
+  { value: 'assigned', label: 'Assigned', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
   { value: 'active', label: 'Active', color: 'bg-green-900/50 text-green-400 border-green-700/50' },
   { value: 'suspended', label: 'Suspended', color: 'bg-amber-900/50 text-amber-400 border-amber-700/50' },
   { value: 'under_review', label: 'Under Review', color: 'bg-purple-900/50 text-purple-400 border-purple-700/50' },
@@ -77,7 +80,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'calls', label: 'Calls', countKey: 'calls' },
   { id: 'incidents', label: 'Incidents', countKey: 'incidents' },
-  { id: 'persons', label: 'Persons', countKey: 'persons' },
+  { id: 'persons', label: 'Individual', countKey: 'persons' },
   { id: 'vehicles', label: 'Vehicles', countKey: 'vehicles' },
   { id: 'properties', label: 'Properties', countKey: 'properties' },
   { id: 'evidence', label: 'Evidence', countKey: 'evidence' },
@@ -90,7 +93,7 @@ const DETAIL_TABS: { id: DetailTab; label: string; countKey?: string }[] = [
 
 // ── Reusable LinkedEntityPanel for each entity tab ──
 function LinkedEntityPanel({
-  items, columns, entityType, caseId, onRefresh, searchEndpoint, searchFields, onNavigate,
+  items, columns, entityType, caseId, onRefresh, searchEndpoint, searchFields,
 }: {
   items: any[];
   columns: { key: string; label: string; render?: (val: any, row: any) => React.ReactNode }[];
@@ -99,7 +102,6 @@ function LinkedEntityPanel({
   onRefresh: () => void;
   searchEndpoint: string;
   searchFields: string[];
-  onNavigate?: (item: any) => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
@@ -164,19 +166,14 @@ function LinkedEntityPanel({
             </thead>
             <tbody>
               {items.map((item: any, idx: number) => (
-                <tr key={item.id || idx} className={`border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors ${onNavigate ? 'cursor-pointer' : ''}`} onClick={() => onNavigate?.(item)}>
+                <tr key={item.id || idx} className="border-b border-rmpg-800 hover:bg-rmpg-800/30 transition-colors">
                   {columns.map(col => (
                     <td key={col.key} className="px-2 py-1.5 text-rmpg-300">
                       {col.render ? col.render(item[col.key], item) : (item[col.key] ?? '—')}
                     </td>
                   ))}
-                  <td className="px-2 py-1.5 text-right flex items-center justify-end gap-2">
-                    {onNavigate && (
-                      <button type="button" onClick={(e) => { e.stopPropagation(); onNavigate(item); }} className="text-brand-300 hover:text-brand-200 text-[9px] font-mono uppercase flex items-center gap-0.5">
-                        <ExternalLink style={{ width: 9, height: 9 }} /> View
-                      </button>
-                    )}
-                    <button type="button" onClick={(e) => { e.stopPropagation(); handleUnlink(item.id); }} className="text-red-400 hover:text-red-300 text-[9px] font-mono uppercase">
+                  <td className="px-2 py-1.5 text-right">
+                    <button type="button" onClick={() => handleUnlink(item.id)} className="text-red-400 hover:text-red-300 text-[9px] font-mono uppercase">
                       Unlink
                     </button>
                   </td>
@@ -194,7 +191,7 @@ function LinkedEntityPanel({
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title={`Link ${entityType.slice(0, -1).replace(/^./, c => c.toUpperCase())}`} icon={Link}>
-              <button type="button" onClick={() => { setModalOpen(false); setSearchResults([]); setSearchQuery(''); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => { setModalOpen(false); setSearchResults([]); setSearchQuery(''); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
@@ -207,7 +204,7 @@ function LinkedEntityPanel({
                   Search
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
                 {searchResults.map((item: any) => (
                   <button type="button" key={item.id} onClick={() => handleLink(item.id)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
@@ -235,11 +232,13 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     apiFetch<any>(`/records/cases/${caseId}/solvability`)
-      .then(d => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then(d => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [caseId]);
 
   if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Analyzing solvability...</div>;
@@ -355,23 +354,8 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
   );
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function CaseManagementPage() {
   const isMobile = useIsMobile();
-  const navigate = useNavigate();
   const { addToast } = useToast();
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
@@ -381,6 +365,7 @@ export default function CaseManagementPage() {
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
+  const [personnelLoading, setPersonnelLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
 
@@ -462,7 +447,10 @@ export default function CaseManagementPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
     let cancelled = false;
-    apiFetch<any>('/personnel').then(r => { if (!cancelled) setUsers(Array.isArray(r) ? r : (r?.data || [])); }).catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); });
+    apiFetch<any>('/personnel')
+      .then(r => { if (!cancelled) setUsers(Array.isArray(r) ? r : (r?.data || [])); })
+      .catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); })
+      .finally(() => { if (!cancelled) setPersonnelLoading(false); });
     return () => { cancelled = true; };
   }, []);
   useLiveSync('records', () => { fetchCases({ silent: true }); fetchStats(); });
@@ -512,7 +500,7 @@ export default function CaseManagementPage() {
     setStatusChanging(true);
     try {
       await apiFetch(`/cases/${selected.id}/status`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
-      addToast(`Case status → ${newStatus.replace(/_/g, ' ')}`, 'success');
+      addToast(`Case status → ${newStatus.replace(/_/g, ' ').toUpperCase()}`, 'success');
       const updated = await apiFetch<{ data: Case }>(`/cases/${selected.id}`);
       setSelected(updated.data);
       fetchCases({ silent: true });
@@ -670,9 +658,9 @@ export default function CaseManagementPage() {
               className="w-full pl-7 pr-7 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none transition-shadow"
             />
             {searchQuery && (
-              <button type="button" onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
+              <IconButton onClick={() => { setSearchQuery(''); setPage(1); }} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-500 hover:text-white transition-colors" aria-label="Clear search">
                 <X style={{ width: 10, height: 10 }} />
-              </button>
+              </IconButton>
             )}
           </div>
           <select value={filterStatus} onChange={e => { setFilterStatus(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 py-1 outline-none">
@@ -686,7 +674,7 @@ export default function CaseManagementPage() {
         </div>
 
         {/* Case List */}
-        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+        <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
           {loading ? (
             <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500 font-mono uppercase tracking-wider animate-pulse">Loading cases...</span></div>
           ) : cases.length === 0 ? (
@@ -713,7 +701,7 @@ export default function CaseManagementPage() {
                 </div>
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{c.title}</div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
-                  <span className={`font-bold ${getPriorityColor(c.priority)}`}>{c.priority.toUpperCase()}</span>
+                  <span className={`font-bold ${getPriorityColor(c.priority)}`}>{formatEnumValue(c.priority)}</span>
                   <span>{humanizeCaseType(c.case_type)}</span>
                   {c.solvability_score != null && (
                     <span className="flex items-center gap-0.5">
@@ -744,7 +732,7 @@ export default function CaseManagementPage() {
             </PanelTitleBar>
 
             {/* Tabs */}
-            <div className="flex border-b border-rmpg-700 overflow-x-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+            <div className="flex border-b border-rmpg-700 overflow-x-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
               {DETAIL_TABS.map(tab => {
                 const count = tab.countKey && caseFull?.counts ? (caseFull.counts as any)[tab.countKey] : undefined;
                 return (
@@ -764,7 +752,7 @@ export default function CaseManagementPage() {
               })}
             </div>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4">
               {detailTab === 'overview' && (
                 <div className="space-y-4">
                   {/* Status + Priority badges */}
@@ -773,7 +761,7 @@ export default function CaseManagementPage() {
                       {selected.status.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[10px] px-2 py-1 border bg-rmpg-700/30 border-rmpg-600/50 font-bold ${getPriorityColor(selected.priority)}`}>
-                      {selected.priority.toUpperCase()}
+                      {formatEnumValue(selected.priority)}
                     </span>
                     {selected.solvability_score != null && (
                       <span className="text-[10px] px-2 py-1 border bg-amber-900/30 text-amber-400 border-amber-700/50 font-bold">
@@ -873,7 +861,7 @@ export default function CaseManagementPage() {
                   {/* Link Person Quick Action */}
                   <div className="panel-beveled p-3">
                     <div className="flex items-center justify-between mb-2">
-                      <div className="text-[9px] font-mono text-rmpg-500 uppercase">Linked Persons</div>
+                      <div className="text-[9px] font-mono text-rmpg-500 uppercase">Linked Individuals</div>
                       <button type="button" onClick={() => setLinkPersonOpen(true)} className="toolbar-btn text-[10px]">
                         <Link style={{ width: 10, height: 10 }} /> Link Person
                       </button>
@@ -942,7 +930,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/dispatch/calls"
                   searchFields={['call_number', 'incident_type', 'location_address']}
-                  onNavigate={(item) => navigate(`/dispatch?callId=${item.id}`)}
                 />
               )}
 
@@ -961,7 +948,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/incidents"
                   searchFields={['incident_number', 'incident_type', 'location']}
-                  onNavigate={(item) => navigate(`/incidents?id=${item.id}`)}
                 />
               )}
 
@@ -979,7 +965,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/persons"
                   searchFields={['last_name', 'first_name', 'date_of_birth']}
-                  onNavigate={(item) => navigate(`/records?tab=persons&personId=${item.id}`)}
                 />
               )}
 
@@ -999,7 +984,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/vehicles"
                   searchFields={['plate_number', 'make', 'model', 'color']}
-                  onNavigate={(item) => navigate(`/records?tab=vehicles&vehicleId=${item.id}`)}
                 />
               )}
 
@@ -1018,7 +1002,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/properties"
                   searchFields={['description', 'serial_number', 'property_type']}
-                  onNavigate={(item) => navigate(`/records?tab=properties&propertyId=${item.id}`)}
                 />
               )}
 
@@ -1037,7 +1020,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/records/evidence"
                   searchFields={['evidence_number', 'description', 'evidence_type']}
-                  onNavigate={(item) => navigate(`/evidence?id=${item.id}`)}
                 />
               )}
 
@@ -1056,7 +1038,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/warrants"
                   searchFields={['warrant_number', 'subject_name', 'warrant_type']}
-                  onNavigate={(item) => navigate(`/warrants?id=${item.id}`)}
                 />
               )}
 
@@ -1075,7 +1056,6 @@ export default function CaseManagementPage() {
                   onRefresh={() => fetchFullCase(selected.id)}
                   searchEndpoint="/citations"
                   searchFields={['citation_number', 'violation', 'violator_name']}
-                  onNavigate={(item) => navigate(`/citations?id=${item.id}`)}
                 />
               )}
 
@@ -1098,7 +1078,7 @@ export default function CaseManagementPage() {
                             <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full border-2 border-surface-base" style={{ background: event.color }} />
                             <div className="text-[9px] font-mono text-rmpg-500">{event.date ? new Date(event.date).toLocaleString() : '—'}</div>
                             <div className="text-[10px] text-rmpg-300">
-                              <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type}]</span>
+                              <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type?.replace(/_/g, ' ').toUpperCase() || 'EVENT'}]</span>
                               {event.label}
                             </div>
                           </div>
@@ -1113,7 +1093,7 @@ export default function CaseManagementPage() {
                 <div className="space-y-3">
                   {/* Add note */}
                   <div className="panel-beveled p-3">
-                    <textarea
+                    <RichTextArea
                       value={newNote}
                       onChange={e => setNewNote(e.target.value)}
                       placeholder="Add a case note..."
@@ -1182,6 +1162,11 @@ export default function CaseManagementPage() {
                   </div>
                 </div>
               )}
+
+              {/* File Attachments */}
+              <div className="panel-beveled p-3 bg-surface-base">
+                <FileAttachments entityType="case" entityId={String(selected.id)} />
+              </div>
             </div>
           </>
         ) : (
@@ -1199,12 +1184,12 @@ export default function CaseManagementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Return Case" icon={RotateCcw}>
-              <button type="button" onClick={() => setShowReturnModal(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setShowReturnModal(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Return Reason *</label>
-                <textarea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
+                <RichTextArea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
                   placeholder="Explain why this case needs additional work..."
                   className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
@@ -1225,7 +1210,7 @@ export default function CaseManagementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Link Person to Case" icon={Link}>
-              <button type="button" onClick={() => { setLinkPersonOpen(false); setPersonResults([]); setPersonSearchQuery(''); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => { setLinkPersonOpen(false); setPersonResults([]); setPersonSearchQuery(''); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
@@ -1238,7 +1223,7 @@ export default function CaseManagementPage() {
                   Search
                 </button>
               </div>
-              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-1">
+              <div className="max-h-60 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
                 {personResults.map((p: any) => (
                   <button type="button" key={p.id} onClick={() => handleLinkPerson(p)}
                     className="w-full text-left px-3 py-2 border border-rmpg-700 hover:bg-rmpg-800/40 transition-colors">
@@ -1263,7 +1248,7 @@ export default function CaseManagementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Case" icon={Plus}>
-              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1285,15 +1270,21 @@ export default function CaseManagementPage() {
                 </div>
                 <div>
                   <label className="field-label">Lead Investigator</label>
-                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
-                    <option value="">Unassigned</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none disabled:opacity-60">
+                    {personnelLoading ? (
+                      <option value="">Loading…</option>
+                    ) : (
+                      <>
+                        <option value="">Unassigned</option>
+                        {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
               <div>
                 <label className="field-label">Summary</label>
-                <textarea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <RichTextArea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>

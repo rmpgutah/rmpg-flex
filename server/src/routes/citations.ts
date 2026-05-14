@@ -137,7 +137,7 @@ router.get('/', (req: Request, res: Response) => {
     const db = getDb();
     const {
       page = '1',
-      limit = '50',
+      limit = '100000',
       status,
       type,
       q,
@@ -147,7 +147,7 @@ router.get('/', (req: Request, res: Response) => {
     } = req.query;
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.min(Math.max(1, parseInt(limit as string, 10) || 50), 200);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     let whereClause = 'WHERE 1=1';
@@ -211,6 +211,27 @@ router.get('/', (req: Request, res: Response) => {
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// UPGRADE 11: Payment Tracking Summary
+// NOTE: Must be declared BEFORE /:id — otherwise Express matches /:id first
+// and the /:id handler 400s on id="payment-summary" (not a valid integer).
+// ════════════════════════════════════════════════════════════
+router.get('/payment-summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { date_from, date_to } = req.query;
+    let dateFilter = '';
+    const params: any[] = [];
+    if (date_from) { dateFilter += ' AND cp.payment_date >= ?'; params.push(date_from); }
+    if (date_to) { dateFilter += ' AND cp.payment_date <= ?'; params.push(date_to); }
+    const totalPayments = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter}`).get(...params) as any;
+    const byMethod = db.prepare(`SELECT payment_method, COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter} GROUP BY payment_method`).all(...params) as any[];
+    const outstandingRow = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(fine_amount), 0) as total FROM citations WHERE status IN ('issued', 'contested', 'payment_plan') AND fine_amount > 0`).get() as any;
+    const collectedRow = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM citation_payments`).get() as any;
+    res.json({ data: { payment_count: totalPayments.count, payment_total: totalPayments.total, by_method: byMethod, outstanding_citations: outstandingRow.count, outstanding_amount: outstandingRow.total, total_collected: collectedRow.total, collection_rate: outstandingRow.total > 0 ? Math.round((collectedRow.total / (outstandingRow.total + collectedRow.total)) * 100) : 0 } });
+  } catch (error: any) { console.error('Payment summary error:', error); res.status(500).json({ error: 'Failed to get payment summary', code: 'PAYMENT_SUMMARY_ERROR' }); }
+});
+
 // ─── GET /api/citations/:id ──────────────────────────────
 router.get('/:id', (req: Request, res: Response) => {
   try {
@@ -272,7 +293,10 @@ router.post('/', (req: Request, res: Response) => {
       court_address,
       notes,
       // Spillman Flex extended fields
-      section_id, zone_id, beat_id, zone_beat, latitude, longitude,
+      // Accept both section_id (form) and sector_id (legacy) — audit 2026-04-11.
+      // Form sends section_id; column is section_id; sector_id was a vestigial
+      // alias that silently dropped the form value.
+      section_id, sector_id, zone_id, beat_id, zone_beat, latitude, longitude,
       vehicle_vin, vehicle_year, vehicle_make, vehicle_model, vehicle_color, vehicle_id,
       speed_recorded, speed_limit, radar_type, bac_level,
       bond_amount, bond_type,
@@ -365,7 +389,7 @@ router.post('/', (req: Request, res: Response) => {
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
-        ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?
       )
@@ -379,7 +403,8 @@ router.post('/', (req: Request, res: Response) => {
       issuing_officer_id || null, issuing_officer_name || null, badge_number || null,
       court_date || null, court_name || null, court_address || null,
       notes || null, created_at, now,
-      section_id || null, zone_id || null, beat_id || null, zone_beat || null, latitude ?? null, longitude ?? null,
+      // Prefer section_id (form sends this); fall back to legacy sector_id alias
+      section_id || sector_id || null, zone_id || null, beat_id || null, zone_beat || null, latitude ?? null, longitude ?? null,
       vehicle_vin || null, vehicle_year || null, vehicle_make || null, vehicle_model || null, vehicle_color || null, vehicle_id || null,
       speed_recorded ?? null, speed_limit ?? null, radar_type || null, bac_level ?? null,
       bond_amount ?? null, bond_type || null,
@@ -460,6 +485,8 @@ router.put('/:id', (req: Request, res: Response) => {
       court_address: v => v ?? null,
       notes: v => v ?? null,
       section_id: v => v ?? null,
+      // sector_id is a legacy alias accepted for compatibility (audit 2026-04-11)
+      sector_id: v => v ?? null,
       zone_id: v => v ?? null,
       beat_id: v => v ?? null,
       zone_beat: v => v ?? null,
@@ -741,25 +768,6 @@ router.get('/calculate-fine', (req: Request, res: Response) => {
 });
 
 // ════════════════════════════════════════════════════════════
-// UPGRADE 11: Payment Tracking Summary
-// ════════════════════════════════════════════════════════════
-router.get('/payment-summary', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { date_from, date_to } = req.query;
-    let dateFilter = '';
-    const params: any[] = [];
-    if (date_from) { dateFilter += ' AND cp.payment_date >= ?'; params.push(date_from); }
-    if (date_to) { dateFilter += ' AND cp.payment_date <= ?'; params.push(date_to); }
-    const totalPayments = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter}`).get(...params) as any;
-    const byMethod = db.prepare(`SELECT payment_method, COUNT(*) as count, COALESCE(SUM(amount), 0) as total FROM citation_payments cp WHERE 1=1${dateFilter} GROUP BY payment_method`).all(...params) as any[];
-    const outstandingRow = db.prepare(`SELECT COUNT(*) as count, COALESCE(SUM(fine_amount), 0) as total FROM citations WHERE status IN ('issued', 'contested', 'payment_plan') AND fine_amount > 0`).get() as any;
-    const collectedRow = db.prepare(`SELECT COALESCE(SUM(amount), 0) as total FROM citation_payments`).get() as any;
-    res.json({ data: { payment_count: totalPayments.count, payment_total: totalPayments.total, by_method: byMethod, outstanding_citations: outstandingRow.count, outstanding_amount: outstandingRow.total, total_collected: collectedRow.total, collection_rate: outstandingRow.total > 0 ? Math.round((collectedRow.total / (outstandingRow.total + collectedRow.total)) * 100) : 0 } });
-  } catch (error: any) { console.error('Payment summary error:', error); res.status(500).json({ error: 'Failed to get payment summary', code: 'PAYMENT_SUMMARY_ERROR' }); }
-});
-
-// ════════════════════════════════════════════════════════════
 // UPGRADE 12: Citations by Officer Stats
 // ════════════════════════════════════════════════════════════
 router.get('/stats/by-officer', (req: Request, res: Response) => {
@@ -827,7 +835,7 @@ router.get('/:id/violations', requireRole('admin', 'manager', 'supervisor', 'off
   try {
     const db = getDb();
     const violations = db.prepare(`
-      SELECT cv.*, s.statute_number, s.title as statute_title, s.category as statute_category
+      SELECT cv.*, s.citation AS statute_number, s.title as statute_title, s.category as statute_category
       FROM citation_violations cv
       LEFT JOIN utah_statutes s ON s.id = cv.statute_id
       WHERE cv.citation_id = ?
@@ -949,7 +957,7 @@ router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer',
     let payments: any[] = [];
     try {
       violations = db.prepare(`
-        SELECT cv.*, s.statute_number, s.title as statute_title
+        SELECT cv.*, s.citation AS statute_number, s.title as statute_title
         FROM citation_violations cv LEFT JOIN utah_statutes s ON s.id = cv.statute_id
         WHERE cv.citation_id = ? ORDER BY cv.violation_number
       `).all(req.params.id);

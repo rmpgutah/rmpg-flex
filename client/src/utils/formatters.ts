@@ -6,6 +6,26 @@
 // ============================================================
 
 /**
+ * Normalize a snake_case / lowercase enum value for display.
+ *
+ * `pso_client_request` → `PSO CLIENT REQUEST`
+ * `in_progress`        → `IN PROGRESS`
+ * `Christopher Zamora` → `Christopher Zamora` (free text passes through)
+ *
+ * Heuristic: a value is enum-like if it's a single token of lowercase
+ * letters/digits/underscores, OR if it contains an underscore. Names,
+ * addresses, and free-form text pass through untouched so we don't
+ * accidentally uppercase data the user typed in mixed case.
+ */
+export function formatEnumValue(s: string | null | undefined): string {
+  if (s == null) return '';
+  const trimmed = String(s).trim();
+  if (!trimmed) return '';
+  const isEnumLike = /^[a-z][a-z0-9_]*$/.test(trimmed) || /_/.test(trimmed);
+  return isEnumLike ? trimmed.replace(/_/g, ' ').toUpperCase() : trimmed;
+}
+
+/**
  * Format a US phone number: (801) 555-1234
  * Strips non-digits, handles 10 or 11 digit numbers.
  */

@@ -3,10 +3,11 @@
 // File a new grievance (employee-facing)
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import { X, FileWarning } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface UserOption {
   id: string;
   full_name: string;
@@ -173,7 +174,7 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
 
           <div>
             <label className={labelClass}>Description *</label>
-            <textarea
+            <RichTextArea
               value={description}
               onChange={e => setDescription(e.target.value)}
               className={`${inputClass} h-28 resize-none`}

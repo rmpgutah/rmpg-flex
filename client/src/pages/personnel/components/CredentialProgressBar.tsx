@@ -1,5 +1,3 @@
-import React from 'react';
-import { calcDaysUntilExpiry } from '../utils/personnelFormatters';
 import type { Credential } from '../../../types';
 
 interface Props {

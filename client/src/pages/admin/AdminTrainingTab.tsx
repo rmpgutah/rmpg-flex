@@ -5,7 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { GraduationCap, AlertTriangle, CheckCircle, Clock, RefreshCw } from 'lucide-react';
+import { GraduationCap, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
@@ -36,20 +36,6 @@ interface Props {
   error: string | null;
   setError: (e: string | null) => void;
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Props) {
   const { addToast } = useToast();
@@ -196,7 +182,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
       </div>
 
       {/* Category Compliance Bars */}
-      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-[#181818] pb-1.5">
+      <div className="text-[9px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 flex items-center gap-2 border-b border-[#242424] pb-1.5">
         <GraduationCap style={{ width: 10, height: 10 }} />
         Compliance by Category
       </div>
@@ -209,7 +195,7 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
               <div className="flex-1">
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[10px] text-white font-semibold capitalize">
-                    {cat.category.replace(/_/g, ' ')}
+                    {cat.category.replace(/_/g, ' ').toUpperCase()}
                   </span>
                   <span className="text-[9px] font-mono" style={{ color }}>
                     {pct}% ({cat.completed}/{cat.required})

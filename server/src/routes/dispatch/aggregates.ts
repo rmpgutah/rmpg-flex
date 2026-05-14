@@ -1,17 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../../models/database';
 import { authenticateToken, requireRole } from '../../middleware/auth';
-import { broadcastDispatchUpdate, broadcastUnitUpdate, broadcastPanic } from '../../utils/websocket';
-import { generateCallNumber } from '../../utils/caseNumbers';
+import { broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websocket';
 import { localNow, localHour, localDayOfWeek } from '../../utils/timeUtils';
-import { reverseGeocodeAddress } from '../../utils/geocode';
 import { identifyBeat, reloadGeofence, findNearestBeat } from '../../utils/geofence';
 import fs from 'fs';
 import path from 'path';
 import { escapeLike } from '../../middleware/sanitize';
 import { auditLog } from '../../utils/auditLogger';
-import { buildThreatContext } from '../../utils/threatContext';
-import { findNearestUnits } from '../../utils/proximityAlerts';
+import { createNotification } from '../notifications';
 
 const router = Router();
 
@@ -639,193 +636,6 @@ router.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'd
   }
 });
 
-// POST /api/dispatch/panic - Emergency PANIC button
-// Broadcasts audible alert to all connected users
-router.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { latitude, longitude, message } = req.body;
-
-    // Validate panic input
-    if (message !== undefined && message !== null) {
-      if (typeof message !== 'string' || message.length > 500) {
-        res.status(400).json({ error: 'Message must be a string of 500 characters or less', code: 'INVALID_MESSAGE' });
-        return;
-      }
-    }
-    if (latitude != null && (isNaN(Number(latitude)) || Math.abs(Number(latitude)) > 90)) {
-      res.status(400).json({ error: 'Invalid latitude', code: 'INVALID_LATITUDE' });
-      return;
-    }
-    if (longitude != null && (isNaN(Number(longitude)) || Math.abs(Number(longitude)) > 180)) {
-      res.status(400).json({ error: 'Invalid longitude', code: 'INVALID_LONGITUDE' });
-      return;
-    }
-
-    const user = db.prepare('SELECT id, full_name, badge_number, role FROM users WHERE id = ?')
-      .get(req.user!.userId) as any;
-
-    if (!user) {
-      res.status(404).json({ error: 'User not found', code: 'USER_NOT_FOUND' });
-      return;
-    }
-
-    const now = localNow();
-
-    // ── Reverse-geocode officer GPS → address (with fallback) ──
-    // Must happen BEFORE the transaction since it's async
-    let locationAddress = latitude != null && longitude != null && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
-      ? `GPS: ${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
-      : 'Unknown location';
-
-    if (latitude != null && longitude != null) {
-      try {
-        const addr = await reverseGeocodeAddress(Number(latitude), Number(longitude));
-        if (addr) locationAddress = addr;
-      } catch (geoErr) { console.error('[Panic] Reverse geocode failed, using GPS fallback:', geoErr instanceof Error ? geoErr.message : geoErr); }
-    }
-
-    // ── All DB writes in a single transaction for atomicity ──
-    const callNumber = generateCallNumber(db);
-    const description = `PANIC ALARM — Officer ${user.full_name} (Badge: ${user.badge_number || 'N/A'}) triggered emergency alert.${message ? ' Message: ' + message : ''}`;
-
-    const panicTx = db.transaction(() => {
-      // Log the panic alert to activity log
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'panic_alert', 'user', ?, ?, ?)
-      `).run(
-        user.id,
-        user.id,
-        `PANIC ALERT triggered by ${user.full_name} (${user.badge_number || 'N/A'})${message ? ': ' + message : ''}`,
-        req.ip || 'unknown'
-      );
-
-      // Auto-create "Officer Assist — Panic Alarm" dispatch call
-      const callResult = db.prepare(`
-        INSERT INTO calls_for_service (
-          call_number, incident_type, priority, status,
-          caller_name, location_address, latitude, longitude,
-          description, source, dispatcher_id,
-          weapons_involved, created_at, dispatched_at
-        ) VALUES (?, 'officer_assist', 'P1', 'dispatched',
-          ?, ?, ?, ?,
-          ?, 'panic', ?,
-          'unknown', ?, ?)
-      `).run(
-        callNumber,
-        user.full_name,
-        locationAddress,
-        latitude ?? null,
-        longitude ?? null,
-        description,
-        user.id,
-        now,
-        now,
-      );
-
-      const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?')
-        .get(callResult.lastInsertRowid) as any;
-      if (!call) throw new Error('Failed to retrieve auto-created panic call');
-
-      // Auto-assign officer's unit to the call
-      const unit = db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?')
-        .get(user.id) as any;
-
-      if (unit) {
-        db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?')
-          .run('dispatched', call.id, now, unit.id);
-
-        const unitIds = JSON.stringify([unit.id]);
-        db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?')
-          .run(unitIds, call.id);
-      }
-
-      // Log call creation
-      db.prepare(`
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
-        VALUES (?, 'call_created', 'call', ?, ?, ?)
-      `).run(user.id, call.id, `PANIC auto-created ${callNumber}: officer_assist`, req.ip || 'unknown');
-
-      return { call, unit };
-    });
-
-    const { call, unit } = panicTx();
-
-    // ── Broadcasts happen AFTER transaction commits ──
-    if (unit) {
-      broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call.id } });
-    }
-
-    broadcastPanic({
-      user_id: user.id,
-      user_name: user.full_name,
-      badge_number: user.badge_number,
-      role: user.role,
-      message: message || null,
-      latitude: latitude ?? null,
-      longitude: longitude ?? null,
-      triggered_at: now,
-      call_number: callNumber,
-      call_id: call.id,
-      location_address: locationAddress,
-      unit_call_sign: unit?.call_sign || null,
-    });
-
-    const enrichedCall = db.prepare(`
-      SELECT c.*, u.full_name as dispatcher_name
-      FROM calls_for_service c
-      LEFT JOIN users u ON c.dispatcher_id = u.id
-      WHERE c.id = ?
-    `).get(call.id);
-
-    // Find nearest units (sync)
-    let nearestUnits: any[] = [];
-    try {
-      const panicCall = enrichedCall || call;
-      if (panicCall.latitude && panicCall.longitude) {
-        nearestUnits = findNearestUnits(panicCall.latitude, panicCall.longitude, 3);
-      }
-    } catch { /* non-critical */ }
-
-    broadcastDispatchUpdate({ action: 'call_created', call: enrichedCall || call, nearestUnits });
-
-    // Async threat context enrichment for panic call
-    buildThreatContext({
-      locationAddress: (enrichedCall || call).location_address,
-      latitude: (enrichedCall || call).latitude,
-      longitude: (enrichedCall || call).longitude,
-      callId: call.id,
-    }).then((ctx) => {
-      if (ctx.briefingSummary) {
-        broadcastDispatchUpdate({
-          action: 'call_created',
-          call: enrichedCall || call,
-          threatContext: {
-            threatLevel: ctx.threatLevel,
-            briefingSummary: ctx.briefingSummary,
-            premiseHistoryCount: ctx.premiseHistory.totalCalls,
-            activeWarrantCount: ctx.activeWarrants.length,
-          },
-          nearestUnits,
-        });
-      }
-    }).catch(() => { /* non-critical */ });
-
-    auditLog(req, 'panic_activated', 'call', call.id, `PANIC alert by ${user.full_name} (${user.badge_number || 'N/A'}) — call ${callNumber} created`);
-
-    res.json({
-      success: true,
-      message: 'Panic alert sent — dispatch call created',
-      call_number: callNumber,
-      call_id: call.id,
-    });
-  } catch (error: any) {
-    console.error('[Dispatch] panic alert error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Internal server error', code: 'PANIC_ERROR' });
-  }
-});
-
 // GET /api/dispatch/premise-history - Premise history lookup
 // Returns prior calls at or near a given address.
 router.get('/premise-history', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
@@ -1026,16 +836,24 @@ router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer'
     // Fix 41: search/filter by name
     const search = req.query.search as string | undefined;
     // Fix 62: LIMIT on district queries
-    const limit = Math.max(1, Math.min(5000, parseInt(req.query.limit as string, 10) || 5000));
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
-    let query = 'SELECT * FROM dispatch_districts';
+    let query = `
+      SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
+             db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
+             db2.beat_name, db2.beat_descriptor,
+             ds.area_id, ds.color as sector_color, dz.color as zone_color
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+    `;
     const params: any[] = [];
     if (search && typeof search === 'string' && search.length >= 1 && search.length <= 100) {
-      query += ` WHERE zone_name LIKE ? ESCAPE '\\' OR beat_name LIKE ? ESCAPE '\\' OR section_name LIKE ? ESCAPE '\\'`;
+      query += ` WHERE dz.zone_name LIKE ? ESCAPE '\\' OR db2.beat_name LIKE ? ESCAPE '\\' OR ds.sector_name LIKE ? ESCAPE '\\'`;
       const s = `%${escapeLike(search)}%`;
       params.push(s, s, s);
     }
-    query += ' ORDER BY section_id, zone_id, beat_id LIMIT ?';
+    query += ' ORDER BY ds.sector_code, dz.zone_code, db2.beat_code LIMIT ?';
     params.push(limit);
 
     const districts = db.prepare(query).all(...params);
@@ -1070,15 +888,18 @@ router.get('/districts/lookup', requireRole('admin', 'manager', 'supervisor', 'o
     }
 
     let district: any;
+    const districtQuery = `
+      SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
+             db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
+             db2.beat_name, db2.beat_descriptor
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+    `;
     if (beat_id) {
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-      ).get(zone_id, beat_id);
+      district = db.prepare(districtQuery + ' WHERE dz.zone_code = ? AND db2.beat_code = ? LIMIT 1').get(zone_id, beat_id);
     } else {
-      // Return first matching zone entry
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? LIMIT 1'
-      ).get(zone_id);
+      district = db.prepare(districtQuery + ' WHERE dz.zone_code = ? LIMIT 1').get(zone_id);
     }
 
     if (!district) {
@@ -1123,38 +944,36 @@ router.get('/districts/identify', requireRole('admin', 'manager', 'supervisor', 
       exact = false;
     }
 
-    // Lookup dispatch_districts table for rich names — try dispatch_code first, then zone_id + beat_id
-    let district = db.prepare(
-      'SELECT * FROM dispatch_districts WHERE dispatch_code = ?'
-    ).get(beat.beat_code) as any;
-
-    if (!district) {
-      district = db.prepare(
-        'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-      ).get(beat.city_code, beat.district_letter) as any;
-    }
+    // Lookup geography tables for rich names
+    const district = db.prepare(`
+      SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+             dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+      FROM dispatch_beats db2
+      JOIN dispatch_zones dz ON dz.id = db2.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+      WHERE db2.beat_code = ? LIMIT 1
+    `).get(beat.beat_code) as any;
 
     if (district) {
       res.json({
         found: true,
         exact,
-        section_id: district.section_id,
-        zone_id: district.zone_name,
-        beat_id: `${district.beat_name} — ${district.beat_descriptor || ''}`.trim(),
-        dispatch_code: district.dispatch_code,
-        section_name: district.section_name,
+        sector_id: district.sector_code,
+        zone_id: district.zone_code,
+        beat_id: district.beat_code,
+        dispatch_code: district.beat_code,
+        sector_name: district.sector_name,
         zone_name: district.zone_name,
         beat_name: district.beat_name,
         beat_descriptor: district.beat_descriptor,
       });
     } else {
-      // Fallback to raw geofence data
       res.json({
         found: true,
         exact,
-        section_id: beat.district_letter,
-        zone_id: `${beat.city} ${beat.district_letter}${beat.beat_number}`,
-        beat_id: beat.beat_id,
+        sector_id: beat.district_letter,
+        zone_id: beat.city_code,
+        beat_id: beat.beat_code,
       });
     }
   } catch (error: any) {
@@ -1189,51 +1008,16 @@ router.post('/districts/reload-geofence', requireRole('admin', 'manager'), (req:
   } catch (error: any) { console.error('[Dispatch] geofence reload error:', error?.message); res.status(500).json({ error: 'Failed to reload geofence', code: 'GEOFENCE_RELOAD_ERROR' }); }
 });
 
-// POST /api/dispatch/districts — Create district row
-router.post('/districts', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
-    if (!section_id?.trim() || !zone_id?.trim() || !beat_id?.trim() || !section_name?.trim() || !zone_name?.trim() || !beat_name?.trim()) {
-      res.status(400).json({ error: 'section_id, zone_id, beat_id, section_name, zone_name, beat_name are required', code: 'MISSING_FIELDS' });
-      return;
-    }
-    const code = dispatch_code?.trim() || `${section_id.trim()}-${zone_id.trim()}/${beat_id.trim()}`;
-    const existing = db.prepare('SELECT id FROM dispatch_districts WHERE dispatch_code = ?').get(code);
-    if (existing) { res.status(409).json({ error: 'Duplicate dispatch code', code: 'DUPLICATE_DISTRICT' }); return; }
-    const result = db.prepare('INSERT INTO dispatch_districts (section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(section_id.trim(), zone_id.trim(), beat_id.trim(), code, section_name.trim(), zone_name.trim(), beat_name.trim(), beat_descriptor?.trim() || null);
-    auditLog(req, 'CREATE' as any, 'dispatch_district' as any, result.lastInsertRowid as number, `Created district ${code}`);
-    res.status(201).json({ success: true, id: result.lastInsertRowid, dispatch_code: code });
-  } catch (error: any) { console.error('[Dispatch] district create error:', error?.message); res.status(500).json({ error: 'Failed to create district', code: 'DISTRICT_CREATE_ERROR' }); }
+// POST/PUT/DELETE /api/dispatch/districts — Legacy CRUD (migrated to /api/dispatch/geography/*)
+// These endpoints are retained as stubs for backward compatibility — manage geography via GeographyPage
+router.post('/districts', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  res.status(410).json({ error: 'District CRUD moved to /api/dispatch/geography/beats. Use the Geography page.', code: 'ENDPOINT_MIGRATED' });
 });
-
-// PUT /api/dispatch/districts/:id — Update district row
-router.put('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
-    const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
-    const { section_id, zone_id, beat_id, dispatch_code, section_name, zone_name, beat_name, beat_descriptor } = req.body;
-    db.prepare('UPDATE dispatch_districts SET section_id = COALESCE(?, section_id), zone_id = COALESCE(?, zone_id), beat_id = COALESCE(?, beat_id), dispatch_code = COALESCE(?, dispatch_code), section_name = COALESCE(?, section_name), zone_name = COALESCE(?, zone_name), beat_name = COALESCE(?, beat_name), beat_descriptor = COALESCE(?, beat_descriptor) WHERE id = ?').run(section_id || null, zone_id || null, beat_id || null, dispatch_code || null, section_name || null, zone_name || null, beat_name || null, beat_descriptor ?? null, id);
-    auditLog(req, 'UPDATE' as any, 'dispatch_district' as any, id, `Updated district ${existing.dispatch_code}`);
-    res.json({ success: true });
-  } catch (error: any) { console.error('[Dispatch] district update error:', error?.message); res.status(500).json({ error: 'Failed to update district', code: 'DISTRICT_UPDATE_ERROR' }); }
+router.put('/districts/:id', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  res.status(410).json({ error: 'District CRUD moved to /api/dispatch/geography/beats. Use the Geography page.', code: 'ENDPOINT_MIGRATED' });
 });
-
-// DELETE /api/dispatch/districts/:id — Delete district row
-router.delete('/districts/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) { res.status(400).json({ error: 'Invalid ID', code: 'INVALID_ID' }); return; }
-    const existing = db.prepare('SELECT * FROM dispatch_districts WHERE id = ?').get(id) as any;
-    if (!existing) { res.status(404).json({ error: 'District not found', code: 'NOT_FOUND' }); return; }
-    db.prepare('DELETE FROM dispatch_districts WHERE id = ?').run(id);
-    auditLog(req, 'DELETE' as any, 'dispatch_district' as any, id, `Deleted district ${existing.dispatch_code}`);
-    res.json({ success: true });
-  } catch (error: any) { console.error('[Dispatch] district delete error:', error?.message); res.status(500).json({ error: 'Failed to delete district', code: 'DISTRICT_DELETE_ERROR' }); }
+router.delete('/districts/:id', requireRole('admin', 'manager'), (_req: Request, res: Response) => {
+  res.status(410).json({ error: 'District CRUD moved to /api/dispatch/geography/beats. Use the Geography page.', code: 'ENDPOINT_MIGRATED' });
 });
 
 // PUT /api/dispatch/districts/beat-geometry/:beatCode — Update beat polygon in GeoJSON file
@@ -1727,7 +1511,7 @@ router.get('/repeat-addresses', requireRole('admin', 'manager', 'supervisor', 'o
     const minCount = Math.max(2, Math.min(100, parseInt(req.query.min_count as string, 10) || 3));
     // Fix 4: Pagination support
     const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
-    const limit = Math.max(1, Math.min(500, parseInt(req.query.limit as string, 10) || 100));
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
     const offset = (page - 1) * limit;
 
     const cutoff = `-${days}`;
@@ -1837,7 +1621,7 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
   try {
     const db = getDb();
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 7));
-    const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit as string, 10) || 500));
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     // Parse comma-separated filters
     const validStatuses = ['cleared', 'closed', 'archived'];
@@ -1958,96 +1742,6 @@ router.get('/history-map', requireRole('admin', 'manager', 'supervisor', 'office
   }
 });
 
-// ════════════════════════════════════════════════════════════
-// DISPATCH QUEUE — Officer assignment queue with priority sorting
-// Shows pending/unassigned calls sorted by priority + age
-// ════════════════════════════════════════════════════════════
-
-router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-
-    // Pending calls needing assignment (no units or status=pending)
-    const pending = db.prepare(`
-      SELECT c.id, c.call_number, c.incident_type, c.priority, c.status,
-        c.location_address, c.caller_name, c.description,
-        c.section_id, c.zone_id, c.beat_id, c.dispatch_code,
-        c.latitude, c.longitude, c.created_at,
-        c.assigned_unit_ids,
-        ROUND((julianday('now') - julianday(c.created_at)) * 1440) as wait_minutes
-      FROM calls_for_service c
-      WHERE c.status IN ('pending', 'dispatched')
-      ORDER BY
-        CASE c.priority WHEN 'P1' THEN 0 WHEN 'P2' THEN 1 WHEN 'P3' THEN 2 WHEN 'P4' THEN 3 ELSE 4 END,
-        c.created_at ASC
-      LIMIT 100
-    `).all() as any[];
-
-    // Available units for assignment
-    const availableUnits = db.prepare(`
-      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude,
-        u.current_call_id, u.last_status_change,
-        usr.first_name, usr.last_name, usr.badge_number
-      FROM units u
-      LEFT JOIN users usr ON usr.id = u.officer_id
-      WHERE u.status = 'available'
-      ORDER BY u.call_sign
-    `).all() as any[];
-
-    // Units currently dispatched (for workload view)
-    const busyUnits = db.prepare(`
-      SELECT u.id, u.call_sign, u.status, u.current_call_id,
-        c.call_number as current_call_number, c.incident_type as current_call_type,
-        c.priority as current_call_priority,
-        usr.first_name, usr.last_name
-      FROM units u
-      LEFT JOIN calls_for_service c ON c.id = u.current_call_id
-      LEFT JOIN users usr ON usr.id = u.officer_id
-      WHERE u.status IN ('dispatched', 'enroute', 'onscene')
-      ORDER BY CASE u.status WHEN 'onscene' THEN 0 WHEN 'enroute' THEN 1 WHEN 'dispatched' THEN 2 ELSE 3 END
-    `).all() as any[];
-
-    // Nearest unit recommendations for each pending call
-    const recommendations: Record<string, any[]> = {};
-    for (const call of pending) {
-      if (call.latitude && call.longitude && availableUnits.length > 0) {
-        const nearest = availableUnits
-          .filter((u: any) => u.latitude && u.longitude)
-          .map((u: any) => {
-            const dlat = (call.latitude - u.latitude) * 111;
-            const dlng = (call.longitude - u.longitude) * 85;
-            return { ...u, distance_km: Math.sqrt(dlat * dlat + dlng * dlng) };
-          })
-          .sort((a: any, b: any) => a.distance_km - b.distance_km)
-          .slice(0, 3);
-        recommendations[call.id] = nearest;
-      }
-    }
-
-    // Stats
-    const p1Count = pending.filter((c: any) => c.priority === 'P1').length;
-    const p2Count = pending.filter((c: any) => c.priority === 'P2').length;
-    const avgWait = pending.length > 0 ? Math.round(pending.reduce((sum: number, c: any) => sum + (c.wait_minutes || 0), 0) / pending.length) : 0;
-
-    res.json({
-      pending,
-      available_units: availableUnits,
-      busy_units: busyUnits,
-      recommendations,
-      stats: {
-        pending_count: pending.length,
-        p1_count: p1Count,
-        p2_count: p2Count,
-        available_unit_count: availableUnits.length,
-        busy_unit_count: busyUnits.length,
-        avg_wait_minutes: avgWait,
-      },
-    });
-  } catch (err: any) {
-    console.error('[Dispatch] queue error:', err?.message);
-    res.status(500).json({ error: 'Failed to load dispatch queue' });
-  }
-});
 
 // POST /api/dispatch/queue/assign — Quick-assign unit to call from queue
 router.post('/queue/assign', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
@@ -2083,7 +1777,7 @@ router.post('/queue/assign', requireRole('admin', 'manager', 'supervisor', 'disp
 
     // Broadcast
     broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: call.status === 'pending' ? 'dispatched' : call.status } });
-    broadcastUnitUpdate({ action: 'unit_status', unit: { ...unit, status: 'dispatched', current_call_id: call_id } });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...unit, status: 'dispatched', current_call_id: call_id } });
 
     res.json({ success: true, call_number: call.call_number, unit_call_sign: unit.call_sign });
   } catch (err: any) {
@@ -2128,12 +1822,506 @@ router.post('/queue/auto-assign', requireRole('admin', 'manager', 'supervisor', 
 
     auditLog(req, 'AUTO_DISPATCH', 'calls_for_service', call_id, JSON.stringify({ unit_id: nearest.id, call_sign: nearest.call_sign, distance_km: minDist.toFixed(2) }));
     broadcastDispatchUpdate({ action: 'call_updated', call: { ...call, assigned_unit_ids: JSON.stringify(unitIds), status: 'dispatched' } });
-    broadcastUnitUpdate({ action: 'unit_status', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
+    broadcastUnitUpdate({ action: 'unit_status_changed', unit: { ...nearest, status: 'dispatched', current_call_id: call_id } });
 
     res.json({ success: true, call_number: call.call_number, unit_call_sign: nearest.call_sign, distance_km: parseFloat(minDist.toFixed(2)) });
   } catch (err: any) {
     console.error('[Dispatch] auto-assign error:', err?.message);
     res.status(500).json({ error: 'Failed to auto-assign' });
+  }
+});
+
+// ─── ANOMALY ALERTS ──────────────────────────────────────────
+
+// GET /api/dispatch/anomaly-alerts
+router.get('/anomaly-alerts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const hours = parseInt(req.query.hours as string) || 4;
+    const alerts = db.prepare(`
+      SELECT a.*, u.full_name as acknowledged_by_name
+      FROM anomaly_alerts a
+      LEFT JOIN users u ON a.acknowledged_by = u.id
+      WHERE a.created_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+      ORDER BY a.created_at DESC
+    `).all(hours);
+    res.json(alerts);
+  } catch (error: any) {
+    console.error('[Aggregates] Anomaly alerts error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to fetch anomaly alerts', code: 'ANOMALY_ALERTS_ERROR' });
+  }
+});
+
+// POST /api/dispatch/anomaly-alerts/:id/acknowledge
+router.post('/anomaly-alerts/:id/acknowledge', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const alert = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id) as any;
+    if (!alert) { res.status(404).json({ error: 'Alert not found', code: 'ALERT_NOT_FOUND' }); return; }
+
+    db.prepare(`
+      UPDATE anomaly_alerts SET acknowledged_by = ?, acknowledged_at = ? WHERE id = ?
+    `).run(req.user!.userId, localNow(), req.params.id);
+
+    const updated = db.prepare('SELECT * FROM anomaly_alerts WHERE id = ?').get(req.params.id);
+    broadcastDispatchUpdate({ action: 'anomaly_acknowledged', alert: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[Aggregates] Anomaly acknowledge error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to acknowledge alert', code: 'ANOMALY_ACK_ERROR' });
+  }
+});
+
+// ─── BACKUP REQUEST ──────────────────────────────────────────
+
+// POST /api/dispatch/request-backup
+router.post('/request-backup', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { latitude, longitude, message } = req.body;
+    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user!.userId) as any;
+    const unit = db.prepare('SELECT * FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+
+    // Log activity
+    db.prepare(`
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      VALUES (?, 'backup_requested', 'unit', ?, ?, ?)
+    `).run(req.user!.userId, unit?.id || null, `Backup requested by ${user?.full_name || 'Unknown'}: ${message || 'No message'}`, req.ip || 'unknown');
+
+    // Broadcast to dispatch channel
+    broadcastDispatchUpdate({
+      action: 'backup_requested',
+      user_id: req.user!.userId,
+      user_name: user?.full_name,
+      badge_number: user?.badge_number,
+      call_sign: unit?.call_sign,
+      current_call_id: unit?.current_call_id,
+      latitude, longitude, message,
+      requested_at: localNow(),
+    });
+
+    // Notify all dispatchers
+    const dispatchers = db.prepare(
+      "SELECT id FROM users WHERE role IN ('admin', 'supervisor', 'dispatcher') AND status = 'active'"
+    ).all() as any[];
+    for (const d of dispatchers) {
+      createNotification(
+        d.id, 'backup_request', `BACKUP: ${unit?.call_sign || user?.full_name}`,
+        message || 'Officer requesting backup',
+        'unit', unit?.id || null, 'critical'
+      );
+    }
+
+    res.json({ success: true });
+  } catch (error: any) {
+    console.error('[Aggregates] Backup request error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to process backup request', code: 'BACKUP_REQUEST_ERROR' });
+  }
+});
+
+// ── 36. Performance Dashboard ──
+router.get('/performance-dashboard', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localNow().slice(0, 10);
+    const rows = db.prepare(`
+      SELECT
+        dispatcher_id,
+        COUNT(*) AS calls_handled_today,
+        ROUND(AVG(
+          CASE WHEN dispatched_at IS NOT NULL AND created_at IS NOT NULL
+            THEN (julianday(dispatched_at) - julianday(created_at)) * 86400
+          END
+        ), 1) AS avg_dispatch_time_seconds
+      FROM calls_for_service
+      WHERE DATE(created_at) = ?
+        AND dispatcher_id IS NOT NULL
+      GROUP BY dispatcher_id
+    `).all(today);
+
+    const hourRow = db.prepare(`
+      SELECT COUNT(*) AS total FROM calls_for_service WHERE DATE(created_at) = ?
+    `).get(today) as any;
+    const currentHour = localHour();
+    const callsPerHour = currentHour > 0 ? Math.round(((hourRow?.total || 0) / currentHour) * 10) / 10 : hourRow?.total || 0;
+
+    res.json({ dispatchers: rows, calls_per_hour: callsPerHour, date: today });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load performance dashboard', code: 'PERFORMANCE_DASHBOARD_ERROR' });
+  }
+});
+
+// ── 37. Response Time Trends ──
+router.get('/response-time-trends', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        DATE(created_at) AS date,
+        COUNT(*) AS call_count,
+        ROUND(AVG(
+          CASE WHEN dispatched_at IS NOT NULL AND created_at IS NOT NULL
+            THEN (julianday(dispatched_at) - julianday(created_at)) * 86400
+          END
+        ), 1) AS avg_dispatch_seconds,
+        ROUND(AVG(
+          CASE WHEN on_scene_at IS NOT NULL AND dispatched_at IS NOT NULL
+            THEN (julianday(on_scene_at) - julianday(dispatched_at)) * 86400
+          END
+        ), 1) AS avg_response_seconds
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+      GROUP BY DATE(created_at)
+      ORDER BY date
+    `).all(days);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load response time trends', code: 'RESPONSE_TIME_TRENDS_ERROR' });
+  }
+});
+
+// ── 38. Call Volume Forecast ──
+router.get('/call-volume-forecast', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const currentDow = localDayOfWeek();
+    const rows = db.prepare(`
+      SELECT
+        CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+        ROUND(AVG(cnt), 1) AS avg_calls
+      FROM (
+        SELECT DATE(created_at) AS d, strftime('%H', created_at) AS h, COUNT(*) AS cnt
+        FROM calls_for_service
+        WHERE created_at >= DATE('now', '-84 days')
+          AND CAST(strftime('%w', created_at) AS INTEGER) = ?
+        GROUP BY d, h
+      )
+      GROUP BY hour
+      ORDER BY hour
+    `).all(currentDow);
+
+    const totalPredicted = rows.reduce((sum: number, r: any) => sum + (r.avg_calls || 0), 0);
+    res.json({ day_of_week: currentDow, hourly_forecast: rows, total_predicted_24h: Math.round(totalPredicted) });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to generate call volume forecast', code: 'CALL_VOLUME_FORECAST_ERROR' });
+  }
+});
+
+// ── 39. Beat Performance ──
+router.get('/beat-performance', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        beat,
+        COUNT(*) AS call_count,
+        ROUND(AVG(
+          CASE WHEN on_scene_at IS NOT NULL AND dispatched_at IS NOT NULL
+            THEN (julianday(on_scene_at) - julianday(dispatched_at)) * 86400
+          END
+        ), 1) AS avg_response_seconds,
+        ROUND(
+          CAST(SUM(CASE WHEN status = 'CLEARED' THEN 1 ELSE 0 END) AS REAL) /
+          NULLIF(COUNT(*), 0) * 100, 1
+        ) AS clearance_rate
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND beat IS NOT NULL AND beat != ''
+      GROUP BY beat
+      ORDER BY call_count DESC
+    `).all(days);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load beat performance', code: 'BEAT_PERFORMANCE_ERROR' });
+  }
+});
+
+// ── 40. Disposition Analysis ──
+router.get('/disposition-analysis', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        COALESCE(disposition, 'UNSET') AS disposition,
+        COUNT(*) AS count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+      GROUP BY disposition
+      ORDER BY count DESC
+    `).all(days);
+
+    const total = rows.reduce((sum: number, r: any) => sum + r.count, 0);
+    const withPct = rows.map((r: any) => ({
+      ...r,
+      percentage: total > 0 ? Math.round((r.count / total) * 1000) / 10 : 0,
+    }));
+    res.json({ total, dispositions: withPct });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load disposition analysis', code: 'DISPOSITION_ANALYSIS_ERROR' });
+  }
+});
+
+// ── 41. Peak Hours ──
+router.get('/peak-hours', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const byHour = db.prepare(`
+      SELECT
+        CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+        COUNT(*) AS call_count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-30 days')
+      GROUP BY hour
+      ORDER BY hour
+    `).all();
+
+    const byHourDow = db.prepare(`
+      SELECT
+        CAST(strftime('%H', created_at) AS INTEGER) AS hour,
+        CAST(strftime('%w', created_at) AS INTEGER) AS day_of_week,
+        COUNT(*) AS call_count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-30 days')
+      GROUP BY hour, day_of_week
+      ORDER BY day_of_week, hour
+    `).all();
+
+    res.json({ by_hour: byHour, by_hour_and_day: byHourDow });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load peak hours', code: 'PEAK_HOURS_ERROR' });
+  }
+});
+
+// ── 42. Officer Performance ──
+router.get('/officer-performance', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        primary_officer AS officer,
+        COUNT(*) AS calls_handled,
+        ROUND(AVG(
+          CASE WHEN cleared_at IS NOT NULL AND on_scene_at IS NOT NULL
+            THEN (julianday(cleared_at) - julianday(on_scene_at)) * 1440
+          END
+        ), 1) AS avg_onscene_minutes,
+        ROUND(
+          CAST(SUM(CASE WHEN status = 'CLEARED' THEN 1 ELSE 0 END) AS REAL) /
+          NULLIF(COUNT(*), 0) * 100, 1
+        ) AS clearance_rate
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND primary_officer IS NOT NULL AND primary_officer != ''
+      GROUP BY primary_officer
+      ORDER BY calls_handled DESC
+    `).all(days);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load officer performance', code: 'OFFICER_PERFORMANCE_ERROR' });
+  }
+});
+
+// ── 43. Incident Type Trends ──
+router.get('/incident-type-trends', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const current = db.prepare(`
+      SELECT incident_type, COUNT(*) AS count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND incident_type IS NOT NULL AND incident_type != ''
+      GROUP BY incident_type
+      ORDER BY count DESC
+      LIMIT 20
+    `).all(days) as any[];
+
+    const previous = db.prepare(`
+      SELECT incident_type, COUNT(*) AS count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND created_at < DATE('now', '-' || ? || ' days')
+        AND incident_type IS NOT NULL AND incident_type != ''
+      GROUP BY incident_type
+    `).all(days * 2, days) as any[];
+
+    const prevMap: Record<string, number> = {};
+    for (const r of previous) prevMap[r.incident_type] = r.count;
+
+    const trends = current.map((r: any) => {
+      const prev = prevMap[r.incident_type] || 0;
+      const changePct = prev > 0 ? Math.round(((r.count - prev) / prev) * 1000) / 10 : null;
+      return { incident_type: r.incident_type, current_count: r.count, previous_count: prev, change_percentage: changePct };
+    });
+    res.json(trends);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load incident type trends', code: 'INCIDENT_TYPE_TRENDS_ERROR' });
+  }
+});
+
+// ── 44. Mutual Aid Stats ──
+router.get('/mutual-aid-stats', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        COALESCE(le_notification_agency, 'UNKNOWN') AS agency,
+        COUNT(*) AS call_count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND le_notification = 1
+      GROUP BY agency
+      ORDER BY call_count DESC
+    `).all(days);
+    const total = rows.reduce((sum: number, r: any) => sum + r.call_count, 0);
+    res.json({ total, by_agency: rows });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load mutual aid stats', code: 'MUTUAL_AID_STATS_ERROR' });
+  }
+});
+
+// ── 45. Call Density Grid ──
+router.get('/call-density-grid', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+    const rows = db.prepare(`
+      SELECT
+        ROUND(latitude / 0.01) * 0.01 AS lat_bin,
+        ROUND(longitude / 0.01) * 0.01 AS lng_bin,
+        COUNT(*) AS call_count
+      FROM calls_for_service
+      WHERE created_at >= DATE('now', '-' || ? || ' days')
+        AND latitude IS NOT NULL AND longitude IS NOT NULL
+        AND latitude BETWEEN -90 AND 90
+        AND longitude BETWEEN -180 AND 180
+      GROUP BY lat_bin, lng_bin
+      ORDER BY call_count DESC
+    `).all(days);
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load call density grid', code: 'CALL_DENSITY_GRID_ERROR' });
+  }
+});
+
+// ── Upgrade: Dispatch Quality Metrics ──
+
+// GET /api/dispatch/quality-metrics — Comprehensive quality dashboard
+router.get('/quality-metrics', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
+
+    // Response time percentiles (P50, P90, P95)
+    const responseTimes = db.prepare(`
+      SELECT response_time_seconds
+      FROM calls_for_service
+      WHERE response_time_seconds IS NOT NULL AND response_time_seconds > 0
+      AND created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      ORDER BY response_time_seconds ASC
+    `).all(days) as { response_time_seconds: number }[];
+
+    const getPercentile = (arr: number[], p: number) => {
+      if (arr.length === 0) return 0;
+      const idx = Math.floor((arr.length - 1) * p / 100);
+      return arr[idx];
+    };
+
+    const times = responseTimes.map(r => r.response_time_seconds);
+    const responseTimeMetrics = {
+      p50: getPercentile(times, 50),
+      p90: getPercentile(times, 90),
+      p95: getPercentile(times, 95),
+      average: times.length > 0 ? Math.round(times.reduce((a, b) => a + b, 0) / times.length) : 0,
+      total_measured: times.length
+    };
+
+    // Call-to-clear ratios by type
+    const clearRatios = db.prepare(`
+      SELECT incident_type,
+        COUNT(*) as total,
+        SUM(CASE WHEN status IN ('cleared', 'closed') THEN 1 ELSE 0 END) as cleared,
+        ROUND(AVG(CASE WHEN response_time_seconds > 0 THEN response_time_seconds END), 0) as avg_response
+      FROM calls_for_service
+      WHERE created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      GROUP BY incident_type
+      HAVING total >= 3
+      ORDER BY total DESC
+      LIMIT 20
+    `).all(days);
+
+    // Unit utilization rates
+    const unitUtilization = db.prepare(`
+      SELECT u.call_sign, u.unit_type,
+        COUNT(DISTINCT cu.call_id) as calls_handled,
+        SUM(CASE WHEN cu.unassigned_at IS NOT NULL THEN
+          CAST((julianday(cu.unassigned_at) - julianday(cu.assigned_at)) * 86400 AS INTEGER)
+        ELSE 0 END) as total_busy_seconds
+      FROM units u
+      LEFT JOIN call_units cu ON cu.unit_id = u.id
+        AND cu.assigned_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      WHERE u.status != 'decommissioned'
+      GROUP BY u.id
+      ORDER BY calls_handled DESC
+    `).all(days);
+
+    // Priority compliance (P1 under 3min, P2 under 8min)
+    const compliance = db.prepare(`
+      SELECT priority,
+        COUNT(*) as total,
+        SUM(CASE
+          WHEN priority = 'P1' AND response_time_seconds <= 180 THEN 1
+          WHEN priority = 'P2' AND response_time_seconds <= 480 THEN 1
+          WHEN priority = 'P3' AND response_time_seconds <= 900 THEN 1
+          WHEN priority = 'P4' AND response_time_seconds <= 1800 THEN 1
+          ELSE 0
+        END) as within_target
+      FROM calls_for_service
+      WHERE response_time_seconds IS NOT NULL AND response_time_seconds > 0
+      AND created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      GROUP BY priority
+    `).all(days);
+
+    res.json({
+      period_days: days,
+      response_time: responseTimeMetrics,
+      clear_ratios: clearRatios,
+      unit_utilization: unitUtilization,
+      priority_compliance: compliance
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get quality metrics', code: 'QUALITY_METRICS_ERROR' });
+  }
+});
+
+// GET /api/dispatch/quality-metrics/trends — Quality metrics over time
+router.get('/quality-metrics/trends', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const days = Math.max(1, Math.min(90, parseInt(req.query.days as string, 10) || 30));
+
+    const trends = db.prepare(`
+      SELECT DATE(created_at) as date,
+        COUNT(*) as total_calls,
+        SUM(CASE WHEN status IN ('cleared', 'closed') THEN 1 ELSE 0 END) as cleared_calls,
+        ROUND(AVG(CASE WHEN response_time_seconds > 0 THEN response_time_seconds END), 0) as avg_response_time,
+        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) as p1_count,
+        SUM(CASE WHEN priority = 'P2' THEN 1 ELSE 0 END) as p2_count,
+        SUM(CASE WHEN backup_requested = 1 THEN 1 ELSE 0 END) as backup_requests
+      FROM calls_for_service
+      WHERE created_at >= datetime('now', '-' || ? || ' days', 'localtime')
+      GROUP BY DATE(created_at)
+      ORDER BY date ASC
+    `).all(days);
+
+    res.json({ period_days: days, trends });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get quality trends', code: 'QUALITY_TRENDS_ERROR' });
   }
 });
 

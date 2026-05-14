@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { TrendingUp, Plus, CheckCircle, X, Clock, Loader2, Search } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface PIP {
   id: number;
   officer_id: number;
@@ -137,7 +138,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
           </div>
           <div>
             <label className="field-label">Reason *</label>
-            <textarea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} className="input-field w-full text-xs" rows={3} placeholder="Describe the performance issues requiring improvement..." />
+            <RichTextArea value={form.reason} onChange={e => setForm(f => ({ ...f, reason: e.target.value }))} className="input-field w-full text-xs" rows={3} placeholder="Describe the performance issues requiring improvement..." />
           </div>
           <div>
             <label className="field-label">Goals *</label>

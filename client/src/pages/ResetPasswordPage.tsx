@@ -86,7 +86,7 @@ export default function ResetPasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(180deg, #050505 0%, #0a0a0a 100%)' }}>
+    <div className="min-h-screen flex items-center justify-center p-4" style={{ background: 'linear-gradient(180deg, #0b0b0b 0%, #141414 100%)' }}>
       <div className="w-full max-w-sm">
         <div
           className="panel-beveled bg-surface-base relative overflow-hidden"
@@ -102,8 +102,8 @@ export default function ResetPasswordPage() {
             <ShieldCheck className="w-3 h-3" style={{ color: '#999999' }} />
             <span>SET NEW PASSWORD</span>
             <div className="ml-auto flex items-center gap-1" aria-hidden="true">
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838' }}>_</div>
-              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #383838' }}>&#9633;</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d' }}>_</div>
+              <div className="w-4 h-3 flex items-center justify-center text-[8px] text-rmpg-400" style={{ background: '#2e2e2e', border: '1px solid #4d4d4d' }}>&#9633;</div>
             </div>
           </div>
 
@@ -130,7 +130,7 @@ export default function ResetPasswordPage() {
                   href="/forgot-password"
                   className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                   style={{
-                    background: 'linear-gradient(180deg, #888888 0%, #144a84 100%)',
+                    background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',
                     border: '1px solid rgba(136, 136, 136, 0.5)',
                     borderRadius: '2px',
                   }}
@@ -170,6 +170,7 @@ export default function ResetPasswordPage() {
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
                       <input
                         id="new-password"
+                        name="new-password"
                         type={showPassword ? 'text' : 'password'}
                         className="input-dark search-glow h-10 pl-9 pr-9 w-full"
                         placeholder="Enter new password"
@@ -201,6 +202,7 @@ export default function ResetPasswordPage() {
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
                       <input
                         id="confirm-password"
+                        name="confirm-password"
                         type={showPassword ? 'text' : 'password'}
                         className="input-dark search-glow h-10 pl-9 w-full"
                         placeholder="Confirm new password"
@@ -234,7 +236,7 @@ export default function ResetPasswordPage() {
                     disabled={submitting || !allMet}
                     className="w-full h-10 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 transition-all duration-150 active:scale-[0.98]"
                     style={{
-                      background: 'linear-gradient(180deg, #888888 0%, #144a84 100%)',
+                      background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',
                       border: '1px solid rgba(136, 136, 136, 0.5)',
                       borderRadius: '2px',
                     }}
@@ -270,7 +272,7 @@ export default function ResetPasswordPage() {
                   href="/login"
                   className="inline-flex items-center gap-1.5 mt-4 px-4 py-2 text-[10px] font-bold uppercase tracking-wider text-white transition-all duration-150 hover:brightness-110 focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
                   style={{
-                    background: 'linear-gradient(180deg, #888888 0%, #144a84 100%)',
+                    background: 'linear-gradient(180deg, #888888 0%, #3a3a3a 100%)',
                     border: '1px solid rgba(136, 136, 136, 0.5)',
                     borderRadius: '2px',
                   }}
@@ -281,7 +283,7 @@ export default function ResetPasswordPage() {
               </div>
             )}
 
-            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #222222' }}>
+            <div className="mt-4 pt-3" style={{ borderTop: '1px solid #2b2b2b' }}>
               <a
                 href="/login"
                 className="flex items-center justify-center gap-1.5 text-[10px] font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50 rounded-sm py-1"

@@ -7,18 +7,18 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Camera, Edit2, Flame, Download, Maximize2, Minimize2,
-  Loader2, AlertTriangle, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, Info, SkipBack, SkipForward,
-  Play, Pause, Volume2, VolumeX, Map, Shield, FileText,
-  Link2, Car, User, Gauge, Copy, Check,
+  Edit2, Flame, Download, Maximize2, Minimize2, Loader2, AlertTriangle,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, SkipBack, SkipForward,
+  Play, Pause, Volume2, VolumeX, Map, Shield, FileText, Link2, Car, User, Gauge,
+  Copy, Check,
 } from 'lucide-react';
-import type { DashCamVideo } from '../types';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
-import { DARK_MAP_STYLE } from '../utils/googleMapsLoader';
+import mapboxgl from 'mapbox-gl';
+import { getMapboxToken } from '../utils/mapboxApiKey';
+import { createMapboxMap, addMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -257,9 +257,8 @@ export default function DashCamDetailPage() {
   const videoRef = useRef<HTMLVideoElement>(null);
   const animFrameRef = useRef<number>(0);
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markerRef = useRef<google.maps.Marker | null>(null);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markerRef = useRef<mapboxgl.Marker | null>(null);
 
   // State
   const [video, setVideo] = useState<any>(null);
@@ -389,84 +388,71 @@ export default function DashCamDetailPage() {
     return () => vid.removeEventListener('seeked', onSeeked);
   }, [video]);
 
-  // ── Google Map ───────────────────────────────
+  // ── Mapbox Map ───────────────────────────────
 
   useEffect(() => {
     if (!mapSectionOpen || !mapContainerRef.current || mapRef.current) return;
-    if (!window.google?.maps) return;
 
-    const center = telemetry
-      ? { lat: telemetry.lat, lng: telemetry.lng }
+    const center: [number, number] = telemetry
+      ? [telemetry.lng, telemetry.lat]
       : video?.latitude && video?.longitude
-        ? { lat: video.latitude, lng: video.longitude }
-        : { lat: 40.76, lng: -111.89 };
+        ? [video.longitude, video.latitude]
+        : [-111.89, 40.76];
 
-    const mapId = import.meta.env.VITE_GOOGLE_MAPS_MAP_ID || '';
-    const mapOptions: google.maps.MapOptions = {
-      center,
-      zoom: 15,
-      renderingType: 'RASTER' as any,
-      disableDefaultUI: true,
-      zoomControl: true,
-      styles: mapId ? undefined : DARK_MAP_STYLE,
-      backgroundColor: '#171717',
-    };
-    if (mapId) (mapOptions as any).mapId = mapId;
-    const map = new google.maps.Map(mapContainerRef.current, mapOptions);
-    mapRef.current = map;
+    (async () => {
+      const token = await getMapboxToken();
+      if (!token || !mapContainerRef.current) return;
+      injectMapboxStyles();
 
-    // Marker
-    const marker = new google.maps.Marker({
-      position: center,
-      map,
-      icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 7,
-        fillColor: '#888888',
-        fillOpacity: 1,
-        strokeColor: '#cccccc',
-        strokeWeight: 2,
-      },
-    });
-    markerRef.current = marker;
-
-    // Route polyline from GPS track
-    if (gpsTrack && gpsTrack.length > 1) {
-      const path = gpsTrack.map(p => ({ lat: p.latitude, lng: p.longitude }));
-      const polyline = new google.maps.Polyline({
-        path,
-        strokeColor: '#888888',
-        strokeOpacity: 0.5,
-        strokeWeight: 2,
-        map,
+      const map = createMapboxMap({
+        container: mapContainerRef.current,
+        center,
+        zoom: 15,
+        accessToken: token,
       });
-      polylineRef.current = polyline;
+      mapRef.current = map;
 
-      // Fit bounds to track
-      const bounds = new google.maps.LatLngBounds();
-      path.forEach(p => bounds.extend(p));
-      map.fitBounds(bounds, 20);
-    }
+      // Marker element
+      const el = document.createElement('div');
+      el.style.cssText = 'width:14px;height:14px;border-radius:50%;background:#888888;border:2px solid #cccccc;';
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat(center)
+        .addTo(map);
+      markerRef.current = marker;
 
-    setMapReady(true);
+      // Route polyline from GPS track
+      map.on('load', () => {
+        if (gpsTrack && gpsTrack.length > 1) {
+          const coords: [number, number][] = gpsTrack.map(p => [p.longitude, p.latitude]);
+          addMapboxTrail(map, 'gps-track', coords, '#888888', 2);
+
+          // Fit bounds to track
+          const bounds = new mapboxgl.LngLatBounds();
+          coords.forEach(c => bounds.extend(c));
+          map.fitBounds(bounds, { padding: 20 });
+        }
+        setMapReady(true);
+      });
+    })();
   }, [mapSectionOpen, video, gpsTrack]);
 
-  // Cleanup Google Maps on unmount to prevent memory leak
+  // Cleanup Mapbox on unmount
   useEffect(() => {
     return () => {
-      markerRef.current?.setMap(null);
-      polylineRef.current?.setMap(null);
+      markerRef.current?.remove();
       markerRef.current = null;
-      polylineRef.current = null;
-      mapRef.current = null;
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+      }
     };
   }, []);
 
   // Update marker position during playback
   useEffect(() => {
     if (!mapReady || !markerRef.current || !telemetry) return;
-    const pos = { lat: telemetry.lat, lng: telemetry.lng };
-    markerRef.current.setPosition(pos);
+    const pos: [number, number] = [telemetry.lng, telemetry.lat];
+    markerRef.current.setLngLat(pos);
     if (isPlaying) {
       mapRef.current?.panTo(pos);
     }
@@ -909,7 +895,7 @@ export default function DashCamDetailPage() {
                         'bg-rmpg-500'
                       }`} />
                       <span className="text-[10px] text-rmpg-200 capitalize font-mono">
-                        {(video.unit_status || '').replace(/_/g, ' ')}
+                        {(video.unit_status || '').replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </div>
                   </div>
@@ -973,7 +959,7 @@ export default function DashCamDetailPage() {
               <div ref={mapContainerRef}
                 className="w-full rounded-sm"
                 style={{ height: 200, background: '#050505' }}>
-                {!window.google?.maps && (
+                {!mapReady && !mapRef.current && (
                   <div className="flex items-center justify-center h-full">
                     <span className="text-[9px] text-rmpg-500">Maps unavailable</span>
                   </div>
@@ -1018,7 +1004,7 @@ export default function DashCamDetailPage() {
                   {incidentLink.disposition && (
                     <div>
                       <span className="text-[9px] text-rmpg-500 uppercase block">Disposition</span>
-                      <span className="text-[11px] text-rmpg-200">{(incidentLink.disposition || '').replace(/_/g, ' ')}</span>
+                      <span className="text-[11px] text-rmpg-200">{(incidentLink.disposition || '').replace(/_/g, ' ').toUpperCase()}</span>
                     </div>
                   )}
                 </div>
@@ -1115,7 +1101,7 @@ export default function DashCamDetailPage() {
           </div>
 
           {/* ── Panel Bottom Actions ── */}
-          <div className="border-t border-[#141414] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
+          <div className="border-t border-[#181818] p-2 space-y-1.5" style={{ background: 'var(--surface-raised)' }}>
             {/* File info */}
             <div className="flex items-center justify-between text-[9px] text-rmpg-500 font-mono mb-1">
               <span>{formatSize(video.file_size)}</span>

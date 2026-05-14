@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Archive, Play, Eye, Save, Loader2, Clock, Trash2,
-  AlertTriangle, CheckCircle2, Database, RefreshCw,
+  Archive, Play, Eye, Loader2, Trash2, AlertTriangle, CheckCircle2, Database,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { formatDateTime } from '../../utils/dateUtils';
@@ -202,7 +201,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
               const isSaving = saving === p.id;
 
               return (
-                <tr key={p.id} className="border-t border-[#181818] hover:bg-surface-raised/50 transition-colors">
+                <tr key={p.id} className="border-t border-[#242424] hover:bg-surface-raised/50 transition-colors">
                   <td className="px-3 py-2">
                     <div className="flex items-center gap-2">
                       <Database className="w-3 h-3 text-rmpg-500" />

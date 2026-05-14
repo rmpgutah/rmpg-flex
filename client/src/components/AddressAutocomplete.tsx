@@ -1,12 +1,13 @@
 // ============================================================
 // RMPG Flex — Address Autocomplete
-// Google Places Autocomplete for address input fields.
+// Mapbox Geocoding API autocomplete for address input fields.
 // Drop-in replacement for <input> with address suggestions.
 // ============================================================
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { MapPin } from 'lucide-react';
-import { loadGoogleMaps as loadGoogleMapsShared } from '../utils/googleMapsLoader';
+import { getMapboxToken, getCachedMapboxToken } from '../utils/mapboxApiKey';
+import { useDistrictIdentify, type DistrictInfo } from '../hooks/useDistrictLookup';
 
 // ── Parsed address components returned by onSelect ───────────
 export interface ParsedAddress {
@@ -26,6 +27,23 @@ export interface ParsedAddress {
   latitude: number | null;
   /** Longitude (if available) */
   longitude: number | null;
+  /**
+   * Dispatch geography resolved from lat/lng via point-in-polygon lookup.
+   * Populated automatically when the picked place has coordinates AND the
+   * server's /dispatch/districts/identify endpoint returns a match.
+   * Undefined when lat/lng missing, no polygon matched, or lookup failed —
+   * callers should treat absence as "unknown", not "no coverage".
+   */
+  district?: DistrictInfo;
+}
+
+// ── Mapbox Geocoding API response types ──────────────────────
+interface MapboxFeature {
+  place_name: string;
+  center: [number, number]; // [lng, lat]
+  text: string;
+  address?: string;
+  context?: Array<{ id: string; text: string; short_code?: string }>;
 }
 
 // ── Component Props ──────────────────────────────────────────
@@ -56,75 +74,34 @@ interface AddressAutocompleteProps {
 
 // ── Helpers ──────────────────────────────────────────────────
 
-/** Extract a component value from Google place result */
-function getComponent(
-  components: google.maps.GeocoderAddressComponent[] | undefined,
-  type: string,
-  useShort = false
-): string {
-  if (!components) return '';
-  const match = components.find((c) => c.types.includes(type));
-  return match ? (useShort ? match.short_name : match.long_name) : '';
+/** Parse a Mapbox feature into address components */
+function parseMapboxFeature(feature: MapboxFeature): Omit<ParsedAddress, 'district'> {
+  const ctx = feature.context || [];
+  const findCtx = (prefix: string) => ctx.find(c => c.id.startsWith(prefix));
+
+  const streetNum = feature.address || '';
+  const route = feature.text || '';
+  const street = streetNum ? `${streetNum} ${route}` : route;
+
+  const place = findCtx('place');
+  const region = findCtx('region');
+  const postcode = findCtx('postcode');
+  const country = findCtx('country');
+
+  return {
+    formatted: feature.place_name,
+    street,
+    city: place?.text || '',
+    state: region?.short_code?.replace(/^US-/, '') || region?.text || '',
+    zip: postcode?.text || '',
+    country: country?.short_code?.toUpperCase() || '',
+    latitude: feature.center[1],
+    longitude: feature.center[0],
+  };
 }
 
-// Use the shared Google Maps loader — single source of truth with retry + offline resilience.
-// Previously had its own duplicate loader here which caused race conditions and had no timeout.
-const loadGoogleMaps = loadGoogleMapsShared;
-
-// Dark dropdown styles injected once
-const AUTOCOMPLETE_STYLE_ID = 'rmpg-autocomplete-styles';
-function injectAutocompleteStyles() {
-  if (document.getElementById(AUTOCOMPLETE_STYLE_ID)) return;
-  const style = document.createElement('style');
-  style.id = AUTOCOMPLETE_STYLE_ID;
-  style.textContent = `
-    .pac-container {
-      background: #0a0a0a !important;
-      border: 1px solid #404040 !important;
-      /* 69: Use 2px border-radius matching design system */
-      border-radius: 2px !important;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.6) !important;
-      font-family: 'Courier New', monospace !important;
-      z-index: 99999 !important;
-      margin-top: 2px !important;
-    }
-    .pac-item {
-      background: #0a0a0a !important;
-      border-top: 1px solid #222222 !important;
-      color: #d1d5db !important;
-      padding: 6px 10px !important;
-      font-size: 11px !important;
-      cursor: pointer !important;
-      line-height: 1.4 !important;
-    }
-    .pac-item:first-child {
-      border-top: none !important;
-    }
-    .pac-item:hover, .pac-item-selected {
-      background: #141414 !important;
-    }
-    .pac-item-query {
-      color: #e5e7eb !important;
-      font-weight: 700 !important;
-      font-size: 11px !important;
-    }
-    .pac-icon {
-      display: none !important;
-    }
-    .pac-matched {
-      color: #888888 !important;
-      font-weight: 900 !important;
-    }
-    .pac-item span:last-child {
-      color: #6b7280 !important;
-      font-size: 10px !important;
-    }
-    .pac-logo::after {
-      display: none !important;
-    }
-  `;
-  document.head.appendChild(style);
-}
+// SLC proximity for biasing results
+const SLC_PROXIMITY: [number, number] = [-111.891, 40.7608];
 
 // ── Component ────────────────────────────────────────────────
 
@@ -142,80 +119,98 @@ export default function AddressAutocomplete({
   autoFocus = false,
 }: AddressAutocompleteProps) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteRef = useRef<google.maps.places.Autocomplete | null>(null);
-  const [placesLoaded, setPlacesLoaded] = useState(false);
+  const [tokenReady, setTokenReady] = useState(false);
   const [loadError, setLoadError] = useState(false);
+  const [suggestions, setSuggestions] = useState<MapboxFeature[]>([]);
+  const [showDropdown, setShowDropdown] = useState(false);
+  const [highlightIdx, setHighlightIdx] = useState(-1);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const skipNextChangeRef = useRef(false);
+  const { identify } = useDistrictIdentify();
 
-  // Load Places library on mount
+  // Fetch Mapbox token on mount (with retry for auth race conditions)
   useEffect(() => {
-    const apiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY || '';
-    if (!apiKey) {
-      setLoadError(true);
-      return;
-    }
-
-    loadGoogleMaps(apiKey)
-      .then(() => {
-        setPlacesLoaded(true);
-        injectAutocompleteStyles();
-      })
-      .catch(() => {
-        setLoadError(true);
-      });
+    let cancelled = false;
+    let attempt = 0;
+    const maxAttempts = 3;
+    const tryFetch = async () => {
+      try {
+        const token = await getMapboxToken(attempt > 0);
+        if (cancelled) return;
+        if (token && token.startsWith('pk.')) {
+          setTokenReady(true);
+        } else if (++attempt < maxAttempts) {
+          setTimeout(() => { if (!cancelled) tryFetch(); }, attempt * 2000);
+        } else {
+          setLoadError(true);
+        }
+      } catch {
+        if (!cancelled) {
+          if (++attempt < maxAttempts) {
+            setTimeout(() => { if (!cancelled) tryFetch(); }, attempt * 2000);
+          } else {
+            setLoadError(true);
+          }
+        }
+      }
+    };
+    tryFetch();
+    return () => { cancelled = true; };
   }, []);
 
-  // Initialize Autocomplete on the input element
+  // Close dropdown on outside click
   useEffect(() => {
-    if (!placesLoaded || !inputRef.current || autocompleteRef.current) return;
-
-    const autocomplete = new google.maps.places.Autocomplete(inputRef.current, {
-      types: addressOnly ? ['address'] : ['geocode'],
-      componentRestrictions: { country },
-      fields: ['address_components', 'formatted_address', 'geometry'],
-    });
-
-    autocomplete.addListener('place_changed', () => {
-      const place = autocomplete.getPlace();
-      if (!place || !place.formatted_address) return;
-
-      const formatted = place.formatted_address;
-      const comps = place.address_components;
-
-      const streetNumber = getComponent(comps, 'street_number');
-      const route = getComponent(comps, 'route');
-      const street = streetNumber ? `${streetNumber} ${route}` : route;
-
-      const parsed: ParsedAddress = {
-        formatted,
-        street,
-        city:
-          getComponent(comps, 'locality') ||
-          getComponent(comps, 'sublocality_level_1') ||
-          getComponent(comps, 'administrative_area_level_2'),
-        state: getComponent(comps, 'administrative_area_level_1', true),
-        zip: getComponent(comps, 'postal_code'),
-        country: getComponent(comps, 'country', true),
-        latitude: place.geometry?.location?.lat() ?? null,
-        longitude: place.geometry?.location?.lng() ?? null,
-      };
-
-      // Update the controlled value without triggering an extra onChange
-      skipNextChangeRef.current = true;
-      onChange(formatted);
-
-      if (onSelect) {
-        onSelect(parsed);
+    const handleClick = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+          inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setShowDropdown(false);
       }
-    });
-
-    autocompleteRef.current = autocomplete;
-
-    return () => {
-      google.maps.event.clearInstanceListeners(autocomplete);
-      autocompleteRef.current = null;
     };
-  }, [placesLoaded, country, addressOnly]); // eslint-disable-line react-hooks/exhaustive-deps
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, []);
+
+  // Fetch suggestions from Mapbox Geocoding API
+  const fetchSuggestions = useCallback(async (query: string) => {
+    const token = getCachedMapboxToken();
+    if (!token || !token.startsWith('pk.') || query.length < 3) {
+      setSuggestions([]);
+      setShowDropdown(false);
+      return;
+    }
+    try {
+      const types = addressOnly ? '&types=address,poi,place' : '';
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&proximity=${SLC_PROXIMITY[0]},${SLC_PROXIMITY[1]}&country=${country}&limit=5${types}`;
+      const res = await fetch(url);
+      if (!res.ok) return;
+      const data = await res.json();
+      const features: MapboxFeature[] = data.features || [];
+      setSuggestions(features);
+      setShowDropdown(features.length > 0);
+      setHighlightIdx(-1);
+    } catch {
+      // Geocoding failed — silently degrade
+    }
+  }, [country, addressOnly]);
+
+  // Handle selecting a suggestion
+  const handleSelect = useCallback(async (feature: MapboxFeature) => {
+    const parsed: ParsedAddress = parseMapboxFeature(feature);
+    skipNextChangeRef.current = true;
+    onChange(parsed.formatted);
+    setSuggestions([]);
+    setShowDropdown(false);
+
+    if (onSelect) onSelect(parsed);
+
+    if (parsed.latitude != null && parsed.longitude != null) {
+      const district = await identify(parsed.latitude, parsed.longitude);
+      if (district && onSelect) {
+        onSelect({ ...parsed, district });
+      }
+    }
+  }, [onChange, onSelect, identify]);
 
   // Handle input changes (normal typing)
   const handleChange = useCallback(
@@ -224,12 +219,34 @@ export default function AddressAutocomplete({
         skipNextChangeRef.current = false;
         return;
       }
-      onChange(e.target.value);
+      const val = e.target.value;
+      onChange(val);
+
+      // Debounce geocoding requests
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => fetchSuggestions(val), 300);
     },
-    [onChange]
+    [onChange, fetchSuggestions]
   );
 
-  // If Places failed to load, render a plain input
+  // Keyboard navigation
+  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (!showDropdown || suggestions.length === 0) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setHighlightIdx(prev => Math.min(prev + 1, suggestions.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlightIdx(prev => Math.max(prev - 1, 0));
+    } else if (e.key === 'Enter' && highlightIdx >= 0) {
+      e.preventDefault();
+      handleSelect(suggestions[highlightIdx]);
+    } else if (e.key === 'Escape') {
+      setShowDropdown(false);
+    }
+  }, [showDropdown, suggestions, highlightIdx, handleSelect]);
+
+  // If token failed to load, render a plain input
   if (loadError || disabled) {
     return (
       <input
@@ -256,17 +273,64 @@ export default function AddressAutocomplete({
         placeholder={placeholder}
         value={value}
         onChange={handleChange}
+        onKeyDown={handleKeyDown}
+        onFocus={() => { if (suggestions.length > 0) setShowDropdown(true); }}
         required={required}
         autoFocus={autoFocus}
         autoComplete="off"
+        role="combobox"
+        aria-expanded={showDropdown}
+        aria-autocomplete="list"
       />
-      {/* 67: MapPin indicator with brand color when loaded; 68: aria-hidden on decorative icon */}
-      {placesLoaded && (
+      {tokenReady && (
         <MapPin
           className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none transition-colors"
           style={{ width: 12, height: 12, color: value ? '#888888' : '#505050' }}
           aria-hidden="true"
         />
+      )}
+      {/* Suggestion dropdown */}
+      {showDropdown && suggestions.length > 0 && (
+        <div
+          ref={dropdownRef}
+          className="absolute left-0 right-0 z-[99999] mt-0.5"
+          style={{
+            background: '#141414',
+            border: '1px solid #404040',
+            borderRadius: 2,
+            boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+            fontFamily: "'Courier New', monospace",
+          }}
+          role="listbox"
+        >
+          {suggestions.map((feat, idx) => (
+            <div
+              key={feat.place_name}
+              role="option"
+              aria-selected={idx === highlightIdx}
+              className="cursor-pointer"
+              style={{
+                padding: '6px 10px',
+                fontSize: 11,
+                color: '#d1d5db',
+                lineHeight: 1.4,
+                borderTop: idx > 0 ? '1px solid #2b2b2b' : 'none',
+                background: idx === highlightIdx ? '#181818' : '#141414',
+              }}
+              onMouseEnter={() => setHighlightIdx(idx)}
+              onMouseDown={(e) => { e.preventDefault(); handleSelect(feat); }}
+            >
+              <span style={{ color: '#e5e7eb', fontWeight: 700, fontSize: 11 }}>
+                {feat.text}{feat.address ? ` ${feat.address}` : ''}
+              </span>
+              {feat.place_name !== feat.text && (
+                <span style={{ color: '#6b7280', fontSize: 10, marginLeft: 4 }}>
+                  {feat.place_name.replace(`${feat.address || ''} ${feat.text}, `, '').replace(`${feat.text}, `, '')}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );

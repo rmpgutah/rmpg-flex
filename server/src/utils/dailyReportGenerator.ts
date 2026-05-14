@@ -411,7 +411,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
     doc.setFontSize(9);
     doc.setFont('helvetica', 'bold');
     doc.text(title.toUpperCase(), margin + 5, yPos + 5);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     yPos += 10;
   }
 
@@ -430,7 +430,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       doc.text(col.label, xOff + 1, yPos + 3.5);
       xOff += col.w;
     }
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     yPos += 6;
   }
 
@@ -457,7 +457,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       doc.setFont('helvetica', 'bold');
       doc.text(brandText, textX, 9);
       doc.setFontSize(7);
-      doc.setFont('helvetica', 'normal');
+      doc.setFont('courier', 'normal');
       doc.text(`DAILY PATROL REPORT  |  ${dateStr}  |  FORM PS-210`, pageW - margin, 9, { align: 'right' });
 
       // Accent strip
@@ -528,7 +528,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   doc.text(brandText, pageW / 2, titleY, { align: 'center' });
 
   doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...CLR.TEXT_SEC);
   doc.text(brandSub, pageW / 2, titleY + 6, { align: 'center' });
 
@@ -539,7 +539,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   doc.text('DAILY PATROL TRACKING REPORT', pageW / 2, titleY + 14, { align: 'center' });
 
   doc.setFontSize(7);
-  doc.setFont('helvetica', 'normal');
+  doc.setFont('courier', 'normal');
   doc.setTextColor(...CLR.TEXT_MUTED);
   doc.text(`FORM PS-210  |  Rev. 2026-03`, pageW / 2, titleY + 19, { align: 'center' });
 
@@ -569,7 +569,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
   for (const [label, value] of metaLines) {
     doc.setFont('helvetica', 'bold');
     doc.text(label, margin + 4, yPos);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     doc.text(value, margin + 44, yPos);
     yPos += 5;
   }
@@ -586,13 +586,13 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
     doc.rect(margin + 2, yPos, contentW - 2, 6, 'F');
     doc.setTextColor(...CLR.TEXT);
     doc.setFontSize(8);
-    doc.setFont('helvetica', 'bold');
+    doc.setFont('courier', 'bold');
     doc.text(`${trail.call_sign}  —  ${trail.officer_name}  (Badge: ${trail.badge_number || 'N/A'})`, margin + 5, yPos + 4.2);
     yPos += 8;
 
     doc.setTextColor(...CLR.TEXT_SEC);
     doc.setFontSize(7);
-    doc.setFont('helvetica', 'normal');
+    doc.setFont('courier', 'normal');
     const s = trail.stats;
     const items = [
       `Distance: ${s.total_distance_miles} mi`, `Duration: ${s.duration_minutes} min`,
@@ -631,6 +631,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
     drawBcHeaders();
 
     doc.setFontSize(5.5);
+    doc.setFont('courier', 'normal');
     const sampleRate = trail.points.length > 300 ? Math.ceil(trail.points.length / 300) : 1;
 
     for (let i = 0; i < trail.points.length; i += sampleRate) {
@@ -652,8 +653,8 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
         formatDateTime(pt.time), beatCode, sector, pt.zone || '-',
         pt.road_name || '-', pt.nearest_intersection || '-',
         pt.speed_mph != null ? `${pt.speed_mph}` : '-', pt.heading_cardinal || '-',
-        (pt.status || '-').replace(/_/g, ' '), pt.current_call_number || '-',
-        (pt.current_call_type || '-').replace(/_/g, ' '),
+        (pt.status || '-').replace(/_/g, ' ').toUpperCase(), pt.current_call_number || '-',
+        (pt.current_call_type || '-').replace(/_/g, ' ').toUpperCase(),
         pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : '-',
         `${pt.lat.toFixed(4)},${pt.lng.toFixed(4)}`,
       ];
@@ -688,6 +689,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       drawColumnHeaders(rCols);
 
       doc.setFontSize(6);
+      doc.setFont('courier', 'normal');
       for (let si = 0; si < trail.response_segments.length; si++) {
         const seg = trail.response_segments[si];
         ensureSpace(5);
@@ -698,7 +700,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
         doc.setTextColor(...CLR.TEXT);
         let rxOff = margin;
         const rRow = [
-          seg.call_number || '-', (seg.incident_type || '-').replace(/_/g, ' '),
+          seg.call_number || '-', (seg.incident_type || '-').replace(/_/g, ' ').toUpperCase(),
           `P${seg.priority}`, seg.dispatched_at ? formatDateTime(seg.dispatched_at) : '-',
           seg.onscene_at ? formatDateTime(seg.onscene_at) : '-',
           seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds) : '-',
@@ -727,6 +729,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
       drawColumnHeaders(zCols);
 
       doc.setFontSize(6);
+      doc.setFont('courier', 'normal');
       const sorted = Object.entries(zc).sort(([, a], [, b]) => b.time_seconds - a.time_seconds);
       for (let zi = 0; zi < sorted.length; zi++) {
         ensureSpace(5);

@@ -63,7 +63,14 @@ const REFRESH_BUFFER_MS = 60 * 1000;
 
 // Max time (ms) any auth fetch is allowed before aborting — prevents infinite "Initializing..."
 // 15s is generous for field conditions (vehicle WiFi, cell data in dead zones)
-const AUTH_FETCH_TIMEOUT_MS = 15000;
+// Auth requests are tiny (~1KB request, ~2KB response). 6s turned out too
+// aggressive — on slow cellular /auth/me legitimately takes 5-10s and was
+// being aborted with "signal is aborted without reason", breaking login.
+// 12s is long enough for slow cellular but still bounded so a genuinely
+// broken network fails before the browser's default ~120s timeout. The
+// real splash-resolves-faster fix lives in the SW (cache-first /assets/)
+// and nginx (Cache-Control immutable) layers, not in shortening this.
+const AUTH_FETCH_TIMEOUT_MS = 12000;
 
 function parseJwtExpiry(token: string): number | null {
   try {
@@ -81,6 +88,28 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AU
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
+}
+
+/**
+ * Convert raw browser network errors into user-friendly messages.
+ * `fetch()` throws TypeError("Failed to fetch") on network failures and
+ * DOMException("signal is aborted without reason") on AbortController timeout.
+ * Neither is helpful for a field officer staring at a login screen.
+ */
+const NETWORK_ERROR_PATTERNS = ['failed to fetch', 'networkerror', 'network request failed', 'load failed'];
+const TIMEOUT_ERROR_PATTERNS = ['abort', 'timed out', 'timeout'];
+
+function friendlyAuthError(err: unknown): string {
+  if (!(err instanceof Error)) return 'Login failed. Please try again.';
+  const msg = err.message.toLowerCase();
+  if (NETWORK_ERROR_PATTERNS.some(p => msg.includes(p))) {
+    return 'Unable to connect to the server. Check your network connection and try again.';
+  }
+  if (TIMEOUT_ERROR_PATTERNS.some(p => msg.includes(p))) {
+    return 'Server request timed out. Check your network connection and try again.';
+  }
+  // Already a meaningful server-side error message — pass through
+  return err.message;
 }
 
 // Generate a device fingerprint hash for trusted device recognition
@@ -430,15 +459,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoginStep('complete');
       } else {
         const errData = await res.json().catch(() => ({}));
-        if (errData.code === 'MFA_EXPIRED') {
+        if (errData.code === 'MFA_EXPIRED' || errData.code === 'VERIFICATION_SESSION_EXPIRED_PLEASE') {
           setLoginStep('password');
           setPending2FA(false);
-          throw new Error('Verification expired. Please enter your password again.');
+          throw new Error('Verification session expired. Please sign in again.');
         }
-        const message = errData.error || 'Invalid verification code';
+        if (errData.code === 'TOTP_DECRYPT_ERROR') {
+          setError('Authentication configuration error. Contact your administrator.');
+          throw new Error(errData.error);
+        }
+        const message = errData.error || 'Invalid verification code. Wait for a new code and try again.';
         setError(message);
         throw new Error(message);
       }
+    } catch (err: unknown) {
+      const message = friendlyAuthError(err);
+      setError(message);
+      throw err;
     } finally {
       setLoginBusy(false);
     }
@@ -515,7 +552,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (err?.message?.includes('No security keys registered')) {
         setError('No security keys are registered. Set up a key in Profile → Security.');
       } else {
-        setError(err?.message || 'Security key verification failed');
+        const message = friendlyAuthError(err);
+        setError(message);
       }
       throw err;
     } finally {
@@ -634,7 +672,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoginStep('complete');
         return { requires2FA: false, success: true };
       } else {
-        const message = err instanceof Error ? err.message : 'Login failed';
+        const message = friendlyAuthError(err);
         setError(message);
         throw err;
       }
@@ -658,7 +696,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           'X-Requested-With': 'XMLHttpRequest',
           Authorization: `Bearer ${currentToken}`,
         },
-        body: JSON.stringify({ code, deviceFingerprint: deviceFingerprintRef.current }),
+        body: JSON.stringify({ tempToken: currentToken, code, deviceFingerprint: deviceFingerprintRef.current }),
       });
 
       if (res.ok) {
@@ -686,7 +724,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(errData.error || 'Invalid backup code');
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Verification failed';
+      const message = friendlyAuthError(err);
       setError(message);
       throw err;
     } finally {
@@ -729,6 +767,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await res.json();
       return { qrCodeDataUri: data.qrCodeDataUri, manualKey: data.manualKey };
+    } catch (err: unknown) {
+      const message = friendlyAuthError(err);
+      setError(message);
+      throw err;
     } finally {
       setLoginBusy(false);
     }
@@ -779,7 +821,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoginStep('show_backup_codes');
       return { backupCodes: data.backupCodes };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Setup verification failed';
+      const message = friendlyAuthError(err);
       setError(message);
       throw err;
     } finally {
@@ -820,7 +862,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setTempToken(null);
       setRequiresPasswordChange(false);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Password change failed';
+      const message = friendlyAuthError(err);
       setError(message);
       throw err;
     } finally {

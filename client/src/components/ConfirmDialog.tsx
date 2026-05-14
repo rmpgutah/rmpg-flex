@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useId } from 'react';
+import { useEffect, useRef, useId } from 'react';
 import { AlertTriangle, Info, X, Loader2 } from 'lucide-react';
 
 interface ConfirmDialogProps {
@@ -104,7 +104,7 @@ export default function ConfirmDialog({
       <div className="relative w-full max-w-md mx-4 bg-surface-base border border-rmpg-600 shadow-md animate-scale-in" onClick={(e) => e.stopPropagation()}>
         <div
           className="flex items-center justify-between px-4 py-2 border-b border-rmpg-600"
-          style={{ background: 'linear-gradient(180deg, #141414 0%, #0a0a0a 100%)' }}
+          style={{ background: 'linear-gradient(180deg, #181818 0%, #141414 100%)' }}
         >
           <div className="flex items-center gap-2">
             <HeaderIcon className={`w-4 h-4 ${iconColor}`} />

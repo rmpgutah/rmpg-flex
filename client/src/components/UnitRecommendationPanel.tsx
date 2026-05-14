@@ -5,7 +5,7 @@
 // Replaces the flat dropdown in the Assigned Units section.
 // ============================================================
 
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Navigation, MapPin, Clock, Star, PlusCircle, Plus } from 'lucide-react';
 import type { Unit } from '../types';
 import { rankUnits, type RankedUnit } from '../utils/unitRecommendation';
@@ -109,7 +109,7 @@ export default function UnitRecommendationPanel({
                         className="text-[8px] uppercase font-bold px-1"
                         style={{ color: statusColor }}
                       >
-                        {item.unit.status === 'onscene' ? 'ON SCN' : item.unit.status.replace(/_/g, ' ')}
+                        {item.unit.status === 'onscene' ? 'ON SCN' : item.unit.status.replace(/_/g, ' ').toUpperCase()}
                       </span>
                     )}
                   </div>

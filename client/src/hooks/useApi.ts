@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react';
 import { isOfflineDbReady } from '../services/offlineDb';
 import { handle as browserOfflineHandle, isOfflineCapableEndpoint } from '../services/offlineRouter';
 import { hasActiveSession } from '../services/offlinePin';
+import { isLikelyOnline } from '../services/connectivityMonitor';
 import { uploadWithProgress } from '../utils/uploadWithProgress';
 import type { UploadProgress } from '../utils/uploadWithProgress';
 
@@ -12,6 +13,74 @@ export class OfflineUnauthorizedError extends Error {
   constructor(message = 'Offline write requires PIN authorization') {
     super(message);
     this.name = 'OfflineUnauthorizedError';
+  }
+}
+
+// ─── Request Timeout ─────────────────────────────────────────
+// Default 60s — generous for flaky cellular but bounded so officers
+// don't wait minutes for the browser's default ~120s timeout to fire.
+// Callers can override per-request via apiFetch(url, { timeoutMs }).
+export const DEFAULT_FETCH_TIMEOUT_MS = 60_000;
+
+/**
+ * Thrown by `fetchWithTimeout` (and `apiFetch` / `apiFetchBlob` /
+ * `apiUploadFiles` indirectly) when a request exceeds its allotted
+ * `timeoutMs`. Callers can `instanceof TimeoutError` to surface a
+ * timeout-specific message instead of a generic network error.
+ */
+export class TimeoutError extends Error {
+  public readonly timeoutMs: number;
+  public readonly url: string;
+  constructor(timeoutMs: number, url: string) {
+    super(`Request to ${url} timed out after ${timeoutMs}ms`);
+    this.name = 'TimeoutError';
+    this.timeoutMs = timeoutMs;
+    this.url = url;
+  }
+}
+
+/**
+ * fetch() wrapped with an AbortController-backed timeout. On timeout,
+ * the underlying request is aborted and a TimeoutError is thrown.
+ * If the caller supplied their own `signal` (e.g. component unmount),
+ * we honor it: when their signal aborts we propagate the abort, but
+ * an external AbortError is rethrown unchanged (not as TimeoutError).
+ */
+export async function fetchWithTimeout(
+  url: string,
+  init: RequestInit & { timeoutMs?: number } = {},
+): Promise<Response> {
+  const { timeoutMs = DEFAULT_FETCH_TIMEOUT_MS, signal: externalSignal, ...rest } = init;
+  const controller = new AbortController();
+  let timedOut = false;
+  const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
+
+  // If the caller supplied a signal, abort our controller when theirs fires.
+  let onExternalAbort: (() => void) | null = null;
+  if (externalSignal) {
+    if (externalSignal.aborted) {
+      clearTimeout(timer);
+      // Fast-path: caller already aborted before we started.
+      throw new DOMException('Aborted', 'AbortError');
+    }
+    onExternalAbort = () => controller.abort();
+    externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
+
+  try {
+    return await fetch(url, { ...rest, signal: controller.signal });
+  } catch (err: any) {
+    if (err && err.name === 'AbortError') {
+      if (timedOut) throw new TimeoutError(timeoutMs, url);
+      // External abort (component unmount, etc.) — propagate as-is.
+      throw err;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+    if (externalSignal && onExternalAbort) {
+      externalSignal.removeEventListener('abort', onExternalAbort);
+    }
   }
 }
 
@@ -34,6 +103,27 @@ function isOfflineCapable(method: string, path: string): boolean {
 // Access window.electron safely (only present in Electron desktop app)
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 
+// ─── Image URL helper (adds auth token for <img src=> loads) ────
+/**
+ * Wraps an image URL so it authenticates against /api/uploads endpoints.
+ * - data: URLs and full http(s):// URLs are returned unchanged
+ * - /api/uploads paths get ?token=<jwt> appended (server accepts via authenticateTokenOrQuery)
+ * - Already-signed URLs (containing ?sig=) are returned unchanged
+ */
+export function authedImageUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.startsWith('data:') || url.startsWith('blob:')) return url;
+  if (url.includes('?sig=') || url.includes('&sig=')) return url;
+  // Only append token for API paths that require auth
+  if (url.includes('/api/uploads') || url.startsWith('/api/')) {
+    const token = localStorage.getItem('rmpg_token');
+    if (!token) return url;
+    const sep = url.includes('?') ? '&' : '?';
+    return `${url}${sep}token=${encodeURIComponent(token)}`;
+  }
+  return url;
+}
+
 // ─── Mutation deduplication (prevent rapid double-click) ────
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
 const DEDUP_WINDOW_MS = 500; // 500ms dedup window
@@ -48,7 +138,7 @@ const RETRY_DELAY_MS = 2000; // 2 seconds between retries
 
 async function fetchWithRetry(
   url: string,
-  init: RequestInit,
+  init: RequestInit & { timeoutMs?: number },
   retries = MAX_RETRIES,
 ): Promise<Response> {
   // Skip retries for large bodies (file uploads) — re-sending large payloads is wasteful
@@ -58,13 +148,19 @@ async function fetchWithRetry(
     : 0;
   if (bodySize > 1_000_000) retries = 0; // 1MB threshold
 
-  // Mutation deduplication — return existing in-flight promise for same URL+method
+  // Mutation deduplication — return existing in-flight promise for same URL+method.
+  // Each caller gets a fresh .clone() of the underlying Response so they can each
+  // read the body independently. Without the clone, the first caller's .json()
+  // consumes the body and every subsequent caller throws
+  // "Failed to execute 'json' on 'Response': body stream already read".
+  // (Surfaced in field DevTools 2026-05-02 from useGpsTracking immediate-send +
+  // batch-send racing on the same /api/dispatch/gps/* endpoint.)
   const method = init.method || 'GET';
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
     const dedupKey = `${method}:${url}`;
     const existing = inflightMutations.get(dedupKey);
     if (existing && Date.now() - existing.ts < DEDUP_WINDOW_MS) {
-      return existing.promise;
+      return existing.promise.then((res) => res.clone());
     }
   }
 
@@ -76,7 +172,9 @@ async function fetchWithRetry(
     let lastError: Error | null = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
-        const res = await fetch(url, init);
+        // Per-attempt timeout (not cumulative across retries) — if a single
+        // attempt hangs for `timeoutMs`, abort it and try again.
+        const res = await fetchWithTimeout(url, init);
         if (RETRY_STATUS_CODES.includes(res.status) && attempt < retries) {
           // Server is restarting — wait with exponential backoff and retry
           const delay = RETRY_DELAY_MS * Math.pow(2, attempt); // 2s → 4s → 8s
@@ -232,7 +330,17 @@ async function tryRefreshToken(): Promise<string | null> {
   _refreshPromise = (async () => {
     try {
       const refreshToken = localStorage.getItem('rmpg_refresh_token');
-      if (!refreshToken) return null;
+      if (!refreshToken) {
+        // No refresh token = effectively logged out. Don't silently spin —
+        // clear residual access token and bounce to login so the user can
+        // re-authenticate (only when actually online).
+        localStorage.removeItem('rmpg_token');
+        localStorage.removeItem('rmpg_session_id');
+        if (isLikelyOnline() && !window.location.pathname.startsWith('/login')) {
+          window.location.href = '/login';
+        }
+        return null;
+      }
 
       // AbortController timeout prevents infinite lock on hung requests
       const controller = new AbortController();
@@ -253,8 +361,12 @@ async function tryRefreshToken(): Promise<string | null> {
       }
 
       // Refresh failed — clear tokens and redirect to login
-      // (but NOT if we're offline — stay on current page)
-      if (!navigator.onLine) return null; // Don't redirect when offline (browser or Electron)
+      // (but NOT if we're offline — stay on current page).
+      // Uses the connectivity monitor's authoritative state (falls back to
+      // navigator.onLine pre-bootstrap) so we don't wrongly redirect during
+      // a false-offline window, and don't wrongly suppress the redirect
+      // when navigator.onLine lies `false` while the server is reachable.
+      if (!isLikelyOnline()) return null;
       if (electron?.getOfflineState) {
         try {
           const state = await electron.getOfflineState();
@@ -282,7 +394,7 @@ async function tryRefreshToken(): Promise<string | null> {
 // When running in Electron and offline, routes through local SQLite via IPC.
 export async function apiFetch<T>(
   endpoint: string,
-  options?: RequestInit
+  options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
   const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const method = options?.method || 'GET';
@@ -292,7 +404,16 @@ export async function apiFetch<T>(
     try {
       const offlineState = await electron.getOfflineState();
 
-      if (!offlineState.isOnline && isOfflineCapable(method, url)) {
+      // Tiebreaker: Electron's connectivityMonitor uses 3-consecutive-probe
+      // confirmation with an initial state of false. On flaky cellular, those
+      // probes rarely succeed back-to-back, so Electron can stay isOnline=false
+      // even when the browser-side is reaching the server fine. Field officers
+      // were seeing OfflineUnauthorizedError thrown for every GPS batch send
+      // despite the status bar showing CONNECTED. If the browser side says
+      // we can probably reach the server, skip the offline routing entirely
+      // and let the normal fetch happen — if it fails, the regular network-
+      // error path will surface it.
+      if (!offlineState.isOnline && !isLikelyOnline() && isOfflineCapable(method, url)) {
         // Write operations require PIN authorization (admin always authorized)
         if (method !== 'GET' && !offlineState.isLocalAuthorized) {
           throw new OfflineUnauthorizedError();
@@ -316,7 +437,12 @@ export async function apiFetch<T>(
   }
 
   // ─── Browser offline interception ──────────────────────
-  if (!navigator.onLine && isOfflineDbReady() && isOfflineCapableEndpoint(method, url)) {
+  // Use the connectivity monitor's authoritative state instead of
+  // `navigator.onLine` directly. Past bug: if navigator lied `false` while
+  // the server was actually reachable, every write was routed to the
+  // IndexedDB offline router (surfacing as OfflineUnauthorizedError →
+  // unexpected PIN modal) until navigator happened to flip itself true.
+  if (!isLikelyOnline() && isOfflineDbReady() && isOfflineCapableEndpoint(method, url)) {
     try {
       const session = await hasActiveSession();
       // Write operations require PIN authorization (admin always authorized)
@@ -336,7 +462,7 @@ export async function apiFetch<T>(
       if (err instanceof OfflineUnauthorizedError) throw err;
       // If truly offline and offline router failed, surface the error
       // rather than silently falling through to a guaranteed network failure
-      if (!navigator.onLine) {
+      if (!isLikelyOnline()) {
         console.warn('[OFFLINE] Browser offline router failed:', err);
         throw new Error('Offline data unavailable for this request');
       }
@@ -381,6 +507,28 @@ export async function apiFetch<T>(
   }
 
   return res.json();
+}
+
+/** Fetch binary data (audio, images) with auth + token refresh. Returns a Blob. */
+export async function apiFetchBlob(endpoint: string): Promise<Blob> {
+  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const token = localStorage.getItem('rmpg_token');
+  const headers: Record<string, string> = { 'X-Requested-With': 'XMLHttpRequest' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+
+  let res = await fetchWithRetry(url, { headers });
+
+  if (res.status === 401) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      headers['Authorization'] = `Bearer ${newToken}`;
+      res = await fetchWithRetry(url, { headers });
+    }
+    if (!res.ok) throw new Error('Session expired. Please log in again.');
+  }
+
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return res.blob();
 }
 
 // Upload files via FormData (multipart)

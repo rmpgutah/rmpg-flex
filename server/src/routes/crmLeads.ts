@@ -97,6 +97,116 @@ router.get('/leads', requireRole('admin', 'manager', 'contract_manager'), (req: 
   }
 });
 
+// ────────────────────────────────────────────────────────────
+// LITERAL /leads/* ROUTES — MUST come before `/leads/:id`
+// Otherwise Express matches the parameterized route first and
+// validateParamIdMiddleware 400s on non-integer ids like
+// "pipeline-summary", "follow-ups", "source-analytics".
+// ────────────────────────────────────────────────────────────
+
+// ── Pipeline Summary ────────────────────────────────────────
+router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT pipeline_stage,
+             COUNT(*) as count,
+             COALESCE(SUM(estimated_value), 0) as total_value
+      FROM crm_leads
+      WHERE pipeline_stage NOT IN ('dismissed')
+      GROUP BY pipeline_stage
+    `).all();
+    res.json(rows);
+  } catch (err: any) {
+    console.error('CRM leads error:', err?.message || err);
+    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
+  }
+});
+
+// ── Follow-up Reminders (FEATURE 13) ────────────────────────
+router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const today = localNow().slice(0, 10);
+
+    const overdue = db.prepare(`
+      SELECT l.*, u.full_name as assigned_to_name
+      FROM crm_leads l
+      LEFT JOIN users u ON u.id = l.assigned_to
+      WHERE l.next_follow_up IS NOT NULL
+        AND l.next_follow_up < ?
+        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
+      ORDER BY l.next_follow_up ASC
+
+      LIMIT 1000
+    `).all(today);
+
+    const todayFollowUps = db.prepare(`
+      SELECT l.*, u.full_name as assigned_to_name
+      FROM crm_leads l
+      LEFT JOIN users u ON u.id = l.assigned_to
+      WHERE l.next_follow_up = ?
+        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
+      ORDER BY l.lead_score DESC
+
+      LIMIT 1000
+    `).all(today);
+
+    const upcoming = db.prepare(`
+      SELECT l.*, u.full_name as assigned_to_name
+      FROM crm_leads l
+      LEFT JOIN users u ON u.id = l.assigned_to
+      WHERE l.next_follow_up > ?
+        AND l.next_follow_up <= date(?, '+7 days')
+        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
+      ORDER BY l.next_follow_up ASC
+
+      LIMIT 1000
+    `).all(today, today);
+
+    res.json({ overdue, today: todayFollowUps, upcoming });
+  } catch (err: any) {
+    console.error('Follow-ups error:', err);
+    res.status(500).json({ error: 'Failed to follow-ups', code: 'FOLLOWUPS_ERROR' });
+  }
+});
+
+// ── Lead Source Tracking (FEATURE 14) ───────────────────────
+router.get('/leads/source-analytics', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { days = '90' } = req.query;
+    const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 24 * 60 * 60 * 1000).toISOString();
+
+    const bySource = db.prepare(`
+      SELECT
+        COALESCE(source, 'unknown') as source,
+        COUNT(*) as total_leads,
+        SUM(CASE WHEN pipeline_stage = 'won' THEN 1 ELSE 0 END) as won,
+        SUM(CASE WHEN pipeline_stage = 'lost' THEN 1 ELSE 0 END) as lost,
+        COALESCE(SUM(estimated_value), 0) as total_value,
+        COALESCE(AVG(lead_score), 0) as avg_score,
+        COALESCE(AVG(CASE WHEN pipeline_stage = 'won' THEN estimated_value END), 0) as avg_won_value
+      FROM crm_leads
+      WHERE created_at >= ?
+      GROUP BY source
+      ORDER BY total_leads DESC
+    `).all(cutoff);
+
+    // Conversion rate by source
+    const enriched = bySource.map((s: any) => ({
+      ...s,
+      conversion_rate: s.total_leads > 0 ? Math.round((s.won / s.total_leads) * 100) : 0,
+      active: s.total_leads - s.won - s.lost,
+    }));
+
+    res.json({ data: enriched, period_days: parseInt(days as string, 10) });
+  } catch (err: any) {
+    console.error('Source analytics error:', err);
+    res.status(500).json({ error: 'Failed to source analytics', code: 'SOURCE_ANALYTICS_ERROR' });
+  }
+});
+
 // ── Get Single Lead ─────────────────────────────────────────
 router.get('/leads/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
@@ -152,16 +262,18 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
       res.status(400).json({ error: 'business_name is required', code: 'BUSINESSNAME_IS_REQUIRED' });
       return;
     }
-    validateStr(contact_name, 'contact_name', 200);
-    validateStr(contact_email, 'contact_email', 200);
-    validateStr(contact_phone, 'contact_phone', 30);
-    validateStr(contact_title, 'contact_title', 100);
-    validateStr(address, 'address', 500);
-    validateStr(city, 'city', 100);
-    validateStr(state, 'state', 10);
-    validateStr(zip, 'zip', 20);
-    validateStr(industry, 'industry', 200);
-    validateStr(source, 'source', 100);
+    // Optional fields: only validate if provided. validateStr throws on
+    // undefined, so unconditional calls improperly treated these as required.
+    if (contact_name) validateStr(contact_name, 'contact_name', 200);
+    if (contact_email) validateStr(contact_email, 'contact_email', 200);
+    if (contact_phone) validateStr(contact_phone, 'contact_phone', 30);
+    if (contact_title) validateStr(contact_title, 'contact_title', 100);
+    if (address) validateStr(address, 'address', 500);
+    if (city) validateStr(city, 'city', 100);
+    if (state) validateStr(state, 'state', 10);
+    if (zip) validateStr(zip, 'zip', 20);
+    if (industry) validateStr(industry, 'industry', 200);
+    if (source) validateStr(source, 'source', 100);
     if (estimated_value != null) requireFloat(estimated_value, 'estimated_value', 0, 100_000_000);
     if (pipeline_stage) validateEnum(pipeline_stage, PIPELINE_STAGES, 'pipeline_stage');
     if (assigned_to) requireInt(assigned_to, 'assigned_to');
@@ -214,7 +326,12 @@ router.post('/leads', requireRole('admin', 'manager', 'contract_manager'), (req:
     broadcast('admin', 'lead:created', lead);
     res.json(lead);
   } catch (err: any) {
-    if (err.message?.startsWith('Invalid ') || err.message?.includes('must be')) {
+    // Widened to catch all sanitize.ts validator error messages (see hr.ts)
+    if (err.message?.startsWith('Invalid ') ||
+        err.message?.includes('must be') ||
+        err.message?.includes('is required') ||
+        err.message?.includes('is not a valid') ||
+        err.message?.includes('exceeds max length')) {
       res.status(400).json({ error: err.message }); return;
     }
     console.error('CRM leads error:', err?.message || err);
@@ -533,31 +650,12 @@ router.post('/leads/bulk-action', requireRole('admin', 'manager', 'contract_mana
   }
 });
 
-// ── Pipeline Summary ────────────────────────────────────────
-router.get('/leads/pipeline-summary', requireRole('admin', 'manager', 'contract_manager'), (_req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const rows = db.prepare(`
-      SELECT pipeline_stage,
-             COUNT(*) as count,
-             COALESCE(SUM(estimated_value), 0) as total_value
-      FROM crm_leads
-      WHERE pipeline_stage NOT IN ('dismissed')
-      GROUP BY pipeline_stage
-    `).all();
-    res.json(rows);
-  } catch (err: any) {
-    console.error('CRM leads error:', err?.message || err);
-    res.status(500).json({ error: 'Failed to process CRM leads', code: 'CRM_LEADS_ERROR' });
-  }
-});
-
 // ── Lead Activity Log ───────────────────────────────────────
 router.get('/lead-activity/:leadId', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { leadId } = req.params;
-    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     const rows = db.prepare(`
       SELECT a.*, u.full_name as created_by_name
@@ -689,7 +787,7 @@ router.get('/scrape-log', requireRole('admin', 'manager', 'contract_manager'), (
   try {
     const db = getDb();
     const { source_key } = req.query;
-    const limit = Math.min(parseInt(req.query.limit as string, 10) || 100, 500);
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     let sql = 'SELECT * FROM lead_scrape_log WHERE 1=1';
     const params: any[] = [];
@@ -879,53 +977,6 @@ router.get('/pipeline-summary', requireRole('admin', 'manager', 'contract_manage
 // Set follow-up date on leads, show overdue reminders
 // ════════════════════════════════════════════════════════════
 
-router.get('/leads/follow-ups', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const today = localNow().slice(0, 10);
-
-    const overdue = db.prepare(`
-      SELECT l.*, u.full_name as assigned_to_name
-      FROM crm_leads l
-      LEFT JOIN users u ON u.id = l.assigned_to
-      WHERE l.next_follow_up IS NOT NULL
-        AND l.next_follow_up < ?
-        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
-      ORDER BY l.next_follow_up ASC
-    
-      LIMIT 1000
-    `).all(today);
-
-    const todayFollowUps = db.prepare(`
-      SELECT l.*, u.full_name as assigned_to_name
-      FROM crm_leads l
-      LEFT JOIN users u ON u.id = l.assigned_to
-      WHERE l.next_follow_up = ?
-        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
-      ORDER BY l.lead_score DESC
-    
-      LIMIT 1000
-    `).all(today);
-
-    const upcoming = db.prepare(`
-      SELECT l.*, u.full_name as assigned_to_name
-      FROM crm_leads l
-      LEFT JOIN users u ON u.id = l.assigned_to
-      WHERE l.next_follow_up > ?
-        AND l.next_follow_up <= date(?, '+7 days')
-        AND l.pipeline_stage NOT IN ('won', 'lost', 'dismissed')
-      ORDER BY l.next_follow_up ASC
-    
-      LIMIT 1000
-    `).all(today, today);
-
-    res.json({ overdue, today: todayFollowUps, upcoming });
-  } catch (err: any) {
-    console.error('Follow-ups error:', err);
-    res.status(500).json({ error: 'Failed to follow-ups', code: 'FOLLOWUPS_ERROR' });
-  }
-});
-
 router.put('/leads/:id/follow-up', validateParamIdMiddleware, requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -961,41 +1012,6 @@ router.put('/leads/:id/follow-up', validateParamIdMiddleware, requireRole('admin
 // FEATURE 14: Lead Source Tracking
 // Track where leads come from (website, referral, cold call, etc.)
 // ════════════════════════════════════════════════════════════
-
-router.get('/leads/source-analytics', requireRole('admin', 'manager', 'contract_manager'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const { days = '90' } = req.query;
-    const cutoff = new Date(Date.now() - parseInt(days as string, 10) * 24 * 60 * 60 * 1000).toISOString();
-
-    const bySource = db.prepare(`
-      SELECT
-        COALESCE(source, 'unknown') as source,
-        COUNT(*) as total_leads,
-        SUM(CASE WHEN pipeline_stage = 'won' THEN 1 ELSE 0 END) as won,
-        SUM(CASE WHEN pipeline_stage = 'lost' THEN 1 ELSE 0 END) as lost,
-        COALESCE(SUM(estimated_value), 0) as total_value,
-        COALESCE(AVG(lead_score), 0) as avg_score,
-        COALESCE(AVG(CASE WHEN pipeline_stage = 'won' THEN estimated_value END), 0) as avg_won_value
-      FROM crm_leads
-      WHERE created_at >= ?
-      GROUP BY source
-      ORDER BY total_leads DESC
-    `).all(cutoff);
-
-    // Conversion rate by source
-    const enriched = bySource.map((s: any) => ({
-      ...s,
-      conversion_rate: s.total_leads > 0 ? Math.round((s.won / s.total_leads) * 100) : 0,
-      active: s.total_leads - s.won - s.lost,
-    }));
-
-    res.json({ data: enriched, period_days: parseInt(days as string, 10) });
-  } catch (err: any) {
-    console.error('Source analytics error:', err);
-    res.status(500).json({ error: 'Failed to source analytics', code: 'SOURCE_ANALYTICS_ERROR' });
-  }
-});
 
 // ════════════════════════════════════════════════════════════
 // FEATURE 15: Revenue Forecast

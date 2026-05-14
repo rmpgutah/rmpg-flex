@@ -1,0 +1,19 @@
+{
+  "defendant": { "first": "Jim", "middle": "", "last": "Gutierrez", "dob": "1957-05-19" },
+  "address": "1176 EL MONTE DRIVE, SALT LAKE CITY, UT 84117",
+  "addressParts": { "building": "1176", "floor": "1ST", "suite": "NOT APPLICABLE", "street": "1176 EL MONTE DRIVE", "city": "SALT LAKE CITY", "state": "UT", "zip": "84117" },
+  "plaintiff": "Capital One, N.A., successor by merger to Discover Bank",
+  "court": "THIRD JUDICIAL DISTRICT COURT",
+  "attorney": { "name": "Heather Valerga", "barNumber": "14431", "firm": "GUGLIELMO & ASSOCIATES", "addressLine1": "PO Box 41688", "addressLine2": "Tucson, AZ 85717", "tel": "8773255700", "fax": "5203252480", "email": "Utah@guglielmolaw.com" },
+  "documents": "Summons and Complaint; Bilingual Notice",
+  "primaryDoc": "SUMMONS",
+  "serviceType": "SUMMONS SERVICE",
+  "jobNumber": "15570160",
+  "clientJobNumber": "633764",
+  "dueDate": "04/21/2026",
+  "signedDate": "March 25, 2026",
+  "responseDeadlineDays": 21,
+  "clerkPhone": "(801) 238-7300",
+  "courtAddress": "450 South State St, P.O. Box 1860, Salt Lake City UT 84114-1860",
+  "vendor": { "name": "ICU INVESTIGATIONS, LLC.", "phone": "(435) 986-1200", "billingCode": "0175", "requestorEmail": "a1processserver@gmail.com" }
+}

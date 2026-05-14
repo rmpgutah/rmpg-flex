@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Loader2, RefreshCw, Zap, Clock, Monitor, Wifi, Brain,
 } from 'lucide-react';
@@ -90,7 +90,7 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
                 className={`px-3 py-2.5 border rounded-lg ${
                   isActive && activeProvider === name
                     ? 'border-brand-500/50 bg-brand-900/10'
-                    : 'border-[#1a1a2e] bg-[#0a0a12]'
+                    : 'border-[#1c1c1c] bg-[#0b0b0b]'
                 }`}
               >
                 <div className="flex items-center gap-2 mb-1">
@@ -135,17 +135,17 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
             Quick Health
           </h3>
           <div className="grid grid-cols-3 gap-2">
-            <div className="px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded text-center">
+            <div className="px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded text-center">
               <Clock className="w-3.5 h-3.5 text-rmpg-500 mx-auto mb-1" />
               <div className="text-sm font-bold text-white font-mono">{healthSnap.server?.uptime_hours || 0}h</div>
               <div className="text-[10px] text-rmpg-500">Uptime</div>
             </div>
-            <div className="px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded text-center">
+            <div className="px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded text-center">
               <Monitor className="w-3.5 h-3.5 text-rmpg-500 mx-auto mb-1" />
               <div className="text-sm font-bold text-white font-mono">{healthSnap.server?.memory_rss_mb || 0}MB</div>
               <div className="text-[10px] text-rmpg-500">Memory</div>
             </div>
-            <div className="px-3 py-2 bg-[#0a0a12] border border-[#1a1a2e] rounded text-center">
+            <div className="px-3 py-2 bg-[#0b0b0b] border border-[#1c1c1c] rounded text-center">
               <Wifi className="w-3.5 h-3.5 text-rmpg-500 mx-auto mb-1" />
               <div className="text-sm font-bold text-white font-mono">{healthSnap.websocket?.active_connections || 0}</div>
               <div className="text-[10px] text-rmpg-500">Connections</div>
@@ -161,7 +161,7 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
             <Zap className="w-3.5 h-3.5 text-brand-400" />
             Usage
           </h3>
-          <div className="bg-[#0f1218] border border-[#1a1a2e] rounded p-4">
+          <div className="bg-[#121212] border border-[#1c1c1c] rounded p-4">
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <StatCard label="Today" value={stats.requestsToday} />
               <StatCard label="This Week" value={stats.requestsThisWeek} />
@@ -183,7 +183,7 @@ export default function AICommandCenterPanel({ providerStatus, activeProvider, s
             {activityLoading ? <Loader2 className="w-3 h-3 animate-spin" /> : <RefreshCw className="w-3 h-3" />}
           </button>
         </h3>
-        <div className="bg-[#0f1218] border border-[#1a1a2e] rounded divide-y divide-[#1a1a2e]">
+        <div className="bg-[#121212] border border-[#1c1c1c] rounded divide-y divide-[#1c1c1c]">
           {activity.length > 0 ? activity.map((a, i) => (
             <div key={a.id || i} className="flex items-center gap-3 px-3 py-2">
               <div className={`w-1.5 h-1.5 rounded-full ${a.status === 'success' ? 'bg-green-500' : 'bg-red-500'}`} />

@@ -2,10 +2,9 @@
 // RMPG Flex — Officer Detail: Training Records Tab
 // ============================================================
 
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import {
-  GraduationCap, Plus, CheckCircle, Clock, BookOpen, AlertTriangle,
-  Award, Hash, Calendar, Loader2,
+  GraduationCap, Plus, CheckCircle, Clock, BookOpen, AlertTriangle, Loader2,
 } from 'lucide-react';
 import type { TrainingRecord } from '../../../types';
 import { TRAINING_CATEGORY_COLORS } from '../utils/personnelConstants';
@@ -31,7 +30,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const borderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-l-green-500';
-      case 'in_progress': return 'border-l-blue-500';
+      case 'in_progress': return 'border-l-gray-500';
       case 'scheduled': return 'border-l-amber-500';
       case 'overdue':
       case 'expired': return 'border-l-red-500';
@@ -42,7 +41,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
   const topBorderColor = (status: string) => {
     switch (status) {
       case 'completed': return 'border-t-green-500';
-      case 'in_progress': return 'border-t-blue-500';
+      case 'in_progress': return 'border-t-gray-500';
       case 'scheduled': return 'border-t-amber-500';
       case 'overdue':
       case 'expired': return 'border-t-red-500';
@@ -157,7 +156,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
                   <span className={`inline-block px-1.5 py-0.5 text-[9px] font-bold uppercase flex-shrink-0 ${
                     TRAINING_CATEGORY_COLORS[record.category] || TRAINING_CATEGORY_COLORS.other
                   }`}>
-                    {record.category.replace(/_/g, ' ')}
+                    {record.category.replace(/_/g, ' ').toUpperCase()}
                   </span>
                 </div>
                 {statusBadge(record.status)}

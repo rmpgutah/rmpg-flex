@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Plus, Wrench } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { AlertTriangle, Plus } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { localToday } from '../../../utils/dateUtils';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface DamageReport {
   id: number;
   vehicle_id: number;
@@ -28,21 +29,7 @@ const SEVERITY_COLORS: Record<string, string> = {
 
 const REPAIR_COLORS: Record<string, string> = {
   reported: 'text-gray-400', estimated: 'text-amber-400', approved: 'text-purple-400',
-  in_repair: 'text-cyan-400', completed: 'text-green-400', insurance_claim: 'text-amber-400',
-};
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
+  in_repair: 'text-gray-400', completed: 'text-green-400', insurance_claim: 'text-amber-400',
 };
 
 export default function FleetDamageTab({ vehicleId }: { vehicleId: number | string }) {
@@ -120,7 +107,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
             <input type="number" value={form.repair_estimate} onChange={e => setForm(f => ({ ...f, repair_estimate: e.target.value }))} className="input-field text-xs" placeholder="Repair estimate $" />
             <div />
           </div>
-          <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
+          <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.damage_type.trim() || !form.description.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Submitting...' : 'Submit'}</button>
             <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-[9px]">Cancel</button>
@@ -147,7 +134,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <span className={`text-[9px] font-bold ${REPAIR_COLORS[r.repair_status] || 'text-rmpg-400'}`}>{r.repair_status?.replace(/_/g, ' ')}</span>
+              <span className={`text-[9px] font-bold ${REPAIR_COLORS[r.repair_status] || 'text-rmpg-400'}`}>{r.repair_status?.replace(/_/g, ' ').toUpperCase()}</span>
               {r.repair_status !== 'completed' && (
                 <select value={r.repair_status} onChange={e => updateRepairStatus(r.id, e.target.value)} className="input-field text-[9px] py-0.5 px-1">
                   <option value="reported">Reported</option><option value="estimated">Estimated</option>

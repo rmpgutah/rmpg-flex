@@ -45,20 +45,6 @@ function useCopyToClipboard() {
   return { copied, copy };
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function SkipTracerPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -413,7 +399,7 @@ export default function SkipTracerPage() {
                     onClick={() => setSelected(person)}
                     className={`w-full text-left px-3 py-2 border-b border-rmpg-800 transition-all ${
                       isActive
-                        ? 'bg-gray-900/20 border-l-2 border-l-blue-500'
+                        ? 'bg-gray-900/20 border-l-2 border-l-gray-500'
                         : 'hover:bg-surface-base border-l-2 border-l-transparent'
                     }`}
                   >
@@ -457,7 +443,7 @@ export default function SkipTracerPage() {
               {/* Person Header */}
               <div className="panel-beveled bg-surface-base p-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2.5 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
+                  <div className="p-2.5 rounded-sm" style={{ background: 'rgba(136, 136, 136, 0.15)' }}>
                     <User className="w-5 h-5 text-gray-400" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -547,7 +533,7 @@ function renderAllFields(obj: any, renderFieldRow: (label: string, value: any, c
       if (value === null || value === undefined || value === '') return null;
       if (typeof value === 'object' && !Array.isArray(value)) return null; // skip nested objects
       if (Array.isArray(value) && value.length === 0) return null;
-      const label = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim();
+      const label = key.replace(/_/g, ' ').replace(/([A-Z])/g, ' $1').trim().toUpperCase();
       const displayValue = Array.isArray(value) ? value.join(', ') : value;
       return <React.Fragment key={key}>{renderFieldRow(label, displayValue, key)}</React.Fragment>;
     });
@@ -594,7 +580,7 @@ function renderArraySection(
           ) : typeof item === 'object' ? (
             Object.entries(item).map(([k, v]) => {
               if (!v) return null;
-              return <React.Fragment key={k}>{renderFieldRow(k.replace(/_/g, ' '), v)}</React.Fragment>;
+              return <React.Fragment key={k}>{renderFieldRow(k.replace(/_/g, ' ').toUpperCase(), v)}</React.Fragment>;
             })
           ) : (
             <span className="text-[11px] text-rmpg-200 font-mono">{String(item)}</span>

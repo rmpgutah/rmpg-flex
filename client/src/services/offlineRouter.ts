@@ -5,22 +5,7 @@
 // as the server endpoints.
 // ============================================================
 
-import {
-  getOfflineDb,
-  enqueue,
-  getConfig,
-  upsertRow,
-  type CallForService,
-  type Unit,
-  type Incident,
-  type Citation,
-  type FieldInterview,
-  type Evidence,
-  type CriminalHistory,
-  type PatrolScan,
-  type TrespassOrder,
-  type Warrant,
-} from './offlineDb';
+import { getOfflineDb, enqueue, getConfig } from './offlineDb';
 
 // ─── Types ──────────────────────────────────────────────────
 

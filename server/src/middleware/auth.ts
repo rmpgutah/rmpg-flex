@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import jwt, { type SignOptions } from 'jsonwebtoken';
 import config from '../config';
 import { getDb } from '../models/database';
+import { logger } from '../utils/logger';
 
 export interface JwtPayload {
   userId: number;
@@ -78,8 +79,15 @@ export function authenticateToken(req: Request, res: Response, next: NextFunctio
             return;
           }
           // 'warn' mode: log but allow through
-          // [FIX 5] Actually log the warning in warn mode
-          console.warn(`[AUTH] IP change detected for user ${decoded.username}: session IP ${session.ip_address} → request IP ${req.ip}`);
+          (req as any).log?.warn({
+            username: decoded.username,
+            sessionIp: session.ip_address,
+            requestIp: req.ip,
+          }, 'auth IP change detected') ?? logger.warn({
+            username: decoded.username,
+            sessionIp: session.ip_address,
+            requestIp: req.ip,
+          }, 'auth IP change detected');
         }
       } catch { /* DB not available - allow through */ }
     }

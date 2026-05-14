@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Search, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
-  Key, ToggleLeft, ToggleRight, Save, DollarSign, BarChart3,
+  Search, Eye, EyeOff, Loader2, CheckCircle2, Key, ToggleLeft, ToggleRight, Save,
+  DollarSign, BarChart3,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -115,7 +115,7 @@ export default function AdminSkipTracerV2Tab({ LoadingSpinner, error, setError }
       <div className="panel-beveled bg-surface-base p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-sm" style={{ background: 'rgba(59, 130, 246, 0.15)' }}>
+            <div className="p-2 rounded-sm" style={{ background: 'rgba(136, 136, 136, 0.15)' }}>
               <Search className="w-5 h-5 text-gray-400" />
             </div>
             <div>

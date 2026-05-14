@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { WifiOff, Lock, Unlock, RefreshCw, Check, AlertTriangle } from 'lucide-react';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import PinEntryModal from './PinEntryModal';
@@ -45,8 +45,8 @@ export default function OfflineStatusBar() {
       <div
         className="flex items-center justify-center gap-2 px-4 py-1.5 text-[11px] font-mono"
         style={{
-          background: 'rgba(59, 130, 246, 0.15)',
-          borderBottom: '1px solid rgba(59, 130, 246, 0.3)',
+          background: 'rgba(136, 136, 136, 0.15)',
+          borderBottom: '1px solid rgba(136, 136, 136, 0.3)',
           color: '#cccccc',
         }}
       >

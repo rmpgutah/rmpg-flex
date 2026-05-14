@@ -10,6 +10,7 @@ import os from 'os';
 import path from 'path';
 import { execSync } from 'child_process';
 import { fileURLToPath } from 'url';
+import { getAppVersion } from '../utils/appVersion';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -273,17 +274,9 @@ router.get('/health/detailed', requireRole('admin', 'manager'), (req: Request, r
       const pid = parseInt(psOutput.trim(), 10); processCount = isNaN(pid) ? null : pid;
     } catch { /* ignore */ }
 
-    // Read version from changelog
-    let appVersion = '0.0.0';
-    try {
-      const changelogPath = path.resolve(__dirname, '../../../CHANGELOG.json');
-      const changelogData = JSON.parse(fs.readFileSync(changelogPath, 'utf-8'));
-      appVersion = changelogData.version || '0.0.0';
-    } catch { /* changelog not found */ }
-
     res.json({
       timestamp: now,
-      version: appVersion,
+      version: getAppVersion(),
       server: {
         uptime: Math.round(uptime),
         memory: {

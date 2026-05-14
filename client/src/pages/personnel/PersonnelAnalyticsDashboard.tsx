@@ -1,15 +1,16 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
-  Users, UserCheck, Clock, Award, AlertTriangle, TrendingUp, GraduationCap, Bell, Shield,
+  Users, UserCheck, Clock, Award, AlertTriangle, TrendingUp, GraduationCap,
+  Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { dateToLocalYMD } from '../../utils/dateUtils';
 import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area,
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  AreaChart, Area,
 } from 'recharts';
 import type { Credential, TimeEntry, TrainingRecord } from '../../types';
 import type { OfficerWithStatus } from './utils/personnelMappers';
-import { ROLE_COLORS } from './utils/personnelConstants';
 import { toDisplayLabel } from '../../utils/formatters';
 
 interface Props {
@@ -108,7 +109,7 @@ export default function PersonnelAnalyticsDashboard({ officers, credentials, tim
           <p className="text-xl font-bold font-mono text-green-400">{onDuty}</p>
           <p className="field-label">On Duty</p>
         </div>
-        <div className="panel-beveled p-3 text-center bg-surface-base border-t-2 border-t-blue-500">
+        <div className="panel-beveled p-3 text-center bg-surface-base border-t-2 border-t-gray-500">
           <Clock className="w-4 h-4 mx-auto text-brand-400 mb-1" />
           <p className="text-xl font-bold font-mono text-brand-400">{clockedIn}</p>
           <p className="field-label">Clocked In</p>
@@ -320,7 +321,7 @@ function DutyHoursPanel() {
         {data.officers.slice(0, 10).map((o) => (
           <div key={o.officer_id} className="flex items-center justify-between px-2 py-0.5 bg-surface-sunken rounded text-[9px]">
             <span className="text-rmpg-200">{o.officer_name}</span>
-            <span className="font-mono text-cyan-400">{o.total_hours}h</span>
+            <span className="font-mono text-gray-400">{o.total_hours}h</span>
             <span className="font-mono text-amber-400">{o.total_overtime}h OT</span>
             <span className="text-rmpg-500">{o.shift_count} shifts</span>
           </div>

@@ -6,7 +6,7 @@
 // Follows SafetyScreening.tsx pattern for tone + debounce.
 // ============================================================
 
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Siren, ExternalLink } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { playTone } from '../utils/dispatchTones';

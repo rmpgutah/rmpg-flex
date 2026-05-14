@@ -271,7 +271,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
             { label: 'Active BOLOs', value: realtimeStats.activeBolos, color: 'text-orange-400' },
             { label: 'Active Sessions', value: realtimeStats.activeSessions, color: 'text-gray-400' },
             { label: "Today's Activity", value: realtimeStats.todayActivity, color: 'text-purple-400' },
-            { label: "Today's Calls", value: realtimeStats.todayCalls, color: 'text-cyan-400' },
+            { label: "Today's Calls", value: realtimeStats.todayCalls, color: 'text-gray-400' },
           ].map(item => (
             <div key={item.label} className="bg-surface-sunken p-2 text-center panel-beveled">
               <div className={`text-xl font-bold font-mono ${item.color}`}>{item.value}</div>
@@ -406,7 +406,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
           label="Connected"
           value={String(h.operations.connectedClients)}
           sub={`${h.operations.activeSessions} sessions`}
-          color="text-cyan-400"
+          color="text-gray-400"
         />
         <MetricCard
           icon={Radio}
@@ -474,13 +474,13 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
               </div>
               <div className="h-2.5 bg-rmpg-700 rounded-full overflow-hidden">
                 <div
-                  className={`h-full transition-all duration-500 rounded-full ${ramPercent > 85 ? 'bg-red-500' : ramPercent > 65 ? 'bg-amber-500' : 'bg-cyan-500'}`}
+                  className={`h-full transition-all duration-500 rounded-full ${ramPercent > 85 ? 'bg-red-500' : ramPercent > 65 ? 'bg-amber-500' : 'bg-gray-500'}`}
                   style={{ width: `${ramPercent}%` }}
                 />
               </div>
               <div className="flex items-center justify-between text-[9px]">
                 <span className="text-rmpg-500">{formatFileSize(host.memory.free)} free</span>
-                <span className={`font-mono font-bold ${ramPercent > 85 ? 'text-red-400' : ramPercent > 65 ? 'text-amber-400' : 'text-cyan-400'}`}>
+                <span className={`font-mono font-bold ${ramPercent > 85 ? 'text-red-400' : ramPercent > 65 ? 'text-amber-400' : 'text-gray-400'}`}>
                   {ramPercent}%
                 </span>
               </div>
@@ -633,7 +633,7 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
             .sort(([, a], [, b]) => b - a)
             .map(([table, count]) => (
               <div key={table} className="flex items-center justify-between bg-surface-sunken px-2 py-1 rounded-sm">
-                <span className="text-[10px] text-rmpg-300 truncate">{table.replace(/_/g, ' ')}</span>
+                <span className="text-[10px] text-rmpg-300 truncate">{table.replace(/_/g, ' ').toUpperCase()}</span>
                 <span className="text-[10px] font-mono font-bold text-rmpg-200 ml-2">{count.toLocaleString()}</span>
               </div>
             ))}

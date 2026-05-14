@@ -7,6 +7,8 @@ import type { Evidence } from '../types';
 import { localToday } from '../utils/dateUtils';
 import { useFormValidation } from '../hooks/useFormValidation';
 
+import RichTextArea from './RichTextArea';
+import { EVIDENCE_CATEGORY_OPTIONS } from '../constants/lawEnforcementEnums';
 interface EvidenceFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -68,6 +70,9 @@ interface EvidenceFormData {
   is_biological: boolean;
   narcotics_flag: boolean;
   temperature_sensitive: boolean;
+  // F6 advanced detail
+  collection_context: string;
+  court_hold_reference: string;
 }
 
 const EMPTY_FORM: EvidenceFormData = {
@@ -97,6 +102,9 @@ const EMPTY_FORM: EvidenceFormData = {
   is_biological: false,
   narcotics_flag: false,
   temperature_sensitive: false,
+  // F6 advanced detail
+  collection_context: '',
+  court_hold_reference: '',
 };
 
 export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreated, editingEvidence }: EvidenceFormModalProps) {
@@ -141,6 +149,9 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
         is_biological: !!(editingEvidence as any).is_biological,
         narcotics_flag: !!(editingEvidence as any).narcotics_flag,
         temperature_sensitive: !!(editingEvidence as any).temperature_sensitive,
+        // F6 advanced detail
+        collection_context: (editingEvidence as any).collection_context || '',
+        court_hold_reference: (editingEvidence as any).court_hold_reference || '',
       };
       setForm(initial);
       snapshot(initial);
@@ -196,6 +207,9 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
         is_biological: form.is_biological,
         narcotics_flag: form.narcotics_flag,
         temperature_sensitive: form.temperature_sensitive,
+        // F6 advanced detail
+        collection_context: form.collection_context || undefined,
+        court_hold_reference: form.court_hold_reference.trim() || undefined,
       };
 
       if (editingEvidence) {
@@ -292,11 +306,39 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
             </div>
           </div>
 
+          {/* F6 advanced detail — collection context (HOW evidence was acquired)
+              and court hold reference. Collection context complements the
+              existing "category" (which classifies WHAT it is, e.g. Weapon
+              or Currency) — together they answer the chain-of-custody
+              questions a court asks: "what is this, and how did it come
+              into custody?" */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Collection Context</label>
+              <select className="select-dark text-xs" value={form.collection_context} onChange={(e) => updateField('collection_context', e.target.value)}>
+                <option value="">-- Select --</option>
+                {EVIDENCE_CATEGORY_OPTIONS.map((c) => (
+                  <option key={c} value={c}>{c}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Court Hold Reference</label>
+              <input
+                type="text"
+                className="input-dark text-xs w-full"
+                placeholder="Case docket / court file # if held by order"
+                value={form.court_hold_reference}
+                onChange={(e) => updateField('court_hold_reference', e.target.value)}
+              />
+            </div>
+          </div>
+
           <div>
             <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">
               Description <span className="text-red-400">*</span>
             </label>
-            <textarea
+            <RichTextArea
               className={`textarea-dark text-xs ${formErrors.description ? '!border-red-500' : ''}`}
               rows={3}
               placeholder="Describe the evidence item in detail..."
@@ -370,7 +412,7 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
 
           <div>
             <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes</label>
-            <textarea className="textarea-dark text-xs" rows={2} placeholder="Additional notes..." value={form.notes} onChange={(e) => updateField('notes', e.target.value)} maxLength={3000} />
+            <RichTextArea className="textarea-dark text-xs" rows={2} placeholder="Additional notes..." value={form.notes} onChange={(e) => updateField('notes', e.target.value)} maxLength={3000} />
             <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
           </div>
         </div>

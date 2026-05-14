@@ -23,8 +23,12 @@ import { startHealthChecker } from './utils/integrationHealthChecker';
 import { scheduleUtahWarrantSync } from './utils/utahWarrantScraper';
 import { scheduleArrestSync } from './utils/arrestScraper';
 import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
+import { runScraperNightly } from './utils/scraperNightlyJob';
 import { getDb } from './models/database';
-import { localNow } from './utils/timeUtils';
+import { logger, httpLogger } from './utils/logger';
+import { requestContext } from './utils/requestContext';
+import { setupGracefulShutdown } from './utils/gracefulShutdown';
+import { runStartupChecks } from './utils/configValidator';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -46,6 +50,10 @@ import authRoutes from './routes/auth';
 import dispatchRoutes from './routes/dispatch';
 import incidentRoutes from './routes/incidents';
 import recordsRoutes from './routes/records';
+import businessVehiclesRoutes from './routes/businessVehicles';
+import subjectSearchRoutes from './routes/subjectSearch';
+import businessVisitsRoutes from './routes/businessVisits';
+import businessPhotosRoutes from './routes/businessPhotos';
 import personnelRoutes, { mountScheduleRoutes } from './routes/personnel';
 import commsRoutes from './routes/comms';
 import reportsRoutes from './routes/reports';
@@ -61,15 +69,17 @@ import statuteRoutes from './routes/statutes';
 import citationRoutes from './routes/citations';
 import invoiceRoutes from './routes/invoices';
 import adminSystemsRoutes from './routes/adminSystems';
+import externalIntegrationsRoutes from './routes/externalIntegrations';
 import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
 import serveIntakeRoutes from './routes/serveIntake';
+import documentIntakeRoutes from './routes/documentIntake';
 import microbiltRoutes from './routes/microbilt';
 import dlRecordRoutes from './routes/dlRecords';
 import fieldInterviewRoutes from './routes/fieldInterviews';
-import dispatchMessageRoutes from './routes/dispatchMessages';
 import trespassOrderRoutes from './routes/trespassOrders';
+import mobileCfsRoutes from './routes/mobileCfs';
 import caseRoutes from './routes/cases';
 import codeEnforcementRoutes from './routes/codeEnforcement';
 import courtRoutes from './routes/court';
@@ -77,12 +87,16 @@ import darRoutes from './routes/dar';
 import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
+import documentFoldersRoutes from './routes/documentFolders';
 import forensicsRoutes from './routes/forensics';
 import ipedRoutes from './routes/iped';
 import clearpathgpsRoutes from './routes/clearpathgps';
+import traccarRoutes from './routes/traccar';
+import pdfToolsRoutes from './routes/pdfTools';
 import integrationsRoutes from './routes/integrations';
 import intakeRoutes from './routes/intake';
 import emailRoutes from './routes/email';
+import emailRulesRoutes from './routes/emailRules';
 import skiptracerRoutes from './routes/skiptracer';
 import arrestRoutes from './routes/arrests';
 import connectionsRoutes from './routes/connections';
@@ -105,20 +119,46 @@ import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
 import ttsRoutes from './routes/tts';
 import voiceRoutes from './routes/voice';
-import dashboardStatsRoutes from './routes/dashboardStats';
-import useOfForceRoutes from './routes/useOfForce';
+import voiceDialogueRoutes from './routes/voiceDialogue';
+import diagnosticsRoutes from './routes/diagnostics';
+import voicePersonaRoutes from './routes/voicePersona';
 import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
+import geocodeRoutes from './routes/geocode';
+import mapboxRoutes from './routes/mapbox';
+import drivingEventsRoutes from './routes/drivingEvents';
+import evidenceRoutes from './routes/evidence';
+import intelBulletinsRoutes from './routes/intelBulletins';
+import shiftBriefingsRoutes from './routes/shiftBriefings';
 import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
+import apiDocsRoutes from './routes/apiDocs';
+import pawnRoutes from './routes/pawn';
+import impoundRoutes from './routes/impounds';
+import alarmRoutes from './routes/alarms';
+import animalControlRoutes from './routes/animalControl';
+import communityReportRoutes from './routes/communityReports';
+import crashReportRoutes from './routes/crashReports';
+import tipRoutes from './routes/tips';
+import alprRoutes from './routes/alpr';
+import jailRoutes from './routes/jail';
+import fireRmsRoutes from './routes/fireRms';
+import custodyLogRoutes from './routes/custodyLog';
+import accreditationRoutes from './routes/accreditations';
+import useOfForceRoutes from './routes/useOfForce';
+import { getSchedulerStatus, runJobNow } from './utils/scheduler';
 
 const app = express();
 
-// Production commonly runs behind nginx on a single hop, so trust that proxy
-// unless explicitly overridden via TRUST_PROXY.
-app.set('trust proxy', config.trustProxy);
+// ─── Reverse-proxy trust ─────────────────────────────
+// In production we sit behind nginx (which sets X-Forwarded-For). Without
+// `trust proxy = 1`, express-rate-limit raises ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and req.ip resolves to 127.0.0.1, defeating per-IP rate-limiting.
+// Value `1` trusts EXACTLY one proxy hop — clients cannot spoof their IP
+// by stuffing X-Forwarded-For (which `true` would allow).
+app.set('trust proxy', 1);
 
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
@@ -140,17 +180,35 @@ app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
 }));
+// ─── Dashcam-AI webhook routes — MUST mount before express.json() ───
+// HMAC verification needs the raw request body; once express.json()
+// consumes the stream, the bytes are gone. The router brings its own
+// express.raw() middleware scoped to its routes only.
+import { dashcamAiRouter } from './routes/dashcamAi';
+app.use('/api/dashcam-ai', dashcamAiRouter);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-app.use(sanitizeInput);
 
-// Fix 73: Add request ID for tracing
-app.use((_req, _res, next) => {
-  const requestId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-  _req.headers['x-request-id'] = _req.headers['x-request-id'] || requestId;
-  _res.setHeader('X-Request-ID', _req.headers['x-request-id'] as string);
+// Improvement 73: Response compression negotiation headers
+app.use((req, res, next) => {
+  // Signal to reverse proxy what compression we accept
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (typeof acceptEncoding === 'string' && acceptEncoding.includes('br')) {
+    res.setHeader('X-Compression-Available', 'br, gzip');
+  } else if (typeof acceptEncoding === 'string' && acceptEncoding.includes('gzip')) {
+    res.setHeader('X-Compression-Available', 'gzip');
+  }
   next();
 });
+
+app.use(sanitizeInput);
+
+// Structured logging + per-request X-Request-Id tracing via pino-http.
+// Replaces the prior timestamp+random-suffix scheme with crypto.randomUUID().
+// Attaches req.log (child logger carrying request ID) for downstream handlers.
+app.use(httpLogger);
+app.use(requestContext);
 
 // Fix 72: Add response compression for large GeoJSON payloads
 // Using built-in compression by setting headers — actual compression handled by reverse proxy in production
@@ -334,11 +392,39 @@ app.get('/api/system-status', (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
+// ─── Traccar GPS webhook — own auth (shared secret), no JWT ───
+// `/api/traccar` is the canonical endpoint; `/traccar` is the short alias
+// for legacy device configs. Both accept Traccar Client (OsmAnd HTTP),
+// Traccar Server forward-webhook JSON, and generic flat JSON shapes.
+// `/owntracks/*` returns 410 Gone — migration pressure per the
+// 2026-04-29 traccar-gps-replacement design.
+//
+// NOTE: Do NOT mount these under '/api/dispatch/gps' — that prefix shadows
+// the authenticated GPS endpoint in dispatchRoutes (POST /api/dispatch/gps),
+// causing Express to match the webhook's '/' handler first and reject every
+// JWT-authenticated request with 403 "Invalid webhook token".
+import { traccarWebhookRouter, owntracksDeprecatedRouter } from './routes/dispatch/gps';
+import { startTraccarPoller } from './utils/traccarServerPoller';
+import { startCompetitorPoller } from './utils/competitorMonitorPoller';
+// NOTE: webhook router uses /:user/:device wildcards. It MUST be mounted
+// AFTER traccarRoutes (line below) so authenticated admin endpoints like
+// /api/traccar/historical/devices, /devices, /mappings, /credentials,
+// /status, /test-connection match their specific handlers first. Otherwise
+// the wildcard catches them and returns 401/403 "Invalid webhook token".
+// The webhook is also mounted on the bare /traccar prefix below so devices
+// configured with that path keep working.
+app.use('/traccar', traccarWebhookRouter);
+app.use('/owntracks', owntracksDeprecatedRouter);
+
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/records/subjects', subjectSearchRoutes);
 app.use('/api/records', recordsRoutes);
+app.use('/api/business-vehicles', businessVehiclesRoutes);
+app.use('/api/business-visits', businessVisitsRoutes);
+app.use('/api/business-photos', businessPhotosRoutes);
 app.use('/api/personnel', personnelRoutes);
 app.use('/api/comms', commsRoutes);
 app.use('/api/reports', reportsRoutes);
@@ -354,16 +440,20 @@ app.use('/api/statutes', statuteRoutes);
 app.use('/api/citations', citationRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/admin', adminSystemsRoutes);
+app.use('/api/admin/external-integrations', externalIntegrationsRoutes);
 app.use('/api/admin', shiftPlanRoutes);
 app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
+app.use('/api/driving-events', drivingEventsRoutes);
+app.use('/api/evidence', evidenceRoutes);
 app.use('/api/serve-intake', serveIntakeRoutes);
+app.use('/api/document-intake', documentIntakeRoutes);
 app.use('/api/microbilt', microbiltRoutes);
 app.use('/api/dl-records', dlRecordRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
-app.use('/api/dispatch-messages', dispatchMessageRoutes);
 app.use('/api/trespass-orders', trespassOrderRoutes);
+app.use('/api', mobileCfsRoutes); // Mounts /api/cfs/:id/qr-token, /api/mobile/cfs/*
 app.use('/api/cases', caseRoutes);
 app.use('/api/code-enforcement', codeEnforcementRoutes);
 app.use('/api/court', courtRoutes);
@@ -371,11 +461,18 @@ app.use('/api/dar', darRoutes);
 app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
+app.use('/api/documents', documentFoldersRoutes);
 app.use('/api/forensic-lab', forensicsRoutes);
 app.use('/api/forensics', forensicsRoutes);
 app.use('/api/iped', ipedRoutes);
 app.use('/api/clearpathgps', clearpathgpsRoutes);
+app.use('/api/traccar', traccarRoutes);
+// Webhook fallback — only matches paths the admin router didn't claim
+// (bare /api/traccar with ?token=, or /api/traccar/<user>/<device> from
+// devices configured with that style URL). See note above the /traccar mount.
+app.use('/api/traccar', traccarWebhookRouter);
 app.use('/api/integrations', integrationsRoutes);
+app.use('/api/email/rules', emailRulesRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/skiptracer', skiptracerRoutes);
 app.use('/api/arrests', arrestRoutes);
@@ -399,11 +496,45 @@ app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
 app.use('/api/tts', ttsRoutes);
 app.use('/api/voice', voiceRoutes);
-app.use('/api/dashboard', dashboardStatsRoutes);
-app.use('/api/use-of-force', useOfForceRoutes);
+app.use('/api/voice', voiceDialogueRoutes);
+app.use('/api/diagnostics', diagnosticsRoutes);
+app.use('/api/voice-persona', voicePersonaRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
+app.use('/api/pdf-tools', pdfToolsRoutes);
+app.use('/api/geocode', geocodeRoutes);
+app.use('/api/mapbox', mapboxRoutes);
+app.use('/api/intel-bulletins', intelBulletinsRoutes);
+app.use('/api/shift-briefings', shiftBriefingsRoutes);
+app.use('/api/docs', apiDocsRoutes);        // OpenAPI/Swagger interactive docs
+
+// ─── Spillman-inspired new modules (2026-05-10) ──────────
+app.use('/api/pawn', pawnRoutes);
+app.use('/api/impounds', impoundRoutes);
+app.use('/api/alarms', alarmRoutes);
+app.use('/api/animal-control', animalControlRoutes);
+app.use('/api/community-reports', communityReportRoutes);
+app.use('/api/crash-reports', crashReportRoutes);
+app.use('/api/tips', tipRoutes);
+app.use('/api/alpr', alprRoutes);
+app.use('/api/jail', jailRoutes);
+app.use('/api/fire-rms', fireRmsRoutes);
+app.use('/api/custody-log', custodyLogRoutes);
+app.use('/api/accreditations', accreditationRoutes);
+app.use('/api/use-of-force', useOfForceRoutes);
+
+// ─── Scheduler status endpoint (admin) ────────────────────
+app.get('/api/admin/scheduler', authenticateToken, (_req, res) => {
+  res.json({ jobs: getSchedulerStatus() });
+});
+app.post('/api/admin/scheduler/:name/run', authenticateToken, async (req, res) => {
+  const name = req.params.name as string;
+  const ran = await runJobNow(name);
+  if (!ran) { res.status(404).json({ error: 'Job not found' }); return; }
+  res.json({ success: true, message: `Job ${name} triggered` });
+});
+
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
@@ -421,16 +552,28 @@ app.use('/api', apiRouter);
 // ─── Serve static files in production ─────────────────
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
 
-// No-cache for sw.js and index.html — browser must always check server
+// No-cache for sw.js and index.html — browser must always check server.
+// Pass `sendFile`'s error callback so a missing client/dist (i.e. dev mode
+// where vite serves from 5173) returns a clean 404 instead of bubbling up
+// as `unhandled express error` — that error channel is reserved for real
+// problems, and dev noise there teaches operators to ignore it.
 app.get('/sw.js', (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
-  res.sendFile(path.join(clientDistPath, 'sw.js'));
+  res.sendFile(path.join(clientDistPath, 'sw.js'), (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).type('text/plain').send('sw.js not built (dev mode — Vite serves the SW from /sw.js on port 5173)');
+    }
+  });
 });
 app.get('/index.html', (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.sendFile(path.join(clientDistPath, 'index.html'));
+  res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).type('text/plain').send('index.html not built (dev mode — open http://localhost:5173 instead)');
+    }
+  });
 });
 
 // Hashed assets (/assets/*) — long cache (immutable, hash changes on content change)
@@ -445,7 +588,7 @@ app.use(express.static(clientDistPath, {
 }));
 
 // Force-refresh page — clears SW cache and reloads the app
-const renderForceRefreshPage = (_req: express.Request, res: express.Response) => {
+app.get('/force-refresh', (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.send(`<!DOCTYPE html><html><head><title>RMPG Flex — Refreshing...</title>
 <style>body{background:#0a0a0a;color:#d4a017;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;flex-direction:column}
@@ -462,13 +605,11 @@ h1{font-size:24px;margin-bottom:12px}p{color:#888;font-size:14px}</style></head>
   setTimeout(()=>{ window.location.href='/'; },1500);
 })();
 </script></body></html>`);
-};
-app.get('/force-refresh', renderForceRefreshPage);
-app.get('/clear-cache', renderForceRefreshPage);
+});
 
-// Express 5 requires named wildcards; this variant still matches `/`.
-// SPA fallback: serve index.html for non-API, non-download routes (always fresh)
-app.get('/{*splat}', (req, res) => {
+// SPA fallback: serve index.html for non-API, non-download routes (always fresh).
+// Express 5 + path-to-regexp v8 require named wildcards — bare '*' throws at boot.
+app.get('/*splat', apiRateLimit, (req, res) => {
   if (req.path.startsWith('/api')) {
     res.status(404).json({ error: 'API endpoint not found' });
   } else if (req.path.startsWith('/downloads/') || req.path === '/download') {
@@ -479,7 +620,7 @@ app.get('/{*splat}', (req, res) => {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
-      if (err) {
+      if (err && !res.headersSent) {
         res.status(404).json({ error: 'Not found' });
       }
     });
@@ -489,33 +630,9 @@ app.get('/{*splat}', (req, res) => {
 // ─── Global Error Handler ────────────────────────────
 // Catches unhandled middleware errors (multer, body-parser, etc.)
 app.use((err: any, req: express.Request, res: express.Response, _next: express.NextFunction) => {
-  const requestId = req.headers['x-request-id'] || 'unknown';
-
-  // Handle multer errors with appropriate status codes
-  if (err?.name === 'MulterError') {
-    const multerStatus: Record<string, number> = {
-      LIMIT_FILE_SIZE: 413, LIMIT_FILE_COUNT: 400, LIMIT_FIELD_KEY: 400,
-      LIMIT_FIELD_VALUE: 400, LIMIT_FIELD_COUNT: 400, LIMIT_UNEXPECTED_FILE: 400,
-      LIMIT_PART_COUNT: 400,
-    };
-    const status = multerStatus[err.code] || 400;
-    console.warn(`Multer rejection [${requestId}] ${req.method} ${req.path}: ${err.code} — ${err.message}`);
-    if (!res.headersSent) {
-      return res.status(status).json({ error: `Upload rejected: ${err.message}` });
-    }
-    return;
-  }
-
-  // Handle multer fileFilter errors (thrown as generic Error)
-  if (err?.message && /file type|not allowed|only.*files/i.test(err.message)) {
-    console.warn(`Upload filter [${requestId}] ${req.method} ${req.path}: ${err.message}`);
-    if (!res.headersSent) {
-      return res.status(415).json({ error: err.message });
-    }
-    return;
-  }
-
-  console.error(`Unhandled Express error [${requestId}] ${req.method} ${req.path}:`, err?.message || err, err?.stack || '');
+  // req.log is the pino child logger attached by httpLogger; it already
+  // carries the request ID, method, and url, so just pass the error.
+  (req as any).log?.error({ err }, 'unhandled express error') ?? logger.error({ err, method: req.method, path: req.path }, 'unhandled express error');
   if (!res.headersSent) {
     const status = err?.status || err?.statusCode || 500;
     res.status(status).json({ error: err?.message || 'Internal server error' });
@@ -526,18 +643,18 @@ app.use((err: any, req: express.Request, res: express.Response, _next: express.N
 try {
   // Initialize database
   initDatabase();
-  console.log('Database initialized');
+  logger.info('database initialized');
 
-  // Fix 78: Set SQLite query timeout for long-running queries (30 seconds)
+  // Set SQLite query timeout for long-running queries (30 seconds)
   try {
     const db = getDb();
     db.pragma('busy_timeout = 30000');
-    console.log('SQLite busy_timeout set to 30000ms');
+    logger.info('SQLite busy_timeout set to 30000ms');
   } catch (e: any) {
-    console.warn('Could not set SQLite busy_timeout:', e?.message);
+    logger.warn({ err: e }, 'could not set SQLite busy_timeout');
   }
 
-  // Fix 80: Database migration versioning check on startup
+  // Database migration versioning check on startup
   try {
     const db = getDb();
     // Ensure migration_version table exists
@@ -549,12 +666,12 @@ try {
     const versionRow = db.prepare('SELECT version FROM migration_version WHERE id = 1').get() as any;
     if (!versionRow) {
       db.prepare("INSERT INTO migration_version (id, version, last_migrated_at) VALUES (1, 1, datetime('now','localtime'))").run();
-      console.log('Database migration version initialized: v1');
+      logger.info('database migration version initialized: v1');
     } else {
-      console.log(`Database migration version: v${versionRow.version}`);
+      logger.info({ version: versionRow.version }, 'database migration version loaded');
     }
   } catch (e: any) {
-    console.warn('Migration version check skipped:', e?.message);
+    logger.warn({ err: e }, 'migration version check skipped');
   }
 
   // Determine server type based on SSL availability
@@ -585,7 +702,7 @@ try {
       });
       const redirectServer = http.createServer(redirectApp);
       redirectServer.listen(config.ssl.httpRedirectPort, () => {
-        console.log(`HTTP→HTTPS redirect active on port ${config.ssl.httpRedirectPort}`);
+        logger.info({ port: config.ssl.httpRedirectPort }, 'HTTP→HTTPS redirect active');
       });
     }
   } else {
@@ -595,7 +712,27 @@ try {
 
   // Initialize WebSocket on the primary server
   initWebSocket(primaryServer);
-  console.log('WebSocket server initialized');
+  logger.info('WebSocket server initialized');
+
+  // Set up enhanced graceful shutdown for all servers, including DB cleanup
+  setupGracefulShutdown([primaryServer], {
+    onShutdown: async () => {
+      try {
+        const db = getDb();
+        if (db) {
+          db.close();
+          logger.info('database connection closed');
+        }
+      } catch (e: any) {
+        logger.warn({ err: e }, 'shutdown DB cleanup error');
+      }
+    },
+  });
+
+  // Run startup configuration checks
+  runStartupChecks().then(({ passed, results }) => {
+    logger.info({ passed, results }, 'Startup checks completed');
+  });
 
   // Start listening
   const listenPort = config.ssl.enabled ? config.httpsPort : config.port;
@@ -611,14 +748,30 @@ try {
   primaryServer.keepAliveTimeout = 120000; // 2 min keepalive
 
   primaryServer.listen(listenPort, listenHost, () => {
+    // Structured one-liner for log aggregation (prod journalctl / search tools).
+    logger.info(
+      {
+        version: SERVER_VERSION,
+        env: config.nodeEnv,
+        domain: config.primaryDomain,
+        protocol,
+        port: listenPort,
+        ssl: config.ssl.enabled,
+      },
+      'server listening'
+    );
+    // Decorative ASCII banner stays on console (human-read, one-shot at boot).
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
     console.log(`║         RMPG Flex CAD/RMS Server v${SERVER_VERSION.padEnd(14)}║`);
     console.log('║                                                  ║');
     console.log(`║  Environment: ${config.nodeEnv.padEnd(35)}║`);
     console.log(`║  Domain:      ${config.primaryDomain.padEnd(35)}║`);
-    console.log(`║  ${config.ssl.enabled ? 'HTTPS' : 'HTTP'} Server: ${protocol}://${displayHost}:${String(listenPort).padEnd(1)}║`);
-    console.log(`║  WebSocket:   ${wsProtocol}://${displayHost}:${String(listenPort).padEnd(1)}║`);
+    const serverUrl = `${protocol}://${displayHost}:${listenPort}`;
+    const wsUrl = `${wsProtocol}://${displayHost}:${listenPort}`;
+    const serverLabel = config.ssl.enabled ? 'HTTPS' : 'HTTP';
+    console.log(`║  ${serverLabel} Server: ${serverUrl.padEnd(50 - 16 - serverLabel.length)}║`);
+    console.log(`║  WebSocket:   ${wsUrl.padEnd(35)}║`);
     console.log(`║  TLS/SSL:     ${(config.ssl.enabled ? 'ENABLED (TLSv1.2+)' : 'DISABLED').padEnd(35)}║`);
     console.log('║  API Base:    /api                               ║');
     console.log('║                                                  ║');
@@ -648,62 +801,90 @@ try {
     try {
       startPatrolMonitor(5 * 60 * 1000); // Check every 5 minutes
     } catch (err: any) {
-      console.warn('[Patrol Monitor] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'patrol-monitor' }, 'failed to start scheduler');
     }
 
     // Start midnight daily patrol report scheduler
     try {
       startDailyReportScheduler();
     } catch (err: any) {
-      console.warn('[Daily Report] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'daily-report' }, 'failed to start scheduler');
     }
 
     // Start OFAC SDN data sync (downloads from U.S. Treasury, syncs daily)
     try {
       scheduleOfacSync();
     } catch (err: any) {
-      console.warn('[OFAC Sync] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'ofac-sync' }, 'failed to start scheduler');
     }
 
     // Start integration health checker (probes every 5 min, alerts on status changes)
     try {
       startHealthChecker();
     } catch (err: any) {
-      console.warn('[Health Checker] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'health-checker' }, 'failed to start scheduler');
     }
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)
     try {
       scheduleUtahWarrantSync();
     } catch (err: any) {
-      console.warn('[Utah Warrants] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'utah-warrants' }, 'failed to start scheduler');
     }
 
     // Start arrest records auto-sync (JailBase API, hourly with exponential backoff)
     try {
       scheduleArrestSync();
-      console.log('[Arrests] Auto-sync scheduler started');
+      logger.info({ scheduler: 'arrests' }, 'auto-sync scheduler started');
     } catch (err: any) {
-      console.warn('[Arrests] Failed to start sync scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'arrests' }, 'failed to start sync scheduler');
     }
 
     // Start multi-state warrant scraper (polls configured sources on schedule)
     try {
       scheduleWarrantScraper();
     } catch (err: any) {
-      console.warn('[Warrant Scraper] Failed to start scheduler:', err?.message || err);
+      logger.warn({ err, scheduler: 'warrant-scraper' }, 'failed to start scheduler');
+    }
+
+    // Nightly warrant scraper maintenance
+    try {
+      // First run 6h after boot (lets scheduler settle)
+      const nightlyInitial = setTimeout(() => runScraperNightly(), 6 * 60 * 60_000);
+      if (nightlyInitial.unref) nightlyInitial.unref();
+
+      // Then every 24h
+      const nightlyInterval = setInterval(() => runScraperNightly(), 24 * 60 * 60_000);
+      if (nightlyInterval.unref) nightlyInterval.unref();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'scraper-nightly' }, 'failed to schedule');
+    }
+
+    // Traccar Server REST poller — opt-in via system_config (traccar_server_url
+    // + traccar_server_email + traccar_server_password). Idle when config missing.
+    try {
+      startTraccarPoller();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'traccar-poller' }, 'failed to start scheduler');
+    }
+
+    // CRM Competitor Monitor poller — polls monitored URLs for content changes
+    try {
+      startCompetitorPoller();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'competitor-poller' }, 'failed to start scheduler');
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s
     setInterval(() => {
       try { checkWelfareWatches(); } catch (err: any) {
-        console.error('[WELFARE] Timer error:', err?.message);
+        logger.error({ err, source: 'welfare-timer' }, 'timer error');
       }
     }, 30_000);
 
     setInterval(() => {
       try { generatePursuitUpdates(); } catch (err: any) {
-        console.error('[PURSUIT] Timer error:', err?.message);
+        logger.error({ err, source: 'pursuit-timer' }, 'timer error');
       }
     }, 30_000);
 
@@ -717,9 +898,9 @@ try {
         ).all() as { id: number; first_name: string; last_name: string }[];
 
         if (unchecked.length > 0) {
-          console.log(`[OFAC Backfill] Screening ${unchecked.length} person record(s) that were never checked...`);
+          logger.info({ source: 'ofac-backfill', count: unchecked.length }, 'screening unchecked person records');
           let matches = 0;
-          const now = localNow();
+          const now = new Date().toISOString().replace('T', ' ').substring(0, 19);
           for (const p of unchecked) {
             try {
               const hits = searchOfacLocal(`${p.last_name}, ${p.first_name}`, { type: 'person' as const, firstName: p.first_name, lastName: p.last_name, limit: 3 });
@@ -737,61 +918,31 @@ try {
               }
             } catch { /* skip individual failures */ }
           }
-          console.log(`[OFAC Backfill] Complete — ${unchecked.length} screened, ${matches} match(es) found`);
+          logger.info({ source: 'ofac-backfill', screened: unchecked.length, matches }, 'backfill complete');
         } else {
-          console.log('[OFAC Backfill] All person records already screened');
+          logger.info({ source: 'ofac-backfill' }, 'all person records already screened');
         }
       } catch (err) {
-        console.warn('[OFAC Backfill] Failed:', (err as Error).message);
+        logger.warn({ err, source: 'ofac-backfill' }, 'backfill failed');
       }
     }, 60_000); // 60s delay — after OFAC sync (15s) has time to complete
   });
 } catch (error) {
-  console.error('Failed to start server:', error);
+  logger.fatal({ err: error }, 'failed to start server');
   process.exit(1);
 }
 
 // ─── Process-level crash protection ──────────────────────────
 // Log unhandled errors instead of dying silently.
 process.on('uncaughtException', (err) => {
-  console.error('═══ UNCAUGHT EXCEPTION ═══');
-  console.error(err);
-  console.error('Server will continue running. Please investigate the above error.');
+  logger.fatal({ err }, 'uncaught exception — server continuing, investigate immediately');
 });
 
-process.on('unhandledRejection', (reason, promise) => {
-  console.error('═══ UNHANDLED PROMISE REJECTION ═══');
-  console.error('Reason:', reason);
-  console.error('Server will continue running. Please investigate the above error.');
+process.on('unhandledRejection', (reason) => {
+  logger.fatal({ err: reason }, 'unhandled promise rejection — server continuing, investigate immediately');
 });
 
-// ─── Graceful Shutdown ────────────────────────────────
-// Close server and database connections cleanly on SIGTERM/SIGINT
-function gracefulShutdown(signal: string) {
-  console.log(`\n[${signal}] Graceful shutdown initiated...`);
-  const shutdownTimeout = setTimeout(() => {
-    console.error('Shutdown timed out after 15s — forcing exit');
-    process.exit(1);
-  }, 15000);
-
-  try {
-    // Close the HTTP(S) server — stop accepting new connections
-    // primaryServer is scoped in the try block above, so we use a module-level ref
-    const db = getDb();
-    if (db) {
-      db.close();
-      console.log('Database connection closed');
-    }
-  } catch (e: any) {
-    console.warn('Shutdown cleanup error:', e?.message);
-  }
-
-  clearTimeout(shutdownTimeout);
-  console.log('Shutdown complete');
-  process.exit(0);
-}
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// Graceful shutdown is handled by setupGracefulShutdown() (registered above),
+// which closes HTTP servers, runs shutdown callbacks (DB close), and exits cleanly.
 
 export default app;

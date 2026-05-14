@@ -3,19 +3,10 @@
 // Displays & manages criminal history records for a person
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import RichTextArea from './RichTextArea';
 import {
-  Scale,
-  Plus,
-  Trash2,
-  Pencil,
-  ChevronDown,
-  ChevronRight,
-  Loader2,
-  Save,
-  X,
-  AlertTriangle,
-  Gavel,
+  Plus, Trash2, Pencil, ChevronDown, ChevronRight, Loader2, Save, X, Gavel,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
@@ -390,7 +381,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
 
               <div>
                 <label className="text-[9px] text-rmpg-400 uppercase font-bold">Notes</label>
-                <textarea
+                <RichTextArea
                   value={form.notes}
                   onChange={e => setForm(prev => ({ ...prev, notes: e.target.value }))}
                   rows={2}
@@ -442,7 +433,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                         RECORD_TYPE_CLASSES[rec.record_type] || RECORD_TYPE_CLASSES.other
                       }`}
                     >
-                      {rec.record_type.replace(/_/g, ' ')}
+                      {rec.record_type.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     {rec.offense_level && (
                       <span

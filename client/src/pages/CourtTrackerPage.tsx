@@ -8,15 +8,17 @@
 // document upload, judge notes, deadline countdown, disposition stats.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import RichTextArea from '../components/RichTextArea';
+import { formatPhoneInput, formatEnumValue} from '../utils/formatters';
 import {
-  Gavel, Search, Plus, Calendar, CalendarDays, Clock, User, MapPin,
-  X, Save, Loader2, AlertTriangle, CheckCircle, FileText, Scale,
-  ChevronLeft, ChevronRight, Upload, Shield, DollarSign, BarChart3,
+  Gavel, Search, Plus, Calendar, Clock, User, X, Save, Loader2, AlertTriangle,
+  CheckCircle, FileText, Scale, ChevronLeft, ChevronRight, Shield, DollarSign,
   BookOpen, AlertCircle, Check, RefreshCw, Users,
 } from 'lucide-react';
 import type { CourtEvent, CourtEventType, CourtEventStatus, CourtOutcome } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
+import IconButton from '../components/IconButton';
 import EmptyState from '../components/EmptyState';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -36,7 +38,7 @@ const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   arraignment: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
-  hearing: 'bg-cyan-900/50 text-cyan-400 border-cyan-700/50',
+  hearing: 'bg-gray-900/50 text-gray-400 border-gray-700/50',
   trial: 'bg-red-900/50 text-red-400 border-red-700/50',
   sentencing: 'bg-purple-900/50 text-purple-400 border-purple-700/50',
   motion: 'bg-amber-900/50 text-amber-400 border-amber-700/50',
@@ -65,21 +67,11 @@ const EMPTY_FORM = {
   event_date: '', event_time: '',
   court_name: '', courtroom: '', judge_name: '', court_case_number: '',
   defendant_name: '', defendant_dob: '',
+  prosecutor: '', defense_attorney: '',
+  officers_required: '' as string,
+  citation_id: '' as string, incident_id: '' as string, case_id: '' as string,
+  defendant_person_id: '' as string,
   notes: '',
-};
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
 };
 
 export default function CourtTrackerPage() {
@@ -405,17 +397,16 @@ export default function CourtTrackerPage() {
 
   const displayEvents = activeView === 'upcoming' ? upcoming : events;
 
-  // Feature 9: Deadline countdown with urgency badge styles
+  // Feature 9: Deadline countdown with urgency colors
   const daysUntil = (dateStr: string) => {
     const d = Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-    if (isNaN(d)) return { text: '-', color: 'text-rmpg-500', badge: '' };
-    if (d < 0) return { text: `PAST ${Math.abs(d)}d ago`, color: 'text-red-400', badge: 'bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold' };
-    if (d === 0) return { text: 'TODAY', color: 'text-red-400 animate-pulse', badge: 'bg-red-600 text-white px-1.5 py-0.5 rounded-sm font-bold animate-pulse' };
-    if (d === 1) return { text: 'TOMORROW', color: 'text-orange-400', badge: 'bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold' };
-    if (d <= 3) return { text: `${d}d`, color: 'text-amber-400', badge: 'bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold' };
-    if (d <= 7) return { text: `${d}d`, color: 'text-yellow-400', badge: 'bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold' };
-    if (d <= 30) return { text: `${d}d`, color: 'text-green-400', badge: 'text-rmpg-400' };
-    return { text: `${d}d`, color: 'text-green-400', badge: '' };
+    if (isNaN(d)) return { text: '-', color: 'text-rmpg-500' };
+    if (d < 0) return { text: 'PAST', color: 'text-red-500' };
+    if (d === 0) return { text: 'TODAY', color: 'text-red-400 animate-pulse' };
+    if (d === 1) return { text: 'TOMORROW', color: 'text-orange-400' };
+    if (d <= 3) return { text: `${d} days`, color: 'text-amber-400' };
+    if (d <= 7) return { text: `${d} days`, color: 'text-yellow-400' };
+    return { text: `${d} days`, color: 'text-green-400' };
   };
 
   // Feature 1: Calendar helpers
@@ -447,45 +438,6 @@ export default function CourtTrackerPage() {
       {/* Left Panel */}
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Court / Legal Tracker" icon={Gavel}>
-          <button
-            type="button"
-            onClick={() => {
-              const futureEvents = events.filter(e => new Date(e.event_date) >= new Date());
-              if (futureEvents.length === 0) { addToast('No upcoming events to export', 'info'); return; }
-              const icsLines = [
-                'BEGIN:VCALENDAR',
-                'VERSION:2.0',
-                'PRODID:-//RMPG Flex//Court Tracker//EN',
-              ];
-              for (const event of futureEvents) {
-                const dt = new Date(event.event_date);
-                const dtStr = dt.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
-                icsLines.push(
-                  'BEGIN:VEVENT',
-                  `DTSTART:${dtStr}`,
-                  `DTEND:${dtStr}`,
-                  `SUMMARY:${(event.event_type || 'Court Event').replace(/,/g, '\\,')} — ${event.court_case_number || ''}`,
-                  `DESCRIPTION:${(event.notes || '').replace(/\n/g, '\\n').replace(/,/g, '\\,')}`,
-                  `LOCATION:${(event.court_name || '').replace(/,/g, '\\,')}`,
-                  `UID:rmpg-court-${event.id}@rmpgutah.us`,
-                  'END:VEVENT'
-                );
-              }
-              icsLines.push('END:VCALENDAR');
-              const blob = new Blob([icsLines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement('a');
-              a.href = url;
-              a.download = `rmpg-court-events-${new Date().toISOString().slice(0,10)}.ics`;
-              a.click();
-              URL.revokeObjectURL(url);
-              addToast(`Exported ${futureEvents.length} court events`, 'success');
-            }}
-            className="toolbar-btn text-[9px]"
-            title="Export upcoming events to calendar (.ics)"
-          >
-            <CalendarDays style={{ width: 11, height: 11 }} /> Export Calendar
-          </button>
           <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
             <FileText style={{ width: 11, height: 11 }} /> From Citation
           </button>
@@ -497,7 +449,7 @@ export default function CourtTrackerPage() {
         {fetchError && (
           <div className="mx-4 mt-2 p-2 bg-red-900/30 border border-red-700/50 rounded-sm text-red-400 text-xs flex items-center gap-2">
             <AlertTriangle className="w-3 h-3 flex-shrink-0" /> <span>{fetchError}</span>
-            <button type="button" onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
+            <IconButton onClick={() => setFetchError('')} className="ml-auto text-red-500 hover:text-red-300" aria-label="Dismiss error"><X style={{ width: 12, height: 12 }} /></IconButton>
           </div>
         )}
 
@@ -526,7 +478,7 @@ export default function CourtTrackerPage() {
               <Search className="absolute left-2 top-1/2 -translate-y-1/2 text-rmpg-500" style={{ width: 12, height: 12 }} />
               <input value={searchQuery} onChange={e => { setSearchQuery(e.target.value); setPage(1); }} placeholder="Search events..." aria-label="Search events..." className="w-full pl-7 pr-2 py-1 text-xs bg-surface-sunken border border-rmpg-700 text-white placeholder-rmpg-500 focus:border-brand-600 focus:ring-1 focus:ring-brand-600/30 outline-none" />
             </div>
-            <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none" aria-label="Filter by event type">
+            <select value={filterType} onChange={e => { setFilterType(e.target.value); setPage(1); }} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-1 outline-none">
               <option value="">All Types</option>
               {EVENT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
             </select>
@@ -535,15 +487,15 @@ export default function CourtTrackerPage() {
 
         {/* Feature 1: Calendar View */}
         {activeView === 'calendar' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-2">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-2">
             <div className="flex items-center justify-between mb-2">
-              <button type="button" onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1">
+              <IconButton onClick={() => { if (calendarMonth === 1) { setCalendarMonth(12); setCalendarYear(y => y - 1); } else setCalendarMonth(m => m - 1); }} className="toolbar-btn p-1" aria-label="Previous month">
                 <ChevronLeft style={{ width: 14, height: 14 }} />
-              </button>
+              </IconButton>
               <span className="text-xs font-bold text-white">{monthNames[calendarMonth - 1]} {calendarYear}</span>
-              <button type="button" onClick={() => { if (calendarMonth === 12) { setCalendarMonth(1); setCalendarYear(y => y + 1); } else setCalendarMonth(m => m + 1); }} className="toolbar-btn p-1">
+              <IconButton onClick={() => { if (calendarMonth === 12) { setCalendarMonth(1); setCalendarYear(y => y + 1); } else setCalendarMonth(m => m + 1); }} className="toolbar-btn p-1" aria-label="Next month">
                 <ChevronRight style={{ width: 14, height: 14 }} />
-              </button>
+              </IconButton>
             </div>
             <div className="grid grid-cols-7 gap-px">
               {['Su','Mo','Tu','We','Th','Fr','Sa'].map(d => (
@@ -589,7 +541,7 @@ export default function CourtTrackerPage() {
 
         {/* Feature 10: Statistics View */}
         {activeView === 'stats' && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-3 space-y-3">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-3 space-y-3">
             {statsLoading ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : stats ? (
@@ -618,7 +570,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Outcomes</div>
                   {(stats.byOutcome || []).map((r: any) => (
                     <div key={r.outcome} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
-                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ')}</span>
+                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ').toUpperCase()}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 bg-rmpg-800 overflow-hidden">
                           <div
@@ -653,7 +605,7 @@ export default function CourtTrackerPage() {
 
         {/* Event List (upcoming + list views) */}
         {(activeView === 'upcoming' || activeView === 'list') && (
-          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+          <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
             {loading && activeView === 'list' ? (
               <div className="flex flex-col items-center justify-center h-32 gap-2"><Loader2 className="w-5 h-5 animate-spin text-brand-400" role="status" aria-label="Loading" /><span className="text-[10px] text-rmpg-500">Loading...</span></div>
             ) : displayEvents.length === 0 ? (
@@ -665,7 +617,7 @@ export default function CourtTrackerPage() {
               />
             ) : (
               displayEvents.map(evt => {
-                const countdown = evt.event_date ? daysUntil(evt.event_date) : { text: '-', color: 'text-rmpg-500', badge: '' };
+                const countdown = evt.event_date ? daysUntil(evt.event_date) : { text: '-', color: 'text-rmpg-500' };
                 return (
                   <button type="button"
                     key={evt.id}
@@ -678,12 +630,8 @@ export default function CourtTrackerPage() {
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-mono font-bold text-white">{evt.event_number}</span>
                       <div className="flex items-center gap-1">
-                        {/* Feature 9: Countdown with urgency badge */}
-                        {countdown.badge ? (
-                          <span className={`text-[8px] ${countdown.badge}`}>{countdown.text}</span>
-                        ) : countdown.text !== '-' ? (
-                          <span className={`text-[9px] font-bold ${countdown.color}`}>{countdown.text}</span>
-                        ) : null}
+                        {/* Feature 9: Countdown with urgency colors */}
+                        <span className={`text-[9px] font-bold ${countdown.color}`}>{countdown.text}</span>
                         <span className={`text-[9px] px-1.5 py-0.5 border rounded-sm ${EVENT_TYPE_COLORS[evt.event_type] || ''}`}>
                           {evt.event_type.toUpperCase()}
                         </span>
@@ -734,14 +682,14 @@ export default function CourtTrackerPage() {
               )}
             </PanelTitleBar>
 
-            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent p-4 space-y-4">
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent p-4 space-y-4">
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${EVENT_TYPE_COLORS[selected.event_type] || ''}`}>
                   {selected.event_type.toUpperCase()}
                 </span>
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${STATUS_COLORS[selected.status] || ''}`}>
-                  {selected.status.toUpperCase()}
+                  {formatEnumValue(selected.status)}
                 </span>
                 {selected.outcome && (
                   <span className="text-[10px] px-2 py-1 border rounded-sm bg-purple-900/50 text-purple-400 border-purple-700/50 font-bold">
@@ -1000,7 +948,7 @@ export default function CourtTrackerPage() {
                 <div className="panel-beveled p-3">
                   <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Outcome</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-white font-bold">{selected.outcome.replace(/_/g, ' ')}</span></div>
+                    <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-white font-bold">{selected.outcome.replace(/_/g, ' ').toUpperCase()}</span></div>
                     {selected.sentence && <div><span className="text-[9px] text-rmpg-500">Sentence:</span> <span className="text-xs text-white">{selected.sentence}</span></div>}
                     {selected.fine_amount && !isNaN(Number(selected.fine_amount)) && <div><span className="text-[9px] text-rmpg-500">Fine:</span> <span className="text-xs text-amber-400">${Number(selected.fine_amount).toFixed(2)}</span></div>}
                   </div>
@@ -1030,7 +978,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="New Court Event">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Court Event" icon={Plus}>
-              <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -1070,6 +1018,14 @@ export default function CourtTrackerPage() {
                   <label className="field-label">Judge</label>
                   <input value={formData.judge_name} onChange={e => setFormData(p => ({ ...p, judge_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                 </div>
+                <div>
+                  <label className="field-label">Prosecutor</label>
+                  <input value={formData.prosecutor} onChange={e => setFormData(p => ({ ...p, prosecutor: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                </div>
+                <div>
+                  <label className="field-label">Defense Attorney</label>
+                  <input value={formData.defense_attorney} onChange={e => setFormData(p => ({ ...p, defense_attorney: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
@@ -1088,7 +1044,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Record Outcome">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Record Outcome" icon={CheckCircle}>
-              <button type="button" onClick={() => setOutcomeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setOutcomeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1100,7 +1056,7 @@ export default function CourtTrackerPage() {
               </div>
               <div>
                 <label className="field-label">Sentence</label>
-                <textarea value={outcomeData.sentence} onChange={e => setOutcomeData(p => ({ ...p, sentence: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
+                <RichTextArea value={outcomeData.sentence} onChange={e => setOutcomeData(p => ({ ...p, sentence: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
               </div>
               <div>
                 <label className="field-label">Fine Amount ($)</label>
@@ -1123,12 +1079,12 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Log Continuance">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Log Continuance" icon={RefreshCw}>
-              <button type="button" onClick={() => setContinuanceOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setContinuanceOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Reason *</label>
-                <textarea value={continuanceData.reason} onChange={e => setContinuanceData(p => ({ ...p, reason: e.target.value }))} rows={2} placeholder="Reason for continuance..." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
+                <RichTextArea value={continuanceData.reason} onChange={e => setContinuanceData(p => ({ ...p, reason: e.target.value }))} rows={2} placeholder="Reason for continuance..." className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
@@ -1157,7 +1113,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Bail/Bond Info">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Bail / Bond Information" icon={DollarSign}>
-              <button type="button" onClick={() => setBailOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setBailOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div>
@@ -1197,10 +1153,10 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Judge Notes">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Judge Preferences / Notes" icon={BookOpen}>
-              <button type="button" onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <textarea value={judgeNotesText} onChange={e => setJudgeNotesText(e.target.value)} rows={6} placeholder="Judge preferences, courtroom rules, etc." className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
+              <RichTextArea value={judgeNotesText} onChange={e => setJudgeNotesText(e.target.value)} rows={6} placeholder="Judge preferences, courtroom rules, etc." className="w-full px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" />
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setJudgeNotesOpen(false)} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleJudgeNotesSubmit} disabled={judgeNotesSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -1218,13 +1174,13 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Prosecutor Contact Info" icon={User}>
-              <button type="button" onClick={() => setProsecutorOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setProsecutorOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Name</label>
                 <input value={prosecutorData.prosecutor_name} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_name: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Phone</label>
-                <input value={prosecutorData.prosecutor_phone} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_phone: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" placeholder="(555) 123-4567" /></div>
+                <input value={prosecutorData.prosecutor_phone} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_phone: formatPhoneInput(e.target.value) }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" placeholder="(555) 123-4567" /></div>
               <div><label className="field-label">Email</label>
                 <input type="email" value={prosecutorData.prosecutor_email} onChange={e => setProsecutorData(p => ({ ...p, prosecutor_email: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
@@ -1243,7 +1199,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-md mx-4">
             <PanelTitleBar title="Court Fee Tracking" icon={DollarSign}>
-              <button type="button" onClick={() => setFeeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setFeeOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div><label className="field-label">Filing Fee ($)</label>
@@ -1253,7 +1209,7 @@ export default function CourtTrackerPage() {
               <div><label className="field-label">Other Fees ($)</label>
                 <input type="number" step="0.01" value={feeData.other_fees} onChange={e => setFeeData(p => ({ ...p, other_fees: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
               <div><label className="field-label">Notes</label>
-                <textarea value={feeData.fee_notes} onChange={e => setFeeData(p => ({ ...p, fee_notes: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" /></div>
+                <RichTextArea value={feeData.fee_notes} onChange={e => setFeeData(p => ({ ...p, fee_notes: e.target.value }))} rows={2} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600 resize-none" /></div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFeeOpen(false)} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleSaveFees} disabled={feeSubmitting} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -1270,10 +1226,10 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="Witness Management" icon={Users}>
-              <button type="button" onClick={() => setWitnessOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setWitnessOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
-              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-2">
+              <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-2">
                 {witnesses.map((w, i) => (
                   <div key={i} className="panel-beveled p-2 space-y-1">
                     <div className="flex gap-2">
@@ -1284,10 +1240,10 @@ export default function CourtTrackerPage() {
                         <option value="confirmed">Confirmed</option>
                         <option value="unavailable">Unavailable</option>
                       </select>
-                      <button type="button" onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300"><X style={{ width: 12, height: 12 }} /></button>
+                      <IconButton onClick={() => setWitnesses(ws => ws.filter((_, j) => j !== i))} className="text-red-400 hover:text-red-300" aria-label={`Remove witness ${i + 1}`}><X style={{ width: 12, height: 12 }} /></IconButton>
                     </div>
                     <div className="flex gap-2">
-                      <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: e.target.value } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
+                      <input value={w.phone || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, phone: formatPhoneInput(e.target.value) } : ww))} placeholder="Phone" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                       <input value={w.email || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, email: e.target.value } : ww))} placeholder="Email" className="flex-1 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                       <input value={w.role || ''} onChange={e => setWitnesses(ws => ws.map((ww, j) => j === i ? { ...ww, role: e.target.value } : ww))} placeholder="Role" className="w-24 px-2 py-1 w-full text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" />
                     </div>
@@ -1313,7 +1269,7 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Create from Citation" onClick={() => setCitationSearchOpen(false)}>
           <div className="panel-surface w-full max-w-lg mx-4" onClick={e => e.stopPropagation()}>
             <PanelTitleBar title="Create Court Event from Citation" icon={FileText}>
-              <button type="button" onClick={() => setCitationSearchOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></button>
+              <IconButton onClick={() => setCitationSearchOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
               <div className="flex gap-2">
@@ -1327,7 +1283,7 @@ export default function CourtTrackerPage() {
                 </button>
               </div>
               {citationSearchResults.length > 0 ? (
-                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent space-y-1">
+                <div className="max-h-[300px] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent space-y-1">
                   {citationSearchResults.map((c: any) => (
                     <div key={c.id} className="flex items-center justify-between px-3 py-2 border border-rmpg-700 bg-surface-sunken hover:bg-rmpg-800/50">
                       <div>

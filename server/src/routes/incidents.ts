@@ -2,22 +2,47 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastIncidentUpdate } from '../utils/websocket';
+import { broadcastIncidentUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { generateIncidentNumber } from '../utils/caseNumbers';
 import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { geocodeAddress } from '../utils/geocode';
+import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
 
 router.use(authenticateToken);
 
+const INCIDENT_OFFICER_ENTRY_ROLES = new Set([
+  'primary',
+  'responding',
+  'backup',
+  'supervisor',
+  'investigator',
+  'evidence_tech',
+  'other',
+]);
+
+const INCIDENT_OFFICER_USER_ROLES = new Set([
+  'admin',
+  'manager',
+  'supervisor',
+  'officer',
+  'dispatcher',
+  'contract_manager',
+]);
+
+function normalizeOptionalText(value: unknown): string | null {
+  const normalized = typeof value === 'string' ? value.trim() : '';
+  return normalized ? normalized : null;
+}
+
 // GET /api/incidents - List incidents with filters
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { status, priority, officerId, startDate, endDate, archived, page = '1', limit = '50' } = req.query;
+    const { status, priority, officerId, startDate, endDate, archived, page = '1', limit = '100000' } = req.query;
 
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
@@ -57,7 +82,7 @@ router.get('/', (req: Request, res: Response) => {
     }
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
-    const limitNum = Math.max(1, Math.min(500, parseInt(limit as string, 10) || 50));
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit as string, 10)) || 100000));
     const offset = (pageNum - 1) * limitNum;
 
     const countRow = db.prepare(`SELECT COUNT(*) as total FROM incidents i ${whereClause}`).get(...params) as any;
@@ -97,7 +122,7 @@ router.get('/map', (req: Request, res: Response) => {
   try {
     const db = getDb();
     const days = Math.max(1, Math.min(365, parseInt(req.query.days as string, 10) || 30));
-    const limit = Math.max(1, Math.min(2000, parseInt(req.query.limit as string, 10) || 500));
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
 
     const statusFilter = req.query.status
       ? String(req.query.status).split(',').filter(s => s.length > 0 && s.length < 50).slice(0, 10)
@@ -148,7 +173,8 @@ router.get('/map', (req: Request, res: Response) => {
         SUBSTR(i.narrative, 1, 100) as narrative_preview,
         o.full_name as officer_name,
         i.created_at,
-        c.call_number
+        c.call_number,
+        i.incident_number
       FROM incidents i
       LEFT JOIN users o ON i.officer_id = o.id
       LEFT JOIN calls_for_service c ON i.call_id = c.id
@@ -273,7 +299,7 @@ router.get('/export', requireRole('admin', 'manager', 'supervisor'), (req: Reque
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const incidentId = parseInt(req.params.id as string, 10);
+    const incidentId = parseInt(paramStr(req.params.id), 10);
     if (isNaN(incidentId)) {
       res.status(400).json({ error: 'Invalid incident ID', code: 'INVALID_INCIDENT_ID' });
       return;
@@ -300,20 +326,20 @@ router.get('/:id', (req: Request, res: Response) => {
     // Get evidence
     const evidence = db.prepare(`
       SELECT * FROM evidence WHERE incident_id = ?
+    
       LIMIT 1000
     `).all(incident.id);
 
     // Get linked persons
     const linked_persons = db.prepare(`
-      SELECT ip.*, p.first_name, p.last_name, p.dob, p.phone, p.address, p.gender, p.race,
-        p.dl_number, p.dl_state, p.height, p.weight, p.hair_color, p.eye_color,
-        p.photo_url, p.flags,
+      SELECT ip.*, p.first_name, p.last_name, p.dob, p.phone, p.flags,
         u.full_name as added_by_name
       FROM incident_persons ip
       LEFT JOIN persons p ON ip.person_id = p.id
       LEFT JOIN users u ON ip.added_by = u.id
       WHERE ip.incident_id = ?
       ORDER BY ip.created_at
+    
       LIMIT 1000
     `).all(incident.id);
 
@@ -328,6 +354,7 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON iv.added_by = u.id
       WHERE iv.incident_id = ?
       ORDER BY iv.created_at
+    
       LIMIT 1000
     `).all(incident.id);
 
@@ -338,6 +365,7 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'incident' AND al.entity_id = ?
       ORDER BY al.created_at DESC
+    
       LIMIT 1000
     `).all(incident.id);
 
@@ -364,24 +392,26 @@ router.post('/', async (req: Request, res: Response) => {
       occurred_date, occurred_time, end_date, end_time,
       weather_conditions, lighting_conditions,
       injuries, injury_description, damage_estimate, damage_description,
-      weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
-      disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
-      client_id: requestClientId, contract_id,
-      // PSO / Process Service fields
-      pso_service_type, pso_attempt_number, pso_requestor_name, pso_requestor_phone,
-      pso_requestor_email, pso_billing_code, pso_authorization,
-      process_service_type, process_served_to, process_served_address,
-      process_served_at, process_service_result, process_attempts,
+      weapons_involved, hazard_code, alcohol_involved, drugs_involved, domestic_violence,
+      disposition, zone_beat, sector_id, zone_id, beat_id, responding_le_agency, le_case_number,
+      client_id: requestClientId,
       // Sub-type fields
       road_conditions, traffic_control, vehicle_1_info, vehicle_2_info, diagram_notes,
       patient_status, ems_transport, patient_vitals, treatment_rendered,
       trespass_warning_issued, trespass_effective_date, trespass_expiry_date, property_boundaries,
       force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts,
-      // Operational boolean flags
-      mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
-      gang_related, k9_requested, ems_requested, fire_requested, hazmat,
-      evidence_collected, body_camera_active, photos_taken, vehicle_pursuit, foot_pursuit,
-      le_notified, supervisor_notified, injuries_reported,
+      // Extended operational flags (silently dropped before 2026-04-10 — see audit)
+      injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+      officer_safety_caution, k9_requested, ems_requested, fire_requested, hazmat,
+      gang_related, evidence_collected, body_camera_active, photos_taken,
+      trespass_issued, vehicle_pursuit, foot_pursuit,
+      le_notified, supervisor_notified,
+      // PSO / Process Service fields (silently dropped before 2026-04-19 — gotcha #38 regression)
+      contract_id, pso_service_type, pso_attempt_number,
+      pso_requestor_name, pso_requestor_phone, pso_requestor_email,
+      pso_billing_code, pso_authorization,
+      process_service_type, process_served_to, process_served_address,
+      process_service_result, process_served_at, process_attempts,
     } = req.body;
 
     if (!incident_type) {
@@ -413,7 +443,7 @@ router.post('/', async (req: Request, res: Response) => {
 
     // ── Auto-fill Beat / Zone / Sector from GPS coordinates + 3-Tier lookup ──
     let autoZoneBeat = zone_beat || null;
-    let autoSectionId = section_id || null;
+    let autoSectionId = sector_id || null;
     let autoZoneId = zone_id || null;
     let autoBeatId = beat_id || null;
     if (resolvedLat && resolvedLng) {
@@ -422,18 +452,23 @@ router.post('/', async (req: Request, res: Response) => {
         if (beat) {
           if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
 
-          // Look up 3-tier dispatch district for richer naming
-          const district = db.prepare(
-            'SELECT * FROM dispatch_districts WHERE zone_id = ? AND beat_id = ?'
-          ).get(beat.city_code, beat.district_letter) as any;
+          // Look up 3-tier geography for richer naming
+          const district = db.prepare(`
+            SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                   dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+            FROM dispatch_beats db2
+            JOIN dispatch_zones dz ON dz.id = db2.zone_id
+            JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+            WHERE db2.beat_code = ? LIMIT 1
+          `).get(beat.beat_code) as any;
 
           if (district) {
-            if (!autoSectionId) autoSectionId = district.section_id;
-            if (!autoZoneId) autoZoneId = district.zone_name;
-            if (!autoBeatId) autoBeatId = `${district.beat_name} — ${district.beat_descriptor}`;
+            if (!autoSectionId) autoSectionId = district.sector_code;
+            if (!autoZoneId) autoZoneId = district.zone_code;
+            if (!autoBeatId) autoBeatId = district.beat_code;
           } else {
-            if (!autoBeatId) autoBeatId = beat.beat_id;
-            if (!autoZoneId) autoZoneId = `${beat.city} ${beat.district_letter}${beat.beat_number}`;
+            if (!autoBeatId) autoBeatId = beat.beat_code;
+            if (!autoZoneId) autoZoneId = beat.city_code;
             if (!autoSectionId) autoSectionId = beat.district_letter;
           }
         }
@@ -446,38 +481,44 @@ router.post('/', async (req: Request, res: Response) => {
         occurred_date, occurred_time, end_date, end_time,
         weather_conditions, lighting_conditions,
         injuries, injury_description, damage_estimate, damage_description,
-        weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
-        disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
-        statute_id, statute_citation, citation_fine, client_id, contract_id,
-        pso_service_type, pso_attempt_number, pso_requestor_name, pso_requestor_phone,
-        pso_requestor_email, pso_billing_code, pso_authorization,
-        process_service_type, process_served_to, process_served_address,
-        process_served_at, process_service_result, process_attempts,
+        weapons_involved, hazard_code, alcohol_involved, drugs_involved, domestic_violence,
+        disposition, zone_beat, sector_id, zone_id, beat_id, responding_le_agency, le_case_number,
+        statute_id, statute_citation, citation_fine, client_id,
         road_conditions, traffic_control, vehicle_1_info, vehicle_2_info, diagram_notes,
         patient_status, ems_transport, patient_vitals, treatment_rendered,
         trespass_warning_issued, trespass_effective_date, trespass_expiry_date, property_boundaries,
         force_type, force_justification, subject_injuries, officer_injuries, de_escalation_attempts,
-        mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
-        gang_related, k9_requested, ems_requested, fire_requested, hazmat,
-        evidence_collected, body_camera_active, photos_taken, vehicle_pursuit, foot_pursuit,
-        le_notified, supervisor_notified, injuries_reported,
+        injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+        officer_safety_caution, k9_requested, ems_requested, fire_requested, hazmat,
+        gang_related, evidence_collected, body_camera_active, photos_taken,
+        trespass_issued, vehicle_pursuit, foot_pursuit,
+        le_notified, supervisor_notified,
+        contract_id, pso_service_type, pso_attempt_number,
+        pso_requestor_name, pso_requestor_phone, pso_requestor_email,
+        pso_billing_code, pso_authorization,
+        process_service_type, process_served_to, process_served_address,
+        process_service_result, process_served_at, process_attempts,
         created_at)
       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?, ?,
-        ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?,
+        ?, ?, ?,
         ?, ?, ?,
         ?)
     `).run(
@@ -487,24 +528,28 @@ router.post('/', async (req: Request, res: Response) => {
       occurred_date || null, occurred_time || null, end_date || null, end_time || null,
       weather_conditions || null, lighting_conditions || null,
       injuries ?? 'none', injury_description || null, damage_estimate || null, damage_description || null,
-      weapons_involved || null,
+      weapons_involved || null, hazard_code || null,
       alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
       disposition || null, autoZoneBeat, autoSectionId, autoZoneId, autoBeatId,
       responding_le_agency || null, le_case_number || null,
       statute_id || null, statute_citation || null, citation_fine || null,
-      resolvedClientId, contract_id || null,
-      pso_service_type || null, pso_attempt_number || null, pso_requestor_name || null, pso_requestor_phone || null,
-      pso_requestor_email || null, pso_billing_code || null, pso_authorization || null,
-      process_service_type || null, process_served_to || null, process_served_address || null,
-      process_served_at || null, process_service_result || null, process_attempts || null,
+      resolvedClientId,
       road_conditions || null, traffic_control || null, vehicle_1_info || null, vehicle_2_info || null, diagram_notes || null,
       patient_status || null, ems_transport || null, patient_vitals || null, treatment_rendered || null,
       trespass_warning_issued ? 1 : 0, trespass_effective_date || null, trespass_expiry_date || null, property_boundaries || null,
       force_type || null, force_justification || null, subject_injuries || null, officer_injuries || null, de_escalation_attempts || null,
-      mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0, officer_safety_caution ? 1 : 0,
-      gang_related ? 1 : 0, k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
-      evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
-      le_notified ? 1 : 0, supervisor_notified ? 1 : 0, injuries_reported ? 1 : 0,
+      // Extended operational flags — default to 0 so the DB default wins if the client omits the key
+      injuries_reported ? 1 : 0, mental_health_crisis ? 1 : 0, juvenile_involved ? 1 : 0, felony_in_progress ? 1 : 0,
+      officer_safety_caution ? 1 : 0, k9_requested ? 1 : 0, ems_requested ? 1 : 0, fire_requested ? 1 : 0, hazmat ? 1 : 0,
+      gang_related ? 1 : 0, evidence_collected ? 1 : 0, body_camera_active ? 1 : 0, photos_taken ? 1 : 0,
+      trespass_issued ? 1 : 0, vehicle_pursuit ? 1 : 0, foot_pursuit ? 1 : 0,
+      le_notified ? 1 : 0, supervisor_notified ? 1 : 0,
+      // PSO / Process Service — previously silent-dropped; see gotcha #38
+      contract_id || null, pso_service_type || null, pso_attempt_number ?? null,
+      pso_requestor_name || null, pso_requestor_phone || null, pso_requestor_email || null,
+      pso_billing_code || null, pso_authorization || null,
+      process_service_type || null, process_served_to || null, process_served_address || null,
+      process_service_result || null, process_served_at || null, process_attempts ?? 0,
       (req.user?.role === 'admin' && req.body.created_at) ? req.body.created_at : localNow(),
     );
 
@@ -512,39 +557,22 @@ router.post('/', async (req: Request, res: Response) => {
       auditLog(req, 'ADMIN_OVERRIDE', 'incident', 0, `Admin God Mode: overrode created_at to ${req.body.created_at} on new incident`);
     }
 
-    const incidentId = result.lastInsertRowid;
-
-    // ── Auto-link persons and vehicles from originating call ──
-    if (call_id) {
-      try {
-        const callPersons = db.prepare('SELECT person_id, role, notes FROM call_persons WHERE call_id = ?').all(call_id) as any[];
-        for (const cp of callPersons) {
-          try {
-            db.prepare(
-              'INSERT OR IGNORE INTO incident_persons (incident_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
-            ).run(incidentId, cp.person_id, cp.role || 'involved', cp.notes || null, req.user!.userId);
-          } catch { /* duplicate or FK error — skip */ }
-        }
-        const callVehicles = db.prepare('SELECT vehicle_id, role, notes FROM call_vehicles WHERE call_id = ?').all(call_id) as any[];
-        for (const cv of callVehicles) {
-          try {
-            db.prepare(
-              'INSERT OR IGNORE INTO incident_vehicles (incident_id, vehicle_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
-            ).run(incidentId, cv.vehicle_id, cv.role || 'involved', cv.notes || null, req.user!.userId);
-          } catch { /* duplicate or FK error — skip */ }
-        }
-      } catch (linkErr) {
-        console.error('[Incident] Auto-link from call failed (non-critical):', linkErr);
-      }
-    }
-
-    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(incidentId);
+    const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(result.lastInsertRowid);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'incident_created', 'incident', ?, ?, ?)
-    `).run(req.user!.userId, incidentId, `Created ${incidentNumber}`, req.ip || 'unknown');
+    `).run(req.user!.userId, result.lastInsertRowid, `Created ${incidentNumber}`, req.ip || 'unknown');
 
+    broadcastIncidentUpdate({ action: 'incident_created', id: result.lastInsertRowid, incident });
+    // Dispatcher Brain fan-in (Phase 2): flat-shape broadcast so the
+    // brain's incident-created rule can consume it. Legacy consumers
+    // keep using broadcastIncidentUpdate above.
+    broadcastDispatchUpdate({
+      action: 'incident_created',
+      incident_number: (incident as any)?.incident_number,
+      source_call: (incident as any)?.call_id ?? null,
+    });
     res.status(201).json(incident);
   } catch (error: any) {
     console.error('Create incident error:', error);
@@ -583,7 +611,7 @@ router.put('/:id', async (req: Request, res: Response) => {
       weather_conditions, lighting_conditions,
       injuries, injury_description, damage_estimate, damage_description,
       weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
-      disposition, zone_beat, section_id, zone_id, beat_id, responding_le_agency, le_case_number,
+      disposition, zone_beat, sector_id, zone_id, beat_id, responding_le_agency, le_case_number,
     } = req.body;
 
     // Auto-geocode if address provided/changed but no coordinates
@@ -606,7 +634,6 @@ router.put('/:id', async (req: Request, res: Response) => {
     const iBodyKeys = Object.keys(req.body);
 
     const iFieldMap: Record<string, (v: any) => any> = {
-      call_id: v => v ?? null,
       incident_type: v => v ?? null, priority: v => v ?? null,
       location_address: v => v ?? null, property_id: v => v ?? null,
       latitude: v => v ?? null, longitude: v => v ?? null,
@@ -617,10 +644,12 @@ router.put('/:id', async (req: Request, res: Response) => {
       injuries: v => v ?? null, injury_description: v => v ?? null,
       damage_estimate: v => v ?? null, damage_description: v => v ?? null,
       weapons_involved: v => v ?? null,
+      // F7: structured hazard code (HAZARD_CODE_OPTIONS in F2 enum module)
+      hazard_code: v => v ?? null,
       alcohol_involved: v => v ? 1 : 0, drugs_involved: v => v ? 1 : 0,
       domestic_violence: v => v ? 1 : 0,
       disposition: v => v ?? null, zone_beat: v => v ?? null,
-      section_id: v => v ?? null, zone_id: v => v ?? null, beat_id: v => v ?? null,
+      sector_id: v => v ?? null, zone_id: v => v ?? null, beat_id: v => v ?? null,
       responding_le_agency: v => v ?? null, le_case_number: v => v ?? null,
       statute_id: v => v ?? null, statute_citation: v => v ?? null, citation_fine: v => v ?? null,
       client_id: v => v ?? null,
@@ -635,41 +664,40 @@ router.put('/:id', async (req: Request, res: Response) => {
       force_type: v => v ?? null, force_justification: v => v ?? null,
       subject_injuries: v => v ?? null, officer_injuries: v => v ?? null,
       de_escalation_attempts: v => v ?? null,
-      // PSO Client Request fields
+      // Extended operational flags (previously silent-dropped — see audit 2026-04-10)
+      injuries_reported: v => v ? 1 : 0,
+      mental_health_crisis: v => v ? 1 : 0,
+      juvenile_involved: v => v ? 1 : 0,
+      felony_in_progress: v => v ? 1 : 0,
+      officer_safety_caution: v => v ? 1 : 0,
+      k9_requested: v => v ? 1 : 0,
+      ems_requested: v => v ? 1 : 0,
+      fire_requested: v => v ? 1 : 0,
+      hazmat: v => v ? 1 : 0,
+      gang_related: v => v ? 1 : 0,
+      evidence_collected: v => v ? 1 : 0,
+      body_camera_active: v => v ? 1 : 0,
+      photos_taken: v => v ? 1 : 0,
+      trespass_issued: v => v ? 1 : 0,
+      vehicle_pursuit: v => v ? 1 : 0,
+      foot_pursuit: v => v ? 1 : 0,
+      le_notified: v => v ? 1 : 0,
+      supervisor_notified: v => v ? 1 : 0,
+      // PSO / Process Service — previously silent-dropped in PUT handler (gotcha #38)
+      contract_id: v => v ?? null,
       pso_service_type: v => v ?? null,
-      pso_attempt_number: v => v != null ? Number(v) || null : null,
+      pso_attempt_number: v => v ?? null,
       pso_requestor_name: v => v ?? null,
       pso_requestor_phone: v => v ?? null,
       pso_requestor_email: v => v ?? null,
       pso_billing_code: v => v ?? null,
       pso_authorization: v => v ?? null,
-      // Process Service fields
       process_service_type: v => v ?? null,
       process_served_to: v => v ?? null,
       process_served_address: v => v ?? null,
       process_service_result: v => v ?? null,
       process_served_at: v => v ?? null,
-      process_attempts: v => v != null ? Number(v) || null : null,
-      // Contract / Client
-      contract_id: v => v ?? null,
-      // Operational boolean flags
-      mental_health_crisis: v => v ? 1 : 0,
-      juvenile_involved: v => v ? 1 : 0,
-      felony_in_progress: v => v ? 1 : 0,
-      officer_safety_caution: v => v ? 1 : 0,
-      gang_related: v => v ? 1 : 0,
-      k9_requested: v => v ? 1 : 0,
-      ems_requested: v => v ? 1 : 0,
-      fire_requested: v => v ? 1 : 0,
-      hazmat: v => v ? 1 : 0,
-      evidence_collected: v => v ? 1 : 0,
-      body_camera_active: v => v ? 1 : 0,
-      photos_taken: v => v ? 1 : 0,
-      vehicle_pursuit: v => v ? 1 : 0,
-      foot_pursuit: v => v ? 1 : 0,
-      le_notified: v => v ? 1 : 0,
-      supervisor_notified: v => v ? 1 : 0,
-      injuries_reported: v => v ? 1 : 0,
+      process_attempts: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(iFieldMap)) {
@@ -705,6 +733,7 @@ router.put('/:id', async (req: Request, res: Response) => {
     `).run(req.user!.userId, req.params.id, `Updated incident ${incident.incident_number}`, req.ip || 'unknown');
 
     const updated = db.prepare('SELECT * FROM incidents WHERE id = ?').get(req.params.id);
+    broadcastIncidentUpdate({ action: 'incident_updated', id: Number(req.params.id), incident: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('Update incident error:', error);
@@ -750,6 +779,7 @@ router.delete('/:id', (req: Request, res: Response) => {
     });
     deleteIncTx();
 
+    broadcastIncidentUpdate({ action: 'incident_deleted', id: incident.id });
     res.json({ message: 'Incident deleted' });
   } catch (error: any) {
     console.error('Delete incident error:', error);
@@ -863,7 +893,7 @@ router.put('/:id/approve', requireRole('admin', 'manager', 'supervisor'), (req: 
     db.prepare(`
       UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = ?, updated_at = ?
       WHERE id = ?
-    `).run(req.user!.userId, now, now, incident.id);
+    `).run(req.user!.userId, now, localNow(), incident.id);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -1048,6 +1078,106 @@ router.delete('/:id/persons/:personId', (req: Request, res: Response) => {
   }
 });
 
+// ─── BUSINESS LINKING (Task 1.10) ────────────────────
+// POST/PUT/DELETE incident_businesses links. Mirrors business_persons
+// pattern (records.ts) — role enum validation, audit + WS broadcast.
+const VALID_INCIDENT_BUSINESS_ROLES = [
+  'victim', 'reporting_party', 'witness', 'suspect_affiliated', 'involved', 'other'
+] as const;
+
+router.post('/:id/businesses',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const incidentId = parseInt(paramStr(req.params.id as any), 10);
+      const { business_id, role, notes } = req.body;
+      const effectiveRole = role ?? 'involved';
+      if (!VALID_INCIDENT_BUSINESS_ROLES.includes(effectiveRole)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_INCIDENT_BUSINESS_ROLES] });
+        return;
+      }
+      const db = getDb();
+      const incident = db.prepare('SELECT id FROM incidents WHERE id = ?').get(incidentId);
+      if (!incident) { res.status(404).json({ error: 'Incident not found' }); return; }
+      const business = db.prepare('SELECT id FROM businesses WHERE id = ?').get(business_id);
+      if (!business) { res.status(404).json({ error: 'Business not found' }); return; }
+
+      try {
+        const result = db.prepare(`
+          INSERT INTO incident_businesses (incident_id, business_id, role, notes, added_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(incidentId, business_id, effectiveRole, notes || null, req.user?.userId ?? null);
+        const row = db.prepare('SELECT * FROM incident_businesses WHERE id = ?').get(result.lastInsertRowid);
+        auditLog(req, 'CREATE', 'incident_business_link', Number(result.lastInsertRowid), null, row);
+        broadcastDispatchUpdate({ action: 'incident_businesses_updated', incident_id: incidentId });
+        res.status(201).json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Business already linked to this incident' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create incident-business link: ' + err.message });
+    }
+  }
+);
+
+router.put('/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const incidentId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM incident_businesses WHERE id = ? AND incident_id = ?').get(linkId, incidentId) as any;
+      if (!existing) { res.status(404).json({ error: 'Incident-business link not found' }); return; }
+
+      const { role, notes } = req.body;
+      if (role !== undefined && !VALID_INCIDENT_BUSINESS_ROLES.includes(role)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_INCIDENT_BUSINESS_ROLES] });
+        return;
+      }
+
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role !== undefined)  { updates.push('role = ?');  values.push(role); }
+      if (notes !== undefined) { updates.push('notes = ?'); values.push(notes || null); }
+      if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      values.push(linkId);
+
+      db.prepare(`UPDATE incident_businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      const row = db.prepare('SELECT * FROM incident_businesses WHERE id = ?').get(linkId);
+      auditLog(req, 'UPDATE', 'incident_business_link', linkId, existing, row);
+      broadcastDispatchUpdate({ action: 'incident_businesses_updated', incident_id: incidentId });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update incident-business link: ' + err.message });
+    }
+  }
+);
+
+router.delete('/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const incidentId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM incident_businesses WHERE id = ? AND incident_id = ?').get(linkId, incidentId);
+      if (!existing) { res.status(404).json({ error: 'Incident-business link not found' }); return; }
+
+      db.prepare('DELETE FROM incident_businesses WHERE id = ?').run(linkId);
+      auditLog(req, 'DELETE', 'incident_business_link', linkId, existing, null);
+      broadcastDispatchUpdate({ action: 'incident_businesses_updated', incident_id: incidentId });
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete incident-business link: ' + err.message });
+    }
+  }
+);
+
 // ─── VEHICLE LINKING ─────────────────────────────────
 
 // POST /api/incidents/:id/vehicles - Link vehicle to incident
@@ -1204,8 +1334,12 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
       photo_taken, lab_submitted, lab_case_number, lab_name,
       disposal_method, disposal_date, disposal_authorized_by,
       serial_number, brand, model, estimated_value, category,
-      location_found, condition, quantity, is_biological,
-      narcotics_flag, temperature_sensitive, notes,
+      // Previously silent-dropped fields (audit 2026-04-11) — including
+      // is_biological and narcotics_flag which are SAFETY-CRITICAL
+      // evidence handling flags collected by EvidenceFormModal but never
+      // persisted, putting officers and storage compliance at risk.
+      location_found, condition, quantity,
+      is_biological, narcotics_flag, temperature_sensitive, notes,
     } = req.body;
     if (!description || !evidence_type) {
       res.status(400).json({ error: 'description and evidence_type are required', code: 'DESCRIPTION_AND_EVIDENCETYPE_ARE' });
@@ -1231,11 +1365,13 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
         collected_date, packaging_type, dimensions, weight,
         photo_taken, lab_submitted, lab_case_number, lab_name,
         disposal_method, disposal_date, disposal_authorized_by,
-        serial_number, brand, model, estimated_value, category, notes,
-        location_found, condition, quantity, is_biological,
-        narcotics_flag, temperature_sensitive
+        serial_number, brand, model, estimated_value, category,
+        location_found, condition, quantity,
+        is_biological, narcotics_flag, temperature_sensitive, notes
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?)
     `).run(
       evidenceNumber, incident.id, description, evidence_type,
       storage_location || null, req.user!.userId,
@@ -1243,13 +1379,10 @@ router.post('/:id/evidence', (req: Request, res: Response) => {
       photo_taken ? 1 : 0, lab_submitted ? 1 : 0, lab_case_number || null, lab_name || null,
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
       serial_number || null, brand || null, model || null, estimated_value || null, category || null,
-      notes || null,
-      location_found || null,
-      condition || null,
-      quantity != null && quantity !== '' ? parseInt(quantity, 10) : 1,
-      is_biological ? 1 : 0,
-      narcotics_flag ? 1 : 0,
-      temperature_sensitive ? 1 : 0,
+      location_found || null, condition || null,
+      quantity === '' || quantity == null ? null : (parseInt(quantity, 10) || null),
+      is_biological ? 1 : 0, narcotics_flag ? 1 : 0, temperature_sensitive ? 1 : 0,
+      notes || null
     );
 
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(result.lastInsertRowid);
@@ -1751,7 +1884,7 @@ router.put('/:id/link-call', requireRole('admin', 'manager', 'supervisor', 'offi
   try {
     const db = getDb();
     const { call_id } = req.body;
-    const id = parseInt(req.params.id as string, 10);
+    const id = parseInt(paramStr(req.params.id), 10);
     if (isNaN(id)) { res.status(400).json({ error: 'Invalid incident ID' }); return; }
 
     const incident = db.prepare('SELECT * FROM incidents WHERE id = ?').get(id) as any;
@@ -1814,7 +1947,7 @@ router.get('/:id/offenses', requireRole('admin', 'manager', 'supervisor', 'offic
     const db = getDb();
     const offenses = db.prepare(`
       SELECT io.*,
-        s.statute_number, s.title as statute_title, s.category as statute_category,
+        s.citation AS statute_number, s.title as statute_title, s.category as statute_category,
         sp.first_name as suspect_first, sp.last_name as suspect_last,
         vp.first_name as victim_first, vp.last_name as victim_last
       FROM incident_offenses io
@@ -1846,7 +1979,7 @@ router.post('/:id/offenses', requireRole('admin', 'manager', 'supervisor', 'offi
     `).run(req.params.id, offense_code, statute_id || null, description, offense_date, offense_level || 'misdemeanor',
       ucr_code, nibrs_code, attempted_completed || 'completed', suspect_person_id || null, victim_person_id || null,
       location_type, weapon_force, criminal_activity, bias_motivation, counts || 1, notes, userId);
-    auditLog(req, 'CREATE', 'incident_offenses', result.lastInsertRowid as number, JSON.stringify(req.body));
+    auditLog(req, 'CREATE', 'incident_offenses', result.lastInsertRowid as number, null, req.body);
     const offense = db.prepare('SELECT * FROM incident_offenses WHERE id = ?').get(result.lastInsertRowid);
     res.json(offense);
   } catch (err: any) {
@@ -1903,59 +2036,130 @@ router.get('/:id/officers', requireRole('admin', 'manager', 'supervisor', 'offic
   }
 });
 
-router.post('/:id/officers', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+router.post('/:id/officers', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const userId = (req as any).user?.userId || (req as any).user?.id;
-    const { officer_id, role, arrived_at, departed_at, action_taken, notes } = req.body;
-    if (!officer_id) { res.status(400).json({ error: 'officer_id required' }); return; }
+    const incidentId = Number(req.params.id);
+    const officerId = Number(req.body?.officer_id);
+
+    if (!Number.isInteger(officerId) || officerId < 1) {
+      res.status(400).json({ error: 'A valid officer_id is required' });
+      return;
+    }
+
+    const incident = db.prepare('SELECT id FROM incidents WHERE id = ?').get(incidentId) as { id: number } | undefined;
+    if (!incident) {
+      res.status(404).json({ error: 'Incident not found' });
+      return;
+    }
+
+    const officerUser = db.prepare(`
+      SELECT id, full_name, role, status
+      FROM users
+      WHERE id = ?
+    `).get(officerId) as { id: number; full_name: string; role: string; status: string } | undefined;
+
+    if (!officerUser) {
+      res.status(404).json({ error: 'Officer user not found' });
+      return;
+    }
+
+    if (officerUser.status !== 'active') {
+      res.status(400).json({ error: 'Only active personnel can be added to an incident' });
+      return;
+    }
+
+    if (!INCIDENT_OFFICER_USER_ROLES.has(officerUser.role)) {
+      res.status(400).json({ error: 'Selected user cannot be assigned as an incident officer' });
+      return;
+    }
+
+    const requestedRole = typeof req.body?.role === 'string' && INCIDENT_OFFICER_ENTRY_ROLES.has(req.body.role)
+      ? req.body.role
+      : 'responding';
+    const arrivedAt = normalizeOptionalText(req.body?.arrived_at);
+    const departedAt = normalizeOptionalText(req.body?.departed_at);
+    const actionTaken = normalizeOptionalText(req.body?.action_taken);
+    const notes = normalizeOptionalText(req.body?.notes);
+
+    const existing = db.prepare(`
+      SELECT id, role, arrived_at, departed_at, action_taken, notes
+      FROM incident_officers
+      WHERE incident_id = ? AND officer_id = ?
+    `).get(incidentId, officerId) as {
+      id: number;
+      role: string;
+      arrived_at: string | null;
+      departed_at: string | null;
+      action_taken: string | null;
+      notes: string | null;
+    } | undefined;
+
+    if (existing) {
+      const updates: string[] = [];
+      const values: Array<string | number | null> = [];
+
+      const shouldPromoteRole = requestedRole !== existing.role && (requestedRole !== 'responding' || existing.role === 'responding');
+      if (shouldPromoteRole) {
+        updates.push('role = ?');
+        values.push(requestedRole);
+      }
+      if (arrivedAt) {
+        updates.push('arrived_at = ?');
+        values.push(arrivedAt);
+      }
+      if (departedAt) {
+        updates.push('departed_at = ?');
+        values.push(departedAt);
+      }
+      if (actionTaken) {
+        updates.push('action_taken = ?');
+        values.push(actionTaken);
+      }
+      if (notes) {
+        updates.push('notes = ?');
+        values.push(notes);
+      }
+
+      if (updates.length === 0) {
+        res.status(409).json({ error: `${officerUser.full_name} is already assigned to this incident` });
+        return;
+      }
+
+      values.push(existing.id, incidentId);
+      db.prepare(`
+        UPDATE incident_officers
+        SET ${updates.join(', ')}
+        WHERE id = ? AND incident_id = ?
+      `).run(...values);
+
+      const updatedOfficer = db.prepare(`
+        SELECT io.*, u.first_name, u.last_name, u.badge_number, u.rank
+        FROM incident_officers io
+        JOIN users u ON u.id = io.officer_id
+        WHERE io.id = ?
+      `).get(existing.id) as Record<string, unknown>;
+
+      auditLog(req, 'incident_updated', 'incident_officers', existing.id, existing, req.body);
+      res.json({ ...updatedOfficer, updated_existing: true });
+      return;
+    }
+
     const result = db.prepare(`
       INSERT INTO incident_officers (incident_id, officer_id, role, arrived_at, departed_at, action_taken, notes, added_by)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(req.params.id, officer_id, role || 'responding', arrived_at, departed_at, action_taken, notes, userId);
+    `).run(incidentId, officerId, requestedRole, arrivedAt, departedAt, actionTaken, notes, userId);
     const officer = db.prepare(`
       SELECT io.*, u.first_name, u.last_name, u.badge_number, u.rank
       FROM incident_officers io JOIN users u ON u.id = io.officer_id
       WHERE io.id = ?
-    `).get(result.lastInsertRowid);
-    auditLog(req, 'CREATE', 'incident_officers', result.lastInsertRowid as number, JSON.stringify(req.body));
-    res.json(officer);
+    `).get(result.lastInsertRowid) as Record<string, unknown>;
+    auditLog(req, 'CREATE', 'incident_officers', result.lastInsertRowid as number, null, req.body);
+    res.json({ ...officer, updated_existing: false });
   } catch (err: any) {
-    if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Officer already added to this incident' }); return; }
     if (err?.message?.includes('no such table')) { res.status(500).json({ error: 'Officer tracking not yet initialized' }); return; }
     res.status(500).json({ error: 'Failed to add officer' });
-  }
-});
-
-// PUT /api/incidents/:id/officers/:linkId — Update officer assignment details
-router.put('/:id/officers/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const fields = ['role', 'arrived_at', 'departed_at', 'action_taken', 'notes'];
-    const updates: string[] = [];
-    const values: any[] = [];
-    for (const f of fields) {
-      if (req.body[f] !== undefined) {
-        updates.push(`${f} = ?`);
-        values.push(req.body[f] ?? null);
-      }
-    }
-    if (updates.length === 0) {
-      res.status(400).json({ error: 'No fields to update' });
-      return;
-    }
-    values.push(req.params.linkId, req.params.id);
-    db.prepare(`UPDATE incident_officers SET ${updates.join(', ')} WHERE id = ? AND incident_id = ?`).run(...values);
-    const updated = db.prepare(`
-      SELECT io.*, u.full_name as officer_name, u.badge_number, u.rank
-      FROM incident_officers io
-      LEFT JOIN users u ON u.id = io.officer_id
-      WHERE io.id = ?
-    `).get(req.params.linkId);
-    res.json(updated || { success: true });
-  } catch (err: any) {
-    console.error('Update officer error:', err);
-    res.status(500).json({ error: 'Failed to update officer' });
   }
 });
 
@@ -1971,88 +2175,67 @@ router.delete('/:id/officers/:linkId', requireRole('admin', 'manager', 'supervis
 // INCIDENT LINKS — Cross-reference to other records
 // ════════════════════════════════════════════════════════════
 
-// GET /api/incidents/link-search — Search linkable records by human-readable identifier
+// ── Link Search — search records by visible reference numbers ──
+// Called by AddLinkModal to find records to cross-reference.
+// Searches by: incident_number, call_number, case_number, warrant_number,
+// citation_number, or booking number — the identifiers users actually see.
 router.get('/link-search', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const type = req.query.type as string;
     const q = (req.query.q as string || '').trim();
-    if (!type || q.length < 2) {
-      res.status(400).json({ error: 'type and q (min 2 chars) are required' });
-      return;
-    }
-    const searchTerm = `%${q}%`;
-    let results: { id: number; label: string; status: string }[] = [];
+    if (!type || !q || q.length < 2) { res.json([]); return; }
 
-    switch (type) {
-      case 'incident':
-        results = (db.prepare(`
-          SELECT id, incident_number, incident_type, status FROM incidents
-          WHERE incident_number LIKE ? ORDER BY created_at DESC LIMIT 15
-        `).all(searchTerm) as any[]).map(r => ({
-          id: r.id,
-          label: `${r.incident_number} — ${(r.incident_type || '').replace(/_/g, ' ')}`,
-          status: r.status || '',
-        }));
-        break;
-      case 'call':
-        results = (db.prepare(`
-          SELECT id, call_number, incident_type, status FROM calls_for_service
-          WHERE call_number LIKE ? ORDER BY created_at DESC LIMIT 15
-        `).all(searchTerm) as any[]).map(r => ({
-          id: r.id,
-          label: `${r.call_number} — ${(r.incident_type || '').replace(/_/g, ' ')}`,
-          status: r.status || '',
-        }));
-        break;
-      case 'case':
-        results = (db.prepare(`
-          SELECT id, case_number, case_type, status FROM cases
-          WHERE case_number LIKE ? ORDER BY created_at DESC LIMIT 15
-        `).all(searchTerm) as any[]).map(r => ({
-          id: r.id,
-          label: `${r.case_number} — ${r.case_type || ''}`,
-          status: r.status || '',
-        }));
-        break;
-      case 'warrant':
-        results = (db.prepare(`
-          SELECT id, warrant_number, charge_description, status FROM warrants
-          WHERE warrant_number LIKE ? ORDER BY created_at DESC LIMIT 15
-        `).all(searchTerm) as any[]).map(r => ({
-          id: r.id,
-          label: `${r.warrant_number} — ${(r.charge_description || '').substring(0, 40)}`,
-          status: r.status || '',
-        }));
-        break;
-      case 'citation':
-        results = (db.prepare(`
-          SELECT id, citation_number, violation_description, status FROM citations
-          WHERE citation_number LIKE ? ORDER BY created_at DESC LIMIT 15
-        `).all(searchTerm) as any[]).map(r => ({
-          id: r.id,
-          label: `${r.citation_number} — ${(r.violation_description || '').substring(0, 40)}`,
-          status: r.status || '',
-        }));
-        break;
-      case 'arrest':
-        results = (db.prepare(`
-          SELECT id, booking_number, charges, status FROM arrest_records
-          WHERE booking_number LIKE ? ORDER BY created_at DESC LIMIT 15
-        `).all(searchTerm) as any[]).map(r => ({
-          id: r.id,
-          label: r.booking_number || `Arrest #${r.id}`,
-          status: r.status || '',
-        }));
-        break;
-      default:
-        res.status(400).json({ error: `Invalid type. Must be: incident, call, case, warrant, citation, arrest` });
-        return;
+    const like = `%${q}%`;
+    let results: any[] = [];
+
+    if (type === 'incident') {
+      results = db.prepare(`
+        SELECT id, incident_number as label, incident_type as type, status, priority
+        FROM incidents
+        WHERE incident_number LIKE ? OR narrative LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like);
+    } else if (type === 'call') {
+      results = db.prepare(`
+        SELECT id, call_number as label, incident_type as type, status, priority
+        FROM calls_for_service
+        WHERE call_number LIKE ? OR case_number LIKE ? OR description LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like, like);
+    } else if (type === 'case') {
+      results = db.prepare(`
+        SELECT id, case_number as label, case_type as type, status
+        FROM cases
+        WHERE case_number LIKE ? OR title LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like);
+    } else if (type === 'warrant') {
+      results = db.prepare(`
+        SELECT id, warrant_number as label, type, status
+        FROM warrants
+        WHERE warrant_number LIKE ? OR suspect_name LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like);
+    } else if (type === 'citation') {
+      results = db.prepare(`
+        SELECT id, citation_number as label, violation_description as type, status
+        FROM citations
+        WHERE citation_number LIKE ? OR violation_description LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like);
+    } else if (type === 'arrest') {
+      results = db.prepare(`
+        SELECT id, booking_number as label, charge as type, status
+        FROM arrest_records
+        WHERE booking_number LIKE ? OR last_name LIKE ? OR first_name LIKE ?
+        ORDER BY created_at DESC LIMIT 20
+      `).all(like, like, like);
     }
+
     res.json(results);
   } catch (err: any) {
     if (err?.message?.includes('no such table')) { res.json([]); return; }
-    console.error('[Incidents] Link search error:', err?.message);
     res.status(500).json({ error: 'Link search failed' });
   }
 });
@@ -2094,16 +2277,11 @@ router.post('/:id/links', requireRole('admin', 'manager', 'supervisor', 'officer
     const userId = (req as any).user?.userId || (req as any).user?.id;
     const { linked_type, linked_id, link_reason } = req.body;
     if (!linked_type || !linked_id) { res.status(400).json({ error: 'linked_type and linked_id required' }); return; }
-    const validLinkTypes = ['incident', 'call', 'case', 'warrant', 'citation', 'arrest', 'person', 'vehicle', 'property', 'evidence'];
-    if (!validLinkTypes.includes(linked_type)) {
-      res.status(400).json({ error: `Invalid linked_type. Must be one of: ${validLinkTypes.join(', ')}`, code: 'INVALID_LINKED_TYPE' });
-      return;
-    }
     const result = db.prepare(`
       INSERT INTO incident_links (incident_id, linked_type, linked_id, link_reason, added_by)
       VALUES (?, ?, ?, ?, ?)
     `).run(req.params.id, linked_type, linked_id, link_reason, userId);
-    auditLog(req, 'CREATE', 'incident_links', result.lastInsertRowid as number, JSON.stringify(req.body));
+    auditLog(req, 'CREATE', 'incident_links', result.lastInsertRowid as number, null, req.body);
     res.json({ success: true, id: result.lastInsertRowid });
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) { res.status(409).json({ error: 'Link already exists' }); return; }
@@ -2144,8 +2322,8 @@ router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer',
 
     try {
       persons = db.prepare(`
-        SELECT ip.*, p.first_name, p.last_name, p.dob, p.gender, p.race, p.phone, p.address,
-          p.dl_number, p.flags
+        SELECT ip.*, p.first_name, p.last_name, p.date_of_birth, p.gender, p.race, p.phone, p.address,
+          p.drivers_license_number, p.flags
         FROM incident_persons ip JOIN persons p ON p.id = ip.person_id
         WHERE ip.incident_id = ? ORDER BY CASE ip.role WHEN 'suspect' THEN 0 WHEN 'victim' THEN 1 WHEN 'witness' THEN 2 ELSE 3 END
       `).all(req.params.id);
@@ -2161,7 +2339,7 @@ router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer',
 
     try {
       offenses = db.prepare(`
-        SELECT io.*, s.statute_number, s.title as statute_title,
+        SELECT io.*, s.citation AS statute_number, s.title as statute_title,
           sp.first_name as suspect_first, sp.last_name as suspect_last,
           vp.first_name as victim_first, vp.last_name as victim_last
         FROM incident_offenses io
@@ -2199,19 +2377,6 @@ router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer',
       `).all(req.params.id);
     } catch { /* table may not exist */ }
 
-    // Fetch originating call data if this incident was promoted from dispatch
-    let call: any = null;
-    if (incident.call_id) {
-      try {
-        call = db.prepare(`
-          SELECT call_number, incident_type, priority, status, location_address,
-            caller_name, caller_phone, description, disposition,
-            created_at, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at
-          FROM calls_for_service WHERE id = ?
-        `).get(incident.call_id);
-      } catch { /* non-critical */ }
-    }
-
     res.json({
       ...incident,
       persons,
@@ -2221,7 +2386,6 @@ router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer',
       links,
       evidence,
       supplements,
-      call,
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to load full incident' });
@@ -2237,20 +2401,20 @@ router.get('/mni/search', requireRole('admin', 'manager', 'supervisor', 'officer
     const db = getDb();
     const q = (req.query.q as string || '').trim();
     if (q.length < 2) { res.status(400).json({ error: 'Search query must be at least 2 characters' }); return; }
-    const limit = Math.min(50, parseInt(req.query.limit as string, 10) || 25);
+    const limit = Math.min(100000, Math.max(1, (parseInt(req.query.limit as string, 10)) || 100000));
     const like = `%${q}%`;
 
     // Search persons table
     const persons = db.prepare(`
-      SELECT p.id, p.first_name, p.last_name, p.dob, p.gender, p.race,
-        p.dl_number, p.phone, p.address, p.flags,
+      SELECT p.id, p.first_name, p.last_name, p.date_of_birth, p.gender, p.race,
+        p.drivers_license_number, p.phone, p.address, p.flags,
         (SELECT COUNT(*) FROM incident_persons WHERE person_id = p.id) as incident_count,
         (SELECT COUNT(*) FROM call_persons WHERE person_id = p.id) as call_count,
         (SELECT GROUP_CONCAT(DISTINCT ip.role) FROM incident_persons ip WHERE ip.person_id = p.id) as known_roles
       FROM persons p
       WHERE p.first_name || ' ' || p.last_name LIKE ?
         OR p.last_name LIKE ?
-        OR p.dl_number LIKE ?
+        OR p.drivers_license_number LIKE ?
         OR p.phone LIKE ?
         OR p.ssn LIKE ?
       ORDER BY p.last_name, p.first_name

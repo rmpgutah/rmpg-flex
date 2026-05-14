@@ -77,7 +77,8 @@ function formatCurrency(val: number | null | undefined): string {
   return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(val);
 }
 
-function toDisplayLabel(s: string): string {
+function toDisplayLabel(s: string | undefined | null): string {
+  if (!s) return '—';
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
@@ -163,7 +164,7 @@ export default function ReportsTab() {
             icon={Target}
             label="Leads This Month"
             value={String(metrics?.leads_this_month || 0)}
-            color="text-cyan-400"
+            color="text-gray-400"
           />
           <MetricCard
             icon={FileText}
@@ -271,7 +272,7 @@ export default function ReportsTab() {
             </thead>
             <tbody>
               {leadSourceROI.map(row => (
-                <tr key={row.source} className="border-b border-rmpg-700/30 hover:bg-[#141414]">
+                <tr key={row.source} className="border-b border-rmpg-700/30 hover:bg-[#181818]">
                   <td className="px-2 py-1.5 text-xs text-white">{SOURCE_LABELS[row.source] || toDisplayLabel(row.source)}</td>
                   <td className="px-2 py-1.5 text-xs text-rmpg-300 text-right font-mono">{row.total}</td>
                   <td className="px-2 py-1.5 text-xs text-green-400 text-right font-mono">{row.won}</td>

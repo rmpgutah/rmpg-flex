@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel: Credentials Tab (All Credentials)
 // ============================================================
 
-import React, { useEffect, useMemo } from 'react';
+import { useEffect, useMemo } from 'react';
 import {
   Award, AlertTriangle, CheckCircle, Plus, Edit3, Trash2, ShieldAlert,
 } from 'lucide-react';

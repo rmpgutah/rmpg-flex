@@ -85,7 +85,7 @@ router.get('/', authenticateToken, (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { vehicle_id, unit_id, case_number, search, limit: limitStr, offset: offsetStr } = req.query;
-    const limit = Math.min(parseInt(String(limitStr), 10) || 50, 500);
+    const limit = Math.min(100000, Math.max(1, (parseInt(String(limitStr), 10)) || 100000));
     const offset = Math.max(0, Math.min(parseInt(String(offsetStr), 10) || 0, 10000));
 
     let query = `
@@ -278,56 +278,55 @@ router.put('/:id', validateParamIdMiddleware, authenticateToken, requireRole('ad
       return;
     }
 
-    const {
-      title, vehicle_id, unit_id, recorded_at, case_number,
-      classification, speed_mph, latitude, longitude, address, notes,
-    } = req.body;
-
     // Validate fields if provided
-    if (title !== undefined && (typeof title !== 'string' || title.length > 500)) {
+    if (req.body.title !== undefined && (typeof req.body.title !== 'string' || req.body.title.length > 500)) {
       res.status(400).json({ error: 'Title must be 500 characters or less', code: 'TITLE_MUST_BE_500' });
       return;
     }
-    const validClassifications = ['routine', 'evidence', 'incident', 'training', 'other'];
-    if (classification && !validClassifications.includes(classification)) {
+    // Audit 2026-04-11: client offered 'flagged' and 'restricted' but server
+    // rejected them — Save button silently failed. Added both to the allowlist.
+    const validClassifications = ['routine', 'evidence', 'incident', 'training', 'flagged', 'restricted', 'other'];
+    if (req.body.classification && !validClassifications.includes(req.body.classification)) {
       res.status(400).json({ error: `Classification must be one of: ${validClassifications.join(', ')}` });
       return;
     }
-    if (notes !== undefined && notes !== null && typeof notes === 'string' && notes.length > 10000) {
+    if (req.body.notes !== undefined && req.body.notes !== null && typeof req.body.notes === 'string' && req.body.notes.length > 10000) {
       res.status(400).json({ error: 'Notes must be 10000 characters or less', code: 'NOTES_MUST_BE_10000' });
       return;
     }
 
-    db.prepare(`
-      UPDATE dashcam_videos SET
-        title = COALESCE(?, title),
-        vehicle_id = ?,
-        unit_id = ?,
-        recorded_at = COALESCE(?, recorded_at),
-        case_number = ?,
-        classification = COALESCE(?, classification),
-        speed_mph = ?,
-        latitude = ?,
-        longitude = ?,
-        address = ?,
-        notes = ?,
-        updated_at = ?
-      WHERE id = ?
-    `).run(
-      title || null,
-      vehicle_id ?? existing.vehicle_id,
-      unit_id ?? existing.unit_id,
-      recorded_at || null,
-      case_number ?? existing.case_number,
-      classification || null,
-      speed_mph != null ? parseFloat(String(speed_mph)) : existing.speed_mph,
-      latitude != null ? parseFloat(String(latitude)) : existing.latitude,
-      longitude != null ? parseFloat(String(longitude)) : existing.longitude,
-      address ?? existing.address,
-      notes ?? existing.notes,
-      localNow(),
-      id,
-    );
+    // Audit 2026-04-11: previous handler used `?? existing.X` preserve-on-
+    // null pattern that meant the user could never CLEAR a field by sending
+    // null. Switched to a dynamic SET clause gated by hasOwnProperty so
+    // explicit nulls now write through correctly and only fields actually
+    // present in the request body are touched.
+    const fieldMap: Record<string, (v: any) => any> = {
+      title: v => v ?? null,
+      vehicle_id: v => v ?? null,
+      unit_id: v => v ?? null,
+      recorded_at: v => v ?? null,
+      case_number: v => v ?? null,
+      classification: v => v ?? null,
+      speed_mph: v => v == null ? null : parseFloat(String(v)),
+      latitude: v => v == null ? null : parseFloat(String(v)),
+      longitude: v => v == null ? null : parseFloat(String(v)),
+      address: v => v ?? null,
+      notes: v => v ?? null,
+    };
+    const sets: string[] = [];
+    const values: any[] = [];
+    for (const [key, transform] of Object.entries(fieldMap)) {
+      if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+        sets.push(`${key} = ?`);
+        values.push(transform(req.body[key]));
+      }
+    }
+    if (sets.length === 0) { res.status(400).json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }); return; }
+    sets.push('updated_at = ?');
+    values.push(localNow());
+    values.push(id);
+    db.prepare(`UPDATE dashcam_videos SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+    const title = req.body.title;
 
     auditLog(req, 'dashcam_updated', 'dashcam_video', id, `Updated dash cam video: ${title || existing.title}`);
     broadcast('fleet', 'dashcam_updated', { id });

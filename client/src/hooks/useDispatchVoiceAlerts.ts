@@ -51,7 +51,7 @@ function normalizeCallForVoice(raw: any): any {
     // Zone/beat — DB stores zone_beat as "Z3/B1" or separate fields
     zone: raw.zone || raw.zone_name || raw.zone_id || (raw.zone_beat ? raw.zone_beat.split('/')[0]?.replace(/^Z/i, '') : '') || '',
     beat: raw.beat || raw.beat_name || raw.beat_id || (raw.zone_beat ? raw.zone_beat.split('/')[1]?.replace(/^B/i, '') : '') || '',
-    section_name: raw.section_name || '',
+    sector_name: raw.sector_name || '',
     beat_descriptor: raw.beat_descriptor || '',
     // Narrative
     narrative: raw.narrative || raw.description || '',
@@ -356,7 +356,7 @@ export function useDispatchVoiceAlerts(options?: {
         const alertType = data.alert_type || data.type || 'Safety alert';
         const location = data.location || data.address || 'unknown location';
         const unit = data.call_sign || data.unit || '';
-        const text = `Safety alert. ${alertType.replace(/_/g, ' ')}${unit ? ` reported by ${unit}` : ''} at ${location}.`;
+        const text = `Safety alert. ${alertType.replace(/_/g, ' ').toUpperCase()}${unit ? ` reported by ${unit}` : ''} at ${location}.`;
         const sev: AlertSeverity = ['officer_down', 'active_shooter', 'shots_fired'].includes(alertType) ? 'major' : 'moderate';
         speak(text, sev);
         onAlert?.({ id: nextAlertId(), severity: sev, title: 'SAFETY ALERT', message: `${alertType} — ${location}`, timestamp: Date.now() });
@@ -477,8 +477,8 @@ export function useDispatchVoiceAlerts(options?: {
         const data = (msg.data || msg.payload || msg) as any;
         const action = data.action || data.entity || 'Security event';
         if (['device_removed', 'sessions_terminated', 'ip_blocked'].includes(action)) {
-          speak(`Security alert. ${action.replace(/_/g, ' ')}.`, 'moderate');
-          onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'SECURITY', message: action.replace(/_/g, ' '), timestamp: Date.now() });
+          speak(`Security alert. ${action.replace(/_/g, ' ').toUpperCase()}.`, 'moderate');
+          onAlert?.({ id: nextAlertId(), severity: 'moderate', title: 'SECURITY', message: action.replace(/_/g, ' ').toUpperCase(), timestamp: Date.now() });
         }
       })
     );

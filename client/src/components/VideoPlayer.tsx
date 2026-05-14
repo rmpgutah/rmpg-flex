@@ -7,7 +7,7 @@
 // controls, frame capture, download, and quick-classify.
 // ============================================================
 
-import React, { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { X, Video, Shield, Maximize2, Minimize2, Edit2 } from 'lucide-react';
 import type { BodyCamVideo, VideoClassification } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';
@@ -164,7 +164,7 @@ export default function VideoPlayer({ isOpen, onClose, video, apiBase, getAuthHe
                   <p className="font-mono text-[11px] text-white font-bold tracking-wider leading-tight">
                     ROCKY MOUNTAIN PROTECTIVE GROUP
                   </p>
-                  <p className="font-mono text-[10px] text-cyan-400 leading-tight">
+                  <p className="font-mono text-[10px] text-gray-400 leading-tight">
                     BWC | {video.officer_name || 'UNKNOWN'} | CAM: {video.camera_serial || 'N/A'}
                   </p>
                 </div>

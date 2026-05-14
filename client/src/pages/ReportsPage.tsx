@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   BarChart3,
@@ -101,14 +101,14 @@ const PRIORITY_COLORS: Record<string, string> = {
 const CHART_TOOLTIP_STYLE = {
   contentStyle: {
     backgroundColor: '#050505',
-    border: '1px solid #222222',
+    border: '1px solid #2b2b2b',
     borderRadius: '2px',
     color: '#e0e0e0',
     fontSize: '11px',
     fontFamily: 'monospace',
     boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
   },
-  cursor: { fill: 'rgba(136,136,136,0.08)' },
+  cursor: { fill: 'rgba(212,160,23,0.12)' },
 };
 
 // ============================================================
@@ -556,7 +556,7 @@ function CrimeTrendCard() {
         {data.trends?.length > 0 && (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#050505]">
+              <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Type</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Current</th>
@@ -654,14 +654,14 @@ function BeatActivityCard() {
   return (
     <div className="bg-surface-base panel-beveled">
       <div className="px-4 pt-3 pb-1 border-b border-rmpg-700/50 flex items-center gap-2">
-        <MapPin className="w-3.5 h-3.5 text-cyan-400" />
+        <MapPin className="w-3.5 h-3.5 text-gray-400" />
         <h3 className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider">Beat Activity Report</h3>
       </div>
       <div className="p-4">
         {data.beats?.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-[10px]">
-              <thead className="sticky top-0 z-10 bg-[#050505]">
+              <thead className="sticky top-0 z-10 bg-[#0c0c0c]">
                 <tr className="border-b border-rmpg-600">
                   <th className="px-2 py-1.5 text-left text-rmpg-400 font-bold uppercase">Beat</th>
                   <th className="px-2 py-1.5 text-right text-rmpg-400 font-bold uppercase">Calls</th>
@@ -769,20 +769,6 @@ function ReportSchedulesCard() {
     </div>
   );
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function ReportsPage() {
   const isMobile = useIsMobile();
@@ -1006,7 +992,7 @@ export default function ReportsPage() {
           {/* Summary Stats */}
           <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-5 gap-3'}`}>
             {[
-              { label: 'Total Calls', value: stats.totalCalls, color: '#888888', border: 'border-l-blue-500' },
+              { label: 'Total Calls', value: stats.totalCalls, color: '#888888', border: 'border-l-gray-500' },
               { label: 'Incidents Filed', value: stats.incidentsFiled, color: '#22c55e', border: 'border-l-green-500' },
               { label: 'Avg Response', value: stats.avgResponse, color: '#f59e0b', border: 'border-l-amber-500' },
               { label: 'SLA Met', value: stats.slaMet, color: '#8b5cf6', border: 'border-l-purple-500' },

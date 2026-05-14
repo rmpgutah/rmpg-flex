@@ -18,8 +18,41 @@
 //   - Scheduler: per-source configurable intervals
 // ============================================================
 
+import { createHash } from 'node:crypto';
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
+import { startRun, completeRun, failRun } from './scraperRunner';
+import { Semaphore } from './semaphore';
+import { broadcast } from './websocket';
+import { alertCircuitBroken, checkParserDrift } from './scraperAlerts';
+import { logSafe } from './logSafe';
+import { asciiFoldName } from './utahWarrantScraper';
+
+// Safe human-readable label for a source — falls back to source_key when the
+// display_name column is NULL or empty. Prevents "[Warrant Scraper] null: fetch
+// failed" log spam from rows that predate the display_name backfill.
+function displayNameOf(config: Pick<WarrantSourceConfig, 'source_key' | 'display_name'>): string {
+  return config.display_name && config.display_name.trim().length > 0
+    ? config.display_name
+    : config.source_key;
+}
+
+// Phase 4: emit scraper lifecycle events on the 'scraper_events' WS channel
+// so the Phase 5 Scrapers tab can show a live feed. All events share a single
+// WSMessageType ('scraper_event') with the specific event name embedded in
+// data.event — this minimizes WSMessageType drift as we add new event kinds.
+// All calls wrapped in try/catch so a WS failure can never disrupt a scrape.
+function emitScraperEvent(event: string, data: Record<string, unknown>): void {
+  try {
+    broadcast('scraper_events', 'scraper_event', { event, ...data });
+  } catch (e) {
+    console.warn(`[Warrant Scraper] WS broadcast failed for ${event}:`, (e as Error).message);
+  }
+}
+
+function sha256(input: string): string {
+  return createHash('sha256').update(input).digest('hex');
+}
 
 // ── Constants ───────────────────────────────────────────────
 
@@ -27,9 +60,56 @@ const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36
 const REQUEST_TIMEOUT_MS = 20_000;
 const CIRCUIT_BREAKER_THRESHOLD = 15;     // Higher threshold — many sites are flaky
 const STARTUP_DELAY_MS = 60_000;          // 60s after boot (let jail roster start first)
+
+// Concurrency cap — limits parallel HTTP fetches across all warrant sources
+// to prevent boot-storm socket exhaustion and WAF correlation.
+const FETCH_CONCURRENCY = 5;
+const fetchSemaphore = new Semaphore(FETCH_CONCURRENCY);
 const BACKOFF_BASE_MS = 2 * 60 * 60_000;  // 2 hours base
 const BACKOFF_MAX_MS = 48 * 60 * 60_000;  // 48 hour cap
 const STAGGER_DELAY_MS = 5_000;           // 5s between source starts
+
+// Tier-based scheduling
+const TIER_INTERVALS_MS: Record<number, number> = {
+  1: 30 * 60_000,    // 30 min — critical
+  2: 90 * 60_000,    // 90 min — high
+  3: 180 * 60_000,   // 180 min — normal (default)
+  4: 360 * 60_000,   // 360 min — low
+};
+
+function resolveInterval(config: WarrantSourceConfig): number {
+  if (config.scrape_interval_minutes && config.scrape_interval_minutes > 0) {
+    return config.scrape_interval_minutes * 60_000; // explicit override (back-compat)
+  }
+  const priority = config.priority ?? 3;
+  return TIER_INTERVALS_MS[priority] ?? TIER_INTERVALS_MS[3];
+}
+
+function simpleHash(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+function resolveJitterMs(sourceKey: string): number {
+  // Deterministic 0-20 minute offset based on source_key hash
+  return (simpleHash(sourceKey) % 1200) * 1000;
+}
+
+/**
+ * Generate a normalized, stable warrant ID from source + name components.
+ * Applies ASCII folding + uppercase to prevent case/diacritic drift between runs.
+ * The discriminator provides uniqueness when two people share the same name
+ * (case number, issue date, or positional index).
+ */
+export function normalizeWarrantId(sourceKey: string, last: string, first: string, discriminator: string | number): string {
+  const normLast = asciiFoldName(last).toUpperCase().replace(/[^A-Z]/g, '');
+  const normFirst = asciiFoldName(first).toUpperCase().replace(/[^A-Z]/g, '');
+  const disc = String(discriminator).replace(/[^a-zA-Z0-9-]/g, '');
+  return `${sourceKey}-${normLast}-${normFirst}-${disc}`.substring(0, 80);
+}
 
 // ── Interfaces ──────────────────────────────────────────────
 
@@ -64,7 +144,7 @@ interface WarrantParser {
 interface WarrantSourceConfig {
   id: number;
   source_key: string;
-  display_name: string;
+  display_name: string | null;
   source_url: string | null;
   source_type: string;
   state: string;
@@ -74,6 +154,18 @@ interface WarrantSourceConfig {
   last_scrape_at: string | null;
   consecutive_errors: number;
   circuit_broken: number;
+  priority?: number;
+  content_hash?: string | null;
+  content_hash_updated_at?: string | null;
+  etag?: string | null;
+  last_modified?: string | null;
+  last_success_at?: string | null;
+  avg_parse_count?: number | null;
+  p95_latency_ms?: number | null;
+  jitter_seed?: number | null;
+  recovery_at?: string | null;
+  min_expected_count?: number | null;
+  last_parsed_count?: number | null;
 }
 
 // ── Scheduler state ─────────────────────────────────────────
@@ -98,9 +190,22 @@ function getRandomUA(): string {
   return USER_AGENTS[Math.floor(Math.random() * USER_AGENTS.length)];
 }
 
-async function fetchPage(url: string, retries = 2): Promise<string> {
+export interface FetchResult {
+  body: string;
+  status: number;
+  etag: string | null;
+  lastModified: string | null;
+  bytes: number;
+}
+
+async function fetchPage(
+  url: string,
+  opts: { retries?: number; etag?: string | null; lastModified?: string | null } = {},
+): Promise<FetchResult> {
+  const retries = opts.retries ?? 3;
   const domain = new URL(url).hostname;
   const isApiEndpoint = domain.startsWith('api.') || url.includes('/api/');
+  let lastErr: Error | null = null;
 
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
@@ -130,12 +235,22 @@ async function fetchPage(url: string, retries = 2): Promise<string> {
         'sec-ch-ua-platform': '"Windows"',
       };
 
+      // Conditional request headers (If-None-Match / If-Modified-Since) — phase 2
+      if (opts.etag) headers['If-None-Match'] = opts.etag;
+      if (opts.lastModified) headers['If-Modified-Since'] = opts.lastModified;
+
       const res = await fetch(url, {
         headers,
         signal: controller.signal,
         redirect: 'follow',
       });
       clearTimeout(timeout);
+
+      // 304 Not Modified — short-circuit success, no body to parse
+      if (res.status === 304) {
+        return { body: '', status: 304, etag: null, lastModified: null, bytes: 0 };
+      }
+
       // 404 = page moved/restructured — permanent, don't retry
       if (res.status === 404) throw new Error(`HTTP_PERMANENT_404`);
       // 403 = blocked — might work with retry after delay
@@ -143,32 +258,43 @@ async function fetchPage(url: string, retries = 2): Promise<string> {
         await sleep(3000 * (attempt + 1));
         continue;
       }
-      // 429 = rate limited — retry after delay
+      // 429 = rate limited — honor Retry-After header
       if (res.status === 429 && attempt < retries) {
         const retryAfter = parseInt(res.headers.get('retry-after') || '10', 10);
         await sleep(retryAfter * 1000);
         continue;
       }
-      // 5xx = server error — retry
-      if (res.status >= 500 && attempt < retries) {
-        await sleep(2000 * (attempt + 1));
+      // 5xx / 408 = server error — retry with exponential backoff
+      if ((res.status >= 500 || res.status === 408) && attempt < retries) {
+        const backoff = Math.min(1000 * Math.pow(2, attempt), 8000) + Math.floor(Math.random() * 500);
+        await sleep(backoff);
         continue;
       }
       if (!res.ok) throw new Error(`HTTP_${res.status}`);
-      return await res.text();
+
+      const body = await res.text();
+      return {
+        body,
+        status: res.status,
+        etag: res.headers.get('etag'),
+        lastModified: res.headers.get('last-modified'),
+        bytes: body.length,
+      };
     } catch (e: any) {
       clearTimeout(timeout);
-      // Don't retry permanent errors or already-classified errors
+      lastErr = e as Error;
+      // Don't retry permanent errors or already-classified 4xx errors
       if (e?.message?.startsWith('HTTP_PERMANENT_') || e?.message?.startsWith('HTTP_4')) throw e;
-      // Retry on network errors (timeout, DNS, connection reset)
+      // Retry on network errors (timeout, DNS, connection reset) with exponential backoff
       if (attempt < retries) {
-        await sleep(2000 * (attempt + 1));
+        const backoff = Math.min(1000 * Math.pow(2, attempt), 8000) + Math.floor(Math.random() * 500);
+        await sleep(backoff);
         continue;
       }
       throw e;
     }
   }
-  throw new Error('fetchPage: max retries exceeded');
+  throw lastErr ?? new Error('fetchPage: max retries exceeded');
 }
 
 function sleep(ms: number): Promise<void> {
@@ -202,6 +328,94 @@ function stripHtml(html: string): string {
 // ════════════════════════════════════════════════════════════
 // Most sheriff warrant pages list wanted persons in HTML tables
 // or card-style divs. This generic parser handles common patterns.
+
+// ── Phase 3: WAF / block page detection ────────────────────
+// Distinguish "site is blocking us" from "parser broken" so the
+// dashboard can classify failures accurately. Small bodies are
+// treated as suspicious because real warrant pages are never tiny.
+
+function detectBlockPage(html: string): string | null {
+  if (!html || html.length < 200) return 'response_too_small';
+  if (/Just a moment\.\.\.|Attention Required|cf-browser-verification|cf-chl-bypass/i.test(html)) {
+    return 'cloudflare_challenge';
+  }
+  if (/Access Denied|You don['’]t have permission|Request blocked/i.test(html)) {
+    return 'access_denied';
+  }
+  if (/<title>403/i.test(html)) return 'http_403_wrapper';
+  return null;
+}
+
+// ── Phase 3: Parser fallback cascade ────────────────────────
+// When a registered custom parser returns 0 results or throws,
+// fall back to the generic parser; if that also fails, a last-
+// ditch all-caps name extraction runs. Drift signals are logged
+// when tier 1 fails so the dashboard can surface parser rot.
+
+export interface ParseResult {
+  entries: WarrantEntry[];
+  parserUsed: 'custom' | 'generic' | 'fallback';
+  driftSignal?: string;
+}
+
+export function parseWithFallback(config: WarrantSourceConfig, html: string): ParseResult {
+  const customParser = WARRANT_PARSERS[config.source_key];
+
+  if (customParser) {
+    try {
+      const entries = customParser.parseWarrants(html);
+      if (entries.length > 0) {
+        return { entries, parserUsed: 'custom' };
+      }
+      // Custom returned 0 — log drift and try generic
+      return { ...runGeneric(config.source_key, html), driftSignal: 'custom_zero_results' };
+    } catch (err) {
+      const msg = (err as Error).message || 'unknown';
+      return { ...runGeneric(config.source_key, html), driftSignal: `custom_threw:${msg.substring(0, 80)}` };
+    }
+  }
+
+  return runGeneric(config.source_key, html);
+}
+
+function runGeneric(sourceKey: string, html: string): ParseResult {
+  try {
+    const generic = createGenericWarrantParser(sourceKey);
+    const entries = generic.parseWarrants(html);
+    if (entries.length > 0) {
+      return { entries, parserUsed: 'generic' };
+    }
+  } catch { /* fall through to all-caps extraction */ }
+
+  // Tier 3: last-ditch all-caps name extraction
+  const names = extractAllCapsNames(html);
+  return {
+    entries: names.map(n => createBlankEntry(n)),
+    parserUsed: 'fallback',
+  };
+}
+
+function extractAllCapsNames(html: string): string[] {
+  const text = html.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ');
+  const matches = text.match(/\b[A-Z]{2,}(?:,\s*[A-Z]{2,})?(?:\s+[A-Z]{2,})?\b/g) || [];
+  const uniq = new Set<string>();
+  for (const m of matches) {
+    if (m.length >= 5 && m.length <= 60) uniq.add(m.trim());
+  }
+  return Array.from(uniq).slice(0, 50);
+}
+
+function createBlankEntry(name: string): WarrantEntry {
+  const parts = name.includes(',') ? name.split(',').map(s => s.trim()) : name.split(/\s+/);
+  const [last = '', first = ''] = parts;
+  return {
+    warrant_id: '', full_name: name, first_name: first, last_name: last, middle_name: '',
+    date_of_birth: '', age: null, gender: '', race: '', city: '', state: '',
+    warrant_type: 'unknown', case_number: '', court_name: '', issue_date: '',
+    charge_description: '', bail_amount: '', offense_level: '', photo_url: '',
+    detail_url: '',
+  };
+}
 
 function createGenericWarrantParser(sourceKey: string): WarrantParser {
   return {
@@ -1141,8 +1355,24 @@ const miamiWarrantParser: WarrantParser = {
 // ════════════════════════════════════════════════════════════
 
 const FLATHEAD_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+// FBI Wanted API caps `pageSize` at 50 server-side, so to pull the full
+// catalog (~1,150 records as of 2026-04) we paginate. 25 pages × 50 = 1,250
+// — generous headroom for catalog growth. Sort by `modified desc` so partial
+// fetches (rate-limit / timeout) prefer fresh data over stale.
+const FBI_PAGE_COUNT = 25;
+const FBI_PAGED_URLS = Array.from({ length: FBI_PAGE_COUNT }, (_, i) =>
+  `https://api.fbi.gov/wanted/v1/list?pageSize=50&page=${i + 1}&sort_on=modified&sort_order=desc`,
+);
+
 const PAGINATED_SOURCES: Record<string, string[]> = {
   mt_flathead_warrants: FLATHEAD_LETTERS.map(l => `https://apps.flathead.mt.gov/warrants/warrants_list.php?letter=${l}`),
+  // FBI: pull every page of the unified Wanted list (~1,150 records vs the
+  // 50 we were getting from the unparameterized URL). Both source_key
+  // aliases use the same paginated URL set so the duplicate config row
+  // keeps working even after dedup migration.
+  federal_fbi_wanted: FBI_PAGED_URLS,
+  fed_fbi_wanted: FBI_PAGED_URLS,
 };
 
 
@@ -1225,46 +1455,51 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
 
   const txn = db.transaction(() => {
     for (const entry of entries) {
-      // Check if this warrant already exists (always update existing records)
-      const existing = checkStmt.get(sourceKey, entry.warrant_id);
-      if (existing) {
-        updateStmt.run(
-          entry.full_name, entry.first_name, entry.last_name, entry.middle_name,
-          entry.date_of_birth, entry.age, entry.gender, entry.race, entry.city,
-          entry.charge_description, entry.bail_amount,
-          entry.photo_url, entry.photo_url,
-          now, sourceKey, entry.warrant_id
-        );
-        updated++;
-      } else {
-        // Only INSERT new warrants if the person exists in our database
-        let personId: number | null = null;
-        let dobVerified = 0;
+      try {
+        // Check if this warrant already exists (always update existing records)
+        const existing = checkStmt.get(sourceKey, entry.warrant_id);
+        if (existing) {
+          updateStmt.run(
+            entry.full_name, entry.first_name, entry.last_name, entry.middle_name,
+            entry.date_of_birth, entry.age, entry.gender, entry.race, entry.city,
+            entry.charge_description, entry.bail_amount,
+            entry.photo_url, entry.photo_url,
+            now, sourceKey, entry.warrant_id
+          );
+          updated++;
+        } else {
+          // Only INSERT new warrants if the person exists in our database
+          let personId: number | null = null;
+          let dobVerified = 0;
 
-        if (entry.first_name && entry.last_name) {
-          // Try DOB match first (higher confidence)
-          if (entry.date_of_birth) {
-            const dobMatch = matchPersonDobStmt.get(entry.first_name, entry.last_name, entry.date_of_birth) as any;
-            if (dobMatch) { personId = dobMatch.id; dobVerified = 1; }
+          if (entry.first_name && entry.last_name) {
+            // Try DOB match first (higher confidence)
+            if (entry.date_of_birth) {
+              const dobMatch = matchPersonDobStmt.get(entry.first_name, entry.last_name, entry.date_of_birth) as any;
+              if (dobMatch) { personId = dobMatch.id; dobVerified = 1; }
+            }
+            // Fall back to name-only match
+            if (!personId) {
+              const nameMatch = matchPersonStmt.get(entry.first_name, entry.last_name) as any;
+              if (nameMatch) { personId = nameMatch.id; dobVerified = 0; }
+            }
           }
-          // Fall back to name-only match
-          if (!personId) {
-            const nameMatch = matchPersonStmt.get(entry.first_name, entry.last_name) as any;
-            if (nameMatch) { personId = nameMatch.id; dobVerified = 0; }
-          }
+
+          // Store ALL warrants (national search needs full dataset)
+          // person_id is set if matched to a local person (for alerts)
+
+          insertStmt.run(
+            sourceKey, entry.warrant_id, entry.full_name, entry.first_name, entry.last_name,
+            entry.middle_name, entry.date_of_birth, entry.age, entry.gender, entry.race,
+            entry.city, entry.state, entry.warrant_type, entry.case_number, entry.court_name,
+            entry.issue_date, entry.charge_description, entry.bail_amount, entry.offense_level,
+            entry.photo_url, entry.detail_url, now, now, personId, dobVerified
+          );
+          inserted++;
         }
-
-        // Store ALL warrants (national search needs full dataset)
-        // person_id is set if matched to a local person (for alerts)
-
-        insertStmt.run(
-          sourceKey, entry.warrant_id, entry.full_name, entry.first_name, entry.last_name,
-          entry.middle_name, entry.date_of_birth, entry.age, entry.gender, entry.race,
-          entry.city, entry.state, entry.warrant_type, entry.case_number, entry.court_name,
-          entry.issue_date, entry.charge_description, entry.bail_amount, entry.offense_level,
-          entry.photo_url, entry.detail_url, now, now, personId, dobVerified
-        );
-        inserted++;
+      } catch (entryErr) {
+        // Per-entry error boundary: one bad entry must not rollback the whole batch
+        console.warn(`[Warrant Scraper] upsert skip (${logSafe(sourceKey)}/${logSafe(entry.warrant_id)}): ${logSafe((entryErr as Error).message)}`);
       }
     }
   });
@@ -1417,6 +1652,13 @@ async function scrapeSource(sourceKey: string): Promise<{
   inserted: number;
   updated: number;
   cleared: number;
+  status?: number;
+  unchanged?: boolean;
+  newHash?: string | null;
+  etag?: string | null;
+  lastModified?: string | null;
+  parserUsed?: 'custom' | 'generic' | 'fallback';
+  driftSignal?: string;
 }> {
   const config = getSourceConfig(sourceKey);
   if (!config) throw new Error(`Unknown warrant source: ${sourceKey}`);
@@ -1448,28 +1690,92 @@ async function scrapeSource(sourceKey: string): Promise<{
   const parser = WARRANT_PARSERS[sourceKey] || createGenericWarrantParser(sourceKey);
 
   // Paginated sources: fetch multiple pages and concatenate results
+  // Content hashing / conditional fetch is DISABLED for paginated sources to
+  // preserve existing multi-page semantics (each page may have its own etag).
   const paginatedUrls = PAGINATED_SOURCES[sourceKey];
   let entries: WarrantEntry[];
 
   if (paginatedUrls) {
     entries = [];
+    // JSON APIs (FBI) tolerate faster pagination than scraped HTML. Pick a
+    // shorter delay when the URLs are JSON to avoid burning 30+ seconds per
+    // scrape on courteous-but-unnecessary throttling.
+    const isApiSource = config.source_type === 'api';
+    const interPageDelayMs = isApiSource ? 250 : 1500;
+
+    let consecutiveEmpty = 0;
     for (const pageUrl of paginatedUrls) {
       try {
-        const pageContent = await fetchPage(pageUrl);
-        const pageEntries = parser.parseWarrants(pageContent);
+        const pageResult = await fetchPage(pageUrl);
+        const pageEntries = parser.parseWarrants(pageResult.body);
         entries.push(...pageEntries);
-        // Small delay between pages to avoid rate limiting
-        await sleep(1500);
+        // Early-exit for API pagination: two empty pages in a row means
+        // we're past the end. Saves ~10 wasted requests on a typical FBI
+        // catalog (currently ~24 pages of data, hard cap at 25).
+        if (isApiSource) {
+          consecutiveEmpty = pageEntries.length === 0 ? consecutiveEmpty + 1 : 0;
+          if (consecutiveEmpty >= 2) break;
+        }
+        await sleep(interPageDelayMs);
       } catch (e: any) {
         // Skip individual page errors, continue with others
         if (e?.message === 'HTTP_PERMANENT_404') continue;
         // Only fail if ALL pages fail
       }
     }
-  } else {
-    // Single page source
-    const content = await fetchPage(config.source_url);
-    entries = parser.parseWarrants(content);
+
+    const { inserted, updated } = upsertWarrants(sourceKey, entries);
+    const cleared = detectClearedWarrants(sourceKey, entries.map(e => e.warrant_id));
+    crossLinkWarrants();
+    return { records_found: entries.length, inserted, updated, cleared };
+  }
+
+  // Single page source — use conditional fetch + content hash short-circuit
+  const fetchResult = await fetchPage(config.source_url, {
+    etag: config.etag ?? null,
+    lastModified: config.last_modified ?? null,
+  });
+
+  // 304 Not Modified — skip parsing entirely
+  if (fetchResult.status === 304) {
+    return {
+      records_found: 0,
+      inserted: 0,
+      updated: 0,
+      cleared: 0,
+      status: 304,
+    };
+  }
+
+  // Compute body hash and compare to stored content_hash.
+  // If unchanged, skip parsing (same records already present).
+  const newHash = sha256(fetchResult.body);
+  if (config.content_hash && newHash === config.content_hash) {
+    return {
+      records_found: 0,
+      inserted: 0,
+      updated: 0,
+      cleared: 0,
+      status: fetchResult.status,
+      unchanged: true,
+      newHash,
+      etag: fetchResult.etag,
+      lastModified: fetchResult.lastModified,
+    };
+  }
+
+  // Phase 3: detect WAF / block pages BEFORE parsing so failure reasons
+  // are classified accurately (dashboard distinguishes "blocked" from "parser broken").
+  const blockReason = detectBlockPage(fetchResult.body);
+  if (blockReason) {
+    throw new Error(`BLOCKED:${blockReason}`);
+  }
+
+  // Phase 3: parser fallback cascade (custom → generic → all-caps)
+  const parseResult = parseWithFallback(config, fetchResult.body);
+  entries = parseResult.entries;
+  if (parseResult.driftSignal) {
+    console.warn(`[Warrant Scraper] Drift signal for ${logSafe(sourceKey)}: ${logSafe(parseResult.driftSignal)}`);
   }
 
   const { inserted, updated } = upsertWarrants(sourceKey, entries);
@@ -1478,7 +1784,18 @@ async function scrapeSource(sourceKey: string): Promise<{
   // Cross-link with persons
   crossLinkWarrants();
 
-  return { records_found: entries.length, inserted, updated, cleared };
+  return {
+    records_found: entries.length,
+    inserted,
+    updated,
+    cleared,
+    status: fetchResult.status,
+    newHash,
+    etag: fetchResult.etag,
+    lastModified: fetchResult.lastModified,
+    parserUsed: parseResult.parserUsed,
+    driftSignal: parseResult.driftSignal,
+  };
 }
 
 
@@ -1486,14 +1803,45 @@ async function scrapeSource(sourceKey: string): Promise<{
 //  SYNC ORCHESTRATOR
 // ════════════════════════════════════════════════════════════
 
-async function syncSource(sourceKey: string): Promise<void> {
+export async function syncSource(sourceKey: string): Promise<void> {
   const db = getDb();
   const config = getSourceConfig(sourceKey);
-  if (!config || !config.enabled) return;
+  if (!config || !config.enabled || config.circuit_broken) {
+    // Record skipped runs for circuit-broken sources so metrics show them
+    if (config && config.circuit_broken) {
+      try {
+        const skipRunId = startRun({ source_key: sourceKey });
+        completeRun(skipRunId, { skipped_reason: 'circuit_broken' });
+      } catch (e) {
+        console.warn(`[Warrant Scraper] Failed to record skip run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+      }
+    }
+    return;
+  }
+
+  let runId: number | null = null;
+  try {
+    runId = startRun({ source_key: sourceKey, priority: config.priority });
+  } catch (e) {
+    console.warn(`[Warrant Scraper] Failed to start run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+  }
+
+  emitScraperEvent('run_started', {
+    source_key: sourceKey,
+    display_name: displayNameOf(config),
+    priority: config.priority ?? 3,
+    started_at: localNow(),
+  });
 
   try {
-    console.log(`[Warrant Scraper] ── ${config.display_name} ──`);
-    const result = await scrapeSource(sourceKey);
+    console.log(`[Warrant Scraper] ── ${displayNameOf(config)} ──`);
+    await fetchSemaphore.acquire();
+    let result;
+    try {
+      result = await scrapeSource(sourceKey);
+    } finally {
+      fetchSemaphore.release();
+    }
 
     // Success — reset error counter
     db.prepare(`
@@ -1504,14 +1852,111 @@ async function syncSource(sourceKey: string): Promise<void> {
 
     backoffAttempts.delete(sourceKey);
 
-    console.log(`[Warrant Scraper] ${config.display_name}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
+    // Phase 2: persist content_hash / etag / last_modified for conditional requests
+    // on next cycle. Only update when scrapeSource returned a new hash (i.e. cache miss
+    // where parsing actually ran, OR content_unchanged case where we still want to
+    // refresh content_hash_updated_at / etag / last_modified metadata).
+    if (result.newHash) {
+      try {
+        db.prepare(`
+          UPDATE warrant_scraper_config
+          SET content_hash = ?, content_hash_updated_at = ?, etag = ?, last_modified = ?
+          WHERE source_key = ?
+        `).run(
+          result.newHash,
+          localNow(),
+          result.etag ?? null,
+          result.lastModified ?? null,
+          sourceKey,
+        );
+      } catch (e) {
+        console.warn(`[Warrant Scraper] Failed to persist content_hash for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+      }
+    }
+
+    if (runId !== null) {
+      try {
+        // Record skip runs for cache hits (304 or content_unchanged) so metrics
+        // reflect the short-circuit.
+        if (result.status === 304) {
+          completeRun(runId, {
+            http_status: 304,
+            skipped_reason: 'not_modified',
+            parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
+          });
+        } else if (result.unchanged) {
+          completeRun(runId, {
+            http_status: result.status ?? 200,
+            skipped_reason: 'content_unchanged',
+            parser_used: WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic',
+          });
+        } else {
+          completeRun(runId, {
+            http_status: result.status ?? 200,
+            // parsed_count is the raw parser output (pre-dedupe). For distinct counts, use inserted_count + updated_count.
+            parsed_count: result.records_found,
+            inserted_count: result.inserted,
+            updated_count: result.updated,
+            // Phase 3: actual parser used (custom → generic → fallback cascade)
+            parser_used: result.parserUsed ?? (WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic'),
+          });
+        }
+      } catch (e) {
+        console.warn(`[Warrant Scraper] Failed to complete run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+      }
+    }
+
+    if (result.status === 304) {
+      console.log(`[Warrant Scraper] ${displayNameOf(config)}: 304 Not Modified — skipped parse`);
+    } else if (result.unchanged) {
+      console.log(`[Warrant Scraper] ${displayNameOf(config)}: content unchanged (hash match) — skipped parse`);
+    } else {
+      console.log(`[Warrant Scraper] ${displayNameOf(config)}: ${result.records_found} found, ${result.inserted} new, ${result.updated} updated, ${result.cleared} cleared`);
+    }
+
+    emitScraperEvent('run_completed', {
+      source_key: sourceKey,
+      display_name: displayNameOf(config),
+      http_status: result.status ?? 200,
+      parsed: result.records_found,
+      inserted: result.inserted,
+      updated: result.updated,
+      unchanged: result.unchanged === true || result.status === 304,
+      parser_used: result.parserUsed ?? (WARRANT_PARSERS[sourceKey] ? 'custom' : 'generic'),
+    });
+
+    // Phase 4: parser drift detection — if we got HTTP 200 but parsed 0 records
+    // (and it wasn't an intentional cache short-circuit), the last 5 runs may
+    // all show the same pattern. checkParserDrift reads warrant_scraper_runs
+    // and fires a notification when all 5 are HTTP 200 + 0 parsed.
+    if (
+      result.records_found === 0 &&
+      result.unchanged !== true &&
+      result.status !== 304 &&
+      (result.status ?? 200) === 200
+    ) {
+      checkParserDrift(sourceKey, displayNameOf(config));
+    }
 
   } catch (err) {
+    if (runId !== null) {
+      try {
+        failRun(runId, { error_message: (err as Error).message });
+      } catch (e) {
+        console.warn(`[Warrant Scraper] Failed to record failed run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
+      }
+    }
+
+    emitScraperEvent('run_failed', {
+      source_key: sourceKey,
+      display_name: displayNameOf(config),
+      error: (err as Error).message,
+    });
     const errMsg = (err as Error).message || 'unknown error';
 
     // Permanent errors (404 = page gone) — disable source, don't circuit break
     if (errMsg === 'HTTP_PERMANENT_404') {
-      console.warn(`[Warrant Scraper] ${config.display_name}: page not found (404) — disabling source`);
+      console.warn(`[Warrant Scraper] ${displayNameOf(config)}: page not found (404) — disabling source`);
       db.prepare('UPDATE warrant_scraper_config SET enabled = 0, last_error = ? WHERE source_key = ?').run('Page not found (404)', sourceKey);
       const interval = sourceIntervals.get(sourceKey);
       if (interval) { clearInterval(interval); sourceIntervals.delete(sourceKey); }
@@ -1520,7 +1965,7 @@ async function syncSource(sourceKey: string): Promise<void> {
 
     // Transient errors — increment counter
     const shortErr = errMsg.replace(/https?:\/\/[^\s]+/g, '...').substring(0, 100);
-    console.error(`[Warrant Scraper] ${config.display_name}: ${shortErr}`);
+    console.error(`[Warrant Scraper] ${logSafe(displayNameOf(config))}: ${logSafe(shortErr)}`);
 
     db.prepare(`
       UPDATE warrant_scraper_config
@@ -1532,9 +1977,12 @@ async function syncSource(sourceKey: string): Promise<void> {
     const errorCount = errResult?.consecutive_errors ?? 1;
 
     if (errorCount >= CIRCUIT_BREAKER_THRESHOLD) {
-      console.warn(`[Warrant Scraper] CIRCUIT BREAKER: ${config.display_name} (${errorCount} errors)`);
+      console.warn(`[Warrant Scraper] CIRCUIT BREAKER: ${displayNameOf(config)} (${errorCount} errors)`);
 
       db.prepare('UPDATE warrant_scraper_config SET circuit_broken = 1 WHERE source_key = ?').run(sourceKey);
+
+      // Phase 4: notify admins when a source trips the breaker
+      alertCircuitBroken(sourceKey, displayNameOf(config));
 
       const interval = sourceIntervals.get(sourceKey);
       if (interval) { clearInterval(interval); sourceIntervals.delete(sourceKey); }
@@ -1545,10 +1993,22 @@ async function syncSource(sourceKey: string): Promise<void> {
       const backoffMs = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt - 1), BACKOFF_MAX_MS);
       const backoffHours = (backoffMs / 3_600_000).toFixed(1);
 
-      console.log(`[Warrant Scraper] Recovery for ${config.display_name} in ${backoffHours}h`);
+      console.log(`[Warrant Scraper] Recovery for ${displayNameOf(config)} in ${backoffHours}h`);
+
+      emitScraperEvent('circuit_broken', {
+        source_key: sourceKey,
+        display_name: displayNameOf(config),
+        consecutive_errors: errorCount,
+        recovery_at: new Date(Date.now() + backoffMs).toISOString(),
+        backoff_hours: Number(backoffHours),
+      });
 
       const recoveryTimeout = setTimeout(() => {
         db.prepare('UPDATE warrant_scraper_config SET consecutive_errors = 0, circuit_broken = 0 WHERE source_key = ?').run(sourceKey);
+        emitScraperEvent('circuit_restored', {
+          source_key: sourceKey,
+          display_name: displayNameOf(config),
+        });
         scheduleSource(sourceKey);
       }, backoffMs);
 
@@ -1574,17 +2034,21 @@ function scheduleSource(sourceKey: string): void {
   const config = getSourceConfig(sourceKey);
   if (!config || !config.enabled || config.circuit_broken) return;
 
-  const intervalMs = (config.scrape_interval_minutes || 120) * 60_000;
+  const intervalMs = resolveInterval(config);
+  const jitterMs = resolveJitterMs(sourceKey);
 
-  // Initial scrape
-  syncSource(sourceKey).catch(err => {
-    console.error(`[Warrant Scraper] Initial scrape error for ${sourceKey}:`, (err as Error).message);
-  });
+  // Initial scrape delayed by deterministic jitter so boot storm spreads over 20 min
+  const initialTimer = setTimeout(() => {
+    syncSource(sourceKey).catch(err => {
+      console.error(`[Warrant Scraper] Initial scrape error for ${logSafe(sourceKey)}: ${logSafe((err as Error).message)}`);
+    });
+  }, jitterMs);
+  if (initialTimer.unref) initialTimer.unref();
 
   // Schedule recurring
   const interval = setInterval(() => {
     syncSource(sourceKey).catch(err => {
-      console.error(`[Warrant Scraper] Scrape error for ${sourceKey}:`, (err as Error).message);
+      console.error(`[Warrant Scraper] Scrape error for ${logSafe(sourceKey)}: ${logSafe((err as Error).message)}`);
     });
   }, intervalMs);
 
@@ -1592,10 +2056,120 @@ function scheduleSource(sourceKey: string): void {
   sourceIntervals.set(sourceKey, interval);
 }
 
+// ── Federal source pruning ──────────────────────────────────
+// All federal scrapers were duplicated as `fed_*` and `federal_*` rows
+// pointing at the same URL — every scrape fired twice for no benefit.
+// Several agencies (USMS, ATF, DEA, USSS) also block our VPS subnet
+// outright via Akamai — they return HTTP 403 to every request, can never
+// recover, and just spam the journal with retries. Disable both classes
+// so the scheduler stops cycling through them.
+//
+// Idempotent: skipped after first run via the in-memory flag, and the
+// SQL is no-op-on-repeat (sets enabled=0 → already 0). Run from inside
+// scheduleWarrantScraper so it executes once per process boot.
+const PERMA_BLOCKED_FED_KEYS = [
+  // US Marshals — Akamai blocks every page from us with 403.
+  'fed_usms_wanted',
+  'federal_usms_top15',
+  'federal_usmarshals_mostwanted',
+  // ATF — same Akamai block.
+  'fed_atf_wanted',
+  'federal_atf_wanted',
+  // DEA — same.
+  'fed_dea_wanted',
+  'federal_dea_fugitives',
+  // Secret Service — URLs return 404 (page restructured).
+  'fed_secret_service_wanted',
+  'federal_secret_service',
+];
+
+// Alias source_keys for the FBI + ICE that point at the same URL as
+// their canonical `federal_*` peer. Keep the `federal_*` version active
+// (matches the parser registry comment naming the canonical key).
+const REDUNDANT_ALIAS_KEYS = [
+  'fed_fbi_wanted',  // canonical: federal_fbi_wanted
+  'fed_ice_wanted',  // canonical: federal_ice_wanted
+];
+
+let _federalSourcesPruned = false;
+
+export function pruneDeadFederalSources(): void {
+  if (_federalSourcesPruned) return;
+  try {
+    const db = getDb();
+    const disable = db.prepare(
+      `UPDATE warrant_scraper_config
+         SET enabled = 0, last_error = ?
+       WHERE source_key = ? AND enabled = 1`,
+    );
+    let dead = 0;
+    for (const key of PERMA_BLOCKED_FED_KEYS) {
+      const r = disable.run('Akamai/CDN block — disabled at startup', key);
+      if (r.changes > 0) dead++;
+    }
+    let aliases = 0;
+    for (const key of REDUNDANT_ALIAS_KEYS) {
+      const r = disable.run('Duplicate alias — see federal_* equivalent', key);
+      if (r.changes > 0) aliases++;
+    }
+    // ── Sweep zombie active records ────────────────────────────
+    // Disabled sources never re-scrape, so detectClearedWarrants() never
+    // fires for them. Their old records stay status='active' forever and
+    // pollute search results (e.g. 50 stale `fed_fbi_wanted` records that
+    // were pulled before the canonical `federal_fbi_wanted` source took
+    // over). Mark them cleared with a recognisable reason so analysts
+    // can distinguish "actually cleared on the source" from "we stopped
+    // tracking this source".
+    const sweep = db.prepare(
+      `UPDATE scraped_warrants
+         SET status = 'cleared',
+             cleared_at = CASE WHEN cleared_at IS NULL THEN datetime('now','localtime') ELSE cleared_at END
+       WHERE status = 'active' AND source_key = ?`,
+    );
+    let zombies = 0;
+    for (const key of [...PERMA_BLOCKED_FED_KEYS, ...REDUNDANT_ALIAS_KEYS]) {
+      const r = sweep.run(key);
+      zombies += r.changes;
+    }
+    if (dead || aliases || zombies) {
+      console.log(`[Warrant Scraper] Pruned federal sources: ${dead} perma-blocked, ${aliases} duplicate aliases, ${zombies} zombie records cleared`);
+    }
+    _federalSourcesPruned = true;
+  } catch (err: any) {
+    // Don't crash boot if the table doesn't exist yet on a fresh schema —
+    // try again next call. Logging-only.
+    console.warn(`[Warrant Scraper] Federal pruning failed: ${err?.message ?? err}`);
+  }
+}
+
+// Exposed for tests
+export function _resetFederalPruningForTests(): void {
+  _federalSourcesPruned = false;
+}
+
 export function scheduleWarrantScraper(): void {
   console.log('[Warrant Scraper] Multi-state warrant scraper initializing...');
 
   startupTimeout = setTimeout(async () => {
+    pruneDeadFederalSources();
+
+    // Auto-reset circuit breakers that have been broken for >24h (stale from server restart)
+    try {
+      const db = getDb();
+      const staleBreakers = db.prepare(`
+        UPDATE warrant_scraper_config
+        SET consecutive_errors = 0, circuit_broken = 0
+        WHERE circuit_broken = 1
+          AND last_scrape_at IS NOT NULL
+          AND julianday('now') - julianday(last_scrape_at) > 1.0
+      `).run();
+      if (staleBreakers.changes > 0) {
+        console.log(`[Warrant Scraper] Auto-reset ${staleBreakers.changes} stale circuit breaker(s) (broken >24h)`);
+      }
+    } catch (e) {
+      console.warn('[Warrant Scraper] Failed to auto-reset stale circuit breakers:', (e as Error).message);
+    }
+
     const configs = getSourceConfigs();
     const enabled = configs.filter(c => c.enabled);
     const disabled = configs.length - enabled.length;
@@ -1609,7 +2183,7 @@ export function scheduleWarrantScraper(): void {
         backoffAttempts.set(config.source_key, attempt);
         const backoffMs = Math.min(BACKOFF_BASE_MS * Math.pow(2, attempt - 1), BACKOFF_MAX_MS);
 
-        console.log(`[Warrant Scraper] ${config.display_name} circuit-broken — recovery in ${(backoffMs / 3_600_000).toFixed(1)}h`);
+        console.log(`[Warrant Scraper] ${displayNameOf(config)} circuit-broken — recovery in ${(backoffMs / 3_600_000).toFixed(1)}h`);
 
         const timeout = setTimeout(() => {
           const db = getDb();

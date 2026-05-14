@@ -9,16 +9,27 @@ import type { CallForService, Unit, CallNote } from '../../../types';
  * Map a raw calls_for_service DB row to a CallForService frontend object.
  */
 export function mapDbCall(row: any): CallForService {
-  // Notes: backend stores as single string; we parse or wrap
+  // Notes: backend stores as single string; we parse or wrap.
+  // Defensive: handle the case where row.notes is already an array (e.g. a
+  // pre-mapped call passed through mapDbCall again via a websocket re-map).
+  // Without this guard, JSON.parse(array) throws, the catch fallback puts the
+  // whole array into the `text` field, and the renderer eventually tries to
+  // render a CallNote object as a JSX child → React error #31.
   let notes: CallNote[] = [];
   if (row.notes) {
-    try {
-      const parsed = JSON.parse(row.notes);
-      if (Array.isArray(parsed)) notes = parsed;
-      else notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
-    } catch {
-      notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
+    if (Array.isArray(row.notes)) {
+      notes = row.notes as CallNote[];
+    } else if (typeof row.notes === 'string') {
+      try {
+        const parsed = JSON.parse(row.notes);
+        if (Array.isArray(parsed)) notes = parsed;
+        else notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
+      } catch {
+        notes = [{ id: '1', author: 'System', text: row.notes, timestamp: row.created_at }];
+      }
     }
+    // Any other shape (object, number, etc.) is silently dropped — better an
+    // empty notes panel than a hard crash.
   }
 
   // assigned_unit_ids -> assigned_units (call signs)
@@ -58,12 +69,12 @@ export function mapDbCall(row: any): CallForService {
     location_floor: row.location_floor || undefined,
     location_room: row.location_room || undefined,
     zone_beat: row.zone_beat || undefined,
-    section_id: row.section_id || undefined,
+    sector_id: row.sector_id || undefined,
     zone_id: row.zone_id || undefined,
     beat_id: row.beat_id || undefined,
     // Dispatch district data
     dispatch_code: row.dispatch_code || undefined,
-    section_name: row.section_name || undefined,
+    sector_name: row.sector_name || undefined,
     zone_name: row.zone_name || undefined,
     beat_name: row.beat_name || undefined,
     beat_descriptor: row.beat_descriptor || undefined,
@@ -145,10 +156,13 @@ export function mapDbCall(row: any): CallForService {
     cleared_at: row.cleared_at || undefined,
     closed_at: row.closed_at || undefined,
     archived_at: row.archived_at || undefined,
-    created_by: row.dispatcher_id ? String(row.dispatcher_id) : '',
+    created_by: row.dispatcher_name || (row.dispatcher_id ? String(row.dispatcher_id) : ''),
+    dispatcher_name: row.dispatcher_name || undefined,
     updated_at: row.updated_at || '',
     // Visit history (PSO calls — attached by GET /calls/:id and redispatch)
     visit_history: row.visit_history || undefined,
+    // Pinned-to-top flag (sticky at top of dispatcher's call list)
+    pinned: row.pinned ? 1 : 0,
   };
 }
 
