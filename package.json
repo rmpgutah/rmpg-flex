@@ -45,7 +45,7 @@
     "prepare": "husky"
   },
   "dependencies": {
-    "groq-sdk": "^1.1.2",
+    "groq-sdk": "^1.2.0",
     "jspdf": "^4.2.1",
     "otpauth": "^9.5.1",
     "pdf-parse": "^2.4.5",
