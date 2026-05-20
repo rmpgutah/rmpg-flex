@@ -1,4 +1,4 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
@@ -8,6 +8,7 @@ import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/univers
 import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, searchUtahWarrantsLive, searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
 import { getSourceMetrics, getHealthSummary } from '../utils/scraperMetrics';
 import { paramStr } from '../utils/reqHelpers';
+import { logSafe } from '../utils/logSafe';
 import { ensureWarrantReviewColumns, ensureWarrantIndexes } from '../utils/warrantHelpers';
 import { pollMultiStateLive, type LivePollCriteria } from '../utils/liveWarrantPoller';
 
@@ -15,6 +16,17 @@ const router = Router();
 
 // All warrant routes require authentication
 router.use(authenticateToken);
+
+// Guard: skip /:id routes when the param is not a numeric ID.
+// This prevents parameterized routes from shadowing literal-path routes
+// defined later in the file (e.g. /expiring, /summary-report, /person-intel).
+router.param('id', (req: Request, _res: Response, next: NextFunction, value: string) => {
+  if (!/^\d+$/.test(value)) {
+    next('route');
+    return;
+  }
+  next();
+});
 
 // GET /api/warrants - List warrants with filters
 router.get('/', (req: Request, res: Response) => {
@@ -191,7 +203,7 @@ router.get('/', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/export — Export warrants as CSV
-router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+router.get('/export', requireRole('dispatcher', 'supervisor', 'admin', 'manager', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const warrants = db.prepare(`
@@ -1098,7 +1110,7 @@ router.post('/scrapers/:source_key/trigger', requireRole('admin', 'manager'), as
 
     // Fire and forget — returns immediately so UI doesn't block on the scrape
     const { syncSource } = await import('../utils/multiStateWarrantScraper');
-    syncSource(sourceKey).catch((e: Error) => console.error(`[Manual Trigger] ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String(e.message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`));
+    syncSource(sourceKey).catch((e: Error) => console.error(`[Manual Trigger] ${logSafe(sourceKey)}: ${logSafe(e.message)}`));
 
     auditLog(req, 'warrant_updated', 'config', 0, `Scraper manually triggered: ${sourceKey}`);
     return res.json({ success: true, source_key: sourceKey, message: 'Scrape initiated' });
@@ -1761,11 +1773,12 @@ router.post('/:id/archive', (req: Request, res: Response) => {
     if (warrant.archived_at) { res.status(400).json({ error: 'Warrant is already archived', code: 'WARRANT_IS_ALREADY_ARCHIVED' }); return; }
 
     const now = localNow();
-    db.prepare('UPDATE warrants SET archived_at = ? WHERE id = ?').run(now, warrant.id);
+    const userId = req.user!.userId;
+    db.prepare('UPDATE warrants SET archived_at = ?, archived_by = ? WHERE id = ?').run(now, userId, warrant.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'warrant_archived', 'warrant', ?, ?, ?)`).run(
-      req.user!.userId, warrant.id, `Archived warrant ${warrant.warrant_number}`, req.ip || 'unknown');
+      userId, warrant.id, `Archived warrant ${warrant.warrant_number}`, req.ip || 'unknown');
 
     const updated = db.prepare(`
       SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
@@ -1773,6 +1786,8 @@ router.post('/:id/archive', (req: Request, res: Response) => {
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
+
+    broadcast('alerts', 'warrant', { action: 'archived', warrant: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('Archive warrant error:', error);
@@ -1788,7 +1803,7 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
     if (!warrant) { res.status(404).json({ error: 'Warrant not found', code: 'WARRANT_NOT_FOUND' }); return; }
     if (!warrant.archived_at) { res.status(400).json({ error: 'Warrant is not archived', code: 'WARRANT_IS_NOT_ARCHIVED' }); return; }
 
-    db.prepare('UPDATE warrants SET archived_at = NULL WHERE id = ?').run(warrant.id);
+    db.prepare('UPDATE warrants SET archived_at = NULL, archived_by = NULL WHERE id = ?').run(warrant.id);
 
     db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
       VALUES (?, 'warrant_unarchived', 'warrant', ?, ?, ?)`).run(
@@ -1800,6 +1815,8 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
       FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id WHERE w.id = ?
     `).get(warrant.id);
+
+    broadcast('alerts', 'warrant', { action: 'unarchived', warrant: updated });
     res.json(updated);
   } catch (error: any) {
     console.error('Unarchive warrant error:', error);
@@ -2355,7 +2372,7 @@ router.post('/search-all', (req: Request, res: Response) => {
 });
 
 // GET /api/warrants/summary-report — Warrant summary/breakdown report
-router.get('/summary-report', requireRole('dispatcher', 'supervisor', 'admin', 'manager'), (req: Request, res: Response) => {
+router.get('/summary-report', requireRole('dispatcher', 'supervisor', 'admin', 'manager', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const { from, to } = req.query;
@@ -2695,7 +2712,15 @@ router.post('/national-search', async (req: Request, res: Response) => {
           WHERE ${manualConditions.join(' AND ')}
           LIMIT 100
         `).all(...manualParams) as any[];
-      } catch (e) { /* warrants table may not have these columns */ }
+      } catch (e: any) {
+        // The legacy comment said "warrants table may not have these columns"
+        // but swallowing all errors hid genuine query bugs. Distinguish:
+        // missing-column = expected pre-migration; everything else = log warn.
+        const msg = e?.message || '';
+        if (!/no such column/i.test(msg)) {
+          console.warn('[Warrants] manual-search query error (non-blocking):', msg);
+        }
+      }
     }
 
     // ── Combine all results ──

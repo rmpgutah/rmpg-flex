@@ -38,6 +38,17 @@ interface Props {
   onPick: (pick: StampPick) => void;
 }
 
+// Strict allowlist for the image data: URL we render in <img src>. Custom
+// stamps live in localStorage and may also arrive via the JSON template
+// import path, so we cannot trust the string blindly — without this guard
+// a crafted entry like `data:text/html,<script>...` or `javascript:...`
+// would round-trip into the DOM and execute when assigned to img.src.
+const SAFE_IMAGE_DATA_URL = /^data:image\/(png|jpeg|jpg|gif|webp|svg\+xml);base64,[A-Za-z0-9+/=]+$/i;
+function safeImageSrc(src: string | undefined | null): string {
+  if (typeof src !== 'string') return '';
+  return SAFE_IMAGE_DATA_URL.test(src) ? src : '';
+}
+
 export function loadCustomStamps(): CustomStamp[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -166,7 +177,7 @@ export default function CustomStampsGallery({ open, onClose, onPick }: Props) {
                 <button type="button"
                   onClick={() => { onPick({ kind: 'custom', stamp: s }); onClose(); }}
                   className="block w-full bg-white rounded-sm overflow-hidden mb-1.5 aspect-[4/3] flex items-center justify-center">
-                  <img src={s.imageData} alt={s.name} className="max-w-full max-h-full object-contain" />
+                  <img src={safeImageSrc(s.imageData)} alt={s.name} className="max-w-full max-h-full object-contain" />
                 </button>
                 <div className="flex items-center gap-1">
                   <input type="text" value={s.name}

@@ -4,13 +4,15 @@ import {
   Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
   CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
   Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
-  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer, Route,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
+import MapboxMiniMap from '../../components/MapboxMiniMap';
+import { getResolvedEngine, detectMapEngine, type MapEngine } from '../../utils/mapProvider';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
 import NewCallModal from '../../components/NewCallModal';
@@ -40,6 +42,7 @@ import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
 import type { CommandAction } from '../../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
+import { announceTarget } from '../../utils/voiceChannel';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
@@ -306,6 +309,10 @@ export default function DispatchPage() {
   const [isCreatingRecord, setIsCreatingRecord] = useState(false);
   const [serveLink, setServeLink] = useState<any>(null);
   const [sendingToServe, setSendingToServe] = useState(false);
+  const [serveRouteJobs, setServeRouteJobs] = useState<any[]>([]);
+  const [serveRouteOrder, setServeRouteOrder] = useState<number[] | null>(null);
+  // Map of call_id → serve_queue sort_order for route-based sorting
+  const [serveRouteSortMap, setServeRouteSortMap] = useState<Record<string, number>>({});
   // AI Dispatch analysis state
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
@@ -631,6 +638,9 @@ export default function DispatchPage() {
   const [officers, setOfficers] = useState<{ id: string; full_name: string; badge_number?: string }[]>([]);
   // Disposition codes from admin config
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
+  // Map engine detection (ensure minimap knows whether to use Mapbox or MapLibre)
+  const [mapEngine, setMapEngine] = useState<MapEngine | null>(getResolvedEngine);
+  useEffect(() => { detectMapEngine().then(setMapEngine); }, []);
   // Mini-map visibility toggle
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
@@ -1086,8 +1096,25 @@ export default function DispatchPage() {
           const serveData = await apiFetch(`/dispatch/calls/${selectedCall.id}/serve-link`);
           if (!cancelled) setServeLink(serveData);
         } catch { if (!cancelled) setServeLink(null); }
+        // Fetch serve route data for mini map overlay
+        try {
+          const routeData = await apiFetch<{ jobs: any[]; routes: any[] }>('/process-server/active-routes');
+          if (!cancelled && routeData?.jobs) {
+            // Filter to jobs assigned to the same officer as this call
+            const callOfficerId = selectedCall.assigned_units?.length ? parseInt(String(selectedCall.assigned_units[0]), 10) : null;
+            const officerJobs = callOfficerId ? routeData.jobs.filter((j: any) => j.officer_id === callOfficerId) : routeData.jobs;
+            setServeRouteJobs(officerJobs);
+            // Get route order
+            const route = callOfficerId ? routeData.routes.find((r: any) => r.officer_id === callOfficerId) : routeData.routes[0];
+            if (route?.optimized_order_json) {
+              try { setServeRouteOrder(JSON.parse(route.optimized_order_json)); } catch { setServeRouteOrder(null); }
+            } else {
+              setServeRouteOrder(null);
+            }
+          }
+        } catch { if (!cancelled) { setServeRouteJobs([]); setServeRouteOrder(null); } }
       } else {
-        if (!cancelled) setServeLink(null);
+        if (!cancelled) { setServeLink(null); setServeRouteJobs([]); setServeRouteOrder(null); }
       }
     })();
     return () => { cancelled = true; };
@@ -1095,6 +1122,39 @@ export default function DispatchPage() {
 
   // PSO incident types — must be declared before filteredCalls which references it
   const PSO_INCIDENT_TYPES = ['pso_client_request'];
+
+  // Fetch serve route sort order on mount and when serve tab is active
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const data = await apiFetch<{ jobs: any[]; routes: any[] }>('/process-server/active-routes');
+        if (cancelled || !data?.jobs) return;
+        const sortMap: Record<string, number> = {};
+        // Build a map: call_id → sort_order based on route order
+        for (const route of (data.routes || [])) {
+          if (!route.optimized_order_json) continue;
+          try {
+            const orderIds: number[] = JSON.parse(route.optimized_order_json);
+            const officerJobs = data.jobs.filter((j: any) => j.officer_id === route.officer_id);
+            const jobMap = new Map(officerJobs.map((j: any) => [j.id, j]));
+            orderIds.forEach((id, idx) => {
+              const job = jobMap.get(id);
+              if (job?.call_id) sortMap[String(job.call_id)] = idx;
+            });
+          } catch { /* skip malformed JSON */ }
+        }
+        // Fallback: jobs without explicit route order use sort_order
+        for (const job of data.jobs) {
+          if (job.call_id && !(String(job.call_id) in sortMap)) {
+            sortMap[String(job.call_id)] = job.sort_order ?? 9999;
+          }
+        }
+        if (!cancelled) setServeRouteSortMap(sortMap);
+      } catch { /* non-critical */ }
+    })();
+    return () => { cancelled = true; };
+  }, [filterTab]);
 
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
@@ -1132,6 +1192,17 @@ export default function DispatchPage() {
     if (filterTab === 'archived') {
       return (a.call_number || '').localeCompare(b.call_number || '', undefined, { numeric: true });
     }
+    // Serve tab: sort by route order (sort_order from serve_queue)
+    if (filterTab === 'serve') {
+      const aOrder = serveRouteSortMap[a.id] ?? 9999;
+      const bOrder = serveRouteSortMap[b.id] ?? 9999;
+      if (aOrder !== bOrder) return aOrder - bOrder;
+      // Fallback: priority then time for unordered serve calls
+      const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+      const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
+      if (pDiff !== 0) return pDiff;
+      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    }
     // Pinned calls float to the top regardless of sort mode
     const aPin = a.pinned ? 1 : 0;
     const bPin = b.pinned ? 1 : 0;
@@ -1152,7 +1223,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared, user?.id, serveRouteSortMap]);
 
   // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
   useEffect(() => {
@@ -1449,7 +1520,7 @@ export default function DispatchPage() {
       const updated = mapDbCall(result);
       setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
       setSelectedCall(updated);
-      addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
+      addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ').toUpperCase()}`, 'success');
     } catch (err) {
       console.error('Failed to update timeline:', err);
       const msg = err instanceof Error ? err.message : 'Failed to update timeline';
@@ -1696,11 +1767,6 @@ export default function DispatchPage() {
   // ═══════════════════════════════════════════════════════════════
   // NEW DISPATCH FEATURES
   // ═══════════════════════════════════════════════════════════════
-
-  // Feature 1: Auto-escalation timer — REMOVED 2026-05-04.
-  // Priority is now stale until manually escalated by admin / supervisor /
-  // dispatcher / officer via the call detail panel. See server endpoint
-  // POST /api/dispatch/calls/:id/escalate (callActions.ts).
 
   // Feature 4: Unit availability counter
   const unitAvailability = useMemo(() => {
@@ -2278,7 +2344,7 @@ export default function DispatchPage() {
                             <span className="font-bold">{note.author || 'System'}</span>
                             <span className="font-mono">{formatTime(note.timestamp)}</span>
                           </div>
-                          <div className="text-rmpg-200 mt-0.5">{note.text}</div>
+                          <div className="text-rmpg-200 mt-0.5">{typeof note.text === 'string' ? note.text : String(note.text ?? '')}</div>
                         </div>
                       ))}
                     </div>
@@ -3313,6 +3379,21 @@ export default function DispatchPage() {
                         <Terminal style={{ width: 10, height: 10 }} /> NCIC
                       </button>
                     )}
+                    {/* Route Builder — navigate to multi-stop CFS route planner for assigned units */}
+                    {!isEditing && (selectedCall.assigned_units || []).length > 0 && (
+                      <button type="button"
+                        className="toolbar-btn"
+                        title="Open Route Builder for assigned unit"
+                        style={{ color: '#d4a017' }}
+                        onClick={() => {
+                          const firstUnitId = selectedCall.assigned_units?.[0];
+                          if (!firstUnitId) return;
+                          navigate(`/route-builder?unit=${encodeURIComponent(String(firstUnitId))}`);
+                        }}
+                      >
+                        <Route style={{ width: 10, height: 10 }} /> Route
+                      </button>
+                    )}
                     {/* Schedule Return Visit — PSO/Process Service calls in completed states */}
                     {!isEditing && ['pso_client_request', 'process_service'].includes(selectedCall.incident_type) && ['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(selectedCall.status) && (
                       <button type="button"
@@ -3563,7 +3644,7 @@ export default function DispatchPage() {
               {/* Detail Tabs */}
               <div className="flex border-b border-[#2b2b2b] flex-shrink-0" style={{ background: '#050505' }}>
                 {(['info', 'persons', 'timeline', 'notes', 'attachments', 'flags', 'audit'] as const).map(tab => {
-                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
+                  const labels: Record<string, string> = { info: 'Info', persons: 'Individuals / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                   const icons: Record<string, React.ReactNode> = {
                     info: <FileText style={{ width: 9, height: 9 }} />,
                     persons: <User style={{ width: 9, height: 9 }} />,
@@ -3969,7 +4050,7 @@ export default function DispatchPage() {
                                 key={unitIdStr}
                                 className="inline-flex items-center gap-1.5 px-2 py-0.5 text-[11px] font-bold font-mono rounded-sm transition-all duration-150 hover:brightness-110"
                                 style={{ background: `${statusColor}12`, color: statusColor, border: `1px solid ${statusColor}40`, boxShadow: `0 0 4px ${statusColor}10` }}
-                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${(unitObj.status || '').replace(/_/g, ' ')})` : displayName}
+                                title={unitObj ? `${displayName} — ${unitObj.officer_name || 'Unassigned'}${unitObj.badge_number ? ` #${unitObj.badge_number}` : ''} (${(unitObj.status || '').replace(/_/g, ' ').toUpperCase()})` : displayName}
                               >
                                 <span className="rounded-full flex-shrink-0" style={{ width: 5, height: 5, background: statusColor, boxShadow: `0 0 3px ${statusColor}80` }} />
                                 {displayName}
@@ -4147,7 +4228,7 @@ export default function DispatchPage() {
                         {/* ── Linked Persons ── */}
                         <div>
                           <div className="flex items-center gap-2 mb-1">
-                            <label className="text-[9px] text-brand-gold-500">Linked Persons</label>
+                            <label className="text-[9px] text-brand-gold-500">Linked Individuals</label>
                             <select className="input-dark text-[9px] py-0 px-1 w-auto" value={linkPersonRole} onChange={(e) => setLinkPersonRole(e.target.value)}>
                               <option value="suspect">Suspect</option>
                               <option value="victim">Victim</option>
@@ -4897,7 +4978,7 @@ export default function DispatchPage() {
                                   {(visit.status || '').toUpperCase()}
                                 </span>
                                 {visit.disposition && (
-                                  <span className="text-[9px] text-rmpg-300">{(visit.disposition || '').replace(/_/g, ' ')}</span>
+                                  <span className="text-[9px] text-rmpg-300">{(visit.disposition || '').replace(/_/g, ' ').toUpperCase()}</span>
                                 )}
                               </div>
                               {unitsList.length > 0 && (
@@ -5093,7 +5174,7 @@ export default function DispatchPage() {
                           </div>
                         ) : (
                           <>
-                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
+                            <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(typeof note.text === 'string' ? note.text : String(note.text ?? ''))}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
                                 <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
@@ -5289,7 +5370,7 @@ export default function DispatchPage() {
                   const updated = { ...selectedCall, [flag]: 1 };
                   setSelectedCall(updated);
                   setCalls(prev => prev.map(c => c.id === callId ? updated : c));
-                  addToast(`Flag "${flag.replace(/_/g, ' ')}" accepted`, 'success');
+                  addToast(`Flag "${flag.replace(/_/g, ' ').toUpperCase()}" accepted`, 'success');
                 } catch { addToast(`Failed to set flag`, 'error'); }
               }}
               onDismiss={() => setShowAiSidebar(false)}
@@ -5299,12 +5380,23 @@ export default function DispatchPage() {
           {/* Dispatch Map Panel (right side, always visible) */}
           <div className="w-[35%] border-l border-[#2b2b2b] flex flex-col overflow-hidden flex-shrink-0" style={{ background: 'var(--surface-deep)' }}>
             {selectedCall?.latitude != null && selectedCall?.longitude != null ? (
-              <DispatchMiniMap
-                call={selectedCall}
-                units={units}
-                fullHeight
-                onRouteUpdate={setRouteInfo}
-              />
+              mapEngine === 'mapbox' ? (
+                <MapboxMiniMap
+                  call={selectedCall}
+                  units={units}
+                  fullHeight
+                  onRouteUpdate={setRouteInfo}
+                />
+              ) : (
+                <DispatchMiniMap
+                  call={selectedCall}
+                  units={units}
+                  fullHeight
+                  onRouteUpdate={setRouteInfo}
+                  serveRouteJobs={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteJobs : undefined}
+                  serveRouteOrder={PSO_INCIDENT_TYPES.includes(selectedCall?.incident_type || '') ? serveRouteOrder : undefined}
+                />
+              )
             ) : (
               <div className="flex-1 flex items-center justify-center text-[#545454]">
                 <div className="text-center">
@@ -5737,14 +5829,17 @@ export default function DispatchPage() {
               case 'query_person':
                 setNcicInitialQuery({ type: 'person', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run name ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'query_vehicle':
                 setNcicInitialQuery({ type: 'vehicle', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run plate ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'query_warrant':
                 setNcicInitialQuery({ type: 'warrant', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run name ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'assign_unit':
               case 'set_status':
@@ -5758,19 +5853,30 @@ export default function DispatchPage() {
                 fetchData();
                 break;
               case 'unit_status_check':
-                // Info-only — output is shown in the command line
+                // Info-only — also speak it via the announcer
+                if (action.callSign) {
+                  announceTarget(`status of ${action.callSign}`).catch(() => { /* announcer best-effort */ });
+                } else {
+                  announceTarget('sitrep').catch(() => { /* announcer best-effort */ });
+                }
                 break;
               case 'query_bolo':
-                // Navigate to communications page (BOLO section)
                 navigate('/communications');
+                announceTarget(`BOLO ${action.query}`).catch(() => { /* announcer best-effort */ });
                 break;
               case 'new_fi':
                 // Navigate to field interviews page
                 navigate('/field-interviews');
                 break;
               case 'query_trespass':
-                // Navigate to trespass orders page
                 navigate('/trespass-orders');
+                announceTarget(`trespass ${action.query}`).catch(() => { /* announcer best-effort */ });
+                break;
+              case 'premise_history':
+                announceTarget(`area check ${action.address}`).catch(() => { /* announcer best-effort */ });
+                break;
+              case 'premise_alert':
+                announceTarget(`premise alert ${action.address}`).catch(() => { /* announcer best-effort */ });
                 break;
               case 'hold_call':
                 // Already executed via API in cadCommandParser. Refresh data.
@@ -5819,7 +5925,7 @@ export default function DispatchPage() {
                 // Voice announce ETA — announce unit status as proxy (GPS ETA would need server)
                 const unit = units.find(u => u.call_sign === action.callSign);
                 if (unit) {
-                  const statusLabel = unit.status === 'enroute' ? 'en route' : unit.status.replace(/_/g, ' ');
+                  const statusLabel = unit.status === 'enroute' ? 'en route' : unit.status.replace(/_/g, ' ').toUpperCase();
                   announceCallUpdate('', `Unit ${unit.call_sign} is currently ${statusLabel}`);
                 }
                 break;
@@ -5872,9 +5978,9 @@ export default function DispatchPage() {
                 if (unit && unit.current_call_id) {
                   const call = calls.find(c => c.id === String(unit.current_call_id));
                   const loc = call?.location || 'unknown location';
-                  announceCallUpdate('', `Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ')}.`);
+                  announceCallUpdate('', `Unit ${unit.call_sign} last reported at ${loc}. Status: ${unit.status.replace(/_/g, ' ').toUpperCase()}.`);
                 } else if (unit) {
-                  announceCallUpdate('', `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')}. No active call assigned.`);
+                  announceCallUpdate('', `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ').toUpperCase()}. No active call assigned.`);
                 }
                 break;
               }
@@ -5940,7 +6046,7 @@ export default function DispatchPage() {
                 if (pending.length === 0) {
                   announceCallUpdate('', 'No pending calls.');
                 } else {
-                  const details = pending.slice(0, 5).map(c => `${c.call_number}, ${c.incident_type?.replace(/_/g, ' ') || 'unknown'}`).join('. ');
+                  const details = pending.slice(0, 5).map(c => `${c.call_number}, ${c.incident_type?.replace(/_/g, ' ').toUpperCase() || 'unknown'}`).join('. ');
                   announceCallUpdate('', `${pending.length} pending calls. ${details}.`);
                 }
                 break;

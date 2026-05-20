@@ -184,3 +184,75 @@ export async function fetchEntityImages(
     return [];
   }
 }
+
+/**
+ * Fetch a Mapbox Static Map image for embedding in PDFs.
+ * Uses the server-side proxy at /api/mapbox/static/image to protect the token.
+ * Returns a ResolvedImage or null on failure (graceful degradation).
+ */
+export async function fetchStaticMapImage(
+  lat: number,
+  lng: number,
+  options?: {
+    zoom?: number;
+    width?: number;
+    height?: number;
+    style?: string;
+    markers?: Array<{ lng: number; lat: number; color?: string; label?: string }>;
+  },
+): Promise<ResolvedImage | null> {
+  try {
+    const token = getAuthToken();
+    const params = new URLSearchParams({
+      lng: String(lng),
+      lat: String(lat),
+      zoom: String(options?.zoom ?? 15),
+      width: String(options?.width ?? 600),
+      height: String(options?.height ?? 300),
+      style: options?.style ?? 'mapbox/dark-v11',
+      retina: 'true',
+    });
+    if (options?.markers?.length) {
+      params.set('markers', options.markers.map(m =>
+        `${m.lng},${m.lat},${m.color ?? 'd4a017'},${m.label ?? ''}`
+      ).join(';'));
+    }
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+
+    const res = await fetch(`/api/mapbox/static/image?${params}`, {
+      signal: controller.signal,
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    clearTimeout(timeout);
+
+    if (!res.ok) return null;
+
+    const blob = await res.blob();
+    if (!blob.type.startsWith('image/')) return null;
+
+    const bmp = await createImageBitmap(blob);
+    const w = Math.min(bmp.width, MAX_IMAGE_DIMENSION);
+    const h = Math.min(bmp.height, MAX_IMAGE_DIMENSION);
+
+    const canvas = new OffscreenCanvas(w, h);
+    const ctx = canvas.getContext('2d');
+    if (!ctx) { bmp.close(); return null; }
+
+    ctx.drawImage(bmp, 0, 0, w, h);
+    bmp.close();
+
+    const outBlob = await canvas.convertToBlob({ type: 'image/png', quality: 1.0 });
+    const reader = new FileReader();
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(outBlob);
+    });
+
+    return { dataUrl, width: w, height: h, format: 'PNG', name: 'Location Map' };
+  } catch {
+    return null;
+  }
+}

@@ -311,10 +311,10 @@ export default function IncidentDetailWindow() {
         </div>
       )}
 
-      {/* Persons Involved */}
+      {/* Individuals Involved */}
       <div className="bg-surface-base border border-rmpg-600 p-4 mb-6">
         <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-3 border-b border-rmpg-700 pb-2">
-          Persons Involved ({persons.length})
+          Individuals Involved ({persons.length})
         </h3>
         {persons.length > 0 ? (
           <table className="w-full text-sm">
@@ -333,7 +333,7 @@ export default function IncidentDetailWindow() {
                   <tr key={p.id || `person-${i}`} className="border-t border-rmpg-700/50">
                     <td className="py-1.5">
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
-                        {(p.role || '').replace(/_/g, ' ')}
+                        {(p.role || '').replace(/_/g, ' ').toUpperCase()}
                       </span>
                     </td>
                     <td className="py-1.5 text-white font-medium">{p.last_name}, {p.first_name}</td>
@@ -368,7 +368,7 @@ export default function IncidentDetailWindow() {
                 <tr key={v.id || `vehicle-${i}`} className="border-t border-rmpg-700/50">
                   <td className="py-1.5">
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
-                      {(v.role || '').replace(/_/g, ' ')}
+                      {(v.role || '').replace(/_/g, ' ').toUpperCase()}
                     </span>
                   </td>
                   <td className="py-1.5 text-white font-mono">{v.plate_number || 'N/A'}{v.state ? ` (${v.state})` : ''}</td>

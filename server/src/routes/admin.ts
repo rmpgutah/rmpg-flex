@@ -994,7 +994,11 @@ router.get('/health', requireRole('admin', 'manager', 'supervisor'), (req: Reque
     const hours = Math.floor(uptime / 3600);
     const mins = Math.floor((uptime % 3600) / 60);
     let activeSessions = 0;
-    try { activeSessions = (db.prepare("SELECT COUNT(*) as c FROM user_sessions WHERE expires_at > datetime('now')").get() as any)?.c || 0; } catch {}
+    // Table is `sessions` (not `user_sessions`); previously the wrong name
+    // was caught by the silent try/catch and the value was always 0 in
+    // production. Fixed 2026-05-05 — admin dashboard now shows the real
+    // active-session count.
+    try { activeSessions = (db.prepare("SELECT COUNT(*) as c FROM sessions WHERE expires_at > datetime('now')").get() as any)?.c || 0; } catch {}
     const pkg = require('../../package.json');
     res.json({
       version: pkg.version || '0.0.0',
@@ -1865,6 +1869,7 @@ router.put('/users/:userId/role', requireRole('admin'), (req: Request, res: Resp
 // ═════════════════════════════════════════════════════════════
 
 const ALLOWED_THIRD_PARTY_KEYS = [
+  'google_maps_platform_api_key',
   // RapidAPI
   'lead_gen_rapidapi_key',
   'dl_ocr_rapidapi_key',
@@ -1881,7 +1886,8 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'dea_api_key', 'usms_api_key', 'atf_api_key', 'interpol_api_key',
   'nsopw_api_key', 'ofac_api_key',
   // Free / Open Source
-  'openweathermap_api_key', 'mapbox_api_key', 'nominatim_api_key', 'opencage_api_key',
+  'openweathermap_api_key', 'mapbox_api_key', 'mapbox_username', 'mapbox_password',
+  'mapbox_style_url', 'nominatim_api_key', 'opencage_api_key',
   'ipinfo_api_key', 'virustotal_api_key', 'abuseipdb_api_key', 'shodan_api_key',
   'have_i_been_pwned_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',
   'abstract_api_key', 'whoisxml_api_key', 'urlscan_api_key', 'emailrep_api_key',
@@ -1974,13 +1980,15 @@ router.put('/third-party-keys', requireRole('admin'), (req: Request, res: Respon
       'traccar_url',
       'traccar_enabled',
       'traccar_poll_interval',
+      'mapbox_style_url',
+      'mapbox_username',
     ]);
     const stored = NON_SECRET_KEYS.has(key) ? value.trim() : encryptValue(value.trim());
     const now = localNow();
 
     const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;
     if (existing) {
-      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(stored, now, key);
+      db.prepare("UPDATE system_config SET config_value = ?, category = 'integrations', is_active = 1, updated_at = ? WHERE config_key = ?").run(stored, now, key);
     } else {
       db.prepare(
         "INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 1, ?, ?)"
@@ -2689,8 +2697,12 @@ router.get('/users/presence', requireRole('admin'), (req: Request, res: Response
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+    // u.call_sign was referenced here previously but lives on the `units`
+    // table (per-unit assignment), not `users`. Removed 2026-05-05 after
+    // surfacing as `SqliteError: no such column: u.call_sign` in prod.
+    // badge_number is the correct per-user identifier for the admin view.
     const users = db.prepare(`
-      SELECT u.id, u.username, u.full_name, u.role, u.call_sign, u.badge_number,
+      SELECT u.id, u.username, u.full_name, u.role, u.badge_number,
         (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) as last_activity,
         (SELECT COUNT(*) FROM sessions rt WHERE rt.user_id = u.id AND rt.expires_at > datetime('now')) as active_sessions,
         CASE
@@ -2764,8 +2776,9 @@ router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response)
     const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '50'), 10)) || 100000));
     const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+    // u.call_sign removed 2026-05-05 — see /api/admin/users/presence note above.
     const rows = db.prepare(`
-      SELECT al.*, u.username, u.full_name, u.role, u.call_sign
+      SELECT al.*, u.username, u.full_name, u.role, u.badge_number
       FROM activity_log al
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.created_at > ?

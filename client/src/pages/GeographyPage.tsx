@@ -568,7 +568,7 @@ function DetailPane({
         {fields.map(([k, v]) => (
           <div key={k} className="contents">
             <dt className="text-[var(--text-muted)] uppercase text-[9px] pt-0.5">
-              {k.replace(/_/g, ' ')}
+              {k.replace(/_/g, ' ').toUpperCase()}
             </dt>
             <dd className="text-[var(--text-primary)] break-words">
               {v == null || v === '' ? (

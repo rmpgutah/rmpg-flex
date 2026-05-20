@@ -253,6 +253,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
               </label>
               <div className="relative">
                 <select
+                  name="employee"
                   value={selectedUserId}
                   onChange={handleEmployeeChange}
                   disabled={submitting || loadingEmployees}
@@ -305,6 +306,7 @@ export default function PinEntryModal({ isOpen, onClose, onSuccess }: PinEntryMo
                 <input
                   key={i}
                   ref={el => { inputRefs.current[i] = el; }}
+                  name={`pin-digit-${i}`}
                   type="text"
                   inputMode="numeric"
                   maxLength={1}

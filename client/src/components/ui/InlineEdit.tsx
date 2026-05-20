@@ -85,6 +85,7 @@ export default function InlineEdit({
       {type === 'select' && options ? (
         <select
           ref={inputRef as React.Ref<HTMLSelectElement>}
+          name="inline-edit-select"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -99,6 +100,7 @@ export default function InlineEdit({
       ) : (
         <input
           ref={inputRef as React.Ref<HTMLInputElement>}
+          name="inline-edit"
           type={type}
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}

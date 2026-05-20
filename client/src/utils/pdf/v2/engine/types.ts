@@ -122,4 +122,11 @@ export interface RenderContext<T = any> {
   spacer(height: number): void;
 
   pageBreakIfNeeded(heightNeeded: number): void;
+
+  /** Direct access to the underlying Primitives instance — used by
+   *  callback sections that delegate to a render helper which prefers
+   *  the primitives API over the wrapped context methods. */
+  readonly primitives: import('./primitives').Primitives;
+  /** Direct access to the underlying LayoutEngine. */
+  readonly layout: import('./layout').LayoutEngine;
 }

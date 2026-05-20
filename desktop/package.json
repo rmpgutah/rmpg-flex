@@ -1,6 +1,6 @@
 {
   "name": "rmpg-flex-desktop",
-  "version": "5.8.2",
+  "version": "5.8.4",
   "description": "RMPG Flex CAD/RMS — Desktop Application",
   "author": "Rocky Mountain Protective Group",
   "license": "UNLICENSED",
@@ -21,9 +21,8 @@
       "output": "dist"
     },
     "publish": {
-      "provider": "github",
-      "owner": "rmpgutah",
-      "repo": "rmpg-flex"
+      "provider": "generic",
+      "url": "https://rmpgutah.us/releases/"
     },
     "files": [
       "main.js",
@@ -40,6 +39,10 @@
       {
         "from": "../client/public/rmpg-seal.png",
         "to": "icon.png"
+      },
+      {
+        "from": "../client/public/rmpg flex.png",
+        "to": "rmpg flex.png"
       }
     ],
     "mac": {

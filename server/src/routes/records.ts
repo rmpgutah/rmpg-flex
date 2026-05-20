@@ -2756,7 +2756,8 @@ function getRecordLabel(db: any, type: string, id: number): string {
 router.get('/links', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const { type, id } = req.query;
+    const type = req.query.type || req.query.source_type;
+    const id = req.query.id || req.query.source_id;
 
     if (!type || !id) {
       res.status(400).json({ error: 'type and id query parameters are required', code: 'TYPE_AND_ID_QUERY' });

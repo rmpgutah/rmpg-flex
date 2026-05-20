@@ -14,8 +14,10 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
-import { loadGoogleMaps, DARK_MAP_STYLE, onOnlineRetryMaps } from '../utils/googleMapsLoader';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
+import { createMapboxMap, addMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { getMapboxToken } from '../utils/mapboxApiKey';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
@@ -155,10 +157,9 @@ export default function ServePage() {
 
   // ── Map state ──────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const trailIdRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   // ── Route state ────────────────────────────────────────────────────
@@ -475,9 +476,8 @@ export default function ServePage() {
     if (activeTab !== 'Map') return;
 
     let cancelled = false;
-    let unsubOnline = () => {};
 
-    const initMap = () => {
+    const initMap = async () => {
       if (cancelled || !mapContainerRef.current) return;
 
       // If map already exists, just update markers
@@ -486,117 +486,113 @@ export default function ServePage() {
         return;
       }
 
-      const center = { lat: 40.7608, lng: -111.891 }; // SLC default
-      const map = new google.maps.Map(mapContainerRef.current, {
-        center,
-        zoom: 11,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
-      });
-
-      mapRef.current = map;
-      infoWindowRef.current = new google.maps.InfoWindow();
-      setMapReady(true);
-    };
-
-    (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
-        if (cancelled) return;
-        await loadGoogleMaps(apiKey);
-        if (cancelled) return;
-        initMap();
-        unsubOnline = onOnlineRetryMaps(apiKey, initMap);
+        const token = await getMapboxToken();
+        if (cancelled || !token) {
+          if (!cancelled) setMapReady(false);
+          return;
+        }
+
+        injectMapboxStyles();
+        const map = createMapboxMap({
+          container: mapContainerRef.current,
+          accessToken: token,
+          center: [-111.891, 40.7608], // SLC default [lng, lat]
+          zoom: 11,
+        });
+
+        map.on('load', () => {
+          if (!cancelled) {
+            mapRef.current = map;
+            setMapReady(true);
+          }
+        });
       } catch {
         if (!cancelled) setMapReady(false);
       }
-    })();
+    };
+
+    initMap();
 
     return () => {
       cancelled = true;
-      unsubOnline();
+      if (mapRef.current) {
+        mapRef.current.remove();
+        mapRef.current = null;
+        setMapReady(false);
+      }
     };
   }, [activeTab]);
 
   // Update markers when jobs change or map becomes ready
   const updateMapMarkers = useCallback(() => {
-    if (!mapRef.current) return;
+    const map = mapRef.current;
+    if (!map) return;
 
     // Clear old markers
-    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    // Clear old polyline
-    if (polylineRef.current) {
-      polylineRef.current.setMap(null);
-      polylineRef.current = null;
+    // Clear old trail
+    if (trailIdRef.current) {
+      try {
+        if (map.getLayer(trailIdRef.current)) map.removeLayer(trailIdRef.current);
+        if (map.getSource(trailIdRef.current)) map.removeSource(trailIdRef.current);
+      } catch { /* layer/source may not exist */ }
+      trailIdRef.current = null;
     }
 
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new mapboxgl.LngLatBounds();
     let hasMarkers = false;
 
     jobs.forEach(job => {
       if (job.recipient_lat == null || job.recipient_lng == null) return;
       hasMarkers = true;
-      const pos = { lat: job.recipient_lat, lng: job.recipient_lng };
-      bounds.extend(pos);
+      bounds.extend([job.recipient_lng, job.recipient_lat]);
 
       const color = MARKER_COLORS[job.status] || MARKER_COLORS.pending;
-      const marker = new google.maps.Marker({
-        position: pos,
-        map: mapRef.current!,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 1.5,
-          scale: 10,
-        },
-        title: job.recipient_name,
-      });
 
-      marker.addListener('click', () => {
-        const fullAddr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
-          .filter(Boolean).join(', ');
-        infoWindowRef.current?.setContent(`
-          <div style="color:#fff;background:#141414;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
+      // Custom marker element
+      const el = document.createElement('div');
+      el.style.cssText = `width:20px;height:20px;border-radius:50%;background:${color};border:2px solid #ffffff;cursor:pointer;box-shadow:0 0 6px ${color}80;`;
+      el.title = job.recipient_name;
+
+      const fullAddr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
+        .filter(Boolean).join(', ');
+
+      const popup = new mapboxgl.Popup({ offset: 12, closeButton: false, className: 'mapbox-popup-dark' })
+        .setHTML(`
+          <div style="color:#fff;background:#141414;padding:8px 12px;border-radius:2px;min-width:180px;font-family:system-ui;">
             <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
             <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
             <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
           </div>
         `);
-        infoWindowRef.current?.open(mapRef.current!, marker);
-      });
+
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([job.recipient_lng, job.recipient_lat])
+        .setPopup(popup)
+        .addTo(map);
 
       markersRef.current.push(marker);
     });
 
-    // Draw polyline if route planned
+    // Draw trail if route planned
     if (routeData && routeData.orderedIds.length > 1) {
-      const path = routeData.orderedIds
+      const coords = routeData.orderedIds
         .map(id => jobs.find(j => j.id === id))
         .filter((j): j is ServeJob => !!j && j.recipient_lat != null && j.recipient_lng != null)
-        .map(j => ({ lat: j.recipient_lat!, lng: j.recipient_lng! }));
+        .map(j => [j.recipient_lng!, j.recipient_lat!] as [number, number]);
 
-      if (path.length > 1) {
-        polylineRef.current = new google.maps.Polyline({
-          path,
-          geodesic: true,
-          strokeColor: '#888888',
-          strokeOpacity: 0.8,
-          strokeWeight: 3,
-          map: mapRef.current,
-        });
+      if (coords.length > 1) {
+        const trailId = 'serve-route-trail';
+        addMapboxTrail(map, trailId, coords, '#888888', 3);
+        trailIdRef.current = trailId;
       }
     }
 
     if (hasMarkers) {
-      mapRef.current.fitBounds(bounds, 60);
+      map.fitBounds(bounds, { padding: 60 });
     }
   }, [jobs, routeData]);
 
@@ -952,7 +948,7 @@ export default function ServePage() {
                     </button>
                     <button type="button"
                       onClick={() => {
-                        // Build Google Maps URL with all waypoints
+                        // Build navigation URL with all waypoints
                         const geocoded = routeJobs.filter(j => j.status !== 'served' && j.recipient_lat != null && j.recipient_lng != null);
                         if (geocoded.length === 0) return;
                         const dest = geocoded[geocoded.length - 1];

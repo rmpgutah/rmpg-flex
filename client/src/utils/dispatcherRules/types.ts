@@ -20,6 +20,12 @@ export interface BrainContext {
   currentUserOnSceneAt?:  number;
   currentUserGeofence?:   { beat: string; inBeat: boolean };
 
+  activeCallCount?: number;
+  availableUnitCount?: number;
+  lastEventAt?: number;
+  heldCalls?: Array<{ call_number: string; held_since: number }>;
+  shiftEndTime?: string;
+
   transcript: Array<{ text: string; source: 'system' | 'officer'; ts: number }>;
 
   /** Payload for the currently-matching event (undefined for non-event triggers). */

@@ -684,9 +684,17 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
     }
 
     const client = await getGraphClientForUser(req.user!.userId);
+    // Important: do NOT include `contentId` in $select — it lives on the
+    // microsoft.graph.fileAttachment subtype, not the base attachment
+    // type. Including it makes Graph reject the entire query with
+    // "Could not find a property named 'contentId' on type
+    // microsoft.graph.attachment" whenever a message has any non-file
+    // attachment (itemAttachment, referenceAttachment). Cost is ~9
+    // user-facing 500s/day on the email panel as of 2026-05-05.
+    // Mapper below already falls back to `a.id` when contentId is absent.
     const result = await client
       .api(`/me/messages/${req.params.id}/attachments`)
-      .select('id,name,contentType,size,isInline,contentId')
+      .select('id,name,contentType,size,isInline')
       .get();
 
     res.json((result.value || []).map((a: any) => ({
@@ -695,6 +703,10 @@ router.get('/messages/:id/attachments', validateGraphId, async (req: Request, re
       contentType: a.contentType,
       size: a.size,
       isInline: a.isInline || false,
+      // contentId is exposed by Graph for fileAttachment subtypes when
+      // the full object is fetched (not via $select); for non-file
+      // attachments we fall back to the attachment id so the inline-
+      // image substitution path on the client always has a stable key.
       contentId: a.contentId || a.id,
     })));
   } catch (err: any) {

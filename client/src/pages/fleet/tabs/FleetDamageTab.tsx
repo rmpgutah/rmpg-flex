@@ -134,7 +134,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <span className={`text-[9px] font-bold ${REPAIR_COLORS[r.repair_status] || 'text-rmpg-400'}`}>{r.repair_status?.replace(/_/g, ' ')}</span>
+              <span className={`text-[9px] font-bold ${REPAIR_COLORS[r.repair_status] || 'text-rmpg-400'}`}>{r.repair_status?.replace(/_/g, ' ').toUpperCase()}</span>
               {r.repair_status !== 'completed' && (
                 <select value={r.repair_status} onChange={e => updateRepairStatus(r.id, e.target.value)} className="input-field text-[9px] py-0.5 px-1">
                   <option value="reported">Reported</option><option value="estimated">Estimated</option>

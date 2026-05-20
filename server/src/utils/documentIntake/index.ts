@@ -178,9 +178,25 @@ export function extractFromText(text: string, opts: ExtractFromTextOptions = {})
  * → text → extractFromText. Designed to mirror the serveIntake
  * pipeline so behaviour is consistent across the app.
  */
+// Hard cap on PDF input — refuse to write attacker-controlled bytes of
+// unbounded size to disk (CodeQL js/http-to-file-access).
+const MAX_PDF_INPUT_BYTES = 100 * 1024 * 1024;
+
 export async function extractFromPdf(
   pdfBuffer: Buffer, opts: ExtractFromTextOptions = {},
 ): Promise<DocumentExtraction> {
+  if (!Buffer.isBuffer(pdfBuffer)) {
+    throw new Error('extractFromPdf: input must be a Buffer');
+  }
+  if (pdfBuffer.length === 0 || pdfBuffer.length > MAX_PDF_INPUT_BYTES) {
+    throw new Error(`extractFromPdf: input size out of range (0 < n <= ${MAX_PDF_INPUT_BYTES})`);
+  }
+  // Magic-byte sniff — PDFs start with "%PDF-".
+  if (pdfBuffer.length < 5
+    || pdfBuffer[0] !== 0x25 || pdfBuffer[1] !== 0x50 || pdfBuffer[2] !== 0x44
+    || pdfBuffer[3] !== 0x46 || pdfBuffer[4] !== 0x2D) {
+    throw new Error('extractFromPdf: input does not begin with %PDF- header');
+  }
   const dir = mkdtempSync(join(tmpdir(), 'doc-intake-'));
   const inPath = join(dir, 'in.pdf');
   let textPath = '';

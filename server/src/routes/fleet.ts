@@ -12,6 +12,7 @@ import { auditLog } from '../utils/auditLogger';
 import { broadcastFleetUpdate } from '../utils/websocket';
 import { localNow, localToday } from '../utils/timeUtils';
 import { pathInside } from '../utils/pathSafety';
+import { logger } from '../utils/logger';
 
 const execFileAsync = promisify(execFile);
 
@@ -1635,7 +1636,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
 
     // Fetch ALL fuel logs in chronological order for efficiency calculations
     const allLogs = db.prepare(`
-      SELECT id, fuel_date, gallons, odometer_reading, total_cost, distance
+      SELECT id, fuel_date, gallons, odometer_reading, total_cost, distance, partial_fill
       FROM fleet_fuel_logs
       WHERE vehicle_id = ?
       ORDER BY fuel_date ASC, id ASC
@@ -1643,15 +1644,23 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
     `).all(id) as any[];
 
     // Compute per-entry efficiency: mpg, distance, cost_per_mile, running_avg_mpg
-    const efficiencyMap: Record<number, { mpg: number | null; distance: number | null; cost_per_mile: number | null; running_avg_mpg: number | null }> = {};
+    // Partial fill logic: when a fill-up is partial, we cannot compute accurate MPG
+    // because the tank wasn't filled. We accumulate gallons from partial fills and
+    // compute MPG only at the next full fill-up using total distance / total gallons
+    // since the last full fill.
+    const efficiencyMap: Record<number, { mpg: number | null; distance: number | null; cost_per_mile: number | null; running_avg_mpg: number | null; partial_fill: boolean }> = {};
     let cumulativeMiles = 0;
     let cumulativeGallons = 0;
     let bestMpg: number | null = null;
     let worstMpg: number | null = null;
     let totalDistance = 0;
+    // Track accumulated gallons from partial fills pending the next full fill
+    let pendingPartialGallons = 0;
+    let lastFullFillOdometer: number | null = null;
 
     for (let i = 0; i < allLogs.length; i++) {
       const curr = allLogs[i];
+      const isPartial = curr.partial_fill === 1;
       let dist: number | null = null;
       let mpg: number | null = null;
       let costPerMile: number | null = null;
@@ -1669,14 +1678,43 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
         }
       }
 
-      if (dist != null && dist > 0 && curr.gallons > 0) {
-        mpg = Math.round((dist / curr.gallons) * 10) / 10;
-        cumulativeMiles += dist;
-        cumulativeGallons += curr.gallons;
-        totalDistance += dist;
+      if (isPartial) {
+        // Partial fill: accumulate gallons, don't compute MPG for this entry.
+        // Don't add to cumulativeMiles/cumulativeGallons here — those will be
+        // accounted for when the next full fill resolves the pending partials.
+        pendingPartialGallons += curr.gallons;
+        if (dist != null && dist > 0) {
+          totalDistance += dist;
+        }
+      } else {
+        // Full fill: compute MPG using accumulated gallons (this fill + any pending partials)
+        const totalGallonsForCalc = curr.gallons + pendingPartialGallons;
 
-        if (bestMpg === null || mpg > bestMpg) bestMpg = mpg;
-        if (worstMpg === null || mpg < worstMpg) worstMpg = mpg;
+        if (dist != null && dist > 0 && totalGallonsForCalc > 0) {
+          // If there were partial fills in between, we need the total distance since last full fill
+          let distForCalc = dist;
+          if (pendingPartialGallons > 0 && curr.odometer_reading != null && lastFullFillOdometer != null) {
+            // Use total distance from last full fill to this full fill
+            const totalDist = curr.odometer_reading - lastFullFillOdometer;
+            if (totalDist > 0) distForCalc = totalDist;
+          }
+
+          mpg = Math.round((distForCalc / totalGallonsForCalc) * 10) / 10;
+          cumulativeMiles += distForCalc;
+          cumulativeGallons += totalGallonsForCalc;
+          totalDistance += dist;
+
+          if (bestMpg === null || mpg > bestMpg) bestMpg = mpg;
+          if (worstMpg === null || mpg < worstMpg) worstMpg = mpg;
+        } else if (dist != null && dist > 0) {
+          totalDistance += dist;
+          cumulativeMiles += dist;
+          cumulativeGallons += curr.gallons + pendingPartialGallons;
+        }
+
+        // Reset partial accumulator
+        pendingPartialGallons = 0;
+        if (curr.odometer_reading != null) lastFullFillOdometer = curr.odometer_reading;
       }
 
       if (dist != null && dist > 0 && curr.total_cost != null && curr.total_cost > 0) {
@@ -1687,7 +1725,7 @@ router.get('/:id/fuel', (req: Request, res: Response) => {
         ? Math.round((cumulativeMiles / cumulativeGallons) * 10) / 10
         : null;
 
-      efficiencyMap[curr.id] = { mpg, distance: dist, cost_per_mile: costPerMile, running_avg_mpg: runningAvgMpg };
+      efficiencyMap[curr.id] = { mpg, distance: dist, cost_per_mile: costPerMile, running_avg_mpg: runningAvgMpg, partial_fill: isPartial };
     }
 
     // Compute average MPG from cumulative
@@ -1764,6 +1802,9 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       // 2026-04-14 v2: optional driver + card attribution. Both null-allowed
       // so legacy clients that don't send them continue to work unchanged.
       driver_officer_id, fuel_card_id,
+      // Partial fill: indicates the tank was not filled completely.
+      // MPG calculations accumulate gallons across partial fills until the next full fill.
+      partial_fill,
     } = req.body;
 
     if (!fuel_date || !gallons) {
@@ -1790,8 +1831,8 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       INSERT INTO fleet_fuel_logs (
         vehicle_id, fuel_date, gallons, cost_per_gallon, total_cost,
         odometer_reading, fuel_type, station, notes, created_by, created_at, flags,
-        driver_officer_id, fuel_card_id
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        driver_officer_id, fuel_card_id, partial_fill
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       id,
       fuel_date,
@@ -1807,6 +1848,7 @@ router.post('/:id/fuel', requireRole('admin', 'manager', 'supervisor', 'officer'
       flagsJson,
       driver_officer_id || null,
       fuel_card_id || null,
+      partial_fill ? 1 : 0,
     );
 
     // Update vehicle mileage if odometer is higher
@@ -1852,6 +1894,7 @@ router.put('/fuel/:id', requireRole('admin', 'manager', 'supervisor', 'officer')
       station: v => v ?? null, notes: v => v ?? null,
       // v2 fields — supported in both PUT (explicit edit) and POST (create).
       driver_officer_id: v => v ?? null, fuel_card_id: v => v ?? null,
+      partial_fill: v => v ? 1 : 0,
     };
     for (const [key, transform] of Object.entries(fFieldMap)) {
       if (fBodyKeys.includes(key)) { fFields.push(`${key} = ?`); fValues.push(transform(req.body[key])); }
@@ -3297,6 +3340,133 @@ registerCostCategoryRoutes({
   entityType: 'fleet_utility_cost',
 });
 
+// ═══════════════════════════════════════════════════════════════
+// Fleet Expenses — general vehicle expenses separate from fuel
+// (registration, tolls, parking, car_wash, tickets, towing, permits, insurance,
+//  equipment, decals_wraps, storage, roadside_assistance, inspection, electronics, accessories, misc)
+// ═══════════════════════════════════════════════════════════════
+
+// GET /api/fleet/expenses/summary — fleet-wide expense summary (grouped by category)
+router.get('/expenses/summary', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const from = typeof req.query.from === 'string' ? req.query.from : null;
+    const to = typeof req.query.to === 'string' ? req.query.to : null;
+    let sql = `
+      SELECT category, COUNT(*) as count, SUM(amount) as total,
+             AVG(amount) as avg_amount, MIN(expense_date) as first_date,
+             MAX(expense_date) as last_date
+      FROM fleet_expenses
+      WHERE archived_at IS NULL
+    `;
+    const params: any[] = [];
+    if (from) { sql += ' AND expense_date >= ?'; params.push(from); }
+    if (to) { sql += ' AND expense_date <= ?'; params.push(to); }
+    sql += ' GROUP BY category ORDER BY total DESC';
+    const rows = db.prepare(sql).all(...params);
+
+    const grandTotal = rows.reduce((sum: number, r: any) => sum + (r.total || 0), 0);
+    res.json({ categories: rows, grand_total: grandTotal });
+  } catch (err: any) {
+    logger.error({ err }, 'Failed to fetch fleet expenses summary');
+    res.status(500).json({ error: 'Failed to get expense summary' });
+  }
+});
+
+// GET /api/fleet/:id/expenses — list expenses for a vehicle
+router.get('/:id/expenses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = req.params.id;
+    const rows = db.prepare(`
+      SELECT e.*, u.full_name as created_by_name
+      FROM fleet_expenses e
+      LEFT JOIN users u ON e.created_by = u.id
+      WHERE e.vehicle_id = ? AND e.archived_at IS NULL
+      ORDER BY e.expense_date DESC
+    `).all(id);
+    res.json({ data: rows });
+  } catch (err: any) {
+    logger.error({ err, vehicleId: req.params.id }, 'Failed to list expenses for vehicle');
+    res.status(500).json({ error: 'Failed to list expenses' });
+  }
+});
+
+// POST /api/fleet/:id/expenses — create expense
+router.post('/:id/expenses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(req.params.id);
+    const vehicle = db.prepare('SELECT id FROM fleet_vehicles WHERE id = ?').get(id) as any;
+    if (!vehicle) { res.status(404).json({ error: 'Fleet vehicle not found' }); return; }
+
+    const { expense_date, category, amount, vendor, description, receipt_path, odometer_reading, recurring, recurring_frequency, notes } = req.body;
+    if (!expense_date || !category || amount == null) {
+      res.status(400).json({ error: 'expense_date, category, and amount are required' });
+      return;
+    }
+
+    const result = db.prepare(`
+      INSERT INTO fleet_expenses (vehicle_id, expense_date, category, amount, vendor, description, receipt_path, odometer_reading, recurring, recurring_frequency, notes, created_by)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, expense_date, category, Number(amount), vendor || null, description || null, receipt_path || null, odometer_reading ? Number(odometer_reading) : null, recurring ? 1 : 0, recurring_frequency || null, notes || null, req.user!.userId);
+
+    const created = db.prepare('SELECT * FROM fleet_expenses WHERE id = ?').get(result.lastInsertRowid);
+    auditLog(req, 'fleet_expense_created', 'fleet_expense', Number(result.lastInsertRowid),
+      `Created ${category} expense for vehicle ${id}: $${Number(amount).toFixed(2)}`);
+    broadcastFleetUpdate({ action: 'expense_added', vehicle_id: id, id: Number(result.lastInsertRowid) });
+    res.status(201).json(created);
+  } catch (err: any) {
+    logger.error({ err, vehicleId: req.params.id }, 'Failed to create expense for vehicle');
+    res.status(500).json({ error: 'Failed to create expense' });
+  }
+});
+
+// PUT /api/fleet/expenses/:id — update expense
+router.put('/expenses/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM fleet_expenses WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Expense not found' }); return; }
+
+    const fields = ['expense_date', 'category', 'amount', 'vendor', 'description', 'receipt_path', 'odometer_reading', 'recurring', 'recurring_frequency', 'notes'];
+    const sets: string[] = [];
+    const vals: any[] = [];
+    for (const f of fields) {
+      if (Object.prototype.hasOwnProperty.call(req.body, f)) {
+        sets.push(`${f} = ?`);
+        if (f === 'amount' || f === 'odometer_reading') vals.push(req.body[f] != null ? Number(req.body[f]) : null);
+        else if (f === 'recurring') vals.push(req.body[f] ? 1 : 0);
+        else vals.push(req.body[f] ?? null);
+      }
+    }
+    if (sets.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    sets.push("updated_at = datetime('now','localtime')");
+    vals.push(req.params.id);
+    db.prepare(`UPDATE fleet_expenses SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    const updated = db.prepare('SELECT * FROM fleet_expenses WHERE id = ?').get(req.params.id);
+    res.json(updated);
+  } catch (err: any) {
+    logger.error({ err, expenseId: req.params.id }, 'Failed to update expense');
+    res.status(500).json({ error: 'Failed to update expense' });
+  }
+});
+
+// DELETE /api/fleet/expenses/:id — soft-delete
+router.delete('/expenses/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const existing = db.prepare('SELECT * FROM fleet_expenses WHERE id = ?').get(req.params.id) as any;
+    if (!existing) { res.status(404).json({ error: 'Expense not found' }); return; }
+    db.prepare("UPDATE fleet_expenses SET archived_at = datetime('now','localtime') WHERE id = ?").run(req.params.id);
+    auditLog(req, 'fleet_expense_deleted', 'fleet_expense', Number(req.params.id), 'Archived expense');
+    res.json({ success: true });
+  } catch (err: any) {
+    logger.error({ err, expenseId: req.params.id }, 'Failed to delete expense');
+    res.status(500).json({ error: 'Failed to delete expense' });
+  }
+});
+
 // GET /api/fleet/:id/cost-timeline — unified chronological cost ledger
 //
 // The six cost streams (fuel, maintenance, loans, insurance, accessories,
@@ -3317,7 +3487,7 @@ registerCostCategoryRoutes({
 //   - Query params: ?from=YYYY-MM-DD&to=YYYY-MM-DD (both optional).
 interface TimelineEntry {
   date: string;              // YYYY-MM-DD
-  category: 'fuel' | 'maintenance' | 'loan' | 'insurance' | 'accessory' | 'utility';
+  category: 'fuel' | 'maintenance' | 'loan' | 'insurance' | 'accessory' | 'utility' | 'expense';
   amount: number;
   description: string;
   reference_id: number | string;  // source row id
@@ -3393,6 +3563,25 @@ router.get('/:id/cost-timeline', (req: Request, res: Response) => {
         amount: Number(a.cost) || 0,
         description: `Installed: ${a.name}`,
         reference_id: a.id,
+        synthetic: false,
+      });
+    }
+
+    // ── Expenses (non-fuel) ────────────────────────────────────
+    const expenses = db.prepare(`
+      SELECT id, expense_date, category, amount, vendor, description
+      FROM fleet_expenses
+      WHERE vehicle_id = ? AND archived_at IS NULL
+    `).all(id) as any[];
+    for (const e of expenses) {
+      const date = String(e.expense_date).slice(0, 10);
+      if (!dateFilter(date)) continue;
+      entries.push({
+        date,
+        category: 'expense',
+        amount: Number(e.amount) || 0,
+        description: `${e.category || 'Expense'}${e.vendor ? ` · ${e.vendor}` : ''}${e.description ? ` — ${e.description}` : ''}`,
+        reference_id: e.id,
         synthetic: false,
       });
     }
@@ -3511,7 +3700,7 @@ router.get('/:id/cost-timeline', (req: Request, res: Response) => {
     // Sort chronologically, newest first. Ties broken by category order
     // so the same-day sequence reads consistently across pages.
     const categoryOrder: Record<TimelineEntry['category'], number> = {
-      fuel: 0, maintenance: 1, loan: 2, insurance: 3, accessory: 4, utility: 5,
+      fuel: 0, maintenance: 1, expense: 2, loan: 3, insurance: 4, accessory: 5, utility: 6,
     };
     entries.sort((a, b) => {
       if (a.date !== b.date) return a.date < b.date ? 1 : -1;
@@ -3897,6 +4086,13 @@ router.get('/:id/cost-summary', (req: Request, res: Response) => {
       WHERE (vehicle_id = ? OR vehicle_id IS NULL) AND archived_at IS NULL
     `).get(id) as any;
 
+    // Expenses — sum all non-archived fleet_expenses for this vehicle.
+    const expensesTotal = db.prepare(`
+      SELECT COALESCE(SUM(amount), 0) AS total
+      FROM fleet_expenses
+      WHERE vehicle_id = ? AND archived_at IS NULL
+    `).get(id) as any;
+
     const round = (n: number) => Math.round(n * 100) / 100;
     const totalLifetime = round(
       (Number(fuel.total) || 0) +
@@ -3904,7 +4100,8 @@ router.get('/:id/cost-summary', (req: Request, res: Response) => {
       (Number(accessories.total) || 0) +
       loanPaidToDate +
       insurancePaidToDate +
-      (Number(utilities.total) || 0),
+      (Number(utilities.total) || 0) +
+      (Number(expensesTotal.total) || 0),
     );
 
     res.json({
@@ -3916,6 +4113,7 @@ router.get('/:id/cost-summary', (req: Request, res: Response) => {
         insurance:   round(insurancePaidToDate),
         accessories: round(Number(accessories.total) || 0),
         utilities:   round(Number(utilities.total) || 0),
+        expenses:    round(Number(expensesTotal.total) || 0),
       },
       total_lifetime: totalLifetime,
       monthly_commitment: {

@@ -942,7 +942,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
                   </div>
                   {selectedPerson.id_type && (
                     <span className="inline-block mt-1 px-1.5 py-0.5 text-[8px] font-bold uppercase bg-gray-900/40 text-gray-400 border border-gray-700/40 text-center w-full">
-                      {selectedPerson.id_type.replace(/_/g, ' ')}
+                      {selectedPerson.id_type.replace(/_/g, ' ').toUpperCase()}
                     </span>
                   )}
                 </div>

@@ -150,6 +150,8 @@ const TOOLBAR_NAV: NavItem[] = [
   { path: '/reports', icon: BarChart3, label: 'Reports', group: 'analysis', shortcut: 'F10', children: [
     { path: '/reports', icon: BarChart3, label: 'Reports' },
     { path: '/shift-plans', icon: Calendar, label: 'Shift Plans' },
+    { path: '/shift-briefings', icon: FileText, label: 'Shift Briefings' },
+    { path: '/intel-bulletins', icon: AlertTriangle, label: 'Intel Bulletins' },
     { path: '/statute-analytics', icon: BarChart3, label: 'Statute Analytics' },
     { path: '/reports/custom', icon: Database, label: 'Report Builder' },
     { path: '/crime-analysis', icon: TrendingUp, label: 'Crime Analysis' },
@@ -179,6 +181,10 @@ export default function Layout() {
   const { isConnected, connectionLost, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
+
+  // Full-bleed pages (map, route-builder) need overflow-hidden on main so
+  // child height: 100% resolves correctly for Mapbox GL / map containers.
+  const isFullBleedPage = location.pathname === '/map' || location.pathname === '/route-builder' || location.pathname === '/geography';
 
   const gps = useGpsTracking();
   const presence = usePresence();
@@ -1420,7 +1426,7 @@ export default function Layout() {
       <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
-        <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
+        <main id="main-content" className={`flex-1 min-h-0 panel-inset animate-page-enter scrollbar-dark ${isFullBleedPage ? 'overflow-hidden' : 'overflow-auto'}`} key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>
           {/* Feature 21: Password expiry warning banner */}
           {showPasswordExpiryWarning && (
             <div className="bg-amber-900/40 border-b border-amber-700/50 px-4 py-1.5 flex items-center gap-2">

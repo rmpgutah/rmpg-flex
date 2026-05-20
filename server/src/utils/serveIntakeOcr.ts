@@ -101,14 +101,76 @@ export async function getPageCount(pdfPath: string): Promise<number> {
 // Return true to trigger ocrmypdf, false to keep the original
 // pdftotext output.
 //
-// TODO(you): Implement the decision. 5-10 lines.
+// Decision rule (implemented 2026-05-05, replaces the original
+// "empty text only" stub). Three cases:
+//
+//   1. pageCount === 0  → pdfinfo failed; don't OCR a malformed PDF.
+//   2. text empty       → unambiguous scan; OCR always.
+//   3. text present but <200 chars/page → mixed content; OCR catches
+//      the scanned exhibits a born-digital cover-sheet hides.
+//
+// 200 chars/page is the threshold the comment block above describes:
+// born-digital documents typically run >2000 chars/page; scans have
+// 0-50; the 10× gap makes 200 a safe boundary that doesn't false-
+// positive on cover-page-only documents.
+//
+// For mixed documents (born-digital + scanned pages), callers
+// should prefer shouldRunOcrPerPage() which checks each page
+// individually (up to 20 pages). This function remains as a
+// fast synchronous check; shouldRunOcrPerPage is async.
 // ─────────────────────────────────────────────────────────────
 export function shouldRunOcr(extractedText: string, pageCount: number): boolean {
-  // Replace this stub with your decision rule.
-  // Default below = "OCR only when extraction is empty",
-  // which is the LAZY end of the spectrum and will miss the
-  // mixed-content scan case described above.
-  return extractedText.trim().length === 0 && pageCount > 0;
+  if (pageCount === 0) return false;
+  const textLen = extractedText.trim().length;
+  if (textLen === 0) return true;
+  const charsPerPage = textLen / pageCount;
+  return charsPerPage < 200;
+}
+
+// Per-page OCR decision: runs pdftotext on each page individually
+// (up to 20 pages) to detect sparse pages that need OCR even when
+// the document-wide average is above threshold.
+const SPARSE_PAGE_THRESHOLD = 100;
+const MAX_PER_PAGE_CHECK = 20;
+
+export interface PerPageOcrResult {
+  shouldOcr: boolean;
+  sparsePages: number[];
+  totalChars: number[];
+}
+
+export async function shouldRunOcrPerPage(
+  pdfPath: string,
+  pageCount: number,
+): Promise<PerPageOcrResult> {
+  const effectiveCount = Math.min(pageCount, MAX_PER_PAGE_CHECK);
+  const totalChars: number[] = [];
+  const sparsePages: number[] = [];
+
+  for (let page = 1; page <= effectiveCount; page++) {
+    try {
+      const { stdout } = await execFileAsync(
+        'pdftotext',
+        ['-f', String(page), '-l', String(page), pdfPath, '-'],
+        { timeout: 10_000 },
+      );
+      const charCount = stdout.trim().length;
+      totalChars.push(charCount);
+      if (charCount < SPARSE_PAGE_THRESHOLD) {
+        sparsePages.push(page);
+      }
+    } catch {
+      // If pdftotext fails on a page, treat it as sparse
+      totalChars.push(0);
+      sparsePages.push(page);
+    }
+  }
+
+  return {
+    shouldOcr: sparsePages.length > 0,
+    sparsePages,
+    totalChars,
+  };
 }
 
 // Run ocrmypdf on a PDF buffer and return the OCR'd PDF bytes.
@@ -126,7 +188,25 @@ export function shouldRunOcr(extractedText: string, pageCount: number): boolean 
 //
 // Timeout is generous (90s) because ocrmypdf can take 5-15s
 // per page on slow scans. A 6-page packet ≈ 60s worst case.
+// Hard cap on input size — refuse to write attacker-controlled bytes of
+// unbounded size to disk before invoking ocrmypdf (CodeQL js/http-to-file-access).
+const MAX_OCR_INPUT_BYTES = 100 * 1024 * 1024;
+
+function assertIsPdfBufferForOcr(input: Buffer): void {
+  if (!Buffer.isBuffer(input)) throw new Error('runOcrFallback: input must be a Buffer');
+  if (input.length === 0 || input.length > MAX_OCR_INPUT_BYTES) {
+    throw new Error(`runOcrFallback: input size out of range (0 < n <= ${MAX_OCR_INPUT_BYTES})`);
+  }
+  // PDFs begin with "%PDF-" (0x25 0x50 0x44 0x46 0x2D).
+  if (input.length < 5
+    || input[0] !== 0x25 || input[1] !== 0x50 || input[2] !== 0x44
+    || input[3] !== 0x46 || input[4] !== 0x2D) {
+    throw new Error('runOcrFallback: input does not begin with %PDF- header');
+  }
+}
+
 export async function runOcrFallback(pdfBuffer: Buffer): Promise<Buffer> {
+  assertIsPdfBufferForOcr(pdfBuffer);
   if (!(await isOcrmypdfAvailable())) {
     throw Object.assign(new Error('ocrmypdf is not installed on this server'), {
       code: 'OCRMYPDF_MISSING',

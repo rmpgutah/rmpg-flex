@@ -47,45 +47,93 @@ async function signPayload(
   }
 }
 
+function mapServerViolations(rows: unknown): Array<{
+  statute_citation: string;
+  description: string;
+  offense_level: 'Infraction' | 'Misdemeanor' | 'Felony';
+  fine_amount: number;
+}> {
+  if (!Array.isArray(rows)) return [];
+  return rows.map((r: any) => ({
+    statute_citation: String(r?.statute_citation ?? ''),
+    description: String(r?.violation_description ?? ''),
+    offense_level: normalizeOffenseLevel(r?.offense_level),
+    fine_amount: Number(r?.fine_amount ?? 0),
+  }));
+}
+
+function normalizeOffenseLevel(raw: unknown): 'Infraction' | 'Misdemeanor' | 'Felony' {
+  const s = String(raw ?? '').toLowerCase();
+  if (s.startsWith('fel')) return 'Felony';
+  if (s.startsWith('mis')) return 'Misdemeanor';
+  return 'Infraction';
+}
+
 /**
- * Dispatch a record print through the v2 engine if the record
- * type is migrated. Returns true on handled, false on
- * "not migrated, fall through to legacy."
+ * Citation-specific preamble: load v2 modules, fetch /full, map
+ * violations, compute canonical hash, sign. Returns null when the
+ * record type isn't migrated. Shared by download and viewer paths
+ * so both produce byte-identical PDFs (sidecar parity).
  */
-export async function tryV2Dispatch(opts: V2DispatchOptions): Promise<boolean> {
-  if (opts.recordType !== 'citation') return false;
+async function prepareCitationDispatch(opts: V2DispatchOptions) {
+  if (opts.recordType !== 'citation') return null;
 
-  const { downloadPdfV2, payloadHash } = await import('./v2');
+  const v2 = await import('./v2');
   const { citationSchema, citationCanonicalData } = await import('./v2/forms/citation');
+  const { CITATION_INSTRUCTIONS } = await import('./v2/forms/citationInstructions');
 
-  const data = opts.recordData ?? {};
+  let data = opts.recordData ?? {};
+  if (data.id != null) {
+    try {
+      const full = await apiFetch<any>(`/citations/${data.id}/full`);
+      data = { ...full, ...data };
+      data.violations = mapServerViolations(full.violations);
+    } catch { /* fall through to back-compat flat fields */ }
+  }
   const filename = `citation-${opts.identifier || data.citation_number || 'unknown'}.pdf`;
   const caseNumber = String(data.citation_number ?? '');
-
-  // Compute canonical hash of the SCHEMA-PROJECTED data — that's
-  // the hash the sidecar will record AND the hash signPayload
-  // signs. Using citationCanonicalData (path-keyed, not raw row)
-  // means rendering the same logical record twice always produces
-  // the same hash even if the row gained extra columns.
-  const projected = citationCanonicalData(data);
-  const hash = await payloadHash(projected);
-
-  const signature = caseNumber
-    ? await signPayload('citation', caseNumber, hash)
-    : null;
-
-  await downloadPdfV2(citationSchema, data, filename, {
+  const hash = await v2.payloadHash(citationCanonicalData(data));
+  const signResp = caseNumber ? await signPayload('citation', caseNumber, hash) : null;
+  const sidecarOptions = {
     schemaId: 'citation',
     caseNumber,
-    signature: signature
+    signature: signResp
       ? {
-          algorithm: signature.algorithm,
-          signature: signature.signature,
-          publicKey: signature.publicKey,
-          signedAt: signature.signedAt,
+          algorithm: signResp.algorithm,
+          signature: signResp.signature,
+          publicKey: signResp.publicKey,
+          signedAt: signResp.signedAt,
           payloadHash: hash,
         }
       : undefined,
-  });
+  };
+  return { v2, citationSchema, CITATION_INSTRUCTIONS, data, filename, sidecarOptions };
+}
+
+/**
+ * Dispatch a record print/download through the v2 engine if the
+ * record type is migrated. Returns true on handled.
+ */
+export async function tryV2Dispatch(opts: V2DispatchOptions): Promise<boolean> {
+  const ctx = await prepareCitationDispatch(opts);
+  if (!ctx) return false;
+  await ctx.v2.downloadMultiCopyPdfV2(
+    ctx.citationSchema, ctx.data, ctx.CITATION_INSTRUCTIONS,
+    ctx.filename, ctx.sidecarOptions,
+  );
   return true;
+}
+
+/**
+ * Same as tryV2Dispatch but returns a blob URL for the in-app PDF
+ * viewer instead of triggering a download. Returns null when the
+ * record type isn't migrated. Caller revokes the URL.
+ */
+export async function tryV2DispatchBlobUrl(opts: V2DispatchOptions): Promise<string | null> {
+  const ctx = await prepareCitationDispatch(opts);
+  if (!ctx) return null;
+  return ctx.v2.multiCopyPdfV2BlobUrl(
+    ctx.citationSchema, ctx.data, ctx.CITATION_INSTRUCTIONS,
+    ctx.sidecarOptions,
+  );
 }

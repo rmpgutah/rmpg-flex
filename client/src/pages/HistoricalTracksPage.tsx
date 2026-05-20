@@ -1,19 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { History, Calendar, Loader2, MapPin, AlertTriangle, Database, Filter } from 'lucide-react';
+import mapboxgl from 'mapbox-gl';
+import 'mapbox-gl/dist/mapbox-gl.css';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
-import { loadGoogleMaps, DARK_MAP_STYLE, resolveGoogleMapsApiKey } from '../utils/googleMapsLoader';
+import { createMapboxMap, addMapboxTrail, removeMapboxTrail, injectMapboxStyles } from '../utils/mapboxLoader';
+import { getMapboxToken } from '../utils/mapboxApiKey';
 
 // Historical Traccar tracks viewer.
 //
 // Pulls positions from /api/traccar/historical/positions and renders them as
-// a polyline + clickable markers on a Google Maps surface. Click a marker to
+// a polyline + clickable markers on a Mapbox GL surface. Click a marker to
 // open the inspector with all columns from that row (the full Traccar payload
 // is preserved in raw_json — the inspector pretty-prints it).
 //
-// Uses the project's shared googleMapsLoader so styling / offline-tile fallback
+// Uses the project's shared mapboxLoader so styling / offline-tile fallback
 // matches the main /map surface. CLAUDE.md gotcha: do not introduce a parallel
-// OpenLayers map surface — Google Maps is the single source.
+// OpenLayers map surface — Mapbox is the primary provider.
 
 interface Device {
   id: number;
@@ -112,12 +115,11 @@ export default function HistoricalTracksPage() {
   const [selected, setSelected] = useState<Position | null>(null);
 
   const containerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  // Multiple speed-bucketed polylines, one per color band — keeps Polyline
-  // count constant regardless of point count (vs. one polyline per segment).
-  const polylinesRef = useRef<google.maps.Polyline[]>([]);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const stopMarkersRef = useRef<google.maps.Marker[]>([]);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  // Track IDs for speed-bucketed trail layers so we can remove them on redraw.
+  const trailIdsRef = useRef<string[]>([]);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const stopMarkersRef = useRef<mapboxgl.Marker[]>([]);
 
   // Fetch device list once.
   useEffect(() => {
@@ -132,25 +134,27 @@ export default function HistoricalTracksPage() {
     let cancelled = false;
     (async () => {
       try {
-        const apiKey = await resolveGoogleMapsApiKey();
-        if (!apiKey) { if (!cancelled) setError('Google Maps API key not configured'); return; }
-        await loadGoogleMaps(apiKey);
+        const token = await getMapboxToken();
+        if (!token) { if (!cancelled) setError('Mapbox access token not configured'); return; }
         if (cancelled || !containerRef.current) return;
-        const map = new google.maps.Map(containerRef.current, {
-          center: { lat: 40.76, lng: -111.89 },
+        injectMapboxStyles();
+        mapboxgl.accessToken = token;
+        const map = createMapboxMap({
+          container: containerRef.current,
+          center: [-111.89, 40.76],
           zoom: 11,
-          styles: DARK_MAP_STYLE,
-          mapTypeControl: false,
-          streetViewControl: false,
-          fullscreenControl: true,
+          accessToken: token,
         });
         mapRef.current = map;
-        setMapReady(true);
+        map.on('load', () => { if (!cancelled) setMapReady(true); });
       } catch (e: any) {
         if (!cancelled) setError(e?.message ?? 'Map load failed');
       }
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+      if (mapRef.current) { mapRef.current.remove(); mapRef.current = null; }
+    };
   }, []);
 
   const loadTracks = async () => {
@@ -174,22 +178,20 @@ export default function HistoricalTracksPage() {
 
   const drawTracks = (pts: Position[]) => {
     const map = mapRef.current; if (!map) return;
-    polylinesRef.current.forEach(pl => pl.setMap(null));
-    polylinesRef.current = [];
-    markersRef.current.forEach(m => m.setMap(null));
+    // Clean up previous layers and markers
+    trailIdsRef.current.forEach(id => removeMapboxTrail(map, id));
+    trailIdsRef.current = [];
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
-    stopMarkersRef.current.forEach(m => m.setMap(null));
+    stopMarkersRef.current.forEach(m => m.remove());
     stopMarkersRef.current = [];
 
     if (pts.length === 0) return;
 
     // ── Speed-bucketed polyline rendering ──
     // Each segment (pair of consecutive points) is bucketed by start-point
-    // speed. One Polyline per bucket, with multi-segment paths emulated via
-    // null-LatLng breaks isn't supported in google.maps — so we draw each
-    // run of consecutive same-bucket segments as its own Polyline. With 7
-    // buckets and typical track patterns this stays well under 200 polylines.
-    const buckets = SPEED_BUCKETS; // [{ max, color, label }, ...]
+    // speed. One trail per run of consecutive same-bucket segments.
+    const buckets = SPEED_BUCKETS;
     const bucketFor = (mph: number) => {
       for (let i = 0; i < buckets.length; i++) if (mph <= buckets[i].max) return i;
       return buckets.length - 1;
@@ -197,141 +199,146 @@ export default function HistoricalTracksPage() {
 
     let runStart = 0;
     let runBucket = bucketFor((pts[0].speed ?? 0) * KNOTS_TO_MPH);
+    let runCounter = 0;
     const flushRun = (endIdx: number) => {
-      // Render segment from runStart..endIdx as one Polyline (path includes endIdx).
       const slice = pts.slice(runStart, endIdx + 1);
       if (slice.length < 2) return;
-      const segPath = slice.map(p => ({ lat: p.latitude, lng: p.longitude }));
+      const coords: [number, number][] = slice.map(p => [p.longitude, p.latitude]);
       const color = buckets[runBucket].color;
-      const pl = new google.maps.Polyline({
-        path: segPath,
-        geodesic: false,
-        strokeColor: color,
-        strokeOpacity: 0.92,
-        strokeWeight: 4,
-        map,
-        zIndex: 2,
-      });
-      polylinesRef.current.push(pl);
+      const trailId = `ht-trail-${runCounter++}`;
+      addMapboxTrail(map, trailId, coords, color, 4);
+      trailIdsRef.current.push(trailId);
     };
 
     for (let i = 1; i < pts.length; i++) {
       const b = bucketFor((pts[i].speed ?? 0) * KNOTS_TO_MPH);
       if (b !== runBucket) {
-        flushRun(i);            // close run at i (overlap so segments visually connect)
+        flushRun(i);
         runStart = i;
         runBucket = b;
       }
     }
     flushRun(pts.length - 1);
 
-    // ── Direction-arrow overlay (single transparent line spanning whole path) ──
-    const fullPath = pts.map(p => ({ lat: p.latitude, lng: p.longitude }));
-    const arrowOverlay = new google.maps.Polyline({
-      path: fullPath,
-      geodesic: false,
-      strokeOpacity: 0,
-      map,
-      zIndex: 3,
-      icons: [{
-        icon: {
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 2.2,
-          strokeColor: '#0a0a0a',
-          fillColor: '#ffffff',
-          fillOpacity: 1,
-          strokeWeight: 1,
-        },
-        offset: '0%',
-        repeat: '110px',
-      }],
+    // ── Direction-arrow overlay (symbol layer along the full path) ──
+    const arrowSourceId = 'ht-arrow-source';
+    const arrowLayerId = 'ht-arrow-layer';
+    // Clean up previous arrow layer if it exists
+    if (map.getLayer(arrowLayerId)) map.removeLayer(arrowLayerId);
+    if (map.getSource(arrowSourceId)) map.removeSource(arrowSourceId);
+    trailIdsRef.current.push(arrowSourceId); // track for cleanup (removeMapboxTrail handles both)
+
+    const fullCoords: [number, number][] = pts.map(p => [p.longitude, p.latitude]);
+    map.addSource(arrowSourceId, {
+      type: 'geojson',
+      data: {
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: fullCoords },
+        properties: {},
+      },
     });
-    polylinesRef.current.push(arrowOverlay);
+
+    // Load a triangle arrow image for direction indicators
+    if (!map.hasImage('ht-arrow')) {
+      const size = 16;
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.fillStyle = '#ffffff';
+        ctx.strokeStyle = '#0a0a0a';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(size / 2, 0);
+        ctx.lineTo(size, size);
+        ctx.lineTo(0, size);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        map.addImage('ht-arrow', { width: size, height: size, data: new Uint8Array(ctx.getImageData(0, 0, size, size).data) });
+      }
+    }
+
+    map.addLayer({
+      id: arrowLayerId,
+      type: 'symbol',
+      source: arrowSourceId,
+      layout: {
+        'symbol-placement': 'line',
+        'symbol-spacing': 110,
+        'icon-image': 'ht-arrow',
+        'icon-size': 0.6,
+        'icon-rotation-alignment': 'map',
+        'icon-allow-overlap': true,
+      },
+    });
+    trailIdsRef.current.push(arrowLayerId);
 
     // ── Click-able point dots (down-sampled to ≤500) ──
     const stride = Math.max(1, Math.ceil(pts.length / 500));
     for (let i = 0; i < pts.length; i += stride) {
       const p = pts[i];
       const mph = (p.speed ?? 0) * KNOTS_TO_MPH;
-      const mk = new google.maps.Marker({
-        position: { lat: p.latitude, lng: p.longitude },
-        map,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 3,
-          fillColor: buckets[bucketFor(mph)].color,
-          fillOpacity: 0.7,
-          strokeWeight: 0.5,
-          strokeColor: '#000',
-        },
-        zIndex: 4,
-        title: `${fmtDate(p.fix_time)} • ${mph.toFixed(1)} mph`,
-      });
-      mk.addListener('click', () => setSelected(p));
+      const color = buckets[bucketFor(mph)].color;
+      const el = document.createElement('div');
+      el.style.cssText = `width:6px;height:6px;border-radius:50%;background:${color};opacity:0.7;border:0.5px solid #000;cursor:pointer;`;
+      el.title = `${fmtDate(p.fix_time)} • ${mph.toFixed(1)} mph`;
+      const mk = new mapboxgl.Marker({ element: el })
+        .setLngLat([p.longitude, p.latitude])
+        .addTo(map);
+      el.addEventListener('click', () => setSelected(p));
       markersRef.current.push(mk);
     }
 
     // ── Idle/stop detection (run of speed < 1 mph spanning ≥120s) ──
     const stops = detectStops(pts, /*minMph*/ 1, /*minSec*/ 120);
     stops.forEach((s, idx) => {
-      const mk = new google.maps.Marker({
-        position: { lat: s.lat, lng: s.lng },
-        map,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 9,
-          fillColor: '#a855f7', // purple — distinct from speed scale
-          fillOpacity: 0.85,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        },
-        label: { text: 'P', color: '#fff', fontSize: '10px', fontWeight: '700' },
-        zIndex: 5,
-        title: `Stop ${idx + 1} • ${formatDuration(s.durationSec)} • ${fmtDate(s.fromIso)} → ${fmtDate(s.toIso)}`,
-      });
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width:18px;height:18px;border-radius:50%;
+        background:#a855f7;opacity:0.85;border:2px solid #fff;
+        display:flex;align-items:center;justify-content:center;
+        font-size:10px;font-weight:700;color:#fff;cursor:pointer;
+        font-family:system-ui,sans-serif;
+      `;
+      el.textContent = 'P';
+      el.title = `Stop ${idx + 1} • ${formatDuration(s.durationSec)} • ${fmtDate(s.fromIso)} → ${fmtDate(s.toIso)}`;
+      const mk = new mapboxgl.Marker({ element: el })
+        .setLngLat([s.lng, s.lat])
+        .addTo(map);
       stopMarkersRef.current.push(mk);
     });
 
     // ── Start (green flag) + End (red checkered) markers ──
     const start = pts[0];
     const end = pts[pts.length - 1];
-    const startMk = new google.maps.Marker({
-      position: { lat: start.latitude, lng: start.longitude },
-      map,
-      icon: {
-        path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-        scale: 7,
-        fillColor: '#22c55e',
-        fillOpacity: 1,
-        strokeColor: '#0a0a0a',
-        strokeWeight: 2,
-        rotation: 0,
-      },
-      label: { text: 'S', color: '#fff', fontSize: '11px', fontWeight: '700' },
-      zIndex: 6,
-      title: `Start • ${fmtDate(start.fix_time)}`,
-    });
-    const endMk = new google.maps.Marker({
-      position: { lat: end.latitude, lng: end.longitude },
-      map,
-      icon: {
-        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-        scale: 7,
-        fillColor: '#ef4444',
-        fillOpacity: 1,
-        strokeColor: '#0a0a0a',
-        strokeWeight: 2,
-      },
-      label: { text: 'E', color: '#fff', fontSize: '11px', fontWeight: '700' },
-      zIndex: 6,
-      title: `End • ${fmtDate(end.fix_time)}`,
-    });
+
+    const makeEndpointMarker = (lat: number, lng: number, bgColor: string, label: string, title: string) => {
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width:22px;height:22px;border-radius:50%;
+        background:${bgColor};border:2px solid #0a0a0a;
+        display:flex;align-items:center;justify-content:center;
+        font-size:11px;font-weight:700;color:#fff;cursor:pointer;
+        font-family:system-ui,sans-serif;
+        box-shadow:0 0 6px ${bgColor}80;
+      `;
+      el.textContent = label;
+      el.title = title;
+      return new mapboxgl.Marker({ element: el })
+        .setLngLat([lng, lat])
+        .addTo(map);
+    };
+
+    const startMk = makeEndpointMarker(start.latitude, start.longitude, '#22c55e', 'S', `Start • ${fmtDate(start.fix_time)}`);
+    const endMk = makeEndpointMarker(end.latitude, end.longitude, '#ef4444', 'E', `End • ${fmtDate(end.fix_time)}`);
     markersRef.current.push(startMk, endMk);
 
     // ── Fit bounds with padding so legend doesn't overlap edge points ──
-    const bounds = new google.maps.LatLngBounds();
-    pts.forEach(p => bounds.extend({ lat: p.latitude, lng: p.longitude }));
-    map.fitBounds(bounds, 60);
+    const bounds = new mapboxgl.LngLatBounds();
+    pts.forEach(p => bounds.extend([p.longitude, p.latitude]));
+    map.fitBounds(bounds, { padding: 60 });
   };
 
   const stats = useMemo(() => {

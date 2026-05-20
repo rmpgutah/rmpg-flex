@@ -35,7 +35,6 @@ import {
 } from '../utils/warrantListHelpers';
 import { buildWarrantPacketPdf } from '../utils/warrantPacket';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 import ScrapersTab from './warrants/ScrapersTab';
 
 // ============================================================
@@ -243,19 +242,14 @@ interface WatchPerson {
 interface ScraperSource {
   id: number;
   source_key: string;
-  state: string;
-  county: string;
+  source_name: string;
   source_url: string;
-  parser_type: string;
-  enabled: number;
-  scrape_interval_minutes: number;
-  last_scraped_at: string | null;
+  enabled: boolean | number;
+  last_run_at: string | null;
   last_error: string | null;
-  consecutive_failures: number;
-  active_warrants: number;
-  total_warrants: number;
-  auto_recovering: boolean;
-  backoff_attempt: number;
+  active_count: number;
+  total_count: number;
+  status?: string;
 }
 
 interface WatchRun {
@@ -398,31 +392,31 @@ function relativeTime(dt: string): string {
 // ============================================================
 
 function CoverageSourceCard({ source }: { source: ScraperSource }) {
-  const isRecent = source.last_scraped_at &&
-    (Date.now() - new Date(source.last_scraped_at.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
+  const hasError = !!source.last_error;
+  const isRecent = source.last_run_at &&
+    (Date.now() - new Date(source.last_run_at.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
   return (
     <div className={`p-2 rounded-sm border ${
       !source.enabled
         ? 'border-rmpg-700/50 bg-rmpg-700/30'
-        : source.consecutive_failures > 0
+        : hasError
           ? 'border-amber-700/50 bg-amber-900/10'
           : isRecent
             ? 'border-green-700/50 bg-green-900/10'
             : 'border-brand-600/30 bg-brand-900/10'
     }`}>
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-bold text-white">{source.county || source.source_key}</span>
+        <span className="text-[10px] font-bold text-white">{source.source_name || source.source_key}</span>
         <span className={`w-1.5 h-1.5 rounded-full ${
-          !source.enabled ? 'bg-rmpg-600' : isRecent ? 'bg-green-400' : source.consecutive_failures > 0 ? 'bg-amber-400' : 'bg-brand-400'
+          !source.enabled ? 'bg-rmpg-600' : isRecent ? 'bg-green-400' : hasError ? 'bg-amber-400' : 'bg-brand-400'
         }`} />
       </div>
       <div className="flex items-center justify-between mt-1 text-[9px] text-rmpg-400">
-        <span>{source.active_warrants} active / {source.total_warrants} total</span>
-        <span>{source.scrape_interval_minutes}m</span>
+        <span>{source.active_count} active / {source.total_count} total</span>
       </div>
-      {source.last_scraped_at && (
+      {source.last_run_at && (
         <div className="text-[8px] text-rmpg-500 mt-0.5">
-          Last: {formatDateTime(source.last_scraped_at)}
+          Last: {formatDateTime(source.last_run_at)}
         </div>
       )}
     </div>
@@ -1529,7 +1523,7 @@ export default function WarrantsPage() {
                 <div className="text-2xl font-bold font-mono tabular-nums text-white">
                   {dashStatsLoading ? <Loader2 className="w-5 h-5 animate-spin mx-auto" role="status" aria-label="Loading" /> : (dashStats?.personsFlagged ?? 0)}
                 </div>
-                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Persons Flagged</div>
+                <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Individuals Flagged</div>
               </div>
               <div className={`panel-inset p-3 rounded-sm text-center ${dashStats && dashStats.sourcesOnline < dashStats.sourcesTotal ? 'bg-red-900/10 border border-red-900/30' : 'bg-surface-sunken'}`}>
                 <div className={`text-2xl font-bold font-mono tabular-nums ${dashStats && dashStats.sourcesOnline >= dashStats.sourcesTotal ? 'text-green-400' : dashStats ? 'text-amber-400' : 'text-white'}`}>
@@ -1654,7 +1648,7 @@ export default function WarrantsPage() {
                       <div key={pw.id} className="panel-inset bg-surface-sunken p-2.5 rounded-sm border border-red-900/20 hover:border-red-900/40 transition-colors">
                         <div className="flex items-start gap-2">
                           {pw.subject_photo_url ? (
-                            <img src={pw.subject_photo_url} alt="" className="w-9 h-9 rounded-sm object-cover border border-rmpg-600 shrink-0" />
+                            <img src={pw.subject_photo_url} alt="" className="w-9 h-9 rounded-sm object-cover border border-rmpg-600 shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                           ) : (
                             <div className="w-9 h-9 rounded-sm bg-surface-raised border border-rmpg-600 flex items-center justify-center shrink-0">
                               <User className="w-4 h-4 text-rmpg-500" />
@@ -1967,7 +1961,7 @@ export default function WarrantsPage() {
                         <td className="text-xs">
                           <div className="flex items-center gap-2">
                             {w.subject_photo_url ? (
-                              <img src={w.subject_photo_url} alt="" className="w-6 h-6 rounded-sm object-cover border border-rmpg-600" />
+                              <img src={w.subject_photo_url} alt="" className="w-6 h-6 rounded-sm object-cover border border-rmpg-600" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                             ) : null}
                             <button type="button"
                               onClick={(e) => {
@@ -2743,7 +2737,7 @@ export default function WarrantsPage() {
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="panel-raised p-3 text-center">
                     <div className="text-xl font-bold font-mono text-white">{autoPollStatus.totalPersons}</div>
-                    <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Persons Monitored</div>
+                    <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Individuals Monitored</div>
                   </div>
                   <div className="panel-raised p-3 text-center">
                     <div className="text-xl font-bold font-mono text-red-400">{autoPollStatus.flaggedPersons.length}</div>
@@ -2862,7 +2856,7 @@ export default function WarrantsPage() {
                   <div>
                     <div className="flex items-center gap-2 mb-2">
                       <AlertTriangle className="w-3.5 h-3.5 text-red-400" />
-                      <span className="text-xs font-bold text-white">Persons with Active Warrants</span>
+                      <span className="text-xs font-bold text-white">Individuals with Active Warrants</span>
                       <span className="ml-auto text-[10px] bg-red-900/40 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded font-mono font-bold">
                         {autoPollStatus.flaggedPersons.length}
                       </span>
@@ -2898,7 +2892,7 @@ export default function WarrantsPage() {
                               {/* Photo */}
                               <div className="flex-shrink-0">
                                 {p.photo_url ? (
-                                  <img src={p.photo_url} alt="" className="w-12 h-12 rounded-sm object-cover border border-rmpg-600" />
+                                  <img src={p.photo_url} alt="" className="w-12 h-12 rounded-sm object-cover border border-rmpg-600" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                                 ) : (
                                   <div className="w-12 h-12 rounded-sm bg-rmpg-700/60 border border-rmpg-600 flex items-center justify-center">
                                     <User className="w-6 h-6 text-rmpg-400" />
@@ -3144,33 +3138,21 @@ export default function WarrantsPage() {
                 <Loader2 className="w-5 h-5 animate-spin mr-2" role="status" aria-label="Loading" /> Loading coverage data...
               </div>
             ) : (() => {
-              const byState = new Map<string, ScraperSource[]>();
-              for (const src of coverageSources) {
-                const list = byState.get(src.state) || [];
-                list.push(src);
-                byState.set(src.state, list);
-              }
-
               const totalSources = coverageSources.length;
               const enabledSources = coverageSources.filter(s => s.enabled).length;
-              const statesWithSources = new Set(coverageSources.map(s => s.state).filter(s => s !== 'ALL'));
-              const totalActive = coverageSources.reduce((sum, s) => sum + s.active_warrants, 0);
-              const totalScraped = coverageSources.reduce((sum, s) => sum + s.total_warrants, 0);
+              const totalActive = coverageSources.reduce((sum, s) => sum + s.active_count, 0);
+              const totalScraped = coverageSources.reduce((sum, s) => sum + s.total_count, 0);
               const recentlyScraped = coverageSources.filter(s => {
-                if (!s.last_scraped_at) return false;
-                const ago = Date.now() - new Date(s.last_scraped_at.replace(' ', 'T')).getTime();
+                if (!s.last_run_at) return false;
+                const ago = Date.now() - new Date(s.last_run_at.replace(' ', 'T')).getTime();
                 return ago < 3 * 60 * 60 * 1000;
               }).length;
-
-              const federalSources = byState.get('US') || [];
-              const stateCodes = [...byState.keys()].filter(k => k !== 'US' && k !== 'ALL').sort();
 
               return (
                 <>
                   {/* Summary stats */}
-                  <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-5'} gap-3`}>
+                  <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-4'} gap-3`}>
                     {[
-                      { label: 'States Covered', value: statesWithSources.size, sub: 'of 50 + Federal' },
                       { label: 'Total Sources', value: totalSources, sub: `${enabledSources} enabled` },
                       { label: 'Recently Scraped', value: recentlyScraped, sub: 'within 3 hours' },
                       { label: 'Active Warrants', value: totalActive.toLocaleString(), sub: 'across all sources' },
@@ -3184,69 +3166,16 @@ export default function WarrantsPage() {
                     ))}
                   </div>
 
-                  {/* Federal sources */}
-                  {federalSources.length > 0 && (
-                    <div className="panel-inset bg-surface-sunken p-3 rounded-sm">
-                      <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
-                        <Shield className="w-3.5 h-3.5 text-brand-400" />
-                        Federal Sources ({federalSources.length})
-                      </h3>
-                      <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-2 xl:grid-cols-3'} gap-2`}>
-                        {federalSources.map(src => (
-                          <CoverageSourceCard key={src.source_key} source={src} />
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* State grid */}
+                  {/* Sources list */}
                   <div className="panel-inset bg-surface-sunken p-3 rounded-sm">
                     <h3 className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider flex items-center gap-2 mb-2">
                       <Globe className="w-3.5 h-3.5 text-brand-400" />
-                      State Coverage ({stateCodes.length} states)
+                      All Sources ({totalSources})
                     </h3>
-                    <div className={`grid ${isMobile ? 'grid-cols-2' : 'grid-cols-3 lg:grid-cols-4 xl:grid-cols-5'} gap-2`}>
-                      {stateCodes.map(state => {
-                        const sources = byState.get(state) || [];
-                        const active = sources.reduce((sum, s) => sum + s.active_warrants, 0);
-                        const enabled = sources.filter(s => s.enabled).length;
-                        const hasErrors = sources.some(s => s.consecutive_failures > 0);
-                        const lastScraped = sources.map(s => s.last_scraped_at).filter(Boolean).sort().pop();
-                        const isRecent = lastScraped && (Date.now() - new Date(lastScraped.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
-
-                        return (
-                          <div
-                            key={state}
-                            className={`p-2 rounded-sm border text-center ${
-                              enabled === 0
-                                ? 'border-rmpg-700/50 bg-rmpg-700/30'
-                                : hasErrors
-                                  ? 'border-amber-700/50 bg-amber-900/10'
-                                  : isRecent
-                                    ? 'border-green-700/50 bg-green-900/10'
-                                    : 'border-brand-600/30 bg-brand-900/10'
-                            }`}
-                          >
-                            <div className="text-sm font-bold font-mono text-white">{state}</div>
-                            <div className="text-[10px] text-rmpg-300 mt-1">{sources.length} source{sources.length !== 1 ? 's' : ''}</div>
-                            {active > 0 && <div className="text-[9px] text-red-400 font-bold mt-0.5">{active} active</div>}
-                            <div className={`mt-1 inline-flex items-center gap-1 text-[8px] px-1.5 py-0.5 rounded-sm ${
-                              enabled === 0
-                                ? 'bg-rmpg-700/50 text-rmpg-500'
-                                : isRecent
-                                  ? 'bg-green-900/50 text-green-400'
-                                  : hasErrors
-                                    ? 'bg-amber-900/50 text-amber-400'
-                                    : 'bg-brand-900/50 text-brand-300'
-                            }`}>
-                              <span className={`w-1.5 h-1.5 rounded-full ${
-                                enabled === 0 ? 'bg-rmpg-600' : isRecent ? 'bg-green-400' : hasErrors ? 'bg-amber-400' : 'bg-brand-400'
-                              }`} />
-                              {enabled === 0 ? 'DISABLED' : isRecent ? 'ACTIVE' : hasErrors ? 'ERRORS' : 'ENABLED'}
-                            </div>
-                          </div>
-                        );
-                      })}
+                    <div className={`grid ${isMobile ? 'grid-cols-1' : 'grid-cols-2 xl:grid-cols-3'} gap-2`}>
+                      {coverageSources.map(src => (
+                        <CoverageSourceCard key={src.source_key} source={src} />
+                      ))}
                     </div>
                   </div>
 
@@ -3261,25 +3190,20 @@ export default function WarrantsPage() {
                         <thead className="sticky top-0 z-10 bg-[#050505]">
                           <tr>
                             <th className="text-left px-2 py-1">Source</th>
-                            <th className="text-left px-2 py-1">State</th>
-                            <th className="text-left px-2 py-1">County</th>
                             <th className="text-center px-2 py-1">Status</th>
-                            <th className="text-right px-2 py-1">Interval</th>
                             <th className="text-right px-2 py-1">Active</th>
                             <th className="text-right px-2 py-1">Total</th>
-                            <th className="text-left px-2 py-1">Last Scraped</th>
+                            <th className="text-left px-2 py-1">Last Run</th>
                           </tr>
                         </thead>
                         <tbody>
                           {coverageSources.map(src => (
                             <tr key={src.source_key} className="border-t border-rmpg-800/50 hover:bg-[#141414]/30 transition-colors">
-                              <td className="px-2 py-1 font-mono text-rmpg-300">{src.source_key}</td>
-                              <td className="px-2 py-1">{src.state}</td>
-                              <td className="px-2 py-1 text-rmpg-400">{src.county || '-'}</td>
+                              <td className="px-2 py-1 font-mono text-rmpg-300">{src.source_name || src.source_key}</td>
                               <td className="px-2 py-1 text-center">
                                 {src.enabled ? (
-                                  src.consecutive_failures > 0 ? (
-                                    <span className="text-amber-400">{src.consecutive_failures} failures</span>
+                                  src.last_error ? (
+                                    <span className="text-amber-400">Error</span>
                                   ) : (
                                     <span className="text-green-400">Enabled</span>
                                   )
@@ -3287,11 +3211,10 @@ export default function WarrantsPage() {
                                   <span className="text-rmpg-500">Disabled</span>
                                 )}
                               </td>
-                              <td className="px-2 py-1 text-right text-rmpg-400">{src.scrape_interval_minutes}m</td>
-                              <td className="px-2 py-1 text-right font-mono">{src.active_warrants}</td>
-                              <td className="px-2 py-1 text-right font-mono text-rmpg-400">{src.total_warrants}</td>
+                              <td className="px-2 py-1 text-right font-mono">{src.active_count}</td>
+                              <td className="px-2 py-1 text-right font-mono text-rmpg-400">{src.total_count}</td>
                               <td className="px-2 py-1 text-rmpg-400">
-                                {src.last_scraped_at ? formatDateTime(src.last_scraped_at) : 'Never'}
+                                {src.last_run_at ? formatDateTime(src.last_run_at) : 'Never'}
                               </td>
                             </tr>
                           ))}
@@ -3345,7 +3268,7 @@ export default function WarrantsPage() {
 
                       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 text-center">
                         <div className="panel-beveled p-2">
-                          <div className="text-[9px] text-rmpg-500 uppercase">Persons</div>
+                          <div className="text-[9px] text-rmpg-500 uppercase">Individuals</div>
                           <div className="text-base font-bold font-mono text-white tabular-nums">{run.persons_checked}</div>
                         </div>
                         <div className="panel-beveled p-2">
@@ -3419,7 +3342,7 @@ export default function WarrantsPage() {
                 {/* Person header */}
                 <div className="panel-beveled p-4 flex items-start gap-3">
                   {personProfile.person.photo_url ? (
-                    <img src={personProfile.person.photo_url} alt="" className="w-16 h-16 rounded-sm object-cover border border-rmpg-600" />
+                    <img src={personProfile.person.photo_url} alt="" className="w-16 h-16 rounded-sm object-cover border border-rmpg-600" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                   ) : (
                     <div className="w-16 h-16 rounded-sm bg-surface-raised border border-rmpg-600 flex items-center justify-center">
                       <User className="w-8 h-8 text-rmpg-500" />

@@ -90,7 +90,8 @@ function formatDateTime(d?: string | null): string {
   return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
-function toDisplayLabel(s: string): string {
+function toDisplayLabel(s: string | undefined | null): string {
+  if (!s) return '—';
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 

@@ -170,6 +170,7 @@ export default function ResetPasswordPage() {
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
                       <input
                         id="new-password"
+                        name="new-password"
                         type={showPassword ? 'text' : 'password'}
                         className="input-dark search-glow h-10 pl-9 pr-9 w-full"
                         placeholder="Enter new password"
@@ -201,6 +202,7 @@ export default function ResetPasswordPage() {
                       <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 pointer-events-none" style={{ color: '#383838' }} />
                       <input
                         id="confirm-password"
+                        name="confirm-password"
                         type={showPassword ? 'text' : 'password'}
                         className="input-dark search-glow h-10 pl-9 w-full"
                         placeholder="Confirm new password"

@@ -6,6 +6,7 @@ import { auditLog } from '../utils/auditLogger';
 import { localNow } from '../utils/timeUtils';
 import { encryptApiKey, decryptApiKey } from '../utils/serveManagerClient';
 import { hashApiKey } from '../utils/apiKeyHash';
+import { logger } from '../utils/logger';
 
 const router = Router();
 router.use(authenticateToken);
@@ -93,14 +94,37 @@ function getStats(db: any, queries: { [key: string]: string }): Record<string, n
 }
 
 function getIntegrationConfigValue(db: any, key: string): string | null {
+  // Keys stored plain-text (not encrypted) by the admin PUT handler
+  const PLAIN_TEXT_KEYS = new Set([
+    'traccar_url', 'traccar_enabled', 'traccar_poll_interval',
+    'mapbox_style_url', 'mapbox_username',
+  ]);
+
   const row = db.prepare(
     "SELECT config_value FROM system_config WHERE config_key = ? AND category = 'integrations' AND is_active = 1 LIMIT 1"
   ).get(key) as { config_value?: string } | undefined;
   if (!row?.config_value) return null;
-  try {
-    return decryptApiKey(row.config_value);
-  } catch {
+
+  // Plain-text keys bypass decryption entirely
+  if (PLAIN_TEXT_KEYS.has(key)) {
     return row.config_value;
+  }
+
+  try {
+    const decrypted = decryptApiKey(row.config_value);
+    return decrypted;
+  } catch (err) {
+    // Decryption failed — the stored value is either plain-text or
+    // was encrypted with a different method/key.  Log and return null
+    // instead of returning raw ciphertext (which would be sent to
+    // third-party APIs as an invalid credential).
+    logger.warn({ key, err }, 'Failed to decrypt integration config value — stored value may be corrupted or plain-text');
+    // If the raw value looks like a valid Mapbox public token (pk.*)
+    // it was likely stored unencrypted — return it directly.
+    if (row.config_value.startsWith('pk.') || row.config_value.startsWith('sk.')) {
+      return row.config_value;
+    }
+    return null;
   }
 }
 
@@ -173,31 +197,78 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
   }
 });
 
-// GET /api/integrations/google-maps/client-key
-// Exposes the browser-safe Maps JS key to authenticated app users so
-// live production maps do not depend on a build-time Vite env var.
-router.get('/google-maps/client-key', (_req: Request, res: Response) => {
+// GET /api/integrations/mapbox/client-key
+// Exposes the Mapbox access token to authenticated app users so
+// the Mapbox GL JS primary map surface can initialize at runtime.
+router.get('/mapbox/client-key', (_req: Request, res: Response) => {
   try {
     const db = getDb();
-    const envKey = (process.env.GOOGLE_MAPS_API_KEY || '').trim();
-    const storedKey =
-      getIntegrationConfigValue(db, 'google_maps_api_key')
-      || getIntegrationConfigValue(db, 'google_maps_browser_key')
+    const envToken = (process.env.MAPBOX_ACCESS_TOKEN || '').trim();
+    const storedToken =
+      getIntegrationConfigValue(db, 'mapbox_api_key')
+      || getIntegrationConfigValue(db, 'mapbox_access_token')
       || null;
 
-    const apiKey = envKey || storedKey || '';
+    const accessToken = envToken || storedToken || '';
+
+    // Diagnostic logging for Mapbox token resolution
+    logger.info({
+      source: envToken ? 'env' : storedToken ? 'system_config' : 'missing',
+      configured: accessToken.length > 0,
+      tokenPrefix: accessToken ? accessToken.substring(0, 6) + '...' : '(empty)',
+    }, 'Mapbox client-key request');
+
+    // Also return the custom style URL if configured
+    // Mapbox account integration via account-specific style links)
+    const styleUrl = getIntegrationConfigValue(db, 'mapbox_style_url') || undefined;
 
     res.json({
-      configured: apiKey.length > 0,
-      apiKey: apiKey || undefined,
-      source: envKey ? 'env' : storedKey ? 'system_config' : 'missing',
+      configured: accessToken.length > 0,
+      accessToken: accessToken || undefined,
+      styleUrl,
+      source: envToken ? 'env' : storedToken ? 'system_config' : 'missing',
     });
   } catch (error: any) {
-    console.error('Google Maps key fetch error:', error);
+    console.error('Mapbox token fetch error:', error);
+    logger.error({ err: error }, 'Mapbox token fetch error');
     res.status(500).json({
       configured: false,
-      error: 'Failed to fetch Google Maps key',
-      code: 'FAILED_TO_FETCH_GOOGLE_MAPS_KEY',
+      error: 'Failed to fetch Mapbox token',
+      code: 'FAILED_TO_FETCH_MAPBOX_TOKEN',
+    });
+  }
+});
+
+// GET /api/integrations/map-provider/status
+// Returns which map engines are available based on configured tokens.
+// Mapbox is the mandatory engine; MapLibre GL is the free fallback.
+router.get('/map-provider/status', (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+
+    const mapboxToken =
+      getIntegrationConfigValue(db, 'mapbox_api_key')
+      || getIntegrationConfigValue(db, 'mapbox_access_token')
+      || (process.env.MAPBOX_ACCESS_TOKEN || '').trim()
+      || '';
+
+    const engines: string[] = [];
+    if (mapboxToken) engines.push('mapbox');
+    engines.push('maplibre'); // always available
+
+    res.json({
+      primary: engines[0] || 'maplibre',
+      engines,
+      mapbox: { configured: !!mapboxToken },
+      maplibre: { configured: true },
+    });
+  } catch (error: any) {
+    console.error('Map provider status error:', error);
+    logger.error({ err: error }, 'Map provider status error');
+    res.status(500).json({
+      primary: 'maplibre',
+      engines: ['maplibre'],
+      error: 'Failed to fetch map provider status',
     });
   }
 });

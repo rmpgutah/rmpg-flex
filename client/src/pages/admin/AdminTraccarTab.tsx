@@ -585,7 +585,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
                       <div className="flex-1 min-w-0">
                         <div className="text-rmpg-200 font-medium truncate">{device.name}</div>
                         <div className="text-[9px] text-rmpg-500 truncate">
-                          ID: {device.uniqueId} · {device.status}
+                          ID: {device.uniqueId} · {device.status?.replace(/_/g, ' ').toUpperCase() || 'UNKNOWN'}
                           {device.model ? ` · ${device.model}` : ''}
                         </div>
                       </div>
@@ -667,7 +667,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
                   >
                     <Navigation className="w-3 h-3 text-rmpg-400 shrink-0" />
                     <span className={`px-1.5 py-0.5 rounded text-[9px] font-mono uppercase border ${typeColor}`}>
-                      {evt.event_type.replace(/_/g, ' ')}
+                      {evt.event_type.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     {evt.call_sign && (
                       <span className="text-brand-400 font-mono font-medium">{evt.call_sign}</span>

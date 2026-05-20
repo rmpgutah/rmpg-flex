@@ -238,7 +238,7 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
     // Reject off-duty or out-of-service units
     if (['off_duty', 'out_of_service'].includes(unit.status)) {
       res.status(409).json({
-        error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')} and cannot be assigned`,
+        error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ').toUpperCase()} and cannot be assigned`,
         code: 'UNIT_UNAVAILABLE',
       });
       return;
@@ -663,7 +663,7 @@ router.post('/calls/:id/status', validateParamIdMiddleware, requireRole('admin',
         if (unitRow?.officer_id && unitRow.officer_id !== req.user!.userId) {
           createNotification(
             unitRow.officer_id, 'dispatch',
-            `Call ${call.call_number}: ${status.replace(/_/g, ' ')}`,
+            `Call ${call.call_number}: ${status.replace(/_/g, ' ').toUpperCase()}`,
             `${call.incident_type} — status changed to ${status}`,
             'call', call.id, status === 'cancelled' ? 'high' : 'normal',
           );
@@ -1634,9 +1634,9 @@ router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervi
   }
 });
 
-// ── Manual priority escalation (auto-escalate timer was removed 2026-05-04) ────
+// ── Priority escalation ────
 // POST /api/dispatch/calls/:id/escalate - Bump priority by one level (P4→P3→P2→P1).
-// Triggered only by an explicit click in the dispatch console; never by a timer.
+// Called by auto-escalation timer (client-side, 30s interval) and manual click.
 router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();

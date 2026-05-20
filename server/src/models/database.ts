@@ -425,6 +425,39 @@ function createTables(): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
 
+    CREATE TABLE IF NOT EXISTS trusted_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      device_fingerprint TEXT NOT NULL,
+      device_name TEXT,
+      ip_address TEXT,
+      trusted_until TEXT NOT NULL,
+      last_used_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS password_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS security_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      details TEXT,
+      ip_address TEXT,
+      device_info TEXT,
+      is_read INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    );
+
     CREATE TABLE IF NOT EXISTS attachments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       file_id TEXT UNIQUE NOT NULL,
@@ -2483,6 +2516,39 @@ function migrateSchema(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_fi_created ON field_interviews(created_at)`);
   } catch { /* table already exists */ }
 
+  // ── Use of Force Reports ──
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS use_of_force (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        incident_id INTEGER,
+        officer_id INTEGER NOT NULL,
+        subject_person_id INTEGER,
+        force_type TEXT,
+        force_level TEXT,
+        justification TEXT,
+        subject_injuries TEXT,
+        officer_injuries TEXT,
+        de_escalation_attempted INTEGER DEFAULT 0,
+        de_escalation_details TEXT,
+        weapons_used TEXT,
+        body_camera_active INTEGER DEFAULT 0,
+        witness_officers TEXT DEFAULT '[]',
+        status TEXT DEFAULT 'draft',
+        reviewed_by INTEGER,
+        reviewed_at TEXT,
+        narrative TEXT,
+        created_at TEXT DEFAULT (datetime('now','localtime')),
+        updated_at TEXT DEFAULT (datetime('now','localtime')),
+        FOREIGN KEY (incident_id) REFERENCES incidents(id),
+        FOREIGN KEY (officer_id) REFERENCES users(id),
+        FOREIGN KEY (subject_person_id) REFERENCES persons(id)
+      )
+    `).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_uof_incident ON use_of_force(incident_id)`).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_uof_officer ON use_of_force(officer_id)`).run();
+  } catch { /* table already exists */ }
+
   // ── Trespass / Exclusion Orders ──
   try {
     db.exec(`
@@ -3629,6 +3695,7 @@ function migrateSchema(): void {
   addCol('fleet_fuel_logs', 'distance', 'REAL');
   addCol('fleet_fuel_logs', 'efficiency', 'REAL');
   addCol('fleet_fuel_logs', 'source', "TEXT DEFAULT 'manual'");
+  addCol('fleet_fuel_logs', 'partial_fill', 'INTEGER DEFAULT 0');
 
   // ── FLEET — maintenance labor cost tracking ──────────────
   addCol('fleet_maintenance', 'labor_cost', 'REAL');
@@ -4792,10 +4859,58 @@ function migrateSchema(): void {
   // Bug: fleet.ts POST route INSERTs next_service_mileage but the column
   // was never added to the schema — every fleet vehicle create threw 500.
   addCol('fleet_vehicles', 'next_service_mileage', 'INTEGER');
+  addCol('fleet_vehicles', 'tank_capacity', 'REAL');
   addCol('fleet_inspections', 'checklist', "TEXT DEFAULT '[]'");
 
-  // ── HR — performance review template field ──
-  addCol('performance_reviews', 'template_name', 'TEXT');
+  // ── HR — missing tables required by hr.ts routes ──
+  db.prepare(`CREATE TABLE IF NOT EXISTS performance_reviews (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    officer_id INTEGER NOT NULL,
+    reviewer_id INTEGER,
+    review_period_start TEXT NOT NULL,
+    review_period_end TEXT NOT NULL,
+    review_date TEXT,
+    type TEXT NOT NULL DEFAULT 'annual',
+    overall_rating REAL,
+    categories TEXT DEFAULT '{}',
+    strengths TEXT,
+    areas_for_improvement TEXT,
+    goals TEXT,
+    officer_comments TEXT,
+    acknowledged_at TEXT,
+    status TEXT NOT NULL DEFAULT 'draft',
+    template_name TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (officer_id) REFERENCES users(id),
+    FOREIGN KEY (reviewer_id) REFERENCES users(id)
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS leave_balances (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    officer_id INTEGER NOT NULL,
+    year INTEGER NOT NULL,
+    vacation_total REAL NOT NULL DEFAULT 80,
+    vacation_used REAL NOT NULL DEFAULT 0,
+    sick_total REAL NOT NULL DEFAULT 40,
+    sick_used REAL NOT NULL DEFAULT 0,
+    personal_total REAL NOT NULL DEFAULT 24,
+    personal_used REAL NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (officer_id) REFERENCES users(id),
+    UNIQUE(officer_id, year)
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS review_cycles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+    updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+  )`).run();
 
   // ══════════════════════════════════════════════════════════
   // NEW FEATURES — Schema extensions (features 1-45)
@@ -4869,7 +4984,11 @@ function migrateSchema(): void {
   addCol('patrol_breaks', 'start_time', 'TEXT');
 
   // Person associates
-  addCol('person_associates', 'associated_person_id', 'INTEGER');
+  // 2026-05-05: removed stale addCol('person_associates','associated_person_id')
+  // -- the actual column is `associate_id` (defined on the CREATE TABLE
+  // at line ~5092 below). The old addCol always failed silently (table
+  // not yet created at this point in migrateSchema) and the matching
+  // index in createIndexes referenced a non-existent column.
 
   // CPGPS tables
   addCol('cpgps_vehicles', 'unit_number', 'TEXT');
@@ -5211,6 +5330,68 @@ function migrateSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_fleet_swaps_officer ON fleet_vehicle_swaps(officer_id);
   `);
 
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS fleet_expenses (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      vehicle_id INTEGER NOT NULL REFERENCES fleet_vehicles(id),
+      expense_date TEXT NOT NULL,
+      category TEXT NOT NULL CHECK(category IN ('registration','tolls','parking','car_wash','tickets','towing','permits','insurance','equipment','decals_wraps','storage','roadside_assistance','inspection','electronics','accessories','misc')),
+      amount REAL NOT NULL,
+      vendor TEXT,
+      description TEXT,
+      receipt_path TEXT,
+      odometer_reading INTEGER,
+      recurring INTEGER DEFAULT 0,
+      recurring_frequency TEXT CHECK(recurring_frequency IN ('monthly','quarterly','semi_annual','annual')),
+      notes TEXT,
+      created_by INTEGER REFERENCES users(id),
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      archived_at TEXT
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_vehicle ON fleet_expenses(vehicle_id)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_date ON fleet_expenses(expense_date)').run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_category ON fleet_expenses(category)').run();
+
+  // ── fleet_expenses: widen category CHECK to include all 16 categories ──
+  try {
+    const feSchema = db.prepare(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='fleet_expenses'`
+    ).get() as { sql: string } | undefined;
+    if (feSchema?.sql && !feSchema.sql.includes('insurance')) {
+      db.transaction(() => {
+        db.prepare(`
+          CREATE TABLE fleet_expenses_v2 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            vehicle_id INTEGER NOT NULL REFERENCES fleet_vehicles(id),
+            expense_date TEXT NOT NULL,
+            category TEXT NOT NULL CHECK(category IN ('registration','tolls','parking','car_wash','tickets','towing','permits','insurance','equipment','decals_wraps','storage','roadside_assistance','inspection','electronics','accessories','misc')),
+            amount REAL NOT NULL,
+            vendor TEXT,
+            description TEXT,
+            receipt_path TEXT,
+            odometer_reading INTEGER,
+            recurring INTEGER DEFAULT 0,
+            recurring_frequency TEXT CHECK(recurring_frequency IN ('monthly','quarterly','semi_annual','annual')),
+            notes TEXT,
+            created_by INTEGER REFERENCES users(id),
+            created_at TEXT DEFAULT (datetime('now','localtime')),
+            updated_at TEXT DEFAULT (datetime('now','localtime')),
+            archived_at TEXT
+          )
+        `).run();
+        db.prepare('INSERT INTO fleet_expenses_v2 SELECT * FROM fleet_expenses').run();
+        db.prepare('DROP TABLE fleet_expenses').run();
+        db.prepare('ALTER TABLE fleet_expenses_v2 RENAME TO fleet_expenses').run();
+        db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_vehicle ON fleet_expenses(vehicle_id)').run();
+        db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_date ON fleet_expenses(expense_date)').run();
+        db.prepare('CREATE INDEX IF NOT EXISTS idx_fleet_expenses_category ON fleet_expenses(category)').run();
+      })();
+      console.log('[migrate] Widened fleet_expenses category CHECK for 16 categories');
+    }
+  } catch { /* Already migrated or table structure compatible */ }
+
   // ── Feature 26: Message drafts ──
   addCol('messages', 'is_draft', 'INTEGER DEFAULT 0');
   addCol('messages', 'draft_updated_at', 'TEXT');
@@ -5493,6 +5674,7 @@ function migrateSchema(): void {
   addCol('units', 'mileage', 'REAL');
   addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
   addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
+  addCol('units', 'assigned_beat_id', 'INTEGER');   // FK → dispatch_beats(id)
 
   // ── Traccar device-to-unit mapping table ──
   db.prepare(`
@@ -5638,6 +5820,13 @@ function migrateSchema(): void {
   addCol('warrant_scraper_config', 'avg_parse_count', 'REAL');
   addCol('warrant_scraper_config', 'p95_latency_ms', 'INTEGER');
   addCol('warrant_scraper_config', 'jitter_seed', 'INTEGER');
+  // Warrant poller repair — new columns for circuit recovery + drift detection
+  addCol('warrant_scraper_config', 'recovery_at', 'TEXT');
+  addCol('warrant_scraper_config', 'min_expected_count', 'INTEGER');
+  addCol('warrant_scraper_config', 'last_parsed_count', 'INTEGER');
+  // display_name column — referenced by scraper routes and multiStateWarrantScraper.
+  // Previously only `source_name` existed; routes using `display_name` threw SQLITE_ERROR.
+  addCol('warrant_scraper_config', 'display_name', 'TEXT');
 
   // Warrant scraper enhancement — Phase 1 runs metrics table
   try {
@@ -5935,6 +6124,12 @@ function migrateSchema(): void {
     s.run('wy_fremont_warrants', 'WY', 'Fremont', 'https://www.fremontcountywy.org/sheriff/most-wanted', 'Fremont County SO', 'html', 720, 1);
   }
 
+  // Backfill display_name from source_name for seed rows and old rows that
+  // pre-date the display_name column (added above via addCol).
+  try {
+    db.prepare(`UPDATE warrant_scraper_config SET display_name = source_name WHERE display_name IS NULL AND source_name IS NOT NULL`).run();
+  } catch { /* ignore on very old schemas where source_name doesn't exist yet */ }
+
   // Audit 2026-04-24: REMOVED the blind bulk re-enable of every disabled
   // source. That UPDATE was undoing per-source auto-disable decisions made
   // by the HTTP 404 handler in multiStateWarrantScraper.ts. Sources whose
@@ -6188,6 +6383,44 @@ function migrateSchema(): void {
   addCol('field_interviews', 'beat_id', 'INTEGER');
   addCol('field_interviews', 'zone_beat', 'TEXT');
   addCol('field_interviews', 'updated_at', 'TEXT');
+
+  // ── UI trap forensic reports (Ctrl+Alt+D from frozen client) ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS ui_trap_reports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      username TEXT,
+      captured_at TEXT NOT NULL,
+      url TEXT,
+      user_agent TEXT,
+      payload_json TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `).run();
+  db.prepare('CREATE INDEX IF NOT EXISTS idx_ui_trap_user ON ui_trap_reports(user_id, created_at)').run();
+
+  // ── Voice dialogue agent session memory (one row per officer) ──
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS voice_dialogue_sessions (
+      user_id INTEGER PRIMARY KEY,
+      recent_turns_json TEXT NOT NULL DEFAULT '[]',
+      pending_json TEXT,
+      refusal_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `).run();
+
+  // Mileage capture columns on the unit table used by voice.ts. The legacy
+  // codebase queries 'dispatch_units' but the canonical table is 'units';
+  // try both — addCol is idempotent and silently skips a missing table.
+  for (const tbl of ['dispatch_units', 'units']) {
+    try {
+      addCol(tbl, 'last_starting_mileage', 'INTEGER');
+      addCol(tbl, 'last_starting_mileage_at', 'TEXT');
+      addCol(tbl, 'last_ending_mileage', 'INTEGER');
+      addCol(tbl, 'last_ending_mileage_at', 'TEXT');
+    } catch { /* table may not exist on this deployment */ }
+  }
 
   console.log('Schema migration completed.');
 }
@@ -6684,13 +6917,175 @@ function createIndexes(): void {
     -- Calls for service incident type index (high-frequency filter)
     CREATE INDEX IF NOT EXISTS idx_cfs_incident_type ON calls_for_service(incident_type);
 
-    -- Shift plans indexes
+    -- Shift plans table + indexes (moved here from routes/shiftPlans.ts
+    -- on 2026-05-05 to fix the test-suite "createIndexes partially failed:
+    -- no such table: main.shift_plans" warning. The route's initTables()
+    -- created the table lazily on first import, but tests init the DB
+    -- BEFORE any route module loads, so the indexes attached to a table
+    -- that didn't exist yet. Now the table is created up-front like the
+    -- other 186 tables in this file.)
+    CREATE TABLE IF NOT EXISTS shift_plans (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      date TEXT NOT NULL,
+      shift_type TEXT NOT NULL DEFAULT 'day',
+      assignments TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_by INTEGER,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS idx_shift_plans_date ON shift_plans(date);
     CREATE INDEX IF NOT EXISTS idx_shift_plans_status ON shift_plans(status);
 
-    -- Dashcam videos indexes
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_unit ON dashcam_videos(unit_id);
-    CREATE INDEX IF NOT EXISTS idx_dashcam_videos_officer ON dashcam_videos(officer_id);
+    -- Call_units junction table — was missing from source despite
+    -- being live in production (73 rows of dispatch unit-assignment
+    -- data observed 2026-05-05). Restored here so a fresh DB
+    -- provisioning doesn't break the dispatch system. Schema matches
+    -- production exactly; CREATE IF NOT EXISTS is idempotent so this
+    -- is a no-op in production.
+    CREATE TABLE IF NOT EXISTS call_units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      unit_id INTEGER NOT NULL,
+      assigned_at TEXT DEFAULT (datetime('now','localtime')),
+      unassigned_at TEXT,
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (unit_id) REFERENCES units(id) ON DELETE CASCADE,
+      UNIQUE(call_id, unit_id)
+    );
+
+    -- ─── INTELLIGENCE BULLETINS ───────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS intel_bulletins (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bulletin_number TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      bulletin_type TEXT NOT NULL DEFAULT 'bolo',
+      priority TEXT NOT NULL DEFAULT 'medium',
+      status TEXT NOT NULL DEFAULT 'active',
+      description TEXT NOT NULL,
+      suspect_name TEXT,
+      suspect_description TEXT,
+      vehicle_description TEXT,
+      location_area TEXT,
+      weapons_involved TEXT,
+      photo_url TEXT,
+      expires_at TEXT,
+      linked_case_id INTEGER,
+      linked_warrant_id INTEGER,
+      linked_call_id INTEGER,
+      created_by INTEGER NOT NULL,
+      cancelled_by INTEGER,
+      cancelled_at TEXT,
+      expired_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS intel_bulletin_acknowledgments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      bulletin_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      acknowledged_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (bulletin_id) REFERENCES intel_bulletins(id) ON DELETE CASCADE,
+      UNIQUE(bulletin_id, user_id)
+    );
+
+    -- ─── SHIFT BRIEFINGS ─────────────────────────────────────────────────
+    CREATE TABLE IF NOT EXISTS shift_briefings (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      briefing_number TEXT UNIQUE NOT NULL,
+      shift_type TEXT NOT NULL DEFAULT 'day',
+      briefing_date TEXT NOT NULL,
+      title TEXT,
+      content TEXT,
+      notes TEXT,
+      weather_conditions TEXT,
+      staffing_level TEXT,
+      created_by INTEGER NOT NULL,
+      deleted_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE TABLE IF NOT EXISTS shift_briefing_acknowledgments (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      briefing_id INTEGER NOT NULL,
+      user_id INTEGER NOT NULL,
+      acknowledged_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (briefing_id) REFERENCES shift_briefings(id) ON DELETE CASCADE,
+      UNIQUE(briefing_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS shift_handoffs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      outgoing_dispatcher_id INTEGER NOT NULL,
+      incoming_dispatcher_id INTEGER,
+      shift_type TEXT NOT NULL DEFAULT 'day',
+      status TEXT NOT NULL DEFAULT 'pending',
+      active_calls_summary TEXT,
+      held_calls_summary TEXT,
+      pending_backups TEXT,
+      officer_notes TEXT,
+      priority_items TEXT,
+      weather_conditions TEXT,
+      staffing_notes TEXT,
+      acknowledged_at TEXT,
+      completed_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (outgoing_dispatcher_id) REFERENCES users(id),
+      FOREIGN KEY (incoming_dispatcher_id) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS mutual_aid_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      requesting_agency TEXT NOT NULL DEFAULT 'RMPG',
+      responding_agency TEXT,
+      call_id INTEGER,
+      request_type TEXT NOT NULL DEFAULT 'units',
+      units_requested INTEGER DEFAULT 1,
+      units_provided INTEGER DEFAULT 0,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      priority TEXT DEFAULT 'P2',
+      contact_name TEXT,
+      contact_phone TEXT,
+      contact_radio TEXT,
+      response_notes TEXT,
+      requested_by INTEGER NOT NULL,
+      responded_by INTEGER,
+      requested_at TEXT DEFAULT (datetime('now','localtime')),
+      responded_at TEXT,
+      completed_at TEXT,
+      cancelled_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
+      FOREIGN KEY (requested_by) REFERENCES users(id),
+      FOREIGN KEY (responded_by) REFERENCES users(id)
+    );
+
+    CREATE TABLE IF NOT EXISTS call_narratives (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      version INTEGER NOT NULL DEFAULT 1,
+      narrative_text TEXT NOT NULL,
+      editor_id INTEGER NOT NULL,
+      editor_name TEXT,
+      change_summary TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+      FOREIGN KEY (editor_id) REFERENCES users(id),
+      UNIQUE(call_id, version)
+    );
+
+    -- Dashcam videos indexes — only on columns that actually exist.
+    -- The previous unit_id and officer_id indexes referenced columns
+    -- that were never added to dashcam_videos (verified via grep
+    -- against all addCol calls 2026-05-05). They were producing
+    -- "[DB] createIndexes partially failed (non-fatal): no such
+    -- column: unit_id" warnings on every cold DB init. Removed.
     CREATE INDEX IF NOT EXISTS idx_dashcam_videos_date ON dashcam_videos(recorded_at);
     CREATE INDEX IF NOT EXISTS idx_dashcam_videos_incident ON dashcam_videos(incident_id);
 
@@ -6782,9 +7177,10 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_email_logs_status ON email_logs(status);
     CREATE INDEX IF NOT EXISTS idx_email_logs_to ON email_logs(to_email);
 
-    -- Patrol breaks indexes
+    -- Patrol breaks indexes -- column-drift fix 2026-05-05:
+    -- patrol_breaks has break_start (not start_time).
     CREATE INDEX IF NOT EXISTS idx_patrol_breaks_officer ON patrol_breaks(officer_id);
-    CREATE INDEX IF NOT EXISTS idx_patrol_breaks_date ON patrol_breaks(start_time);
+    CREATE INDEX IF NOT EXISTS idx_patrol_breaks_date ON patrol_breaks(break_start);
 
     -- Fleet pretrip checklists indexes
     CREATE INDEX IF NOT EXISTS idx_pretrip_vehicle ON fleet_pretrip_checklists(vehicle_id);
@@ -6795,14 +7191,17 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_evidence_temp_evidence ON evidence_temperature_logs(evidence_id);
     CREATE INDEX IF NOT EXISTS idx_evidence_temp_recorded ON evidence_temperature_logs(recorded_at);
 
-    -- Person associates indexes
+    -- Person associates indexes -- the actual column on
+    -- person_associates is associate_id (line ~5092), not
+    -- associated_person_id. Fixed 2026-05-05.
     CREATE INDEX IF NOT EXISTS idx_person_assoc_person ON person_associates(person_id);
-    CREATE INDEX IF NOT EXISTS idx_person_assoc_associated ON person_associates(associated_person_id);
+    CREATE INDEX IF NOT EXISTS idx_person_assoc_associated ON person_associates(associate_id);
 
-    -- ClearPath GPS indexes
+    -- ClearPath GPS indexes -- column-drift fix 2026-05-05:
+    -- cpgps_trips has trip_start (not start_time).
     CREATE INDEX IF NOT EXISTS idx_cpgps_vehicles_unit ON cpgps_vehicles(unit_number);
     CREATE INDEX IF NOT EXISTS idx_cpgps_trips_vehicle ON cpgps_trips(vehicle_id);
-    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_date ON cpgps_trips(start_time);
+    CREATE INDEX IF NOT EXISTS idx_cpgps_trips_date ON cpgps_trips(trip_start);
     CREATE INDEX IF NOT EXISTS idx_cpgps_locations_vehicle ON cpgps_locations(vehicle_id);
     CREATE INDEX IF NOT EXISTS idx_cpgps_locations_time ON cpgps_locations(timestamp);
     CREATE INDEX IF NOT EXISTS idx_cpgps_alerts_vehicle ON cpgps_alerts(vehicle_id);
@@ -6810,7 +7209,8 @@ function createIndexes(): void {
 
     -- Warrant watch indexes
     CREATE INDEX IF NOT EXISTS idx_warrant_watch_runs_created ON warrant_watch_runs(created_at);
-    CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_run ON warrant_watch_log(run_id);
+    -- Column-drift fix 2026-05-05: warrant_watch_log has scan_run_id (not run_id).
+    CREATE INDEX IF NOT EXISTS idx_warrant_watch_log_run ON warrant_watch_log(scan_run_id);
     CREATE INDEX IF NOT EXISTS idx_scraped_warrants_name ON scraped_warrants(last_name, first_name);
     CREATE INDEX IF NOT EXISTS idx_scraped_warrants_status ON scraped_warrants(status);
 
@@ -6826,7 +7226,7 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_breadcrumbs_callsign ON gps_breadcrumbs(call_sign);
 
     -- System announcements indexes
-    CREATE INDEX IF NOT EXISTS idx_announcements_active ON system_announcements(is_active);
+    CREATE INDEX IF NOT EXISTS idx_announcements_active ON system_announcements(active);
     CREATE INDEX IF NOT EXISTS idx_announcements_expires ON system_announcements(expires_at);
 
     -- Record locks indexes
@@ -6876,6 +7276,38 @@ function createIndexes(): void {
     CREATE INDEX IF NOT EXISTS idx_panic_alerts_created ON panic_alerts(created_at);
     CREATE INDEX IF NOT EXISTS idx_panic_alerts_call ON panic_alerts(call_id);
     CREATE INDEX IF NOT EXISTS idx_panic_alerts_escalation ON panic_alerts(escalation_level);
+
+    -- Intel bulletins indexes
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_status ON intel_bulletins(status);
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_type ON intel_bulletins(bulletin_type);
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_priority ON intel_bulletins(priority);
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_created ON intel_bulletins(created_at);
+    CREATE INDEX IF NOT EXISTS idx_intel_bulletins_expires ON intel_bulletins(expires_at);
+    CREATE INDEX IF NOT EXISTS idx_intel_ack_bulletin ON intel_bulletin_acknowledgments(bulletin_id);
+    CREATE INDEX IF NOT EXISTS idx_intel_ack_user ON intel_bulletin_acknowledgments(user_id);
+
+    -- Shift briefings indexes
+    CREATE INDEX IF NOT EXISTS idx_shift_briefings_date ON shift_briefings(briefing_date);
+    CREATE INDEX IF NOT EXISTS idx_shift_briefings_shift ON shift_briefings(shift_type);
+    CREATE INDEX IF NOT EXISTS idx_shift_briefings_created ON shift_briefings(created_at);
+    CREATE INDEX IF NOT EXISTS idx_shift_briefing_ack_briefing ON shift_briefing_acknowledgments(briefing_id);
+    CREATE INDEX IF NOT EXISTS idx_shift_briefing_ack_user ON shift_briefing_acknowledgments(user_id);
+
+    -- Shift handoffs indexes
+    CREATE INDEX IF NOT EXISTS idx_shift_handoffs_outgoing ON shift_handoffs(outgoing_dispatcher_id);
+    CREATE INDEX IF NOT EXISTS idx_shift_handoffs_incoming ON shift_handoffs(incoming_dispatcher_id);
+    CREATE INDEX IF NOT EXISTS idx_shift_handoffs_status ON shift_handoffs(status);
+    CREATE INDEX IF NOT EXISTS idx_shift_handoffs_created ON shift_handoffs(created_at);
+
+    -- Mutual aid indexes
+    CREATE INDEX IF NOT EXISTS idx_mutual_aid_status ON mutual_aid_requests(status);
+    CREATE INDEX IF NOT EXISTS idx_mutual_aid_call ON mutual_aid_requests(call_id);
+    CREATE INDEX IF NOT EXISTS idx_mutual_aid_priority ON mutual_aid_requests(priority);
+    CREATE INDEX IF NOT EXISTS idx_mutual_aid_requested ON mutual_aid_requests(requested_at);
+
+    -- Call narratives indexes
+    CREATE INDEX IF NOT EXISTS idx_call_narratives_call ON call_narratives(call_id, version);
+    CREATE INDEX IF NOT EXISTS idx_call_narratives_editor ON call_narratives(editor_id);
   `);
   } catch (err: any) {
     console.warn('[DB] createIndexes partially failed (non-fatal):', err?.message || 'Unknown error');
@@ -6980,6 +7412,636 @@ function seedData(): void {
     insertPreset.run('Creative', 0.7, 1024, 0.95, 1.0, 0);
     insertPreset.run('Verbose', 0.5, 2048, 0.9, 1.0, 0);
   }
+
+  // ══════════════════════════════════════════════════════════════
+  // SPILLMAN-INSPIRED NEW TABLES (2026-05-10)
+  // ══════════════════════════════════════════════════════════════
+
+  // ─── 1.1 Call Stacking Queue ─────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS call_stack (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id TEXT NOT NULL,
+    call_id INTEGER NOT NULL,
+    priority_order INTEGER NOT NULL DEFAULT 0,
+    added_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_call_stack_unit ON call_stack(unit_id)`).run();
+  db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_stack_unit_call ON call_stack(unit_id, call_id)`).run();
+
+  // ─── 1.1b Dispatch Routes (multi-call route builder) ──
+  db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_routes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_id TEXT NOT NULL,
+    created_by INTEGER,
+    origin_lat REAL,
+    origin_lng REAL,
+    waypoints_json TEXT,
+    optimized_order_json TEXT,
+    total_distance_miles REAL,
+    estimated_time_minutes REAL,
+    notes TEXT,
+    status TEXT NOT NULL DEFAULT 'active',
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dispatch_routes_unit ON dispatch_routes(unit_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dispatch_routes_status ON dispatch_routes(status)`).run();
+
+  // ─── 1.2 Dispatch Timer Profiles ─────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS timer_profiles (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    call_type TEXT,
+    warn_minutes INTEGER NOT NULL DEFAULT 15,
+    alert_minutes INTEGER NOT NULL DEFAULT 30,
+    critical_minutes INTEGER NOT NULL DEFAULT 60,
+    audio_alert INTEGER DEFAULT 1,
+    is_default INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+
+  // ─── 1.3 CAD-to-CAD Peers ───────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS cad_peers (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agency_name TEXT NOT NULL,
+    endpoint_url TEXT NOT NULL,
+    shared_secret TEXT NOT NULL,
+    enabled INTEGER DEFAULT 1,
+    last_sync_at TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS cad_peer_calls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    peer_id INTEGER NOT NULL,
+    remote_call_id TEXT NOT NULL,
+    call_number TEXT,
+    incident_type TEXT,
+    location TEXT,
+    priority TEXT,
+    status TEXT DEFAULT 'pending',
+    raw_data TEXT,
+    received_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (peer_id) REFERENCES cad_peers(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_cad_peer_calls_peer ON cad_peer_calls(peer_id)`).run();
+
+  // ─── 1.5 EMD / ProQA Protocols ──────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS dispatch_protocols (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    call_type TEXT NOT NULL,
+    protocol_type TEXT DEFAULT 'emd' CHECK(protocol_type IN ('emd','fire','police','custom')),
+    decision_tree TEXT NOT NULL,
+    version TEXT DEFAULT '1.0',
+    is_active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dispatch_protocols_type ON dispatch_protocols(call_type)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS protocol_responses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    call_id INTEGER NOT NULL,
+    protocol_id INTEGER NOT NULL,
+    determinant_code TEXT,
+    responses TEXT,
+    completed_by INTEGER,
+    completed_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (call_id) REFERENCES calls_for_service(id) ON DELETE CASCADE,
+    FOREIGN KEY (protocol_id) REFERENCES dispatch_protocols(id) ON DELETE CASCADE
+  )`).run();
+
+  // ─── 2.1 Pawn Tracking ──────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS pawn_transactions (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    shop_name TEXT NOT NULL,
+    shop_address TEXT,
+    transaction_date TEXT NOT NULL,
+    transaction_type TEXT DEFAULT 'pawn' CHECK(transaction_type IN ('pawn','buy','consignment')),
+    item_description TEXT NOT NULL,
+    item_category TEXT,
+    serial_number TEXT,
+    brand TEXT,
+    model TEXT,
+    color TEXT,
+    seller_first_name TEXT,
+    seller_last_name TEXT,
+    seller_dob TEXT,
+    seller_id_type TEXT,
+    seller_id_number TEXT,
+    seller_address TEXT,
+    seller_phone TEXT,
+    hold_period_days INTEGER DEFAULT 30,
+    hold_expires TEXT,
+    status TEXT DEFAULT 'held' CHECK(status IN ('held','released','flagged','seized','returned')),
+    flagged_stolen INTEGER DEFAULT 0,
+    matched_evidence_id INTEGER,
+    amount REAL,
+    notes TEXT,
+    entered_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_pawn_serial ON pawn_transactions(serial_number)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_pawn_seller ON pawn_transactions(seller_last_name, seller_first_name)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_pawn_status ON pawn_transactions(status)`).run();
+
+  // ─── 2.2 Animal Control ─────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS animal_control_cases (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    case_number TEXT UNIQUE,
+    case_type TEXT DEFAULT 'complaint' CHECK(case_type IN ('complaint','stray','bite','quarantine','cruelty','noise','licensing','other')),
+    animal_type TEXT,
+    animal_breed TEXT,
+    animal_color TEXT,
+    animal_name TEXT,
+    animal_sex TEXT,
+    microchip_number TEXT,
+    owner_name TEXT,
+    owner_address TEXT,
+    owner_phone TEXT,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    description TEXT,
+    status TEXT DEFAULT 'open' CHECK(status IN ('open','investigating','resolved','closed','transferred')),
+    disposition TEXT,
+    assigned_officer_id INTEGER,
+    linked_incident_id INTEGER,
+    quarantine_start TEXT,
+    quarantine_end TEXT,
+    vaccination_status TEXT,
+    impound_date TEXT,
+    release_date TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_animal_cases_status ON animal_control_cases(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_animal_cases_type ON animal_control_cases(case_type)`).run();
+
+  // ─── 2.3 Alarm Tracking ─────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS alarm_permits (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    permit_number TEXT UNIQUE,
+    location_name TEXT NOT NULL,
+    location_address TEXT NOT NULL,
+    alarm_company TEXT,
+    alarm_type TEXT DEFAULT 'burglar' CHECK(alarm_type IN ('burglar','fire','panic','medical','holdup','other')),
+    contact_name TEXT,
+    contact_phone TEXT,
+    contact_email TEXT,
+    permit_start TEXT,
+    permit_expiry TEXT,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active','expired','suspended','revoked')),
+    false_alarm_count INTEGER DEFAULT 0,
+    billing_threshold INTEGER DEFAULT 3,
+    fee_per_false_alarm REAL DEFAULT 100.00,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  try { db.prepare(`CREATE INDEX IF NOT EXISTS idx_alarm_permits_address ON alarm_permits(location_address)`).run(); } catch { /* column may not exist in older schemas */ }
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS alarm_activations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    permit_id INTEGER,
+    activation_date TEXT NOT NULL,
+    alarm_type TEXT,
+    response_time_minutes INTEGER,
+    responding_unit TEXT,
+    is_false_alarm INTEGER DEFAULT 0,
+    cause TEXT,
+    call_id INTEGER,
+    billed INTEGER DEFAULT 0,
+    invoice_id INTEGER,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (permit_id) REFERENCES alarm_permits(id) ON DELETE SET NULL
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alarm_activations_permit ON alarm_activations(permit_id)`).run();
+
+  // ─── 2.4 Impound Lot Management ─────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS vehicle_impounds (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vehicle_year TEXT,
+    vehicle_make TEXT,
+    vehicle_model TEXT,
+    vehicle_color TEXT,
+    vehicle_vin TEXT,
+    license_plate TEXT,
+    license_state TEXT,
+    tow_company TEXT,
+    tow_driver TEXT,
+    lot_location TEXT,
+    lot_space TEXT,
+    impound_date TEXT NOT NULL,
+    release_date TEXT,
+    reason TEXT NOT NULL,
+    authority TEXT,
+    hold_flag INTEGER DEFAULT 0,
+    hold_reason TEXT,
+    daily_fee REAL DEFAULT 25.00,
+    tow_fee REAL DEFAULT 150.00,
+    total_fees REAL DEFAULT 0,
+    status TEXT DEFAULT 'impounded' CHECK(status IN ('impounded','hold','released','auction','crushed','abandoned')),
+    owner_name TEXT,
+    owner_phone TEXT,
+    owner_notified INTEGER DEFAULT 0,
+    owner_notified_date TEXT,
+    call_id INTEGER,
+    incident_id INTEGER,
+    officer_id INTEGER,
+    photos TEXT,
+    property_inventory TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_impounds_status ON vehicle_impounds(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_impounds_plate ON vehicle_impounds(license_plate)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_impounds_vin ON vehicle_impounds(vehicle_vin)`).run();
+
+  // ─── 2.6 Evidence Chain of Custody ──────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS evidence_custody_log (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    evidence_id INTEGER NOT NULL,
+    action TEXT NOT NULL CHECK(action IN ('intake','transfer','checkout','return','dispose','release','lab_submit','lab_return','audit')),
+    from_person TEXT,
+    to_person TEXT,
+    from_location TEXT,
+    to_location TEXT,
+    reason TEXT,
+    condition_notes TEXT,
+    signature TEXT,
+    performed_by INTEGER,
+    performed_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_custody_evidence ON evidence_custody_log(evidence_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_custody_date ON evidence_custody_log(performed_at)`).run();
+
+  // ─── 3.1 Community / Citizen Reports ────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS community_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tracking_number TEXT UNIQUE NOT NULL,
+    report_type TEXT DEFAULT 'non_emergency' CHECK(report_type IN ('non_emergency','noise','graffiti','abandoned_vehicle','pothole','other','tip')),
+    reporter_name TEXT,
+    reporter_phone TEXT,
+    reporter_email TEXT,
+    is_anonymous INTEGER DEFAULT 0,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    description TEXT NOT NULL,
+    status TEXT DEFAULT 'submitted' CHECK(status IN ('submitted','reviewing','assigned','resolved','closed','rejected')),
+    assigned_to INTEGER,
+    resolution TEXT,
+    call_id INTEGER,
+    incident_id INTEGER,
+    photos TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_community_reports_status ON community_reports(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_community_reports_tracking ON community_reports(tracking_number)`).run();
+
+  // ─── 3.2 Crash / Accident Reports ──────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS crash_reports (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    report_number TEXT UNIQUE,
+    crash_date TEXT NOT NULL,
+    crash_time TEXT,
+    location TEXT NOT NULL,
+    latitude REAL,
+    longitude REAL,
+    jurisdiction TEXT,
+    road_name TEXT,
+    cross_street TEXT,
+    road_type TEXT,
+    road_surface TEXT,
+    weather_conditions TEXT,
+    light_conditions TEXT,
+    traffic_control TEXT,
+    crash_type TEXT CHECK(crash_type IN ('vehicle_vehicle','vehicle_pedestrian','vehicle_bicycle','vehicle_fixed_object','vehicle_animal','rollover','sideswipe','rear_end','head_on','angle','other')),
+    severity TEXT CHECK(severity IN ('fatal','injury','property_damage','non_reportable')),
+    num_vehicles INTEGER DEFAULT 1,
+    num_injuries INTEGER DEFAULT 0,
+    num_fatalities INTEGER DEFAULT 0,
+    hit_and_run INTEGER DEFAULT 0,
+    dui_involved INTEGER DEFAULT 0,
+    parties TEXT,
+    vehicles TEXT,
+    injuries TEXT,
+    witnesses TEXT,
+    insurance_info TEXT,
+    diagram_data TEXT,
+    narrative TEXT,
+    contributing_factors TEXT,
+    officer_id INTEGER,
+    call_id INTEGER,
+    incident_id INTEGER,
+    status TEXT DEFAULT 'draft' CHECK(status IN ('draft','pending_review','approved','filed','amended')),
+    approved_by INTEGER,
+    approved_at TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crash_reports_date ON crash_reports(crash_date)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_crash_reports_status ON crash_reports(status)`).run();
+
+  // ─── 3.3 Anonymous Tips ─────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS anonymous_tips (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tracking_number TEXT UNIQUE NOT NULL,
+    tip_type TEXT DEFAULT 'crime' CHECK(tip_type IN ('crime','drug','wanted','gang','fraud','other')),
+    description TEXT NOT NULL,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    suspect_description TEXT,
+    vehicle_description TEXT,
+    urgency TEXT DEFAULT 'routine' CHECK(urgency IN ('immediate','urgent','routine')),
+    status TEXT DEFAULT 'new' CHECK(status IN ('new','reviewed','investigating','actionable','closed','unfounded')),
+    assigned_to INTEGER,
+    case_id INTEGER,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_tips_status ON anonymous_tips(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_tips_tracking ON anonymous_tips(tracking_number)`).run();
+
+  // ─── 5.1 ALPR (Automated License Plate Recognition) ──
+  db.prepare(`CREATE TABLE IF NOT EXISTS alpr_reads (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plate_number TEXT NOT NULL,
+    plate_state TEXT,
+    camera_id TEXT,
+    camera_name TEXT,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    confidence REAL,
+    image_url TEXT,
+    vehicle_make TEXT,
+    vehicle_model TEXT,
+    vehicle_color TEXT,
+    vehicle_year TEXT,
+    direction TEXT,
+    speed REAL,
+    is_hit INTEGER DEFAULT 0,
+    hit_reason TEXT,
+    read_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alpr_plate ON alpr_reads(plate_number)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alpr_date ON alpr_reads(read_at)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_alpr_hits ON alpr_reads(is_hit) WHERE is_hit = 1`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS alpr_hotlist (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    plate_number TEXT NOT NULL,
+    plate_state TEXT,
+    reason TEXT NOT NULL,
+    source TEXT,
+    priority TEXT DEFAULT 'routine' CHECK(priority IN ('critical','urgent','routine')),
+    alert_type TEXT DEFAULT 'stolen' CHECK(alert_type IN ('stolen','wanted','bolo','amber','missing','other')),
+    description TEXT,
+    vehicle_make TEXT,
+    vehicle_model TEXT,
+    vehicle_color TEXT,
+    vehicle_year TEXT,
+    owner_name TEXT,
+    case_number TEXT,
+    expires_at TEXT,
+    is_active INTEGER DEFAULT 1,
+    added_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_hotlist_plate ON alpr_hotlist(plate_number)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_hotlist_active ON alpr_hotlist(is_active) WHERE is_active = 1`).run();
+
+  // ─── 5.3 Accreditation Tracking ─────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS accreditations (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    officer_id INTEGER NOT NULL,
+    accreditation_type TEXT NOT NULL,
+    issuing_body TEXT,
+    certificate_number TEXT,
+    issued_date TEXT,
+    expiry_date TEXT,
+    status TEXT DEFAULT 'active' CHECK(status IN ('active','expired','pending_renewal','revoked','suspended')),
+    training_hours REAL,
+    document_url TEXT,
+    notes TEXT,
+    reminder_sent_60 INTEGER DEFAULT 0,
+    reminder_sent_30 INTEGER DEFAULT 0,
+    reminder_sent_7 INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_accreditations_officer ON accreditations(officer_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_accreditations_expiry ON accreditations(expiry_date)`).run();
+
+  // ─── 7.1 Jail Management ────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS jail_inmates (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    booking_number TEXT UNIQUE,
+    person_id INTEGER,
+    first_name TEXT NOT NULL,
+    last_name TEXT NOT NULL,
+    middle_name TEXT,
+    dob TEXT,
+    sex TEXT,
+    race TEXT,
+    height TEXT,
+    weight TEXT,
+    hair_color TEXT,
+    eye_color TEXT,
+    identifying_marks TEXT,
+    photo_url TEXT,
+    status TEXT DEFAULT 'in_custody' CHECK(status IN ('in_custody','released','transferred','escaped','deceased')),
+    classification TEXT DEFAULT 'general' CHECK(classification IN ('minimum','medium','maximum','protective','medical','mental_health','juvenile','general')),
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_jail_inmates_status ON jail_inmates(status)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_jail_inmates_name ON jail_inmates(last_name, first_name)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS jail_bookings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inmate_id INTEGER NOT NULL,
+    booking_number TEXT UNIQUE,
+    booking_date TEXT DEFAULT (datetime('now','localtime')),
+    release_date TEXT,
+    release_type TEXT,
+    arrest_id INTEGER,
+    charges TEXT,
+    bail_amount REAL,
+    bail_status TEXT DEFAULT 'none' CHECK(bail_status IN ('none','set','posted','denied','released_or')),
+    court_date TEXT,
+    housing_unit TEXT,
+    cell_number TEXT,
+    medical_flags TEXT,
+    suicide_watch INTEGER DEFAULT 0,
+    special_needs TEXT,
+    property_inventory TEXT,
+    booking_officer_id INTEGER,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (inmate_id) REFERENCES jail_inmates(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_jail_bookings_inmate ON jail_bookings(inmate_id)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS jail_housing (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    unit_name TEXT NOT NULL,
+    cell_number TEXT,
+    capacity INTEGER DEFAULT 1,
+    current_occupancy INTEGER DEFAULT 0,
+    classification TEXT,
+    status TEXT DEFAULT 'available' CHECK(status IN ('available','occupied','maintenance','closed')),
+    notes TEXT
+  )`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS jail_movements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    inmate_id INTEGER NOT NULL,
+    from_location TEXT,
+    to_location TEXT,
+    reason TEXT,
+    escorted_by INTEGER,
+    moved_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (inmate_id) REFERENCES jail_inmates(id) ON DELETE CASCADE
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_jail_movements_inmate ON jail_movements(inmate_id)`).run();
+
+  // ─── 8.1 Fire RMS ──────────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS fire_incidents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    incident_number TEXT UNIQUE,
+    nfirs_number TEXT,
+    incident_date TEXT NOT NULL,
+    incident_time TEXT,
+    alarm_time TEXT,
+    arrival_time TEXT,
+    controlled_time TEXT,
+    last_unit_cleared TEXT,
+    incident_type TEXT,
+    property_use TEXT,
+    location TEXT,
+    latitude REAL,
+    longitude REAL,
+    structure_type TEXT,
+    stories INTEGER,
+    area_of_origin TEXT,
+    heat_source TEXT,
+    cause TEXT CHECK(cause IN ('accidental','intentional','undetermined','natural','under_investigation')),
+    estimated_loss REAL,
+    estimated_content_loss REAL,
+    insurance_info TEXT,
+    injuries_civilian INTEGER DEFAULT 0,
+    injuries_firefighter INTEGER DEFAULT 0,
+    fatalities INTEGER DEFAULT 0,
+    mutual_aid TEXT,
+    apparatus TEXT,
+    personnel TEXT,
+    narrative TEXT,
+    officer_id INTEGER,
+    call_id INTEGER,
+    status TEXT DEFAULT 'draft' CHECK(status IN ('draft','complete','filed','amended')),
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_fire_incidents_date ON fire_incidents(incident_date)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS fire_preplans (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    building_name TEXT NOT NULL,
+    address TEXT NOT NULL,
+    latitude REAL,
+    longitude REAL,
+    building_type TEXT,
+    construction_type TEXT,
+    stories INTEGER,
+    square_footage INTEGER,
+    occupancy_type TEXT,
+    max_occupancy INTEGER,
+    hazardous_materials TEXT,
+    access_points TEXT,
+    water_supply TEXT,
+    nearest_hydrant_id INTEGER,
+    sprinkler_system INTEGER DEFAULT 0,
+    alarm_system INTEGER DEFAULT 0,
+    standpipe INTEGER DEFAULT 0,
+    knox_box INTEGER DEFAULT 0,
+    fdc_location TEXT,
+    key_holder_name TEXT,
+    key_holder_phone TEXT,
+    special_hazards TEXT,
+    tactical_notes TEXT,
+    floor_plan_url TEXT,
+    last_inspected TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_fire_preplans_address ON fire_preplans(address)`).run();
+
+  db.prepare(`CREATE TABLE IF NOT EXISTS fire_hydrants (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hydrant_number TEXT UNIQUE,
+    location TEXT,
+    latitude REAL NOT NULL,
+    longitude REAL NOT NULL,
+    hydrant_type TEXT DEFAULT 'standard' CHECK(hydrant_type IN ('standard','high_flow','dry_barrel','wet_barrel','flush','wall')),
+    flow_rate_gpm INTEGER,
+    static_pressure_psi INTEGER,
+    residual_pressure_psi INTEGER,
+    main_size_inches REAL,
+    color_code TEXT,
+    status TEXT DEFAULT 'in_service' CHECK(status IN ('in_service','out_of_service','maintenance','damaged','buried')),
+    last_tested TEXT,
+    last_flushed TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_fire_hydrants_location ON fire_hydrants(latitude, longitude)`).run();
+
+  // ─── CRM Competitor Monitor ────────────────────────────────
+  db.prepare(`CREATE TABLE IF NOT EXISTS firecrawl_monitored_urls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    url TEXT NOT NULL,
+    label TEXT,
+    check_interval_minutes INTEGER DEFAULT 60,
+    is_enabled INTEGER DEFAULT 1,
+    last_check_at TEXT,
+    last_content_hash TEXT,
+    last_content TEXT,
+    consecutive_failures INTEGER DEFAULT 0,
+    created_by INTEGER,
+    created_at TEXT DEFAULT (datetime('now','localtime')),
+    updated_at TEXT DEFAULT (datetime('now','localtime'))
+  )`).run();
+  db.prepare(`CREATE TABLE IF NOT EXISTS firecrawl_url_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    monitored_url_id INTEGER NOT NULL,
+    old_hash TEXT,
+    new_hash TEXT,
+    significance TEXT DEFAULT 'minor',
+    content_snapshot TEXT,
+    acknowledged INTEGER DEFAULT 0,
+    detected_at TEXT DEFAULT (datetime('now','localtime')),
+    FOREIGN KEY (monitored_url_id) REFERENCES firecrawl_monitored_urls(id)
+  )`).run();
+
+  // ─── Seed default timer profile ─────────────────────
+  db.prepare(`INSERT OR IGNORE INTO timer_profiles (name, call_type, warn_minutes, alert_minutes, critical_minutes, is_default) VALUES ('Default', NULL, 15, 30, 60, 1)`).run();
 }
 
 export default { initDatabase, getDb };

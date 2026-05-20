@@ -21,19 +21,25 @@ import {
   buildNotesNarrative,
   computeDiligenceSchedule,
   classifyEntityType,
+  validateAddressFormat,
+  normalizeAddress,
   type ParseOutput,
 } from '../utils/serveIntakeHelpers';
 import { buildEnrichment } from '../utils/serveIntakeEnrichment';
 import { synthesizeCaseSynopsis } from '../utils/caseSynopsis';
 import { synthesizeCaseNarrative } from '../utils/caseNarrative';
 import { detectCourtForm } from '../utils/courtFormDetector';
+import { boundForRegex } from '../utils/regexSafe';
 import {
   isOcrmypdfAvailable,
   isTesseractAvailable,
   getPageCount,
   shouldRunOcr,
+  shouldRunOcrPerPage,
   runOcrFallback,
 } from '../utils/serveIntakeOcr';
+import { cleanOcrText } from '../utils/serveIntakeOcrCleanup';
+import { extractFromText } from '../utils/documentIntake';
 import { execFile } from 'child_process';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
 import { join } from 'path';
@@ -46,6 +52,7 @@ router.use(authenticateToken);
 
 // ── Auto-detect document kind by content ─────────────────────
 function detectDocType(text: string): 'court_docket' | 'field_sheet' | 'info_sheet' | 'unknown' {
+  text = boundForRegex(text);
   // Field sheet / info sheet markers stay first — they are very specific to
   // the upstream vendor formats (ICU, ServeManager, etc.) and we want them to
   // win before the broader court-form detector sees a court-style document.
@@ -110,9 +117,23 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
       let ocrApplied = false;
       let ocrError: string | null = null;
 
-      // Phase 2: OCR fallback when the user-defined heuristic
-      // says the text yield isn't credible for this page count.
-      if (shouldRunOcr(text, pageCount)) {
+      // Phase 2: OCR fallback — use per-page analysis for documents
+      // up to 20 pages so mixed documents (born-digital + scanned)
+      // aren't missed by the document-wide average. Falls back to
+      // the simpler shouldRunOcr heuristic for larger documents.
+      let needsOcr = false;
+      if (pageCount > 0 && pageCount <= 20) {
+        try {
+          const perPage = await shouldRunOcrPerPage(tmpPdf, pageCount);
+          needsOcr = perPage.shouldOcr;
+        } catch (err) {
+          log.warn({ err, pageCount }, 'per-page OCR check failed, falling back to average heuristic');
+          needsOcr = shouldRunOcr(text, pageCount);
+        }
+      } else {
+        needsOcr = shouldRunOcr(text, pageCount);
+      }
+      if (needsOcr) {
         try {
           const ocrBuf = await runOcrFallback(body);
           writeFileSync(ocrPdf, ocrBuf);
@@ -133,6 +154,8 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
       try { unlinkSync(tmpPdf); } catch { /* ignore */ }
       try { unlinkSync(ocrPdf); } catch { /* ignore */ }
       try { require('fs').rmdirSync(tmpDir); } catch { /* ignore */ }
+      // Apply OCR text cleanup (rejoin hyphenated words, normalize Unicode, fix OCR artifacts)
+      text = cleanOcrText(text);
       res.json({ text, length: text.length, ocrApplied, pageCount, ocrError });
     } catch (err) {
       log.error({ err }, 'serve-intake text extraction failed');
@@ -272,6 +295,44 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
 
     const parsed = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
 
+    // ── documentIntake framework: run extractors on each court docket
+    // to fill gaps the serve-specific parser missed. Best-effort.
+    const DI_MIN_CONFIDENCE = 0.3; // minimum confidence to adopt documentIntake field values
+    const diExtractions: Array<{ kind: string; fields: Array<{ key: string; value: string; confidence: number }> }> = [];
+    try {
+      for (const txt of courtDocketParts) {
+        if (!txt) continue;
+        const ext = extractFromText(txt);
+        if (ext.fields.length > 0) {
+          diExtractions.push({ kind: ext.kind, fields: ext.fields.map(f => ({ key: f.key, value: f.value, confidence: f.confidence })) });
+          // Fill gaps from documentIntake results into parsed output
+          for (const f of ext.fields) {
+            if (f.confidence < DI_MIN_CONFIDENCE) continue;
+            if (f.key === 'docket_number' && !parsed.courtCaseNumber && f.value) parsed.courtCaseNumber = f.value;
+            if (f.key === 'court_name' && !parsed.court && f.value) (parsed as any).court = f.value;
+            if (f.key === 'defendant_name' && !parsed.defendant.last && f.value) {
+              const parts = f.value.trim().split(/\s+/);
+              if (parts.length >= 2) {
+                parsed.defendant.first = parts[0];
+                parsed.defendant.last = parts[parts.length - 1];
+              }
+            }
+            if (f.key === 'plaintiff_name' && !parsed.plaintiff && f.value) (parsed as any).plaintiff = f.value;
+            if (f.key === 'filing_date' && !parsed.signedDate && f.value) (parsed as any).signedDate = f.value;
+          }
+        }
+      }
+    } catch { /* documentIntake is best-effort; never block serve intake */ }
+
+    // ── Address validation — warn if address is missing components
+    let addressValidationWarning: string | null = null;
+    if (parsed.address) {
+      const validation = validateAddressFormat(parsed.address);
+      if (!validation.valid) {
+        addressValidationWarning = `Address may be incomplete: ${validation.warnings.join('; ')}`;
+      }
+    }
+
     // Check for duplicate defendant
     const db = getDb();
     let duplicateWarning: string | null = null;
@@ -284,14 +345,16 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       }
     }
 
-    // Check for active serve on same address
+    // Check for active serve on same address (normalized comparison)
     let activeServeWarning: string | null = null;
     if (parsed.address) {
-      const activeSQ = db.prepare(
-        "SELECT id, recipient_name FROM serve_queue WHERE recipient_address = ? AND status IN ('pending', 'in_progress') LIMIT 1"
-      ).get(parsed.address) as any;
-      if (activeSQ) {
-        activeServeWarning = `Active serve already exists at this address for "${activeSQ.recipient_name}" (Queue #${activeSQ.id}).`;
+      const normalizedParsedAddr = normalizeAddress(parsed.address);
+      const activeSQs = db.prepare(
+        "SELECT id, recipient_name, recipient_address FROM serve_queue WHERE status IN ('pending', 'in_progress') LIMIT 200"
+      ).all() as any[];
+      const matchingSQ = activeSQs.find((sq: any) => normalizeAddress(sq.recipient_address || '') === normalizedParsedAddr);
+      if (matchingSQ) {
+        activeServeWarning = `Active serve already exists at this address for "${matchingSQ.recipient_name}" (Queue #${matchingSQ.id}).`;
       }
     }
 
@@ -335,6 +398,11 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     rate('jobNumber', parsed.jobNumber, fieldSheet && /Job/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
 
     // Overall confidence = average of all non-zero scores
+    // Lower address confidence if validation found issues
+    if (addressValidationWarning && confidence.address?.score > 0) {
+      confidence.address.score = Math.max(30, confidence.address.score - 30);
+      confidence.address.source += ' (incomplete address)';
+    }
     const scores = Object.values(confidence).filter(c => c.score > 0).map(c => c.score);
     const overallConfidence = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
 
@@ -350,11 +418,89 @@ router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         // Per-court-docket form classifications (50-state aware).
         courtForms: courtFormDetections,
       },
+      // documentIntake framework extractions (gap-filler)
+      documentIntakeResults: diExtractions.length > 0 ? diExtractions : undefined,
       geocode: geocodeResult,
-      warnings: [duplicateWarning, activeServeWarning, geocodeWarning].filter(Boolean),
+      warnings: [duplicateWarning, activeServeWarning, geocodeWarning, addressValidationWarning].filter(Boolean),
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Parse failed: ' + (err?.message || 'Unknown error') });
+  }
+});
+
+// ── Notes preview — generates the auto-notes before submission so
+// the dispatcher can review them in the review step. ──────────
+router.post('/preview-notes', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const { parsed, overrides } = req.body;
+    if (!parsed) { res.status(400).json({ error: 'parsed data required' }); return; }
+
+    // Apply overrides (same logic as intake but just for preview)
+    const data = { ...parsed };
+    if (overrides?.defendant) Object.assign(data.defendant || {}, overrides.defendant);
+    if (overrides?.address) data.address = overrides.address;
+    if (overrides?.plaintiff !== undefined) data.plaintiff = overrides.plaintiff;
+    if (overrides?.dueDate !== undefined) data.dueDate = overrides.dueDate;
+    if (overrides?.instructions !== undefined) data.instructions = overrides.instructions;
+    if (overrides?.court !== undefined) data.court = overrides.court;
+
+    // Build synopsis preview (requires court docket text for accuracy)
+    const courtDocket = req.body.courtDocket || '';
+    let synopsisText = '';
+    try {
+      const synopsis = synthesizeCaseSynopsis({
+        courtDocket,
+        plaintiff: data.plaintiff || '',
+        defendantFirst: data.defendant?.first || '',
+        defendantLast: data.defendant?.last || '',
+        primaryDoc: data.primaryDoc || '',
+        documents: data.documents || '',
+        responseDeadlineDays: data.responseDeadlineDays || 21,
+        court: data.court || '',
+      });
+      synopsisText = synopsis.fullText || '';
+    } catch { /* best effort */ }
+
+    // Build narrative sections
+    const now = localNow();
+    const daysRemaining = data.dueDate ? (() => {
+      const m = data.dueDate.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (!m) return 0;
+      const d = new Date(parseInt(m[3], 10), parseInt(m[1], 10) - 1, parseInt(m[2], 10), 23, 59, 59);
+      return Math.max(0, Math.ceil((d.getTime() - Date.now()) / 86_400_000));
+    })() : 0;
+
+    const notes = buildNotesNarrative({
+      plaintiff: data.plaintiff || '',
+      orderingClientRule: data.orderingClientRule || '',
+      clientJobNumber: data.clientJobNumber || '',
+      documents: data.documents || '',
+      documentPages: data.documentPages || 0,
+      bilingual: data.bilingual || false,
+      signedDate: data.signedDate || '',
+      responseDeadlineDays: data.responseDeadlineDays || 21,
+      court: data.court || '',
+      courtAddress: data.courtAddress || '',
+      clerkPhone: data.clerkPhone || '',
+      attorney: data.attorney || { name: '', firm: '', barNumber: '', tel: '', email: '', fax: '', addressLine1: '', addressLine2: '' },
+      serviceRulesSummary: data.serviceRulesSummary || '',
+      serviceWindows: data.serviceWindows || '',
+      dueDate: data.dueDate || '',
+      daysRemaining,
+      recommendedAttempts: [],
+      jobActivity: data.jobActivity || [],
+      instructionsVerbatim: data.instructions || '',
+      timestamp: now,
+      caseSynopsisText: synopsisText,
+      enrichmentText: '',
+      caseNarrativeText: '',
+    });
+
+    res.json({
+      notes: notes.map((n, i) => ({ id: String(Date.now() + i), text: n.text })),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Preview failed: ' + (err?.message || 'Unknown error') });
   }
 });
 
@@ -589,9 +735,9 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
           beatCode = (beat as any).beat_code || '';
           try {
             const district = db.prepare(`
-              SELECT db2.beat_code, db2.name AS beat_name,
-                     dz.zone_code, dz.name AS zone_name,
-                     ds.sector_code, ds.name AS sector_name
+              SELECT db2.beat_code, db2.beat_name,
+                     dz.zone_code, dz.zone_name,
+                     ds.sector_code, ds.sector_name
               FROM dispatch_beats db2
               JOIN dispatch_zones dz ON dz.id = db2.zone_id
               JOIN dispatch_sectors ds ON ds.id = dz.sector_id
@@ -666,6 +812,22 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     if (parsed.dueDate && schedule.length === 0) warnings.push('Diligence schedule empty (due date may be in the past)');
 
     const daysRemaining = dueDateObj ? Math.max(0, Math.ceil((dueDateObj.getTime() - Date.now()) / 86_400_000)) : 0;
+
+    // ── Auto-priority from document urgency (user override takes precedence)
+    // Days-to-deadline thresholds for auto-priority assignment
+    const RUSH_PRIORITY = 'P2' as const;
+    const URGENT_DAYS_THRESHOLD = 2;   // ≤2 days → P3
+    const SOON_DAYS_THRESHOLD = 5;     // ≤5 days → P3
+    let autoPriority: 'P1' | 'P2' | 'P3' | 'P4' = 'P4';
+    if (parsed.serviceRulesSummary.includes('RUSH SERVICE REQUESTED')) {
+      autoPriority = RUSH_PRIORITY;
+    } else if (daysRemaining > 0 && daysRemaining <= URGENT_DAYS_THRESHOLD) {
+      autoPriority = 'P3';
+    } else if (daysRemaining > URGENT_DAYS_THRESHOLD && daysRemaining <= SOON_DAYS_THRESHOLD) {
+      autoPriority = 'P3';
+    }
+    const effectivePriority = overrides?.priority || autoPriority;
+    const priorityScore = ({ P1: 1, P2: 2, P3: 3, P4: 4 } as Record<string, number>)[effectivePriority] || 4;
 
     // ── Civil case ───────────────────────────────────────────
     const caseNumber = nextCaseNumber(db);
@@ -874,7 +1036,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       )
     `).run(
       callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request',
-      overrides?.priority || 'P4', ({'P1':1,'P2':2,'P3':3,'P4':4} as any)[overrides?.priority || 'P4'] || 4, 'pending',
+      effectivePriority, priorityScore, 'pending',
       callerName, callerPhone || null, 'client', callerAddress || null,
       parsed.address || 'Unknown', parsed.addressParts.building || null, parsed.addressParts.floor || null, parsed.addressParts.suite || enrichment.unitNumber || null, null,
       propertyId, latitude, longitude,
@@ -929,6 +1091,9 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
 
     // ── serve_queue ─────────────────────────────────────────
     let serveQueueId: number | null = null;
+    // Compute sort_order: lower = more urgent. Days-to-deadline * 10 so we
+    // have room for sub-ordering. Overdue items get sort_order 0.
+    const serveSortOrder = daysRemaining > 0 ? daysRemaining * 10 : 0;
     try {
       const sqResult = db.prepare(`
         INSERT INTO serve_queue (
@@ -939,8 +1104,9 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
           document_type, case_number, court_name, jurisdiction,
           client_name, attorney_name, priority, deadline,
           max_attempts, service_instructions, notes,
-          sm_job_id, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          sm_job_id, time_window, sort_order,
+          status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         callId, fullName, defendantId,
         parsed.address || null, parsed.addressParts.city || null, parsed.addressParts.state || 'UT', parsed.addressParts.zip || null,
@@ -950,7 +1116,9 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         parsed.court || null, parsed.county || null,
         callerName, parsed.attorney.name || null, 'normal', parsed.dueDate || null,
         3, parsed.instructions || null, parsed.serviceRulesSummary || null,
-        parsed.jobNumber ? parseInt(parsed.jobNumber, 10) || null : null, 'pending', now, now,
+        parsed.jobNumber ? parseInt(parsed.jobNumber, 10) || null : null,
+        parsed.serviceWindows || null, serveSortOrder,
+        'pending', now, now,
       );
       serveQueueId = Number(sqResult.lastInsertRowid);
     } catch (err) {
@@ -1143,9 +1311,9 @@ router.post('/bulk', requireRole('admin', 'manager', 'supervisor', 'dispatcher')
               beatCode = (beat as any).beat_code || null;
               if (beatCode) {
                 const district = db.prepare(`
-                  SELECT db2.beat_code, db2.name AS beat_name,
-                         dz.zone_code, dz.name AS zone_name,
-                         ds.sector_code, ds.name AS sector_name
+                  SELECT db2.beat_code, db2.beat_name,
+                         dz.zone_code, dz.zone_name,
+                         ds.sector_code, ds.sector_name
                   FROM dispatch_beats db2
                   JOIN dispatch_zones dz ON dz.id = db2.zone_id
                   JOIN dispatch_sectors ds ON ds.id = dz.sector_id

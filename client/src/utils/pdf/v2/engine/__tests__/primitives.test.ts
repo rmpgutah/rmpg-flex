@@ -152,3 +152,115 @@ describe('Primitives — signature', () => {
     expect(layout.cursorY).toBeGreaterThan(60);
   });
 });
+
+function getDocText(doc: jsPDF): string {
+  const buf = new Uint8Array(doc.output('arraybuffer'));
+  let text = '';
+  for (const b of buf) text += String.fromCharCode(b);
+  return text;
+}
+
+describe('labeledField (Spillman form-fill style)', () => {
+  it('writes label in UPPERCASE and the value as-given', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    prims.labeledField({ kind: 'labeled', label: 'Full Name', accessor: () => 'Smith, Jane M.' }, {});
+    const text = getDocText(doc);
+    expect(text).toContain('FULL NAME');
+    expect(text).toContain('Smith, Jane M.');
+  });
+
+  it('handles missing/null/empty values without crashing or rendering "undefined"', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    prims.labeledField({ kind: 'labeled', label: 'EMPTY', accessor: () => null }, {});
+    prims.labeledField({ kind: 'labeled', label: 'EMPTY 2', accessor: () => '' }, {});
+    prims.labeledField({ kind: 'labeled', label: 'EMPTY 3', accessor: () => undefined }, {});
+    const text = getDocText(doc);
+    // PDF object syntax legitimately uses the literal token `null` (e.g.
+    // `/OpenAction [3 0 R /FitH null]`), so we only assert that the
+    // text-rendering operator stream contains neither (Tj-wrapped) string.
+    expect(text).not.toMatch(/\(undefined\) Tj/);
+    expect(text).not.toMatch(/\(null\) Tj/);
+  });
+
+  it('advances the layout cursor when called without explicit x', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    const before = layout.cursorY;
+    prims.labeledField({ kind: 'labeled', label: 'X', accessor: () => 'y' }, {});
+    expect(layout.cursorY).toBeGreaterThan(before);
+  });
+
+  it('does NOT advance the cursor when called with explicit x (multi-column case)', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    const before = layout.cursorY;
+    prims.labeledField(
+      { kind: 'labeled', label: 'X', accessor: () => 'y' },
+      {},
+      50,
+      40,
+    );
+    expect(layout.cursorY).toBe(before);
+  });
+});
+
+describe('table (Spillman black-header zebra style)', () => {
+  it('renders header text in UPPERCASE and emits all cell text', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    prims.table(
+      {
+        kind: 'table',
+        label: 'TEST',
+        columns: [
+          { key: 'name', header: 'name' },
+          { key: 'count', header: 'count' },
+        ],
+        accessor: () => [
+          { name: 'apples', count: '5' },
+          { name: 'oranges', count: '7' },
+        ],
+      },
+      {},
+    );
+    const buf = new Uint8Array(doc.output('arraybuffer'));
+    let text = '';
+    for (const b of buf) text += String.fromCharCode(b);
+    expect(text).toContain('NAME');
+    expect(text).toContain('COUNT');
+    expect(text).toContain('apples');
+    expect(text).toContain('oranges');
+  });
+
+  it('handles empty rows array without crashing', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    expect(() => prims.table(
+      { kind: 'table', label: 'EMPTY', columns: [{ key: 'k', header: 'K' }], accessor: () => [] },
+      {},
+    )).not.toThrow();
+  });
+
+  it('coerces null/undefined cell values to empty string', () => {
+    const doc = new jsPDF({ unit: 'mm', format: 'letter' });
+    const layout = new LayoutEngine(doc, { topMargin: 30, bottomMargin: 18, leftMargin: 10, rightMargin: 10 });
+    const prims = new Primitives(doc, layout);
+    prims.table(
+      { kind: 'table', label: 'NULLS', columns: [{ key: 'a', header: 'A' }], accessor: () => [{ a: null }, { a: undefined }] },
+      {},
+    );
+    const buf = new Uint8Array(doc.output('arraybuffer'));
+    let text = '';
+    for (const b of buf) text += String.fromCharCode(b);
+    expect(text).not.toMatch(/\(undefined\)\s*Tj/);
+    expect(text).not.toMatch(/\(null\)\s*Tj/);
+  });
+});

@@ -570,7 +570,7 @@ export default function CourtTrackerPage() {
                   <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Outcomes</div>
                   {(stats.byOutcome || []).map((r: any) => (
                     <div key={r.outcome} className="flex items-center justify-between py-1 border-b border-rmpg-800 last:border-0">
-                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ')}</span>
+                      <span className="text-[10px] text-rmpg-300">{(r.outcome || '').replace(/_/g, ' ').toUpperCase()}</span>
                       <div className="flex items-center gap-2">
                         <div className="w-16 h-1.5 bg-rmpg-800 overflow-hidden">
                           <div
@@ -948,7 +948,7 @@ export default function CourtTrackerPage() {
                 <div className="panel-beveled p-3">
                   <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Outcome</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-white font-bold">{selected.outcome.replace(/_/g, ' ')}</span></div>
+                    <div><span className="text-[9px] text-rmpg-500">Verdict:</span> <span className="text-xs text-white font-bold">{selected.outcome.replace(/_/g, ' ').toUpperCase()}</span></div>
                     {selected.sentence && <div><span className="text-[9px] text-rmpg-500">Sentence:</span> <span className="text-xs text-white">{selected.sentence}</span></div>}
                     {selected.fine_amount && !isNaN(Number(selected.fine_amount)) && <div><span className="text-[9px] text-rmpg-500">Fine:</span> <span className="text-xs text-amber-400">${Number(selected.fine_amount).toFixed(2)}</span></div>}
                   </div>

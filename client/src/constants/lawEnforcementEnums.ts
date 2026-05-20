@@ -22,12 +22,15 @@
 // ── Person — Demographics ─────────────────────────────────
 
 export const GENDER_OPTIONS = [
-  'Male', 'Female', 'Non-Binary', 'Other',
+  'Male', 'Female', 'Non-Binary', 'Transgender Male', 'Transgender Female',
+  'Unknown', 'Other',
 ] as const;
 
 export const RACE_OPTIONS = [
   'White', 'Black', 'Hispanic', 'Asian', 'Native American',
-  'Pacific Islander', 'Middle Eastern', 'Mixed', 'Other',
+  'Pacific Islander', 'Middle Eastern', 'Mixed',
+  'Native Hawaiian', 'Alaska Native', 'South Asian', 'Southeast Asian',
+  'East Asian', 'African', 'Caribbean', 'Unknown', 'Other',
 ] as const;
 
 export const MARITAL_OPTIONS = [
@@ -93,36 +96,55 @@ export const BLOOD_TYPE_OPTIONS = [
 
 export const BUILD_OPTIONS = [
   'Slim', 'Medium', 'Athletic', 'Heavy', 'Stocky', 'Large',
+  'Thin', 'Muscular', 'Obese', 'Petite', 'Tall/Lanky', 'Average', 'Proportionate',
 ] as const;
 
 export const COMPLEXION_OPTIONS = [
   'Light', 'Medium', 'Dark', 'Fair', 'Olive', 'Ruddy', 'Sallow',
+  'Pale', 'Tan', 'Freckled', 'Weathered', 'Acne-Scarred', 'Pockmarked', 'Blotchy',
 ] as const;
 
 export const HAIR_COLOR_OPTIONS = [
   'Black', 'Brown', 'Blonde', 'Red', 'Auburn',
-  'Gray', 'White', 'Bald', 'Other',
+  'Gray', 'White', 'Bald',
+  'Strawberry Blonde', 'Salt and Pepper', 'Dirty Blonde',
+  'Light Brown', 'Dark Brown',
+  'Blue (Dyed)', 'Green (Dyed)', 'Pink (Dyed)', 'Purple (Dyed)',
+  'Multi-Color (Dyed)', 'Partially Gray',
+  'Other',
 ] as const;
 
 export const HAIR_LENGTH_OPTIONS = [
   'Short', 'Medium', 'Long', 'Shaved',
+  'Buzz Cut', 'Collar Length', 'Shoulder Length', 'Below Shoulder', 'Waist Length',
 ] as const;
 
 export const HAIR_STYLE_OPTIONS = [
   'Straight', 'Curly', 'Wavy', 'Braided', 'Dreadlocks', 'Afro',
   'Bun', 'Ponytail', 'Bald',
+  'Cornrows', 'Twists', 'Fade', 'Mohawk', 'Buzz Cut', 'Slicked Back',
+  'Parted', 'Messy/Unkempt', 'Bob', 'Pixie Cut', 'Undercut',
+  'Comb Over', 'Man Bun', 'Top Knot', 'Jheri Curl', 'Flat Top',
 ] as const;
 
 export const FACIAL_HAIR_OPTIONS = [
   'None', 'Mustache', 'Goatee', 'Full Beard', 'Stubble', 'Sideburns',
+  'Van Dyke', 'Chinstrap', 'Soul Patch', 'Mutton Chops',
+  'Handlebar Mustache', 'Fu Manchu', 'Circle Beard', 'Chin Curtain',
+  '5 O\'Clock Shadow', 'Pencil Mustache', 'Walrus Mustache',
 ] as const;
 
 export const EYE_COLOR_OPTIONS = [
-  'Brown', 'Blue', 'Green', 'Hazel', 'Gray', 'Amber', 'Black', 'Other',
+  'Brown', 'Blue', 'Green', 'Hazel', 'Gray', 'Amber', 'Black',
+  'Blue-Green', 'Blue-Gray', 'Light Brown', 'Dark Brown',
+  'Heterochromia (Multi)', 'Bloodshot', 'Prosthetic/Glass',
+  'Other',
 ] as const;
 
 export const GLASSES_OPTIONS = [
   'None', 'Glasses', 'Contacts', 'Sunglasses',
+  'Bifocals', 'Reading Glasses', 'Safety Glasses', 'Monocle',
+  'Eye Patch', 'Tinted/Transitional',
 ] as const;
 
 // Voice description — for FI cards, witness statements, BOLO
@@ -131,6 +153,8 @@ export const VOICE_OPTIONS = [
   'Normal', 'Deep', 'High-Pitched', 'Raspy', 'Nasal',
   'Soft / Quiet', 'Loud', 'Stutter', 'Lisp',
   'Foreign Accent', 'Regional Accent', 'Slurred',
+  'Monotone', 'Whispering', 'Hoarse', 'Squeaky', 'Gravelly',
+  'Trembling/Shaky', 'Muffled', 'Booming', 'Articulate/Clear', 'Mumbling',
   'Other',
 ] as const;
 
@@ -145,13 +169,21 @@ export const PROBATION_OPTIONS = [
 export const ID_TYPE_OPTIONS = [
   'Driver License', 'State ID', 'Passport', 'Military ID',
   'Tribal ID', 'Permanent Resident Card', 'Work Permit',
-  'Student ID', 'Foreign National ID', 'Other',
+  'Student ID', 'Foreign National ID',
+  'Consular ID', 'TWIC Card', 'Concealed Carry Permit',
+  'Social Security Card', 'Birth Certificate', 'Voter Registration Card',
+  'School/University ID', 'Federal Employee ID',
+  'Medical Marijuana Card', 'Green Card (I-551)',
+  'Other',
 ] as const;
 
 // DL classes per Utah DLD — A/B/C are commercial (CDL); D is
 // standard passenger; M is motorcycle. Matches state DLD lookup.
 export const DL_CLASS_OPTIONS = [
   'A', 'B', 'C', 'D', 'M', 'CDL-A', 'CDL-B', 'CDL-C',
+  'CDL-A (Hazmat)', 'CDL-A (Tanker)', 'CDL-A (Doubles/Triples)',
+  'CDL-B (Passenger)', 'CDL-B (School Bus)',
+  'Learner Permit', 'Restricted', 'Suspended', 'Revoked', 'Expired',
 ] as const;
 
 // Education attainment — used for jail intake & demographic
@@ -171,7 +203,12 @@ export const OCCUPATION_OPTIONS = [
   'IT / Technology', 'Finance / Banking', 'Legal', 'Sales',
   'Skilled Trades', 'Government', 'Hospitality',
   'Warehouse / Logistics', 'Maintenance / Janitorial',
-  'Security', 'Social Services', 'Other',
+  'Security', 'Social Services',
+  'Mining/Extraction', 'Real Estate', 'Arts/Entertainment',
+  'Media/Communications', 'Nonprofit/Charity', 'Religious/Clergy',
+  'Freelance/Gig Work', 'Day Labor', 'Homemaker',
+  'Disabled/Unable to Work', 'Incarcerated',
+  'Other',
 ] as const;
 
 export const MILITARY_BRANCH_OPTIONS = [
@@ -230,6 +267,11 @@ export const VEHICLE_BODY_STYLE_OPTIONS = [
   'Motorcycle', 'Scooter', 'Moped', 'ATV / UTV',
   'Trailer', 'Box Truck', 'Semi Tractor', 'Flatbed',
   'Tow Truck', 'Dump Truck',
+  'Sports Car', 'Limousine', 'Ambulance', 'Fire Engine', 'Police Cruiser',
+  'Camper/RV', 'Golf Cart', 'Go-Kart', 'Snowmobile',
+  'Boat Trailer', 'Horse Trailer', 'Utility Trailer',
+  'Tank Truck', 'Cement Mixer', 'Crane', 'Forklift',
+  'Delivery Van', 'Ice Cream Truck', 'Food Truck', 'Hearse',
   'Other',
 ] as const;
 
@@ -244,6 +286,9 @@ export const VEHICLE_COLOR_OPTIONS = [
   'Maroon', 'Navy', 'Orange', 'Pink', 'Purple',
   'Red', 'Silver', 'Tan', 'Teal',
   'Turquoise', 'White', 'Yellow',
+  'Champagne', 'Pewter', 'Graphite', 'Midnight Blue', 'Forest Green',
+  'Olive', 'Rust', 'Ivory', 'Matte Black', 'Pearl White',
+  'Candy Apple Red', 'Primer/Unpainted', 'Camouflage', 'Wrap/Custom',
   'Multi-Color', 'Other',
 ] as const;
 
@@ -318,15 +363,26 @@ export const VEHICLE_DAMAGE_PANEL_OPTIONS = [
 export const PROPERTY_TYPE_OPTIONS = [
   'Residential — Single Family', 'Residential — Multi-Family',
   'Residential — Apartment Complex', 'Residential — Mobile Home Park',
+  'Residential — Condominium', 'Residential — Duplex', 'Residential — Senior Living',
   'Commercial — Office', 'Commercial — Retail',
   'Commercial — Restaurant', 'Commercial — Hotel/Motel',
+  'Commercial — Bar/Nightclub', 'Commercial — Gas Station',
+  'Commercial — Auto Dealer', 'Commercial — Repair Shop',
+  'Commercial — Grocery Store', 'Commercial — Shopping Mall',
+  'Commercial — Bank/Credit Union', 'Commercial — Pharmacy',
   'Industrial — Warehouse', 'Industrial — Manufacturing',
-  'Industrial — Storage Facility',
+  'Industrial — Storage Facility', 'Industrial — Auto Salvage/Junkyard',
+  'Industrial — Power Plant',
   'Educational — School', 'Educational — University',
   'Healthcare — Hospital', 'Healthcare — Clinic',
   'Government — Office', 'Government — Court',
   'Religious — Church / Temple',
   'Recreational — Park', 'Recreational — Stadium',
+  'Recreational — Swimming Pool', 'Recreational — Campground',
+  'Recreational — Golf Course',
+  'Transportation — Bus Station', 'Transportation — Rail Station',
+  'Transportation — Airport', 'Transportation — Parking Structure',
+  'Agricultural — Farm/Ranch', 'Agricultural — Greenhouse',
   'Construction Site', 'Vacant Lot', 'Mixed Use', 'Other',
 ] as const;
 
@@ -334,25 +390,39 @@ export const STRUCTURE_TYPE_OPTIONS = [
   'Single-Story', 'Multi-Story', 'High-Rise',
   'Apartment Block', 'Townhouse', 'Mobile Home',
   'Detached Garage', 'Outbuilding',
-  'Tent / Temporary', 'Other',
+  'Tent / Temporary',
+  'Split-Level', 'A-Frame', 'Modular/Prefab', 'Underground/Basement',
+  'Open-Air/Pavilion', 'Dome/Geodesic', 'Warehouse',
+  'Barn/Agricultural', 'Historical/Landmark',
+  'Other',
 ] as const;
 
 export const OCCUPANCY_STATUS_OPTIONS = [
   'Owner-Occupied', 'Tenant-Occupied', 'Vacant',
   'Under Construction', 'Abandoned',
-  'Seasonal / Vacation', 'Unknown',
+  'Seasonal / Vacation',
+  'Partially Occupied', 'Condemned', 'Foreclosed',
+  'Government-Occupied', 'Short-Term Rental', 'Commercial Lease',
+  'Unknown',
 ] as const;
 
 export const ALARM_SYSTEM_OPTIONS = [
   'None', 'Self-Monitored', 'Professionally Monitored',
   'Smart-Home Integration', 'Wireless', 'Wired',
-  'Hybrid', 'Other',
+  'Hybrid',
+  'Fire Alarm Only', 'Panic Button', 'Duress Code Enabled',
+  'Silent Alarm', 'Perimeter-Only', 'Interior Motion',
+  'Glass-Break Sensors', 'Video Verified',
+  'Other',
 ] as const;
 
 export const PATROL_FREQUENCY_OPTIONS = [
   'None', '1× per shift', '2× per shift',
   '3-4× per shift', 'Hourly', 'Continuous Post',
-  'On-Call Only', 'As Required', 'Other',
+  'On-Call Only', 'As Required',
+  'Every 2 Hours', 'Every 4 Hours', 'Once Daily', 'Twice Daily',
+  'Weekdays Only', 'Weekends Only', 'Business Hours Only', 'After Hours Only',
+  'Other',
 ] as const;
 
 // ── Evidence ──────────────────────────────────────────────

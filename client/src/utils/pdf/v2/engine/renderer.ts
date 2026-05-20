@@ -4,10 +4,15 @@ import { Primitives, ROW_HEIGHT } from './primitives';
 import { drawDefaultHeader } from './header';
 import { drawDefaultFooter } from './footer';
 import { makeRenderContext, drawSectionHeader, closeSection } from './context';
-import { drawBlankFormWatermark } from './watermark';
+import { drawBlankFormWatermark, drawDraftWatermark } from './watermark';
 import type {
   FormSchema, SchemaSection, RenderCallback, FieldSpec, LabeledField,
 } from './types';
+
+function drawWatermarkIfAny(doc: jsPDF, mode: string | undefined): void {
+  if (mode === 'blank-form') drawBlankFormWatermark(doc);
+  else if (mode === 'draft') drawDraftWatermark(doc);
+}
 
 export interface RenderOptions {
   /**
@@ -26,9 +31,7 @@ export async function renderPdfV2<T>(
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
 
   // Watermark is drawn BEFORE the header so header text sits on top of it.
-  if (schema.watermark === 'blank-form') {
-    drawBlankFormWatermark(doc);
-  }
+  if (schema.watermark) drawWatermarkIfAny(doc, schema.watermark);
 
   const headerBottomY = drawDefaultHeader(doc, schema.meta, {
     caseNumber: schema.header.caseNumberAccessor?.(data),
@@ -59,13 +62,12 @@ export async function renderPdfV2<T>(
   for (let p = 1; p <= total; p++) {
     doc.setPage(p);
     // Re-stamp the watermark on every page so multi-page output is consistent.
-    if (schema.watermark === 'blank-form' && p > 1) {
-      drawBlankFormWatermark(doc);
-    }
+    if (schema.watermark && p > 1) drawWatermarkIfAny(doc, schema.watermark);
     drawDefaultFooter(doc, {
       pageNumber: p,
       totalPages: total,
       revision: schema.meta.revision,
+      formNumber: schema.meta.formNumber,
       generatedAt: options?.generatedAt,
     });
   }
@@ -73,7 +75,7 @@ export async function renderPdfV2<T>(
   return doc;
 }
 
-function renderSectionFields<T>(
+export function renderSectionFields<T>(
   prims: Primitives, layout: LayoutEngine, section: SchemaSection<T>, data: T,
 ): void {
   const cols = section.columns ?? 1;

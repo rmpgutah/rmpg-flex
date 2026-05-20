@@ -660,4 +660,97 @@ router.get('/panic/:id/audio', requireRole('admin', 'supervisor', 'manager'), (r
   }
 });
 
+// ── 47. Panic Stats ──
+router.get('/panic/stats', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const stats = db.prepare(`
+      SELECT
+        COUNT(*) AS total_panics,
+        SUM(CASE WHEN status = 'false_alarm' THEN 1 ELSE 0 END) AS false_alarm_count,
+        ROUND(AVG(
+          CASE WHEN acknowledged_at IS NOT NULL AND created_at IS NOT NULL
+            THEN (julianday(acknowledged_at) - julianday(created_at)) * 86400
+          END
+        ), 1) AS avg_response_seconds,
+        SUM(CASE WHEN created_at >= DATE('now', 'start of month') THEN 1 ELSE 0 END) AS panics_this_month
+      FROM panic_alerts
+    `).get();
+    res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load panic stats', code: 'PANIC_STATS_ERROR' });
+  }
+});
+
+// ── 49. Add Note to Panic ──
+router.post('/panic/:id/add-note', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const panicId = Number(req.params.id);
+    const { note } = req.body || {};
+
+    if (!note || typeof note !== 'string' || note.trim().length === 0) {
+      res.status(400).json({ error: 'Note is required', code: 'NOTE_REQUIRED' });
+      return;
+    }
+
+    const existing = db.prepare('SELECT * FROM panic_alerts WHERE id = ?').get(panicId) as any;
+    if (!existing) {
+      res.status(404).json({ error: 'Panic alert not found', code: 'PANIC_NOT_FOUND' });
+      return;
+    }
+
+    let notes: any[] = [];
+    try { notes = existing.notes ? JSON.parse(existing.notes) : []; } catch { notes = []; }
+    const user = (req as any).user;
+    notes.push({ text: note.trim(), author: user?.full_name || user?.username || 'Unknown', timestamp: localNow() });
+
+    const notesJson = JSON.stringify(notes);
+    db.prepare('UPDATE panic_alerts SET notes = ?, updated_at = ? WHERE id = ?').run(notesJson, localNow(), panicId);
+
+    auditLog(req, 'UPDATE', 'panic_alerts', panicId, { notes: existing.notes }, { notes: notesJson });
+    broadcastDispatchUpdate({ action: 'panic_updated', panic: { id: panicId, notes } });
+
+    res.json({ success: true, id: panicId, notes });
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to add note to panic', code: 'PANIC_ADD_NOTE_ERROR' });
+  }
+});
+
+// ── 50. Officers at Risk ──
+router.get('/panic/officers-at-risk', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT
+        pa.officer_id,
+        u.full_name AS officer_name,
+        u.badge_number,
+        COUNT(*) AS panic_count,
+        MAX(pa.created_at) AS last_panic_at
+      FROM panic_alerts pa
+      LEFT JOIN users u ON pa.officer_id = u.id
+      WHERE pa.created_at >= DATE('now', '-90 days')
+        AND pa.officer_id IS NOT NULL
+      GROUP BY pa.officer_id
+      HAVING panic_count >= 2
+      ORDER BY panic_count DESC
+    `).all();
+
+    const result = rows.map((r: any) => {
+      const events = db.prepare(`
+        SELECT id, created_at, status, latitude, longitude, false_alarm_reason
+        FROM panic_alerts
+        WHERE officer_id = ? AND created_at >= DATE('now', '-90 days')
+        ORDER BY created_at DESC
+      `).all(r.officer_id);
+      return { ...r, events };
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to load officers at risk', code: 'OFFICERS_AT_RISK_ERROR' });
+  }
+});
+
 export default router;

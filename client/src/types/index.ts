@@ -1445,6 +1445,7 @@ export interface FleetFuelLog {
   created_at: string;
   distance?: number;
   efficiency?: number;
+  partial_fill?: number;
   // Computed efficiency fields from backend
   mpg?: number | null;
   calc_distance?: number | null;
@@ -1548,6 +1549,42 @@ export interface FleetUtilityCost {
 export interface FleetCostSummary {
   total?: number;
   [key: string]: any;
+}
+
+// --- Fleet Expenses (non-fuel) ---
+
+export type FleetExpenseCategory = 'registration' | 'tolls' | 'parking' | 'car_wash' | 'tickets' | 'towing' | 'permits' | 'insurance' | 'equipment' | 'decals_wraps' | 'storage' | 'roadside_assistance' | 'inspection' | 'electronics' | 'accessories' | 'misc';
+
+export interface FleetExpense {
+  id?: string | number;
+  vehicle_id: number;
+  expense_date: string;
+  category: FleetExpenseCategory;
+  amount: number;
+  vendor?: string;
+  description?: string;
+  receipt_path?: string;
+  odometer_reading?: number;
+  recurring?: boolean | number;
+  recurring_frequency?: 'monthly' | 'quarterly' | 'semi_annual' | 'annual';
+  notes?: string;
+  created_by?: number;
+  created_by_name?: string;
+  created_at?: string;
+  updated_at?: string;
+  archived_at?: string;
+}
+
+export interface FleetExpenseSummary {
+  categories: Array<{
+    category: string;
+    count: number;
+    total: number;
+    avg_amount: number;
+    first_date: string;
+    last_date: string;
+  }>;
+  grand_total: number;
 }
 
 // --- Fleet Inspections ---

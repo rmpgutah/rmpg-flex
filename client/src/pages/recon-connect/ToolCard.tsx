@@ -528,7 +528,7 @@ export default function ToolCard({ tool, disabled }: { tool: ToolDef; disabled: 
                   >
                     <span className="text-[#d4a017] text-[10px] font-mono">{c.case_number}</span>
                     {c.title && <span className="text-[#d4d4d4] text-[11px] truncate flex-1">{c.title}</span>}
-                    {c.status && <span className="text-[#888] text-[9px] uppercase">{c.status}</span>}
+                    {c.status && <span className="text-[#888] text-[9px] uppercase">{c.status.replace(/_/g, ' ')}</span>}
                   </button>
                 ))}
               </div>

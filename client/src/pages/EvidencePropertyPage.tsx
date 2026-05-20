@@ -782,7 +782,7 @@ export default function EvidencePropertyPage() {
                         )}
                       </div>
                     ) : (
-                      <div className="text-[10px] text-rmpg-500">Item already {selected.status.replace(/_/g, ' ')}</div>
+                      <div className="text-[10px] text-rmpg-500">Item already {selected.status.replace(/_/g, ' ').toUpperCase()}</div>
                     )}
                   </div>
                 </div>

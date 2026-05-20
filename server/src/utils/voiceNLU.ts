@@ -42,8 +42,9 @@ Available actions:
 - code_4: Mark scene as code 4 (no further assistance needed). Params: call_id (number optional)
 - sitrep: Request situation report / status summary. Params: none
 - run_name: Look up a person by name across all databases. Params: name (string)
-- officer_down: EMERGENCY — officer down / shots fired / panic. Params: none
 - area_check: Check recent activity and hazards in current area. Params: none
+
+NEVER PLAN: panic / officer_down / shots fired / 10-99 / emergency traffic. These phrases are not a voice trigger. If the officer says one of these phrases, return action="unknown" with confidence 0.0 — the radio dispatcher will remind them to press the manual PANIC button if it's a real emergency.
 
 Respond with ONLY valid JSON in this exact format:
 { "action": "action_name", "params": { ... }, "confidence": 0.0-1.0 }

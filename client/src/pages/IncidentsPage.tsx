@@ -53,7 +53,7 @@ import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
 import { downloadPdfReport, generatePdfReportBlobUrl } from '../utils/pdfGenerator';
-import { fetchEntityImages } from '../utils/pdfImageHelpers';
+import { fetchEntityImages, fetchStaticMapImage } from '../utils/pdfImageHelpers';
 import DocumentViewer from '../components/DocumentViewer';
 import ExportButton from '../components/ExportButton';
 import RmpgLogo from '../components/RmpgLogo';
@@ -1059,15 +1059,20 @@ export default function IncidentsPage() {
   // Build incident data object for PDF generation (used by both download and preview)
   // Async: fetches attachment images for embedding in the PDF
   const buildIncidentPdfData = async () => {
-    // Fetch attachment images in parallel with building the data object
-    let attachmentImages: any[] = [];
-    try {
-      attachmentImages = await fetchEntityImages('incident', selectedIncident!.id);
-    } catch {
-      // Graceful degradation — proceed without images
-    }
-
+    // Fetch attachment images and static map in parallel
     const inc = selectedIncident as any;
+    const [attachmentImagesResult, mapImageResult] = await Promise.allSettled([
+      fetchEntityImages('incident', selectedIncident!.id),
+      (inc?.latitude != null && inc?.longitude != null)
+        ? fetchStaticMapImage(Number(inc.latitude), Number(inc.longitude), {
+            zoom: 15, width: 600, height: 300,
+            markers: [{ lng: Number(inc.longitude), lat: Number(inc.latitude), color: 'd4a017' }],
+          })
+        : Promise.resolve(null),
+    ]);
+    const attachmentImages = attachmentImagesResult.status === 'fulfilled' ? (attachmentImagesResult.value || []) : [];
+    const mapImage = mapImageResult.status === 'fulfilled' ? mapImageResult.value : null;
+
     const pdfData = {
       // Core fields
       incident_number: selectedIncident!.incident_number,
@@ -1188,6 +1193,7 @@ export default function IncidentsPage() {
         storage_location: e.storage_location,
       })),
       attachment_images: attachmentImages.length > 0 ? attachmentImages : undefined,
+      _mapImage: mapImage || undefined,
       // Geo coordinates
       latitude: inc?.latitude,
       longitude: inc?.longitude,
@@ -1288,6 +1294,18 @@ export default function IncidentsPage() {
               const pdfData = await buildIncidentPdfData();
               pdfData._officerSignature = signature;
               await downloadPdfReport(reportType, pdfData);
+            }}
+            onMobilePrint={async (reportType) => {
+              try {
+                if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+                const pdfData = await buildIncidentPdfData();
+                const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData, { printTarget: 'mobile' });
+                setPdfBlobUrl(blobUrl);
+                setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()} (MOBILE)`);
+                setPdfViewerOpen(true);
+              } catch (err) {
+                console.error('[IncidentsPage] Mobile PDF preview failed:', err);
+              }
             }}
           />
         <button type="button"
@@ -1626,7 +1644,7 @@ export default function IncidentsPage() {
 
         {/* Persons Involved */}
         <CollapsibleSection
-          title="Persons Involved"
+          title="Individuals Involved"
           icon={UserPlus}
           count={detailPersons.length}
           defaultOpen
@@ -1647,7 +1665,7 @@ export default function IncidentsPage() {
                   <div key={lp.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                     <div className="flex items-center gap-3">
                       <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[10px] uppercase font-bold border border-brand-600/40">
-                        {lp.role.replace(/_/g, ' ')}
+                        {lp.role.replace(/_/g, ' ').toUpperCase()}
                       </span>
                       <span className="text-sm text-white font-medium">{lp.last_name}, {lp.first_name}</span>
                       <WarrantBadge flags={lp.flags || '[]'} size="sm" />
@@ -1700,7 +1718,7 @@ export default function IncidentsPage() {
                 <div key={lv.id} className="flex items-center justify-between px-3 py-1.5 bg-surface-sunken border border-rmpg-700 group">
                   <div className="flex items-center gap-3">
                     <span className="px-1.5 py-0.5 bg-amber-900/40 text-amber-300 text-[10px] uppercase font-bold border border-amber-600/40">
-                      {lv.role.replace(/_/g, ' ')}
+                      {lv.role.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className="text-sm text-white font-medium">
                       {lv.plate_number || 'No Plate'}{lv.state ? ` (${lv.state})` : ''}
@@ -2032,7 +2050,7 @@ export default function IncidentsPage() {
                           <span className="text-xs text-white font-mono font-bold">{sup.report_number || 'N/A'}</span>
                           {(sup.report_type || sup.type) && (
                             <span className="px-1.5 py-0.5 bg-brand-900/40 text-brand-300 text-[9px] uppercase font-bold border border-brand-600/40">
-                              {(sup.report_type || sup.type || '').replace(/_/g, ' ')}
+                              {(sup.report_type || sup.type || '').replace(/_/g, ' ').toUpperCase()}
                             </span>
                           )}
                           {sup.status && (

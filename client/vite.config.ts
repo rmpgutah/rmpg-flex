@@ -81,6 +81,18 @@ export default defineConfig({
           if (id.includes('node_modules/leaflet')) {
             return 'vendor-leaflet';
           }
+          // Mapbox GL JS — primary map engine
+          if (id.includes('node_modules/mapbox-gl')) {
+            return 'vendor-mapbox';
+          }
+          // MapLibre GL — free map fallback (no API key)
+          if (id.includes('node_modules/maplibre-gl')) {
+            return 'vendor-maplibre';
+          }
+          // Deck.gl — GPU-accelerated map layers
+          if (/node_modules\/@(deck|luma|loaders|math|probe)\.gl/.test(id)) {
+            return 'vendor-deckgl';
+          }
           // HTML sanitizer — used by RichTextArea
           if (id.includes('node_modules/sanitize-html')) {
             return 'vendor-sanitize';

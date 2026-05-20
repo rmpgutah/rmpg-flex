@@ -21,7 +21,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import { getMapboxToken } from '../utils/mapboxApiKey';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -122,7 +122,7 @@ function CdocSearchPanel() {
             </button>
             <div className="flex gap-3 items-start">
               {selectedOffender.photo_url && (
-                <img src={selectedOffender.photo_url} alt="Mugshot" className="w-20 h-24 object-cover border border-rmpg-600" />
+                <img src={selectedOffender.photo_url} alt="Mugshot" className="w-20 h-24 object-cover border border-rmpg-600" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
               )}
               <div className="flex-1">
                 <div className="text-sm font-bold text-white">{selectedOffender.last_name}, {selectedOffender.first_name}</div>
@@ -165,7 +165,7 @@ function CdocSearchPanel() {
               className="w-full text-left px-3 py-2 border-b border-rmpg-700/50 hover:bg-rmpg-700/30 transition-colors"
             >
               <div className="flex items-center gap-2">
-                {r.photo_url && <img src={r.photo_url} alt="" className="w-8 h-10 object-cover border border-rmpg-600 flex-shrink-0" />}
+                {r.photo_url && <img src={r.photo_url} alt="" className="w-8 h-10 object-cover border border-rmpg-600 flex-shrink-0" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />}
                 <div className="flex-1 min-w-0">
                   <div className="text-xs font-bold text-white truncate">{r.last_name}, {r.first_name}</div>
                   <div className="text-[10px] text-rmpg-400 font-mono">DOC# {r.doc_number}</div>
@@ -213,7 +213,7 @@ export default function OffenderRegistryPage() {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
-  const [staticMapApiKey, setStaticMapApiKey] = useState('');
+  const [staticMapToken, setStaticMapToken] = useState('');
 
   // Filters
   const [searchQuery, setSearchQuery] = useState('');
@@ -289,12 +289,12 @@ export default function OffenderRegistryPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getGoogleMapsApiKey()
-      .then((apiKey) => {
-        if (!cancelled) setStaticMapApiKey(apiKey);
+    getMapboxToken()
+      .then((token) => {
+        if (!cancelled) setStaticMapToken(token || '');
       })
       .catch(() => {
-        if (!cancelled) setStaticMapApiKey('');
+        if (!cancelled) setStaticMapToken('');
       });
     return () => {
       cancelled = true;
@@ -457,7 +457,7 @@ export default function OffenderRegistryPage() {
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <span className={`px-1 border ${TYPE_COLORS[alert.alert_type] || ''}`}>
-                    {alert.alert_type.replace(/_/g, ' ')}
+                    {alert.alert_type.replace(/_/g, ' ').toUpperCase()}
                   </span>
                   <span className="truncate">{alert.description}</span>
                 </div>
@@ -519,9 +519,9 @@ export default function OffenderRegistryPage() {
                     Registered Address / Ban Zone
                   </div>
                   <div className="h-40 bg-[#0c0c0c] relative">
-                    {staticMapApiKey ? (
+                    {staticMapToken ? (
                       <img
-                        src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${staticMapApiKey}&style=feature:all|element:geometry|color:0x121212&style=feature:all|element:labels.text.fill|color:0x8a8a8a`}
+                        src={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l-marker+ff0000(${selected.location_lng},${selected.location_lat})/${selected.location_lng},${selected.location_lat},15,0/600x200@2x?access_token=${staticMapToken}`}
                         alt="Ban zone map"
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

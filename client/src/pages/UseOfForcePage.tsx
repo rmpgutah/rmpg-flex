@@ -190,7 +190,7 @@ export default function UseOfForcePage() {
         <div className="w-3 h-3" style={{ background: STATUS_COLORS[selected.status] || '#888', borderRadius: '1px' }} />
         <h2 className="text-sm font-bold text-white uppercase">{(selected.force_type || '').replace(/_/g, ' ')} — UoF #{selected.id}</h2>
         <span className="ml-auto text-[9px] font-bold uppercase px-2 py-0.5 border" style={{ color: STATUS_COLORS[selected.status], borderColor: STATUS_COLORS[selected.status] + '60' }}>
-          {selected.status}
+          {selected.status?.replace(/_/g, ' ').toUpperCase() || 'UNKNOWN'}
         </span>
       </div>
 

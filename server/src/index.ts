@@ -26,6 +26,9 @@ import { scheduleWarrantScraper } from './utils/multiStateWarrantScraper';
 import { runScraperNightly } from './utils/scraperNightlyJob';
 import { getDb } from './models/database';
 import { logger, httpLogger } from './utils/logger';
+import { requestContext } from './utils/requestContext';
+import { setupGracefulShutdown } from './utils/gracefulShutdown';
+import { runStartupChecks } from './utils/configValidator';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -116,16 +119,36 @@ import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
 import ttsRoutes from './routes/tts';
 import voiceRoutes from './routes/voice';
+import voiceDialogueRoutes from './routes/voiceDialogue';
+import diagnosticsRoutes from './routes/diagnostics';
 import voicePersonaRoutes from './routes/voicePersona';
 import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
 import geocodeRoutes from './routes/geocode';
+import mapboxRoutes from './routes/mapbox';
 import drivingEventsRoutes from './routes/drivingEvents';
 import evidenceRoutes from './routes/evidence';
+import intelBulletinsRoutes from './routes/intelBulletins';
+import shiftBriefingsRoutes from './routes/shiftBriefings';
 import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
+import apiDocsRoutes from './routes/apiDocs';
+import pawnRoutes from './routes/pawn';
+import impoundRoutes from './routes/impounds';
+import alarmRoutes from './routes/alarms';
+import animalControlRoutes from './routes/animalControl';
+import communityReportRoutes from './routes/communityReports';
+import crashReportRoutes from './routes/crashReports';
+import tipRoutes from './routes/tips';
+import alprRoutes from './routes/alpr';
+import jailRoutes from './routes/jail';
+import fireRmsRoutes from './routes/fireRms';
+import custodyLogRoutes from './routes/custodyLog';
+import accreditationRoutes from './routes/accreditations';
+import useOfForceRoutes from './routes/useOfForce';
+import { getSchedulerStatus, runJobNow } from './utils/scheduler';
 
 const app = express();
 
@@ -166,12 +189,26 @@ app.use('/api/dashcam-ai', dashcamAiRouter);
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// Improvement 73: Response compression negotiation headers
+app.use((req, res, next) => {
+  // Signal to reverse proxy what compression we accept
+  const acceptEncoding = req.headers['accept-encoding'] || '';
+  if (typeof acceptEncoding === 'string' && acceptEncoding.includes('br')) {
+    res.setHeader('X-Compression-Available', 'br, gzip');
+  } else if (typeof acceptEncoding === 'string' && acceptEncoding.includes('gzip')) {
+    res.setHeader('X-Compression-Available', 'gzip');
+  }
+  next();
+});
+
 app.use(sanitizeInput);
 
 // Structured logging + per-request X-Request-Id tracing via pino-http.
 // Replaces the prior timestamp+random-suffix scheme with crypto.randomUUID().
 // Attaches req.log (child logger carrying request ID) for downstream handlers.
 app.use(httpLogger);
+app.use(requestContext);
 
 // Fix 72: Add response compression for large GeoJSON payloads
 // Using built-in compression by setting headers — actual compression handled by reverse proxy in production
@@ -368,6 +405,7 @@ app.use(liveBroadcast);
 // JWT-authenticated request with 403 "Invalid webhook token".
 import { traccarWebhookRouter, owntracksDeprecatedRouter } from './routes/dispatch/gps';
 import { startTraccarPoller } from './utils/traccarServerPoller';
+import { startCompetitorPoller } from './utils/competitorMonitorPoller';
 // NOTE: webhook router uses /:user/:device wildcards. It MUST be mounted
 // AFTER traccarRoutes (line below) so authenticated admin endpoints like
 // /api/traccar/historical/devices, /devices, /mappings, /credentials,
@@ -458,12 +496,45 @@ app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
 app.use('/api/tts', ttsRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/voice', voiceDialogueRoutes);
+app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/voice-persona', voicePersonaRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
 app.use('/api/pdf-tools', pdfToolsRoutes);
 app.use('/api/geocode', geocodeRoutes);
+app.use('/api/mapbox', mapboxRoutes);
+app.use('/api/intel-bulletins', intelBulletinsRoutes);
+app.use('/api/shift-briefings', shiftBriefingsRoutes);
+app.use('/api/docs', apiDocsRoutes);        // OpenAPI/Swagger interactive docs
+
+// ─── Spillman-inspired new modules (2026-05-10) ──────────
+app.use('/api/pawn', pawnRoutes);
+app.use('/api/impounds', impoundRoutes);
+app.use('/api/alarms', alarmRoutes);
+app.use('/api/animal-control', animalControlRoutes);
+app.use('/api/community-reports', communityReportRoutes);
+app.use('/api/crash-reports', crashReportRoutes);
+app.use('/api/tips', tipRoutes);
+app.use('/api/alpr', alprRoutes);
+app.use('/api/jail', jailRoutes);
+app.use('/api/fire-rms', fireRmsRoutes);
+app.use('/api/custody-log', custodyLogRoutes);
+app.use('/api/accreditations', accreditationRoutes);
+app.use('/api/use-of-force', useOfForceRoutes);
+
+// ─── Scheduler status endpoint (admin) ────────────────────
+app.get('/api/admin/scheduler', authenticateToken, (_req, res) => {
+  res.json({ jobs: getSchedulerStatus() });
+});
+app.post('/api/admin/scheduler/:name/run', authenticateToken, async (req, res) => {
+  const name = req.params.name as string;
+  const ran = await runJobNow(name);
+  if (!ran) { res.status(404).json({ error: 'Job not found' }); return; }
+  res.json({ success: true, message: `Job ${name} triggered` });
+});
+
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
@@ -549,7 +620,7 @@ app.get('/*splat', apiRateLimit, (req, res) => {
     res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
     res.set('Pragma', 'no-cache');
     res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
-      if (err) {
+      if (err && !res.headersSent) {
         res.status(404).json({ error: 'Not found' });
       }
     });
@@ -643,6 +714,26 @@ try {
   initWebSocket(primaryServer);
   logger.info('WebSocket server initialized');
 
+  // Set up enhanced graceful shutdown for all servers, including DB cleanup
+  setupGracefulShutdown([primaryServer], {
+    onShutdown: async () => {
+      try {
+        const db = getDb();
+        if (db) {
+          db.close();
+          logger.info('database connection closed');
+        }
+      } catch (e: any) {
+        logger.warn({ err: e }, 'shutdown DB cleanup error');
+      }
+    },
+  });
+
+  // Run startup configuration checks
+  runStartupChecks().then(({ passed, results }) => {
+    logger.info({ passed, results }, 'Startup checks completed');
+  });
+
   // Start listening
   const listenPort = config.ssl.enabled ? config.httpsPort : config.port;
   const listenHost = process.env.HOST || '0.0.0.0'; // Bind to all interfaces for LAN access
@@ -676,8 +767,11 @@ try {
     console.log('║                                                  ║');
     console.log(`║  Environment: ${config.nodeEnv.padEnd(35)}║`);
     console.log(`║  Domain:      ${config.primaryDomain.padEnd(35)}║`);
-    console.log(`║  ${config.ssl.enabled ? 'HTTPS' : 'HTTP'} Server: ${protocol}://${displayHost}:${String(listenPort).padEnd(1)}║`);
-    console.log(`║  WebSocket:   ${wsProtocol}://${displayHost}:${String(listenPort).padEnd(1)}║`);
+    const serverUrl = `${protocol}://${displayHost}:${listenPort}`;
+    const wsUrl = `${wsProtocol}://${displayHost}:${listenPort}`;
+    const serverLabel = config.ssl.enabled ? 'HTTPS' : 'HTTP';
+    console.log(`║  ${serverLabel} Server: ${serverUrl.padEnd(50 - 16 - serverLabel.length)}║`);
+    console.log(`║  WebSocket:   ${wsUrl.padEnd(35)}║`);
     console.log(`║  TLS/SSL:     ${(config.ssl.enabled ? 'ENABLED (TLSv1.2+)' : 'DISABLED').padEnd(35)}║`);
     console.log('║  API Base:    /api                               ║');
     console.log('║                                                  ║');
@@ -774,6 +868,13 @@ try {
       logger.warn({ err, scheduler: 'traccar-poller' }, 'failed to start scheduler');
     }
 
+    // CRM Competitor Monitor poller — polls monitored URLs for content changes
+    try {
+      startCompetitorPoller();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'competitor-poller' }, 'failed to start scheduler');
+    }
+
     // Voice system timers — welfare checks and pursuit updates every 30s
     setInterval(() => {
       try { checkWelfareWatches(); } catch (err: any) {
@@ -841,33 +942,7 @@ process.on('unhandledRejection', (reason) => {
   logger.fatal({ err: reason }, 'unhandled promise rejection — server continuing, investigate immediately');
 });
 
-// ─── Graceful Shutdown ────────────────────────────────
-// Close server and database connections cleanly on SIGTERM/SIGINT
-function gracefulShutdown(signal: string) {
-  logger.info({ signal }, 'graceful shutdown initiated');
-  const shutdownTimeout = setTimeout(() => {
-    logger.error('shutdown timed out after 15s — forcing exit');
-    process.exit(1);
-  }, 15000);
-
-  try {
-    // Close the HTTP(S) server — stop accepting new connections
-    // primaryServer is scoped in the try block above, so we use a module-level ref
-    const db = getDb();
-    if (db) {
-      db.close();
-      logger.info('database connection closed');
-    }
-  } catch (e: any) {
-    logger.warn({ err: e }, 'shutdown cleanup error');
-  }
-
-  clearTimeout(shutdownTimeout);
-  logger.info('shutdown complete');
-  process.exit(0);
-}
-
-process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
-process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+// Graceful shutdown is handled by setupGracefulShutdown() (registered above),
+// which closes HTTP servers, runs shutdown callbacks (DB close), and exits cleanly.
 
 export default app;

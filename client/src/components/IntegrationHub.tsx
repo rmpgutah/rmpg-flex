@@ -40,7 +40,7 @@ const HEALTH_LABEL: Record<string, { text: string; color: string }> = {
 
 function formatStats(stats: Record<string, number>): string {
   return Object.entries(stats)
-    .map(([key, val]) => `${val.toLocaleString()} ${key.replace(/_/g, ' ')}`)
+    .map(([key, val]) => `${val.toLocaleString()} ${key.replace(/_/g, ' ').toUpperCase()}`)
     .join(' · ');
 }
 

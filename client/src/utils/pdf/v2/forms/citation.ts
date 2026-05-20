@@ -14,6 +14,14 @@
 // blank is just this schema with empty accessors.
 
 import type { FormSchema, LabeledField, NarrativeField, SignatureField } from '../engine/types';
+import { renderViolations } from './citationViolations';
+
+export interface CitationViolation {
+  statute_citation: string;
+  description: string;
+  offense_level: 'Infraction' | 'Misdemeanor' | 'Felony';
+  fine_amount: number;
+}
 
 export interface CitationData {
   citation_number?: string | null;
@@ -41,11 +49,26 @@ export interface CitationData {
   badge_number?: string | null;
   signature_image?: string | null;
   signature_date?: string | null;
+  /** Optional multi-violation array. When present, replaces the single-
+   *  violation flat fields in the rendered VIOLATIONS section. When
+   *  empty/missing, renderer falls back to flat fields. */
+  violations?: CitationViolation[];
 }
 
 const str = (v: unknown): string => (v == null ? '' : String(v));
 const fineFmt = (v: number | null | undefined): string =>
   v == null ? '' : `$${Number(v).toFixed(2)}`;
+// snake_case / SNAKE_CASE / kebab-case → Title Case for enum-like values
+// (type='criminal' → 'Criminal', offense_level='second_degree_felony' →
+// 'Second Degree Felony'). Leaves values that are already mixed-case alone.
+const enumFmt = (v: unknown): string => {
+  const s = str(v).trim();
+  if (!s) return '';
+  return s
+    .replace(/[_-]+/g, ' ')
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase());
+};
 
 function lf(
   label: string,
@@ -57,9 +80,12 @@ function lf(
 
 const notesField: NarrativeField<CitationData> = {
   kind: 'narrative',
-  label: 'Notes',
+  // Empty string — section header "OFFICER NOTES" already labels this block.
+  // Primitives still advances the label-row height (4mm) so spacing stays
+  // consistent with other narrative sections.
+  label: '',
   accessor: (d) => d.notes ?? '',
-  minLines: 12,
+  minLines: 3,
   editable: true,
   path: 'notes',
 };
@@ -67,24 +93,24 @@ const notesField: NarrativeField<CitationData> = {
 const officerSignature: SignatureField<CitationData> = {
   kind: 'signature',
   label: 'Issuing Officer',
-  accessor: (d) => ({
-    image: d.signature_image ?? undefined,
-    printedName: d.issuing_officer_name ?? '',
-    date: d.signature_date ?? d.violation_date ?? '',
-  }),
-  editable: false,
-};
-
-const subjectSignature: SignatureField<CitationData> = {
-  kind: 'signature',
-  label: 'Subject Acknowledgment',
-  accessor: () => undefined,
+  accessor: (d) => {
+    const name = (d.issuing_officer_name ?? '').trim();
+    const badge = (d.badge_number ?? '').toString().trim();
+    const printedName = badge
+      ? (name ? `${name}  ·  Badge #${badge}` : `Badge #${badge}`)
+      : name;
+    return {
+      image: d.signature_image ?? undefined,
+      printedName,
+      date: d.signature_date ?? d.violation_date ?? '',
+    };
+  },
   editable: false,
 };
 
 export const citationSchema: FormSchema<CitationData> = {
   meta: {
-    formNumber: 'FORM PS-209',
+    formNumber: 'PS-209',
     title: 'CITATION',
     revision: '2026-04',
   },
@@ -94,75 +120,83 @@ export const citationSchema: FormSchema<CitationData> = {
     caseNumberAccessor: (d) => d.citation_number ?? undefined,
   },
   sections: [
+    // Citation metadata + timing combined into one 2-col section to save
+    // ~25mm of vertical space (one section header + redundant rows). Pair
+    // shape: Citation# alone, Type+Status, Date+Time, Offense Level alone.
     {
-      kind: 'section', title: 'CITATION INFORMATION', columns: 3,
+      kind: 'section', title: 'CITATION DETAILS', columns: 2,
       fields: [
         lf('Citation Number', 'citation_number'),
-        lf('Type', 'type'),
-        lf('Status', 'status'),
-      ],
-    },
-    {
-      kind: 'section', title: 'TIMING & LEVEL', columns: 3,
-      fields: [
+        lf('Type', 'type', (d) => enumFmt(d.type)),
+        lf('Status', 'status', (d) => enumFmt(d.status)),
         lf('Violation Date', 'violation_date'),
         lf('Violation Time', 'violation_time'),
-        lf('Offense Level', 'offense_level'),
+        lf('Offense Level', 'offense_level', (d) => enumFmt(d.offense_level)),
       ],
     },
     {
       kind: 'section', title: 'LOCATION', columns: 1,
-      fields: [lf('Location', 'location')],
+      fields: [lf('Address', 'location')],
     },
     {
-      kind: 'section', title: 'SUBJECT', columns: 3,
+      kind: 'section', title: 'SUBJECT', columns: 1,
       fields: [
         lf('Full Name', 'person_name'),
         lf('Date of Birth', 'person_dob'),
         lf('DL Number', 'person_dl'),
+        lf('Address', 'person_address'),
       ],
     },
     {
-      kind: 'section', title: 'SUBJECT ADDRESS', columns: 1,
-      fields: [lf('Address', 'person_address')],
-    },
-    {
-      kind: 'section', title: 'VEHICLE INFORMATION', columns: 3,
+      kind: 'section', title: 'VEHICLE INFORMATION', columns: 2,
+      // Pair plate + state on row 1; vehicle description (free-text,
+      // longest field) on row 2 alone.
       fields: [
         lf('License Plate', 'vehicle_plate'),
         lf('State', 'vehicle_state'),
         lf('Vehicle Description', 'vehicle_description'),
       ],
     },
-    {
-      kind: 'section', title: 'VIOLATION DETAILS', columns: 2,
-      fields: [
-        lf('Statute / Code', 'statute_citation'),
-        lf('Fine Amount', 'fine_amount', (d) => fineFmt(d.fine_amount ?? null)),
-      ],
+    // VIOLATIONS — multi-violation aware. Callback emits its own header.
+    (ctx, data) => {
+      const violations = (data as CitationData).violations ?? [];
+      if (violations.length > 0) {
+        renderViolations(ctx.primitives, ctx.layout, violations);
+      } else {
+        // Back-compat: render flat single-violation fields.
+        ctx.section('VIOLATIONS', (inner) => {
+          inner.labeledField(lf('Statute / Code', 'statute_citation'), data);
+          inner.labeledField(lf('Offense Level', 'offense_level', (d) => enumFmt(d.offense_level)), data);
+          inner.labeledField(
+            lf('Fine Amount', 'fine_amount', (d) => fineFmt(d.fine_amount ?? null)),
+            data,
+          );
+          inner.labeledField(lf('Violation Description', 'violation_description'), data);
+        });
+      }
     },
-    {
-      kind: 'section', title: 'VIOLATION DESCRIPTION', columns: 1,
-      fields: [lf('Violation Description', 'violation_description')],
-    },
+    // Court info collapsed: date + name on row 1 (2-col), address on its
+    // own full-width row 2. Saves a redundant 'COURT ADDRESS' section.
     {
       kind: 'section', title: 'COURT', columns: 2,
       fields: [
         lf('Court Date', 'court_date'),
         lf('Court Name', 'court_name'),
+        lf('Court Address', 'court_address'),
       ],
     },
+    // ISSUING OFFICER section removed — officer name + badge already
+    // appear inside the SIGNATURES block ("Printed name: ..."). Keeping
+    // both produced redundant text and pushed content onto a 2nd page.
     {
-      kind: 'section', title: 'COURT ADDRESS', columns: 1,
-      fields: [lf('Court Address', 'court_address')],
-    },
-    {
-      kind: 'section', title: 'NOTES', columns: 1,
+      kind: 'section', title: 'OFFICER NOTES', columns: 1,
       fields: [notesField],
     },
     {
       kind: 'section', title: 'SIGNATURES', columns: 1,
-      fields: [officerSignature, subjectSignature],
+      // Subject Acknowledgment removed — violator signs on the right
+      // panel of every page (Page 1 Violator Copy 'X ___' line).
+      fields: [officerSignature],
     },
   ],
 };
@@ -187,6 +221,9 @@ export function citationCanonicalData(d: CitationData): Record<string, unknown> 
         }
       }
     }
+  }
+  if (Array.isArray(d.violations) && d.violations.length > 0) {
+    bag.violations = d.violations;
   }
   return bag;
 }

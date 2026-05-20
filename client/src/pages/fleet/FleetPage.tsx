@@ -86,7 +86,7 @@ export default function FleetPage() {
   const [searchQuery, setSearchQuery] = useState('');
 
   // Tab & modal state
-  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics'] as const);
+  const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'expenses', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'gps', 'dashcam', 'analytics'] as const);
   const [modal, setModal] = useState<ModalMode>('none');
   const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(EMPTY_VEHICLE_FORM);
   const [maintForm, setMaintForm] = useState<MaintenanceFormState>(EMPTY_MAINT_FORM);
@@ -411,6 +411,7 @@ export default function FleetPage() {
         fuel_type: fuelForm.fuel_type,
         station: fuelForm.station.trim() || null,
         notes: fuelForm.notes.trim() || null,
+        partial_fill: fuelForm.partial_fill,
       };
       if (modal === 'edit_fuel' && editingFuelId) {
         await apiFetch(`/fleet/fuel/${editingFuelId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -614,6 +615,7 @@ export default function FleetPage() {
       fuel_type: log.fuel_type,
       station: log.station || '',
       notes: log.notes || '',
+      partial_fill: !!log.partial_fill,
     });
     setEditingFuelId(log.id);
     setModal('edit_fuel');
@@ -1134,7 +1136,7 @@ export default function FleetPage() {
         onClose={() => setDeletingMaintenance(null)}
         onConfirm={handleDeleteMaintenance}
         title="Delete Maintenance Record"
-        message={`Delete the ${deletingMaintenance?.type?.replace(/_/g, ' ') || ''} record: "${deletingMaintenance?.description || ''}"? This cannot be undone.`}
+        message={`Delete the ${deletingMaintenance?.type?.replace(/_/g, ' ').toUpperCase() || ''} record: "${deletingMaintenance?.description || ''}"? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
@@ -1145,7 +1147,7 @@ export default function FleetPage() {
         onClose={() => setDeletingInspection(null)}
         onConfirm={handleDeleteInspection}
         title="Delete Inspection"
-        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ') || ''} inspection from ${deletingInspection?.inspection_date ? new Date(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ').toUpperCase() || ''} inspection from ${deletingInspection?.inspection_date ? new Date(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}

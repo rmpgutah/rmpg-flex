@@ -1,3 +1,5 @@
+import { boundForRegex } from './regexSafe';
+
 // ═══════════════════════════════════════════════════════════════
 // Universal Data Scanner — format-agnostic extraction across ANY document
 // Scans ALL text for data points using pattern libraries, returns
@@ -10,6 +12,7 @@ interface ScanCandidate { value: string; confidence: number; source: string }
 /** Scan all text for person names — returns candidates sorted by confidence */
 export function scanForNames(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   const add = (value: string, confidence: number, source: string) => {
@@ -41,6 +44,7 @@ export function scanForNames(text: string): ScanCandidate[] {
 /** Scan all text for US addresses — returns candidates sorted by confidence */
 export function scanForAddresses(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   const states = 'AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY';
@@ -51,18 +55,30 @@ export function scanForAddresses(text: string): ScanCandidate[] {
     candidates.push({ value: value.replace(/\s+/g, ' ').trim(), confidence, source });
   };
 
-  // Full address with ZIP: "1234 Street Name, City, ST 84123"
-  const fullAddrRe = new RegExp(`(\\d+\\s+[A-Za-z][^\\n]{5,60},\\s*[A-Za-z .]+,\\s*(?:${states})\\s*\\d{5}(?:-\\d{4})?)`, 'gi');
-  for (const m of text.matchAll(fullAddrRe)) {
-    add(m[1], 90, 'full-address');
-  }
-  // Labeled: "Address: ..." or "Service Address: ..."
-  for (const m of text.matchAll(/(?:Address|Service Address|Recipient Address|Serve at)[:\s]+([^\n]*?\d{5}(?:-\d{4})?)/gi)) {
-    add(m[1], 95, 'labeled-address');
-  }
-  // "residing at" / "located at" — defendant's address in court docs
-  for (const m of text.matchAll(/(?:resid(?:es|ing)|located)\s+at[:\s]+(\d+\s+\w[^\n]{5,80}\d{5})/gi)) {
-    add(m[1], 85, 'residing-at');
+  // Process line-by-line to eliminate catastrophic backtracking on long unstructured text
+  const lines = text.split('\n');
+  // Hoist regex compilation outside the loop
+  const fullAddrRe = new RegExp(`(\\d+\\s+[A-Za-z][^,]{4,60},\\s*[A-Za-z .]+,\\s*(?:${states})\\s*\\d{5}(?:-\\d{4})?)`, 'gi');
+  const labeledRe = /(?:Address|Service Address|Recipient Address|Serve at)[:\s]+([^,\n]{0,100}?\d{5}(?:-\d{4})?)/gi;
+  const residingRe = /(?:resid(?:es|ing)|located)\s+at[:\s]+(\d+\s+\w[^,]{4,80}\d{5})/gi;
+  for (const line of lines) {
+    if (line.length > 300) continue; // skip absurdly long lines (not real addresses)
+
+    // Full address with ZIP: "1234 Street Name, City, ST 84123"
+    fullAddrRe.lastIndex = 0;
+    for (const m of line.matchAll(fullAddrRe)) {
+      add(m[1], 90, 'full-address');
+    }
+    // Labeled: "Address: ..." or "Service Address: ..."
+    labeledRe.lastIndex = 0;
+    for (const m of line.matchAll(labeledRe)) {
+      add(m[1], 95, 'labeled-address');
+    }
+    // "residing at" / "located at" — defendant's address in court docs
+    residingRe.lastIndex = 0;
+    for (const m of line.matchAll(residingRe)) {
+      add(m[1], 85, 'residing-at');
+    }
   }
   return candidates.sort((a, b) => b.confidence - a.confidence);
 }
@@ -70,6 +86,7 @@ export function scanForAddresses(text: string): ScanCandidate[] {
 /** Scan all text for phone numbers */
 export function scanForPhones(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   for (const m of text.matchAll(/\(?(\d{3})\)?[\s.-]?(\d{3})[\s.-]?(\d{4})/g)) {
@@ -90,6 +107,9 @@ export function scanForPhones(text: string): ScanCandidate[] {
 /** Scan all text for email addresses */
 export function scanForEmails(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
+  // Quick bail: if no '@' exists, skip the expensive matchAll entirely
+  if (!text.includes('@')) return [];
   const candidates: ScanCandidate[] = [];
   for (const m of text.matchAll(/([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/g)) {
     candidates.push({ value: m[1], confidence: 90, source: 'email-pattern' });
@@ -100,6 +120,7 @@ export function scanForEmails(text: string): ScanCandidate[] {
 /** Scan all text for dates */
 export function scanForDates(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   // MM/DD/YYYY
@@ -116,6 +137,7 @@ export function scanForDates(text: string): ScanCandidate[] {
 /** Scan for case numbers */
 export function scanForCaseNumbers(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const seen = new Set<string>();
   const patterns = [
@@ -139,6 +161,7 @@ export function scanForCaseNumbers(text: string): ScanCandidate[] {
 /** Scan for court names */
 export function scanForCourts(text: string): ScanCandidate[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const candidates: ScanCandidate[] = [];
   const patterns = [
     /UNITED\s+STATES\s+DISTRICT\s+COURT[^\n]*/gi,
@@ -180,6 +203,7 @@ export interface AttorneyBlock {
 export function extractAttorneyBlock(text: string): AttorneyBlock {
   const empty: AttorneyBlock = { name: '', barNumber: '', firm: '', addressLine1: '', addressLine2: '', tel: '', fax: '', email: '' };
   if (!text) return empty;
+  text = boundForRegex(text);
 
   const lines = text.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
 
@@ -313,6 +337,7 @@ export function parseInfoSheetLabels(text: string): InfoSheetLabels {
     court: '', courtAddress: '', county: '', jobCreated: '', createdBy: '',
   };
   if (!text) return empty;
+  text = boundForRegex(text);
 
   const labels: { key: keyof InfoSheetLabels; label: string }[] = [
     { key: 'case', label: 'Case' },
@@ -383,6 +408,7 @@ export interface JobActivityEntry {
 
 export function parseJobActivity(text: string): JobActivityEntry[] {
   if (!text) return [];
+  text = boundForRegex(text);
   const startMatch = text.match(/Job Activity/i);
   if (!startMatch) return [];
   const startIdx = (startMatch.index ?? 0) + startMatch[0].length;
@@ -571,6 +597,7 @@ export interface NotesEntry {
 }
 
 export function buildNotesNarrative(i: NotesInput): NotesEntry[] {
+  i = { ...i, documents: boundForRegex(i.documents), serviceRulesSummary: boundForRegex(i.serviceRulesSummary) };
   const up = (s: string) => (s || '').toUpperCase();
   const clauses = (i.documents || '').split(/\s*;\s*/).map(s => s.trim()).filter(Boolean);
   const docCount = clauses.length;
@@ -741,7 +768,8 @@ export function primaryDocToken(documents: string): string {
 
 export function classifyEntityType(name: string): 'individual' | 'organization' {
   if (!name) return 'individual';
-  const orgPatterns = [
+  // Explicit org suffixes/keywords — high confidence
+  const orgKeywords = [
     /\bLLC\b/i,
     /\bINC\.?\b/i,
     /\bCORP\.?\b/i,
@@ -754,10 +782,33 @@ export function classifyEntityType(name: string): 'individual' | 'organization' 
     /\bTRUST\b/i,
     /\bASSOCIATES\b/i,
     /\bASSOCIATION\b/i,
-    /&/,
+    /\bFOUNDATION\b/i,
+    /\bGROUP\b/i,
+    /\bHOLDINGS\b/i,
+    /\bENTERPRISES?\b/i,
+    /\bSERVICES?\b/i,
+    /\bINDUSTRIES\b/i,
   ];
-  for (const re of orgPatterns) {
+  for (const re of orgKeywords) {
     if (re.test(name)) return 'organization';
+  }
+  // "&" only signals org if ALSO paired with an org keyword above, or
+  // if the name doesn't look like a person name (e.g., "Tom & Mary" is
+  // individual; "GUGLIELMO & ASSOCIATES" already caught by ASSOCIATES).
+  // Common first names on both sides of "&" → individual (married couple).
+  if (/&/.test(name)) {
+    // If it looks like "WORD & WORD" with no org keyword, check if both
+    // sides could be person names (2-word or 1-word parts typical of names)
+    const parts = name.split(/\s*&\s*/);
+    const looksLikePersonName = (s: string) => {
+      const words = s.trim().split(/\s+/);
+      return words.length >= 1 && words.length <= 3 && /^[A-Z][a-z]/.test(words[0]);
+    };
+    // If both sides look like person names, treat as individual (e.g. "Tom & Mary Johnson")
+    if (parts.length === 2 && looksLikePersonName(parts[0]) && looksLikePersonName(parts[1])) {
+      return 'individual';
+    }
+    return 'organization';
   }
   return 'individual';
 }
@@ -793,8 +844,10 @@ export interface ParseOutput {
 }
 
 export function parseAllDocuments(src: ParseInput): ParseOutput {
-  const { fieldSheet, infoSheet, courtDocket } = src;
-  const allText = [fieldSheet, infoSheet, courtDocket].filter(Boolean).join('\n\n');
+  const fieldSheet = boundForRegex(src.fieldSheet);
+  const infoSheet = boundForRegex(src.infoSheet);
+  const courtDocket = boundForRegex(src.courtDocket);
+  const allText = boundForRegex([fieldSheet, infoSheet, courtDocket].filter(Boolean).join('\n\n'));
 
   const info = parseInfoSheetLabels(infoSheet);
   // Attorney: try court docket first (most structured), then all text
@@ -844,6 +897,20 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
     .replace(/-\s+/g, '-')  // Rejoin hyphenated names: "Campbell- Ryce" → "Campbell-Ryce"
     .replace(/\s{2,}/g, ' ')  // Collapse multiple spaces
     .trim();
+
+  // Detect comma-inverted format: "LAST, FIRST MIDDLE" → "FIRST MIDDLE LAST"
+  const commaInvertedMatch = rawPartyName.match(/^([A-Z][A-Za-z'-]+)\s*,\s+([A-Z][A-Za-z .'-]+)$/);
+  if (commaInvertedMatch) {
+    rawPartyName = `${commaInvertedMatch[2].trim()} ${commaInvertedMatch[1].trim()}`;
+  }
+
+  // Extract and strip generational/professional suffixes before splitting
+  const NAME_SUFFIXES = /\b(?:Jr\.?|Sr\.?|III|IV|II|V|Esq\.?|Esquire|Ph\.?D\.?|M\.?D\.?)\s*$/i;
+  const suffixMatch = rawPartyName.match(NAME_SUFFIXES);
+  const nameSuffix = suffixMatch ? suffixMatch[0].trim() : '';
+  if (nameSuffix) {
+    rawPartyName = rawPartyName.replace(NAME_SUFFIXES, '').replace(/,\s*$/, '').trim();
+  }
 
   // Smart name splitting — handle "Jamal Campbell-Ryce" correctly
   const nameParts = rawPartyName.split(/\s+/).filter(Boolean);
@@ -938,6 +1005,28 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   if (!address) {
     const cdAddr = courtDocket.match(/(?:resid(?:es|ing)\s+at|located\s+at)[:\s]+(\d+\s+\w[^\n]{5,80},\s*[A-Za-z .]+,?\s*[A-Z]{2}\s*\d{5})/i);
     if (cdAddr) address = cdAddr[1].trim();
+  }
+  // 6. Multi-line address: street number on one line, city/state/zip 1-2 lines later
+  if (!address) {
+    const states = 'UT|CO|AZ|NV|ID|WY|NM|CA|TX|FL|IL|NY|OH|PA|GA|NC|MI|WA|OR';
+    const allLines = allText.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    for (let i = 0; i < allLines.length - 1; i++) {
+      if (/^\d+\s+[A-Za-z]/.test(allLines[i]) && !/Party to Serve|Plaintiff|Defendant|Case|Court|Filed/i.test(allLines[i])) {
+        // Look ahead 1-2 lines for city/state/zip
+        for (let j = 1; j <= Math.min(2, allLines.length - i - 1); j++) {
+          const cityStateZip = allLines[i + j].match(new RegExp(`^([A-Za-z .]+),\\s*(?:${states})\\s*\\d{5}`, 'i'));
+          if (cityStateZip) {
+            const joined = allLines.slice(i, i + j + 1).join(', ').replace(/,\s*,/g, ',');
+            // Verify it parses as a valid address
+            if (/\d{5}/.test(joined) && /[A-Z]{2}/.test(joined)) {
+              address = joined;
+              break;
+            }
+          }
+        }
+        if (address) break;
+      }
+    }
   }
   // Final cleanup — strip trailing name bleed from right-aligned text
   address = address.replace(/\s{3,}.*$/, '').trim();
@@ -1064,10 +1153,41 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
   // (Field sheet structured labels hoisted earlier — see fsCase/fsPlaintiff/fsCourt above.)
 
   // Due date — field sheet, info sheet, or any "Due:" mention
-  let dueDate = (fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
+  // Supports MM/DD/YYYY, ISO (YYYY-MM-DD), and written-month formats
+  const MONTH_NAMES: Record<string, string> = {
+    january: '01', february: '02', march: '03', april: '04', may: '05', june: '06',
+    july: '07', august: '08', september: '09', october: '10', november: '11', december: '12',
+    jan: '01', feb: '02', mar: '03', apr: '04', jun: '06',
+    jul: '07', aug: '08', sep: '09', oct: '10', nov: '11', dec: '12',
+  };
+  const normalizeDueDateStr = (raw: string): string => {
+    if (!raw) return '';
+    // Already MM/DD/YYYY
+    if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(raw)) return raw;
+    // ISO: YYYY-MM-DD → MM/DD/YYYY
+    const isoMatch = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (isoMatch) return `${isoMatch[2]}/${isoMatch[3]}/${isoMatch[1]}`;
+    // Written month: "April 30, 2026" or "Apr 30, 2026"
+    const writtenMatch = raw.match(/^([A-Za-z]+)\s+(\d{1,2}),?\s*(\d{4})$/);
+    if (writtenMatch) {
+      const monthNum = MONTH_NAMES[writtenMatch[1].toLowerCase()];
+      if (monthNum) return `${monthNum}/${writtenMatch[2].padStart(2, '0')}/${writtenMatch[3]}`;
+    }
+    return raw;
+  };
+  let dueDate = normalizeDueDateStr(
+    fieldSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
     || infoSheet.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
     || infoSheet.match(/Deadline[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i)?.[1]
-    || '');
+    // ISO date format: Due: 2026-04-30
+    || fieldSheet.match(/Due[:\s]*(\d{4}-\d{2}-\d{2})/i)?.[1]
+    || infoSheet.match(/Due[:\s]*(\d{4}-\d{2}-\d{2})/i)?.[1]
+    // Written month: Due: April 30, 2026
+    || fieldSheet.match(/Due[:\s]*([A-Z][a-z]+\s+\d{1,2},?\s*\d{4})/i)?.[1]
+    || infoSheet.match(/Due[:\s]*([A-Z][a-z]+\s+\d{1,2},?\s*\d{4})/i)?.[1]
+    || infoSheet.match(/Deadline[:\s]*([A-Z][a-z]+\s+\d{1,2},?\s*\d{4})/i)?.[1]
+    || ''
+  );
 
   // Signed/filed date — multiple patterns across all docs
   const signedDate = (
@@ -1219,6 +1339,7 @@ export function parseAllDocuments(src: ParseInput): ParseOutput {
 }
 
 function summarizeRules(instructions: string): string {
+  instructions = boundForRegex(instructions);
   const bits: string[] = [];
   if (/sub-?serve.*?occupant\s*16\+|substitute.*?service/i.test(instructions)) bits.push('SUB-SERVE OK TO OCCUPANT 16+');
   if (/personal\s+service\s+only|personal.*?place\s+of\s+employment|personal.*?POE/i.test(instructions)) bits.push('PERSONAL SERVICE ONLY');
@@ -1241,6 +1362,7 @@ function summarizeRules(instructions: string): string {
 export function parseAddressParts(address: string): AddressParts {
   const empty: AddressParts = { building: '', floor: '', suite: '', street: '', city: '', state: '', zip: '' };
   if (!address) return empty;
+  address = boundForRegex(address);
   const tailMatch = address.match(/^(.+?),\s*([^,]+),\s*([A-Z]{2})\s*(\d{5}(?:-\d{4})?)$/);
   if (!tailMatch) return { ...empty, street: address };
   const street = tailMatch[1].trim();
@@ -1251,6 +1373,112 @@ export function parseAddressParts(address: string): AddressParts {
   const building = buildingMatch ? buildingMatch[1] : '';
   const unitMatch = street.match(/(?:\b(?:UNIT|STE|SUITE|APT|APARTMENT)\b|#)\s*([A-Z0-9-]+)\b/i);
   const suite = unitMatch ? unitMatch[1].toUpperCase() : 'NOT APPLICABLE';
-  const floor = '1ST';
+  // Extract floor from address patterns instead of hardcoding
+  const floorMatch = street.match(/\b(\d+)(?:ST|ND|RD|TH)\s+(?:FLOOR|FL)\b/i)
+    || street.match(/\b(?:FLOOR|LEVEL|LVL)\.?\s*([A-Z0-9]+)\b/i)
+    || street.match(/\bFL\.?\s+(\d+)\b/i);
+  const floor = floorMatch ? floorMatch[1].toUpperCase() : '';
   return { building, floor, suite, street, city: city.toUpperCase(), state, zip };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Address validation — checks for required components before geocoding.
+// Returns a list of warnings. An empty list means the address looks valid.
+// ═══════════════════════════════════════════════════════════════
+export interface AddressValidation {
+  valid: boolean;
+  warnings: string[];
+}
+
+export function validateAddressFormat(address: string): AddressValidation {
+  if (!address || address.trim().length < 5) {
+    return { valid: false, warnings: ['Address is empty or too short'] };
+  }
+  const warnings: string[] = [];
+
+  // Check for street number
+  if (!/^\d+\s/.test(address.trim())) {
+    warnings.push('Missing street number');
+  }
+  // Check for state abbreviation
+  if (!/\b[A-Z]{2}\b/.test(address)) {
+    warnings.push('Missing state abbreviation');
+  }
+  // Check for ZIP code
+  if (!/\b\d{5}(?:-\d{4})?\b/.test(address)) {
+    warnings.push('Missing ZIP code');
+  }
+  // Check for city (at least one comma separating components)
+  if (!address.includes(',')) {
+    warnings.push('Missing city/state separator — address may not geocode correctly');
+  }
+
+  return { valid: warnings.length === 0, warnings };
+}
+
+// ═══════════════════════════════════════════════════════════════
+// Address normalization — expands common abbreviations for
+// consistent duplicate detection across different address formats.
+// ═══════════════════════════════════════════════════════════════
+const STREET_ABBREVS: Record<string, string> = {
+  'ST': 'STREET', 'AVE': 'AVENUE', 'BLVD': 'BOULEVARD', 'DR': 'DRIVE',
+  'LN': 'LANE', 'RD': 'ROAD', 'CT': 'COURT', 'PL': 'PLACE',
+  'CIR': 'CIRCLE', 'WAY': 'WAY', 'PKWY': 'PARKWAY', 'HWY': 'HIGHWAY',
+  'TER': 'TERRACE', 'TRL': 'TRAIL', 'SQ': 'SQUARE',
+};
+
+const CITY_ABBREVS: Record<string, string> = {
+  'SLC': 'SALT LAKE CITY', 'WVC': 'WEST VALLEY CITY', 'WJC': 'WEST JORDAN CITY',
+  'WJ': 'WEST JORDAN', 'SJ': 'SOUTH JORDAN', 'PROVO': 'PROVO', 'OGDEN': 'OGDEN',
+};
+
+const DIRECTIONAL_ABBREVS: Record<string, string> = {
+  'N': 'NORTH', 'S': 'SOUTH', 'E': 'EAST', 'W': 'WEST',
+  'NE': 'NORTHEAST', 'NW': 'NORTHWEST', 'SE': 'SOUTHEAST', 'SW': 'SOUTHWEST',
+};
+
+// Pre-compiled regex patterns for normalizeAddress to avoid repeated construction
+const STREET_PATTERNS = Object.entries(STREET_ABBREVS).map(([abbr, full]) => ({
+  re: new RegExp(`\\b${abbr}\\.?(?=\\s*,|\\s+[A-Z]{2}\\s|$)`, 'g'),
+  full,
+}));
+const DIRECTIONAL_PATTERNS = Object.entries(DIRECTIONAL_ABBREVS).map(([abbr, full]) => ({
+  reAfterNum: new RegExp(`(?<=^\\d+\\s+)${abbr}\\.?\\b`, 'g'),
+  reAfterComma: new RegExp(`(?<=,\\s*)${abbr}\\.?\\b(?=\\s)`, 'g'),
+  full,
+}));
+const CITY_PATTERNS = Object.entries(CITY_ABBREVS).map(([abbr, full]) => ({
+  re: new RegExp(`\\b${abbr}\\b(?=\\s*,)`, 'g'),
+  full,
+}));
+
+export function normalizeAddress(address: string): string {
+  if (!address) return '';
+  let normalized = address.toUpperCase().trim();
+  // Expand street type abbreviations (at word boundary, followed by comma or end/space+state)
+  for (const { re, full } of STREET_PATTERNS) {
+    normalized = normalized.replace(re, full);
+  }
+  // Expand directionals at start of street name or after street number
+  for (const { reAfterNum, reAfterComma, full } of DIRECTIONAL_PATTERNS) {
+    normalized = normalized.replace(reAfterNum, full);
+    normalized = normalized.replace(reAfterComma, full);
+  }
+  // Expand city abbreviations
+  for (const { re, full } of CITY_PATTERNS) {
+    normalized = normalized.replace(re, full);
+  }
+  // Collapse multiple spaces and normalize separators
+  normalized = normalized.replace(/\s+/g, ' ').replace(/\s*,\s*/g, ', ').trim();
+  // Strip trailing period
+  normalized = normalized.replace(/\.\s*$/, '');
+  return normalized;
+}
+
+// Compare two addresses for likely duplicates using normalization
+export function addressesMatch(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const na = normalizeAddress(a);
+  const nb = normalizeAddress(b);
+  return na === nb;
 }

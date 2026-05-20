@@ -4,43 +4,35 @@ import type { Primitives } from './primitives';
 import type {
   RenderContext, LabeledField, CheckboxField, NarrativeField, TableField, SignatureField,
 } from './types';
+import { TYPOGRAPHY, RULE_WEIGHTS, SPACING } from './style';
 
-const SECTION_HEADER_H = 5;      // mm — matches v1 SPACING.SECTION_HEADER_H
-const SECTION_CONTENT_PAD = 3;   // mm — space above first row in a section
-const SECTION_GAP = 3;           // mm — gap below each section
+const SECTION_GAP = SPACING.sectionGap;
 
 /**
- * Draw a NIBRS-style section header bar (dark fill, white text),
- * matching v1's `openAutoSection` chrome. Doc must be in mm units.
+ * Spillman/Motorola-style section header: plain bold UPPERCASE text at left,
+ * a thin rule across the full content width directly below. No fill bar.
+ * Doc must be in mm units.
  */
 export function drawSectionHeader(doc: jsPDF, layout: LayoutEngine, title: string): void {
-  layout.pageBreakIfNeeded(SECTION_HEADER_H + SECTION_CONTENT_PAD + 4);
+  layout.pageBreakIfNeeded(8);
   const y = layout.cursorY;
-  const width = layout.rightX - layout.leftX;
 
   // Ensure full opacity (safety reset after watermark GState)
   // @ts-expect-error jsPDF GState
   doc.setGState(new doc.GState({ opacity: 1.0 }));
 
-  // Dark section header bar (slate) matching v1 COLOR.BG_SECTION_HDR
-  doc.setFillColor(45, 55, 72);
-  doc.rect(layout.leftX, y, width, SECTION_HEADER_H, 'F');
-  // Thin border
-  doc.setDrawColor(180, 180, 185);
-  doc.setLineWidth(0.1);
-  doc.rect(layout.leftX, y, width, SECTION_HEADER_H);
-
-  // White bold title, vertically centered in the bar
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(8);
-  doc.setTextColor(255, 255, 255);
-  const capH = 8 * 0.35;
-  const textY = y + (SECTION_HEADER_H + capH) / 2;
-  doc.text(title.toUpperCase(), layout.leftX + 1.5, textY);
-
-  // Reset text color to primary (black) — prevents white text leaking into content
+  doc.setFont('helvetica', TYPOGRAPHY.sectionHeader.weight);
+  doc.setFontSize(TYPOGRAPHY.sectionHeader.size);
   doc.setTextColor(0, 0, 0);
-  layout.advance(SECTION_HEADER_H + SECTION_CONTENT_PAD);
+  doc.text(title.toUpperCase(), layout.leftX, y);
+
+  // Thin rule across the full content width, just below the text baseline
+  const ruleY = y + 1.5;
+  doc.setDrawColor(0, 0, 0);
+  doc.setLineWidth(RULE_WEIGHTS.sectionRule);
+  doc.line(layout.leftX, ruleY, layout.rightX, ruleY);
+
+  layout.advance(SPACING.sectionGap + 4); // baseline + rule + gap
 }
 
 /** Called by renderer after a section's fields have been drawn. */
@@ -70,5 +62,7 @@ export function makeRenderContext<T>(
     signature:    (spec: SignatureField<T>) => prims.signature(spec, data),
     spacer:       (h) => prims.spacer(h),
     pageBreakIfNeeded: (h) => layout.pageBreakIfNeeded(h),
+    get primitives() { return prims; },
+    get layout() { return layout; },
   };
 }

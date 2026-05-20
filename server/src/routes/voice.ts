@@ -84,7 +84,7 @@ async function transcribeAudio(audioBuffer: Buffer): Promise<string | null> {
 }
 
 // ─── Command types ───────────────────────────────────
-interface ParsedCommand {
+export interface ParsedCommand {
   action: string;
   params: Record<string, string>;
   raw: string;
@@ -182,8 +182,15 @@ function parseCommand(transcript: string): ParsedCommand | null {
   const nameMatch = t.match(/\brun\s*(?:name|subject|person)\s+(.+)/i);
   if (nameMatch) return { action: 'run_name', params: { name: nameMatch[1].trim() }, raw: transcript };
 
-  // Officer down / panic
-  if (/\b(officer\s*down|shots?\s*fired|10[-\s]?99|panic|emergency\s*traffic)\b/i.test(t)) return { action: 'officer_down', params: {}, raw: transcript };
+  // Officer down / panic — DISABLED. Per ops policy, panic alarms must
+  // ONLY fire from a deliberate manual press of the panic button.
+  // Voice-driven triggering produced phantom alarms whenever the words
+  // appeared in normal radio traffic (dispatcher describing an inbound
+  // alert, training conversations, TTS playback of a prior alert
+  // re-entering the mic, etc.). The executeCommand 'officer_down' case
+  // remains in place so a future explicit confirmed-action path can
+  // reach it, but no parser will plan it from raw speech.
+  // if (/\b(officer\s*down|shots?\s*fired|10[-\s]?99|panic|emergency\s*traffic)\b/i.test(t)) return { action: 'officer_down', params: {}, raw: transcript };
 
   // Area check
   if (/\b(area\s*check|area\s*scan|what'?s?\s*(?:in\s*this|around\s*this|near)\s*area)\b/i.test(t)) return { action: 'area_check', params: {}, raw: transcript };
@@ -308,10 +315,28 @@ function composeAreaCheckNarrative(lat: number, lng: number): string {
 }
 
 // ─── Command executors ───────────────────────────────
-async function executeCommand(
+//
+// VOICE-FORBIDDEN ACTIONS: panic-class actions cannot be reached from
+// any voice path (regex parser, NLU fallback, dialogue agent). Every
+// voice route ultimately funnels through executeCommand, so a single
+// guard here closes every avenue. The legitimate panic path goes
+// through PanicButton.tsx → POST /api/dispatch/panic, which does NOT
+// call executeCommand.
+const VOICE_FORBIDDEN_ACTIONS = new Set(['officer_down']);
+
+export async function executeCommand(
   cmd: ParsedCommand,
   req: Request,
 ): Promise<{ success: boolean; response: string }> {
+  if (VOICE_FORBIDDEN_ACTIONS.has(cmd.action)) {
+    auditLog(req, 'VOICE_PANIC_BLOCKED' as any, 'voice' as any, '',
+      `Blocked voice-driven panic action: ${cmd.action} from transcript "${cmd.raw}"`);
+    return {
+      success: false,
+      response: 'If this is an emergency, press the PANIC button. Voice-triggered panic is disabled to prevent phantom alarms.',
+    };
+  }
+
   const userId = req.user!.userId;
   const userName = req.user!.fullName || req.user!.username;
   const db = getDb();
@@ -328,7 +353,7 @@ async function executeCommand(
         `Voice command: ${unit.call_sign} status changed to ${newStatus}`);
 
       // ── Contextual feedback based on status ──
-      const parts: string[] = [`Copy, ${unit.call_sign} now showing ${newStatus.replace(/_/g, ' ')}.`];
+      const parts: string[] = [`Copy, ${unit.call_sign} now showing ${newStatus.replace(/_/g, ' ').toUpperCase()}.`];
 
       if (newStatus === 'on_scene') {
         // Auto threat briefing when arriving on scene
@@ -533,7 +558,7 @@ async function executeCommand(
       const gps = getLatestGps(unit.call_sign);
       const currentCall = getCurrentCall(unit.id);
       const parts: string[] = [`Situation report for ${unit.call_sign}.`];
-      parts.push(`Current status: ${unit.status.replace(/_/g, ' ')}.`);
+      parts.push(`Current status: ${unit.status.replace(/_/g, ' ').toUpperCase()}.`);
       if (currentCall) {
         parts.push(`Assigned to ${currentCall.call_number}, ${currentCall.incident_type}, priority ${currentCall.priority}, at ${currentCall.location_address || 'unknown location'}.`);
       } else {
@@ -678,7 +703,7 @@ async function executeCommand(
       try {
         const c = db.prepare('SELECT case_number, status, assigned_to, updated_at FROM cases WHERE case_number = ?').get(caseNum) as any;
         if (!c) return { success: true, response: `No case found with number ${caseNum}.` };
-        return { success: true, response: `Case ${c.case_number}: status ${(c.status || 'unknown').replace(/_/g, ' ')}, assigned to ${c.assigned_to || 'unassigned'}.` };
+        return { success: true, response: `Case ${c.case_number}: status ${(c.status || 'unknown').replace(/_/g, ' ').toUpperCase()}, assigned to ${c.assigned_to || 'unassigned'}.` };
       } catch { return { success: true, response: `Case lookup not available.` }; }
     }
 

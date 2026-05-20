@@ -103,10 +103,13 @@ export function setVoiceChannelConfig(partial: Partial<VoiceChannelConfig>): voi
 }
 
 export function isVoiceChannelEnabled(): boolean {
+  // Default ON: the V dispatch panel is the primary natural-language
+  // surface and should be discoverable to every user. Only an explicit
+  // 'false' in localStorage disables it; an unset key returns true.
   try {
-    return localStorage.getItem(LS_ENABLED) === 'true';
+    return localStorage.getItem(LS_ENABLED) !== 'false';
   } catch {
-    return false;
+    return true;
   }
 }
 
@@ -230,12 +233,16 @@ const QUICK_COMMANDS: QuickCommandPattern[] = [
     message: 'Checking area activity',
   },
 
-  // ── Emergency ──
-  {
-    pattern: /\b(?:officer\s*down|shots?\s*fired|10[- ]?99|panic|emergency\s*traffic)\b/i,
-    action: 'officer_down',
-    message: 'EMERGENCY — Officer down broadcast transmitted',
-  },
+  // ── Emergency — DISABLED ──
+  // Voice-driven panic alarms produced phantom triggers in normal radio
+  // traffic (the dispatcher saying "panic alarm just came in", training
+  // discussions, TTS playback re-entering the mic). Panic must fire only
+  // from a deliberate manual press of the PanicButton.
+  // {
+  //   pattern: /\b(?:officer\s*down|shots?\s*fired|10[- ]?99|panic|emergency\s*traffic)\b/i,
+  //   action: 'officer_down',
+  //   message: 'EMERGENCY — Officer down broadcast transmitted',
+  // },
 
   // ── Conversational queries (Phase 4) ──
   // After the resolver rewrites "that call" -> "call CN-26-0457",
@@ -349,7 +356,48 @@ async function sendAudioToServer(audioBlob: Blob): Promise<CommandResult> {
 }
 
 /**
- * Send transcript text to the server for NLP command parsing.
+ * Send transcript text to the dialogue agent. Primary path for natural-language
+ * voice: the agent plans + executes actions and returns a synthesized reply
+ * along with a voice_mode the TTS layer should use.
+ *
+ * Endpoint: POST /api/voice/dialogue
+ *
+ * source='announcer' is for terminal-triggered target announcers (Spillman flat
+ * voice + classic chime). source='speech' is for free-form officer speech to
+ * dispatch (conversational human voice). Defaults to 'speech'.
+ */
+export async function sendDialogueToServer(
+  text: string,
+  source: 'announcer' | 'speech' = 'speech',
+): Promise<CommandResult & { voice_mode?: 'spillman_flat' | 'conversational'; pending_followup?: { kind: string; prompt: string } | null }> {
+  try {
+    const res = await fetch('/api/voice/dialogue', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ transcript: text, source }),
+    });
+
+    if (!res.ok) {
+      // 404 = endpoint not deployed yet; let caller fall back to /parse.
+      return { success: false, action: 'error', message: '' };
+    }
+
+    const data = await res.json();
+    return {
+      success: true,
+      action: 'dialogue',
+      message: data.reply || '',
+      data: { actions: data.actions, off_topic: data.off_topic, latency_ms: data.latency_ms },
+      voice_mode: data.voice_mode,
+      pending_followup: data.pending_followup,
+    };
+  } catch {
+    return { success: false, action: 'error', message: '' };
+  }
+}
+
+/**
+ * Send transcript text to the legacy regex/NLU parser.
  * Endpoint: POST /api/voice/parse
  */
 async function sendTextToServer(text: string): Promise<CommandResult> {
@@ -400,6 +448,31 @@ export class VoiceChannel {
 
   // Radio PTT cross-integration
   private radioActive = false;
+  // Push-to-talk hold mode: when true, the auto-listen window timer is
+  // suppressed and the mic stays open until endHoldToTalk() fires.
+  private holdMode = false;
+  // Drive mode (Option A): when active, the channel re-opens the mic
+  // automatically after each dialogue reply for continuous turn-taking
+  // — "who's nearest?" → reply → "send them my 20" with no second hold.
+  private driveMode = false;
+  // Stand-by filler timer (C): scheduled in processTranscript, cleared
+  // when respond() fires the real reply. Never both — TTS queue would
+  // serialize anyway, but cancelling early avoids wasted Edge-TTS calls.
+  private standbyFillerTimer: ReturnType<typeof setTimeout> | null = null;
+
+  // Barge-in watcher (B): keeps a separate mic stream open while dispatch
+  // TTS is playing. Watches RMS volume; if sustained loud audio is
+  // detected for ≥600ms, aborts the TTS queue and starts a fresh listen.
+  // Independent from the main mic capture so it doesn't fight the active
+  // SpeechRecognition session, and uses echoCancellation + a high
+  // threshold to reject TTS bleeding back through the speakers.
+  private bargeInStream: MediaStream | null = null;
+  private bargeInAudioContext: AudioContext | null = null;
+  private bargeInRafId: number | null = null;
+  private bargeInAboveSinceMs: number | null = null;
+  // Set by fireBargeIn so respond()'s tail logic short-circuits — the
+  // mic is already reopened and we don't want to override that state.
+  private bargedIn = false;
 
   // Track the latest transcript from Web Speech API
   private lastTranscript = '';
@@ -474,6 +547,168 @@ export class VoiceChannel {
   }
 
   /**
+   * Push-to-talk: open the mic and KEEP it open until endHoldToTalk()
+   * is called. Bypasses the auto-listen timer entirely. Used by the
+   * V-button hold gesture and the V-key keydown→keyup pattern.
+   */
+  async startHoldToTalk(): Promise<void> {
+    if (this.destroyed) return;
+    if (!this.config.enabled) return;
+    if (this.state === 'alerting') return;
+    if (this.state === 'processing' || this.state === 'responding') return;
+    if (this.state === 'listening') {
+      // Already listening from a tap — convert to hold mode (cancel auto-end timer).
+      this.clearListenTimer();
+      this.holdMode = true;
+      return;
+    }
+    this.holdMode = true;
+    await this.startListening();
+    // startListening() sets a normal listen-window timer; cancel it for hold mode.
+    this.clearListenTimer();
+  }
+
+  /**
+   * End the push-to-talk hold and process whatever was captured.
+   * Safe to call when not in hold mode (no-op).
+   */
+  endHoldToTalk(): void {
+    if (!this.holdMode) return;
+    this.holdMode = false;
+    if (this.state !== 'listening') return;
+    void this.processTranscript();
+  }
+
+  // ─── Barge-in watcher (B) ────────────────────────────────
+  // Listen to the mic in parallel with TTS playback. When the officer
+  // speaks loudly enough for long enough, abort the reply and reopen
+  // the listen window — like real radio half-duplex with PTT priority,
+  // but driven by voice activity rather than a key.
+  //
+  // Tunables (TODO(chris): tunable after a real cab test):
+  //   THRESHOLD: RMS amplitude (0..1) above which we count "speech".
+  //              Higher = more TTS bleed-through tolerance, less sensitive.
+  //   SUSTAIN_MS: how long the volume must stay above threshold to fire.
+  //              Longer = fewer false-positives from coughs/road noise.
+  private async startBargeInWatcher(): Promise<void> {
+    if (this.bargeInStream) return;       // already running
+    if (this.destroyed) return;
+    if (typeof navigator === 'undefined' || !navigator.mediaDevices?.getUserMedia) return;
+
+    const THRESHOLD = 0.06;     // RMS amplitude (0..1)
+    const SUSTAIN_MS = 600;     // continuous time above threshold to trigger
+
+    try {
+      this.bargeInStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,    // critical — rejects TTS bleed-through
+          noiseSuppression: true,
+          autoGainControl: false,    // AGC would amplify silence — keep off
+        },
+      });
+    } catch {
+      // User denied permission, mic in use, etc. — barge-in unavailable; not fatal.
+      this.bargeInStream = null;
+      return;
+    }
+
+    if (this.destroyed || this.state !== 'responding') {
+      // Race: state changed while we awaited getUserMedia
+      this.bargeInStream.getTracks().forEach((t) => t.stop());
+      this.bargeInStream = null;
+      return;
+    }
+
+    const AudioCtxCtor: typeof AudioContext = (window as any).AudioContext || (window as any).webkitAudioContext;
+    this.bargeInAudioContext = new AudioCtxCtor();
+    const source = this.bargeInAudioContext.createMediaStreamSource(this.bargeInStream);
+    const analyser = this.bargeInAudioContext.createAnalyser();
+    analyser.fftSize = 1024;
+    source.connect(analyser);
+
+    const buf = new Float32Array(analyser.fftSize);
+    this.bargeInAboveSinceMs = null;
+
+    const tick = () => {
+      if (this.destroyed) return;
+      if (this.state !== 'responding') return;
+      analyser.getFloatTimeDomainData(buf);
+
+      // Compute RMS volume — root-mean-square over the time-domain buffer.
+      let sumSq = 0;
+      for (let i = 0; i < buf.length; i++) sumSq += buf[i] * buf[i];
+      const rms = Math.sqrt(sumSq / buf.length);
+
+      const now = Date.now();
+      if (rms >= THRESHOLD) {
+        if (this.bargeInAboveSinceMs == null) this.bargeInAboveSinceMs = now;
+        if (now - this.bargeInAboveSinceMs >= SUSTAIN_MS) {
+          // Sustained speech detected — barge in.
+          this.fireBargeIn();
+          return;
+        }
+      } else {
+        this.bargeInAboveSinceMs = null;
+      }
+
+      this.bargeInRafId = requestAnimationFrame(tick);
+    };
+    this.bargeInRafId = requestAnimationFrame(tick);
+  }
+
+  private stopBargeInWatcher(): void {
+    if (this.bargeInRafId != null) {
+      cancelAnimationFrame(this.bargeInRafId);
+      this.bargeInRafId = null;
+    }
+    if (this.bargeInStream) {
+      this.bargeInStream.getTracks().forEach((t) => t.stop());
+      this.bargeInStream = null;
+    }
+    if (this.bargeInAudioContext) {
+      this.bargeInAudioContext.close().catch(() => { /* ignore */ });
+      this.bargeInAudioContext = null;
+    }
+    this.bargeInAboveSinceMs = null;
+  }
+
+  private fireBargeIn(): void {
+    // Abort the TTS queue — current playback stops, queued items drop.
+    this.bargedIn = true;
+    try { clearQueue(); } catch { /* ignore */ }
+    this.stopBargeInWatcher();
+    if (this.destroyed) return;
+    // Reopen the mic for the officer to speak. setState('idle') first
+    // so activateManualListen's guards pass.
+    this.setState('idle');
+    void this.activateManualListen();
+  }
+
+  /**
+   * Submit a typed transcript directly to the dialogue pipeline.
+   * Skips the mic / STT path entirely — used by the text-input box
+   * in the enveloped voice panel for environments where speech is
+   * unavailable (noisy, mic broken, dispatcher prefers typing).
+   */
+  async submitText(text: string): Promise<void> {
+    if (this.destroyed) return;
+    if (!this.config.enabled) return;
+    const trimmed = (text ?? '').trim();
+    if (!trimmed) return;
+    if (this.state === 'alerting' || this.state === 'processing' || this.state === 'responding') {
+      return;
+    }
+    // Stop any active listen — the typed text supersedes mic input.
+    if (this.state === 'listening') this.stopListening();
+
+    // Mirror the transcript into the channel state so the UI shows it.
+    this.lastTranscript = trimmed;
+    this.audioChunks = [];
+    this.callbacks.onTranscript(trimmed, true);
+    await this.processTranscript();
+  }
+
+  /**
    * Manually activate the listen window (e.g., from V keybind).
    * Works regardless of listenMode setting.
    */
@@ -503,6 +738,11 @@ export class VoiceChannel {
     this.destroyed = true;
     this.stopListening();
     this.clearListenTimer();
+    if (this.standbyFillerTimer) {
+      clearTimeout(this.standbyFillerTimer);
+      this.standbyFillerTimer = null;
+    }
+    this.stopBargeInWatcher();
     // Clean up stress analyzer
     this.stressAnalyzer?.disconnect();
     this.stressAnalyzer = null;
@@ -773,6 +1013,26 @@ export class VoiceChannel {
     this.stopListening();
     this.setState('processing');
 
+    // ── C: Stand-by filler ──
+    // If the dialogue agent takes longer than 1200ms (slow LLM, retry,
+    // network hiccup), speak a brief "Stand by." so the officer hears
+    // *something* and knows the system is working — fills the silence
+    // with warmth instead of dead air. Cleared by respond() before its
+    // own speak() fires, so the filler doesn't queue ahead of the real
+    // reply if the agent comes back fast. The TTS queue serializes if
+    // it does fire, so there's never overlap.
+    this.standbyFillerTimer = setTimeout(() => {
+      if (this.destroyed) return;
+      if (this.state !== 'processing') return;
+      // Use the same TTS pipeline as replies — uses confirmMode='speak'
+      // gating, voice persona, P25 chirp, etc. Silent if user has muted.
+      if (this.config.confirmMode === 'speak') {
+        // force=true: same rationale as the main reply — fillers are
+        // intentional dialogue feedback, not passive alerts.
+        speak('Stand by.', undefined, 'conversational', true).catch(() => { /* best-effort */ });
+      }
+    }, 1200);
+
     if (this.destroyed) return;
 
     // Check stress level from audio analysis
@@ -860,13 +1120,21 @@ export class VoiceChannel {
     }
 
     if (!result) {
-      // 2. Try server text parsing — use the resolver's output so
-      // pronouns/deictics resolve before NLU, not after.
+      // 2. Try the natural-language dialogue agent first — handles free-form
+      // questions, 10-codes with mileage prompts, and tool-calling.
       if (effectiveTranscript) {
+        const dlg = await sendDialogueToServer(effectiveTranscript, 'speech');
+        if (dlg.success && dlg.message) {
+          result = dlg;
+        }
+      }
+
+      // 3. Legacy regex/NLU parser fallback (if dialogue endpoint missing or empty)
+      if ((!result || !result.success) && effectiveTranscript) {
         result = await sendTextToServer(effectiveTranscript);
       }
 
-      // 3. If text parse failed and we have audio, try audio endpoint
+      // 4. If text path failed and we have audio, try audio endpoint
       if ((!result || !result.success) && audioBlob && audioBlob.size > 1000) {
         const audioResult = await sendAudioToServer(audioBlob);
         if (audioResult.success) {
@@ -899,12 +1167,36 @@ export class VoiceChannel {
 
   private async respond(result: CommandResult): Promise<void> {
     if (this.destroyed) return;
+    // Cancel the "stand by" filler — the real reply is about to play.
+    if (this.standbyFillerTimer) {
+      clearTimeout(this.standbyFillerTimer);
+      this.standbyFillerTimer = null;
+    }
+    this.bargedIn = false;
     this.setState('responding');
+
+    // Dialogue agent results carry a voice_mode hint:
+    //   spillman_flat → terminal announcer voice + classic 2-tone chime
+    //   conversational → human dispatcher voice + P25 trunked chirp
+    const voiceMode: 'spillman_flat' | 'conversational' =
+      (result as any).voice_mode === 'spillman_flat' ? 'spillman_flat' : 'conversational';
+
+    // ── B: Barge-in watcher ──
+    // Spin up a parallel mic listener so the officer can interrupt this
+    // reply by speaking. Only meaningful when we're actually playing
+    // speech (confirmMode === 'speak'). Skipped in silent/beep modes.
+    if (this.config.confirmMode === 'speak') {
+      void this.startBargeInWatcher();
+    }
 
     try {
       switch (this.config.confirmMode) {
         case 'speak':
-          await speak(result.message);
+          // force=true: dialogue replies bypass the global voice-alerts
+          // master mute. Typed AND spoken inputs both receive audible
+          // feedback when confirmMode is 'speak'. Mute via the panel
+          // 🔊/🔇 toggle, not via the global alerts switch.
+          await speak(result.message, undefined, voiceMode, true);
           break;
         case 'beep':
           await playRogerBeep();
@@ -915,9 +1207,19 @@ export class VoiceChannel {
       }
     } catch {
       // Confirmation audio failed — not critical
+    } finally {
+      // Always tear down the barge-in watcher when speech ends naturally.
+      // If barge-in fired, this is a no-op (already stopped).
+      this.stopBargeInWatcher();
     }
 
     if (this.destroyed) return;
+    // If barge-in fired, fireBargeIn already reopened the mic — don't
+    // step on it with the auto-loop or pending-alert tail below.
+    if (this.bargedIn) {
+      this.bargedIn = false;
+      return;
+    }
 
     // Check for pending alert
     if (this.pendingAlert) {
@@ -927,6 +1229,72 @@ export class VoiceChannel {
       return;
     }
 
+    // ── Drive-mode auto-loop ──
+    // When the officer is moving in a vehicle, re-open the mic right
+    // after a reply so the conversation can flow without another hold
+    // gesture. Skipped if the radio is currently keyed (avoid catching
+    // unrelated radio traffic) or hold-mode is engaged on the V button.
+    if (this.driveMode && !this.radioActive && !this.holdMode) {
+      this.setState('idle');
+      // Defer to next tick so the responding state finalizes cleanly
+      // before the listen path tears down/spins up the mic.
+      setTimeout(() => {
+        if (this.destroyed) return;
+        if (this.state !== 'idle') return;
+        void this.activateManualListen();
+      }, 50);
+      return;
+    }
+
     this.setState('idle');
   }
+
+  /**
+   * Tell the channel whether the officer is currently driving.
+   * Drives the auto-loop behavior in respond() and is read by the
+   * indicator UI to morph the V pill / hold-to-open threshold.
+   */
+  setDriveMode(active: boolean): void {
+    this.driveMode = active;
+  }
+
+  /** Read the channel's current drive-mode flag. */
+  isDriveMode(): boolean {
+    return this.driveMode;
+  }
+}
+
+// ─── Terminal Target Announcer ──────────────────────────────
+//
+// Public helper for any UI that performs a target lookup from the CAD
+// terminal (plate query, name search, person dossier, beat lookup, etc.)
+// and wants the result spoken back in the Spillman flat voice with the
+// classic CAD chime — distinct from the conversational voice used when
+// an officer talks to dispatch over the radio.
+//
+// Usage from a search result handler:
+//   import { announceTarget } from '../utils/voiceChannel';
+//   await announceTarget(`run plate ${plate}`);
+//
+// The transcript is sent to /api/voice/dialogue with source='announcer',
+// the agent fetches live data via the appropriate tool, the synthesized
+// reply comes back with voice_mode='spillman_flat', and the chime + flat
+// voice render automatically.
+
+/** Announce a target lookup via the dialogue agent in Spillman flat voice. */
+export async function announceTarget(transcript: string): Promise<{
+  reply: string;
+  voice_mode: 'spillman_flat' | 'conversational';
+} | null> {
+  if (!transcript || !transcript.trim()) return null;
+  const result = await sendDialogueToServer(transcript.trim(), 'announcer');
+  if (!result.success || !result.message) return null;
+
+  const voiceMode = result.voice_mode === 'conversational' ? 'conversational' : 'spillman_flat';
+  try {
+    await speak(result.message, undefined, voiceMode);
+  } catch {
+    /* TTS failed — caller still gets the text reply for a screen render */
+  }
+  return { reply: result.message, voice_mode: voiceMode };
 }

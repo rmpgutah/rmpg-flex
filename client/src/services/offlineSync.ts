@@ -102,6 +102,7 @@ function releaseSyncLock(): void {
 export function startSyncSchedule(url: string, token?: string): void {
   serverUrl = url;
   if (token) authToken = token;
+  _authExhausted = false;
 
   console.log('[SYNC] Starting pull schedule');
 
@@ -437,28 +438,56 @@ async function serverFetch(endpoint: string, options: RequestInit = {}): Promise
 
 /**
  * Attempt to refresh the JWT token and retry the request.
+ * Uses a shared promise so concurrent 401s don't each rotate the refresh token
+ * (which invalidates it for the others and causes cascading failures).
  */
+let _syncRefreshPromise: Promise<string | null> | null = null;
+let _authExhausted = false;
+
 async function refreshAndRetry(endpoint: string, options: RequestInit): Promise<any> {
-  const refreshToken = await getConfig('refresh_token');
-  if (!refreshToken) throw new Error('No refresh token available');
+  // If we already know auth is fully exhausted, don't keep retrying
+  if (_authExhausted) throw new Error('Refresh failed');
 
-  const refreshResponse = await fetch(`${serverUrl}/api/auth/refresh`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-    body: JSON.stringify({ refreshToken }),
-  });
-
-  if (!refreshResponse.ok) {
+  const newToken = await doRefresh();
+  if (!newToken) {
+    _authExhausted = true;
+    // Stop the sync schedule so we don't keep hammering the server with 401s
+    stopSyncSchedule();
     throw new Error('Refresh failed');
   }
-
-  const data = await refreshResponse.json();
-
-  // Store new tokens
-  authToken = data.token;
-  await setConfig('auth_token', data.token);
-  await setConfig('refresh_token', data.refreshToken);
-
-  // Retry original request with new token
   return serverFetch(endpoint, options);
+}
+
+async function doRefresh(): Promise<string | null> {
+  if (_syncRefreshPromise) return _syncRefreshPromise;
+
+  _syncRefreshPromise = (async () => {
+    try {
+      const refreshToken = await getConfig('refresh_token');
+      if (!refreshToken) return null;
+
+      const refreshResponse = await fetch(`${serverUrl}/api/auth/refresh`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ refreshToken }),
+      });
+
+      if (!refreshResponse.ok) return null;
+
+      const data = await refreshResponse.json();
+
+      // Store new tokens
+      authToken = data.token;
+      await setConfig('auth_token', data.token);
+      await setConfig('refresh_token', data.refreshToken);
+
+      return data.token as string;
+    } catch {
+      return null;
+    } finally {
+      _syncRefreshPromise = null;
+    }
+  })();
+
+  return _syncRefreshPromise;
 }

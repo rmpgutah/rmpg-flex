@@ -90,6 +90,28 @@ function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AU
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
+/**
+ * Convert raw browser network errors into user-friendly messages.
+ * `fetch()` throws TypeError("Failed to fetch") on network failures and
+ * DOMException("signal is aborted without reason") on AbortController timeout.
+ * Neither is helpful for a field officer staring at a login screen.
+ */
+const NETWORK_ERROR_PATTERNS = ['failed to fetch', 'networkerror', 'network request failed', 'load failed'];
+const TIMEOUT_ERROR_PATTERNS = ['abort', 'timed out', 'timeout'];
+
+function friendlyAuthError(err: unknown): string {
+  if (!(err instanceof Error)) return 'Login failed. Please try again.';
+  const msg = err.message.toLowerCase();
+  if (NETWORK_ERROR_PATTERNS.some(p => msg.includes(p))) {
+    return 'Unable to connect to the server. Check your network connection and try again.';
+  }
+  if (TIMEOUT_ERROR_PATTERNS.some(p => msg.includes(p))) {
+    return 'Server request timed out. Check your network connection and try again.';
+  }
+  // Already a meaningful server-side error message — pass through
+  return err.message;
+}
+
 // Generate a device fingerprint hash for trusted device recognition
 // Cached at module level — never changes during a session
 let _cachedFingerprint: string | null = null;
@@ -450,6 +472,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setError(message);
         throw new Error(message);
       }
+    } catch (err: unknown) {
+      const message = friendlyAuthError(err);
+      setError(message);
+      throw err;
     } finally {
       setLoginBusy(false);
     }
@@ -526,7 +552,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else if (err?.message?.includes('No security keys registered')) {
         setError('No security keys are registered. Set up a key in Profile → Security.');
       } else {
-        setError(err?.message || 'Security key verification failed');
+        const message = friendlyAuthError(err);
+        setError(message);
       }
       throw err;
     } finally {
@@ -645,7 +672,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setLoginStep('complete');
         return { requires2FA: false, success: true };
       } else {
-        const message = err instanceof Error ? err.message : 'Login failed';
+        const message = friendlyAuthError(err);
         setError(message);
         throw err;
       }
@@ -697,7 +724,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(errData.error || 'Invalid backup code');
       }
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Verification failed';
+      const message = friendlyAuthError(err);
       setError(message);
       throw err;
     } finally {
@@ -740,6 +767,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       const data = await res.json();
       return { qrCodeDataUri: data.qrCodeDataUri, manualKey: data.manualKey };
+    } catch (err: unknown) {
+      const message = friendlyAuthError(err);
+      setError(message);
+      throw err;
     } finally {
       setLoginBusy(false);
     }
@@ -790,7 +821,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setLoginStep('show_backup_codes');
       return { backupCodes: data.backupCodes };
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Setup verification failed';
+      const message = friendlyAuthError(err);
       setError(message);
       throw err;
     } finally {
@@ -831,7 +862,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setTempToken(null);
       setRequiresPasswordChange(false);
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'Password change failed';
+      const message = friendlyAuthError(err);
       setError(message);
       throw err;
     } finally {

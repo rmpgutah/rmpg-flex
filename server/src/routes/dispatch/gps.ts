@@ -1568,10 +1568,14 @@ router.get('/gps/zone-speed-stats', requireRole('admin', 'manager', 'supervisor'
     const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
 
     // Load beats with polygon data, joined with zone and sector names
+    // Column drift fix 2026-05-05: dispatch_beats has beat_name/beat_code,
+    // dispatch_zones has zone_name, dispatch_sectors has sector_name —
+    // never bare `name` or `code`. The original query 500'd both
+    // /coverage-timeline and /zone-speed-stats with "no such column: b.name".
     const beats = db.prepare(`
-      SELECT b.id AS beat_id, b.name AS beat_name, b.code AS beat_code,
+      SELECT b.id AS beat_id, b.beat_name, b.beat_code,
              b.polygon_coords,
-             z.name AS zone_name, s.name AS sector_name
+             z.zone_name, s.sector_name
       FROM dispatch_beats b
       LEFT JOIN dispatch_zones z ON b.zone_id = z.id
       LEFT JOIN dispatch_sectors s ON z.sector_id = s.id
@@ -1650,9 +1654,11 @@ router.get('/gps/coverage-timeline', requireRole('admin', 'manager', 'supervisor
     const hours = Math.min(Math.max(parseInt(req.query.hours as string, 10) || 8, 1), 72);
     const intervalMin = Math.min(Math.max(parseInt(req.query.interval as string, 10) || 30, 10), 120);
 
-    // Load beats with polygon data
+    // Load beats with polygon data (same column-drift fix as the
+    // /coverage-timeline query above — dispatch_beats columns are
+    // beat_name and beat_code, not bare name/code).
     const beats = db.prepare(`
-      SELECT b.id AS beat_id, b.name AS beat_name, b.code AS beat_code, b.polygon_coords
+      SELECT b.id AS beat_id, b.beat_name, b.beat_code, b.polygon_coords
       FROM dispatch_beats b
       WHERE b.polygon_coords IS NOT NULL AND b.polygon_coords != ''
     `).all() as any[];

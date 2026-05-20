@@ -9,7 +9,30 @@
 const { app, BrowserWindow, Menu, Tray, shell, dialog, nativeImage, ipcMain, net } = require('electron');
 const path = require('path');
 const { AppUpdater } = require('./updater');
-const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
+
+// ─── Lazy-load native modules ─────────────────────────────────
+// better-sqlite3 is a native (C++) add-on that must be compiled for
+// the exact Electron ABI + architecture. If the rebuild failed or the
+// binary is missing (common on first macOS launch after a bad build),
+// eagerly requiring it crashes the entire app before the splash even
+// shows. Load lazily so the app can start with offline support
+// gracefully disabled.
+let initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta;
+try {
+  ({ initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb'));
+} catch (err) {
+  console.error('[APP] Failed to load localDb (better-sqlite3 native module):', err.message);
+  console.error('[APP] Offline support will be disabled this session.');
+  // Provide no-op stubs so the rest of main.js doesn't crash on calls
+  initLocalDb = () => { console.warn('[LOCAL-DB] Unavailable — native module failed to load'); };
+  getLocalDb = () => null;
+  closeLocalDb = () => {};
+  getConfig = () => null;
+  setConfig = () => {};
+  getQueueDepth = () => 0;
+  getSyncMeta = () => null;
+}
+
 const { ConnectivityMonitor } = require('./connectivityMonitor');
 
 // ─── Chromium Geolocation ────────────────────────────────────
@@ -126,11 +149,39 @@ function getIconPath() {
 }
 
 // ─── Splash Screen ──────────────────────────────────────────
+function getSplashLogoDataUri() {
+  try {
+    const fs = require('fs');
+    const candidates = DEV_MODE
+      ? [
+          path.join(__dirname, '..', 'client', 'public', 'rmpg flex.png'),
+          path.join(__dirname, '..', 'client', 'public', 'RMPG Logo Dark.png'),
+          path.join(__dirname, '..', 'client', 'public', 'rmpg-logo.png'),
+        ]
+      : [
+          path.join(process.resourcesPath, 'rmpg flex.png'),
+          path.join(process.resourcesPath, 'RMPG Logo Dark.png'),
+          path.join(process.resourcesPath, 'icon.png'),
+        ];
+    for (const p of candidates) {
+      if (fs.existsSync(p)) {
+        const ext = path.extname(p).slice(1).toLowerCase() || 'png';
+        const mime = ext === 'jpg' ? 'image/jpeg' : `image/${ext}`;
+        const b64 = fs.readFileSync(p).toString('base64');
+        return `data:${mime};base64,${b64}`;
+      }
+    }
+  } catch (err) {
+    console.warn('[SPLASH] logo load failed:', err && err.message);
+  }
+  return ''; // Fall back to text logo if image unavailable
+}
+
 function createSplashWindow() {
   if (!app.isReady()) { console.warn('[APP] createSplashWindow called before ready — skipping'); return; }
   splashWindow = new BrowserWindow({
-    width: 420,
-    height: 320,
+    width: 480,
+    height: 380,
     frame: false,
     transparent: true,
     resizable: false,
@@ -143,6 +194,11 @@ function createSplashWindow() {
     },
   });
 
+  const logoUri = getSplashLogoDataUri();
+  const logoMarkup = logoUri
+    ? `<img src="${logoUri}" alt="RMPG Flex" class="logo-img" draggable="false" />`
+    : `<div class="logo-fallback"><span>RMPG</span></div>`;
+
   const splashHTML = `data:text/html;charset=utf-8,${encodeURIComponent(`
     <!DOCTYPE html>
     <html>
@@ -151,72 +207,289 @@ function createSplashWindow() {
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-          background: #000000;
-          color: #fff;
+          color: #e6e6e6;
+          height: 100vh;
+          overflow: hidden;
+          -webkit-app-region: drag;
+          position: relative;
+          /* Two-layer background: soft gold radial + charcoal base, framed */
+          background:
+            radial-gradient(ellipse at center, rgba(212,160,23,0.10) 0%, rgba(0,0,0,0) 65%),
+            linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
+          border: 1px solid #1a1a1a;
+          border-radius: 6px;
+          box-shadow:
+            inset 0 0 0 1px rgba(212,160,23,0.18),
+            0 0 0 1px rgba(0,0,0,0.5),
+            0 18px 40px rgba(0,0,0,0.6);
+        }
+        /* Subtle drifting grid */
+        body::before {
+          content: '';
+          position: absolute;
+          inset: 0;
+          background:
+            linear-gradient(rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px,
+            linear-gradient(90deg, rgba(212,160,23,0.045) 1px, transparent 1px) 0 0 / 32px 32px;
+          mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+          -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+          pointer-events: none;
+          animation: grid-drift 22s linear infinite;
+        }
+        @keyframes grid-drift {
+          0%   { background-position: 0 0, 0 0; }
+          100% { background-position: 32px 32px, 32px 32px; }
+        }
+        /* HUD corner brackets */
+        .corner {
+          position: absolute;
+          width: 18px;
+          height: 18px;
+          pointer-events: none;
+          opacity: 0.85;
+          animation: corner-pulse 3.6s ease-in-out infinite;
+        }
+        .corner::before, .corner::after {
+          content: '';
+          position: absolute;
+          background: #d4a017;
+          box-shadow: 0 0 6px rgba(212,160,23,0.5);
+        }
+        .corner::before { top: 0; left: 0; width: 12px; height: 1.5px; }
+        .corner::after  { top: 0; left: 0; width: 1.5px; height: 12px; }
+        .corner.tl { top: 10px; left: 10px; }
+        .corner.tr { top: 10px; right: 10px; transform: scaleX(-1); }
+        .corner.bl { bottom: 10px; left: 10px; transform: scaleY(-1); }
+        .corner.br { bottom: 10px; right: 10px; transform: scale(-1); }
+        @keyframes corner-pulse {
+          0%, 100% { opacity: 0.55; }
+          50% { opacity: 1; }
+        }
+        /* Layout */
+        .stage {
+          position: relative;
+          z-index: 1;
+          height: 100%;
           display: flex;
           flex-direction: column;
           align-items: center;
           justify-content: center;
-          height: 100vh;
-          border: 1px solid #333;
-          border-radius: 12px;
-          overflow: hidden;
-          -webkit-app-region: drag;
+          padding: 28px 24px 20px;
         }
-        .logo {
-          width: 100px;
-          height: 100px;
-          border: 3px solid #5a5a5a;
+        /* Logo block with rotating ring + pulse aura */
+        .logo-wrap {
+          position: relative;
+          width: 132px;
+          height: 132px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          margin-bottom: 18px;
+        }
+        .logo-wrap::before {
+          /* Pulse aura behind logo */
+          content: '';
+          position: absolute;
+          inset: -8px;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(212,160,23,0.35) 0%, rgba(212,160,23,0) 65%);
+          filter: blur(4px);
+          animation: aura-pulse 2.6s ease-in-out infinite;
+        }
+        .logo-wrap::after {
+          /* Rotating gold arc ring */
+          content: '';
+          position: absolute;
+          inset: -2px;
+          border-radius: 50%;
+          background: conic-gradient(from 0deg,
+            rgba(212,160,23,0) 0deg,
+            rgba(212,160,23,0.05) 30deg,
+            rgba(212,160,23,0.95) 70deg,
+            rgba(212,160,23,0.05) 110deg,
+            rgba(212,160,23,0) 140deg,
+            rgba(212,160,23,0) 360deg);
+          mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
+          -webkit-mask: radial-gradient(circle, transparent 62%, black 64%, black 70%, transparent 72%);
+          animation: ring-spin 2.8s linear infinite;
+        }
+        @keyframes aura-pulse {
+          0%, 100% { opacity: 0.5; transform: scale(0.95); }
+          50%      { opacity: 1;   transform: scale(1.08); }
+        }
+        @keyframes ring-spin {
+          to { transform: rotate(360deg); }
+        }
+        .logo-img {
+          position: relative;
+          z-index: 2;
+          width: 96px;
+          height: 96px;
+          object-fit: contain;
+          filter: drop-shadow(0 0 12px rgba(212,160,23,0.45));
+          animation: logo-float 6s ease-in-out infinite;
+        }
+        .logo-fallback {
+          position: relative;
+          z-index: 2;
+          width: 96px;
+          height: 96px;
+          border: 2px solid #d4a017;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          margin-bottom: 20px;
         }
-        .logo-text {
-          font-size: 28px;
+        .logo-fallback span {
+          font-size: 26px;
           font-weight: 900;
-          color: #d7d7d7;
           letter-spacing: 2px;
+          color: #d4a017;
         }
+        @keyframes logo-float {
+          0%, 100% { transform: translateY(0); }
+          50%      { transform: translateY(-3px); }
+        }
+        /* Title block */
         h1 {
-          font-size: 20px;
-          font-weight: 700;
-          letter-spacing: 3px;
+          font-size: 18px;
+          font-weight: 800;
+          letter-spacing: 6px;
           text-transform: uppercase;
-          margin-bottom: 6px;
+          color: #f0f0f0;
+          margin-bottom: 5px;
+          text-shadow: 0 0 12px rgba(212,160,23,0.25);
         }
         .subtitle {
-          font-size: 11px;
+          font-size: 9px;
           color: #888;
           text-transform: uppercase;
-          letter-spacing: 2px;
-          margin-bottom: 30px;
+          letter-spacing: 4px;
+          margin-bottom: 20px;
+          display: flex;
+          align-items: center;
+          gap: 8px;
         }
-        .spinner {
-          width: 28px;
-          height: 28px;
-          border: 3px solid #333;
-          border-top: 3px solid #d7d7d7;
-          border-radius: 50%;
-          animation: spin 0.8s linear infinite;
-          margin-bottom: 12px;
+        .subtitle::before, .subtitle::after {
+          content: '';
+          height: 1px;
+          width: 22px;
+          background: linear-gradient(90deg, transparent, #d4a017, transparent);
         }
-        @keyframes spin { to { transform: rotate(360deg); } }
+        /* Indeterminate progress bar */
+        .progress-track {
+          position: relative;
+          width: 240px;
+          height: 3px;
+          background: rgba(212,160,23,0.10);
+          border-radius: 1px;
+          overflow: hidden;
+          margin-bottom: 14px;
+          box-shadow: inset 0 0 0 1px rgba(212,160,23,0.18);
+        }
+        .progress-bar {
+          position: absolute;
+          top: 0;
+          left: -40%;
+          width: 40%;
+          height: 100%;
+          background: linear-gradient(90deg,
+            rgba(212,160,23,0) 0%,
+            rgba(212,160,23,0.5) 35%,
+            rgba(212,160,23,1) 50%,
+            rgba(212,160,23,0.5) 65%,
+            rgba(212,160,23,0) 100%);
+          box-shadow: 0 0 8px rgba(212,160,23,0.6);
+          animation: progress-slide 1.6s ease-in-out infinite;
+        }
+        @keyframes progress-slide {
+          0%   { left: -40%; }
+          100% { left: 100%; }
+        }
+        /* Status line */
         .status {
-          font-size: 10px;
-          color: #666;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          font-size: 9px;
+          color: #b8924a;
           text-transform: uppercase;
-          letter-spacing: 1px;
+          letter-spacing: 2.5px;
+        }
+        .status .dot {
+          width: 5px;
+          height: 5px;
+          border-radius: 50%;
+          background: #d4a017;
+          box-shadow: 0 0 6px #d4a017;
+          animation: status-blink 1.6s ease-in-out infinite;
+        }
+        @keyframes status-blink {
+          0%, 100% { opacity: 0.3; }
+          50%      { opacity: 1; }
+        }
+        .status .ellipsis::after {
+          content: '';
+          display: inline-block;
+          width: 12px;
+          text-align: left;
+          animation: ellipsis 1.4s steps(4, end) infinite;
+        }
+        @keyframes ellipsis {
+          0%   { content: ''; }
+          25%  { content: '.'; }
+          50%  { content: '..'; }
+          75%  { content: '...'; }
+          100% { content: ''; }
+        }
+        /* Version badge bottom */
+        .version {
+          position: absolute;
+          bottom: 12px;
+          right: 14px;
+          font-size: 8px;
+          letter-spacing: 2px;
+          color: rgba(212,160,23,0.55);
+          text-transform: uppercase;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+        .build-tag {
+          position: absolute;
+          bottom: 12px;
+          left: 14px;
+          font-size: 8px;
+          letter-spacing: 2px;
+          color: rgba(255,255,255,0.25);
+          text-transform: uppercase;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
         }
       </style>
     </head>
     <body>
-      <div class="logo"><span class="logo-text">RMPG</span></div>
-      <h1>RMPG Flex</h1>
-      <p class="subtitle">CAD / RMS Dispatch System</p>
-      <div class="spinner"></div>
-      <p class="status">Connecting to server...</p>
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+
+      <div class="stage">
+        <div class="logo-wrap">
+          ${logoMarkup}
+        </div>
+        <h1>RMPG Flex</h1>
+        <p class="subtitle">CAD &middot; RMS Dispatch System</p>
+
+        <div class="progress-track">
+          <div class="progress-bar"></div>
+        </div>
+
+        <div class="status">
+          <span class="dot"></span>
+          <span>Establishing Secure Uplink<span class="ellipsis"></span></span>
+        </div>
+      </div>
+
+      <div class="build-tag">RMPG-PRIMARY</div>
+      <div class="version">v${app.getVersion ? app.getVersion() : '5.8.2'}</div>
     </body>
     </html>
   `)}`;
@@ -226,11 +499,35 @@ function createSplashWindow() {
   });
 }
 
+let splashTimeout = null;
+
 function closeSplash() {
+  if (splashTimeout) {
+    clearTimeout(splashTimeout);
+    splashTimeout = null;
+  }
   if (splashWindow && !splashWindow.isDestroyed()) {
     splashWindow.close();
     splashWindow = null;
   }
+}
+
+/**
+ * Start a safety timer that closes the splash screen after maxMs even
+ * if ready-to-show never fires (server hangs, loadURL stalls, etc.).
+ * Without this, macOS users see the splash forever with no way to
+ * interact with the app.
+ */
+function startSplashTimeout(maxMs = 15000) {
+  splashTimeout = setTimeout(() => {
+    console.warn(`[SPLASH] Timed out after ${maxMs}ms — force-closing`);
+    closeSplash();
+    // If the main window exists but isn't visible yet, show it now
+    if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+      mainWindow.show();
+      mainWindow.focus();
+    }
+  }, maxMs);
 }
 
 // ─── Server Connectivity Check ──────────────────────────────
@@ -241,31 +538,52 @@ function closeSplash() {
 function checkServerConnectivity() {
   return new Promise((resolve) => {
     let attempts = 0;
-    const maxAttempts = 5;
+    const maxAttempts = 3; // 3 × 2s = 6s max; reduced from 5 (10s) to prevent long startup delays
     const delayMs = 2000;
+    let resolved = false;
 
     function tryConnect() {
+      if (resolved) return;
       attempts++;
       console.log(`[APP] Connectivity check attempt ${attempts}/${maxAttempts}: ${REMOTE_SERVER_URL}/api/health`);
 
       const request = net.request(`${REMOTE_SERVER_URL}/api/health`);
 
+      // Per-request timeout — prevent hung TCP handshakes from stalling startup
+      const reqTimeout = setTimeout(() => {
+        try { request.abort(); } catch { /* ignore */ }
+        if (!resolved && attempts < maxAttempts) {
+          setTimeout(tryConnect, delayMs);
+        } else if (!resolved) {
+          resolved = true;
+          resolve(false);
+        }
+      }, 5000);
+
       request.on('response', (response) => {
-        if (response.statusCode === 200) {
+        clearTimeout(reqTimeout);
+        // Consume body to prevent memory leak
+        response.on('data', () => {});
+        response.on('end', () => {});
+        if (!resolved && response.statusCode === 200) {
+          resolved = true;
           console.log('[APP] Server is reachable');
           resolve(true);
-        } else if (attempts < maxAttempts) {
+        } else if (!resolved && attempts < maxAttempts) {
           setTimeout(tryConnect, delayMs);
-        } else {
+        } else if (!resolved) {
+          resolved = true;
           resolve(false);
         }
       });
 
       request.on('error', (err) => {
+        clearTimeout(reqTimeout);
         console.log(`[APP] Connection attempt ${attempts} failed:`, err.message);
-        if (attempts < maxAttempts) {
+        if (!resolved && attempts < maxAttempts) {
           setTimeout(tryConnect, delayMs);
-        } else {
+        } else if (!resolved) {
+          resolved = true;
           resolve(false);
         }
       });
@@ -398,12 +716,22 @@ async function createMainWindow() {
   // Clear Chromium HTTP cache before loading — ensures deploys propagate
   // immediately without requiring a manual hard-refresh in the desktop app.
   // (Service workers, localStorage, and IndexedDB are NOT cleared.)
-  await mainWindow.webContents.session.clearCache();
-  console.log('[APP] HTTP cache cleared');
-
-  // Unregister stale service workers so the latest version installs fresh
-  await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
-  console.log('[APP] Service workers cleared');
+  // Wrap in a race with a timeout so a macOS-specific hang in clearCache
+  // or clearStorageData doesn't block startup forever.
+  try {
+    await Promise.race([
+      (async () => {
+        await mainWindow.webContents.session.clearCache();
+        console.log('[APP] HTTP cache cleared');
+        // Unregister stale service workers so the latest version installs fresh
+        await mainWindow.webContents.session.clearStorageData({ storages: ['serviceworkers'] });
+        console.log('[APP] Service workers cleared');
+      })(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Cache/ServiceWorker clear timed out after 5000ms')), 5000)),
+    ]);
+  } catch (err) {
+    console.warn('[APP] Cache/SW clear timed out or failed — continuing:', err && err.message);
+  }
 
   // Load the remote web application
   console.log('[APP] Loading:', REMOTE_SERVER_URL);
@@ -421,9 +749,34 @@ async function createMainWindow() {
     mainWindow.focus();
   });
 
+  // Backup: if ready-to-show never fires (happens on macOS when the page
+  // HTML loads but first paint is delayed by large JS bundles), close the
+  // splash once the page finishes loading and show the window.
+  mainWindow.webContents.once('did-finish-load', () => {
+    console.log('[APP] did-finish-load fired');
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      // 500ms grace period: ready-to-show (the preferred event) fires at
+      // first paint. If it hasn't fired yet, this backup ensures the splash
+      // closes. If ready-to-show fires during the 500ms, closeSplash() is
+      // a no-op the second time (it checks splashWindow existence).
+      setTimeout(() => {
+        closeSplash();
+        if (mainWindow && !mainWindow.isDestroyed() && !mainWindow.isVisible()) {
+          mainWindow.show();
+          mainWindow.focus();
+        }
+      }, 500);
+    }
+  });
+
   // Handle page load failures (server down, network error)
   mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
     console.error(`[APP] Page load failed: ${errorDescription} (code ${errorCode})`);
+    // Close splash so the user can see (and interact with) the offline page
+    closeSplash();
+    if (!mainWindow.isVisible()) {
+      mainWindow.show();
+    }
     // Show the offline page with a retry button
     mainWindow.loadURL(getOfflineHTML()).catch((err) => {
       console.warn('[APP] Offline page loadURL failed:', err && err.message);
@@ -498,7 +851,11 @@ ipcMain.handle('recon:launch', async () => {
         return { ok: false, error: `Recon Connect is not installed at ${dir}.` };
       }
       const cmd = `cd "${dir}" && source venv/bin/activate && python3 "$(ls hackingtool.py 'recon connect.py' 2>/dev/null | head -1)"`;
-      const appleScript = `tell application "Terminal" to do script "${cmd.replace(/"/g, '\\"')}"`;
+      // Escape backslashes BEFORE double quotes so a literal '\' in the
+      // input cannot pair with the escape we add (e.g. an attacker-supplied
+      // `\` would otherwise turn our `\"` into `\\"`, re-opening the
+      // AppleScript string). Single-pass callback handles both characters.
+      const appleScript = `tell application "Terminal" to do script "${cmd.replace(/[\\"]/g, (c) => '\\' + c)}"`;
       spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
       return { ok: true };
     }
@@ -1113,8 +1470,12 @@ const RECON_TOOLS = {
       const fs = require('fs');
       const os = require('os');
       const path = require('path');
-      const f = path.join(os.tmpdir(), `john-${Date.now()}.hash`);
-      fs.writeFileSync(f, hash + '\n');
+      // Unique unguessable directory — avoids predictable-temp-file races
+      // (an attacker watching os.tmpdir() can't pre-create or symlink the
+      // path because mkdtempSync returns a fresh randomized suffix).
+      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'rmpg-john-'));
+      const f = path.join(dir, 'input.hash');
+      fs.writeFileSync(f, hash + '\n', { mode: 0o600 });
       return ['--format=raw-md5', f];
     },
     platform: ['darwin', 'linux'],
@@ -1768,7 +2129,15 @@ ipcMain.handle('recon:install', async () => {
         `echo "✓ Recon Connect installed at ${dir}"`,
         `echo "You can close this window."`,
       ].join(' && ');
-      const appleScript = `tell application "Terminal" to do script "${script.replace(/"/g, '\\"').replace(/\\/g, '\\\\').replace(/\\\\"/g, '\\"')}"`;
+      // Single-pass escape of backslashes and double quotes for embedding
+      // inside the AppleScript string literal. The previous chained-replace
+      // approach double-escaped its own output (escape `"` -> `\"`, then
+      // escape `\` -> `\\` re-escapes the just-added backslash) and then
+      // tried to undo the damage with a third replace — fragile and
+      // incomplete for inputs that already contain `\`. One callback
+      // visits each char exactly once, so neither character can be
+      // re-escaped after it's been escaped.
+      const appleScript = `tell application "Terminal" to do script "${script.replace(/[\\"]/g, (c) => '\\' + c)}"`;
       spawn('osascript', ['-e', appleScript], { detached: true, stdio: 'ignore' }).unref();
       return { ok: true };
     }
@@ -2151,21 +2520,34 @@ app.whenReady().then(async () => {
 
   // Show splash screen while connecting
   createSplashWindow();
+  // Safety timeout: close splash after 15s even if ready-to-show never fires
+  // (prevents macOS users from getting stuck on an unresponsive splash)
+  startSplashTimeout(15000);
 
   try {
-    // Initialize local database for offline support
-    initLocalDb();
-
-    // Check server connectivity before loading the app
-    const isReachable = await checkServerConnectivity();
-
-    if (!isReachable) {
-      console.warn('[APP] Server unreachable — will show offline page');
+    // Initialize local database for offline support (non-fatal if it fails)
+    try {
+      initLocalDb();
+    } catch (dbErr) {
+      console.error('[APP] Local DB init failed — offline support disabled:', dbErr.message);
     }
+
+    // Start connectivity check in parallel with window creation.
+    // Old behaviour blocked on 5 × 2s retries before createMainWindow(),
+    // leaving macOS users staring at the splash for up to 10s before
+    // the window even began loading. Now the window starts immediately
+    // and the connectivity result is used only to seed the monitor.
+    const connectivityPromise = checkServerConnectivity();
 
     createMenu();
     await createMainWindow();
     createTray();
+
+    // Await connectivity (usually already resolved by now)
+    const isReachable = await connectivityPromise;
+    if (!isReachable) {
+      console.warn('[APP] Server unreachable at startup');
+    }
 
     // Initialize auto-updater
     console.log('[APP] Initializing auto-updater with:', REMOTE_SERVER_URL);

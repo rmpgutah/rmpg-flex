@@ -4,11 +4,15 @@ import { authenticateToken } from '../../middleware/auth';
 import callsRouter from './calls';
 import callActionsRouter from './callActions';
 import callLifecycleRouter from './callLifecycle';
+import callStackRouter from './callStack';
+import routingRouter from './routing';
 import unitsRouter from './units';
 import gpsRouter from './gps';
 import aggregatesRouter from './aggregates';
 import panicRouter from './panic';
 import geographyRouter from './geography';
+import handoffsRouter from './handoffs';
+import mutualAidRouter from './mutualAid';
 
 const router = Router();
 
@@ -20,10 +24,14 @@ router.use(authenticateToken);
 router.use('/', callsRouter);
 router.use('/', callLifecycleRouter);
 router.use('/', callActionsRouter);
+router.use('/', callStackRouter);
+router.use('/', routingRouter);
 router.use('/', unitsRouter);
 router.use('/', gpsRouter);
 router.use('/', aggregatesRouter);
 router.use('/', panicRouter);
 router.use('/', geographyRouter);
+router.use('/', handoffsRouter);
+router.use('/', mutualAidRouter);
 
 export default router;

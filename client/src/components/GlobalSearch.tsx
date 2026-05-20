@@ -39,7 +39,7 @@ interface RecentSearch {
 const ENTITY_CONFIG = {
   person: {
     icon: User,
-    label: 'Persons',
+    label: 'Individuals',
     route: '/records',
     color: 'text-brand-400',
   },
@@ -360,6 +360,7 @@ export const GlobalSearch: React.FC = () => {
           <input
             ref={inputRef}
             type="text"
+            name="global-search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={handleKeyDown}

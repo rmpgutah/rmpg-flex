@@ -683,7 +683,7 @@ export default function DlSearchPage() {
               {verifyResult.photo_url && (
                 <div className="mt-2">
                   <span className="text-[9px] text-[#556677] uppercase font-mono">Photo</span>
-                  <img src={verifyResult.photo_url} alt="DL Photo" className="mt-1 w-24 h-auto border border-[#1a1a1a] rounded-sm" />
+                  <img src={verifyResult.photo_url} alt="DL Photo" className="mt-1 w-24 h-auto border border-[#1a1a1a] rounded-sm" onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
                 </div>
               )}
             </div>

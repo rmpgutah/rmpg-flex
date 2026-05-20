@@ -433,7 +433,7 @@ export default function CriminalHistorySection({ personId, personName }: Crimina
                         RECORD_TYPE_CLASSES[rec.record_type] || RECORD_TYPE_CLASSES.other
                       }`}
                     >
-                      {rec.record_type.replace(/_/g, ' ')}
+                      {rec.record_type.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     {rec.offense_level && (
                       <span

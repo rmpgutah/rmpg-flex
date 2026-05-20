@@ -90,7 +90,7 @@ export default function FleetDashCamTab({ vehicleId }: Props) {
                   <span className="text-xs font-bold text-rmpg-100 font-mono">{cam.camera_id}</span>
                   <span className={`inline-flex items-center gap-1 text-[8px] font-bold uppercase ${STATUS_LED[cam.status] ? '' : ''}`}>
                     <span className={STATUS_LED[cam.status] || 'led-dot led-off'} />
-                    {cam.status}
+                    {cam.status?.replace(/_/g, ' ').toUpperCase() || 'UNKNOWN'}
                   </span>
                 </div>
                 <div className="text-[9px] text-rmpg-500 mt-0.5">

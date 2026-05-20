@@ -365,24 +365,38 @@ html:not(.theme-light) [class*="to-rmpg-"] {
   --tw-gradient-to: #111111 var(--tw-gradient-to-position) !important;
 }
 
-[class*="#303030"],
-[class*="#1c1c1c"],
-[class*="#1a1a1a"],
-[class*="#202020"],
-[class*="#2b2b2b"],
-[class*="#2b2b2b"],
-[class*="#0f0f0f"],
-[class*="#181818"],
-[class*="#292929"],
-[class*="#2d2d2d"],
-[class*="#0b0b0b"],
-[class*="#0f0f0f"],
-[class*="#121212"],
-[class*="#272727"],
-[class*="#303030"],
-[class*="#3b3b3b"],
-[class*="#373737"],
-[class*="#3d3d3d"] {
+html.theme-dark [class*="#303030"],
+html.theme-dark [class*="#1c1c1c"],
+html.theme-dark [class*="#1a1a1a"],
+html.theme-dark [class*="#202020"],
+html.theme-dark [class*="#2b2b2b"],
+html.theme-dark [class*="#0f0f0f"],
+html.theme-dark [class*="#181818"],
+html.theme-dark [class*="#292929"],
+html.theme-dark [class*="#2d2d2d"],
+html.theme-dark [class*="#0b0b0b"],
+html.theme-dark [class*="#0f0f0f"],
+html.theme-dark [class*="#121212"],
+html.theme-dark [class*="#272727"],
+html.theme-dark [class*="#3b3b3b"],
+html.theme-dark [class*="#373737"],
+html.theme-dark [class*="#3d3d3d"],
+html:not(.theme-light) [class*="#303030"],
+html:not(.theme-light) [class*="#1c1c1c"],
+html:not(.theme-light) [class*="#1a1a1a"],
+html:not(.theme-light) [class*="#202020"],
+html:not(.theme-light) [class*="#2b2b2b"],
+html:not(.theme-light) [class*="#0f0f0f"],
+html:not(.theme-light) [class*="#181818"],
+html:not(.theme-light) [class*="#292929"],
+html:not(.theme-light) [class*="#2d2d2d"],
+html:not(.theme-light) [class*="#0b0b0b"],
+html:not(.theme-light) [class*="#0f0f0f"],
+html:not(.theme-light) [class*="#121212"],
+html:not(.theme-light) [class*="#272727"],
+html:not(.theme-light) [class*="#3b3b3b"],
+html:not(.theme-light) [class*="#373737"],
+html:not(.theme-light) [class*="#3d3d3d"] {
   background-color: #0b0b0b !important;
   border-color: #2a2a2a !important;
   color: #d0d0d0 !important;
@@ -447,30 +461,54 @@ html:not(.theme-light) [style*="rgb(59 130 246"] {
    Covers the full Tailwind blue/sky/cyan/indigo palettes plus common
    custom blues. Updates background, border-color, color, outline,
    box-shadow, fill, and stroke so the blue never reaches the pixel.
+   Scoped to dark mode only — light (navy) mode uses blue-hued colors.
    ═══════════════════════════════════════════════════════════════════ */
-[style*="#3b82f6"], [style*="#60a5fa"], [style*="#93c5fd"],
-[style*="#bfdbfe"], [style*="#dbeafe"], [style*="#eff6ff"],
-[style*="#2563eb"], [style*="#1d4ed8"], [style*="#1e40af"],
-[style*="#1e3a8a"], [style*="#262626"],
-[style*="#38bdf8"], [style*="#0ea5e9"], [style*="#0284c7"],
-[style*="#0369a1"], [style*="#075985"], [style*="#3c3c3c"],
-[style*="#7dd3fc"], [style*="#bae6fd"], [style*="#e0f2fe"], [style*="#f0f9ff"],
-[style*="#06b6d4"], [style*="#22d3ee"], [style*="#67e8f9"],
-[style*="#a5f3fc"], [style*="#cffafe"],
-[style*="#0891b2"], [style*="#0e7490"], [style*="#4b4b4b"], [style*="#404040"],
-[style*="#6366f1"], [style*="#818cf8"], [style*="#4f46e5"],
-[style*="#4338ca"], [style*="#3730a3"], [style*="#312e81"],
-[style*="#1a6abe"], [style*="#2068b0"], [style*="#144a84"],
-[style*="#1e6ab8"], [style*="#2a6ab0"], [style*="#2a7acf"],
-[style*="rgba(59,130,246"], [style*="rgba(59, 130, 246"],
-[style*="rgba(96,165,250"], [style*="rgba(96, 165, 250"],
-[style*="rgba(147,197,253"], [style*="rgba(147, 197, 253"],
-[style*="rgba(29,78,216"],   [style*="rgba(29, 78, 216"],
-[style*="rgba(37,99,235"],   [style*="rgba(37, 99, 235"],
-[style*="rgba(56,189,248"],  [style*="rgba(56, 189, 248"],
-[style*="rgba(14,165,233"],  [style*="rgba(14, 165, 233"],
-[style*="rgba(6,182,212"],   [style*="rgba(6, 182, 212"],
-[style*="rgba(34,211,238"],  [style*="rgba(34, 211, 238"] {
+html.theme-dark [style*="#3b82f6"], html.theme-dark [style*="#60a5fa"], html.theme-dark [style*="#93c5fd"],
+html.theme-dark [style*="#bfdbfe"], html.theme-dark [style*="#dbeafe"], html.theme-dark [style*="#eff6ff"],
+html.theme-dark [style*="#2563eb"], html.theme-dark [style*="#1d4ed8"], html.theme-dark [style*="#1e40af"],
+html.theme-dark [style*="#1e3a8a"], html.theme-dark [style*="#262626"],
+html.theme-dark [style*="#38bdf8"], html.theme-dark [style*="#0ea5e9"], html.theme-dark [style*="#0284c7"],
+html.theme-dark [style*="#0369a1"], html.theme-dark [style*="#075985"], html.theme-dark [style*="#3c3c3c"],
+html.theme-dark [style*="#7dd3fc"], html.theme-dark [style*="#bae6fd"], html.theme-dark [style*="#e0f2fe"], html.theme-dark [style*="#f0f9ff"],
+html.theme-dark [style*="#06b6d4"], html.theme-dark [style*="#22d3ee"], html.theme-dark [style*="#67e8f9"],
+html.theme-dark [style*="#a5f3fc"], html.theme-dark [style*="#cffafe"],
+html.theme-dark [style*="#0891b2"], html.theme-dark [style*="#0e7490"], html.theme-dark [style*="#4b4b4b"], html.theme-dark [style*="#404040"],
+html.theme-dark [style*="#6366f1"], html.theme-dark [style*="#818cf8"], html.theme-dark [style*="#4f46e5"],
+html.theme-dark [style*="#4338ca"], html.theme-dark [style*="#3730a3"], html.theme-dark [style*="#312e81"],
+html.theme-dark [style*="#1a6abe"], html.theme-dark [style*="#2068b0"], html.theme-dark [style*="#144a84"],
+html.theme-dark [style*="#1e6ab8"], html.theme-dark [style*="#2a6ab0"], html.theme-dark [style*="#2a7acf"],
+html.theme-dark [style*="rgba(59,130,246"], html.theme-dark [style*="rgba(59, 130, 246"],
+html.theme-dark [style*="rgba(96,165,250"], html.theme-dark [style*="rgba(96, 165, 250"],
+html.theme-dark [style*="rgba(147,197,253"], html.theme-dark [style*="rgba(147, 197, 253"],
+html.theme-dark [style*="rgba(29,78,216"],   html.theme-dark [style*="rgba(29, 78, 216"],
+html.theme-dark [style*="rgba(37,99,235"],   html.theme-dark [style*="rgba(37, 99, 235"],
+html.theme-dark [style*="rgba(56,189,248"],  html.theme-dark [style*="rgba(56, 189, 248"],
+html.theme-dark [style*="rgba(14,165,233"],  html.theme-dark [style*="rgba(14, 165, 233"],
+html.theme-dark [style*="rgba(6,182,212"],   html.theme-dark [style*="rgba(6, 182, 212"],
+html.theme-dark [style*="rgba(34,211,238"],  html.theme-dark [style*="rgba(34, 211, 238"],
+html:not(.theme-light) [style*="#3b82f6"], html:not(.theme-light) [style*="#60a5fa"], html:not(.theme-light) [style*="#93c5fd"],
+html:not(.theme-light) [style*="#bfdbfe"], html:not(.theme-light) [style*="#dbeafe"], html:not(.theme-light) [style*="#eff6ff"],
+html:not(.theme-light) [style*="#2563eb"], html:not(.theme-light) [style*="#1d4ed8"], html:not(.theme-light) [style*="#1e40af"],
+html:not(.theme-light) [style*="#1e3a8a"], html:not(.theme-light) [style*="#262626"],
+html:not(.theme-light) [style*="#38bdf8"], html:not(.theme-light) [style*="#0ea5e9"], html:not(.theme-light) [style*="#0284c7"],
+html:not(.theme-light) [style*="#0369a1"], html:not(.theme-light) [style*="#075985"], html:not(.theme-light) [style*="#3c3c3c"],
+html:not(.theme-light) [style*="#7dd3fc"], html:not(.theme-light) [style*="#bae6fd"], html:not(.theme-light) [style*="#e0f2fe"], html:not(.theme-light) [style*="#f0f9ff"],
+html:not(.theme-light) [style*="#06b6d4"], html:not(.theme-light) [style*="#22d3ee"], html:not(.theme-light) [style*="#67e8f9"],
+html:not(.theme-light) [style*="#a5f3fc"], html:not(.theme-light) [style*="#cffafe"],
+html:not(.theme-light) [style*="#0891b2"], html:not(.theme-light) [style*="#0e7490"], html:not(.theme-light) [style*="#4b4b4b"], html:not(.theme-light) [style*="#404040"],
+html:not(.theme-light) [style*="#6366f1"], html:not(.theme-light) [style*="#818cf8"], html:not(.theme-light) [style*="#4f46e5"],
+html:not(.theme-light) [style*="#4338ca"], html:not(.theme-light) [style*="#3730a3"], html:not(.theme-light) [style*="#312e81"],
+html:not(.theme-light) [style*="#1a6abe"], html:not(.theme-light) [style*="#2068b0"], html:not(.theme-light) [style*="#144a84"],
+html:not(.theme-light) [style*="#1e6ab8"], html:not(.theme-light) [style*="#2a6ab0"], html:not(.theme-light) [style*="#2a7acf"],
+html:not(.theme-light) [style*="rgba(59,130,246"], html:not(.theme-light) [style*="rgba(59, 130, 246"],
+html:not(.theme-light) [style*="rgba(96,165,250"], html:not(.theme-light) [style*="rgba(96, 165, 250"],
+html:not(.theme-light) [style*="rgba(147,197,253"], html:not(.theme-light) [style*="rgba(147, 197, 253"],
+html:not(.theme-light) [style*="rgba(29,78,216"],   html:not(.theme-light) [style*="rgba(29, 78, 216"],
+html:not(.theme-light) [style*="rgba(37,99,235"],   html:not(.theme-light) [style*="rgba(37, 99, 235"],
+html:not(.theme-light) [style*="rgba(56,189,248"],  html:not(.theme-light) [style*="rgba(56, 189, 248"],
+html:not(.theme-light) [style*="rgba(14,165,233"],  html:not(.theme-light) [style*="rgba(14, 165, 233"],
+html:not(.theme-light) [style*="rgba(6,182,212"],   html:not(.theme-light) [style*="rgba(6, 182, 212"],
+html:not(.theme-light) [style*="rgba(34,211,238"],  html:not(.theme-light) [style*="rgba(34, 211, 238"] {
   background: #0b0b0b !important;
   border-color: #3a3a3a !important;
   color: #c8c8c8 !important;
@@ -593,16 +631,215 @@ body.fx-noise::after {
   position: fixed;
   inset: 0;
   z-index: 0;
-  background: #0a0a0a;
-  background-size: 40px 40px;
-  animation: login-grid-drift 20s linear infinite;
+  /* Transparent grid so globe shows through */
+  background:
+    linear-gradient(rgba(212, 160, 23, 0.045) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgba(212, 160, 23, 0.045) 1px, transparent 1px) 0 0 / 48px 48px;
+  animation: login-grid-drift 28s linear infinite;
   pointer-events: none;
+  mask-image: radial-gradient(ellipse at center, black 25%, transparent 80%);
+  -webkit-mask-image: radial-gradient(ellipse at center, black 25%, transparent 80%);
 }
 
-/* Login input focus glow */
+/* Login input focus glow — gold halo */
 .login-input-glow:focus {
-  border-color: #888888 !important;
-  box-shadow: 0 0 0 1px rgba(136, 136, 136, 0.3), 0 0 12px rgba(136, 136, 136, 0.15);
+  border-color: #d4a017 !important;
+  box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.45), 0 0 16px rgba(212, 160, 23, 0.22);
+}
+
+/* ── Login HUD chrome ─────────────────────────────────────── */
+@keyframes login-scanline {
+  0%   { transform: translateY(-100%); }
+  100% { transform: translateY(100vh); }
+}
+
+.login-scanline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  overflow: hidden;
+  mix-blend-mode: screen;
+}
+.login-scanline::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 140px;
+  background: linear-gradient(180deg,
+    transparent 0%,
+    rgba(212, 160, 23, 0.025) 45%,
+    rgba(212, 160, 23, 0.06) 50%,
+    rgba(212, 160, 23, 0.025) 55%,
+    transparent 100%);
+  animation: login-scanline 9s linear infinite;
+}
+
+@keyframes login-corner-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1;    }
+}
+
+.login-corner {
+  position: absolute;
+  width: 28px;
+  height: 28px;
+  pointer-events: none;
+  z-index: 3;
+  animation: login-corner-pulse 3.6s ease-in-out infinite;
+}
+.login-corner::before,
+.login-corner::after {
+  content: '';
+  position: absolute;
+  background: #d4a017;
+  box-shadow: 0 0 6px rgba(212, 160, 23, 0.5);
+}
+.login-corner.tl { top: 16px; left: 16px; }
+.login-corner.tr { top: 16px; right: 16px; transform: scaleX(-1); }
+.login-corner.bl { bottom: 16px; left: 16px; transform: scaleY(-1); }
+.login-corner.br { bottom: 16px; right: 16px; transform: scale(-1); }
+.login-corner::before { top: 0; left: 0; width: 16px; height: 1.5px; }
+.login-corner::after  { top: 0; left: 0; width: 1.5px; height: 16px; }
+
+@keyframes login-badge-float {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-4px); }
+}
+@keyframes login-badge-glow {
+  0%, 100% { filter: drop-shadow(0 0 12px rgba(212, 160, 23, 0.25)); }
+  50%      { filter: drop-shadow(0 0 22px rgba(212, 160, 23, 0.45)); }
+}
+.login-badge-anim {
+  animation: login-badge-float 6s ease-in-out infinite, login-badge-glow 4s ease-in-out infinite;
+}
+
+/* Animated gold border on the form card */
+@keyframes login-card-border {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+.login-card-frame {
+  position: relative;
+  border-radius: 2px;
+}
+.login-card-frame::before {
+  content: '';
+  position: absolute;
+  inset: -1px;
+  padding: 1px;
+  border-radius: 2px;
+  background: linear-gradient(90deg,
+    rgba(212, 160, 23, 0.05) 0%,
+    rgba(212, 160, 23, 0.55) 25%,
+    rgba(212, 160, 23, 0.85) 50%,
+    rgba(212, 160, 23, 0.55) 75%,
+    rgba(212, 160, 23, 0.05) 100%);
+  background-size: 200% 100%;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+          mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  animation: login-card-border 6s linear infinite;
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* Radar sweep behind badge */
+@keyframes login-radar-sweep {
+  0%   { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.login-radar {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 0;
+}
+.login-radar::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(212, 160, 23, 0.18);
+  box-shadow:
+    inset 0 0 0 1px rgba(212, 160, 23, 0.06),
+    inset 0 0 60px rgba(212, 160, 23, 0.06);
+}
+.login-radar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0deg, rgba(212, 160, 23, 0.35) 30deg, transparent 60deg);
+  animation: login-radar-sweep 4.5s linear infinite;
+  mask: radial-gradient(circle, transparent 0%, black 35%, transparent 75%);
+  -webkit-mask: radial-gradient(circle, transparent 0%, black 35%, transparent 75%);
+}
+
+/* HUD readout side-panel chrome */
+.login-hud-panel {
+  background: linear-gradient(180deg, rgba(20, 20, 20, 0.65) 0%, rgba(8, 8, 8, 0.85) 100%);
+  border: 1px solid rgba(212, 160, 23, 0.18);
+  border-left: 2px solid #d4a017;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.login-hud-readout {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  letter-spacing: 0.05em;
+}
+
+@keyframes login-data-flicker {
+  0%, 100% { opacity: 1; }
+  47%      { opacity: 1; }
+  48%      { opacity: 0.4; }
+  49%      { opacity: 1; }
+  92%      { opacity: 1; }
+  93%      { opacity: 0.55; }
+  94%      { opacity: 1; }
+}
+.login-data-flicker { animation: login-data-flicker 8s steps(1, end) infinite; }
+
+/* ── Login lite mode — disables heavy effects on low-perf devices ─── */
+.login-lite .login-badge-anim {
+  animation: none;
+  filter: drop-shadow(0 0 12px rgba(212, 160, 23, 0.25));
+}
+.login-lite .login-card-frame::before {
+  animation: none;
+  background-position: 50% 50%;
+}
+.login-lite .login-hud-panel {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: rgba(10, 10, 10, 0.85);
+}
+.login-lite .login-data-flicker {
+  animation: none;
+}
+
+/* Also honour prefers-reduced-motion at the CSS level */
+@media (prefers-reduced-motion: reduce) {
+  .login-grid-bg,
+  .login-scanline::before,
+  .login-corner,
+  .login-radar::after,
+  .login-badge-anim,
+  .login-card-frame::before,
+  .login-data-flicker {
+    animation: none !important;
+  }
+  .login-hud-panel {
+    backdrop-filter: none !important;
+    -webkit-backdrop-filter: none !important;
+  }
 }
 
 /* --- LED Indicator Animations (Spillman Flex) --- */
@@ -3568,49 +3805,54 @@ html.font-large { font-size: 19px; }
    pure-black default).
    ============================================================ */
 html.theme-light {
-  --surface-base: #0d2a4d;
-  --surface-raised: #153a6a;
-  --surface-sunken: #081e3d;
-  --surface-overlay: #061630;
-  --surface-deep: #041022;
+  /* Deep navy royal palette — mirrors dark mode's near-zero lightness
+     but with a saturated navy hue. Every surface, border, and panel
+     is a shade of #00172e-family navy. */
+  --surface-base: #081828;
+  --surface-raised: #0d2440;
+  --surface-sunken: #051420;
+  --surface-overlay: #061525;
+  --surface-deep: #020a14;
   /* Light-mode RGB channels for Tailwind's <alpha-value> — same colors as
      the hex values above, different encoding. */
-  --surface-base-rgb: 13 42 77;
-  --surface-raised-rgb: 21 58 106;
-  --surface-sunken-rgb: 8 30 61;
-  --surface-overlay-rgb: 6 22 48;
-  --surface-deep-rgb: 4 16 34;
-  --border-default: #2a5a9e;
-  --border-subtle: #234d87;
-  --border-strong: #3a75c2;
-  --border-panel: #2a5a9e;
+  --surface-base-rgb: 8 24 40;
+  --surface-raised-rgb: 13 36 64;
+  --surface-sunken-rgb: 5 20 32;
+  --surface-overlay-rgb: 6 21 37;
+  --surface-deep-rgb: 2 10 20;
+  --border-default: #183560;
+  --border-subtle: #122a4a;
+  --border-strong: #204578;
+  --border-panel: #153058;
   --text-primary: #e5e7eb;
-  --text-secondary: #c4d3e6;
-  --text-muted: #9bb4d0;
-  --brand-blue: #2a75c2;
-  --toolbar-gradient-start: #2a75c2;
-  --toolbar-gradient-end: #3a8fd9;
-  --grid-header-bg: #102f55;
-  --grid-row-alt: #123560;
-  --surface-panel: #102f55;
-  --surface-panel-alt: #0d2644;
-  --surface-hover: #163d70;
-  --info-text: #c4d3e6;
-  --info-bg: rgba(42, 117, 194, 0.18);
-  --info-border: rgba(58, 117, 194, 0.36);
-  --desktop-shell-start: #0d2a4d;
-  --desktop-shell-end: #153a6a;
-  --desktop-shell-raised-start: #0d2a4d;
-  --desktop-shell-raised-end: #153a6a;
-  --desktop-shell-border: #2a5a9e;
-  --desktop-shell-accent: #3a75c2;
-  --desktop-shell-accent-shadow: rgba(42, 90, 158, 0.28);
-  --desktop-shell-subtle-text: #9bb4d0;
-  --desktop-shell-icon: #9bb4d0;
-  --bevel-highlight: #4a7bbf;
-  --titlebar-gradient: linear-gradient(180deg, #2a5a9e 0%, #1e4a8a 50%, #153a6a 100%);
-  color-scheme: dark;  /* still white-on-dark; blue is just hue-shifted */
-  background-color: #0d2a4d;
+  --text-secondary: #b8c8dc;
+  --text-muted: #7a94b4;
+  --brand-blue: #1a3a6a;
+  --brand-gold: #d4a017;
+  --toolbar-gradient-start: #0d2440;
+  --toolbar-gradient-end: #122a4a;
+  --grid-header-bg: #061525;
+  --grid-row-alt: #071a30;
+  --field-label-color: #d4a017;
+  --surface-panel: #0a1e38;
+  --surface-panel-alt: #071a30;
+  --surface-hover: #122e50;
+  --info-text: #b8c8dc;
+  --info-bg: rgba(24, 53, 96, 0.18);
+  --info-border: rgba(32, 69, 120, 0.36);
+  --desktop-shell-start: #081828;
+  --desktop-shell-end: #0d2440;
+  --desktop-shell-raised-start: #081828;
+  --desktop-shell-raised-end: #0d2440;
+  --desktop-shell-border: #183560;
+  --desktop-shell-accent: #204578;
+  --desktop-shell-accent-shadow: rgba(24, 53, 96, 0.28);
+  --desktop-shell-subtle-text: #7a94b4;
+  --desktop-shell-icon: #7a94b4;
+  --bevel-highlight: #264a80;
+  --titlebar-gradient: linear-gradient(180deg, #183560 0%, #0d2440 50%, #0a1e38 100%);
+  color-scheme: dark;  /* still white-on-dark; navy is just hue-shifted */
+  background-color: #081828;
 }
 
 html.theme-dark,
@@ -3637,6 +3879,117 @@ html.theme-light .border-rmpg-700 { border-color: var(--border-default) !importa
 html.theme-light .border-rmpg-800 { border-color: var(--border-subtle) !important; }
 html.theme-light .panel-beveled { background: var(--surface-raised) !important; border-color: var(--border-default) !important; }
 html.theme-light .panel-surface { background: var(--surface-raised) !important; }
+
+/* ── Light-mode overrides for hardcoded dark-mode hex colors ──────
+   Pages use hardcoded bg-[#0a0a0a], bg-[#141414], bg-[#000000], etc.
+   In navy light mode, remap those blacks/grays to navy equivalents.
+   ──────────────────────────────────────────────────────────────── */
+/* Background colors */
+html.theme-light [class*="bg-\\[\\#000000\\]"],
+html.theme-light [class*="bg-\\[\\#0a0a0a\\]"],
+html.theme-light [class*="bg-\\[\\#050505\\]"],
+html.theme-light [class*="bg-\\[\\#030303\\]"],
+html.theme-light [class*="bg-black"] {
+  background-color: var(--surface-deep) !important;
+}
+html.theme-light [class*="bg-\\[\\#0b0b0b\\]"],
+html.theme-light [class*="bg-\\[\\#0d0d0d\\]"],
+html.theme-light [class*="bg-\\[\\#0f0f0f\\]"],
+html.theme-light [class*="bg-\\[\\#080808\\]"],
+html.theme-light [class*="bg-\\[\\#0c0c0c\\]"],
+html.theme-light [class*="bg-\\[\\#101010\\]"] {
+  background-color: var(--surface-sunken) !important;
+}
+html.theme-light [class*="bg-\\[\\#111111\\]"],
+html.theme-light [class*="bg-\\[\\#121212\\]"],
+html.theme-light [class*="bg-\\[\\#141414\\]"],
+html.theme-light [class*="bg-\\[\\#161616\\]"],
+html.theme-light [class*="bg-\\[\\#181818\\]"] {
+  background-color: var(--surface-base) !important;
+}
+html.theme-light [class*="bg-\\[\\#1a1a1a\\]"],
+html.theme-light [class*="bg-\\[\\#1c1c1c\\]"],
+html.theme-light [class*="bg-\\[\\#1f1f1f\\]"],
+html.theme-light [class*="bg-\\[\\#202020\\]"],
+html.theme-light [class*="bg-\\[\\#222222\\]"],
+html.theme-light [class*="bg-\\[\\#242424\\]"] {
+  background-color: var(--surface-raised) !important;
+}
+html.theme-light [class*="bg-\\[\\#272727\\]"],
+html.theme-light [class*="bg-\\[\\#292929\\]"],
+html.theme-light [class*="bg-\\[\\#2b2b2b\\]"],
+html.theme-light [class*="bg-\\[\\#2d2d2d\\]"],
+html.theme-light [class*="bg-\\[\\#2e2e2e\\]"],
+html.theme-light [class*="bg-\\[\\#303030\\]"],
+html.theme-light [class*="bg-\\[\\#333333\\]"],
+html.theme-light [class*="bg-\\[\\#353535\\]"],
+html.theme-light [class*="bg-\\[\\#373737\\]"],
+html.theme-light [class*="bg-\\[\\#3a3a3a\\]"],
+html.theme-light [class*="bg-\\[\\#3b3b3b\\]"],
+html.theme-light [class*="bg-\\[\\#3d3d3d\\]"] {
+  background-color: var(--surface-hover) !important;
+}
+/* Hover state navy mapping */
+html.theme-light [class*="hover\\:bg-\\[\\#1a1a1a\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#202020\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#2b2b2b\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#0f0f0f\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#111111\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#141414\\]"]:hover,
+html.theme-light [class*="hover\\:bg-\\[\\#161616\\]"]:hover {
+  background-color: var(--surface-hover) !important;
+}
+/* Border colors */
+html.theme-light [class*="border-\\[\\#222222\\]"],
+html.theme-light [class*="border-\\[\\#1a1a1a\\]"],
+html.theme-light [class*="border-\\[\\#2e2e2e\\]"] {
+  border-color: var(--border-default) !important;
+}
+html.theme-light [class*="border-\\[\\#303030\\]"],
+html.theme-light [class*="border-\\[\\#3a3a3a\\]"],
+html.theme-light [class*="border-\\[\\#3b3b3b\\]"],
+html.theme-light [class*="border-\\[\\#373737\\]"],
+html.theme-light [class*="border-\\[\\#2b2b2b\\]"],
+html.theme-light [class*="border-\\[\\#292929\\]"],
+html.theme-light [class*="border-\\[\\#3d3d3d\\]"] {
+  border-color: var(--border-strong) !important;
+}
+/* Text color adjustments */
+html.theme-light [class*="text-gray-"],
+html.theme-light [class*="text-neutral-"],
+html.theme-light [class*="text-zinc-"],
+html.theme-light [class*="text-stone-"] {
+  color: var(--text-secondary) !important;
+}
+/* Inline-style dark backgrounds → navy in light mode */
+html.theme-light [style*="background-color: #000"],
+html.theme-light [style*="background-color:#000"],
+html.theme-light [style*="background: #000"],
+html.theme-light [style*="background:#000"],
+html.theme-light [style*="background-color: #0a0a0a"],
+html.theme-light [style*="background-color:#0a0a0a"],
+html.theme-light [style*="background: #0a0a0a"],
+html.theme-light [style*="background:#0a0a0a"] {
+  background-color: var(--surface-deep) !important;
+  background: var(--surface-deep) !important;
+}
+html.theme-light [style*="background-color: #141414"],
+html.theme-light [style*="background-color:#141414"],
+html.theme-light [style*="background-color: #111111"],
+html.theme-light [style*="background-color:#111111"] {
+  background-color: var(--surface-base) !important;
+}
+/* Light-mode gradient overrides for dark-mode gradients */
+html.theme-light [style*="linear-gradient(180deg, #202020"],
+html.theme-light [style*="linear-gradient(180deg, #303030"],
+html.theme-light [style*="linear-gradient(180deg, #1a1a1a"],
+html.theme-light [style*="radial-gradient(circle, #303030"],
+html.theme-light [style*="radial-gradient(circle, #3b3b3b"],
+html.theme-light [style*="linear-gradient(180deg, #0b0b0b"],
+html.theme-light [style*="linear-gradient(180deg, #090909"] {
+  background: var(--titlebar-gradient) !important;
+  border-color: var(--border-default) !important;
+}
 
 /* ============================================================
    Feature 39: Enhanced Print Stylesheet for Detail Views
@@ -3985,7 +4338,7 @@ html:not(.theme-light) :focus-visible {
   outline-offset: 2px;
 }
 html.theme-light :focus-visible {
-  outline: 2px solid #94a3b8;
+  outline: 2px solid #264a80;
   outline-offset: 2px;
 }
 :focus:not(:focus-visible) {
@@ -4974,4 +5327,569 @@ div:has(> .map-sidebar-section) > button:hover {
   color: #ffffff !important;
   padding-left: 10px !important;
   background-color: rgba(212, 160, 23, 0.06) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════
+   75 VISUAL UI IMPROVEMENTS (2026-05-09)
+   Spillman Flex console refinements — hardware-grade polish
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── 1. Smooth focus ring transition on all interactive elements ── */
+button, a, input, select, textarea, [role="button"], [tabindex] {
+  transition: box-shadow 0.15s ease, border-color 0.15s ease;
+}
+
+/* ── 2. Gold focus ring for keyboard navigation (accessibility) ── */
+:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.6), 0 0 0 3px rgba(212, 160, 23, 0.15);
+}
+
+/* ── 3. Subtle text selection highlight with gold tint ── */
+::selection {
+  background: rgba(212, 160, 23, 0.3);
+  color: #ffffff;
+}
+
+/* ── 4. Toolbar button hover glow — raised lighting effect ── */
+.toolbar-btn:hover:not(:disabled) {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+/* ── 5. Active toolbar button pressed-in depth effect ── */
+.toolbar-btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* ── 6. Card hover lift effect — subtle parallax depth ── */
+.card-dark-hover:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+
+/* ── 7. Panel title bar shimmer on hover — chrome feel ── */
+.panel-title-bar:hover {
+  background: linear-gradient(180deg, #0e0e0e 0%, #080808 50%, #0e0e0e 100%);
+}
+
+/* ── 8. Input focus glow — gold halo replaces blue ── */
+.input-dark:focus,
+.select-dark:focus,
+.textarea-dark:focus {
+  border-color: rgba(212, 160, 23, 0.5);
+  box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.3), 0 0 8px rgba(212, 160, 23, 0.08);
+}
+
+/* ── 9. Badge micro-shadow for depth on status indicators ── */
+.badge,
+[role="status"] {
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+
+/* ── 10. Tab underline transition animation ── */
+.tab-bar-item {
+  transition: color 0.15s ease, background 0.15s ease, border-color 0.2s ease;
+}
+.tab-bar-item.active {
+  box-shadow: inset 0 -2px 0 #d4a017;
+}
+
+/* ── 11. Collapsible section smooth expand ── */
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+/* ── 12. Table header sticky shadow on scroll ── */
+.table-dark thead {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+/* ── 13. Table row hover highlight with left gold accent ── */
+.table-dark tbody tr:hover {
+  background: rgba(212, 160, 23, 0.04) !important;
+  box-shadow: inset 3px 0 0 rgba(212, 160, 23, 0.4);
+}
+
+/* ── 14. Improved scrollbar with rounded thumb ── */
+::-webkit-scrollbar-thumb {
+  background: #2e2e2e;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  background-clip: padding-box;
+}
+
+/* ── 15. Scale-in animation for modals/dialogs ── */
+@keyframes scale-in {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+.animate-scale-in {
+  animation: scale-in 0.15s ease-out;
+}
+
+/* ── 16. Form label gold dot indicator ── */
+.field-label::before {
+  content: '';
+  display: inline-block;
+  width: 3px;
+  height: 3px;
+  background: #d4a017;
+  margin-right: 5px;
+  vertical-align: middle;
+  opacity: 0.7;
+}
+
+/* ── 17. Improved empty state with subtle pattern ── */
+[role="status"][aria-label] .panel-inset {
+  border-style: dashed;
+  border-color: #2a2a2a;
+}
+
+/* ── 18. Button group separator styling ── */
+.toolbar-btn + .toolbar-btn {
+  margin-left: -1px;
+}
+
+/* ── 19. LED dot subtle inner glow ── */
+.led-green, .led-amber, .led-red, .led-blue, .led-purple {
+  position: relative;
+}
+.led-green::after, .led-amber::after, .led-red::after, .led-blue::after, .led-purple::after {
+  content: '';
+  position: absolute;
+  inset: 1px;
+  border-radius: 1px;
+  background: linear-gradient(135deg, rgba(255,255,255,0.3) 0%, transparent 60%);
+}
+
+/* ── 20. Panel beveled edge depth enhancement ── */
+.panel-beveled {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03), 0 1px 2px rgba(0, 0, 0, 0.2);
+}
+
+/* ── 21. Stats card value counter animation ── */
+@keyframes count-up {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.tabular-nums {
+  animation: count-up 0.3s ease-out;
+}
+
+/* ── 22. Priority border glow for P1 cards ── */
+.priority-border-P1 {
+  box-shadow: -3px 0 8px rgba(220, 38, 38, 0.15);
+}
+
+/* ── 23. Priority border glow for P2 cards ── */
+.priority-border-P2 {
+  box-shadow: -3px 0 8px rgba(212, 160, 23, 0.12);
+}
+
+/* ── 24. Menu item gold left-rail on hover ── */
+.menu-item:hover {
+  border-left: 2px solid #d4a017;
+  padding-left: 8px;
+}
+
+/* ── 25. Context menu smooth appearance ── */
+.menu-dropdown {
+  animation: dropdown-appear 0.1s ease-out;
+}
+
+/* ── 26. Tooltip arrow indicator ── */
+[class*="z-\\[9999\\]"] {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+}
+
+/* ── 27. Search input icon animation on focus ── */
+input:focus ~ .pointer-events-none,
+input:focus + .pointer-events-none {
+  color: #d4a017 !important;
+  transition: color 0.2s ease;
+}
+
+/* ── 28. Notification center pulse dot ── */
+@keyframes notification-pulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.3); opacity: 0.7; }
+}
+
+/* ── 29. Status bar separator with gradient ── */
+.status-bar-section {
+  border-right: 1px solid transparent;
+  border-image: linear-gradient(to bottom, transparent, #333333, transparent) 1;
+}
+
+/* ── 30. Smooth page transitions ── */
+[role="main"] > * {
+  animation: page-enter 0.2s ease-out;
+}
+
+/* ── 31. Improved dialog backdrop blur ── */
+[role="alertdialog"] .backdrop-blur-sm,
+[role="dialog"] .backdrop-blur-sm {
+  backdrop-filter: blur(4px) saturate(0.8);
+  -webkit-backdrop-filter: blur(4px) saturate(0.8);
+}
+
+/* ── 32. Gold accent stripe on primary buttons ── */
+.btn-primary {
+  position: relative;
+  overflow: hidden;
+}
+.btn-primary::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(212, 160, 23, 0.4), transparent);
+}
+
+/* ── 33. Danger button red top accent ── */
+.btn-danger::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(220, 38, 38, 0.5), transparent);
+}
+.btn-danger {
+  position: relative;
+  overflow: hidden;
+}
+
+/* ── 34. Success button green accent line ── */
+.btn-success {
+  position: relative;
+  overflow: hidden;
+}
+.btn-success::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(34, 197, 94, 0.4), transparent);
+}
+
+/* ── 35. Panel inset subtle noise texture ── */
+.panel-inset {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='rgba(255,255,255,0.008)'/%3E%3Crect x='1' y='1' width='1' height='1' fill='rgba(255,255,255,0.015)'/%3E%3C/svg%3E");
+}
+
+/* ── 36. Section header gold underline ── */
+.section-header-bordered {
+  border-bottom: 1px solid rgba(212, 160, 23, 0.2);
+  padding-bottom: 6px;
+}
+
+/* ── 37. Hover transition for all links ── */
+a {
+  transition: color 0.15s ease, opacity 0.15s ease;
+}
+
+/* ── 38. Alternating row stripe with more contrast ── */
+.table-dark tbody tr:nth-child(even) {
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* ── 39. Checkbox/radio custom styling ── */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: #d4a017;
+  cursor: pointer;
+}
+
+/* ── 40. Placeholder text italicized for distinction ── */
+input::placeholder,
+textarea::placeholder {
+  font-style: italic;
+  opacity: 0.5;
+}
+
+/* ── 41. Disabled elements visual treatment ── */
+[disabled],
+:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+}
+
+/* ── 42. Sticky panel title bars for scrollable panels ── */
+.panel-beveled > .panel-title-bar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+}
+
+/* ── 43. Monospace code readout enhanced styling ── */
+.dispatch-mono {
+  text-shadow: 0 0 6px rgba(136, 136, 136, 0.15);
+}
+
+/* ── 44. Gold gradient text for important headings ── */
+.text-gold-gradient {
+  background: linear-gradient(135deg, #d4a017 0%, #e8c547 50%, #d4a017 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── 45. Skeleton loader shimmer direction improvement ── */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.animate-pulse {
+  background: linear-gradient(90deg, rgba(42,42,42,0.4) 25%, rgba(60,60,60,0.5) 50%, rgba(42,42,42,0.4) 75%) !important;
+  background-size: 200% 100% !important;
+  animation: skeleton-shimmer 1.5s ease-in-out infinite !important;
+}
+
+/* ── 46. Improved recharts tooltip styling ── */
+.recharts-tooltip-wrapper .recharts-default-tooltip {
+  background: #0a0a0a !important;
+  border: 1px solid #2e2e2e !important;
+  border-radius: 2px !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
+}
+
+/* ── 47. Table cell truncation with ellipsis ── */
+.table-dark tbody td {
+  max-width: 300px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 48. Image and avatar rounded subtle border ── */
+img[class*="rounded"] {
+  border: 1px solid rgba(42, 42, 42, 0.6);
+}
+
+/* ── 49. Code/monospace element background ── */
+code, kbd {
+  background: rgba(255, 255, 255, 0.04);
+  padding: 1px 4px;
+  border: 1px solid rgba(42, 42, 42, 0.5);
+  font-size: 0.9em;
+}
+
+/* ── 50. Smooth cursor transitions on inputs ── */
+.input-dark, .select-dark, .textarea-dark {
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
+}
+
+/* ── 51. Collapsible section chevron rotation smoothing ── */
+[aria-expanded] svg {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* ── 52. Panel title bar left gold accent stripe ── */
+.panel-title-bar {
+  border-left: 2px solid rgba(212, 160, 23, 0.5);
+}
+
+/* ── 53. Improved hover state for status bar sections ── */
+.status-bar-section:hover {
+  background: rgba(255, 255, 255, 0.03);
+  color: #bbbbbb;
+}
+
+/* ── 54. Active/selected row gold left indicator ── */
+.table-dark tbody tr[aria-selected="true"],
+.table-dark tbody tr.selected {
+  background: rgba(212, 160, 23, 0.06) !important;
+  box-shadow: inset 3px 0 0 #d4a017;
+}
+
+/* ── 55. Subtle transition for interactive element color changes ── */
+button, a, input, select, textarea, [role="button"],
+.toolbar-btn, .tab-bar-item, .menu-item, .badge,
+.card-dark, .card-dark-hover, .led-dot, .panel-title-bar {
+  transition-property: color, background-color, border-color, opacity;
+  transition-duration: 0.15s;
+  transition-timing-function: ease;
+}
+
+/* ── 56. Improved card border gradient effect ── */
+.card-dark {
+  border-top-color: #2e2e2e;
+  border-left-color: #2e2e2e;
+  border-bottom-color: #1a1a1a;
+  border-right-color: #1a1a1a;
+}
+
+/* ── 57. Status bar clock pulse indicator ── */
+@keyframes clock-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+.status-bar .tabular-nums:last-child {
+  animation: clock-pulse 2s ease-in-out infinite;
+}
+
+/* ── 58. Breadcrumb separator styling ── */
+nav[aria-label*="Breadcrumb"] span,
+.breadcrumb-separator {
+  color: #555555;
+  margin: 0 4px;
+}
+
+/* ── 59. Improved sort indicator visibility ── */
+.table-dark thead th:hover {
+  color: #ffffff;
+  cursor: pointer;
+}
+
+/* ── 60. Enhanced priority row left borders ── */
+.table-dark tbody tr.priority-row-P1 {
+  border-left: 3px solid #dc2626;
+}
+.table-dark tbody tr.priority-row-P2 {
+  border-left: 3px solid #f59e0b;
+}
+
+/* ── 61. Fieldset/form group visual separator ── */
+fieldset, .form-group {
+  border: 1px solid rgba(42, 42, 42, 0.4);
+  padding: 12px;
+  margin-bottom: 12px;
+}
+fieldset legend, .form-group-title {
+  color: #d4a017;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  padding: 0 6px;
+}
+
+/* ── 62. Text truncation utility with fade ── */
+.truncate-fade {
+  position: relative;
+  overflow: hidden;
+}
+.truncate-fade::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  width: 40px;
+  background: linear-gradient(90deg, transparent, var(--surface-base));
+}
+
+/* ── 63. Hover reveal for truncated text (on double-click) ── */
+.table-dark tbody td:active {
+  white-space: normal;
+  word-break: break-word;
+  z-index: 1;
+  position: relative;
+}
+
+/* ── 64. Improved dialog close button ── */
+[aria-label="Close"]:hover {
+  background: rgba(220, 38, 38, 0.15) !important;
+  color: #ff6b6b !important;
+}
+
+/* ── 65. Loading spinner gold accent ── */
+.animate-spin {
+  filter: drop-shadow(0 0 3px rgba(212, 160, 23, 0.3));
+}
+
+/* ── 66. Data grid cell separator lines ── */
+.table-dark tbody td {
+  border-right: 1px solid rgba(42, 42, 42, 0.15);
+}
+.table-dark tbody td:last-child {
+  border-right: none;
+}
+
+/* ── 67. Subtle text weight for active nav items ── */
+[aria-current="page"],
+.nav-active {
+  font-weight: 700;
+  color: #ffffff;
+}
+
+/* ── 68. Error state input styling ── */
+.input-error,
+input[aria-invalid="true"],
+select[aria-invalid="true"],
+textarea[aria-invalid="true"] {
+  border-color: rgba(220, 38, 38, 0.5) !important;
+  box-shadow: 0 0 0 1px rgba(220, 38, 38, 0.2);
+}
+
+/* ── 69. Success state input styling ── */
+.input-success,
+input[aria-invalid="false"] {
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+/* ── 70. Hover tooltip delay reduction for toolbar ── */
+.toolbar-btn[title]:hover,
+[data-tooltip]:hover {
+  cursor: pointer;
+}
+
+/* ── 71. Improved panel title bar icon spacing ── */
+.panel-title-bar .title-icon {
+  margin-right: 2px;
+  opacity: 0.9;
+}
+
+/* ── 72. Data value highlight on hover ── */
+.table-dark tbody td .font-mono:hover,
+[class*="tabular-nums"]:hover {
+  color: #ffffff;
+  text-shadow: 0 0 4px rgba(136, 136, 136, 0.2);
+}
+
+/* ── 73. Subtle border radius on all tooltip-like elements ── */
+[role="tooltip"],
+[class*="z-\\[9999\\]"] {
+  border-radius: 2px;
+}
+
+/* ── 74. Page container subtle top border accent ── */
+[role="main"] {
+  border-top: 1px solid rgba(212, 160, 23, 0.08);
+}
+
+/* ── 75. Print styles — clean output without UI chrome ── */
+@media print {
+  .panel-title-bar,
+  .toolbar-btn,
+  .status-bar,
+  .tab-bar,
+  nav,
+  .menu-bar-btn,
+  .panic-btn {
+    display: none !important;
+  }
+  .table-dark tbody td {
+    color: #000000;
+    border-color: #cccccc;
+  }
+  .table-dark thead th {
+    color: #000000;
+    background: #f0f0f0;
+    border-color: #cccccc;
+  }
+  body {
+    background: #ffffff;
+  }
 }

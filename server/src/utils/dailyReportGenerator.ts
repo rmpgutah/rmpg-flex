@@ -653,8 +653,8 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
         formatDateTime(pt.time), beatCode, sector, pt.zone || '-',
         pt.road_name || '-', pt.nearest_intersection || '-',
         pt.speed_mph != null ? `${pt.speed_mph}` : '-', pt.heading_cardinal || '-',
-        (pt.status || '-').replace(/_/g, ' '), pt.current_call_number || '-',
-        (pt.current_call_type || '-').replace(/_/g, ' '),
+        (pt.status || '-').replace(/_/g, ' ').toUpperCase(), pt.current_call_number || '-',
+        (pt.current_call_type || '-').replace(/_/g, ' ').toUpperCase(),
         pt.cumulative_distance_miles != null ? `${pt.cumulative_distance_miles}` : '-',
         `${pt.lat.toFixed(4)},${pt.lng.toFixed(4)}`,
       ];
@@ -700,7 +700,7 @@ function generateDailyPdf(trails: UnitTrail[], dateStr: string): Buffer {
         doc.setTextColor(...CLR.TEXT);
         let rxOff = margin;
         const rRow = [
-          seg.call_number || '-', (seg.incident_type || '-').replace(/_/g, ' '),
+          seg.call_number || '-', (seg.incident_type || '-').replace(/_/g, ' ').toUpperCase(),
           `P${seg.priority}`, seg.dispatched_at ? formatDateTime(seg.dispatched_at) : '-',
           seg.onscene_at ? formatDateTime(seg.onscene_at) : '-',
           seg.time_to_onscene_seconds != null ? formatDuration(seg.time_to_onscene_seconds) : '-',

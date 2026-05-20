@@ -583,4 +583,453 @@ router.get('/units/:id/history', validateParamIdMiddleware, requireRole('admin',
   }
 });
 
+// ────────────────────────────────────────────────────────────
+// Upgrades 21–35: Extended unit endpoints
+// ────────────────────────────────────────────────────────────
+
+// Upgrade 22: GET /units/fatigue-monitor — Fatigue alerts for long-duty or high-call officers
+router.get('/units/fatigue-monitor', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const todayStart = localNow().slice(0, 10) + ' 00:00:00';
+    const units = db.prepare(`
+      SELECT u.id, u.call_sign, usr.full_name AS officer_name, u.status,
+        u.last_status_change,
+        (SELECT MIN(al.created_at) FROM activity_log al
+         WHERE al.entity_type = 'unit' AND al.entity_id = u.id AND al.created_at >= ?) AS first_activity_today,
+        (SELECT COUNT(*) FROM calls_for_service
+         WHERE assigned_unit_ids LIKE '%' || CAST(u.id AS TEXT) || '%'
+           AND created_at >= ?) AS calls_today
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status NOT IN ('off_duty')
+    `).all(todayStart, todayStart) as any[];
+
+    const now = new Date(localNow()).getTime();
+    const alerts = units
+      .map(u => {
+        const firstActivity = u.first_activity_today ? new Date(u.first_activity_today).getTime() : null;
+        const hoursOnDuty = firstActivity ? (now - firstActivity) / 3600000 : 0;
+        const callsToday = u.calls_today || 0;
+        let alert_level: 'none' | 'warning' | 'critical' = 'none';
+        if (hoursOnDuty > 12 || callsToday > 8) alert_level = 'critical';
+        else if (hoursOnDuty > 10 || callsToday > 5) alert_level = 'warning';
+        return { ...u, hours_on_duty: Math.round(hoursOnDuty * 10) / 10, alert_level };
+      })
+      .filter(u => u.alert_level !== 'none');
+
+    res.json(alerts);
+  } catch (error: any) {
+    console.error('[Units] fatigue-monitor error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get fatigue monitor', code: 'UNIT_FATIGUE_ERROR' });
+  }
+});
+
+// Upgrade 23: POST /units/:id/capabilities — Update unit capabilities
+router.post('/units/:id/capabilities', validateParamIdMiddleware, requireRole('admin', 'manager', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
+
+    const { capabilities } = req.body;
+    if (!Array.isArray(capabilities)) {
+      res.status(400).json({ error: 'capabilities must be an array', code: 'INVALID_CAPABILITIES' });
+      return;
+    }
+
+    const oldCaps = unit.capabilities;
+    const newCaps = JSON.stringify(capabilities);
+    db.prepare('UPDATE units SET capabilities = ?, updated_at = ? WHERE id = ?').run(newCaps, localNow(), req.params.id);
+    auditLog(req, 'UPDATE_CAPABILITIES', 'unit', Number(req.params.id), { capabilities: oldCaps }, { capabilities: newCaps });
+
+    const updated = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id);
+    broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
+    res.json(updated);
+  } catch (error: any) {
+    console.error('[Units] update capabilities error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to update capabilities', code: 'UNIT_CAPABILITIES_ERROR' });
+  }
+});
+
+// Upgrade 24: GET /units/by-capability — Find units by capability
+router.get('/units/by-capability', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const capability = req.query.capability as string;
+    if (!capability) {
+      res.status(400).json({ error: 'capability query parameter required', code: 'MISSING_CAPABILITY' });
+      return;
+    }
+
+    // Sanitize capability to prevent LIKE injection via embedded quotes
+    const safeCap = String(capability).replace(/["%_\\]/g, '');
+    if (!safeCap) {
+      res.status(400).json({ error: 'invalid capability value', code: 'INVALID_CAPABILITY' });
+      return;
+    }
+
+    const units = db.prepare(`
+      SELECT u.*, usr.full_name AS officer_name
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.capabilities LIKE ?
+      ORDER BY u.call_sign
+    `).all(`%"${safeCap}"%`);
+    res.json(units);
+  } catch (error: any) {
+    console.error('[Units] by-capability error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get units by capability', code: 'UNIT_BY_CAPABILITY_ERROR' });
+  }
+});
+
+// Upgrade 25: GET /units/:id/activity-log — Recent activity log entries for a unit
+router.get('/units/:id/activity-log', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT id FROM units WHERE id = ?').get(req.params.id);
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
+
+    const entries = db.prepare(`
+      SELECT al.*, usr.full_name AS user_name
+      FROM activity_log al
+      LEFT JOIN users usr ON al.user_id = usr.id
+      WHERE al.entity_type = 'unit' AND al.entity_id = ?
+      ORDER BY al.created_at DESC
+      LIMIT 50
+    `).all(req.params.id);
+    res.json(entries);
+  } catch (error: any) {
+    console.error('[Units] activity-log error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get activity log', code: 'UNIT_ACTIVITY_LOG_ERROR' });
+  }
+});
+
+// Upgrade 26: POST /units/:id/welfare-check — Log a welfare check for a unit
+router.post('/units/:id/welfare-check', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
+
+    const { notes } = req.body;
+    const details = `Welfare check on unit ${unit.call_sign}${notes ? ': ' + notes : ''}`;
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'welfare_check', 'unit', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, details, req.ip || 'unknown', localNow());
+
+    broadcastUnitUpdate({ action: 'welfare_check', unit_id: Number(req.params.id), call_sign: unit.call_sign, notes: notes || null });
+    res.json({ success: true, message: `Welfare check logged for ${unit.call_sign}` });
+  } catch (error: any) {
+    console.error('[Units] welfare-check error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to log welfare check', code: 'UNIT_WELFARE_CHECK_ERROR' });
+  }
+});
+
+// Upgrade 27: GET /units/coverage-map — Beat coverage by available units
+router.get('/units/coverage-map', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const beats = db.prepare('SELECT id, beat_code, beat_name FROM dispatch_beats ORDER BY beat_code').all() as any[];
+    const assignedBeats = db.prepare(`
+      SELECT DISTINCT assigned_beat_id FROM units
+      WHERE assigned_beat_id IS NOT NULL AND status IN ('available', 'dispatched', 'enroute', 'onscene', 'busy')
+    `).all() as any[];
+    const coveredBeatIds = new Set(assignedBeats.map(r => r.assigned_beat_id));
+
+    const coverage = beats.map(b => ({
+      beat_id: b.id,
+      beat_code: b.beat_code,
+      beat_name: b.beat_name,
+      has_coverage: coveredBeatIds.has(b.id),
+    }));
+    res.json(coverage);
+  } catch (error: any) {
+    console.error('[Units] coverage-map error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get coverage map', code: 'UNIT_COVERAGE_MAP_ERROR' });
+  }
+});
+
+// Upgrade 28: POST /units/:id/break — Put unit on break
+router.post('/units/:id/break', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
+    if (unit.status === 'off_duty') {
+      res.status(400).json({ error: 'Cannot put an off-duty unit on break', code: 'UNIT_OFF_DUTY' });
+      return;
+    }
+
+    const now = localNow();
+    const { expected_return_minutes } = req.body;
+    db.prepare('UPDATE units SET status = ?, last_status_change = ?, updated_at = ? WHERE id = ?')
+      .run('busy', now, now, req.params.id);
+
+    const details = `Break started${expected_return_minutes ? ` (expected ${expected_return_minutes} min)` : ''}`;
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'break_start', 'unit', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, details, req.ip || 'unknown', now);
+
+    const updated = db.prepare('SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(req.params.id);
+    broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
+    res.json({ success: true, unit: updated });
+  } catch (error: any) {
+    console.error('[Units] break error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to start break', code: 'UNIT_BREAK_ERROR' });
+  }
+});
+
+// Upgrade 29: POST /units/:id/end-break — End unit break
+router.post('/units/:id/end-break', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
+
+    const now = localNow();
+    // Find the most recent break_start to calculate duration
+    const breakStart = db.prepare(`
+      SELECT created_at FROM activity_log
+      WHERE entity_type = 'unit' AND entity_id = ? AND action = 'break_start'
+      ORDER BY created_at DESC LIMIT 1
+    `).get(req.params.id) as any;
+
+    let breakMinutes = 0;
+    if (breakStart) {
+      breakMinutes = Math.round((new Date(now).getTime() - new Date(breakStart.created_at).getTime()) / 60000);
+    }
+
+    db.prepare('UPDATE units SET status = ?, last_status_change = ?, updated_at = ? WHERE id = ?')
+      .run('available', now, now, req.params.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'break_end', 'unit', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Break ended (${breakMinutes} min)`, req.ip || 'unknown', now);
+
+    const updated = db.prepare('SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(req.params.id);
+    broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
+    res.json({ success: true, break_duration_minutes: breakMinutes, unit: updated });
+  } catch (error: any) {
+    console.error('[Units] end-break error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to end break', code: 'UNIT_END_BREAK_ERROR' });
+  }
+});
+
+// Upgrade 30: GET /units/shift-summary — Shift-level aggregate stats
+router.get('/units/shift-summary', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const todayStart = localNow().slice(0, 10) + ' 00:00:00';
+
+    const statusCounts = db.prepare(`
+      SELECT status, COUNT(*) AS count FROM units GROUP BY status
+    `).all() as any[];
+
+    const callStats = db.prepare(`
+      SELECT COUNT(*) AS total_calls,
+        COALESCE(AVG(response_time_seconds), 0) AS avg_response_time
+      FROM calls_for_service
+      WHERE created_at >= ?
+    `).get(todayStart) as any;
+
+    res.json({
+      units_by_status: statusCounts.reduce((acc: any, r: any) => { acc[r.status] = r.count; return acc; }, {}),
+      total_calls_today: callStats.total_calls,
+      avg_response_time_seconds: Math.round(callStats.avg_response_time),
+    });
+  } catch (error: any) {
+    console.error('[Units] shift-summary error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get shift summary', code: 'UNIT_SHIFT_SUMMARY_ERROR' });
+  }
+});
+
+// Upgrade 31: POST /units/:id/out-of-service — Mark unit out of service
+router.post('/units/:id/out-of-service', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
+
+    const { reason } = req.body;
+    if (!reason || !String(reason).trim()) {
+      res.status(400).json({ error: 'reason is required', code: 'MISSING_REASON' });
+      return;
+    }
+
+    const now = localNow();
+    const oldStatus = unit.status;
+    db.prepare('UPDATE units SET status = ?, last_status_change = ?, updated_at = ? WHERE id = ?')
+      .run('out_of_service', now, now, req.params.id);
+
+    db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, 'out_of_service', 'unit', ?, ?, ?, ?)`).run(
+      req.user!.userId, req.params.id, `Out of service: ${String(reason).trim()}`, req.ip || 'unknown', now);
+
+    auditLog(req, 'OUT_OF_SERVICE', 'unit', Number(req.params.id), { status: oldStatus }, { status: 'out_of_service', reason: String(reason).trim() });
+
+    const updated = db.prepare('SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(req.params.id);
+    broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
+    res.json({ success: true, unit: updated });
+  } catch (error: any) {
+    console.error('[Units] out-of-service error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to mark out of service', code: 'UNIT_OOS_ERROR' });
+  }
+});
+
+// Upgrade 32: GET /units/:id/gps-trail — Last N GPS breadcrumbs for a unit
+router.get('/units/:id/gps-trail', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT id FROM units WHERE id = ?').get(req.params.id);
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
+
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 100, 1), 1000);
+    const breadcrumbs = db.prepare(`
+      SELECT id, latitude, longitude, accuracy, heading, speed, unit_status,
+        call_sign, officer_name, current_call_number, recorded_at
+      FROM gps_breadcrumbs
+      WHERE unit_id = ?
+      ORDER BY recorded_at DESC
+      LIMIT ?
+    `).all(req.params.id, limit);
+    res.json(breadcrumbs);
+  } catch (error: any) {
+    console.error('[Units] gps-trail error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get GPS trail', code: 'UNIT_GPS_TRAIL_ERROR' });
+  }
+});
+
+// Upgrade 33: POST /units/:id/assign-beat — Assign a beat to a unit
+router.post('/units/:id/assign-beat', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT * FROM units WHERE id = ?').get(req.params.id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
+
+    const { beat_id } = req.body;
+    if (beat_id !== null && beat_id !== undefined) {
+      const beat = db.prepare('SELECT id, beat_code FROM dispatch_beats WHERE id = ?').get(beat_id);
+      if (!beat) { res.status(404).json({ error: 'Beat not found', code: 'BEAT_NOT_FOUND' }); return; }
+    }
+
+    const oldBeatId = unit.assigned_beat_id;
+    db.prepare('UPDATE units SET assigned_beat_id = ?, updated_at = ? WHERE id = ?')
+      .run(beat_id ?? null, localNow(), req.params.id);
+
+    auditLog(req, 'ASSIGN_BEAT', 'unit', Number(req.params.id), { assigned_beat_id: oldBeatId }, { assigned_beat_id: beat_id ?? null });
+
+    const updated = db.prepare('SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(req.params.id);
+    broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
+    res.json({ success: true, unit: updated });
+  } catch (error: any) {
+    console.error('[Units] assign-beat error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to assign beat', code: 'UNIT_ASSIGN_BEAT_ERROR' });
+  }
+});
+
+// Upgrade 34: GET /units/nearest — Find nearest available units by GPS
+router.get('/units/nearest', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const lat = parseFloat(req.query.lat as string);
+    const lng = parseFloat(req.query.lng as string);
+    if (isNaN(lat) || isNaN(lng)) {
+      res.status(400).json({ error: 'lat and lng query parameters required', code: 'MISSING_COORDINATES' });
+      return;
+    }
+    const limit = Math.min(Math.max(parseInt(req.query.limit as string) || 5, 1), 50);
+
+    // Haversine approximation using SQLite math — good enough for dispatch distances
+    const units = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude,
+        usr.full_name AS officer_name,
+        (
+          3959 * 2 * ATAN2(
+            SQRT(
+              SIN((RADIANS(u.latitude) - RADIANS(?)) / 2) * SIN((RADIANS(u.latitude) - RADIANS(?)) / 2)
+              + COS(RADIANS(?)) * COS(RADIANS(u.latitude))
+              * SIN((RADIANS(u.longitude) - RADIANS(?)) / 2) * SIN((RADIANS(u.longitude) - RADIANS(?)) / 2)
+            ),
+            SQRT(1 - (
+              SIN((RADIANS(u.latitude) - RADIANS(?)) / 2) * SIN((RADIANS(u.latitude) - RADIANS(?)) / 2)
+              + COS(RADIANS(?)) * COS(RADIANS(u.latitude))
+              * SIN((RADIANS(u.longitude) - RADIANS(?)) / 2) * SIN((RADIANS(u.longitude) - RADIANS(?)) / 2)
+            ))
+          )
+        ) AS distance_miles
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status = 'available' AND u.latitude IS NOT NULL AND u.longitude IS NOT NULL
+      ORDER BY distance_miles ASC
+      LIMIT ?
+    `).all(lat, lat, lat, lng, lng, lat, lat, lat, lng, lng, limit);
+    res.json(units);
+  } catch (error: any) {
+    console.error('[Units] nearest error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to find nearest units', code: 'UNIT_NEAREST_ERROR' });
+  }
+});
+
+// Upgrade 35: GET /units/:id/stats — Individual unit statistics
+router.get('/units/:id/stats', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT id, call_sign FROM units WHERE id = ?').get(req.params.id) as any;
+    if (!unit) { res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }); return; }
+
+    const todayStart = localNow().slice(0, 10) + ' 00:00:00';
+    const weekStart = new Date(new Date(localNow()).getTime() - 7 * 86400000).toISOString().slice(0, 10) + ' 00:00:00';
+    const unitIdPattern = `%${req.params.id}%`;
+
+    const callsToday = db.prepare(`
+      SELECT COUNT(*) AS count FROM calls_for_service
+      WHERE assigned_unit_ids LIKE ? AND created_at >= ?
+    `).get(unitIdPattern, todayStart) as any;
+
+    const callsThisWeek = db.prepare(`
+      SELECT COUNT(*) AS count FROM calls_for_service
+      WHERE assigned_unit_ids LIKE ? AND created_at >= ?
+    `).get(unitIdPattern, weekStart) as any;
+
+    const avgResponse = db.prepare(`
+      SELECT COALESCE(AVG(response_time_seconds), 0) AS avg_response
+      FROM calls_for_service
+      WHERE assigned_unit_ids LIKE ? AND created_at >= ? AND response_time_seconds IS NOT NULL
+    `).get(unitIdPattern, weekStart) as any;
+
+    // Total GPS distance today (sum of consecutive-point distances)
+    const breadcrumbs = db.prepare(`
+      SELECT latitude, longitude FROM gps_breadcrumbs
+      WHERE unit_id = ? AND recorded_at >= ?
+      ORDER BY recorded_at ASC
+    `).all(req.params.id, todayStart) as any[];
+
+    let totalDistanceMiles = 0;
+    for (let i = 1; i < breadcrumbs.length; i++) {
+      const prev = breadcrumbs[i - 1];
+      const curr = breadcrumbs[i];
+      const dLat = (curr.latitude - prev.latitude) * Math.PI / 180;
+      const dLng = (curr.longitude - prev.longitude) * Math.PI / 180;
+      const a = Math.sin(dLat / 2) ** 2
+        + Math.cos(prev.latitude * Math.PI / 180) * Math.cos(curr.latitude * Math.PI / 180)
+        * Math.sin(dLng / 2) ** 2;
+      totalDistanceMiles += 3959 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    }
+
+    res.json({
+      unit_id: unit.id,
+      call_sign: unit.call_sign,
+      calls_today: callsToday.count,
+      calls_this_week: callsThisWeek.count,
+      avg_response_time_seconds: Math.round(avgResponse.avg_response),
+      total_distance_today_miles: Math.round(totalDistanceMiles * 100) / 100,
+    });
+  } catch (error: any) {
+    console.error('[Units] stats error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to get unit stats', code: 'UNIT_STATS_ERROR' });
+  }
+});
+
 export default router;

@@ -25,6 +25,8 @@ import { startRun, completeRun, failRun } from './scraperRunner';
 import { Semaphore } from './semaphore';
 import { broadcast } from './websocket';
 import { alertCircuitBroken, checkParserDrift } from './scraperAlerts';
+import { logSafe } from './logSafe';
+import { asciiFoldName } from './utahWarrantScraper';
 
 // Safe human-readable label for a source — falls back to source_key when the
 // display_name column is NULL or empty. Prevents "[Warrant Scraper] null: fetch
@@ -96,6 +98,19 @@ function resolveJitterMs(sourceKey: string): number {
   return (simpleHash(sourceKey) % 1200) * 1000;
 }
 
+/**
+ * Generate a normalized, stable warrant ID from source + name components.
+ * Applies ASCII folding + uppercase to prevent case/diacritic drift between runs.
+ * The discriminator provides uniqueness when two people share the same name
+ * (case number, issue date, or positional index).
+ */
+export function normalizeWarrantId(sourceKey: string, last: string, first: string, discriminator: string | number): string {
+  const normLast = asciiFoldName(last).toUpperCase().replace(/[^A-Z]/g, '');
+  const normFirst = asciiFoldName(first).toUpperCase().replace(/[^A-Z]/g, '');
+  const disc = String(discriminator).replace(/[^a-zA-Z0-9-]/g, '');
+  return `${sourceKey}-${normLast}-${normFirst}-${disc}`.substring(0, 80);
+}
+
 // ── Interfaces ──────────────────────────────────────────────
 
 export interface WarrantEntry {
@@ -148,6 +163,9 @@ interface WarrantSourceConfig {
   avg_parse_count?: number | null;
   p95_latency_ms?: number | null;
   jitter_seed?: number | null;
+  recovery_at?: string | null;
+  min_expected_count?: number | null;
+  last_parsed_count?: number | null;
 }
 
 // ── Scheduler state ─────────────────────────────────────────
@@ -1437,46 +1455,51 @@ function upsertWarrants(sourceKey: string, entries: WarrantEntry[]): { inserted:
 
   const txn = db.transaction(() => {
     for (const entry of entries) {
-      // Check if this warrant already exists (always update existing records)
-      const existing = checkStmt.get(sourceKey, entry.warrant_id);
-      if (existing) {
-        updateStmt.run(
-          entry.full_name, entry.first_name, entry.last_name, entry.middle_name,
-          entry.date_of_birth, entry.age, entry.gender, entry.race, entry.city,
-          entry.charge_description, entry.bail_amount,
-          entry.photo_url, entry.photo_url,
-          now, sourceKey, entry.warrant_id
-        );
-        updated++;
-      } else {
-        // Only INSERT new warrants if the person exists in our database
-        let personId: number | null = null;
-        let dobVerified = 0;
+      try {
+        // Check if this warrant already exists (always update existing records)
+        const existing = checkStmt.get(sourceKey, entry.warrant_id);
+        if (existing) {
+          updateStmt.run(
+            entry.full_name, entry.first_name, entry.last_name, entry.middle_name,
+            entry.date_of_birth, entry.age, entry.gender, entry.race, entry.city,
+            entry.charge_description, entry.bail_amount,
+            entry.photo_url, entry.photo_url,
+            now, sourceKey, entry.warrant_id
+          );
+          updated++;
+        } else {
+          // Only INSERT new warrants if the person exists in our database
+          let personId: number | null = null;
+          let dobVerified = 0;
 
-        if (entry.first_name && entry.last_name) {
-          // Try DOB match first (higher confidence)
-          if (entry.date_of_birth) {
-            const dobMatch = matchPersonDobStmt.get(entry.first_name, entry.last_name, entry.date_of_birth) as any;
-            if (dobMatch) { personId = dobMatch.id; dobVerified = 1; }
+          if (entry.first_name && entry.last_name) {
+            // Try DOB match first (higher confidence)
+            if (entry.date_of_birth) {
+              const dobMatch = matchPersonDobStmt.get(entry.first_name, entry.last_name, entry.date_of_birth) as any;
+              if (dobMatch) { personId = dobMatch.id; dobVerified = 1; }
+            }
+            // Fall back to name-only match
+            if (!personId) {
+              const nameMatch = matchPersonStmt.get(entry.first_name, entry.last_name) as any;
+              if (nameMatch) { personId = nameMatch.id; dobVerified = 0; }
+            }
           }
-          // Fall back to name-only match
-          if (!personId) {
-            const nameMatch = matchPersonStmt.get(entry.first_name, entry.last_name) as any;
-            if (nameMatch) { personId = nameMatch.id; dobVerified = 0; }
-          }
+
+          // Store ALL warrants (national search needs full dataset)
+          // person_id is set if matched to a local person (for alerts)
+
+          insertStmt.run(
+            sourceKey, entry.warrant_id, entry.full_name, entry.first_name, entry.last_name,
+            entry.middle_name, entry.date_of_birth, entry.age, entry.gender, entry.race,
+            entry.city, entry.state, entry.warrant_type, entry.case_number, entry.court_name,
+            entry.issue_date, entry.charge_description, entry.bail_amount, entry.offense_level,
+            entry.photo_url, entry.detail_url, now, now, personId, dobVerified
+          );
+          inserted++;
         }
-
-        // Store ALL warrants (national search needs full dataset)
-        // person_id is set if matched to a local person (for alerts)
-
-        insertStmt.run(
-          sourceKey, entry.warrant_id, entry.full_name, entry.first_name, entry.last_name,
-          entry.middle_name, entry.date_of_birth, entry.age, entry.gender, entry.race,
-          entry.city, entry.state, entry.warrant_type, entry.case_number, entry.court_name,
-          entry.issue_date, entry.charge_description, entry.bail_amount, entry.offense_level,
-          entry.photo_url, entry.detail_url, now, now, personId, dobVerified
-        );
-        inserted++;
+      } catch (entryErr) {
+        // Per-entry error boundary: one bad entry must not rollback the whole batch
+        console.warn(`[Warrant Scraper] upsert skip (${logSafe(sourceKey)}/${logSafe(entry.warrant_id)}): ${logSafe((entryErr as Error).message)}`);
       }
     }
   });
@@ -1752,7 +1775,7 @@ async function scrapeSource(sourceKey: string): Promise<{
   const parseResult = parseWithFallback(config, fetchResult.body);
   entries = parseResult.entries;
   if (parseResult.driftSignal) {
-    console.warn(`[Warrant Scraper] Drift signal for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String(parseResult.driftSignal ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
+    console.warn(`[Warrant Scraper] Drift signal for ${logSafe(sourceKey)}: ${logSafe(parseResult.driftSignal)}`);
   }
 
   const { inserted, updated } = upsertWarrants(sourceKey, entries);
@@ -1790,7 +1813,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
         const skipRunId = startRun({ source_key: sourceKey });
         completeRun(skipRunId, { skipped_reason: 'circuit_broken' });
       } catch (e) {
-        console.warn(`[Warrant Scraper] Failed to record skip run for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
+        console.warn(`[Warrant Scraper] Failed to record skip run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
       }
     }
     return;
@@ -1800,7 +1823,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
   try {
     runId = startRun({ source_key: sourceKey, priority: config.priority });
   } catch (e) {
-    console.warn(`[Warrant Scraper] Failed to start run for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
+    console.warn(`[Warrant Scraper] Failed to start run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
   }
 
   emitScraperEvent('run_started', {
@@ -1847,7 +1870,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
           sourceKey,
         );
       } catch (e) {
-        console.warn(`[Warrant Scraper] Failed to persist content_hash for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
+        console.warn(`[Warrant Scraper] Failed to persist content_hash for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
       }
     }
 
@@ -1879,7 +1902,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
           });
         }
       } catch (e) {
-        console.warn(`[Warrant Scraper] Failed to complete run for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
+        console.warn(`[Warrant Scraper] Failed to complete run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
       }
     }
 
@@ -1920,7 +1943,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
       try {
         failRun(runId, { error_message: (err as Error).message });
       } catch (e) {
-        console.warn(`[Warrant Scraper] Failed to record failed run for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((e as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
+        console.warn(`[Warrant Scraper] Failed to record failed run for ${logSafe(sourceKey)}: ${logSafe((e as Error).message)}`);
       }
     }
 
@@ -1942,7 +1965,7 @@ export async function syncSource(sourceKey: string): Promise<void> {
 
     // Transient errors — increment counter
     const shortErr = errMsg.replace(/https?:\/\/[^\s]+/g, '...').substring(0, 100);
-    console.error(`[Warrant Scraper] ${String(displayNameOf(config) ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String(shortErr ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
+    console.error(`[Warrant Scraper] ${logSafe(displayNameOf(config))}: ${logSafe(shortErr)}`);
 
     db.prepare(`
       UPDATE warrant_scraper_config
@@ -2017,7 +2040,7 @@ function scheduleSource(sourceKey: string): void {
   // Initial scrape delayed by deterministic jitter so boot storm spreads over 20 min
   const initialTimer = setTimeout(() => {
     syncSource(sourceKey).catch(err => {
-      console.error(`[Warrant Scraper] Initial scrape error for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((err as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
+      console.error(`[Warrant Scraper] Initial scrape error for ${logSafe(sourceKey)}: ${logSafe((err as Error).message)}`);
     });
   }, jitterMs);
   if (initialTimer.unref) initialTimer.unref();
@@ -2025,7 +2048,7 @@ function scheduleSource(sourceKey: string): void {
   // Schedule recurring
   const interval = setInterval(() => {
     syncSource(sourceKey).catch(err => {
-      console.error(`[Warrant Scraper] Scrape error for ${String(sourceKey ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}: ${String((err as Error).message ?? "").replace(/[\r\n]/g, " ").slice(0, 200)}`);
+      console.error(`[Warrant Scraper] Scrape error for ${logSafe(sourceKey)}: ${logSafe((err as Error).message)}`);
     });
   }, intervalMs);
 
@@ -2129,6 +2152,24 @@ export function scheduleWarrantScraper(): void {
 
   startupTimeout = setTimeout(async () => {
     pruneDeadFederalSources();
+
+    // Auto-reset circuit breakers that have been broken for >24h (stale from server restart)
+    try {
+      const db = getDb();
+      const staleBreakers = db.prepare(`
+        UPDATE warrant_scraper_config
+        SET consecutive_errors = 0, circuit_broken = 0
+        WHERE circuit_broken = 1
+          AND last_scrape_at IS NOT NULL
+          AND julianday('now') - julianday(last_scrape_at) > 1.0
+      `).run();
+      if (staleBreakers.changes > 0) {
+        console.log(`[Warrant Scraper] Auto-reset ${staleBreakers.changes} stale circuit breaker(s) (broken >24h)`);
+      }
+    } catch (e) {
+      console.warn('[Warrant Scraper] Failed to auto-reset stale circuit breakers:', (e as Error).message);
+    }
+
     const configs = getSourceConfigs();
     const enabled = configs.filter(c => c.enabled);
     const disabled = configs.length - enabled.length;
