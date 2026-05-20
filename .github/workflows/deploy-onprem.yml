@@ -1,0 +1,91 @@
+name: "Deploy to On-Prem Server"
+
+on:
+  push:
+    branches: [main]
+
+  workflow_dispatch:
+    inputs:
+      include_installers:
+        description: "Include desktop installers"
+        required: false
+        default: "false"
+        type: boolean
+
+jobs:
+  deploy:
+    name: Deploy to On-Prem Server
+    runs-on: [self-hosted, rmpg-flex]
+    environment: production
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: |
+            client/package-lock.json
+            server/package-lock.json
+
+      - name: Install client dependencies
+        working-directory: client
+        run: npm ci
+
+      - name: Install server dependencies
+        working-directory: server
+        run: npm ci --legacy-peer-deps
+
+      - name: TypeScript check
+        working-directory: client
+        run: npx tsc --noEmit
+
+      - name: Server typecheck
+        working-directory: server
+        run: npx tsc --noEmit
+
+      - name: Run server tests
+        working-directory: server
+        run: npx vitest run
+
+      - name: Build client
+        working-directory: client
+        run: npx vite build
+
+      - name: Deploy to /opt/rmpg-flex
+        run: |
+          sudo rsync -az --delete \
+            --exclude='node_modules' \
+            --exclude='.git' \
+            --exclude='server/data' \
+            --exclude='server/certs' \
+            --exclude='server/.env' \
+            --exclude='server/uploads' \
+            --exclude='client/.env' \
+            --exclude='desktop' \
+            --exclude='.DS_Store' \
+            --exclude='.claude' \
+            --exclude='client/android' \
+            ./ /opt/rmpg-flex/
+
+      - name: Restart service
+        run: |
+          sudo systemctl restart rmpg-flex
+          sleep 3
+          if sudo systemctl is-active --quiet rmpg-flex; then
+            echo "✓ rmpg-flex service is running"
+          else
+            echo "✗ rmpg-flex service failed to start"
+            sudo journalctl -u rmpg-flex --no-pager -n 30
+            exit 1
+          fi
+
+      - name: Health check
+        run: |
+          sleep 2
+          curl -sf http://localhost:3001/api/health || (echo "Health check failed!" && exit 1)
