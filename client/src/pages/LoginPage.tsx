@@ -8,6 +8,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock,
   KeyRound, Usb, Fingerprint, Monitor, Server, Wifi, Clock,
+  HelpCircle, CheckCircle, ArrowRight,
 } from 'lucide-react';
 import { useAuth, type LoginStep } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
@@ -101,6 +102,19 @@ export default function LoginPage() {
   const [webauthnError, setWebauthnError] = useState(false);
   const [twoFactorMode, setTwoFactorMode] = useState<TwoFactorMode>('choose');
   const [twoFactorMethods, setTwoFactorMethods] = useState<{ totp?: boolean; webauthn?: boolean }>({});
+
+  // Forgot Password flow state
+  type ForgotPwStep = 'username' | 'questions' | 'reset' | 'success';
+  const [forgotPwActive, setForgotPwActive] = useState(false);
+  const [forgotPwStep, setForgotPwStep] = useState<ForgotPwStep>('username');
+  const [forgotUsername, setForgotUsername] = useState('');
+  const [forgotQuestions, setForgotQuestions] = useState<string[]>([]);
+  const [forgotAnswers, setForgotAnswers] = useState(['', '', '']);
+  const [forgotTempToken, setForgotTempToken] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState('');
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotError, setForgotError] = useState('');
 
   // Last login display
   const [lastLoginInfo, setLastLoginInfo] = useState<{ time: string; ip: string } | null>(null);
@@ -290,6 +304,93 @@ export default function LoginPage() {
     } else {
       window.location.reload();
     }
+  };
+
+  // ── Forgot Password Handlers ──────────────────────────
+  const handleForgotStart = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotUsername.trim()) return;
+    setForgotBusy(true);
+    setForgotError('');
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: forgotUsername.trim() }),
+      });
+      const data = await res.json();
+      if (data.hasQuestions && data.questions) {
+        setForgotQuestions(data.questions);
+        setForgotPwStep('questions');
+      } else {
+        setForgotError('No security questions found for this account. Contact your administrator.');
+      }
+    } catch {
+      setForgotError('Unable to connect. Please try again.');
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
+  const handleForgotAnswerSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (forgotAnswers.some(a => !a.trim())) return;
+    setForgotBusy(true);
+    setForgotError('');
+    try {
+      const res = await fetch('/api/auth/forgot-password/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: forgotUsername.trim(), answers: forgotAnswers.map(a => a.trim().toLowerCase()) }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success && data.tempToken) {
+        setForgotTempToken(data.tempToken);
+        setForgotPwStep('reset');
+      } else {
+        setForgotError(data.error || 'One or more answers are incorrect.');
+      }
+    } catch {
+      setForgotError('Unable to connect. Please try again.');
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
+  const handleForgotReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!forgotNewPassword || forgotNewPassword !== forgotConfirmPassword) return;
+    setForgotBusy(true);
+    setForgotError('');
+    try {
+      const res = await fetch('/api/auth/forgot-password/reset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ tempToken: forgotTempToken, newPassword: forgotNewPassword }),
+      });
+      const data = await res.json();
+      if (res.ok && data.success) {
+        setForgotPwStep('success');
+      } else {
+        setForgotError(data.error || 'Failed to reset password.');
+      }
+    } catch {
+      setForgotError('Unable to connect. Please try again.');
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
+  const handleForgotClose = () => {
+    setForgotPwActive(false);
+    setForgotPwStep('username');
+    setForgotUsername('');
+    setForgotQuestions([]);
+    setForgotAnswers(['', '', '']);
+    setForgotTempToken('');
+    setForgotNewPassword('');
+    setForgotConfirmPassword('');
+    setForgotError('');
   };
 
   const handleBackWebAuthn = () => {
@@ -543,6 +644,17 @@ export default function LoginPage() {
                   ) : (
                     'Sign In'
                   )}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { setForgotPwActive(true); setForgotPwStep('username'); setForgotUsername(loginUsername); setForgotError(''); }}
+                  className="w-full text-center text-[10px] uppercase tracking-wider font-bold mt-2 transition-colors"
+                  style={{ color: '#666666' }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#d4a017'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = '#666666'; }}
+                  aria-label="Forgot password"
+                >
+                  Forgot Password?
                 </button>
               </form>
             )}
@@ -961,6 +1073,223 @@ export default function LoginPage() {
                   )}
                 </button>
               </form>
+            )}
+
+            {/* ══════ Forgot Password Flow ══════ */}
+            {forgotPwActive && (
+              <div className="space-y-3">
+                {/* Error */}
+                {forgotError && (
+                  <div className="flex items-center gap-2 p-2.5 mb-2 animate-fade-in" role="alert" style={{ background: 'rgba(220, 38, 38, 0.15)', border: '1px solid #991b1b' }}>
+                    <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#ef4444' }} aria-hidden="true" />
+                    <p className="text-xs" style={{ color: '#ef7a7a' }}>{forgotError}</p>
+                  </div>
+                )}
+
+                {/* Step: Username */}
+                {forgotPwStep === 'username' && (
+                  <form onSubmit={handleForgotStart} className="space-y-3">
+                    <div className="text-center mb-1">
+                      <HelpCircle className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
+                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                        Forgot Password
+                      </p>
+                      <p className="text-[9px]" style={{ color: '#666666' }}>
+                        Enter your username to retrieve your security questions.
+                      </p>
+                    </div>
+                    <div>
+                      <label htmlFor="forgot-username" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                        Username
+                      </label>
+                      <input
+                        id="forgot-username"
+                        type="text"
+                        className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
+                        placeholder="Enter your username"
+                        value={forgotUsername}
+                        onChange={(e) => setForgotUsername(e.target.value)}
+                        autoComplete="username"
+                        autoFocus
+                        required
+                      />
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={forgotBusy || !forgotUsername.trim()}
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {forgotBusy ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                          Checking...
+                        </>
+                      ) : (
+                        'Continue'
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleForgotClose}
+                      className="w-full text-center text-[9px] uppercase tracking-wider mt-1"
+                      style={{ color: '#666666' }}
+                    >
+                      Back to Login
+                    </button>
+                  </form>
+                )}
+
+                {/* Step: Answer Security Questions */}
+                {forgotPwStep === 'questions' && (
+                  <form onSubmit={handleForgotAnswerSubmit} className="space-y-3">
+                    <div className="text-center mb-1">
+                      <ShieldCheck className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
+                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                        Answer Security Questions
+                      </p>
+                      <p className="text-[9px]" style={{ color: '#666666' }}>
+                        Answers are case-insensitive.
+                      </p>
+                    </div>
+                    {[0, 1, 2].map((i) => (
+                      <div key={i}>
+                        <label className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                          Question {i + 1}
+                        </label>
+                        <p className="text-[10px] mb-1" style={{ color: '#aaaaaa' }}>{forgotQuestions[i]}</p>
+                        <input
+                          type="text"
+                          className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
+                          placeholder="Your answer"
+                          value={forgotAnswers[i]}
+                          onChange={(e) => {
+                            const newAnswers = [...forgotAnswers];
+                            newAnswers[i] = e.target.value;
+                            setForgotAnswers(newAnswers);
+                          }}
+                          autoComplete="off"
+                          autoFocus={i === 0}
+                          required
+                        />
+                      </div>
+                    ))}
+                    <button
+                      type="submit"
+                      disabled={forgotBusy || forgotAnswers.some(a => !a.trim())}
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {forgotBusy ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                          Verifying...
+                        </>
+                      ) : (
+                        'Verify Answers'
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setForgotPwStep('username'); setForgotError(''); }}
+                      className="w-full flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider mt-1"
+                      style={{ color: '#666666' }}
+                    >
+                      <ArrowLeft className="w-3 h-3" /> Back
+                    </button>
+                  </form>
+                )}
+
+                {/* Step: Reset Password */}
+                {forgotPwStep === 'reset' && (
+                  <form onSubmit={handleForgotReset} className="space-y-3">
+                    <div className="text-center mb-1">
+                      <Lock className="w-8 h-8 mx-auto mb-1" style={{ color: '#d4a017' }} />
+                      <p className="text-[10px] uppercase tracking-wide font-bold mb-1" style={{ color: '#888888' }}>
+                        Reset Password
+                      </p>
+                      <p className="text-[9px]" style={{ color: '#666666' }}>
+                        Choose a new password for your account.
+                      </p>
+                    </div>
+                    <div>
+                      <label htmlFor="forgot-new-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                        New Password
+                      </label>
+                      <input
+                        id="forgot-new-pw"
+                        type="password"
+                        className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
+                        placeholder="At least 12 characters"
+                        value={forgotNewPassword}
+                        onChange={(e) => setForgotNewPassword(e.target.value)}
+                        autoComplete="new-password"
+                        autoFocus
+                        required
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="forgot-confirm-pw" className="block text-[10px] font-bold uppercase mb-1.5 tracking-wide" style={{ color: '#888888' }}>
+                        Confirm Password
+                      </label>
+                      <input
+                        id="forgot-confirm-pw"
+                        type="password"
+                        className="input-dark login-input-glow h-9 sm:h-9 min-h-[44px] sm:min-h-0"
+                        placeholder="Confirm new password"
+                        value={forgotConfirmPassword}
+                        onChange={(e) => setForgotConfirmPassword(e.target.value)}
+                        autoComplete="new-password"
+                        required
+                      />
+                      {forgotConfirmPassword && forgotNewPassword !== forgotConfirmPassword && (
+                        <p className="text-[9px] mt-1" style={{ color: '#ef4444' }}>Passwords do not match</p>
+                      )}
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={forgotBusy || !forgotNewPassword || forgotNewPassword !== forgotConfirmPassword}
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    >
+                      {forgotBusy ? (
+                        <>
+                          <div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" aria-hidden="true" />
+                          Resetting...
+                        </>
+                      ) : (
+                        'Reset Password'
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setForgotPwStep('questions'); setForgotError(''); }}
+                      className="w-full flex items-center justify-center gap-1 text-[9px] uppercase tracking-wider mt-1"
+                      style={{ color: '#666666' }}
+                    >
+                      <ArrowLeft className="w-3 h-3" /> Back
+                    </button>
+                  </form>
+                )}
+
+                {/* Step: Success */}
+                {forgotPwStep === 'success' && (
+                  <div className="text-center space-y-3 py-2">
+                    <CheckCircle className="w-10 h-10 mx-auto" style={{ color: '#22c55e' }} />
+                    <p className="text-[10px] uppercase tracking-wide font-bold" style={{ color: '#888888' }}>
+                      Password Reset Complete
+                    </p>
+                    <p className="text-[9px]" style={{ color: '#666666' }}>
+                      Your password has been reset successfully. You can now log in with your new password.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={handleForgotClose}
+                      className="toolbar-btn toolbar-btn-primary w-full h-9 sm:h-9 min-h-[48px] sm:min-h-0 text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-2"
+                    >
+                      <ArrowRight className="w-3.5 h-3.5" />
+                      Return to Login
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
             <div className="mt-3 pt-2" style={{ borderTop: '1px solid #2b2b2b' }} aria-hidden="true" />

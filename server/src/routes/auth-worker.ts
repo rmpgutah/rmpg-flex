@@ -108,7 +108,7 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
       return c.json({ error: 'Account is not active', code: 'ACCOUNT_IS_NOT_ACTIVE' }, 403);
     }
 
-    const validPassword = await bcrypt.compare(password, user.password_hash);
+    const validPassword = bcrypt.compareSync(password, user.password_hash);
     if (!validPassword) {
       await db.prepare(`INSERT INTO login_attempts (username, ip_address, success, failure_reason) VALUES (?, ?, 0, 'invalid_password')`).run(username, ip);
       const newAttempts = await db.prepare(`SELECT COUNT(*) as count FROM login_attempts WHERE username = ? AND success = 0 AND created_at > ?`).get(username, lockoutWindow) as any;
@@ -313,9 +313,10 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
     const dbUser = await db.prepare('SELECT id, password_hash FROM users WHERE id = ?').get(user.userId) as any;
     if (!dbUser) return c.json({ error: 'User not found', code: 'USER_NOT_FOUND' }, 404);
 
-    const valid = await bcrypt.compare(currentPassword, dbUser.password_hash);
-    if (!valid) return c.json({ error: 'Current password is incorrect', code: 'CURRENT_PASSWORD_IS_INCORRECT' }, 403);
-    const hashed = await bcrypt.hash(newPassword, 10);
+    const valid = bcrypt.compareSync(currentPassword, dbUser.password_hash);
+    if (!valid) return c.json({ error: 'Current password is incorrect', code: 'INVALID_CURRENT_PASSWORD' }, 401);
+
+    const hashed = await bcrypt.hash(newPassword, 12);
     await db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = ? WHERE id = ?').run(hashed, localNow(), user.userId);
     await auditLog(db, c, 'password_changed', 'user', user.userId, 'User changed password');
 
@@ -387,20 +388,188 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
   });
 
   // ═══════════════════════════════════════════════════════════
-  // PASSWORD RESET (forgot/reset flow)
+  // FORGOT PASSWORD via Security Questions
   // ═══════════════════════════════════════════════════════════
 
+  // POST /api/auth/forgot-password — Step 1: Get masked questions
   api.post('/forgot-password', async (c) => {
-    // Always return success to prevent email enumeration
-    return c.json({ message: 'If an account exists with that username, password reset instructions have been sent.' });
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json().catch(() => ({}));
+    const { username } = body;
+    if (!username || typeof username !== 'string' || !username.trim()) {
+      return c.json({ message: 'If an account exists with that username, security questions will be presented.' });
+    }
+
+    const user = await db.prepare('SELECT id, username, status FROM users WHERE username = ?').get(username.trim()) as any;
+    if (!user || user.status !== 'active') {
+      return c.json({ message: 'If an account exists with that username, security questions will be presented.' });
+    }
+
+    const sq = await db.prepare(
+      'SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?'
+    ).get(user.id) as any;
+
+    if (!sq) {
+      return c.json({ message: 'If an account exists with that username, security questions will be presented.' });
+    }
+
+    return c.json({
+      hasQuestions: true,
+      username: user.username,
+      questions: [sq.question_1, sq.question_2, sq.question_3],
+    });
   });
 
-  api.get('/reset-password/validate', async (c) => {
-    return c.json({ error: 'Password reset links are not enabled. Contact your administrator.', code: 'PASSWORD_RESET_LINKS_ARE' }, 400);
+  // POST /api/auth/forgot-password/verify — Step 2: Verify answers
+  api.post('/forgot-password/verify', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json().catch(() => ({}));
+    const { username, answers } = body;
+
+    if (!username || typeof username !== 'string' || !Array.isArray(answers) || answers.length !== 3) {
+      return c.json({ error: 'Invalid request. Provide username and exactly 3 answers.', code: 'INVALID_REQUEST' }, 400);
+    }
+
+    const user = await db.prepare('SELECT id, username, status FROM users WHERE username = ?').get(username.trim()) as any;
+    if (!user || user.status !== 'active') {
+      return c.json({ error: 'Invalid username or answers.', code: 'VERIFICATION_FAILED' }, 400);
+    }
+
+    const sq = await db.prepare(
+      'SELECT answer_1_hash, answer_2_hash, answer_3_hash FROM user_security_questions WHERE user_id = ?'
+    ).get(user.id) as any;
+
+    if (!sq) {
+      return c.json({ error: 'No security questions configured.', code: 'NO_SECURITY_QUESTIONS' }, 400);
+    }
+
+    const hashAnswers = [sq.answer_1_hash, sq.answer_2_hash, sq.answer_3_hash];
+    for (let i = 0; i < 3; i++) {
+      if (!bcrypt.compareSync(String(answers[i]), hashAnswers[i])) {
+        return c.json({ error: 'One or more answers are incorrect.', code: 'VERIFICATION_FAILED' }, 400);
+      }
+    }
+
+    // All answers correct — issue short-lived reset token (5 min)
+    const tempToken = await new SignJWT({
+      userId: user.id,
+      username: user.username,
+      type: 'forgot_pw',
+    } as any)
+      .setProtectedHeader({ alg: 'HS256' })
+      .setIssuedAt()
+      .setExpirationTime('5m')
+      .sign(new TextEncoder().encode(c.env.JWT_SECRET));
+
+    return c.json({ success: true, tempToken });
   });
 
-  api.post('/reset-password', async (c) => {
-    return c.json({ error: 'Password reset links are not enabled. Contact your administrator.', code: 'PASSWORD_RESET_LINKS_ARE' }, 400);
+  // POST /api/auth/forgot-password/reset — Step 3: Reset password
+  api.post('/forgot-password/reset', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json().catch(() => ({}));
+    const { tempToken, newPassword } = body;
+
+    if (!tempToken || typeof tempToken !== 'string') {
+      return c.json({ error: 'Reset token is required.', code: 'TOKEN_REQUIRED' }, 400);
+    }
+
+    let payload: any;
+    try {
+      const result = await jwtVerify(tempToken, new TextEncoder().encode(c.env.JWT_SECRET));
+      payload = result.payload as any;
+      if (payload.type !== 'forgot_pw' || !payload.userId || !payload.username) {
+        return c.json({ error: 'Invalid reset token.', code: 'INVALID_TOKEN' }, 400);
+      }
+    } catch {
+      return c.json({ error: 'Invalid or expired reset token. Please start over.', code: 'INVALID_TOKEN' }, 400);
+    }
+
+    const user = await db.prepare('SELECT id, username, status, password_hash FROM users WHERE id = ? AND username = ?').get(payload.userId, payload.username) as any;
+    if (!user || user.status !== 'active') {
+      return c.json({ error: 'Account not found or inactive.', code: 'ACCOUNT_INACTIVE' }, 400);
+    }
+
+    // Validate password
+    if (!newPassword || typeof newPassword !== 'string' || newPassword.length < 12) {
+      return c.json({ error: 'Password must be at least 12 characters.', code: 'PASSWORD_VALIDATION' }, 400);
+    }
+
+    // Check against current password
+    if (bcrypt.compareSync(newPassword, user.password_hash)) {
+      return c.json({ error: 'New password must be different from your current password.', code: 'PASSWORD_SAME' }, 400);
+    }
+
+    const hashed = bcrypt.hashSync(newPassword, 12);
+    const now = localNow();
+
+    // Store old password hash in history
+    await db.prepare(
+      'INSERT INTO password_history (user_id, password_hash, created_at) VALUES (?, ?, ?)'
+    ).run(user.id, user.password_hash, now);
+
+    // Update user
+    await db.prepare(
+      'UPDATE users SET password_hash = ?, password_changed_at = ?, must_change_password = 0, updated_at = ? WHERE id = ?'
+    ).run(hashed, now, now, user.id);
+
+    await auditLog(db, c, 'password_reset', 'user', user.id, 'Password reset via security questions');
+
+    return c.json({ success: true, message: 'Password has been reset successfully.' });
+  });
+
+  // POST /api/auth/security-questions — Set/update security questions (authenticated)
+  api.post('/security-questions', authenticateToken, async (c) => {
+    const db = new D1Db(c.env.DB);
+    const authUser = c.get('user');
+    const body = await c.req.json().catch(() => ({}));
+    const { question_1, answer_1, question_2, answer_2, question_3, answer_3 } = body;
+
+    if (!question_1 || !answer_1 || !question_2 || !answer_2 || !question_3 || !answer_3) {
+      return c.json({ error: 'All three questions and answers are required.', code: 'VALIDATION_ERROR' }, 400);
+    }
+
+    if ([question_1, question_2, question_3].some((q: string) => q.trim().length < 3 || q.trim().length > 200)) {
+      return c.json({ error: 'Each question must be between 3 and 200 characters.', code: 'VALIDATION_ERROR' }, 400);
+    }
+    if ([answer_1, answer_2, answer_3].some((a: string) => a.trim().length < 1 || a.trim().length > 100)) {
+      return c.json({ error: 'Each answer must be between 1 and 100 characters.', code: 'VALIDATION_ERROR' }, 400);
+    }
+
+    const salt = bcrypt.genSaltSync(12);
+    const hash1 = bcrypt.hashSync(String(answer_1).trim().toLowerCase(), salt);
+    const hash2 = bcrypt.hashSync(String(answer_2).trim().toLowerCase(), salt);
+    const hash3 = bcrypt.hashSync(String(answer_3).trim().toLowerCase(), salt);
+    const now = localNow();
+
+    const existing = await db.prepare('SELECT id FROM user_security_questions WHERE user_id = ?').get(authUser.userId) as any;
+
+    if (existing) {
+      await db.prepare(
+        'UPDATE user_security_questions SET question_1 = ?, answer_1_hash = ?, question_2 = ?, answer_2_hash = ?, question_3 = ?, answer_3_hash = ?, updated_at = ? WHERE user_id = ?'
+      ).run(question_1.trim(), hash1, question_2.trim(), hash2, question_3.trim(), hash3, now, authUser.userId);
+    } else {
+      await db.prepare(
+        'INSERT INTO user_security_questions (user_id, question_1, answer_1_hash, question_2, answer_2_hash, question_3, answer_3_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(authUser.userId, question_1.trim(), hash1, question_2.trim(), hash2, question_3.trim(), hash3, now, now);
+    }
+
+    return c.json({ success: true, message: 'Security questions saved successfully.' });
+  });
+
+  // GET /api/auth/security-questions — Check if user has security questions set
+  api.get('/security-questions', authenticateToken, async (c) => {
+    const db = new D1Db(c.env.DB);
+    const authUser = c.get('user');
+    const sq = await db.prepare(
+      'SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?'
+    ).get(authUser.userId) as any;
+
+    if (!sq) return c.json({ hasQuestions: false });
+    return c.json({
+      hasQuestions: true,
+      questions: [sq.question_1, sq.question_2, sq.question_3],
+    });
   });
 
   // ═══════════════════════════════════════════════════════════

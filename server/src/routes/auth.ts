@@ -1484,22 +1484,289 @@ router.post('/2fa/backup-codes/regenerate', authenticateToken, (req: Request, re
 });
 
 // ═══════════════════════════════════════════════════════════════
-// Password Reset (forgot/reset flow)
+// Password Reset via Security Questions (forgot-password flow)
 // ═══════════════════════════════════════════════════════════════
 
+/** Short-lived token (5 min) for the forgot-password reset step. */
+function generateForgotPasswordToken(payload: { userId: number; username: string }): string {
+  return jwt.sign(
+    { ...payload, type: 'forgot_pw' },
+    config.jwt.secret,
+    { expiresIn: '5m' }
+  );
+}
+
+/** Verify a forgot-password temp token and return its payload. */
+function verifyForgotPasswordToken(token: string): { userId: number; username: string } | null {
+  try {
+    const decoded = jwt.verify(token, config.jwt.secret, { algorithms: ['HS256'] }) as any;
+    if (decoded.type !== 'forgot_pw' || !decoded.userId || !decoded.username) return null;
+    return { userId: decoded.userId, username: decoded.username };
+  } catch {
+    return null;
+  }
+}
+
+/** Mask all but the last 2 characters of a string for display. */
+function maskAnswer(answer: string): string {
+  if (answer.length <= 2) return '**';
+  return answer.slice(0, -2).replace(/./g, '*') + answer.slice(-2);
+}
+
+// POST /auth/forgot-password — Step 1: Look up user, return masked questions
 router.post('/forgot-password', authRateLimit, (req: Request, res: Response) => {
-  // Always return success to prevent email enumeration
-  res.json({ message: 'If an account exists with that username, password reset instructions have been sent.' });
+  try {
+    const { username } = req.body;
+    if (!username || typeof username !== 'string' || !username.trim()) {
+      // Don't reveal whether the user exists
+      return res.json({ message: 'If an account exists with that username, security questions will be presented.' });
+    }
+
+    const db = getDb();
+
+    // Locate user (active only)
+    const user = db.prepare(
+      'SELECT id, username, status FROM users WHERE username = ?'
+    ).get(username.trim()) as any;
+
+    if (!user || user.status !== 'active') {
+      // Don't reveal whether the user exists
+      return res.json({ message: 'If an account exists with that username, security questions will be presented.' });
+    }
+
+    // Fetch their security questions
+    const sq = db.prepare(
+      'SELECT question_1, answer_1_hash, question_2, answer_2_hash, question_3, answer_3_hash FROM user_security_questions WHERE user_id = ?'
+    ).get(user.id) as any;
+
+    if (!sq) {
+      // No security questions set — can't proceed via this method
+      return res.json({ message: 'If an account exists with that username, security questions will be presented.' });
+    }
+
+    // Return the questions (NOT the answers)
+    res.json({
+      hasQuestions: true,
+      username: user.username,
+      questions: [
+        sq.question_1,
+        sq.question_2,
+        sq.question_3,
+      ],
+    });
+  } catch (error: any) {
+    console.error('Forgot-password error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+  }
 });
 
-router.get('/reset-password/validate', (req: Request, res: Response) => {
-  // Token-based reset not yet implemented — respond with a helpful message
-  res.status(400).json({ error: 'Password reset links are not enabled. Contact your administrator.', code: 'PASSWORD_RESET_LINKS_ARE' });
+// POST /auth/forgot-password/verify — Step 2: Verify security question answers
+router.post('/forgot-password/verify', authRateLimit, (req: Request, res: Response) => {
+  try {
+    const { username, answers } = req.body;
+    if (!username || typeof username !== 'string' || !Array.isArray(answers) || answers.length !== 3) {
+      return res.status(400).json({ error: 'Invalid request. Provide username and exactly 3 answers.', code: 'INVALID_REQUEST' });
+    }
+
+    const db = getDb();
+
+    const user = db.prepare(
+      'SELECT id, username, status FROM users WHERE username = ?'
+    ).get(username.trim()) as any;
+
+    if (!user || user.status !== 'active') {
+      return res.status(400).json({ error: 'Invalid username or answers.', code: 'VERIFICATION_FAILED' });
+    }
+
+    const sq = db.prepare(
+      'SELECT answer_1_hash, answer_2_hash, answer_3_hash FROM user_security_questions WHERE user_id = ?'
+    ).get(user.id) as any;
+
+    if (!sq) {
+      return res.status(400).json({ error: 'No security questions configured for this account.', code: 'NO_SECURITY_QUESTIONS' });
+    }
+
+    // Verify all 3 answers
+    const hashAnswers = [sq.answer_1_hash, sq.answer_2_hash, sq.answer_3_hash];
+    for (let i = 0; i < 3; i++) {
+      if (!bcryptjs.compareSync(String(answers[i]), hashAnswers[i])) {
+        return res.status(400).json({ error: 'One or more answers are incorrect.', code: 'VERIFICATION_FAILED' });
+      }
+    }
+
+    // All answers correct — issue a short-lived reset token
+    const tempToken = generateForgotPasswordToken({ userId: user.id, username: user.username });
+
+    res.json({ success: true, tempToken });
+  } catch (error: any) {
+    console.error('Forgot-password verify error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+  }
 });
 
-router.post('/reset-password', (req: Request, res: Response) => {
-  res.status(400).json({ error: 'Password reset links are not enabled. Contact your administrator.', code: 'PASSWORD_RESET_LINKS_ARE' });
+// POST /auth/forgot-password/reset — Step 3: Reset the password using tempToken
+router.post('/forgot-password/reset', authRateLimit, (req: Request, res: Response) => {
+  try {
+    const { tempToken, newPassword } = req.body;
+
+    if (!tempToken || typeof tempToken !== 'string') {
+      return res.status(400).json({ error: 'Reset token is required.', code: 'TOKEN_REQUIRED' });
+    }
+
+    const payload = verifyForgotPasswordToken(tempToken);
+    if (!payload) {
+      return res.status(400).json({ error: 'Invalid or expired reset token. Please start over.', code: 'INVALID_TOKEN' });
+    }
+
+    const db = getDb();
+
+    // Verify user still exists and is active
+    const user = db.prepare(
+      'SELECT id, username, status, password_hash FROM users WHERE id = ? AND username = ?'
+    ).get(payload.userId, payload.username) as any;
+
+    if (!user || user.status !== 'active') {
+      return res.status(400).json({ error: 'Account not found or inactive.', code: 'ACCOUNT_INACTIVE' });
+    }
+
+    // Validate the new password
+    const pwValidation = validatePassword(newPassword);
+    if (!pwValidation.valid) {
+      return res.status(400).json({ error: pwValidation.errors.join('; '), code: 'PASSWORD_VALIDATION' });
+    }
+
+    // Check password history (last 5)
+    const recentHistory = db.prepare(
+      'SELECT password_hash FROM password_history WHERE user_id = ? ORDER BY created_at DESC LIMIT 5'
+    ).all(user.id) as { password_hash: string }[];
+
+    if (recentHistory.length > 0) {
+      const historyHashes = recentHistory.map((h: any) => h.password_hash);
+      if (checkPasswordHistory(newPassword, historyHashes)) {
+        return res.status(400).json({ error: 'Password has been used recently. Choose a different password.', code: 'PASSWORD_REUSE' });
+      }
+    }
+
+    // Check against current password
+    if (bcryptjs.compareSync(newPassword, user.password_hash)) {
+      return res.status(400).json({ error: 'New password must be different from your current password.', code: 'PASSWORD_SAME' });
+    }
+
+    // Hash the new password
+    const salt = bcryptjs.genSaltSync(12);
+    const passwordHash = bcryptjs.hashSync(newPassword, salt);
+
+    const now = localNow();
+
+    // Store old password hash in history
+    db.prepare(
+      'INSERT INTO password_history (user_id, password_hash, created_at) VALUES (?, ?, ?)'
+    ).run(user.id, user.password_hash, now);
+
+    // Update user
+    db.prepare(
+      'UPDATE users SET password_hash = ?, password_changed_at = ?, must_change_password = 0, updated_at = ? WHERE id = ?'
+    ).run(passwordHash, now, now, user.id);
+
+    // Log the password reset
+    db.prepare(
+      'INSERT INTO audit_log (timestamp, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(now, 'password_reset', 'user', user.id, 'Password reset via security questions', req.ip || 'unknown');
+
+    res.json({ success: true, message: 'Password has been reset successfully.' });
+  } catch (error: any) {
+    console.error('Forgot-password reset error:', error);
+    res.status(500).json({ error: 'Failed to reset password.', code: 'RESET_ERROR' });
+  }
 });
+
+// POST /auth/security-questions — Set or update security questions (authenticated)
+router.post('/security-questions', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const { question_1, answer_1, question_2, answer_2, question_3, answer_3 } = req.body;
+
+    // Validate all fields present
+    if (!question_1 || !answer_1 || !question_2 || !answer_2 || !question_3 || !answer_3) {
+      return res.status(400).json({ error: 'All three questions and answers are required.', code: 'VALIDATION_ERROR' });
+    }
+
+    // Validate question/answer lengths
+    if ([question_1, question_2, question_3].some((q: string) => q.trim().length < 3 || q.trim().length > 200)) {
+      return res.status(400).json({ error: 'Each question must be between 3 and 200 characters.', code: 'VALIDATION_ERROR' });
+    }
+    if ([answer_1, answer_2, answer_3].some((a: string) => a.trim().length < 1 || a.trim().length > 100)) {
+      return res.status(400).json({ error: 'Each answer must be between 1 and 100 characters.', code: 'VALIDATION_ERROR' });
+    }
+
+    const db = getDb();
+    const userId = req.user!.userId;
+
+    // Hash answers with bcrypt
+    const salt = bcryptjs.genSaltSync(12);
+    const hash1 = bcryptjs.hashSync(String(answer_1).trim().toLowerCase(), salt);
+    const hash2 = bcryptjs.hashSync(String(answer_2).trim().toLowerCase(), salt);
+    const hash3 = bcryptjs.hashSync(String(answer_3).trim().toLowerCase(), salt);
+
+    const now = localNow();
+
+    // Upsert — insert or update
+    const existing = db.prepare('SELECT id FROM user_security_questions WHERE user_id = ?').get(userId) as any;
+
+    if (existing) {
+      db.prepare(
+        'UPDATE user_security_questions SET question_1 = ?, answer_1_hash = ?, question_2 = ?, answer_2_hash = ?, question_3 = ?, answer_3_hash = ?, updated_at = ? WHERE user_id = ?'
+      ).run(
+        question_1.trim(), hash1,
+        question_2.trim(), hash2,
+        question_3.trim(), hash3,
+        now, userId
+      );
+    } else {
+      db.prepare(
+        'INSERT INTO user_security_questions (user_id, question_1, answer_1_hash, question_2, answer_2_hash, question_3, answer_3_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+      ).run(
+        userId,
+        question_1.trim(), hash1,
+        question_2.trim(), hash2,
+        question_3.trim(), hash3,
+        now, now
+      );
+    }
+
+    res.json({ success: true, message: 'Security questions saved successfully.' });
+  } catch (error: any) {
+    console.error('Security questions save error:', error);
+    res.status(500).json({ error: 'Failed to save security questions.', code: 'SAVE_ERROR' });
+  }
+});
+
+// GET /auth/security-questions — Check if user has security questions set (authenticated)
+router.get('/security-questions', authenticateToken, (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const userId = req.user!.userId;
+
+    const sq = db.prepare(
+      'SELECT question_1, question_2, question_3 FROM user_security_questions WHERE user_id = ?'
+    ).get(userId) as any;
+
+    if (!sq) {
+      return res.json({ hasQuestions: false });
+    }
+
+    res.json({
+      hasQuestions: true,
+      questions: [sq.question_1, sq.question_2, sq.question_3],
+    });
+  } catch (error: any) {
+    console.error('Security questions check error:', error);
+    res.status(500).json({ error: 'Internal server error', code: 'INTERNAL_SERVER_ERROR' });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════════
+// Profile Image
+// ═══════════════════════════════════════════════════════════════
 
 // ═══════════════════════════════════════════════════════════════
 // Profile Image
