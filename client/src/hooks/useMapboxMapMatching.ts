@@ -1,7 +1,6 @@
 // GPS Breadcrumb Road Snapping — Map Matching API
-// Takes raw GPS track points and snaps them to the road network,
-// producing a cleaner, more realistic breadcrumb trail.
 import { useRef, useCallback, useState } from 'react';
+import type mapboxgl from 'mapbox-gl';
 import { matchToRoad } from '../utils/mapboxServices';
 
 const SOURCE_ID = 'rmpg-matched-source';

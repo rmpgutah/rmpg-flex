@@ -1,7 +1,6 @@
 // Nearest Unit Dispatch — Matrix API for closest-unit calculation
-// Computes drive-time ETAs from multiple units to multiple calls (or vice versa).
-// Returns ranked unit→call pairings. Renders the best route on the map.
 import { useRef, useCallback, useState } from 'react';
+import type mapboxgl from 'mapbox-gl';
 import { getMatrix, type MatrixResult } from '../utils/mapboxServices';
 
 export interface UnitEta {

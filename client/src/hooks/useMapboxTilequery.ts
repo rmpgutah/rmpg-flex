@@ -2,6 +2,7 @@
 // Click any point on the map to identify the beat, district, zone, or sector
 // it falls within. Essential for dispatch call location verification.
 import { useCallback, useState } from 'react';
+import type mapboxgl from 'mapbox-gl';
 import { tileQuery } from '../utils/mapboxServices';
 
 export interface TilequeryFeature {

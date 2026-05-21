@@ -150,19 +150,18 @@ export function mountMapboxRoutes(app: Hono<{ Bindings: Env; Variables: { user: 
   });
 
   // ─── Tilequery ─────────────────────────────────────────
-  // GET /api/mapbox/tilequery?lng=<lng>&lat=<lat>&radius=50&limit=10
+  // GET /api/mapbox/tilequery?lng=<lng>&lat=<lat>&radius=50&limit=10&layer=mapbox.mapbox-streets-v8
   api.get('/tilequery', async (c) => {
     const lng = parseFloat(c.req.query('lng') || '');
     const lat = parseFloat(c.req.query('lat') || '');
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
       return c.json({ error: 'lng and lat must be valid numbers' }, 400);
     }
-    const radius = Math.min(Math.max(0, parseInt(c.req.query('radius') || '50', 10) || 50), 500);
+    const radius = Math.min(Math.max(0, parseInt(c.req.query('radius') || '50', 10) || 50), 1000);
     const limit = Math.min(Math.max(1, parseInt(c.req.query('limit') || '10', 10) || 10), 50);
-    const layer = c.req.query('layer') || '';
+    const layer = c.req.query('layer') || 'mapbox.mapbox-streets-v8';
     const params: Record<string, string> = { radius: String(radius), limit: String(limit) };
-    if (layer) params.layers = layer;
-    return proxyToMapbox(c, `/v4/${lng},${lat}.json`, params);
+    return proxyToMapbox(c, `/v4/${encodeURIComponent(layer)}/tilequery/${lng},${lat}.json`, params);
   });
 
   // ─── Static Map ─────────────────────────────────────────

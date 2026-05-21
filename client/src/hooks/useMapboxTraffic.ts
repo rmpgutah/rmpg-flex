@@ -2,6 +2,7 @@
 // Adds real-time traffic data as a layer on the Mapbox GL JS map.
 // Shows congestion levels (low → moderate → heavy → severe) on roads.
 import { useEffect, useCallback, useState, useRef } from 'react';
+import type mapboxgl from 'mapbox-gl';
 
 const TRAFFIC_SOURCE_ID = 'rmpg-traffic-source';
 const TRAFFIC_LAYER_ID = 'rmpg-traffic-layer';

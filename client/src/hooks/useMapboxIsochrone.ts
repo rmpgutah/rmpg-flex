@@ -2,6 +2,7 @@
 // Shows contour polygons for 2/5/10/15 minute drive-time from a given point,
 // rendered on the Mapbox GL JS map. Essential for evaluating dispatch coverage.
 import { useRef, useCallback, useState, useEffect } from 'react';
+import type mapboxgl from 'mapbox-gl';
 import { getIsochrone, type IsochroneContour } from '../utils/mapboxServices';
 
 const SOURCE_ID = 'rmpg-isochrone-source';
