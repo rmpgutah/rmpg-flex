@@ -487,6 +487,70 @@ export function mountAdminRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     return c.json({ message: `Two-factor authentication reset for ${target.username}` });
   });
 
+  // GET /api/admin/users
+  api.get('/users', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const limit = Math.min(1000, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
+      const rows = await db.prepare(`
+        SELECT id, username, full_name, email, role, badge_number, status, created_at, last_login_at
+        FROM users ORDER BY full_name LIMIT ?
+      `).all(limit);
+      return c.json(rows);
+    } catch { return c.json([]); }
+  });
+
+  // GET /api/admin/system-settings
+  api.get('/system-settings', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const rows = await db.prepare("SELECT * FROM system_config WHERE category = 'setting' ORDER BY config_key").all();
+      return c.json(rows);
+    } catch { return c.json([]); }
+  });
+
+  // GET /api/admin/audit-log
+  api.get('/audit-log', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const limit = Math.min(10000, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
+      const rows = await db.prepare(`
+        SELECT a.*, u.full_name as user_name FROM audit_log a
+        LEFT JOIN users u ON a.user_id = u.id
+        ORDER BY a.created_at DESC LIMIT ?
+      `).all(limit);
+      return c.json(rows);
+    } catch { return c.json([]); }
+  });
+
+  // GET /api/admin/stats
+  api.get('/stats', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const [users, calls, incidents, warrants] = await Promise.all([
+        db.prepare('SELECT COUNT(*) as count FROM users').get(),
+        db.prepare('SELECT COUNT(*) as count FROM calls_for_service').get(),
+        db.prepare('SELECT COUNT(*) as count FROM incidents').get(),
+        db.prepare('SELECT COUNT(*) as count FROM warrants').get(),
+      ]);
+      return c.json({
+        users: (users as any)?.count || 0,
+        calls: (calls as any)?.count || 0,
+        incidents: (incidents as any)?.count || 0,
+        warrants: (warrants as any)?.count || 0,
+      });
+    } catch { return c.json({ users: 0, calls: 0, incidents: 0, warrants: 0 }); }
+  });
+
+  // GET /api/admin/feature-flags
+  api.get('/feature-flags', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const rows = await db.prepare("SELECT * FROM system_config WHERE category = 'feature_flag' ORDER BY config_key").all();
+      return c.json(rows);
+    } catch { return c.json([]); }
+  });
+
   // Mount all admin routes under /admin
   // ═══════════════════════════════════════════════════════════
   // THIRD-PARTY API KEYS

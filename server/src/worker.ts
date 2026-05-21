@@ -247,7 +247,7 @@ app.get('/api/weather', async (c) => {
   }
 });
 
-// ─── Auth Routes ─────────────────────────────────────────
+// ─── Route Imports ─────────────────────────────────────────
 import { mountAuthRoutes } from './routes/auth-worker';
 import { mountDispatchRoutes } from './routes/dispatch-worker';
 import { mountAdminRoutes } from './routes/admin-worker';
@@ -371,8 +371,6 @@ mountMicrobiltRoutes(app);
 mountSexOffenderRegistryRoutes(app);
 
 // ─── SPA Fallback ────────────────────────────────────────
-// In production, the client is built and served via Pages or R2
-// For now, return 404 for unmatched API routes
 app.all('/api/*', (c) => {
   return c.json({ error: 'API endpoint not found' }, 404);
 });
