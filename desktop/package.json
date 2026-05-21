@@ -54,7 +54,8 @@
       "icon": "../client/public/rmpg-seal.icns",
       "darkModeSupport": true,
       "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "identity": null
     },
     "dmg": {
       "backgroundColor": "#000000",
