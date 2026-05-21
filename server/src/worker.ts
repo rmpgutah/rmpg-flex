@@ -282,6 +282,7 @@ import { mountAiRoutes } from './routes/ai-worker';
 import { mountHrRoutes } from './routes/hr-worker';
 import { mountStatuteRoutes } from './routes/statutes-worker';
 import { mountGeocodeRoutes } from './routes/geocode-worker';
+import { mountDispatchAggregatesRoutes } from './routes/dispatch-aggregates-worker';
 import { mountMapboxRoutes } from './routes/mapbox-worker';
 import { mountOcrRoutes } from './routes/ocr-worker';
 
@@ -320,6 +321,7 @@ mountHrRoutes(app);
 mountStatuteRoutes(app);
 mountGeocodeRoutes(app);
 mountOcrRoutes(app);
+mountDispatchAggregatesRoutes(app);
 mountMapboxRoutes(app);
 
 // ─── SPA Fallback ────────────────────────────────────────
