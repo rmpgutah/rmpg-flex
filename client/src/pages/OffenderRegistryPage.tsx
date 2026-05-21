@@ -19,6 +19,9 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
@@ -237,7 +240,18 @@ export default function OffenderRegistryPage() {
 
   // Form
   const [formOpen, setFormOpen] = useState(false);
-  const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_offender_form',
+    defaultValue: EMPTY_FORM,
+    isActive: formOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Person search
@@ -336,6 +350,7 @@ export default function OffenderRegistryPage() {
     try {
       await apiFetch('/offender-registry', { method: 'POST', body: JSON.stringify(formData) });
       addToast('Offender alert created', 'success');
+      clearFormDraft();
       setFormOpen(false);
       setFormData({ ...EMPTY_FORM });
       setSelectedPerson(null);
@@ -386,7 +401,7 @@ export default function OffenderRegistryPage() {
       <div className={`flex flex-col ${isMobile ? 'h-1/2' : 'w-[400px]'} border-r border-rmpg-700`}>
         <PanelTitleBar title="Known Offender Registry" icon={UserX}>
           <ExportButton exportUrl="/api/offender-registry/export/csv" exportFilename="offender_alerts_export.csv" />
-          <button type="button" onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); }} className="toolbar-btn toolbar-btn-primary print:hidden">
+          <button type="button" onClick={() => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setSelectedPerson(null); setPersonSearch(''); setFormOpen(true); snapshotForm(); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New Alert
           </button>
         </PanelTitleBar>
@@ -592,9 +607,25 @@ export default function OffenderRegistryPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Offender Alert" icon={Plus}>
-              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close form"><X style={{ width: 12, height: 12 }} /></IconButton>
+              <div className="flex items-center gap-2">
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+                <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn" aria-label="Close form"><X style={{ width: 12, height: 12 }} /></IconButton>
+              </div>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
+              {formWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               {/* Person search */}
               <div>
                 <label className="field-label">Person *</label>
@@ -654,7 +685,7 @@ export default function OffenderRegistryPage() {
               </div>
 
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden disabled:opacity-40">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Alert
@@ -664,6 +695,15 @@ export default function OffenderRegistryPage() {
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={formOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={formOpen && formIsDirty}
+        onSave={handleCreate}
+        onCancel={() => { clearFormDraft(); setFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel="Create Alert"
+      />
     </div>
   );
 }

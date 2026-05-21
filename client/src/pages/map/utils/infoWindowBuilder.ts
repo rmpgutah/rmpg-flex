@@ -1,7 +1,7 @@
 // ============================================================
-// Map Info Window Builder — Tabbed HTML info windows
+// Map Info Window Builder — Tabbed HTML for Mapbox Popups
 // ============================================================
-// Returns raw HTML strings for google.maps.InfoWindow.setContent().
+// Returns raw HTML strings for mapboxgl.Popup().setHTML(html).
 // Uses CSS-only tabs (radio button :checked trick, no JS needed).
 // ============================================================
 

@@ -1,14 +1,7 @@
-// ============================================================
-// RMPG Flex — useMapFleetVehicles Hook
-// Fleet vehicle location markers on the map with color-coded
-// status indicators and GPS staleness detection.
-// ============================================================
-
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
-
-// ─── Types ──────────────────────────────────────────────────
 
 interface FleetVehicle {
   id: number;
@@ -35,191 +28,115 @@ interface UseMapFleetVehiclesReturn {
   count: number;
 }
 
-// ─── Status color mapping ───────────────────────────────────
-
 function getVehicleColor(status: string, gpsReportedAt: string | null): string {
-  // If GPS data is stale (> 1 hour), show gray regardless of status
   if (gpsReportedAt) {
     const reportedTime = new Date(gpsReportedAt).getTime();
-    if (isNaN(reportedTime)) return '#666666'; // invalid date — gray
+    if (isNaN(reportedTime)) return '#666666';
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    if (reportedTime < oneHourAgo) return '#666666'; // gray
+    if (reportedTime < oneHourAgo) return '#666666';
   } else {
-    // No GPS time at all — stale
     return '#666666';
   }
 
   switch (status) {
-    case 'in_service': return '#22c55e';      // green
-    case 'maintenance': return '#f59e0b';      // amber (maintenance_due equivalent)
-    case 'out_of_service': return '#dc2626';   // red
-    default: return '#666666';                 // gray
+    case 'in_service': return '#22c55e';
+    case 'maintenance': return '#f59e0b';
+    case 'out_of_service': return '#dc2626';
+    default: return '#666666';
   }
 }
 
-// ─── Create marker HTML element ─────────────────────────────
-
-function createVehicleMarkerElement(vehicle: FleetVehicle): HTMLDivElement {
+function buildVehicleInfoContent(vehicle: FleetVehicle): string {
   const color = getVehicleColor(vehicle.status, vehicle.gps_reported_at);
-
-  const el = document.createElement('div');
-  el.style.cssText = `
-    background: ${color};
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    border: 2px solid white;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.5);
-    cursor: pointer;
-    position: relative;
-  `;
-
-  // Fix 78: add direction arrow based on heading
-  if (vehicle.gps_heading != null && vehicle.gps_speed != null && vehicle.gps_speed > 1) {
-    const arrow = document.createElement('div');
-    arrow.style.cssText = `
-      position: absolute;
-      top: -4px;
-      left: 50%;
-      transform: translateX(-50%) rotate(${vehicle.gps_heading || 0}deg);
-      transform-origin: center bottom;
-      width: 0;
-      height: 0;
-      border-left: 4px solid transparent;
-      border-right: 4px solid transparent;
-      border-bottom: 8px solid ${color};
-    `;
-    el.appendChild(arrow);
-  }
-
-  const label = document.createElement('span');
-  label.style.cssText = 'color: white; font-size: 14px; font-weight: bold; line-height: 1;';
-  label.textContent = 'V';
-  el.appendChild(label);
-
-  return el;
-}
-
-// ─── Build info window content ──────────────────────────────
-
-function buildVehicleInfoContent(vehicle: FleetVehicle): HTMLDivElement {
-  const color = getVehicleColor(vehicle.status, vehicle.gps_reported_at);
-
-  const container = document.createElement('div');
-  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222';
-
-  const heading = document.createElement('div');
-  heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
-  heading.textContent = `Vehicle ${vehicle.vehicle_number}`;
-  container.appendChild(heading);
-
-  const table = document.createElement('table');
-  table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse';
-
-  const addRow = (lbl: string, value: unknown, valColor?: string) => {
-    if (value == null || value === '') return;
-    const tr = document.createElement('tr');
-    const tdLabel = document.createElement('td');
-    tdLabel.style.cssText = 'color:#888888;padding:1px 6px 1px 0';
-    tdLabel.textContent = lbl;
-    const tdValue = document.createElement('td');
-    tdValue.style.cssText = `color:${valColor || '#e0e0e0'}`;
-    tdValue.textContent = String(value);
-    tr.appendChild(tdLabel);
-    tr.appendChild(tdValue);
-    table.appendChild(tr);
-  };
-
-  // Vehicle details
   const makeModel = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ');
-  addRow('Vehicle', makeModel || undefined);
-  addRow('Plate', vehicle.plate_number);
-  addRow('Status', vehicle.status?.replace(/_/g, ' '));
-  addRow('Mileage', vehicle.current_mileage ? `${vehicle.current_mileage.toLocaleString()} mi` : undefined);
-  addRow('Next Service', vehicle.next_service_due);
-  addRow('Assigned Unit', vehicle.assigned_call_sign);
 
-  // GPS info
-  if (vehicle.gps_reported_at) {
-    const gpsTime = new Date(vehicle.gps_reported_at);
-    addRow('GPS Time', gpsTime.toLocaleString());
-    if (vehicle.gps_speed != null) {
-      addRow('Speed', `${Math.round(vehicle.gps_speed)} mph`);
-    }
-  }
-
-  container.appendChild(table);
-  return container;
+  return `
+    <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
+      <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">Vehicle ${vehicle.vehicle_number}</div>
+      <table style="width:100%;font-size:11px;border-collapse:collapse">
+        ${makeModel ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Vehicle</td><td style="color:#e0e0e0">${makeModel}</td></tr>` : ''}
+        ${vehicle.plate_number ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Plate</td><td style="color:#e0e0e0">${vehicle.plate_number}</td></tr>` : ''}
+        <tr><td style="color:#888888;padding:1px 6px 1px 0">Status</td><td style="color:#e0e0e0">${vehicle.status?.replace(/_/g, ' ')}</td></tr>
+        ${vehicle.current_mileage != null ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Mileage</td><td style="color:#e0e0e0">${vehicle.current_mileage.toLocaleString()} mi</td></tr>` : ''}
+        ${vehicle.next_service_due ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Next Service</td><td style="color:#e0e0e0">${vehicle.next_service_due}</td></tr>` : ''}
+        ${vehicle.assigned_call_sign ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Assigned Unit</td><td style="color:#e0e0e0">${vehicle.assigned_call_sign}</td></tr>` : ''}
+        ${vehicle.gps_reported_at ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">GPS Time</td><td style="color:#e0e0e0">${new Date(vehicle.gps_reported_at).toLocaleString()}</td></tr>` : ''}
+        ${vehicle.gps_speed != null ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Speed</td><td style="color:#e0e0e0">${Math.round(vehicle.gps_speed)} mph</td></tr>` : ''}
+      </table>
+    </div>
+  `;
 }
 
-// ─── Hook ───────────────────────────────────────────────────
-
-const REFRESH_INTERVAL = 2 * 60 * 1000; // 2 minutes
+const REFRESH_INTERVAL = 2 * 60 * 1000;
 
 export function useMapFleetVehicles(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
 ): UseMapFleetVehiclesReturn {
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<google.maps.OverlayView[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── Clear all markers ─────────────────────────────────────
+  const sourceId = 'fleet-vehicles';
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => {
-      m.setMap(null);
-    });
-    markersRef.current = [];
-  }, []);
-
-  // ── Render markers ────────────────────────────────────────
+    if (map) {
+      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+    }
+  }, [map]);
 
   const renderMarkers = useCallback((data: FleetVehicle[]) => {
-    const OverlayMarkerClass = getOverlayMarkerClass();
-    if (!map || !OverlayMarkerClass) return;
+    if (!map) return;
 
     clearMarkers();
 
-    if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
     }
 
     const withCoords = data.filter(
       (v) => v.gps_lat != null && v.gps_lon != null && !isNaN(Number(v.gps_lat)) && !isNaN(Number(v.gps_lon))
     );
 
-    withCoords.forEach((vehicle) => {
-      const lat = Number(vehicle.gps_lat);
-      const lng = Number(vehicle.gps_lon);
+    if (withCoords.length === 0) return;
 
-      const content = createVehicleMarkerElement(vehicle);
+    const features = withCoords.map((vehicle) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [Number(vehicle.gps_lon), Number(vehicle.gps_lat)] as [number, number] },
+      properties: { id: vehicle.id, vehicle_number: vehicle.vehicle_number, status: vehicle.status, gps_reported_at: vehicle.gps_reported_at },
+    }));
 
-      const marker = new OverlayMarkerClass({
-        map,
-        position: { lat, lng },
-        content,
-        title: `Vehicle ${vehicle.vehicle_number}`,
-        zIndex: 15,
-        onClick: () => {
-          const infoContent = buildVehicleInfoContent(vehicle);
-          infoWindowRef.current?.setContent(infoContent);
-          infoWindowRef.current?.setPosition({ lat, lng });
-          infoWindowRef.current?.open(map);
-        },
-      });
+    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    map.addLayer({
+      id: sourceId,
+      type: 'circle',
+      source: sourceId,
+      paint: {
+        'circle-color': [
+          'case',
+          ['==', ['get', 'status'], 'in_service'], '#22c55e',
+          ['==', ['get', 'status'], 'maintenance'], '#f59e0b',
+          ['==', ['get', 'status'], 'out_of_service'], '#dc2626',
+          '#666666',
+        ],
+        'circle-radius': 12,
+        'circle-stroke-color': '#fff',
+        'circle-stroke-width': 2,
+      },
+    });
 
-      markersRef.current.push(marker as unknown as google.maps.OverlayView);
+    map.on('click', sourceId, (e) => {
+      const feature = e.features?.[0];
+      if (!feature || !feature.properties) return;
+      const vehicle = withCoords.find(v => v.id === feature.properties?.id);
+      if (!vehicle) return;
+      if (popupRef.current) {
+        popupRef.current.setLngLat(e.lngLat).setHTML(buildVehicleInfoContent(vehicle)).addTo(map);
+      }
     });
   }, [map, clearMarkers]);
-
-  // ── Fetch fleet data ──────────────────────────────────────
 
   const fetchFleetData = useCallback(() => {
     if (!enabled) return;
@@ -245,10 +162,8 @@ export function useMapFleetVehicles(
       });
   }, [enabled, renderMarkers]);
 
-  // ── Enable/disable + refresh cycle ────────────────────────
-
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
 
     if (!enabled) {
       clearMarkers();
@@ -260,10 +175,7 @@ export function useMapFleetVehicles(
       return;
     }
 
-    // Initial fetch
     fetchFleetData();
-
-    // Refresh every 2 minutes
     refreshTimerRef.current = setInterval(fetchFleetData, REFRESH_INTERVAL);
 
     return () => {
@@ -274,15 +186,11 @@ export function useMapFleetVehicles(
     };
   }, [map, enabled, fetchFleetData, clearMarkers]);
 
-  // ── Cleanup on unmount ────────────────────────────────────
-
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.setMap(null); });
-      markersRef.current = [];
-      if (infoWindowRef.current) {
-        infoWindowRef.current.close();
-        infoWindowRef.current = null;
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
       }
       if (refreshTimerRef.current) {
         clearInterval(refreshTimerRef.current);
@@ -291,7 +199,5 @@ export function useMapFleetVehicles(
     };
   }, []);
 
-  return { vehicles, loading, count: vehicles.filter(
-    (v) => v.gps_lat != null && v.gps_lon != null
-  ).length };
+  return { vehicles, loading, count: vehicles.filter((v) => v.gps_lat != null && v.gps_lon != null).length };
 }

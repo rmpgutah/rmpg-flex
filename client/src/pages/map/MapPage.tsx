@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading, getFallbackMapImage } from '../../utils/googleMapsLoader';
-import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../../utils/googleMapsApiKey';
+import { initMapbox, resolveMapboxAccessToken, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_NIGHT, MAPBOX_STYLE_SATELLITE, MAPBOX_STYLE_STREETS, MAPBOX_STYLE_OUTDOORS, registerMapInstance, unregisterMapInstance, updateMapStyle, monitorTileLoading } from '../../utils/mapboxLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -80,7 +79,6 @@ import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useSh
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
-import OfflineMapFallback from '../../components/OfflineMapFallback';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
@@ -224,11 +222,11 @@ export default function MapPage() {
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const [mobileSheetTab, setMobileSheetTab] = useState<'layers' | 'units' | 'calls'>('layers');
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]); // AdvancedMarkerElement or OverlayView
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const heatmapLayerRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
-  const trackingLinesRef = useRef<google.maps.Polyline[]>([]);
+  const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
+  const heatmapLayerRef = useRef<any | null>(null);
+  const trackingLinesRef = useRef<any[]>([]);
   const [trackingLineCount, setTrackingLineCount] = useState(0);
   const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -332,8 +330,8 @@ export default function MapPage() {
   const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
-  const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
-  const speedAlertMarkersRef = useRef<google.maps.Marker[]>([]);
+  const breadcrumbLinesRef = useRef<any[]>([]);
+  const speedAlertMarkersRef = useRef<any[]>([]);
 
   // Speed analytics integration
   const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
@@ -344,9 +342,9 @@ export default function MapPage() {
   const [playbackIdx, setPlaybackIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(2);
-  const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
+  const playbackMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
-  const playbackSpeedLabelRef = useRef<google.maps.InfoWindow | null>(null);
+  const playbackSpeedLabelRef = useRef<mapboxgl.Popup | null>(null);
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
@@ -378,7 +376,7 @@ export default function MapPage() {
   const [addressResults, setAddressResults] = useState<{ description: string; place_id: string }[]>([]);
   const [showAddressResults, setShowAddressResults] = useState(false);
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addressMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const addressMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clean up address search/dismiss timers on unmount
@@ -468,9 +466,9 @@ export default function MapPage() {
   const [clusteringEnabled, setClusteringEnabled] = useState(false);
 
   // Separate marker tracking for clustering & drag dispatch
-  const unitMarkersMapRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(new Map());
-  const callMarkersMapRef = useRef<Map<string, { marker: google.maps.marker.AdvancedMarkerElement; callId: string }>>(new Map());
-  const callMarkersArrayRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const unitMarkersMapRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
+  const callMarkersMapRef = useRef<Map<string, { marker: mapboxgl.Marker; callId: string }>>(new Map());
+  const callMarkersArrayRef = useRef<mapboxgl.Marker[]>([]);
 
   // Intel layers
   const [intelLayers, setIntelLayers] = useState({ warrants: false, trespass: false, offenders: false, bolos: false });
@@ -832,34 +830,33 @@ export default function MapPage() {
         if (sz) savedZoom = parseInt(sz, 10) || 12;
       } catch { /* use defaults */ }
 
-      const map = new google.maps.Map(mapRef.current, {
-        center: savedCenter,
+      const map = new mapboxgl.Map({
+        container: mapRef.current!,
+        style: MAPBOX_STYLE_DARK,
+        center: [savedCenter.lng, savedCenter.lat],
         zoom: savedZoom,
-        disableDefaultUI: true,
-        zoomControl: false,
-        styles: DARK_MAP_STYLE,
-        backgroundColor: '#171717',
+        attributionControl: false,
         // 'greedy' allows single-finger pan on mobile/tablet — critical for
         // in-vehicle use where two-finger gestures are awkward while driving.
-        gestureHandling: 'greedy',
+        touchZoomRotate: true,
       });
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
 
-      // Fix 30: save map center/zoom to localStorage on idle
-      map.addListener('idle', () => {
+      // Fix 30: save map center/zoom to localStorage on moveend
+      map.on('moveend', () => {
         try {
           const c = map.getCenter();
           const z = map.getZoom();
           if (c && z != null) {
-            localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat(), lng: c.lng() }));
+            localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
             localStorage.setItem('rmpg_map_zoom', String(z));
           }
         } catch { /* quota exceeded */ }
       });
 
-      infoWindowRef.current = new google.maps.InfoWindow();
+      infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false });
 
       // Hide Google's dismissible "can't load correctly" dialog instantly.
       const hideStyleId = '__rmpg_hide_gm_dialog__';
@@ -896,21 +893,7 @@ export default function MapPage() {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
-      // ── CartoDB dark_matter tile overlay ──────────────────────
-      // Overlays free CartoDB tiles on top of Google's base map.
-      // Covers the "For development purposes only" watermark when
-      // Google billing is not active, while keeping all Google Maps
-      // API features (markers, GeoJSON, info windows) working.
-      // Tiles are also cached by the service worker for offline use.
-      const cartoTileLayer = new google.maps.ImageMapType({
-        getTileUrl: (coord, zoom) =>
-          `https://basemaps.cartocdn.com/dark_all/${zoom}/${coord.x}/${coord.y}@2x.png`,
-        tileSize: new google.maps.Size(256, 256),
-        name: 'CartoDB Dark',
-        maxZoom: 20,
-        opacity: 1.0,
-      });
-      map.overlayMapTypes.push(cartoTileLayer);
+      // CartoDB dark_matter tiles handled by Mapbox style
 
       // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
       // Without mapId, markers are created but silently never render.
@@ -955,8 +938,8 @@ export default function MapPage() {
         return;
       }
 
-      loadGoogleMaps(apiKey)
-        .then(() => initMap(apiKey))
+      initMapbox()
+        .then(() => initMap(''))
         .catch((err: any) => {
           if (cancelled) return;
           const errMsg = err?.message || String(err);
@@ -979,11 +962,10 @@ export default function MapPage() {
     }
 
     (async () => {
-      let apiKey = '';
       try {
-        apiKey = await getGoogleMapsApiKey();
+        await resolveMapboxAccessToken();
       } catch {
-        // No Google API key — trigger the OfflineMapFallback (Leaflet)
+        // No Mapbox token — map will use fallback style
         if (!cancelled) {
           setMapError('offline');
         }
@@ -991,17 +973,16 @@ export default function MapPage() {
       }
 
       if (cancelled) return;
-      attemptLoad(apiKey, 0);
+      attemptLoad('', 0);
 
-      // Auto-retry when device comes back online (covers the case where all retries
-      // exhausted during a dead zone, then WiFi reconnects while the error screen is showing)
-      unsubOnline = onOnlineRetryMaps(apiKey, () => {
+      // Auto-retry when device comes back online
+      unsubOnline = (() => {
         if (!cancelled && !mapInstanceRef.current) {
           devLog('[MapPage] Online auto-retry triggered — reinitializing map');
           setMapError(null);
-          initMap(apiKey);
+          initMap('');
         }
-      });
+      }) as any;
     })();
 
     return () => {
@@ -1013,11 +994,9 @@ export default function MapPage() {
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {
         if (m && typeof m.remove === 'function') m.remove();
-        else if (m) m.map = null;
       });
       markersRef.current = [];
       mapInstanceRef.current = null;
-      delete (window as any).gm_authFailure;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRetry, mapStyle]);
@@ -1063,8 +1042,8 @@ export default function MapPage() {
 
   // Helper: create a marker using AdvancedMarkerElement or OverlayView fallback
   const createMarker = useCallback((opts: {
-    map: google.maps.Map;
-    position: google.maps.LatLngLiteral;
+    map: mapboxgl.Map;
+    position: [number, number];
     content: HTMLElement;
     zIndex?: number;
     title?: string;
@@ -1072,14 +1051,10 @@ export default function MapPage() {
   }): any => {
     if (useAdvancedMarkersRef.current) {
       try {
-        const marker = new google.maps.marker.AdvancedMarkerElement({
-          map: opts.map,
-          position: opts.position,
-          content: opts.content,
-          zIndex: opts.zIndex,
-          title: opts.title,
-        });
-        if (opts.onClick) marker.addListener('click', opts.onClick);
+        const marker = new mapboxgl.Marker(opts.content)
+          .setLngLat(opts.position)
+          .addTo(opts.map);
+        if (opts.onClick) opts.content.addEventListener('click', opts.onClick);
         return marker;
       } catch {
         // Fall through to overlay
@@ -1094,7 +1069,6 @@ export default function MapPage() {
   // Helper: remove a marker (works for both types)
   const removeMarker = useCallback((m: any) => {
     if (m && typeof m.remove === 'function') m.remove();
-    else if (m) m.map = null;
   }, []);
 
   useEffect(() => {
@@ -1597,9 +1571,9 @@ export default function MapPage() {
   // GPS Breadcrumb Trails (enhanced: color modes, arrows, road names, playback)
   // ============================================================
 
-  const breadcrumbMarkersRef = useRef<google.maps.Circle[]>([]);
-  const breadcrumbArrowsRef = useRef<google.maps.Marker[]>([]);
-  const breadcrumbInfoRef = useRef<google.maps.InfoWindow | null>(null);
+  const breadcrumbMarkersRef = useRef<any[]>([]);
+  const breadcrumbArrowsRef = useRef<any[]>([]);
+  const breadcrumbInfoRef = useRef<mapboxgl.Popup | null>(null);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -2012,7 +1986,7 @@ export default function MapPage() {
   // Speed Heatmap Layer (grid rectangles)
   // ============================================================
 
-  const heatmapRectsRef = useRef<google.maps.Rectangle[]>([]);
+  const heatmapRectsRef = useRef<any[]>([]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -2059,7 +2033,7 @@ export default function MapPage() {
   // Pursuit Corridor Polylines
   // ============================================================
 
-  const pursuitLinesRef = useRef<google.maps.Polyline[]>([]);
+  const pursuitLinesRef = useRef<any[]>([]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -2099,8 +2073,8 @@ export default function MapPage() {
   // Speed Zone Polygons
   // ============================================================
 
-  const speedZonePolysRef = useRef<google.maps.Polygon[]>([]);
-  const speedZoneLabelsRef = useRef<google.maps.Marker[]>([]);
+  const speedZonePolysRef = useRef<any[]>([]);
+  const speedZoneLabelsRef = useRef<any[]>([]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;

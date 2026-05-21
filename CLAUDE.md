@@ -5,9 +5,10 @@
 RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management System)** for Rocky Mountain Protective Group, a private security / law enforcement company operating in Salt Lake City, Utah.
 
 - **Domain**: https://rmpgutah.us
-- **Production VPS**: root@194.113.64.90 (`/opt/rmpg-flex`)
-- **Service**: `systemd` unit `rmpg-flex` (HTTPS on 443, HTTP redirect on 80)
-- **Database**: SQLite via `better-sqlite3` at `server/data/rmpg-flex.db`
+- **Platform**: Cloudflare Workers + D1 + Pages + R2
+- **Worker**: `server/src/worker.ts` (Hono router, deployed via Wrangler)
+- **Database**: Cloudflare D1 (SQLite-compatible) via `server/src/models/d1Adapter.ts`
+- **Storage**: R2 buckets for uploads (`rmpg-flex-uploads`) and downloads (`rmpg-flex-downloads`)
 - **Timezone**: America/Denver (Mountain Time)
 - **Version**: 5.8.0 (server, client, desktop, root)
 
@@ -29,39 +30,36 @@ RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management Sy
 ## Architecture
 
 ```
-client/           React SPA (Vite build → client/dist/)
+client/           React SPA (Vite build → client/dist/ → Cloudflare Pages)
   src/pages/      Page components (one per route)
   src/components/ Shared components (StatsCard, PanelTitleBar, CollapsibleSection, etc.)
   src/hooks/      Custom React hooks (useApi, useLiveSync, useDistrictLookup, etc.)
   src/utils/      Utility modules (PDF gen, maps, CAD parser, voice alerts, call protocols)
   public/         Static assets, service worker (sw.js), offline tiles, GeoJSON layers
-server/           Express API server
+server/           Cloudflare Worker (Hono router → Workers runtime)
+  src/worker.ts   Worker entry point (Hono app, deployed via Wrangler)
   src/routes/     API route handlers (one file per domain)
   src/routes/dispatch/  Dispatch subsystem (calls, units, GPS, aggregates, districts)
   src/middleware/  Auth, rate-limiting, audit, security headers
   src/utils/      Server utilities (geocode, audit, TOTP, geofence, websocket)
-  src/models/     Database setup + migrations (database.ts — all tables + addCol migrations)
-  data/           SQLite database (PRODUCTION ONLY on VPS)
-  certs/          SSL cert symlinks (PRODUCTION ONLY on VPS)
-desktop/          Electron wrapper with offline sync, auto-update, IPC bridge
-deploy/           Deployment scripts (deploy.sh, deploy-all.sh)
+  src/models/     Database setup + D1 adapter (d1Adapter.ts)
+deploy/           Deployment scripts (deploy.sh → Cloudflare Workers/Pages)
 ```
 
 ## Critical Rules
 
 ### NEVER modify or delete these production-only paths:
-- `server/data/` — SQLite database (lives only on VPS)
-- `server/certs/` — SSL certificate symlinks (lives only on VPS)
-- `server/.env` — Production secrets (JWT_SECRET, etc.)
-- `server/uploads/` — User-uploaded attachments
+- `server/data/` — SQLite database (local development only)
+- `server/certs/` — SSL certificate symlinks (legacy, no longer used)
+- `server/.env` — Local development secrets (JWT_SECRET, etc.)
+- `server/uploads/` — User-uploaded attachments (local development only)
 
 ### Deploy Safety
-- **Deploy command**: `bash deploy/deploy.sh` (code only) or `bash deploy/deploy.sh --all` (code + installers)
-- Deploy script auto-detects project root via `$(dirname "$0")/..` — works from worktrees
-- Both scripts exclude `server/data`, `server/certs`, `server/.env`, `server/uploads`
+- **Deploy command**: `bash deploy/deploy.sh` (production) or `bash deploy/deploy.sh --dry-run` (preview)
+- Deploy script runs typecheck + tests before deploying to Cloudflare Workers + Pages
 - After deploy, always verify: `curl -sf https://rmpgutah.us/api/health`
 - **Always bump `CACHE_NAME` in `client/public/sw.js`** when deploying client changes
-- SSL certs: Let's Encrypt symlinks `/etc/letsencrypt/live/rmpgutah.us/` → `server/certs/`
+- Cloudflare handles TLS automatically — no SSL cert management needed
 
 ### Security
 - TOTP secrets are AES-256-GCM encrypted using a key derived from `JWT_SECRET`
@@ -228,7 +226,7 @@ cd client && npx tsc --noEmit  # TypeScript typecheck (deploy script runs this)
 # Server regression gates — now wired into 3-layer defense (as of 2026-04-18):
 #   Layer 1: .husky/pre-push         — runs on every `git push` (local, fast)
 #   Layer 2: .github/workflows/pr-tests.yml — runs on PR + push to main (CI)
-#   Layer 3: deploy/deploy.sh        — runs before VPS rsync (self-heals missing node_modules)
+#   Layer 3: deploy/deploy.sh        — runs before deploy (self-heals missing node_modules)
 # Manual invocations still available:
 cd server && npx vitest run         # Full server suite — 461 tests across 39 files, ~3s (requires `npm install` in server/ first)
 cd server && npm run check:routes   # Route-collision guard — 114 files, 0 duplicate METHOD+path handlers expected
@@ -239,23 +237,19 @@ cd desktop && npm run build:all   # Build macOS DMG + Windows EXE
 node desktop/scripts/copyToDownloads.cjs  # Copy to server/downloads/
 
 # Deploy
-bash deploy/deploy.sh             # Code only to VPS
-bash deploy/deploy.sh --all       # Code + desktop installers to VPS
+bash deploy/deploy.sh             # Deploy to Cloudflare Workers + Pages
+bash deploy/deploy.sh --dry-run   # Preview changes only
 
 # Direct deploy (bypasses typecheck gate — used when deploy.sh fails):
 cd client && npx vite build
-rsync -az --delete client/dist/ root@194.113.64.90:/opt/rmpg-flex/client/dist/
-rsync -az client/public/sw.js root@194.113.64.90:/opt/rmpg-flex/client/dist/sw.js
-rsync -az --delete --exclude='node_modules' --exclude='data' --exclude='certs' --exclude='.env' --exclude='uploads' server/ root@194.113.64.90:/opt/rmpg-flex/server/
-ssh root@194.113.64.90 "systemctl restart rmpg-flex"  # Only needed for server changes
+npx wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main
+npx wrangler deploy
 curl -sf https://rmpgutah.us/api/health               # Verify
 ```
 
 ### Quick Status Check
 ```bash
 curl -sf https://rmpgutah.us/api/health | python3 -m json.tool  # Server version + features
-ssh root@194.113.64.90 "grep CACHE_NAME /opt/rmpg-flex/client/dist/sw.js"  # Deployed SW version
-grep CACHE_NAME client/public/sw.js  # Local SW version
 ```
 
 ### Google Maps API Key
@@ -365,47 +359,44 @@ Read-only parallel map surface backed by OpenLayers + the existing CartoDB raste
 
 ## Common Gotchas
 
-1. **JWT_SECRET must be permanent** — random-on-restart breaks TOTP decryption
-2. **rsync --delete** in deploy — production-only dirs are excluded, don't remove those excludes
+1. **JWT_SECRET must be permanent** — random-on-restart breaks TOTP decryption. Set as Wrangler secret: `npx wrangler secret put JWT_SECRET`
+2. **Cloudflare handles TLS** — no SSL cert management needed
 3. **Electron desktop app** is in `desktop/` with its own `package.json` and `node_modules`
 4. **Large files** — DispatchPage.tsx (6,386 lines), MapPage.tsx (5,488 lines), dispatch calls.ts (2,185 lines)
 5. **Service Worker versioning** — bump `CACHE_NAME` in `sw.js` when changing client assets
 6. **Electron cache** — users must quit + clear `~/Library/Application Support/rmpg-flex-desktop/Cache` or press Cmd+Shift+R
 7. **Auth middleware name** — it's `authenticateToken` not `authenticate`
 8. **API fetch** — use `apiFetch()` from `hooks/useApi.ts`, not `useApi()` hook
-9. **Database migrations** — all in `database.ts` using `addCol()` helper, lazy CREATE TABLE patterns
+9. **Database migrations** — D1 migrations via `wrangler d1 migrations create/apply`, or `database.ts` using `addCol()` helper for local dev
 10. **Deploy from worktree** — `deploy.sh` auto-detects project root, works from any worktree
 11. **CSS overrides** — global Spillman enforcement rules at end of `index.css` force 2px radius, navy backgrounds, subtle shadows
-12. **nginx /downloads/** — proxied to Node.js (port 3001), not served as static files
+12. **R2 /downloads/** — served via R2 bucket binding, not static files
 13. **Dispatch layout** — DispatchPage uses `flex h-full` row layout. Never wrap in flex-col or add block children — use `position: fixed` for overlays
 14. **Electron full cache clear** — `pkill -f "RMPG Flex"; sleep 1; rm -rf ~/Library/Application\ Support/rmpg-flex-desktop/{Cache,Service\ Worker,GPUCache,Code\ Cache}`
 15. **Worktree deploys** — `deploy.sh` deploys whatever branch the worktree is on. Main branch is NOT updated. Merge worktree branch to main separately
-16. **nginx on VPS** — config at `/etc/nginx/sites-enabled/rmpg-flex`. New top-level URL paths must proxy to Node (port 3001), not serve static
+16. **Cloudflare Pages** — client is deployed via `wrangler pages deploy`. New top-level URL paths are handled by the Worker router.
 17. **Tailwind override pattern** — global Spillman enforcement at end of `index.css` uses `!important` to override utility classes (e.g., `.rounded-lg { border-radius: 2px !important; }`)
 18. **PATH in Claude Code sessions** — `npx`/`node` may not be found. Prefix with `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`
 19. **edge-tts-universal** — must use `Function('return import("edge-tts-universal")')()` to avoid tsx ESM resolver crash at startup. Lazy-loads on first TTS request.
-20. **VPS npm install** — requires `--legacy-peer-deps` flag due to peer dependency conflicts
+20. **Workers runtime** — no `fs`, `path`, or `process` in production. Use dynamic imports for Node.js-only modules.
 21. **Deploy typecheck gate** — `deploy.sh` runs both server and client `npx tsc --noEmit` as hard gates (as of 2026-04-18). Both ship with 0 TS errors; if either gate fails, fix the errors rather than reaching for the "Direct deploy" bypass above — bypassing hides real regressions. The Express 5 `req.params.X: string | string[]` noise (previously 52 tolerated errors) is now handled via the `paramStr()` / `paramNum()` helpers in `server/src/utils/reqHelpers.ts` — use those at the read site (e.g. `parseInt(paramStr(req.params.id), 10)`) rather than `as string` casts so the coercion is visible.
-22. **Vite bundle splitting** — `vite.config.ts` has `manualChunks` for vendor-react, vendor-pdf, vendor-icons. Each gets 1-year immutable cache via nginx `/assets/` location block.
-23. **nginx gzip** — configured in `/etc/nginx/conf.d/performance.conf` (level 6), NOT in nginx.conf (those lines are commented out). Don't uncomment nginx.conf gzip — it creates duplicates.
+22. **Vite bundle splitting** — `vite.config.ts` has `manualChunks` for vendor-react, vendor-pdf, vendor-icons. Each gets 1-year immutable cache via Cloudflare Pages.
+23. **D1 is async** — unlike better-sqlite3, all D1 operations return Promises. Use `await db.prepare(...).run()` etc.
 24. **calls_for_service columns** — 22+ columns added via addCol for PSO, tactical flags, timestamps. The redispatch INSERT has 74 columns — verify column count matches if modifying.
 25. **incidents columns** — 17 boolean flags (mental_health_crisis, juvenile_involved, etc.) added via addCol. POST INSERT has 86 columns.
 26. **serve_queue columns** — 20+ columns added via addCol beyond the 13 in CREATE TABLE. Code expects sm_job_id, recipient_*, document_type, etc.
-27. **2FA login flow** — Server returns `step: 'setup_2fa'` for users without TOTP. Set `totp_exempt = 1` in users table to bypass. Rate limiter is in-memory — restart server to clear.
+27. **2FA login flow** — Server returns `step: 'setup_2fa'` for users without TOTP. Set `totp_exempt = 1` in users table to bypass. Rate limiter is in KV — clear via Wrangler.
 28. **Agent scan accuracy** — subagent INSERT column count reports are often wrong (miss NULL, literals, ternary expressions). Always verify with python3 counter script before acting on mismatch reports.
 29. **persons table** — CREATE TABLE has 17 columns + 70 addCol migrations = 87 total. INSERT uses 81. This is correct — don't report as mismatch.
 30. **callActions.ts route prefixes** — routes use `/calls/:id/...` prefix (NOT `/:id/...`). All dispatch sub-routers mount at `/` under `/api/dispatch`. Client calls `/dispatch/calls/:id/...`.
 31. **Email iframe images** — use `srcdoc` + `sandbox="allow-same-origin allow-popups"` (NOT blob: URL). Blob origin blocks external image loading.
 32. **PDF process_service crash** — all field values must be strings. Use `safeStr()` wrapper: `const safeStr = (v: any): string => (v == null) ? '' : String(v);`
 33. **apiFetch prefix** — `apiFetch('/api/...')` works fine (doesn't double-prefix) because line 287 of useApi.ts checks `startsWith('/api')`. Both `/api/x` and `/x` are valid.
-34. **Password reset** — `cd /opt/rmpg-flex/server && node -e "const bcrypt=require('bcryptjs'); const db=require('better-sqlite3')('data/rmpg-flex.db'); db.prepare('UPDATE users SET password_hash=? WHERE username=?').run(bcrypt.hashSync('NewPass!',12),'username'); db.close()"`
-35. **VPS reboot recovery** — after VPS reboot, check `grep CACHE_NAME /opt/rmpg-flex/client/dist/sw.js` to verify deployed version. If stale, redeploy from worktree. Data in `server/data/` survives reboots.
+34. **Password reset** — Use D1 console: `wrangler d1 execute rmpg-flex --command "UPDATE users SET password_hash='...' WHERE username='...'"`
+35. **Deploy propagation** — after deploy, check `curl -sf https://rmpgutah.us/api/health` to verify. Cloudflare may take 30-60s to propagate.
 36. **Dual CREATE TABLE in database.ts** — Some tables (e.g. `field_interviews`) have two `CREATE TABLE IF NOT EXISTS` blocks with different column names. The FIRST one wins on production. Phase 1 definitions (later in the file) are skipped. Always check which definition is actually active.
-37. **Server rsync drops** — `rsync --delete server/` to VPS frequently drops SSH mid-transfer. Use `rsync -az server/src/ root@194.113.64.90:/opt/rmpg-flex/server/src/` (src only, no --delete) as the reliable fallback.
-38. **Client-server field name audit** — When form saves fail silently (data missing after save), check that client form field names exactly match server INSERT column names. Known past mismatches: ForensicLab (`synopsis`→`description`, `incident_id`→`linked_incident_id`), FieldInterviews (`location`/`contact_reason`/`action_taken` vs Phase 1 aliases).
-39. **npm `overrides` with `>=` is a footgun** — `"path-to-regexp": ">=0.1.13"` tells npm "any version ≥ 0.1.13", which resolves to the *highest* matching version (e.g. 8.x). Under Express 4 that broke boot with `TypeError: pathRegexp is not a function` in `express/lib/router/layer.js` because Express 4 required the 0.1.x function-default export. **Always use EXACT pins in `overrides`** (e.g. `"lodash": "4.17.21"`) unless you explicitly want a range. `server/package.json` currently pins only `dompurify` defensively — the `path-to-regexp: "0.1.13"` override was **removed in the Express 5 migration** (2026-04-10, commit 1c65343d) because Express 5's bundled router 2.x ships path-to-regexp 8.x with the DoS already patched upstream. **Do NOT re-add the path-to-regexp override** under Express 5; it will break the router at boot.
-40. **`deploy.sh` uses `rsync -avz` WITHOUT `--delete`** (deliberate safety against wiping `server/data/` if an exclusion rule is wrong). Consequence: files you rename or delete locally stay on the VPS as zombies after a normal `bash deploy/deploy.sh`. After any file rename/deletion refactor, manually clean up on the VPS: `ssh root@194.113.64.90 'rm /opt/rmpg-flex/path/to/old-file'`. Verify the active router imports the new file first to confirm the zombie is truly dead. The "Direct deploy" block in the Development section DOES use `--delete` — use that only for `dist` and only when you've verified the file list.
-41. **Geography seed is idempotent and only runs on empty tables** — `database.ts:~2956` calls `seedGeographyFromGeoJSON()` which bails if any of `dispatch_areas`/`dispatch_sectors`/`dispatch_zones`/`dispatch_beats` have rows. Fresh DBs get the full 6-area / 29-sector / 288-zone / 719-beat Utah GeoJSON seed. Production preserves its legacy 5/46/166/427 classification and 144 live FK references from `calls_for_service`/`incidents`/`citations`. A true production reseed needs a deliberate data migration with FK remap by `sector_code`/`zone_code`/`beat_code` strings, not a `DELETE FROM` + server restart.
-42. **Security hook blocks the literal string `e``x``e``c(` in the Edit tool** — the tool-call hook treats any occurrence of that substring (without the backticks) as a potential `child_process` shell-execution call and rejects the edit, even inside better-sqlite3 code. For single-statement DDL in `server/src/models/database.ts`, use `db.prepare('CREATE TABLE IF NOT EXISTS ...').run()` instead of the better-sqlite3 bulk-execute shortcut method. Multi-statement DDL can be split into multiple `db.prepare().run()` calls or wrapped in `db.transaction(() => { ... })()`. The hook is defensive and works even when the substring appears inside documentation or comments, so you may need to split the word across backticks when writing about it.
-43. **Parallel worktree deploys silently clobber each other** — `deploy.sh` deploys **whatever branch the caller's worktree is on**, not `main`, and uses `rsync` to push source files to `/opt/rmpg-flex/`. If two Claude sessions are running in different worktrees, the last one to run `deploy.sh` wins, regardless of which branch has the newer work. This happened 2026-04-17: session A deployed PR #198 (SW v229) at 10:58 UTC, session B from a different worktree on the old `d1e88c90` hotfix branch ran `deploy.sh` at 11:10 UTC and clobbered prod back to pre-fix Layout.tsx + CSS bundle (SW v244 — higher *number* but stale *source*). **A higher CACHE_NAME version on prod does not prove your code is live.** Always verify the specific fix reached the VPS by greping source files directly: `ssh root@194.113.64.90 "grep -c '<distinctive-string-from-your-fix>' /opt/rmpg-flex/<path>"`. If that returns the wrong count, pull main locally, bump CACHE_NAME above prod's current value, and redeploy from the main workspace (not any sub-worktree). A deploy-lock (e.g. touch `/tmp/rmpg-deploy.lock` at start of `deploy.sh` with a 10-min expiry) would prevent this, but is not currently implemented.
-44. **Husky pre-push hook is silently bypassed in worktrees with a per-worktree `core.hooksPath` override** — Husky v9 sets `core.hooksPath=.husky/_` at the **repository** level (in `.git/config`), but `git worktree add` may write a **per-worktree** override at `.git/worktrees/<name>/config.worktree` pointing back at `.git/hooks`. The per-worktree value wins. Symptom: `git config core.hooksPath` returns `.git/hooks` (not `.husky/_`) and no `pre-push` fires on `git push`, so the full-suite gate added 2026-04-18 silently does nothing. Check with `git config --show-origin --get-all core.hooksPath` — if the `config.worktree` origin appears, fix with `git config --worktree --unset core.hooksPath` in that worktree. After fix, verify with `git hook run pre-push` (should print the husky hook's banner). This must be run **once per worktree** that was created before husky was installed. Worktrees created *after* husky's `prepare` has run inherit the repo-level config cleanly.
+37. **Client-server field name audit** — When form saves fail silently (data missing after save), check that client form field names exactly match server INSERT column names. Known past mismatches: ForensicLab (`synopsis`→`description`, `incident_id`→`linked_incident_id`), FieldInterviews (`location`/`contact_reason`/`action_taken` vs Phase 1 aliases).
+38. **npm `overrides` with `>=` is a footgun** — `"path-to-regexp": ">=0.1.13"` tells npm "any version ≥ 0.1.13", which resolves to the *highest* matching version (e.g. 8.x). Under Express 4 that broke boot with `TypeError: pathRegexp is not a function` in `express/lib/router/layer.js` because Express 4 required the 0.1.x function-default export. **Always use EXACT pins in `overrides`** (e.g. `"lodash": "4.17.21"`) unless you explicitly want a range. `server/package.json` currently pins only `dompurify` defensively — the `path-to-regexp: "0.1.13"` override was **removed in the Express 5 migration** (2026-04-10, commit 1c65343d) because Express 5's bundled router 2.x ships path-to-regexp 8.x with the DoS already patched upstream. **Do NOT re-add the path-to-regexp override** under Express 5; it will break the router at boot.
+39. **Geography seed is idempotent and only runs on empty tables** — `database.ts:~2956` calls `seedGeographyFromGeoJSON()` which bails if any of `dispatch_areas`/`dispatch_sectors`/`dispatch_zones`/`dispatch_beats` have rows. Fresh DBs get the full 6-area / 29-sector / 288-zone / 719-beat Utah GeoJSON seed. Production preserves its legacy 5/46/166/427 classification and 144 live FK references from `calls_for_service`/`incidents`/`citations`. A true production reseed needs a deliberate data migration with FK remap by `sector_code`/`zone_code`/`beat_code` strings, not a `DELETE FROM` + server restart.
+40. **Security hook blocks the literal string `e``x``e``c(` in the Edit tool** — the tool-call hook treats any occurrence of that substring (without the backticks) as a potential `child_process` shell-execution call and rejects the edit, even inside better-sqlite3 code. For single-statement DDL in `server/src/models/database.ts`, use `db.prepare('CREATE TABLE IF NOT EXISTS ...').run()` instead of the better-sqlite3 bulk-execute shortcut method. Multi-statement DDL can be split into multiple `db.prepare().run()` calls or wrapped in `db.transaction(() => { ... })()`. The hook is defensive and works even when the substring appears inside documentation or comments, so you may need to split the word across backticks when writing about it.
+41. **Husky pre-push hook is silently bypassed in worktrees with a per-worktree `core.hooksPath` override** — Husky v9 sets `core.hooksPath=.husky/_` at the **repository** level (in `.git/config`), but `git worktree add` may write a **per-worktree** override at `.git/worktrees/<name>/config.worktree` pointing back at `.git/hooks`. The per-worktree value wins. Symptom: `git config core.hooksPath` returns `.git/hooks` (not `.husky/_`) and no `pre-push` fires on `git push`, so the full-suite gate added 2026-04-18 silently does nothing. Check with `git config --show-origin --get-all core.hooksPath` — if the `config.worktree` origin appears, fix with `git config --worktree --unset core.hooksPath` in that worktree. After fix, verify with `git hook run pre-push` (should print the husky hook's banner). This must be run **once per worktree** that was created before husky was installed. Worktrees created *after* husky's `prepare` has run inherit the repo-level config cleanly.

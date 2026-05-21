@@ -14,6 +14,9 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
 import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
@@ -86,7 +89,18 @@ export default function TrespassOrdersPage() {
 
   const [formOpen, setFormOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<TrespassOrder | null>(null);
-  const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_trespass_order_form',
+    defaultValue: EMPTY_FORM,
+    isActive: formOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Person search
@@ -185,6 +199,7 @@ export default function TrespassOrdersPage() {
     setPersonSearch('');
     clearAllErrors();
     setFormOpen(true);
+    snapshotForm();
   };
 
   const handleEdit = (order: TrespassOrder) => {
@@ -210,6 +225,7 @@ export default function TrespassOrdersPage() {
       beat_id: order.beat_id || '',
     });
     setFormOpen(true);
+    snapshotForm();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -239,6 +255,7 @@ export default function TrespassOrdersPage() {
         await apiFetch('/trespass-orders', { method: 'POST', body: JSON.stringify(body) });
         addToast('Trespass order created', 'success');
       }
+      clearFormDraft();
       setFormOpen(false); setEditingOrder(null); await fetchOrders();
     } catch (err: any) { setError(err?.message || 'Operation failed'); } finally { setSubmitting(false); }
   };
@@ -611,13 +628,29 @@ export default function TrespassOrdersPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" onClick={() => { clearFormDraft(); setFormOpen(false); }}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
-              <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
-              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-[#d4a017] uppercase tracking-wider">{editingOrder ? 'Edit' : 'New'} Trespass Order</span>
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+              </div>
+              <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
+              {formWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               {/* Person search */}
               <div>
                 <label className="field-label">Link to Person Record (Optional)</label>
@@ -717,12 +750,21 @@ export default function TrespassOrdersPage() {
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingOrder ? 'Update' : 'Create'} Order
                 </button>
-                <button type="button" onClick={() => setFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
+                <button type="button" onClick={() => { clearFormDraft(); setFormOpen(false); }} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={formOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={formOpen && formIsDirty}
+        onSave={() => { const e = { preventDefault: () => {} } as React.FormEvent; handleSubmit(e); }}
+        onCancel={() => { clearFormDraft(); setFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel={editingOrder ? 'Update Order' : 'Create Order'}
+      />
     </div>
   );
 }

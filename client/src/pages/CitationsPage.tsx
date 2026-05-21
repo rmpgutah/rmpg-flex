@@ -42,6 +42,9 @@ import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import ExportButton from '../components/ExportButton';
 import { formatAddressDisplay } from '../utils/statusLabels';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -316,11 +319,23 @@ export default function CitationsPage() {
 
   // Form state
   const [mode, setMode] = useState<'list' | 'create' | 'edit'>('list');
-  const [form, setForm] = useState<CitationForm>({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
+
+  const {
+    form,
+    setForm,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<CitationForm>({
+    storageKey: 'rmpg_citation_form',
+    defaultValue: EMPTY_FORM,
+    isActive: mode !== 'list',
+  });
 
   // Duplicate detection
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
@@ -565,6 +580,7 @@ export default function CitationsPage() {
     setSaveError('');
     setSaveSuccess(false);
     clearFormErrors();
+    snapshotForm();
     setMode('create');
     setSelectedCitation(null);
   };
@@ -624,12 +640,14 @@ export default function CitationsPage() {
     setSaveError('');
     setSaveSuccess(false);
     clearFormErrors();
+    snapshotForm();
     setMode('edit');
   };
 
   const handleCancelForm = () => {
     setMode('list');
     clearFormErrors();
+    clearFormDraft();
     setSaveError('');
     setSaveSuccess(false);
   };
@@ -660,6 +678,7 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
+        clearFormDraft();
         setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
@@ -670,6 +689,7 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>(`/citations/${selectedCitation.id}`, { method: 'PUT', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
+        clearFormDraft();
         setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
@@ -1222,9 +1242,14 @@ export default function CitationsPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Form header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
-          {isEdit ? `Edit Citation ${selectedCitation?.citation_number || ''}` : 'New Citation / Summons'}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
+            {isEdit ? `Edit Citation ${selectedCitation?.citation_number || ''}` : 'New Citation / Summons'}
+          </h2>
+          {formIsDirty && (
+            <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+          )}
+        </div>
         <button type="button" onClick={handleCancelForm} className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
           <X size={18} />
         </button>
@@ -1240,6 +1265,17 @@ export default function CitationsPage() {
         {saveSuccess && (
           <div className="bg-green-900/40 border border-green-700/50 px-3 py-2 text-xs text-green-300 flex items-center gap-2">
             <Check size={14} /> Citation saved successfully
+          </div>
+        )}
+        {formWasRestored && (
+          <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+            <div className="flex items-center gap-2">
+              <Clock size={14} className="text-amber-400" />
+              <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+            </div>
+            <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+              Discard
+            </button>
           </div>
         )}
         {duplicateWarning && (
@@ -1608,6 +1644,14 @@ export default function CitationsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      <UnsavedChangesGuard hasUnsavedChanges={mode !== 'list' && formIsDirty} />
+      <FloatingSaveBar
+        visible={mode !== 'list' && formIsDirty}
+        onSave={handleSave}
+        onCancel={handleCancelForm}
+        isSaving={saving}
+        saveLabel={mode === 'create' ? 'Create Citation' : 'Save Changes'}
+      />
       {/* Stats bar */}
       <div className={`${isMobile ? 'px-3 pt-3' : 'px-4 pt-4'} pb-0 shrink-0`}>
         {isMobile ? (

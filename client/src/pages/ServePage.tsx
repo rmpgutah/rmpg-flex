@@ -22,6 +22,9 @@ import ServeSkipTracePanel from '../components/serve/ServeSkipTracePanel';
 import FormModal from '../components/FormModal';
 import type { ServeJob, ServeAttemptData, ServeSkipAddress } from '../types';
 import ExportButton from '../components/ExportButton';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -57,6 +60,26 @@ function formatDate(d: Date): string {
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
+
+const EMPTY_FORM = {
+  recipient_name: '',
+  recipient_address: '',
+  recipient_city: '',
+  recipient_state: 'UT',
+  recipient_zip: '',
+  document_type: 'Summons',
+  case_number: '',
+  court_name: '',
+  jurisdiction: '',
+  client_name: '',
+  attorney_name: '',
+  priority: 'normal' as ServeJob['priority'],
+  time_window: 'anytime' as ServeJob['time_window'],
+  deadline: '',
+  max_attempts: 3,
+  service_instructions: '',
+  notes: '',
+};
 
 // ─── Stats Summary Type ─────────────────────────────────────────────────
 
@@ -103,24 +126,17 @@ export default function ServePage() {
   const [editJob, setEditJob] = useState<ServeJob | null>(null);
 
   // ── Create/Edit form state ─────────────────────────────────────────
-  const [formData, setFormData] = useState({
-    recipient_name: '',
-    recipient_address: '',
-    recipient_city: '',
-    recipient_state: 'UT',
-    recipient_zip: '',
-    document_type: 'Summons',
-    case_number: '',
-    court_name: '',
-    jurisdiction: '',
-    client_name: '',
-    attorney_name: '',
-    priority: 'normal' as ServeJob['priority'],
-    time_window: 'anytime' as ServeJob['time_window'],
-    deadline: '',
-    max_attempts: 3,
-    service_instructions: '',
-    notes: '',
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_serve_job_form',
+    defaultValue: EMPTY_FORM,
+    isActive: createJobOpen,
   });
   const [formSubmitting, setFormSubmitting] = useState(false);
 
@@ -334,21 +350,12 @@ export default function ServePage() {
 
   // ── Create / Edit Job ──────────────────────────────────────────────
 
-  const resetForm = useCallback(() => {
-    setFormData({
-      recipient_name: '', recipient_address: '', recipient_city: '',
-      recipient_state: 'UT', recipient_zip: '', document_type: 'Summons',
-      case_number: '', court_name: '', jurisdiction: '', client_name: '',
-      attorney_name: '', priority: 'normal', time_window: 'anytime',
-      deadline: '', max_attempts: 3, service_instructions: '', notes: '',
-    });
-  }, []);
-
   const openCreate = useCallback(() => {
-    resetForm();
     setEditJob(null);
+    setFormData({ ...EMPTY_FORM });
     setCreateJobOpen(true);
-  }, [resetForm]);
+    snapshotForm();
+  }, [setFormData, snapshotForm]);
 
   const openEdit = useCallback((jobId: number) => {
     const job = jobs.find(j => j.id === jobId);
@@ -374,7 +381,8 @@ export default function ServePage() {
       notes: job.notes || '',
     });
     setCreateJobOpen(true);
-  }, [jobs]);
+    snapshotForm();
+  }, [jobs, setFormData, snapshotForm]);
 
   const handleFormSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
@@ -393,7 +401,7 @@ export default function ServePage() {
         });
       }
       setCreateJobOpen(false);
-      resetForm();
+      clearFormDraft();
       setEditJob(null);
       refreshJobs();
     } catch {
@@ -401,7 +409,7 @@ export default function ServePage() {
     } finally {
       setFormSubmitting(false);
     }
-  }, [formData, editJob, selectedDate, resetForm, refreshJobs]);
+  }, [formData, editJob, selectedDate, clearFormDraft, refreshJobs]);
 
   const handleFormChange = useCallback((field: string, value: string | number) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -613,7 +621,7 @@ export default function ServePage() {
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setCreateJobOpen(false); setEditJob(null); }
+      if (e.key === 'Escape') { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
@@ -1230,14 +1238,16 @@ export default function ServePage() {
       {/* Create / Edit Job Modal */}
       <FormModal
         isOpen={createJobOpen}
-        onClose={() => { setCreateJobOpen(false); setEditJob(null); resetForm(); }}
+        onClose={() => { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); }}
         onSubmit={handleFormSubmit}
         title={editJob ? 'Edit Job' : 'Add Serve Job'}
         icon={Briefcase}
         submitLabel={editJob ? 'Update' : 'Create'}
         isSubmitting={formSubmitting}
         maxWidth="max-w-xl"
-        isDirty={formData.recipient_name.trim().length > 0}
+        isDirty={formIsDirty}
+        draftRestored={formWasRestored}
+        onDiscardDraft={clearFormDraft}
       >
         <div className="space-y-3">
           {/* Recipient */}
@@ -1444,6 +1454,15 @@ export default function ServePage() {
           </div>
         </div>
       </FormModal>
+
+      <UnsavedChangesGuard hasUnsavedChanges={createJobOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={createJobOpen && formIsDirty}
+        onSave={() => { const e = { preventDefault: () => {} } as React.FormEvent; handleFormSubmit(e); }}
+        onCancel={() => { setCreateJobOpen(false); setEditJob(null); clearFormDraft(); }}
+        isSaving={formSubmitting}
+        saveLabel={editJob ? 'Update Job' : 'Create Job'}
+      />
     </div>
   );
 }

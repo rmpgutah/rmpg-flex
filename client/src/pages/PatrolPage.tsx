@@ -33,6 +33,9 @@ import { safeDateStr, safeTimeStr } from '../utils/dateUtils';
 import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps } from '../utils/googleMapsLoader';
 import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
 import { useToast } from '../components/ToastProvider';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 
 // Add global google type for TypeScript
 declare global {
@@ -259,7 +262,7 @@ const PatrolPage: React.FC = () => {
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null);
   const [selectedQrCode, setSelectedQrCode] = useState('');
   const [editingCheckpoint, setEditingCheckpoint] = useState<Checkpoint | null>(null);
-  const [formData, setFormData] = useState({
+  const EMPTY_CHECKPOINT_FORM = {
     property_id: '',
     name: '',
     description: '',
@@ -267,6 +270,18 @@ const PatrolPage: React.FC = () => {
     longitude: '',
     scan_required_interval_minutes: '',
     is_active: true
+  };
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_CHECKPOINT_FORM>({
+    storageKey: 'rmpg_checkpoint_form',
+    defaultValue: EMPTY_CHECKPOINT_FORM,
+    isActive: showCheckpointModal,
   });
 
   // ── Feature 11/13/15: Shift summary, break tracking, efficiency ──
@@ -415,6 +430,7 @@ const PatrolPage: React.FC = () => {
       is_active: true
     });
     setShowCheckpointModal(true);
+    snapshotForm();
   };
 
   const handleEditCheckpoint = (checkpoint: Checkpoint) => {
@@ -429,6 +445,7 @@ const PatrolPage: React.FC = () => {
       is_active: checkpoint.is_active === 1
     });
     setShowCheckpointModal(true);
+    snapshotForm();
   };
 
   const handleSaveCheckpoint = async () => {
@@ -456,6 +473,7 @@ const PatrolPage: React.FC = () => {
       }
 
       setShowCheckpointModal(false);
+      clearFormDraft();
       loadCheckpoints();
       addToast(editingCheckpoint ? 'Checkpoint updated' : 'Checkpoint created', 'success');
     } catch (err: any) {
@@ -1236,9 +1254,31 @@ const PatrolPage: React.FC = () => {
       {showCheckpointModal && (
         <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50" role="dialog" aria-modal="true" aria-labelledby={checkpointModalTitleId}>
           <div className="panel-beveled bg-surface-base p-6 max-w-md w-full mx-4">
-            <h2 id={checkpointModalTitleId} className="text-xl font-bold text-white mb-4">
-              {editingCheckpoint ? 'Edit Checkpoint' : 'Create Checkpoint'}
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+              <h2 id={checkpointModalTitleId} className="text-xl font-bold text-white">
+                {editingCheckpoint ? 'Edit Checkpoint' : 'Create Checkpoint'}
+              </h2>
+              <div className="flex items-center gap-2">
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+                <IconButton onClick={() => { clearFormDraft(); setShowCheckpointModal(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close">
+                  <X className="w-5 h-5" />
+                </IconButton>
+              </div>
+            </div>
+
+            {formWasRestored && (
+              <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-4" style={{ background: '#1a1500' }}>
+                <div className="flex items-center gap-2">
+                  <Clock size={14} className="text-amber-400" />
+                  <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                </div>
+                <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                  Discard
+                </button>
+              </div>
+            )}
 
             <div className="space-y-4">
               <div>
@@ -1351,7 +1391,7 @@ const PatrolPage: React.FC = () => {
 
             <div className="flex gap-3 mt-6">
               <button type="button"
-                onClick={() => setShowCheckpointModal(false)}
+                onClick={() => { clearFormDraft(); setShowCheckpointModal(false); }}
                 className="toolbar-btn flex-1 justify-center"
               >
                 Cancel
@@ -1420,6 +1460,14 @@ const PatrolPage: React.FC = () => {
         message="Are you sure you want to delete this checkpoint? This action cannot be undone."
         confirmLabel="Delete"
         confirmVariant="danger"
+      />
+      <UnsavedChangesGuard hasUnsavedChanges={showCheckpointModal && formIsDirty} />
+      <FloatingSaveBar
+        visible={showCheckpointModal && formIsDirty}
+        onSave={handleSaveCheckpoint}
+        onCancel={() => { clearFormDraft(); setShowCheckpointModal(false); }}
+        isSaving={false}
+        saveLabel={editingCheckpoint ? 'Update Checkpoint' : 'Create Checkpoint'}
       />
     </div>
   );

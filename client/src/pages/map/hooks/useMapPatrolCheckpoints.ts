@@ -1,14 +1,7 @@
-// ============================================================
-// RMPG Flex — useMapPatrolCheckpoints Hook
-// Patrol checkpoint overlay with color-coded scan status
-// and dashed route polylines per property.
-// ============================================================
-
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
-
-// ─── Types ──────────────────────────────────────────────────
 
 interface CheckpointRecord {
   id: number;
@@ -28,10 +21,8 @@ interface UseMapPatrolCheckpointsReturn {
   checkpoints: CheckpointRecord[];
   loading: boolean;
   overdueCount: number;
-  completionPct: number; // Fix 82: completion percentage
+  completionPct: number;
 }
-
-// ─── Status color logic ─────────────────────────────────────
 
 type ScanStatus = 'green' | 'amber' | 'red';
 
@@ -44,7 +35,6 @@ function getHoursSinceLastScan(checkpoint: CheckpointRecord): number {
 
 function getScanStatus(checkpoint: CheckpointRecord): ScanStatus {
   const hours = getHoursSinceLastScan(checkpoint);
-  // Time-based thresholds: green <1hr, amber <4hr, red >=4hr
   if (hours < 1) return 'green';
   if (hours < 4) return 'amber';
   return 'red';
@@ -60,9 +50,6 @@ const STATUS_COLORS: Record<ScanStatus, string> = {
   red: '#dc2626',
 };
 
-// ─── Create marker HTML element using DOM API ───────────────
-
-// Inject pulse keyframes for overdue checkpoints (once)
 let pulseInjected = false;
 function injectCheckpointPulse() {
   if (pulseInjected) return;
@@ -79,7 +66,6 @@ function injectCheckpointPulse() {
 
 function createCheckpointMarkerElement(status: ScanStatus, overdue: boolean, scanCount?: number): HTMLDivElement {
   const color = STATUS_COLORS[status];
-
   if (overdue) injectCheckpointPulse();
 
   const wrapper = document.createElement('div');
@@ -102,12 +88,10 @@ function createCheckpointMarkerElement(status: ScanStatus, overdue: boolean, sca
 
   const label = document.createElement('span');
   label.style.cssText = 'color: white; font-size: 11px; font-weight: bold; line-height: 1;';
-  label.textContent = '\u2713'; // checkmark
+  label.textContent = '\u2713';
   el.appendChild(label);
-
   wrapper.appendChild(el);
 
-  // Check count badge
   if (scanCount != null && scanCount > 0) {
     const badge = document.createElement('div');
     badge.style.cssText = `
@@ -136,128 +120,86 @@ function createCheckpointMarkerElement(status: ScanStatus, overdue: boolean, sca
   return wrapper;
 }
 
-// ─── Build info window content ──────────────────────────────
-
-function buildCheckpointInfoContent(cp: CheckpointRecord, status: ScanStatus): HTMLDivElement {
+function buildCheckpointInfoContent(cp: CheckpointRecord, status: ScanStatus): string {
   const color = STATUS_COLORS[status];
-
-  const container = document.createElement('div');
-  container.style.cssText = 'font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:4px;border:1px solid #282828';
-
-  const heading = document.createElement('div');
-  heading.style.cssText = `font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}`;
-  heading.textContent = `Checkpoint: ${cp.name}`;
-  container.appendChild(heading);
-
-  const table = document.createElement('table');
-  table.style.cssText = 'width:100%;font-size:11px;border-collapse:collapse';
-
-  const addRow = (lbl: string, value: unknown, valColor?: string) => {
-    if (value == null || value === '') return;
-    const tr = document.createElement('tr');
-    const tdLabel = document.createElement('td');
-    tdLabel.style.cssText = 'color:#6b7b8d;padding:1px 6px 1px 0';
-    tdLabel.textContent = lbl;
-    const tdValue = document.createElement('td');
-    tdValue.style.cssText = `color:${valColor || '#e0e0e0'}`;
-    tdValue.textContent = String(value);
-    tr.appendChild(tdLabel);
-    tr.appendChild(tdValue);
-    table.appendChild(tr);
-  };
-
-  addRow('Property', cp.property_name);
-  addRow('Interval', `${cp.scan_required_interval_minutes} min`);
-  addRow('Last Scan', cp.last_scanned ? new Date(cp.last_scanned).toLocaleString() : 'Never', cp.last_scanned ? undefined : '#dc2626');
-  addRow('Scanned By', cp.scanned_by_name);
-  if (cp.scan_count != null) {
-    addRow('Total Scans', String(cp.scan_count));
-  }
-
   const hours = getHoursSinceLastScan(cp);
   const hoursLabel = hours === Infinity ? '' : ` (${hours.toFixed(1)}h ago)`;
   const statusLabel = status === 'green' ? 'ON TIME' : status === 'amber' ? 'DUE SOON' : 'OVERDUE';
-  addRow('Status', `${statusLabel}${hoursLabel}`, color);
 
-  container.appendChild(table);
-  return container;
+  return `
+    <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:4px;border:1px solid #282828">
+      <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">Checkpoint: ${cp.name}</div>
+      <table style="width:100%;font-size:11px;border-collapse:collapse">
+        ${cp.property_name ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Property</td><td style="color:#e0e0e0">${cp.property_name}</td></tr>` : ''}
+        <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Interval</td><td style="color:#e0e0e0">${cp.scan_required_interval_minutes} min</td></tr>
+        <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Last Scan</td><td style="color:${cp.last_scanned ? '#e0e0e0' : '#dc2626'}">${cp.last_scanned ? new Date(cp.last_scanned).toLocaleString() : 'Never'}</td></tr>
+        ${cp.scanned_by_name ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Scanned By</td><td style="color:#e0e0e0">${cp.scanned_by_name}</td></tr>` : ''}
+        ${cp.scan_count != null ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Total Scans</td><td style="color:#e0e0e0">${cp.scan_count}</td></tr>` : ''}
+        <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="color:${color}">${statusLabel}${hoursLabel}</td></tr>
+      </table>
+    </div>
+  `;
 }
 
-// ─── Hook ───────────────────────────────────────────────────
-
 export function useMapPatrolCheckpoints(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
 ): UseMapPatrolCheckpointsReturn {
   const [checkpoints, setCheckpoints] = useState<CheckpointRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [overdueCount, setOverdueCount] = useState(0);
 
-  const markersRef = useRef<google.maps.OverlayView[]>([]);
-  const polylinesRef = useRef<google.maps.Polyline[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── Clear all map objects ─────────────────────────────────
+  const sourceId = 'patrol-checkpoints';
+  const routeSourceId = 'patrol-checkpoint-routes';
 
   const clearAll = useCallback(() => {
-    markersRef.current.forEach((m) => {
-      m.setMap(null);
-    });
+    markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
-    polylinesRef.current.forEach((p) => p.setMap(null));
-    polylinesRef.current = [];
-  }, []);
-
-  // ── Render checkpoints on map ─────────────────────────────
+    if (map) {
+      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      if (map.getLayer(routeSourceId)) map.removeLayer(routeSourceId);
+      if (map.getSource(routeSourceId)) map.removeSource(routeSourceId);
+    }
+  }, [map]);
 
   const renderCheckpoints = useCallback((data: CheckpointRecord[]) => {
-    const OverlayMarkerClass = getOverlayMarkerClass();
-    if (!map || !OverlayMarkerClass) return;
+    if (!map) return;
 
     clearAll();
 
-    if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
     }
 
     const withCoords = data.filter(
       (cp) => cp.latitude != null && cp.longitude != null && !isNaN(Number(cp.latitude)) && !isNaN(Number(cp.longitude))
     );
 
-    // Count overdue
     let overdue = 0;
     withCoords.forEach((cp) => {
       if (getScanStatus(cp) === 'red') overdue++;
     });
     setOverdueCount(overdue);
 
-    // Create markers
+    const markerFeatures: any[] = [];
+    const routeFeatures: any[] = [];
+
     withCoords.forEach((cp) => {
       const lat = Number(cp.latitude);
       const lng = Number(cp.longitude);
       const status = getScanStatus(cp);
 
-      const content = createCheckpointMarkerElement(status, isOverdue(cp), cp.scan_count);
-
-      const marker = new OverlayMarkerClass({
-        map,
-        position: { lat, lng },
-        content,
-        title: `${cp.name} (${cp.property_name || 'Unknown'})`,
-        zIndex: 15,
-        onClick: () => {
-          const infoContent = buildCheckpointInfoContent(cp, status);
-          infoWindowRef.current?.setContent(infoContent);
-          infoWindowRef.current?.setPosition({ lat, lng });
-          infoWindowRef.current?.open(map);
-        },
+      markerFeatures.push({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [lng, lat] },
+        properties: { id: cp.id, status, name: cp.name, propertyName: cp.property_name, scanCount: cp.scan_count },
       });
-
-      markersRef.current.push(marker as unknown as google.maps.OverlayView);
     });
 
-    // Draw dashed polylines per property (connecting checkpoints in sequence order)
     const byProperty = new Map<number, CheckpointRecord[]>();
     withCoords.forEach((cp) => {
       const existing = byProperty.get(cp.property_id) || [];
@@ -267,30 +209,62 @@ export function useMapPatrolCheckpoints(
 
     byProperty.forEach((cps) => {
       if (cps.length < 2) return;
-
       const sorted = [...cps].sort((a, b) => a.sequence_order - b.sequence_order);
-      const path = sorted.map((cp) => ({ lat: Number(cp.latitude), lng: Number(cp.longitude) }));
+      const coords = sorted.map((cp) => [Number(cp.longitude), Number(cp.latitude)] as [number, number]);
+      routeFeatures.push({
+        type: 'Feature' as const,
+        geometry: { type: 'LineString' as const, coordinates: coords },
+        properties: {},
+      });
+    });
 
-      const polyline = new google.maps.Polyline({
-        path,
-        geodesic: true,
-        strokeColor: '#aaaaaa',
-        strokeOpacity: 0,
-        strokeWeight: 2,
-        map,
-        zIndex: 10,
-        icons: [{
-          icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.6, scale: 2 },
-          offset: '0',
-          repeat: '12px',
-        }],
+    if (markerFeatures.length > 0) {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: markerFeatures } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['==', ['get', 'status'], 'red'], '#dc2626',
+            ['==', ['get', 'status'], 'amber'], '#f59e0b',
+            '#22c55e',
+          ],
+          'circle-radius': 8,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+        },
       });
 
-      polylinesRef.current.push(polyline);
-    });
-  }, [map, clearAll]);
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature) return;
+        const props = feature.properties;
+        const cp = withCoords.find(c => c.id === props?.id);
+        if (!cp) return;
+        const status = getScanStatus(cp);
+        if (popupRef.current) {
+          popupRef.current.setLngLat([cp.longitude!, cp.latitude!]).setHTML(buildCheckpointInfoContent(cp, status)).addTo(map);
+        }
+      });
+    }
 
-  // ── Fetch data ────────────────────────────────────────────
+    if (routeFeatures.length > 0) {
+      map.addSource(routeSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: routeFeatures } });
+      map.addLayer({
+        id: routeSourceId,
+        type: 'line',
+        source: routeSourceId,
+        paint: {
+          'line-color': '#aaaaaa',
+          'line-width': 2,
+          'line-dasharray': [2, 3],
+          'line-opacity': 0.6,
+        },
+      });
+    }
+  }, [map, clearAll]);
 
   const fetchData = useCallback(() => {
     if (!enabled) return;
@@ -311,10 +285,8 @@ export function useMapPatrolCheckpoints(
       });
   }, [enabled, renderCheckpoints]);
 
-  // ── Effect: fetch + auto-refresh ──────────────────────────
-
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
 
     if (!enabled) {
       clearAll();
@@ -328,8 +300,6 @@ export function useMapPatrolCheckpoints(
     }
 
     fetchData();
-
-    // Refresh every 60 seconds
     intervalRef.current = setInterval(fetchData, 60_000);
 
     return () => {
@@ -340,17 +310,13 @@ export function useMapPatrolCheckpoints(
     };
   }, [map, enabled, fetchData, clearAll]);
 
-  // ── Cleanup on unmount ────────────────────────────────────
-
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.setMap(null); });
+      markersRef.current.forEach((m) => { m.remove(); });
       markersRef.current = [];
-      polylinesRef.current.forEach((p) => p.setMap(null));
-      polylinesRef.current = [];
-      if (infoWindowRef.current) {
-        infoWindowRef.current.close();
-        infoWindowRef.current = null;
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
       }
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
@@ -359,7 +325,6 @@ export function useMapPatrolCheckpoints(
     };
   }, []);
 
-  // Fix 82: calculate completion percentage
   const completionPct = checkpoints.length > 0
     ? Math.round(((checkpoints.length - overdueCount) / checkpoints.length) * 100)
     : 0;

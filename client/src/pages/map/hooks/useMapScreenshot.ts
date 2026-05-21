@@ -1,66 +1,34 @@
 import { useCallback, useRef } from 'react';
-import { getGoogleMapsApiKey } from '../../../utils/googleMapsApiKey';
+import mapboxgl from 'mapbox-gl';
 
 /**
- * Hook providing map screenshot capabilities via Google Maps Static API.
+ * Hook providing map screenshot capabilities via Mapbox Static Images API.
  * Returns functions to capture and download map images.
  */
 export function useMapScreenshot(
-  mapInstanceRef: React.MutableRefObject<google.maps.Map | null>,
+  map: mapboxgl.Map | null,
 ) {
   const busyRef = useRef(false);
 
-  /** Build a Google Static Maps URL from current map state */
   const buildStaticUrl = useCallback(async (width = 1280, height = 720): Promise<string | null> => {
-    const map = mapInstanceRef.current;
     if (!map) return null;
 
     const center = map.getCenter();
     const zoom = map.getZoom();
     if (!center || zoom == null) return null;
 
-    const apiKey = await getGoogleMapsApiKey().catch(() => '');
-    if (!apiKey) return null;
+    const token = import.meta.env.VITE_MAPBOX_ACCESS_TOKEN;
+    if (!token) return null;
 
-    const mapType = map.getMapTypeId() || 'roadmap';
-    const lat = center.lat().toFixed(6);
-    const lng = center.lng().toFixed(6);
+    const lat = center.lat.toFixed(6);
+    const lng = center.lng.toFixed(6);
 
-    // Clamp dimensions to Static API max (2048 with scale=1)
-    const w = Math.min(width, 2048);
-    const h = Math.min(height, 2048);
+    const w = Math.min(width, 1280);
+    const h = Math.min(height, 1280);
 
-    // Build dark style params for non-satellite types
-    const styleParams: string[] = [];
-    if (mapType === 'roadmap') {
-      // Simplified dark style for Static API
-      const darkStyles = [
-        'feature:all|element:geometry|color:0x0a1220',
-        'feature:all|element:labels.text.fill|color:0x8899aa',
-        'feature:all|element:labels.text.stroke|color:0x0a1220',
-        'feature:road|element:geometry|color:0x1a2636',
-        'feature:road.highway|element:geometry|color:0x1e3048',
-        'feature:water|element:geometry|color:0x0d1520',
-        'feature:poi|visibility:off',
-        'feature:transit|visibility:off',
-      ];
-      darkStyles.forEach(s => styleParams.push(`style=${encodeURIComponent(s)}`));
-    }
+    return `https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/${lng},${lat},${zoom},0/${w}x${h}@2x?access_token=${token}`;
+  }, [map]);
 
-    const params = [
-      `center=${lat},${lng}`,
-      `zoom=${zoom}`,
-      `size=${w}x${h}`,
-      `scale=2`,
-      `maptype=${mapType === 'hybrid' ? 'hybrid' : mapType === 'satellite' ? 'satellite' : mapType === 'terrain' ? 'terrain' : 'roadmap'}`,
-      `key=${apiKey}`,
-      ...styleParams,
-    ];
-
-    return `https://maps.googleapis.com/maps/api/staticmap?${params.join('&')}`;
-  }, [mapInstanceRef]);
-
-  /** Capture the current map view as a data URL (PNG) */
   const captureMapImage = useCallback(async (): Promise<string | null> => {
     if (busyRef.current) return null;
     busyRef.current = true;
@@ -87,7 +55,6 @@ export function useMapScreenshot(
     }
   }, [buildStaticUrl]);
 
-  /** Download the current map view as a PNG file */
   const downloadMapImage = useCallback(async (filename?: string): Promise<boolean> => {
     if (busyRef.current) return false;
     busyRef.current = true;
@@ -100,12 +67,11 @@ export function useMapScreenshot(
       if (!resp.ok) return false;
 
       const blob = await resp.blob();
-      const map = mapInstanceRef.current;
       const center = map?.getCenter();
       const zoom = map?.getZoom();
 
       const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-      const coords = center ? `_${center.lat().toFixed(4)}_${center.lng().toFixed(4)}` : '';
+      const coords = center ? `_${center.lat.toFixed(4)}_${center.lng.toFixed(4)}` : '';
       const zStr = zoom != null ? `_z${zoom}` : '';
       const name = filename || `map-export_${ts}${coords}${zStr}.png`;
 
@@ -116,7 +82,6 @@ export function useMapScreenshot(
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
-      // Delay revokeObjectURL to ensure the browser has finished initiating the download
       setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
       return true;
     } catch (err) {
@@ -125,17 +90,9 @@ export function useMapScreenshot(
     } finally {
       busyRef.current = false;
     }
-  }, [buildStaticUrl, mapInstanceRef]);
+  }, [buildStaticUrl, map]);
 
-  /** Open browser print dialog */
-  const printMap = useCallback(() => {
-    window.print();
-  }, []);
+  const printMap = useCallback(() => { window.print(); }, []);
 
-  return {
-    captureMapImage,
-    downloadMapImage,
-    printMap,
-    buildStaticUrl,
-  };
+  return { captureMapImage, downloadMapImage, printMap, buildStaticUrl };
 }

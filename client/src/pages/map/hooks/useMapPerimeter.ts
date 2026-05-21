@@ -1,13 +1,6 @@
-// ============================================================
-// RMPG Flex — useMapPerimeter Hook
-// Perimeter visualization, coverage gap analysis, containment
-// polygon drawing, sector overlays, and critical infrastructure.
-// ============================================================
-
 import { useState, useRef, useCallback, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-
-// ─── Types ──────────────────────────────────────────────────
 
 interface QuadrantCoverage {
   quadrant: 'NE' | 'NW' | 'SE' | 'SW';
@@ -42,14 +35,12 @@ interface UseMapPerimeterReturn {
   coveragePercent: number;
   startContainment: () => void;
   endContainment: () => void;
-  containmentPolygon: { lat: number; lng: number }[];
+  containmentPolygon: [number, number][];
   showPerimeterRings: (lat: number, lng: number, innerM: number, outerM: number) => void;
   clearRings: () => void;
   stagingSuggestion: { lat: number; lng: number } | null;
   loading: boolean;
 }
-
-// ─── SLC critical infrastructure ────────────────────────────
 
 const HIGH_VALUE_TARGETS = [
   { lat: 40.7608, lng: -111.891, name: 'Utah State Capitol' },
@@ -64,396 +55,272 @@ const HIGH_VALUE_TARGETS = [
   { lat: 40.7708, lng: -111.8920, name: 'Primary Children\'s Hospital' },
 ];
 
-// ─── Quadrant colors ────────────────────────────────────────
-
 const COVERED_COLOR = '#22c55e';
 const GAP_COLOR = '#ef4444';
 
-// ─── Hook ───────────────────────────────────────────────────
-
 export function useMapPerimeter(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
 ): UseMapPerimeterReturn {
   const [loading, setLoading] = useState(false);
   const [coverageGaps, setCoverageGaps] = useState<CoverageGap[]>([]);
   const [coveragePercent, setCoveragePercent] = useState(0);
   const [stagingSuggestion, setStagingSuggestion] = useState<{ lat: number; lng: number } | null>(null);
-  const [containmentPolygon, setContainmentPolygon] = useState<{ lat: number; lng: number }[]>([]);
+  const [containmentPolygon, setContainmentPolygon] = useState<[number, number][]>([]);
 
-  // Map object refs
-  const quadrantRectsRef = useRef<google.maps.Rectangle[]>([]);
-  const gapRectsRef = useRef<google.maps.Rectangle[]>([]);
-  const ringCirclesRef = useRef<google.maps.Circle[]>([]);
-  const containmentPolyRef = useRef<google.maps.Polygon | null>(null);
-  const containmentMarkersRef = useRef<google.maps.Marker[]>([]);
-  const hvtMarkersRef = useRef<google.maps.Marker[]>([]);
-  const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
-  const dblClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
   const isDrawingRef = useRef(false);
-  const verticesRef = useRef<{ lat: number; lng: number }[]>([]);
+  const verticesRef = useRef<[number, number][]>([]);
 
-  // ── Clear perimeter quadrants ───────────────────────────────
+  const quadrantSourceId = 'perimeter-quadrants';
+  const gapSourceId = 'perimeter-gaps';
+  const ringSourceId = 'perimeter-rings';
+  const containmentSourceId = 'perimeter-containment';
+  const hvtSourceId = 'perimeter-hvt';
 
-  const clearQuadrants = useCallback(() => {
-    quadrantRectsRef.current.forEach((r) => r.setMap(null));
-    quadrantRectsRef.current = [];
-  }, []);
-
-  // ── Clear gap rectangles ────────────────────────────────────
-
-  const clearGapRects = useCallback(() => {
-    gapRectsRef.current.forEach((r) => r.setMap(null));
-    gapRectsRef.current = [];
-  }, []);
-
-  // ── Clear rings ─────────────────────────────────────────────
-
-  const clearRings = useCallback(() => {
-    ringCirclesRef.current.forEach((c) => c.setMap(null));
-    ringCirclesRef.current = [];
-  }, []);
-
-  // ── Clear containment ───────────────────────────────────────
-
-  const clearContainment = useCallback(() => {
-    if (containmentPolyRef.current) {
-      containmentPolyRef.current.setMap(null);
-      containmentPolyRef.current = null;
-    }
-    containmentMarkersRef.current.forEach((m) => m.setMap(null));
-    containmentMarkersRef.current = [];
-    if (clickListenerRef.current) {
-      google.maps.event.removeListener(clickListenerRef.current);
-      clickListenerRef.current = null;
-    }
-    if (dblClickListenerRef.current) {
-      google.maps.event.removeListener(dblClickListenerRef.current);
-      dblClickListenerRef.current = null;
-    }
-    isDrawingRef.current = false;
-    verticesRef.current = [];
-    setContainmentPolygon([]);
-  }, []);
-
-  // ── Clear HVT markers ──────────────────────────────────────
-
-  const clearHvtMarkers = useCallback(() => {
-    hvtMarkersRef.current.forEach((m) => m.setMap(null));
-    hvtMarkersRef.current = [];
-  }, []);
-
-  // ── Clear all ───────────────────────────────────────────────
+  const clearSource = useCallback((id: string) => {
+    if (!map) return;
+    if (map.getLayer(id)) map.removeLayer(id);
+    if (map.getSource(id)) map.removeSource(id);
+  }, [map]);
 
   const clearPerimeter = useCallback(() => {
-    clearQuadrants();
-    clearGapRects();
-    clearRings();
-    clearContainment();
-    clearHvtMarkers();
+    [quadrantSourceId, gapSourceId, ringSourceId, containmentSourceId, hvtSourceId].forEach(clearSource);
     setCoverageGaps([]);
     setCoveragePercent(0);
     setStagingSuggestion(null);
-  }, [clearQuadrants, clearGapRects, clearRings, clearContainment, clearHvtMarkers]);
+    setContainmentPolygon([]);
+    isDrawingRef.current = false;
+    verticesRef.current = [];
+  }, [clearSource]);
 
-  // ── Render HVT markers ─────────────────────────────────────
+  const clearRings = useCallback(() => { clearSource(ringSourceId); }, [clearSource]);
 
   const renderHvtMarkers = useCallback(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
+    clearSource(hvtSourceId);
 
-    clearHvtMarkers();
+    const features = HIGH_VALUE_TARGETS.map((target) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [target.lng, target.lat] as [number, number] },
+      properties: { name: target.name },
+    }));
 
-    HIGH_VALUE_TARGETS.forEach((target) => {
-      const marker = new google.maps.Marker({
-        position: { lat: target.lat, lng: target.lng },
-        map,
-        icon: {
-          path: 'M12 2L4 7v5c0 5.55 3.84 10.74 8 12 4.16-1.26 8-6.45 8-12V7l-8-5z',
-          scale: 1.0,
-          fillColor: '#888888',
-          fillOpacity: 0.85,
-          strokeColor: '#555555',
-          strokeWeight: 1,
-          anchor: new google.maps.Point(12, 22),
-        },
-        title: target.name,
-        zIndex: 8,
-      });
-      hvtMarkersRef.current.push(marker);
+    map.addSource(hvtSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    map.addLayer({
+      id: hvtSourceId,
+      type: 'circle',
+      source: hvtSourceId,
+      paint: {
+        'circle-color': '#888888',
+        'circle-radius': 6,
+        'circle-stroke-color': '#555555',
+        'circle-stroke-width': 1,
+      },
     });
-  }, [map, clearHvtMarkers]);
 
-  // ── Show perimeter with quadrant coverage ───────────────────
+    if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
 
-  const showPerimeter = useCallback(
-    async (lat: number, lng: number) => {
-      if (!enabled || !map || !window.google?.maps) return;
-      setLoading(true);
-      try {
-        const data = await apiFetch<PerimeterData>(
-          `/map/safety/perimeter-check/${lat}/${lng}`,
-        );
-        if (!data?.quadrants) return;
+    map.on('click', hvtSourceId, (e) => {
+      const feature = e.features?.[0];
+      if (!feature || !feature.properties) return;
+      const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #88888840"><div style="font-weight:bold;color:#888888">${feature.properties.name}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">High Value Target</div></div>`;
+      if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+  }, [map, clearSource]);
 
-        clearQuadrants();
-        clearGapRects();
+  const showPerimeter = useCallback(async (lat: number, lng: number) => {
+    if (!enabled || !map) return;
+    setLoading(true);
+    try {
+      const data = await apiFetch<PerimeterData>(`/map/safety/perimeter-check/${lat}/${lng}`);
+      if (!data?.quadrants) return;
 
-        // Quadrant size: ~0.005 degrees (~500m)
-        const SIZE = 0.005;
+      clearSource(quadrantSourceId);
+      clearSource(gapSourceId);
+
+      const SIZE = 0.005;
+      const quadrantFeatures: any[] = [];
+      data.quadrants.forEach((q) => {
         const offsets: Record<string, { latOff: number; lngOff: number }> = {
-          NE: { latOff: 0, lngOff: 0 },
-          NW: { latOff: 0, lngOff: -SIZE },
-          SE: { latOff: -SIZE, lngOff: 0 },
-          SW: { latOff: -SIZE, lngOff: -SIZE },
+          NE: { latOff: SIZE / 2, lngOff: SIZE / 2 },
+          NW: { latOff: SIZE / 2, lngOff: -SIZE / 2 },
+          SE: { latOff: -SIZE / 2, lngOff: SIZE / 2 },
+          SW: { latOff: -SIZE / 2, lngOff: -SIZE / 2 },
         };
-
-        data.quadrants.forEach((q) => {
-          const off = offsets[q.quadrant];
-          if (!off) return;
-          const color = q.has_units ? COVERED_COLOR : GAP_COLOR;
-          const rect = new google.maps.Rectangle({
-            bounds: {
-              north: lat + off.latOff + SIZE,
-              south: lat + off.latOff,
-              east: lng + off.lngOff + SIZE,
-              west: lng + off.lngOff,
-            },
-            fillColor: color,
-            fillOpacity: 0.12,
-            strokeColor: color,
-            strokeWeight: 1,
-            strokeOpacity: 0.5,
-            map,
-            clickable: false,
-            zIndex: 6,
-          });
-          quadrantRectsRef.current.push(rect);
+        const off = offsets[q.quadrant];
+        if (!off) return;
+        quadrantFeatures.push({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [lng + off.lngOff, lat + off.latOff] as [number, number] },
+          properties: { color: q.has_units ? COVERED_COLOR : GAP_COLOR, quadrant: q.quadrant, unit_count: q.unit_count },
         });
+      });
 
-        // Fetch coverage gaps
-        const gapData = await apiFetch<CoverageGapData>('/map/safety/coverage-gaps');
-        if (gapData) {
-          setCoverageGaps(gapData.gaps || []);
-          setCoveragePercent(gapData.coverage_percent || 0);
-          setStagingSuggestion(gapData.suggested_staging || null);
+      if (quadrantFeatures.length > 0) {
+        map.addSource(quadrantSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: quadrantFeatures } });
+        map.addLayer({
+          id: quadrantSourceId,
+          type: 'circle',
+          source: quadrantSourceId,
+          paint: {
+            'circle-color': ['get', 'color'],
+            'circle-radius': SIZE * 111000 / 2,
+            'circle-opacity': 0.12,
+            'circle-stroke-color': ['get', 'color'],
+            'circle-stroke-width': 1,
+            'circle-stroke-opacity': 0.5,
+          },
+        });
+      }
 
-          // Render gap rectangles
-          (gapData.gaps || []).forEach((gap) => {
-            const gapRect = new google.maps.Rectangle({
-              bounds: {
-                north: gap.lat + gap.height / 2,
-                south: gap.lat - gap.height / 2,
-                east: gap.lng + gap.width / 2,
-                west: gap.lng - gap.width / 2,
-              },
-              fillColor: GAP_COLOR,
-              fillOpacity: 0.08,
-              strokeColor: GAP_COLOR,
-              strokeWeight: 1,
-              strokeOpacity: 0.3,
-              map,
-              clickable: false,
-              zIndex: 5,
-            });
-            gapRectsRef.current.push(gapRect);
+      const gapData = await apiFetch<CoverageGapData>('/map/safety/coverage-gaps');
+      if (gapData) {
+        setCoverageGaps(gapData.gaps || []);
+        setCoveragePercent(gapData.coverage_percent || 0);
+        setStagingSuggestion(gapData.suggested_staging || null);
+
+        const gapFeatures = (gapData.gaps || []).map((gap) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [gap.lng, gap.lat] as [number, number] },
+          properties: { width: gap.width, height: gap.height },
+        }));
+
+        if (gapFeatures.length > 0) {
+          map.addSource(gapSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: gapFeatures } });
+          map.addLayer({
+            id: gapSourceId,
+            type: 'circle',
+            source: gapSourceId,
+            paint: {
+              'circle-color': GAP_COLOR,
+              'circle-radius': 100,
+              'circle-opacity': 0.08,
+              'circle-stroke-color': GAP_COLOR,
+              'circle-stroke-width': 1,
+              'circle-stroke-opacity': 0.3,
+            },
           });
         }
-
-        // Render HVT markers
-        renderHvtMarkers();
-      } catch (err) {
-        console.warn('[useMapPerimeter] Perimeter analysis fetch failed:', err);
-      } finally {
-        setLoading(false);
       }
-    },
-    [enabled, map, clearQuadrants, clearGapRects, renderHvtMarkers],
-  );
 
-  // ── Containment perimeter draw tool ─────────────────────────
+      renderHvtMarkers();
+    } catch (err) {
+      console.warn('[useMapPerimeter] Perimeter analysis fetch failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled, map, clearSource, renderHvtMarkers]);
 
   const updateContainmentPoly = useCallback(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
+    clearSource(containmentSourceId);
 
-    if (containmentPolyRef.current) {
-      containmentPolyRef.current.setMap(null);
-    }
+    if (verticesRef.current.length < 3) return;
 
-    if (verticesRef.current.length < 2) return;
+    const coords = [...verticesRef.current, verticesRef.current[0]];
+    const feature = {
+      type: 'Feature' as const,
+      geometry: { type: 'Polygon' as const, coordinates: [coords] },
+      properties: {},
+    };
 
-    containmentPolyRef.current = new google.maps.Polygon({
-      paths: verticesRef.current,
-      strokeColor: '#ef4444',
-      strokeWeight: 2,
-      strokeOpacity: 0.9,
-      fillColor: '#ef4444',
-      fillOpacity: 0.06,
-      map,
-      clickable: false,
-      zIndex: 15,
+    map.addSource(containmentSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [feature] } });
+    map.addLayer({
+      id: containmentSourceId,
+      type: 'fill',
+      source: containmentSourceId,
+      paint: {
+        'fill-color': '#ef4444',
+        'fill-opacity': 0.06,
+      },
     });
-  }, [map]);
+    map.addLayer({
+      id: `${containmentSourceId}-outline`,
+      type: 'line',
+      source: containmentSourceId,
+      paint: {
+        'line-color': '#ef4444',
+        'line-width': 2,
+        'line-opacity': 0.9,
+      },
+    });
+  }, [map, clearSource]);
+
+  const handleClick = useCallback((e: mapboxgl.MapMouseEvent) => {
+    if (!isDrawingRef.current || !e.lngLat) return;
+    const point: [number, number] = [e.lngLat.lng, e.lngLat.lat];
+    verticesRef.current.push(point);
+    updateContainmentPoly();
+  }, [updateContainmentPoly]);
+
+  const handleDblClick = useCallback((e: mapboxgl.MapMouseEvent) => {
+    if (!isDrawingRef.current) return;
+    e.preventDefault();
+    isDrawingRef.current = false;
+    map?.off('click', handleClick);
+    map?.off('dblclick', handleDblClick);
+    setContainmentPolygon([...verticesRef.current]);
+  }, [map, handleClick]);
 
   const startContainment = useCallback(() => {
-    if (!map || !window.google?.maps || isDrawingRef.current) return;
-
-    // Clear previous containment
-    clearContainment();
+    if (!map || isDrawingRef.current) return;
+    clearSource(containmentSourceId);
     isDrawingRef.current = true;
     verticesRef.current = [];
 
-    // Click to add vertex
-    clickListenerRef.current = map.addListener('click', (e: google.maps.MapMouseEvent) => {
-      if (!isDrawingRef.current || !e.latLng) return;
-      const point = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-      verticesRef.current.push(point);
-
-      // Add vertex marker
-      const marker = new google.maps.Marker({
-        position: point,
-        map,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 4,
-          fillColor: '#ef4444',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 1,
-        },
-        zIndex: 16,
-      });
-      containmentMarkersRef.current.push(marker);
-
-      updateContainmentPoly();
-    });
-
-    // Double-click to close polygon
-    dblClickListenerRef.current = map.addListener('dblclick', () => {
-      if (!isDrawingRef.current) return;
-      isDrawingRef.current = false;
-
-      if (clickListenerRef.current) {
-        google.maps.event.removeListener(clickListenerRef.current);
-        clickListenerRef.current = null;
-      }
-      if (dblClickListenerRef.current) {
-        google.maps.event.removeListener(dblClickListenerRef.current);
-        dblClickListenerRef.current = null;
-      }
-
-      setContainmentPolygon([...verticesRef.current]);
-      updateContainmentPoly();
-    });
-  }, [map, clearContainment, updateContainmentPoly]);
+    map.on('click', handleClick);
+    map.on('dblclick', handleDblClick);
+  }, [map, clearSource, handleClick, handleDblClick]);
 
   const endContainment = useCallback(() => {
     if (isDrawingRef.current) {
       isDrawingRef.current = false;
-      if (clickListenerRef.current) {
-        google.maps.event.removeListener(clickListenerRef.current);
-        clickListenerRef.current = null;
-      }
-      if (dblClickListenerRef.current) {
-        google.maps.event.removeListener(dblClickListenerRef.current);
-        dblClickListenerRef.current = null;
-      }
+      map?.off('click', handleClick);
+      map?.off('dblclick', handleDblClick);
       setContainmentPolygon([...verticesRef.current]);
     }
-  }, []);
+  }, [map, handleClick]);
 
-  // ── Perimeter rings ─────────────────────────────────────────
+  const showPerimeterRings = useCallback((lat: number, lng: number, innerM: number, outerM: number) => {
+    if (!map) return;
+    clearSource(ringSourceId);
 
-  const showPerimeterRings = useCallback(
-    (lat: number, lng: number, innerM: number, outerM: number) => {
-      if (!map || !window.google?.maps) return;
+    const features = [
+      { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { radius: innerM, color: '#ef4444', opacity: 0.08, strokeOpacity: 0.7 } },
+      { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { radius: outerM, color: '#f59e0b', opacity: 0.05, strokeOpacity: 0.5 } },
+    ];
 
-      clearRings();
-      const center = { lat, lng };
-
-      // Inner ring
-      const innerCircle = new google.maps.Circle({
-        center,
-        radius: innerM,
-        fillColor: '#ef4444',
-        fillOpacity: 0.08,
-        strokeColor: '#ef4444',
-        strokeWeight: 2,
-        strokeOpacity: 0.7,
-        map,
-        clickable: false,
-        zIndex: 7,
-      });
-      ringCirclesRef.current.push(innerCircle);
-
-      // Outer ring
-      const outerCircle = new google.maps.Circle({
-        center,
-        radius: outerM,
-        fillColor: '#f59e0b',
-        fillOpacity: 0.05,
-        strokeColor: '#f59e0b',
-        strokeWeight: 2,
-        strokeOpacity: 0.5,
-        map,
-        clickable: false,
-        zIndex: 6,
-      });
-      ringCirclesRef.current.push(outerCircle);
-    },
-    [map, clearRings],
-  );
-
-  // ── Cleanup on disable ──────────────────────────────────────
+    map.addSource(ringSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    map.addLayer({
+      id: ringSourceId,
+      type: 'circle',
+      source: ringSourceId,
+      paint: {
+        'circle-color': ['get', 'color'],
+        'circle-radius': ['get', 'radius'],
+        'circle-opacity': ['get', 'opacity'],
+        'circle-stroke-color': ['get', 'color'],
+        'circle-stroke-width': 2,
+        'circle-stroke-opacity': ['get', 'strokeOpacity'],
+      },
+    });
+  }, [map, clearSource]);
 
   useEffect(() => {
-    if (!enabled) {
-      clearPerimeter();
-    }
-    return () => {
-      clearPerimeter();
-    };
+    if (!enabled) clearPerimeter();
+    return () => { clearPerimeter(); };
   }, [enabled, clearPerimeter]);
 
-  // ── Cleanup on unmount ──────────────────────────────────────
-
   useEffect(() => {
     return () => {
-      quadrantRectsRef.current.forEach((r) => r.setMap(null));
-      quadrantRectsRef.current = [];
-      gapRectsRef.current.forEach((r) => r.setMap(null));
-      gapRectsRef.current = [];
-      ringCirclesRef.current.forEach((c) => c.setMap(null));
-      ringCirclesRef.current = [];
-      if (containmentPolyRef.current) {
-        containmentPolyRef.current.setMap(null);
-        containmentPolyRef.current = null;
-      }
-      containmentMarkersRef.current.forEach((m) => m.setMap(null));
-      containmentMarkersRef.current = [];
-      hvtMarkersRef.current.forEach((m) => m.setMap(null));
-      hvtMarkersRef.current = [];
-      if (clickListenerRef.current) {
-        if (window.google?.maps?.event) google.maps.event.removeListener(clickListenerRef.current);
-        clickListenerRef.current = null;
-      }
-      if (dblClickListenerRef.current) {
-        if (window.google?.maps?.event) google.maps.event.removeListener(dblClickListenerRef.current);
-        dblClickListenerRef.current = null;
-      }
+      [quadrantSourceId, gapSourceId, ringSourceId, containmentSourceId, hvtSourceId].forEach((id) => {
+        if (map?.getLayer(id)) map.removeLayer(id);
+        if (map?.getSource(id)) map.removeSource(id);
+      });
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
     };
-  }, []);
+  }, [map]);
 
-  return {
-    showPerimeter,
-    clearPerimeter,
-    coverageGaps,
-    coveragePercent,
-    startContainment,
-    endContainment,
-    containmentPolygon,
-    showPerimeterRings,
-    clearRings,
-    stagingSuggestion,
-    loading,
-  };
+  return { showPerimeter, clearPerimeter, coverageGaps, coveragePercent, startContainment, endContainment, containmentPolygon, showPerimeterRings, clearRings, stagingSuggestion, loading };
 }

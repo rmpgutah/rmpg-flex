@@ -44,7 +44,10 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { OffenseLevelBadge } from '../components/StatuteLookup';
 import type { StatuteResult } from '../components/StatuteLookup';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useFormDraft } from '../hooks/useFormDraft';
 import EmptyState from '../components/EmptyState';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
@@ -542,7 +545,7 @@ export default function WarrantsPage() {
   // Form modal
   const [formOpen, setFormOpen] = useState(false);
   const [editingWarrant, setEditingWarrant] = useState<Warrant | null>(null);
-  const [formData, setFormData] = useState({
+  const EMPTY_FORM = {
     type: 'arrest',
     subject_person_id: '',
     issuing_court: '',
@@ -554,6 +557,18 @@ export default function WarrantsPage() {
     notes: '',
     statute_id: null as number | null,
     statute_citation: '',
+  };
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_warrant_form',
+    defaultValue: EMPTY_FORM,
+    isActive: formOpen,
   });
   const [submitting, setSubmitting] = useState(false);
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
@@ -1022,6 +1037,7 @@ export default function WarrantsPage() {
     setPersonSearch('');
     setSelectedPersonName('');
     setFormOpen(true);
+    snapshotForm();
   };
 
   const openEditForm = (w: Warrant) => {
@@ -1042,6 +1058,7 @@ export default function WarrantsPage() {
     setSelectedPersonName(w.subject_name || '');
     setPersonSearch('');
     setFormOpen(true);
+    snapshotForm();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -1082,6 +1099,7 @@ export default function WarrantsPage() {
         await apiFetch('/warrants', { method: 'POST', body: JSON.stringify(body) });
         await fetchWarrants({ silent: true });
       }
+      clearFormDraft();
       setFormOpen(false);
     } catch (err: any) {
       setError(err?.message || 'Failed to save warrant');
@@ -3304,10 +3322,26 @@ export default function WarrantsPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby={warrantFormTitleId}>
           <div className={`panel-beveled ${isMobile ? 'w-full h-full' : 'w-[550px] max-h-[85vh]'} overflow-auto bg-surface-base`}>
             <div className="flex items-center justify-between p-4 border-b border-rmpg-600">
-              <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
-              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X className="w-4 h-4" /></IconButton>
+              <div className="flex items-center gap-2">
+                <h2 id={warrantFormTitleId} className="text-sm font-bold text-white">{editingWarrant ? 'Edit Warrant' : 'New Warrant'}</h2>
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+              </div>
+              <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X className="w-4 h-4" /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-4">
+              {formWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               {/* Type + Offense Level */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
@@ -3449,7 +3483,7 @@ export default function WarrantsPage() {
 
               {/* Actions */}
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-600">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn text-xs">Cancel</button>
+                <button type="button" onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn text-xs">Cancel</button>
                 <button type="submit" disabled={submitting} className="toolbar-btn toolbar-btn-primary text-xs">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin mr-1" role="status" aria-label="Loading" /> : null}
                   {editingWarrant ? 'Update Warrant' : 'Create Warrant'}
@@ -3459,6 +3493,15 @@ export default function WarrantsPage() {
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={formOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={formOpen && formIsDirty}
+        onSave={() => { const e = { preventDefault: () => {} } as React.FormEvent; handleSubmit(e); }}
+        onCancel={() => { clearFormDraft(); setFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel={editingWarrant ? 'Update Warrant' : 'Create Warrant'}
+      />
 
       {/* SERVE MODAL */}
       {serveModalOpen && selectedWarrant && (

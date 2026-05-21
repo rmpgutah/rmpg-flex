@@ -3,7 +3,7 @@ import { useState, useEffect, useRef } from 'react';
 const API_URL =
   'https://api.open-meteo.com/v1/forecast?latitude=40.7608&longitude=-111.8910&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,apparent_temperature,uv_index,visibility&daily=sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FDenver&forecast_days=1';
 
-const CACHE_TTL = 15 * 60 * 1000; // 15 minutes
+const CACHE_TTL = 15 * 60 * 1000;
 
 interface WeatherData {
   temp: number;
@@ -13,13 +13,12 @@ interface WeatherData {
   windDirection: number;
   feelsLike: number | null;
   uvIndex: number | null;
-  visibility: number | null; // meters
+  visibility: number | null;
   sunrise: string | null;
   sunset: string | null;
   fetchedAt: number;
 }
 
-// Module-level cache so it survives re-mounts
 let cachedWeather: WeatherData | null = null;
 
 export interface UseWeatherOverlayResult {
@@ -73,54 +72,27 @@ export function useWeatherOverlay(): UseWeatherOverlayResult {
     const abortController = new AbortController();
 
     const load = async () => {
-      if (isCacheValid()) {
-        setData(cachedWeather);
-        setLoading(false);
-        return;
-      }
+      if (isCacheValid()) { setData(cachedWeather); setLoading(false); return; }
       setLoading(true);
       try {
         const weather = await fetchWeather(abortController.signal);
         cachedWeather = weather;
-        if (!cancelled) {
-          setData(weather);
-          setError(null);
-        }
+        if (!cancelled) { setData(weather); setError(null); }
       } catch (e) {
-        // Degrade gracefully — keep stale cache if available
-        if (!cancelled) {
-          setError(e instanceof Error ? e.message : 'Weather unavailable');
-          if (cachedWeather) setData(cachedWeather);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+        if (!cancelled) { setError(e instanceof Error ? e.message : 'Weather unavailable'); if (cachedWeather) setData(cachedWeather); }
+      } finally { if (!cancelled) setLoading(false); }
     };
 
     load();
-
-    // Auto-refresh every 15 minutes
     intervalRef.current = setInterval(load, CACHE_TTL);
 
-    return () => {
-      cancelled = true;
-      abortController.abort();
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
+    return () => { cancelled = true; abortController.abort(); if (intervalRef.current) clearInterval(intervalRef.current); };
   }, []);
 
   return {
-    temp: data?.temp ?? null,
-    weatherCode: data?.weatherCode ?? null,
-    humidity: data?.humidity ?? null,
-    windSpeed: data?.windSpeed ?? null,
-    windDirection: data?.windDirection ?? null,
-    feelsLike: data?.feelsLike ?? null,
-    uvIndex: data?.uvIndex ?? null,
-    visibility: data?.visibility ?? null,
-    sunrise: data?.sunrise ?? null,
-    sunset: data?.sunset ?? null,
-    loading,
-    error,
+    temp: data?.temp ?? null, weatherCode: data?.weatherCode ?? null, humidity: data?.humidity ?? null,
+    windSpeed: data?.windSpeed ?? null, windDirection: data?.windDirection ?? null,
+    feelsLike: data?.feelsLike ?? null, uvIndex: data?.uvIndex ?? null, visibility: data?.visibility ?? null,
+    sunrise: data?.sunrise ?? null, sunset: data?.sunset ?? null, loading, error,
   };
 }

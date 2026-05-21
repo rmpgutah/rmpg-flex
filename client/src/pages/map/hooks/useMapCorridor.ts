@@ -1,14 +1,6 @@
-// ============================================================
-// RMPG Flex — useMapCorridor Hook
-// Patrol corridor and route safety analysis: risk-colored
-// polylines, pursuit projections, escape routes, and
-// traffic-aware annotations.
-// ============================================================
-
 import { useState, useRef, useCallback, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-
-// ─── Types ──────────────────────────────────────────────────
 
 interface CorridorSegment {
   start: { lat: number; lng: number };
@@ -44,8 +36,6 @@ interface UseMapCorridorReturn {
   loading: boolean;
 }
 
-// ─── Risk color helpers ─────────────────────────────────────
-
 function riskColor(score: number): string {
   if (!Number.isFinite(score)) return '#666666';
   if (score <= 3) return '#22c55e';
@@ -53,303 +43,196 @@ function riskColor(score: number): string {
   return '#ef4444';
 }
 
-// ─── Destination from heading/distance ──────────────────────
-
-function destinationPoint(
-  lat: number,
-  lng: number,
-  headingDeg: number,
-  distanceKm: number,
-): { lat: number; lng: number } {
+function destinationPoint(lat: number, lng: number, headingDeg: number, distanceKm: number): { lat: number; lng: number } {
   if (!Number.isFinite(lat) || !Number.isFinite(lng) || !Number.isFinite(headingDeg) || !Number.isFinite(distanceKm)) return { lat, lng };
-  const R = 3958.8; // Earth radius mi
+  const R = 3958.8;
   const d = distanceKm / R;
   const brng = (headingDeg * Math.PI) / 180;
   const lat1 = (lat * Math.PI) / 180;
   const lng1 = (lng * Math.PI) / 180;
-
-  const lat2 = Math.asin(
-    Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng),
-  );
-  const lng2 =
-    lng1 +
-    Math.atan2(
-      Math.sin(brng) * Math.sin(d) * Math.cos(lat1),
-      Math.cos(d) - Math.sin(lat1) * Math.sin(lat2),
-    );
-
-  return {
-    lat: (lat2 * 180) / Math.PI,
-    lng: (lng2 * 180) / Math.PI,
-  };
+  const lat2 = Math.asin(Math.sin(lat1) * Math.cos(d) + Math.cos(lat1) * Math.sin(d) * Math.cos(brng));
+  const lng2 = lng1 + Math.atan2(Math.sin(brng) * Math.sin(d) * Math.cos(lat1), Math.cos(d) - Math.sin(lat1) * Math.sin(lat2));
+  return { lat: (lat2 * 180) / Math.PI, lng: (lng2 * 180) / Math.PI };
 }
 
-// ─── Hook ───────────────────────────────────────────────────
-
 export function useMapCorridor(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
 ): UseMapCorridorReturn {
   const [loading, setLoading] = useState(false);
   const [corridorData, setCorridorData] = useState<CorridorData | null>(null);
-  const [pursuitProjection, setPursuitProjection] = useState<{
-    lat: number;
-    lng: number;
-    heading: number;
-  } | null>(null);
+  const [pursuitProjection, setPursuitProjection] = useState<{ lat: number; lng: number; heading: number } | null>(null);
 
-  // Map object refs
-  const segmentLinesRef = useRef<google.maps.Polyline[]>([]);
-  const incidentMarkersRef = useRef<google.maps.Marker[]>([]);
-  const trafficLabelsRef = useRef<google.maps.Marker[]>([]);
-  const pursuitPolyRef = useRef<google.maps.Polygon | null>(null);
-  const escapeRouteLinesRef = useRef<google.maps.Polyline[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const segmentSourceId = 'corridor-segments';
+  const incidentSourceId = 'corridor-incidents';
+  const pursuitSourceId = 'corridor-pursuit';
+  const escapeSourceId = 'corridor-escape';
 
-  // ── Clear corridor overlays ─────────────────────────────────
-
-  const clearCorridorOverlays = useCallback(() => {
-    segmentLinesRef.current.forEach((l) => l.setMap(null));
-    segmentLinesRef.current = [];
-    incidentMarkersRef.current.forEach((m) => m.setMap(null));
-    incidentMarkersRef.current = [];
-    trafficLabelsRef.current.forEach((m) => m.setMap(null));
-    trafficLabelsRef.current = [];
-  }, []);
-
-  // ── Clear pursuit projection ────────────────────────────────
-
-  const clearPursuit = useCallback(() => {
-    if (pursuitPolyRef.current) {
-      pursuitPolyRef.current.setMap(null);
-      pursuitPolyRef.current = null;
-    }
-    setPursuitProjection(null);
-  }, []);
-
-  // ── Clear escape routes ─────────────────────────────────────
-
-  const clearEscapeRoutes = useCallback(() => {
-    escapeRouteLinesRef.current.forEach((l) => l.setMap(null));
-    escapeRouteLinesRef.current = [];
-  }, []);
-
-  // ── Clear all ───────────────────────────────────────────────
+  const clearSource = useCallback((id: string) => {
+    if (!map) return;
+    if (map.getLayer(id)) map.removeLayer(id);
+    if (map.getSource(id)) map.removeSource(id);
+  }, [map]);
 
   const clearCorridor = useCallback(() => {
-    clearCorridorOverlays();
-    clearPursuit();
-    clearEscapeRoutes();
+    [segmentSourceId, incidentSourceId, pursuitSourceId, escapeSourceId].forEach(clearSource);
     setCorridorData(null);
-  }, [clearCorridorOverlays, clearPursuit, clearEscapeRoutes]);
+    setPursuitProjection(null);
+  }, [clearSource]);
 
-  // ── Analyze corridor ────────────────────────────────────────
+  const clearPursuit = useCallback(() => { clearSource(pursuitSourceId); setPursuitProjection(null); }, [clearSource]);
+  const clearEscapeRoutes = useCallback(() => { clearSource(escapeSourceId); }, [clearSource]);
 
-  const analyzeCorridor = useCallback(
-    async (lat1: number, lng1: number, lat2: number, lng2: number) => {
-      if (!enabled || !map || !window.google?.maps) return;
-      setLoading(true);
-      try {
-        const data = await apiFetch<CorridorData>(
-          `/map/safety/corridor-analysis?lat1=${lat1}&lng1=${lng1}&lat2=${lat2}&lng2=${lng2}`,
-        );
-        if (!data?.segments) return;
+  const analyzeCorridor = useCallback(async (lat1: number, lng1: number, lat2: number, lng2: number) => {
+    if (!enabled || !map) return;
+    setLoading(true);
+    try {
+      const data = await apiFetch<CorridorData>(`/map/safety/corridor-analysis?lat1=${lat1}&lng1=${lng1}&lat2=${lat2}&lng2=${lng2}`);
+      if (!data?.segments) return;
 
-        clearCorridorOverlays();
-        setCorridorData(data);
+      clearSource(segmentSourceId);
+      clearSource(incidentSourceId);
+      setCorridorData(data);
 
-        // Render risk-colored polyline segments
-        data.segments.forEach((seg) => {
-          const color = riskColor(seg.risk_score);
-          const line = new google.maps.Polyline({
-            path: [seg.start, seg.end],
-            strokeColor: color,
-            strokeWeight: 4,
-            strokeOpacity: 0.85,
-            map,
-            clickable: false,
-            zIndex: 10,
-          });
-          segmentLinesRef.current.push(line);
+      if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
 
-          // Incident markers along the corridor
-          seg.incidents.forEach((inc) => {
-            const marker = new google.maps.Marker({
-              position: { lat: inc.lat, lng: inc.lng },
-              map,
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 3,
-                fillColor: '#ef4444',
-                fillOpacity: 0.8,
-                strokeColor: '#7f1d1d',
-                strokeWeight: 1,
-              },
-              title: `${inc.type} — ${inc.date}`,
-              zIndex: 11,
-            });
-            incidentMarkersRef.current.push(marker);
-          });
+      const segmentFeatures: any[] = [];
+      const incidentFeatures: any[] = [];
 
-          // Traffic annotations
-          if (seg.traffic_label) {
-            const midLat = (seg.start.lat + seg.end.lat) / 2;
-            const midLng = (seg.start.lng + seg.end.lng) / 2;
-
-            const canvas = document.createElement('canvas');
-            canvas.width = 100;
-            canvas.height = 20;
-            const ctx = canvas.getContext('2d');
-            if (ctx) {
-              ctx.fillStyle = seg.traffic_label === 'Heavy Traffic' ? '#f59e0b' : '#22c55e';
-              ctx.font = '11px sans-serif';
-              ctx.fillText(seg.traffic_label, 2, 14);
-            }
-
-            let canvasDataUrl: string;
-            try {
-              canvasDataUrl = canvas.toDataURL();
-            } catch (err) {
-              console.warn('[useMapCorridor] Canvas toDataURL failed:', err);
-              return;
-            }
-
-            const label = new google.maps.Marker({
-              position: { lat: midLat, lng: midLng },
-              map,
-              icon: {
-                url: canvasDataUrl,
-                scaledSize: new google.maps.Size(100, 20),
-                anchor: new google.maps.Point(50, 10),
-              },
-              clickable: false,
-              zIndex: 12,
-            });
-            trafficLabelsRef.current.push(label);
-          }
+      data.segments.forEach((seg) => {
+        const color = riskColor(seg.risk_score);
+        segmentFeatures.push({
+          type: 'Feature' as const,
+          geometry: { type: 'LineString' as const, coordinates: [[seg.start.lng, seg.start.lat], [seg.end.lng, seg.end.lat]] as [number, number][] },
+          properties: { color, risk_score: seg.risk_score, traffic_label: seg.traffic_label },
         });
-      } catch (err) {
-        console.warn('[useMapCorridor] Corridor analysis failed:', err);
-        setCorridorData(null);
-      } finally {
-        setLoading(false);
+
+        seg.incidents.forEach((inc) => {
+          incidentFeatures.push({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [inc.lng, inc.lat] as [number, number] },
+            properties: { type: inc.type, date: inc.date },
+          });
+        });
+      });
+
+      if (segmentFeatures.length > 0) {
+        map.addSource(segmentSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: segmentFeatures } });
+        map.addLayer({
+          id: segmentSourceId,
+          type: 'line',
+          source: segmentSourceId,
+          paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': 0.85 },
+        });
+
+        map.on('click', segmentSourceId, (e) => {
+          const feature = e.features?.[0];
+          if (!feature || !feature.properties) return;
+          const p = feature.properties;
+          const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid ${p.color}40"><div style="font-weight:bold;color:${p.color}">Risk Score: ${p.risk_score}</div>${p.traffic_label ? `<div style="font-size:9px;color:#9ca3af;margin-top:2px">${p.traffic_label}</div>` : ''}</div>`;
+          if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        });
       }
-    },
-    [enabled, map, clearCorridorOverlays],
-  );
 
-  // ── Pursuit corridor projection (2km cone) ─────────────────
-
-  const showPursuitProjection = useCallback(
-    (lat: number, lng: number, heading: number) => {
-      if (!map || !window.google?.maps) return;
-
-      clearPursuit();
-      setPursuitProjection({ lat, lng, heading });
-
-      const origin = { lat, lng };
-      const leftEdge = destinationPoint(lat, lng, heading - 30, 2);
-      const rightEdge = destinationPoint(lat, lng, heading + 30, 2);
-      const tip = destinationPoint(lat, lng, heading, 2);
-
-      pursuitPolyRef.current = new google.maps.Polygon({
-        paths: [origin, leftEdge, tip, rightEdge],
-        strokeColor: '#f59e0b',
-        strokeWeight: 2,
-        strokeOpacity: 0.8,
-        fillColor: '#f59e0b',
-        fillOpacity: 0.1,
-        map,
-        clickable: false,
-        zIndex: 14,
-      });
-    },
-    [map, clearPursuit],
-  );
-
-  // ── Escape routes (4 cardinal lines) ────────────────────────
-
-  const showEscapeRoutes = useCallback(
-    (lat: number, lng: number) => {
-      if (!map || !window.google?.maps) return;
-
-      clearEscapeRoutes();
-
-      const DISTANCE_MI = 0.93;
-      const directions = [
-        { heading: 0, label: 'N' },
-        { heading: 90, label: 'E' },
-        { heading: 180, label: 'S' },
-        { heading: 270, label: 'W' },
-      ];
-
-      directions.forEach((dir) => {
-        const endpoint = destinationPoint(lat, lng, dir.heading, DISTANCE_MI);
-        const line = new google.maps.Polyline({
-          path: [{ lat, lng }, endpoint],
-          strokeColor: '#a855f7',
-          strokeWeight: 2,
-          strokeOpacity: 0.7,
-          icons: [
-            {
-              icon: {
-                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 3,
-                fillColor: '#a855f7',
-                fillOpacity: 1,
-                strokeWeight: 0,
-              },
-              offset: '100%',
-            },
-          ],
-          map,
-          clickable: false,
-          zIndex: 13,
+      if (incidentFeatures.length > 0) {
+        map.addSource(incidentSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: incidentFeatures } });
+        map.addLayer({
+          id: incidentSourceId,
+          type: 'circle',
+          source: incidentSourceId,
+          paint: { 'circle-color': '#ef4444', 'circle-radius': 3, 'circle-stroke-color': '#7f1d1d', 'circle-stroke-width': 1 },
         });
-        escapeRouteLinesRef.current.push(line);
-      });
-    },
-    [map, clearEscapeRoutes],
-  );
 
-  // ── Cleanup on disable ──────────────────────────────────────
+        map.on('click', incidentSourceId, (e) => {
+          const feature = e.features?.[0];
+          if (!feature || !feature.properties) return;
+          const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #ef444440"><div style="font-weight:bold;color:#ef4444">${feature.properties.type}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.date}</div></div>`;
+          if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        });
+      }
+    } catch (err) {
+      console.warn('[useMapCorridor] Corridor analysis failed:', err);
+      setCorridorData(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled, map, clearSource]);
+
+  const showPursuitProjection = useCallback((lat: number, lng: number, heading: number) => {
+    if (!map) return;
+    clearSource(pursuitSourceId);
+    setPursuitProjection({ lat, lng, heading });
+
+    const leftEdge = destinationPoint(lat, lng, heading - 30, 2);
+    const rightEdge = destinationPoint(lat, lng, heading + 30, 2);
+    const tip = destinationPoint(lat, lng, heading, 2);
+
+    const feature = {
+      type: 'Feature' as const,
+      geometry: { type: 'Polygon' as const, coordinates: [[[lng, lat], [leftEdge.lng, leftEdge.lat], [tip.lng, tip.lat], [rightEdge.lng, rightEdge.lat], [lng, lat]]] },
+      properties: {},
+    };
+
+    map.addSource(pursuitSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [feature] } });
+    map.addLayer({
+      id: pursuitSourceId,
+      type: 'fill',
+      source: pursuitSourceId,
+      paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.1 },
+    });
+    map.addLayer({
+      id: `${pursuitSourceId}-outline`,
+      type: 'line',
+      source: pursuitSourceId,
+      paint: { 'line-color': '#f59e0b', 'line-width': 2, 'line-opacity': 0.8 },
+    });
+  }, [map, clearSource]);
+
+  const showEscapeRoutes = useCallback((lat: number, lng: number) => {
+    if (!map) return;
+    clearSource(escapeSourceId);
+
+    const DISTANCE_MI = 0.93;
+    const directions = [
+      { heading: 0, label: 'N' },
+      { heading: 90, label: 'E' },
+      { heading: 180, label: 'S' },
+      { heading: 270, label: 'W' },
+    ];
+
+    const features = directions.map(dir => {
+      const endpoint = destinationPoint(lat, lng, dir.heading, DISTANCE_MI);
+      return {
+        type: 'Feature' as const,
+        geometry: { type: 'LineString' as const, coordinates: [[lng, lat], [endpoint.lng, endpoint.lat]] as [number, number][] },
+        properties: { direction: dir.label },
+      };
+    });
+
+    map.addSource(escapeSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    map.addLayer({
+      id: escapeSourceId,
+      type: 'line',
+      source: escapeSourceId,
+      paint: { 'line-color': '#a855f7', 'line-width': 2, 'line-opacity': 0.7 },
+    });
+  }, [map, clearSource]);
 
   useEffect(() => {
-    if (!enabled) {
-      clearCorridor();
-    }
-    return () => {
-      clearCorridor();
-    };
+    if (!enabled) clearCorridor();
+    return () => { clearCorridor(); };
   }, [enabled, clearCorridor]);
 
-  // ── Cleanup on unmount ──────────────────────────────────────
-
   useEffect(() => {
     return () => {
-      segmentLinesRef.current.forEach((l) => l.setMap(null));
-      segmentLinesRef.current = [];
-      incidentMarkersRef.current.forEach((m) => m.setMap(null));
-      incidentMarkersRef.current = [];
-      trafficLabelsRef.current.forEach((m) => m.setMap(null));
-      trafficLabelsRef.current = [];
-      if (pursuitPolyRef.current) {
-        pursuitPolyRef.current.setMap(null);
-        pursuitPolyRef.current = null;
-      }
-      escapeRouteLinesRef.current.forEach((l) => l.setMap(null));
-      escapeRouteLinesRef.current = [];
+      [segmentSourceId, incidentSourceId, pursuitSourceId, escapeSourceId].forEach(id => {
+        if (map?.getLayer(id)) map.removeLayer(id);
+        if (map?.getSource(id)) map.removeSource(id);
+      });
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
     };
-  }, []);
+  }, [map]);
 
-  return {
-    analyzeCorridor,
-    clearCorridor,
-    corridorData,
-    pursuitProjection,
-    showPursuitProjection,
-    clearPursuit,
-    showEscapeRoutes,
-    clearEscapeRoutes,
-    loading,
-  };
+  return { analyzeCorridor, clearCorridor, corridorData, pursuitProjection, showPursuitProjection, clearPursuit, showEscapeRoutes, clearEscapeRoutes, loading };
 }

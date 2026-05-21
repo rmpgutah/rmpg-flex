@@ -1,40 +1,71 @@
-import Database from 'better-sqlite3';
+// ============================================================
+// RMPG Flex — Database Module
+// ============================================================
+// Supports dual runtime:
+//   - Node.js (development): better-sqlite3 via local file
+//   - Cloudflare Workers (production): D1 via adapter
+// ============================================================
+
 import bcryptjs from 'bcryptjs';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { migrateIncidentNumbers } from '../utils/caseNumbers';
 import crypto from 'crypto';
+import { migrateIncidentNumbers } from '../utils/caseNumbers';
 import { localNow } from '../utils/timeUtils';
 import { seedUtahStatutes } from '../seeds/utahStatutes';
-// DISPATCH_DISTRICTS legacy constant import removed (Phase 2 of geography rebuild)
 import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
-import { registerSqliteFunctions } from './sqliteFunctions';
 import { backfillCaseLinks } from '../migrations/2026-04-19-case-links-backfill';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ─── Runtime Detection ───────────────────────────────────
+const isWorkers = typeof process === 'undefined' || (process.env as any)?.WORKER_RUNTIME === 'true';
 
-// Use RMPG_DATA_DIR env var if provided (set by Electron desktop app for
-// writable user-data location), otherwise fall back to project-relative path
-const DATA_DIR = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
-const DB_PATH = path.join(DATA_DIR, 'rmpg-flex.db');
+// Node.js imports (only loaded in development)
+let Database: any;
+let path: any;
+let fs: any;
+let registerSqliteFunctions: any;
 
-let db: Database.Database;
-
-export function getDb(): Database.Database {
-  if (!db) {
-    throw new Error('Database not initialized. Call initDatabase() first.');
-  }
-  return db;
+if (!isWorkers) {
+  Database = (await import('better-sqlite3')).default;
+  path = await import('path');
+  fs = await import('fs');
+  registerSqliteFunctions = (await import('./sqliteFunctions')).registerSqliteFunctions;
 }
 
-export function initDatabase(): Database.Database {
+// ─── Database Instance ───────────────────────────────────
+let db: any; // better-sqlite3.Database in Node, D1DatabaseAdapter in Workers
+let d1Db: any; // Cloudflare D1Database (set by worker.ts)
+
+export function getDb(): any {
+  if (!db && !d1Db) {
+    throw new Error('Database not initialized. Call initDatabase() or setD1Instance() first.');
+  }
+  return db || d1Db;
+}
+
+export function setD1Instance(d1: any): void {
+  d1Db = d1;
+}
+
+export function initDatabase(): any {
+  if (isWorkers) {
+    // In Workers, D1 is set via setD1Instance() from the worker binding
+    if (!d1Db) {
+      throw new Error('D1 database not set. Call setD1Instance() in worker.ts');
+    }
+    return d1Db;
+  }
+
+  // ─── Node.js (Development) ─────────────────────────────
+  const __filename = (path as any).fileURLToPath((import.meta as any).url);
+  const __dirname = (path as any).dirname(__filename);
+
+  const DATA_DIR = process.env.RMPG_DATA_DIR || (path as any).resolve(__dirname, '../../data');
+  const DB_PATH = (path as any).join(DATA_DIR, 'rmpg-flex.db');
+
   // Ensure data directory exists
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!(fs as any).existsSync(DATA_DIR)) {
+    (fs as any).mkdirSync(DATA_DIR, { recursive: true });
   }
 
   db = new Database(DB_PATH);
@@ -43,15 +74,10 @@ export function initDatabase(): Database.Database {
   // Enable WAL mode for better concurrent read performance
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
-  // [FIX 64] Set synchronous to NORMAL for WAL mode (safe and faster than FULL)
   db.pragma('synchronous = NORMAL');
-  // [FIX 65] Increase WAL autocheckpoint threshold for better write performance
   db.pragma('wal_autocheckpoint = 1000');
-  // [FIX 66] Set busy timeout to prevent SQLITE_BUSY errors on concurrent access
   db.pragma('busy_timeout = 5000');
-  // [FIX 67] Enable memory-mapped I/O for faster reads (256MB)
   db.pragma('mmap_size = 268435456');
-  // [FIX 68] Set temp_store to memory for faster temp table operations
   db.pragma('temp_store = MEMORY');
 
   createTables();
