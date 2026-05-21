@@ -1196,6 +1196,24 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     return c.json(updated);
   });
 
+  // GET /api/dispatch/disposition-stats - Disposition counts
+  api.get('/disposition-stats', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const shiftStart = new Date();
+      shiftStart.setHours(shiftStart.getHours() - 12);
+      const stats = await db.prepare(`
+        SELECT disposition, COUNT(*) as count
+        FROM calls_for_service
+        WHERE disposition IS NOT NULL AND disposition != '' AND cleared_at >= ?
+        GROUP BY disposition ORDER BY count DESC
+      `).all(shiftStart.toISOString());
+      return c.json(stats);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to get disposition stats' }, 500);
+    }
+  });
+
   // Mount all dispatch routes under /dispatch
   app.route('/api/dispatch', api);
 }

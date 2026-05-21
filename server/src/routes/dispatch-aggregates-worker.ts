@@ -215,6 +215,39 @@ export function mountDispatchAggregatesRoutes(app: Hono<{ Bindings: Env; Variabl
     }
   });
 
+  // ─── Districts List ──────────────────────────────────
+  // GET /api/dispatch/districts - List all 3-tier dispatch districts
+  api.get('/districts', requireRole(...AGGR_ROLES), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const search = c.req.query('search') || '';
+    const limit = Math.min(100000, Math.max(1, parseInt(c.req.query('limit') || '100000', 10) || 100000));
+
+    try {
+      let query = `
+        SELECT db2.id, ds.sector_code as sector_id, dz.zone_code as zone_id, db2.beat_code as beat_id,
+               db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
+               db2.beat_name, db2.beat_descriptor
+        FROM dispatch_beats db2
+        JOIN dispatch_zones dz ON dz.id = db2.zone_id
+        JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+      `;
+      const params: any[] = [];
+      if (search && typeof search === 'string' && search.length >= 1 && search.length <= 100) {
+        query += ` WHERE dz.zone_name LIKE ? ESCAPE '\\' OR db2.beat_name LIKE ? ESCAPE '\\' OR ds.sector_name LIKE ? ESCAPE '\\'`;
+        const s = `%${search.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_')}%`;
+        params.push(s, s, s);
+      }
+      query += ' ORDER BY ds.sector_code, dz.zone_code, db2.beat_code LIMIT ?';
+      params.push(limit);
+
+      const districts = await db.prepare(query).all(...params) as any[];
+      return c.json(districts);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      return c.json({ error: 'Districts list failed' }, 500);
+    }
+  });
+
   // ─── Call Density per Beat ──────────────────────────────
   // GET /api/dispatch/districts/call-density?range=24h|7d|30d
   api.get('/districts/call-density', requireRole(...AGGR_ROLES), async (c) => {

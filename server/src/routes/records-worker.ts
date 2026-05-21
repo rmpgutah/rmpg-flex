@@ -22,32 +22,36 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
 
   // GET /api/records/properties - List properties
   api.get('/properties', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const { clientId, archived } = c.req.query();
+    try {
+      const db = new D1Db(c.env.DB);
+      const { clientId, archived } = c.req.query();
 
-    const conditions: string[] = [];
-    const params: any[] = [];
+      const conditions: string[] = [];
+      const params: any[] = [];
 
-    if (clientId) {
-      conditions.push('p.client_id = ?');
-      params.push(clientId);
+      if (clientId) {
+        conditions.push('p.client_id = ?');
+        params.push(clientId);
+      }
+
+      if (archived === 'true') {
+        conditions.push('p.archived_at IS NOT NULL');
+      } else if (archived !== 'all') {
+        conditions.push('p.archived_at IS NULL');
+      }
+
+      const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
+
+      const properties = await db.prepare(`
+        SELECT p.*, c.name as client_name FROM properties p
+        LEFT JOIN clients c ON p.client_id = c.id ${whereClause}
+        ORDER BY c.name, p.name LIMIT 1000
+      `).all(...params);
+
+      return c.json(properties);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to list properties', code: 'PROPERTIES_LIST_ERROR' }, 500);
     }
-
-    if (archived === 'true') {
-      conditions.push('p.archived_at IS NOT NULL');
-    } else if (archived !== 'all') {
-      conditions.push('p.archived_at IS NULL');
-    }
-
-    const whereClause = conditions.length > 0 ? 'WHERE ' + conditions.join(' AND ') : '';
-
-    const properties = await db.prepare(`
-      SELECT p.*, c.name as client_name FROM properties p
-      LEFT JOIN clients c ON p.client_id = c.id ${whereClause}
-      ORDER BY c.name, p.name LIMIT 1000
-    `).all(...params);
-
-    return c.json(properties);
   });
 
   // GET /api/records/properties/:id - Get property details
@@ -66,6 +70,134 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     const recentIncidents = await db.prepare(`SELECT * FROM incidents WHERE property_id = ? ORDER BY created_at DESC LIMIT 10`).all(id);
 
     return c.json({ ...property, recent_calls: recentCalls, recent_incidents: recentIncidents });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // CLIENTS
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/clients - List clients for dropdowns
+  api.get('/clients', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const clients = await db.prepare(`
+        SELECT id, name, status FROM clients ORDER BY name LIMIT 1000
+      `).all();
+      return c.json(clients);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to get clients list', code: 'GET_CLIENTS_LIST_ERROR' }, 500);
+    }
+  });
+
+  // GET /api/records/clients/:id/persons - List persons linked to a client
+  api.get('/clients/:id/persons', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const rows = await db.prepare(`
+        SELECT cp.*, p.first_name, p.last_name, p.phone, p.email,
+               p.address, p.employer, p.occupation,
+               u.full_name as created_by_name
+        FROM client_persons cp
+        JOIN persons p ON cp.person_id = p.id
+        LEFT JOIN users u ON cp.created_by = u.id
+        WHERE cp.client_id = ?
+        ORDER BY cp.is_primary DESC, p.last_name, p.first_name
+        LIMIT 1000
+      `).all(id);
+      return c.json(rows);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to get client persons', code: 'GET_CLIENT_PERSONS_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/client-persons - Link a person to a client
+  api.post('/client-persons', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const body = await c.req.json();
+      const { client_id, person_id, relationship, title, notes, is_primary } = body;
+
+      if (!client_id || !person_id) {
+        return c.json({ error: 'client_id and person_id are required', code: 'CLIENTID_AND_PERSONID_ARE' }, 400);
+      }
+
+      const client = await db.prepare('SELECT id, name FROM clients WHERE id = ?').get(client_id) as any;
+      const person = await db.prepare('SELECT id, first_name, last_name FROM persons WHERE id = ?').get(person_id) as any;
+      if (!client) return c.json({ error: 'Client not found', code: 'CLIENT_NOT_FOUND' }, 404);
+      if (!person) return c.json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }, 404);
+
+      if (is_primary) {
+        await db.prepare('UPDATE client_persons SET is_primary = 0 WHERE client_id = ? AND relationship = ?').run(client_id, relationship || 'contact');
+      }
+
+      const result = await db.prepare(
+        'INSERT INTO client_persons (client_id, person_id, relationship, title, notes, is_primary, created_by) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(client_id, person_id, relationship || 'contact', title || null, notes || null, is_primary ? 1 : 0, user.userId);
+
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'client_person_linked', 'person', person_id, `Linked person ${person.first_name} ${person.last_name} to client ${client.name} as ${relationship || 'contact'}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      const link = await db.prepare('SELECT * FROM client_persons WHERE id = ?').get(Number(result.meta.last_row_id));
+      return c.json(link, 201);
+    } catch (err: any) {
+      return c.json({ error: err?.message?.includes('UNIQUE') ? 'This person is already linked to this client' : 'Failed to link client-person', code: 'LINK_CLIENTPERSON_ERROR' }, err?.message?.includes('UNIQUE') ? 409 : 500);
+    }
+  });
+
+  // PUT /api/records/client-persons/:id - Update link details
+  api.put('/client-persons/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const link = await db.prepare('SELECT * FROM client_persons WHERE id = ?').get(id) as any;
+      if (!link) return c.json({ error: 'Link not found', code: 'LINK_NOT_FOUND' }, 404);
+
+      const body = await c.req.json();
+      const { relationship, title, notes, is_primary } = body;
+
+      if (is_primary) {
+        await db.prepare('UPDATE client_persons SET is_primary = 0 WHERE client_id = ? AND relationship = ? AND id != ?').run(link.client_id, relationship || link.relationship, id);
+      }
+
+      await db.prepare(
+        'UPDATE client_persons SET relationship = COALESCE(?, relationship), title = COALESCE(?, title), notes = COALESCE(?, notes), is_primary = ? WHERE id = ?'
+      ).run(relationship || null, title !== undefined ? title : null, notes !== undefined ? notes : null, is_primary ? 1 : 0, id);
+
+      const updated = await db.prepare('SELECT * FROM client_persons WHERE id = ?').get(id);
+      return c.json(updated);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to update client-person link', code: 'UPDATE_CLIENTPERSON_LINK_ERROR' }, 500);
+    }
+  });
+
+  // DELETE /api/records/client-persons/:id - Remove link
+  api.delete('/client-persons/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const link = await db.prepare(`
+        SELECT cp.*, p.first_name, p.last_name, c.name as client_name
+        FROM client_persons cp
+        JOIN persons p ON cp.person_id = p.id
+        JOIN clients c ON cp.client_id = c.id
+        WHERE cp.id = ?
+      `).get(id) as any;
+      if (!link) return c.json({ error: 'Link not found', code: 'LINK_NOT_FOUND' }, 404);
+
+      await db.prepare('DELETE FROM client_persons WHERE id = ?').run(id);
+
+      const user = c.get('user');
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'client_person_unlinked', 'person', link.person_id, `Unlinked person ${link.first_name} ${link.last_name} from client ${link.client_name}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json({ message: 'Link removed' });
+    } catch (err: any) {
+      return c.json({ error: 'Failed to delete client-person link', code: 'DELETE_CLIENTPERSON_LINK_ERROR' }, 500);
+    }
   });
 
   // ═══════════════════════════════════════════════════════════

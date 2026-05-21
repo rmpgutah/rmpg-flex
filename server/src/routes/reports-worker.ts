@@ -173,14 +173,18 @@ export function mountReportsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
 
   // GET /api/reports/upcoming-court
   api.get('/upcoming-court', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const upcoming = await db.prepare(`
-      SELECT ce.*, u.full_name as officer_name FROM court_events ce
-      LEFT JOIN users u ON ce.created_by = u.id
-      WHERE ce.event_date >= DATE('now') AND ce.event_date <= DATE('now', '+7 days')
-      ORDER BY ce.event_date ASC LIMIT 1000
-    `).all();
-    return c.json({ count: (upcoming as any[]).length, upcoming });
+    try {
+      const db = new D1Db(c.env.DB);
+      const upcoming = await db.prepare(`
+        SELECT ce.*, u.full_name as officer_name FROM court_events ce
+        LEFT JOIN users u ON ce.created_by = u.id
+        WHERE ce.event_date >= DATE('now') AND ce.event_date <= DATE('now', '+7 days')
+        ORDER BY ce.event_date ASC LIMIT 1000
+      `).all();
+      return c.json({ count: (upcoming as any[]).length, upcoming });
+    } catch (err: any) {
+      return c.json({ count: 0, upcoming: [] });
+    }
   });
 
   // GET /api/reports/overdue-reports
