@@ -57,7 +57,7 @@ export function initDatabase(): any {
   }
 
   // ─── Node.js (Development) ─────────────────────────────
-  const __filename = (path as any).fileURLToPath((import.meta as any).url);
+  const __filename = (new URL((import.meta as any).url)).pathname;
   const __dirname = (path as any).dirname(__filename);
 
   const DATA_DIR = process.env.RMPG_DATA_DIR || (path as any).resolve(__dirname, '../../data');
@@ -634,6 +634,19 @@ function createTables(): void {
       FOREIGN KEY (subject_person_id) REFERENCES persons(id),
       FOREIGN KEY (entered_by) REFERENCES users(id),
       FOREIGN KEY (served_by) REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS warrant_service_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      warrant_id INTEGER NOT NULL,
+      attempted_by INTEGER NOT NULL,
+      attempted_at TEXT NOT NULL,
+      location TEXT,
+      method TEXT DEFAULT 'in_person',
+      result TEXT DEFAULT 'unsuccessful',
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (warrant_id) REFERENCES warrants(id),
+      FOREIGN KEY (attempted_by) REFERENCES users(id)
     );
 
     -- Notifications
@@ -4804,6 +4817,75 @@ function migrateSchema(): void {
     CREATE INDEX IF NOT EXISTS idx_call_persons_person ON call_persons(person_id);
   `);
 
+  // ── Ensure call_vehicles junction table exists (used by dispatch vehicle linking) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS call_vehicles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      vehicle_id INTEGER NOT NULL,
+      role TEXT,
+      notes TEXT,
+      added_by INTEGER,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_call_vehicles_call ON call_vehicles(call_id);
+    CREATE INDEX IF NOT EXISTS idx_call_vehicles_vehicle ON call_vehicles(vehicle_id);
+  `);
+
+  // ── Ensure call_units junction table exists ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS call_units (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      call_id INTEGER NOT NULL,
+      unit_id INTEGER NOT NULL,
+      assigned_at TEXT DEFAULT (datetime('now','localtime')),
+      unassigned_at TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_call_units_call ON call_units(call_id, unassigned_at);
+    CREATE INDEX IF NOT EXISTS idx_call_units_unit ON call_units(unit_id, unassigned_at);
+  `);
+
+  // ── Ensure password_history table exists ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS password_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      password_hash TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_password_history_user ON password_history(user_id, created_at);
+  `);
+
+  // ── Ensure trusted_devices table exists ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS trusted_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      device_fingerprint TEXT NOT NULL,
+      device_name TEXT,
+      ip_address TEXT,
+      trusted_until TEXT,
+      last_used_at TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_trusted_devices_user_fp ON trusted_devices(user_id, device_fingerprint);
+  `);
+
+  // ── Ensure security_notifications table exists ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS security_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      details TEXT,
+      ip_address TEXT,
+      device_info TEXT,
+      created_at TEXT DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_security_notifications_user ON security_notifications(user_id);
+  `);
+
   // ══════════════════════════════════════════════════════════════
   // Warrant Scanner / Watch Tables
   // ══════════════════════════════════════════════════════════════
@@ -5865,7 +5947,18 @@ function createIndexes(): void {
     -- Calls for service incident type index (high-frequency filter)
     CREATE INDEX IF NOT EXISTS idx_cfs_incident_type ON calls_for_service(incident_type);
 
-    -- Shift plans indexes
+    -- Shift plans table + indexes
+    CREATE TABLE IF NOT EXISTS shift_plans (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      date TEXT NOT NULL,
+      shift_type TEXT NOT NULL DEFAULT 'day',
+      assignments TEXT NOT NULL DEFAULT '[]',
+      status TEXT NOT NULL DEFAULT 'draft',
+      created_by INTEGER,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
     CREATE INDEX IF NOT EXISTS idx_shift_plans_date ON shift_plans(date);
     CREATE INDEX IF NOT EXISTS idx_shift_plans_status ON shift_plans(status);
 
