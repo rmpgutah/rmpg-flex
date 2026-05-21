@@ -1,7 +1,7 @@
 // Dispatch Address Lookup — Mapbox Geocoding for address→coordinates
 // Enhanced with suggestions, place details, and map pin placement.
 import { useRef, useCallback, useState } from 'react';
-import type mapboxgl from 'mapbox-gl';
+import mapboxgl from 'mapbox-gl';
 import { forwardGeocode, reverseGeocode } from '../utils/mapboxServices';
 
 export interface GeocodeSuggestion {

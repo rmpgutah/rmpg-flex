@@ -1142,7 +1142,7 @@ export default function MapPage() {
                     const omBtn = (call.latitude != null && call.longitude != null)
                       ? `<button type="button" data-om-lat="${call.latitude}" data-om-lng="${call.longitude}"
                            data-om-label="${escapeHtml(call.call_number)}"
-                           title="${isAndroidNative() ? 'Open in Organic Maps' : 'Open Google Maps directions'}"
+                           title="${isAndroidNative() ? 'Open in Organic Maps' : 'Open external navigation'}"
                            style="padding:1px 5px;background:#1b5e2020;border:1px solid #1b5e2080;color:#4ade80;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
                            \u{1F9ED} NAV
                          </button>`

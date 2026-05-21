@@ -26,7 +26,7 @@ const ACCURACY_STYLE = new Style({
 });
 
 /**
- * "Find me" geolocation for /map-v2 — Google-Maps-style blue dot with
+ * "Find me" geolocation for /map-v2 — GPS position blue dot with
  * accuracy circle, plus a programmatic locate() that pans the view to
  * the latest fix.
  *

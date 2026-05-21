@@ -139,7 +139,6 @@ export function useMapboxSafetyZones(map: mapboxgl.Map | null) {
       source: CIRCLE_SOURCE_ID,
       paint: {
         'circle-radius': ['get', 'radius'],
-        'circle-radius-scale': 1,
         'circle-color': [
           'match', ['get', 'risk_level'],
           'critical', '#c81e1e',

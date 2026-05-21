@@ -65,11 +65,11 @@ function generateThinkingSteps(query: string): ThinkStep[] {
       icon: '🗺️',
       detail: 'Accessing geospatial architecture knowledge base...\n' +
         'Key components identified:\n' +
-        '  ├─ Google Maps JS API (dark styled) — primary map provider\n' +
+        '  ├─ Mapbox GL JS (dark-v11 style) — primary map provider\n' +
         '  ├─ CartoDB dark_matter tiles — offline fallback layer\n' +
         '  ├─ GPS tracking via WebSocket (real-time unit positions)\n' +
         '  └─ Service Worker tile caching: Z7-Z15 coverage for SLC metro',
-      files: ['client/src/pages/map/MapPage.tsx', 'client/src/utils/googleMapsLoader.ts', 'server/src/utils/geocode.ts'],
+      files: ['client/src/pages/map/MapPage.tsx', 'client/src/utils/mapboxLoader.ts', 'server/src/utils/geocode.ts'],
     });
   } else if (q.includes('database') || q.includes('schema') || q.includes('table') || q.includes('sql') || q.includes('data')) {
     steps.push({

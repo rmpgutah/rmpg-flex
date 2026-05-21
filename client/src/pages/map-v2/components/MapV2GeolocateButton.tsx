@@ -7,7 +7,7 @@ interface MapV2GeolocateButtonProps {
 }
 
 /**
- * Find-me button (Google-Maps-style blue dot trigger) for /map-v2.
+ * Find-me button (GPS geolocation) for /map-v2.
  * Bottom-right floating button above the style switcher. Loading state
  * during GPS fix; gold accent when actively tracking.
  */

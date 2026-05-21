@@ -11,7 +11,7 @@ import Stroke from 'ol/style/Stroke';
 import Fill from 'ol/style/Fill';
 
 /**
- * Subtle Google-Maps-style click ripple on /map-v2.
+ * Subtle click ripple animation on /map-v2.
  *
  * On every map click that isn't on a feature, render an expanding
  * ring at the click coordinate that fades out over 600ms. Helps

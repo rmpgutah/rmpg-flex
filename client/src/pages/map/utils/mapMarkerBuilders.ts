@@ -374,8 +374,9 @@ export function createMapboxHtmlMarker(map: MapboxMap, content: HTMLElement, lng
 }
 
 // ── Mapbox Overlay Marker ─────────────────────────────────────
-// Implements the Google Maps OverlayView API so hooks that use
-// getOverlayMarkerClass() still work after migration to Mapbox GL JS.
+// Compatibility wrapper for markers that were originally built
+// against the Google Maps OverlayView pattern. All rendering is
+// now done through Mapbox GL JS's native Marker class.
 
 interface MapboxOverlayMarkerOptions {
   map: MapboxMap;

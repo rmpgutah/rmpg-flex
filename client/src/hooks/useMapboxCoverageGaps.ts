@@ -109,7 +109,10 @@ export function useMapboxCoverageGaps(map: mapboxgl.Map | null) {
 
       setGaps(cells);
       const s = { good: 0, fair: 0, poor: 0, gap: 0, total: cells.length };
-      cells.forEach((c) => { s[c.coverage_level]++; });
+      cells.forEach((c) => {
+        if (c.coverage_level === 'none') s.gap++;
+        else s[c.coverage_level]++;
+      });
       setStats(s);
 
       // Render on map

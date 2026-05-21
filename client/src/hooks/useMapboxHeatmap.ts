@@ -34,7 +34,7 @@ export interface HeatmapOptions {
   colorScheme?: 'red' | 'amber' | 'blue' | 'green';
 }
 
-const COLOR_SCHEMES: Record<string, [string, number, string, number][]> = {
+const COLOR_SCHEMES: Record<string, [string, number][]> = {
   red: [
     ['rgba(33,102,172,0)', 0],
     ['rgb(103,169,207)', 0.15],

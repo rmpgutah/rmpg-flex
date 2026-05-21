@@ -468,7 +468,7 @@ router.post('/gps', requireRole('admin', 'manager', 'supervisor', 'officer', 'di
     // ── Async geocode: reverse-geocode the latest point, then backfill the batch ──
     // Runs after the response is sent so it doesn't slow down the GPS endpoint.
     // NOTE: Rate limiting — each GPS batch triggers at most ONE reverse geocode call.
-    // With ~10s batch intervals per unit, this stays well within Google Maps quota.
+    // With ~10s batch intervals per unit, this stays well within geocoding quota.
     (async () => {
       try {
         const geo = await reverseGeocodeDetailed(latest.lat, latest.lng);

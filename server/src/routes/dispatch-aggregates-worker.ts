@@ -31,31 +31,31 @@ export function mountDispatchAggregatesRoutes(app: Hono<{ Bindings: Env; Variabl
 
     try {
       if (mode === 'risk') {
-        const points = await db.prepare(`
-          SELECT
-            ROUND(latitude, 3) as latitude,
-            ROUND(longitude, 3) as longitude,
-            COUNT(*) as count,
-            SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 3 ELSE 0 END
-              + CASE WHEN domestic_violence = 1 THEN 2 ELSE 0 END
-              + CASE WHEN injuries_reported = 1 THEN 2 ELSE 0 END
-              + CASE WHEN alcohol_involved = 1 THEN 1 ELSE 0 END
-              + CASE WHEN drugs_involved = 1 THEN 1 ELSE 0 END
-            ) as risk_weight,
-            SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END) as weapons_count,
-            SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv_count,
-            SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injuries_count
-          FROM calls_for_service
-          WHERE latitude IS NOT NULL AND longitude IS NOT NULL
-            AND created_at >= datetime('now', 'localtime', ? || ' days')
-            AND (weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0'
-                 OR domestic_violence = 1 OR injuries_reported = 1
-                 OR alcohol_involved = 1 OR drugs_involved = 1)
-          GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
-          ORDER BY risk_weight DESC
-          LIMIT 10000
-        `).all(cutoff) as any[];
-        return c.json(filterValidCoords(points));
+        try {
+          const points = await db.prepare(`
+            SELECT
+              ROUND(latitude, 3) as latitude,
+              ROUND(longitude, 3) as longitude,
+              COUNT(*) as count,
+              SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 3 ELSE 0 END
+                + CASE WHEN domestic_violence = 1 THEN 2 ELSE 0 END
+                + CASE WHEN injuries_reported = 1 THEN 2 ELSE 0 END
+                + CASE WHEN alcohol_involved = 1 THEN 1 ELSE 0 END
+                + CASE WHEN drugs_involved = 1 THEN 1 ELSE 0 END
+              ) as risk_weight,
+              SUM(CASE WHEN weapons_involved IS NOT NULL AND weapons_involved != '' AND weapons_involved != '0' THEN 1 ELSE 0 END) as weapons_count,
+              SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) as dv_count,
+              SUM(CASE WHEN injuries_reported = 1 THEN 1 ELSE 0 END) as injuries_count
+            FROM calls_for_service
+            WHERE latitude IS NOT NULL AND longitude IS NOT NULL
+              AND created_at >= datetime('now', 'localtime', ? || ' days')
+            GROUP BY ROUND(latitude, 3), ROUND(longitude, 3)
+            HAVING risk_weight > 0
+            ORDER BY risk_weight DESC
+            LIMIT 10000
+          `).all(cutoff) as any[];
+          return c.json(filterValidCoords(points));
+        } catch { /* risk columns may not exist yet, fall through to all mode */ }
       }
 
       if (mode === 'type' && typeFilter) {

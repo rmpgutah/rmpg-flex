@@ -16,7 +16,7 @@ interface ShortcutHandlers {
  * isn't inside an input/textarea/contenteditable, so typing in the
  * search bar doesn't trigger them.
  *
- * Shortcuts (mirrors Google Maps muscle memory where possible):
+ * Shortcuts (familiar navigation keybindings where possible):
  *   R - Recenter map
  *   F - Toggle fullscreen
  *   L - Toggle layers panel

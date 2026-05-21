@@ -20,7 +20,7 @@ RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management Sy
 | **Backend** | Express 5 + TypeScript (tsx runtime) + better-sqlite3 |
 | **Auth** | JWT (access + refresh) + WebAuthn (FIDO2/YubiKey) + TOTP 2FA |
 | **Real-time** | WebSocket (ws) for live dispatch, GPS, presence |
-| **Maps** | Google Maps JS API + offline CartoDB dark_matter tiles + GeoJSON overlays |
+| **Maps** | Mapbox GL JS (v1) + OpenLayers (v2 beta) + offline CartoDB dark_matter tiles + GeoJSON overlays |
 | **Desktop** | Electron (macOS DMG + Windows EXE) with offline sync |
 | **Mobile** | Capacitor (Android APK) |
 | **PDF** | jsPDF for reports, citations, patrol logs |
@@ -210,7 +210,7 @@ broadcastUnitUpdate({ action: 'unit_status', unit: updatedUnit });
 ```
 
 ### Offline-First Maps
-- Google Maps JS API (dark styled via `DARK_MAP_STYLE`)
+- Mapbox GL JS (dark-v11/outdoors-v12/satellite-v9 styles)
 - CartoDB dark_matter tiles as offline fallback (`/tiles/{z}/{x}/{y}.png`)
 - GeoJSON layers: beat.geojson (719 features), county.geojson, municipality.geojson, highway.geojson
 - Service Worker (sw.js — bump `CACHE_NAME` version on every deploy) pre-caches tiles for Utah operational area
@@ -349,11 +349,11 @@ Set in `client/.env` as `VITE_MAPBOX_ACCESS_TOKEN`
 - **Notification Rules**: `notification_rules` for custom alert automation
 
 ### Map V2 (OpenLayers, beta) — `/map-v2`
-Read-only parallel map surface backed by OpenLayers + the existing CartoDB raster tile cache (`/tiles/{z}/{x}/{y}.png`, pre-cached by `sw.js` for Utah Z7-15). Production `/map` (Google Maps) remains the default; V2 is opt-in via direct URL while it's iterated to feature parity (Phases 2-5 of [docs/plans/2026-04-19-openlayers-migration-phase1.md](docs/plans/2026-04-19-openlayers-migration-phase1.md)).
+Read-only parallel map surface backed by OpenLayers + the existing CartoDB raster tile cache (`/tiles/{z}/{x}/{y}.png`, pre-cached by `sw.js` for Utah Z7-15). Production `/map` (Mapbox GL JS) remains the default; V2 is opt-in via direct URL while it's iterated to feature parity (Phases 2-5 of [docs/plans/2026-04-19-openlayers-migration-phase1.md](docs/plans/2026-04-19-openlayers-migration-phase1.md)).
 - **Page**: `client/src/pages/map-v2/MapPageV2.tsx` (66 lines — basemap + Spillman badge)
 - **Hooks**: `client/src/pages/map-v2/hooks/useOlBeatLayer.ts` (719 beat polygons from `/geojson/beat.geojson`, sector-colored via `getSectionColor` from `useGeoJsonLayers`), `client/src/pages/map-v2/hooks/useOlLiveMarkers.ts` (units + calls from `/dispatch/units` + `/dispatch/calls?limit=200`, debounced refetch on `unit_update` + `dispatch_update` WS events, click-to-popup overlay)
 - **Smoke test**: `client/src/pages/map-v2/__tests__/MapPageV2.smoke.test.ts` (4 module-load tests; render-based tests deferred until Phase 4 hook ports)
-- **Coordinate gotcha**: OL stores everything in EPSG:3857 and expects `fromLonLat([lng, lat])` at every input — note **lng-first** order, opposite of Google Maps. Beat GeoJSON is reprojected at parse time via `featureProjection: 'EPSG:3857'`.
+- **Coordinate gotcha**: OL stores everything in EPSG:3857 and expects `fromLonLat([lng, lat])` at every input — note **lng-first** order, opposite of Mapbox GL JS. Beat GeoJSON is reprojected at parse time via `featureProjection: 'EPSG:3857'`.
 - **Type gotcha**: OL 9's `VectorLayer<T>` generic is the FEATURE type, not the SourceType — use `VectorLayer<Feature<Geometry>>` (or `VectorLayer<FeatureLike>`), not `VectorLayer<VectorSource>`.
 - **No drawing, no dispatch interactions, no risk** — V2 is pure visualization for now. All write paths (drag-to-dispatch, drawing tools, status changes) stay on `/map` until Phase 4 ports the feature hooks.
 
