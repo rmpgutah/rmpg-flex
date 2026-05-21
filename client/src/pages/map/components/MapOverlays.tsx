@@ -4,9 +4,10 @@ import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
 import type { MapStyleId } from '../utils/mapConstants';
 import MapExportMenu from './MapExportMenu';
+import { mapboxgl } from '../../../utils/mapboxLoader';
 
 interface MapOverlaysProps {
-  mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
+  mapInstanceRef: React.MutableRefObject<mapboxgl.Map | null>;
   mapStyle: MapStyleId;
   isConnected: boolean;
   sidebarOpen: boolean;
@@ -21,7 +22,7 @@ interface MapOverlaysProps {
 
   // Tracking lines
   showTrackingLines: boolean;
-  trackingLinesRef: React.MutableRefObject<google.maps.Polyline[]>;
+  trackingLinesRef: React.MutableRefObject<mapboxgl.Map[] | null>;
 
   // Route (routing result from useMapRouting hook)
   activeRoute: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null;
@@ -135,7 +136,7 @@ export default function MapOverlays({
               </div>
             </div>
 
-            {showTrackingLines && trackingLinesRef.current.length > 0 && (
+            {showTrackingLines && trackingLinesRef.current && trackingLinesRef.current.length > 0 && (
               <div className="flex items-center gap-1 px-1.5">
                 <Navigation2 className="w-2.5 h-2.5 text-gray-400" />
                 <span className="text-gray-400 text-[8px] font-mono font-bold">{trackingLinesRef.current.length}</span>

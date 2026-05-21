@@ -128,7 +128,7 @@ export function monitorTileLoading(
     recoveryIndicator.style.display = 'block';
     tilesLoaded = false;
     startStallTimer();
-    map.redraw();
+    map.triggerRepaint();
   };
   window.addEventListener('online', onOnline);
 

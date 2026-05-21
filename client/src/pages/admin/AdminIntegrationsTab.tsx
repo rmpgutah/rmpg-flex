@@ -66,12 +66,10 @@ function validateKey(value: string, config: ApiKeyConfig): string | null {
 }
 
 const MAPBOX_KEYS: ApiKeyConfig[] = [
-  { key: 'mapbox_access_token', label: 'Access Token (Public)', desc: 'PRIMARY — Client-side map rendering, styles, geocoding lookup. 50k free loads/month.', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Access Tokens' },
-  { key: 'mapbox_secret_key', label: 'Secret Key (Server)', desc: 'Server-side token management, vector tile uploads, style publishing. Must start with sk.', pattern: /^sk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with sk. — from account.mapbox.com → Access Tokens' },
-  { key: 'mapbox_username', label: 'Account Username', desc: 'Your Mapbox account username — used in style URLs (mapbox://styles/username/style-id)' },
-  { key: 'mapbox_style_url', label: 'Custom Style URL', desc: 'Custom Mapbox Studio style URL — e.g. mapbox://styles/username/ck... for agency-branded map', formatHint: 'mapbox://styles/{username}/{style_id} format' },
-  { key: 'mapbox_tileset_id', label: 'Custom Tileset ID', desc: 'Custom vector/raster tileset for offline/precinct-level data — e.g. username.tileset-id' },
-  { key: 'mapbox_directions_token', label: 'Directions API Token', desc: 'Optional separate token for routing — 100k free requests/month. Leave blank to use access token.' },
+  { key: 'mapbox_username', label: 'Account Username', desc: 'Your Mapbox account username — used in style URLs and studio access (mapbox.com → Account)' },
+  { key: 'mapbox_password', label: 'Account Password', desc: 'Mapbox account password — used for API token management and Mapbox Studio login', formatHint: 'Your Mapbox account password (encrypted at rest)' },
+  { key: 'mapbox_style_url', label: 'Custom Style URL', desc: 'Your Mapbox Studio custom style URL — creates a branded map (mapbox://styles/username/style_id)', formatHint: 'mapbox://styles/{username}/{style_id}' },
+  { key: 'mapbox_access_token', label: 'Public Access Token', desc: 'PRIMARY — Client-side map rendering, geocoding, directions. Starts with pk.', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Access Tokens' },
 ];
 
 const AI_ML_KEYS: ApiKeyConfig[] = [

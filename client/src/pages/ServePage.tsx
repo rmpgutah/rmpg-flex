@@ -173,6 +173,7 @@ export default function ServePage() {
   const mapRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<mapboxgl.Marker[]>([]);
   const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const routeSourceRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   // ── Route state ────────────────────────────────────────────────────
@@ -532,50 +533,47 @@ export default function ServePage() {
     if (!mapRef.current) return;
 
     // Clear old markers
-    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    // Clear old polyline
-    if (polylineRef.current) {
-      polylineRef.current.setMap(null);
-      polylineRef.current = null;
+    // Clear old route source layer
+    if (routeSourceRef.current) {
+      try {
+        if (mapRef.current.getLayer(routeSourceRef.current)) mapRef.current.removeLayer(routeSourceRef.current);
+        if (mapRef.current.getSource(routeSourceRef.current)) mapRef.current.removeSource(routeSourceRef.current);
+      } catch { /* layer/source may not exist */ }
+      routeSourceRef.current = null;
     }
 
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new mapboxgl.LngLatBounds();
     let hasMarkers = false;
 
     jobs.forEach(job => {
       if (job.recipient_lat == null || job.recipient_lng == null) return;
       hasMarkers = true;
-      const pos = { lat: job.recipient_lat, lng: job.recipient_lng };
-      bounds.extend(pos);
+      const lngLat: [number, number] = [job.recipient_lng, job.recipient_lat];
+      bounds.extend(lngLat);
 
       const color = MARKER_COLORS[job.status] || MARKER_COLORS.pending;
-      const marker = new google.maps.Marker({
-        position: pos,
-        map: mapRef.current!,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 1.5,
-          scale: 10,
-        },
-        title: job.recipient_name,
-      });
+      const el = document.createElement('div');
+      el.style.cssText = `width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);cursor:pointer;`;
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(lngLat)
+        .addTo(mapRef.current!);
 
-      marker.addListener('click', () => {
+      // Popup on click
+      el.addEventListener('click', () => {
         const fullAddr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
           .filter(Boolean).join(', ');
-        infoWindowRef.current?.setContent(`
-          <div style="color:#fff;background:#141414;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
-            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
-            <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
-            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
-          </div>
-        `);
-        infoWindowRef.current?.open(mapRef.current!, marker);
+        if (popupRef.current) {
+          popupRef.current.setLngLat(lngLat).setHTML(`
+            <div style="color:#fff;background:#141414;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
+              <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
+              <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
+              <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
+            </div>
+          `).addTo(mapRef.current!);
+        }
       });
 
       markersRef.current.push(marker);
@@ -583,25 +581,33 @@ export default function ServePage() {
 
     // Draw polyline if route planned
     if (routeData && routeData.orderedIds.length > 1) {
-      const path = routeData.orderedIds
+      const coords: [number, number][] = routeData.orderedIds
         .map(id => jobs.find(j => j.id === id))
         .filter((j): j is ServeJob => !!j && j.recipient_lat != null && j.recipient_lng != null)
-        .map(j => ({ lat: j.recipient_lat!, lng: j.recipient_lng! }));
+        .map(j => [j.recipient_lng!, j.recipient_lat!]);
 
-      if (path.length > 1) {
-        polylineRef.current = new google.maps.Polyline({
-          path,
-          geodesic: true,
-          strokeColor: '#888888',
-          strokeOpacity: 0.8,
-          strokeWeight: 3,
-          map: mapRef.current,
+      if (coords.length > 1) {
+        const sourceId = 'serve-route-line';
+        routeSourceRef.current = sourceId;
+        mapRef.current.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
+        });
+        mapRef.current.addLayer({
+          id: sourceId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': '#888888',
+            'line-opacity': 0.8,
+            'line-width': 3,
+          },
         });
       }
     }
 
     if (hasMarkers) {
-      mapRef.current.fitBounds(bounds, 60);
+      mapRef.current.fitBounds(bounds, { padding: 60 });
     }
   }, [jobs, routeData]);
 

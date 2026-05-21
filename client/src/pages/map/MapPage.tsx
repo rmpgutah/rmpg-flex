@@ -231,17 +231,10 @@ export default function MapPage() {
   const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [mapRetry, setMapRetry] = useState(0); // bump to re-trigger Google Maps init
+  const [mapRetry, setMapRetry] = useState(0);
   const [tilesStalled, setTilesStalled] = useState(false);
-  const [retryingGmaps, setRetryingGmaps] = useState(false);
 
-  // All map errors route to the Leaflet fallback — no blocking config dialog.
-  // "No API key configured" is a normal operating mode for deployments without
-  // Google Maps billing enabled. gm_authFailure and network errors likewise
-  // degrade gracefully to Leaflet + CartoDB tiles. The config dialog was a
-  // holdover from an earlier era when Google Maps was mandatory.
-  const isAuthError = false;
-  const showOfflineFallback = mapError != null;
+  const isAuthError = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 
   // Fix 28: restore layer toggle states from localStorage on mount
@@ -439,7 +432,7 @@ export default function MapPage() {
   // GeoJSON spatial layers (with shift planning selection integration)
   const { layerStates: geoLayerStates, toggleGeoLayer, ensureLayerLoaded, configs: geoConfigs } = useGeoJsonLayers({
     map: mapInstanceRef.current,
-    infoWindow: infoWindowRef.current,
+    popup: infoWindowRef.current,
     selectionMode: shiftPlanning.selectionMode,
     onFeatureClick: shiftPlanning.handleFeatureClick,
     selectedFeatures: shiftPlanning.selectedAreas,
@@ -451,7 +444,7 @@ export default function MapPage() {
   // Event planning overlays
   const eventPlanning = useEventPlanning({
     map: mapInstanceRef.current,
-    infoWindow: infoWindowRef.current,
+    popup: infoWindowRef.current,
   });
   const [showEventPanel, setShowEventPanel] = useState(false);
   const [newPlanName, setNewPlanName] = useState('');
@@ -763,7 +756,7 @@ export default function MapPage() {
   }, [showHeatmap]);
 
   // ============================================================
-  // Google Maps Initialization
+  // Mapbox Initialization
   // ============================================================
 
   useEffect(() => {
@@ -784,32 +777,9 @@ export default function MapPage() {
       return;
     }
 
-    // Register Google's official auth-failure callback BEFORE loading the script.
-    // Google calls window.gm_authFailure() when the API key is invalid, billing
-    // is not enabled, or the Maps JavaScript API is not turned on.
     let authFailed = false;
-    (window as any).gm_authFailure = () => {
-      authFailed = true;
-      console.error('[MapPage] Google Maps authentication failure — API key rejected');
-      setMapError(
-        'Google Maps API key was rejected.\n\n' +
-        'Fix these in Google Cloud Console (console.cloud.google.com):\n\n' +
-        '1. BILLING: Link a billing account to the project\n' +
-        '   (Google Maps requires billing — free tier covers most usage)\n\n' +
-        '2. ENABLE APIs: Go to APIs & Services → Library → enable:\n' +
-        '   • Maps JavaScript API\n' +
-        '   • Places API (New)\n\n' +
-        '3. KEY RESTRICTIONS: Go to Credentials → click your key:\n' +
-        '   • API restrictions: "Don\'t restrict key" (or add Maps JS + Places APIs)\n' +
-        '   • Website restrictions: set to "None" for dev, or add:\n' +
-        '     http://localhost:3001/*\n' +
-        '     http://localhost:5173/*\n' +
-        '     http://localhost:4173/*'
-      );
-    };
 
-    // Load Google Maps via direct script tag (more reliable than js-api-loader).
-    // Auto-retry with exponential backoff if the script fails to load
+    // Auto-retry with exponential backoff if the map fails to load
     // (e.g. server restart, brief network blip, slow vehicle WiFi).
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000]; // ms
@@ -871,15 +841,15 @@ export default function MapPage() {
         if (authFailed) return;
         const hardErr = mapRef.current?.querySelector('.gm-err-container');
         if (hardErr) {
-          console.error('[MapPage] Google Maps hard error overlay detected');
+          console.error('[MapPage] Mapbox map error overlay detected');
           authFailed = true;
           dismissObserver?.disconnect();
           setMapError(
-            'Google Maps failed to load.\n\n' +
-            'Check Google Cloud Console:\n' +
-            '1. Billing account linked to the project\n' +
-            '2. Maps JavaScript API enabled\n' +
-            '3. API key restrictions allow this domain'
+            'Mapbox map failed to load.\n\n' +
+            'Check your Mapbox account:\n' +
+            '1. Valid access token configured\n' +
+            '2. Styles and tilesets enabled\n' +
+            '3. No network restrictions blocking api.mapbox.com'
           );
           return;
         }
@@ -938,27 +908,28 @@ export default function MapPage() {
         return;
       }
 
-      initMapbox()
-        .then(() => initMap(''))
-        .catch((err: any) => {
-          if (cancelled) return;
-          const errMsg = err?.message || String(err);
-          devWarn(`[MapPage] Google Maps load attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, errMsg);
+      try {
+        initMapbox(apiKey);
+        initMap('');
+      } catch (err: any) {
+        if (cancelled) return;
+        const errMsg = err?.message || String(err);
+        devWarn(`[MapPage] Mapbox init attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, errMsg);
 
-          if (attempt < MAX_RETRIES) {
-            const delay = RETRY_DELAYS[attempt] || 30000;
-            devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
-            setTimeout(() => attemptLoad(apiKey, attempt + 1), delay);
-          } else {
-            console.error('[MapPage] Google Maps load failed after all retries');
-            setMapError(
-              'Failed to load Google Maps after multiple attempts.\n\n' +
-              'If you are on a slow or intermittent connection (vehicle WiFi),\n' +
-              'wait for a stronger signal and click Retry below.\n\n' +
-              (errMsg ? `Technical details: ${errMsg}` : '')
-            );
-          }
-        });
+        if (attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAYS[attempt] || 30000;
+          devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
+          setTimeout(() => attemptLoad(apiKey, attempt + 1), delay);
+        } else {
+          console.error('[MapPage] Mapbox init failed after all retries');
+          setMapError(
+            'Failed to initialize Mapbox map after multiple attempts.\n\n' +
+            'If you are on a slow or intermittent connection (vehicle WiFi),\n' +
+            'wait for a stronger signal and click Retry below.\n\n' +
+            (errMsg ? `Technical details: ${errMsg}` : '')
+          );
+        }
+      }
     }
 
     (async () => {
@@ -1009,30 +980,19 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    if (mapStyle === 'dark') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: DARK_MAP_STYLE });
-      updateMapStyles(map, DARK_MAP_STYLE);
-    } else if (mapStyle === 'night_nav') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: NIGHT_NAV_STYLE });
-      updateMapStyles(map, NIGHT_NAV_STYLE);
-    } else if (mapStyle === 'satellite') {
-      map.setMapTypeId('satellite');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
-    } else if (mapStyle === 'hybrid') {
-      map.setMapTypeId('hybrid');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
-    } else if (mapStyle === 'terrain') {
-      map.setMapTypeId('terrain');
-      map.setOptions({ styles: TERRAIN_STYLE });
-      updateMapStyles(map, TERRAIN_STYLE);
-    } else if (mapStyle === 'streets') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
+    const styleMap: Record<string, string> = {
+      dark: MAPBOX_STYLE_DARK,
+      night_nav: MAPBOX_STYLE_NIGHT,
+      satellite: MAPBOX_STYLE_SATELLITE,
+      hybrid: MAPBOX_STYLE_SATELLITE,
+      terrain: MAPBOX_STYLE_OUTDOORS,
+      streets: MAPBOX_STYLE_STREETS,
+    };
+
+    const url = styleMap[mapStyle];
+    if (url) {
+      map.setStyle(url);
+      updateMapStyle(map, url);
     }
   }, [mapStyle, mapLoaded]);
 
@@ -1081,7 +1041,7 @@ export default function MapPage() {
     unitMarkersMapRef.current.clear();
     callMarkersMapRef.current.clear();
     callMarkersArrayRef.current = [];
-    infoWindowRef.current?.close();
+    infoWindowRef.current?.remove();
 
     // Add unit markers
     if (layers.units) {
@@ -1093,7 +1053,7 @@ export default function MapPage() {
 
           const marker = createMarker({
             map,
-            position: { lat: unit.latitude, lng: unit.longitude },
+            position: [unit.longitude, unit.latitude],
             content,
             zIndex: 1000,
             title: `${unit.call_sign} - ${unit.officer_name}`,
@@ -1119,7 +1079,7 @@ export default function MapPage() {
                    </button>`
                 : '';
 
-              infoWindowRef.current?.setContent(`
+              infoWindowRef.current?.setHTML(`
                 <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #2b2b2b;">
                     <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};box-shadow:0 0 8px ${statusColor}80;"></div>
@@ -1139,8 +1099,8 @@ export default function MapPage() {
                   ${omBtnHtml}
                 </div>
               `);
-              infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
-              infoWindowRef.current?.open(map);
+              infoWindowRef.current?.setLngLat([unit.longitude!, unit.latitude!]);
+              infoWindowRef.current?.addTo(map);
             },
           });
 
@@ -1159,7 +1119,7 @@ export default function MapPage() {
 
           const marker = createMarker({
             map,
-            position: { lat: call.latitude, lng: call.longitude },
+            position: [call.longitude, call.latitude],
             content,
             zIndex: call.priority === 'P1' ? 2000 : 500,
             title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
@@ -1200,7 +1160,7 @@ export default function MapPage() {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;color:#5a6e80;">No units assigned</div>`;
               }
 
-              infoWindowRef.current?.setContent(`
+              infoWindowRef.current?.setHTML(`
                 <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
                     <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
@@ -1213,8 +1173,8 @@ export default function MapPage() {
                   ${unitsHtml}
                 </div>
               `);
-              infoWindowRef.current?.setPosition({ lat: call.latitude!, lng: call.longitude! });
-              infoWindowRef.current?.open(map);
+              infoWindowRef.current?.setLngLat([call.longitude!, call.latitude!]);
+              infoWindowRef.current?.addTo(map);
             },
           });
 
@@ -1235,20 +1195,20 @@ export default function MapPage() {
 
           const marker = createMarker({
             map,
-            position: { lat: prop.latitude, lng: prop.longitude },
+            position: [prop.longitude, prop.latitude],
             content,
             zIndex: 100,
             title: prop.name,
             onClick: async () => {
               // Show loading state immediately
-              infoWindowRef.current?.setContent(`
+              infoWindowRef.current?.setHTML(`
                 <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
                   <div style="font-weight:900;font-size:13px;color:#a0a0a0;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
                   <div style="font-size:10px;color:#9ca3af;">Loading details...</div>
                 </div>
               `);
-              infoWindowRef.current?.setPosition({ lat: prop.latitude!, lng: prop.longitude! });
-              infoWindowRef.current?.open(map);
+              infoWindowRef.current?.setLngLat([prop.longitude!, prop.latitude!]);
+              infoWindowRef.current?.addTo(map);
 
               // Fetch full property details (includes recent calls, contacts, schedules)
               try {
@@ -1304,7 +1264,7 @@ export default function MapPage() {
                   </div>`
                 ).join('');
 
-                infoWindowRef.current?.setContent(`
+                infoWindowRef.current?.setHTML(`
                   <div style="min-width:280px;max-width:360px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
                     <div style="font-weight:900;font-size:13px;color:#a0a0a0;margin-bottom:2px;">${escapeHtml(prop.name)}</div>
                     <div style="font-size:10px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(prop.address)}</div>
@@ -1358,7 +1318,7 @@ export default function MapPage() {
               } catch (err) {
                 console.error('[MapPage] Failed to fetch property details:', err);
                 // If fetch fails, show basic info
-                infoWindowRef.current?.setContent(`
+                infoWindowRef.current?.setHTML(`
                   <div style="min-width:160px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid #88888850;border-radius:4px;">
                     <div style="font-weight:900;font-size:13px;color:#a0a0a0;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
                     <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
@@ -1391,7 +1351,7 @@ export default function MapPage() {
       const cLng = parseFloat(btn.getAttribute('data-route-clng') || '');
       if (!isNaN(uLat) && !isNaN(uLng) && !isNaN(cLat) && !isNaN(cLng)) {
         showRoute(unitCallSign, callNumber, uLat, uLng, cLat, cLng);
-        infoWindowRef.current?.close();
+        infoWindowRef.current?.remove();
       }
     }
     document.addEventListener('click', handleRouteClick);
@@ -1412,7 +1372,7 @@ export default function MapPage() {
         if (!res.ok) devWarn('[Nav] launch failed:', res.reason);
         else devLog('[Nav] launched via', res.mode);
       });
-      infoWindowRef.current?.close();
+      infoWindowRef.current?.remove();
     }
     document.addEventListener('click', handleOmClick);
     return () => document.removeEventListener('click', handleOmClick);
@@ -1504,7 +1464,7 @@ export default function MapPage() {
           'heatmap-weight': ['get', 'weight'],
           'heatmap-radius': 30,
           'heatmap-opacity': 0.7,
-          'heatmap-color': colorExpr,
+          'heatmap-color': colorExpr as any,
         },
       });
 
@@ -1587,7 +1547,7 @@ export default function MapPage() {
           'line-color': ['get', 'color'],
           'line-opacity': ['case', ['==', ['get', 'isDashed'], true], 0, 0.6],
           'line-width': 2,
-          'line-dasharray': dashExpr,
+          'line-dasharray': dashExpr as any,
         },
       });
 
@@ -1922,26 +1882,17 @@ export default function MapPage() {
     // Create or update playback marker
     if (!playbackMarkerRef.current) {
       const pt = trail.points[playbackIdx] || trail.points[0];
-      playbackMarkerRef.current = new google.maps.Marker({
-        position: { lat: pt.lat, lng: pt.lng },
-        map,
-        icon: {
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 5,
-          rotation: pt.heading || 0,
-          fillColor: speedToColor(pt.speed),
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        },
-        zIndex: 9999,
-        title: `${trail.call_sign} \u2014 Playback`,
-      });
+      const arrowEl = document.createElement('div');
+      arrowEl.textContent = '\u25B6';
+      arrowEl.style.cssText = `color:${speedToColor(pt.speed)};font-size:20px;text-shadow:0 0 3px #fff;transform:rotate(${pt.heading || 0}deg);font-family:system-ui;`;
+      playbackMarkerRef.current = new mapboxgl.Marker({ element: arrowEl })
+        .setLngLat([pt.lng, pt.lat])
+        .addTo(map);
     }
 
     // Create speed label InfoWindow
     if (!playbackSpeedLabelRef.current) {
-      playbackSpeedLabelRef.current = new google.maps.InfoWindow({ disableAutoPan: true });
+      playbackSpeedLabelRef.current = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     }
 
     let currentIdx = playbackIdx;
@@ -1949,32 +1900,26 @@ export default function MapPage() {
       if (currentIdx >= trail.points.length) {
         setIsPlaying(false);
         setPlaybackIdx(trail.points.length - 1);
-        if (playbackSpeedLabelRef.current) playbackSpeedLabelRef.current.close();
+        if (playbackSpeedLabelRef.current) playbackSpeedLabelRef.current.remove();
         return;
       }
 
       const pt = trail.points[currentIdx];
       if (playbackMarkerRef.current) {
-        playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
-        playbackMarkerRef.current.setIcon({
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 5,
-          rotation: pt.heading || 0,
-          fillColor: speedToColor(pt.speed),
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        });
+        playbackMarkerRef.current.setLngLat([pt.lng, pt.lat]);
+        const el = playbackMarkerRef.current.getElement();
+        el.style.color = speedToColor(pt.speed);
+        el.style.transform = `rotate(${pt.heading || 0}deg)`;
       }
 
       // Floating speed readout above playback marker
       if (playbackSpeedLabelRef.current) {
         const mphStr = pt.speed != null ? `${(pt.speed * 2.237).toFixed(0)} mph` : '\u2014';
-        playbackSpeedLabelRef.current.setContent(
+        playbackSpeedLabelRef.current.setHTML(
           `<div style="font-family:monospace;font-size:12px;font-weight:900;color:${speedToColor(pt.speed)};background:#0d0d0d;padding:2px 6px;border-radius:3px;border:1px solid #282828;white-space:nowrap">${mphStr}</div>`
         );
-        playbackSpeedLabelRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
-        playbackSpeedLabelRef.current.open(map);
+        playbackSpeedLabelRef.current.setLngLat([pt.lng, pt.lat]);
+        playbackSpeedLabelRef.current.addTo(map);
       }
 
       setPlaybackIdx(currentIdx);
@@ -2001,11 +1946,11 @@ export default function MapPage() {
   useEffect(() => {
     if (playbackUnit == null) {
       if (playbackMarkerRef.current) {
-        playbackMarkerRef.current.setMap(null);
+        playbackMarkerRef.current.remove();
         playbackMarkerRef.current = null;
       }
       if (playbackSpeedLabelRef.current) {
-        playbackSpeedLabelRef.current.close();
+        playbackSpeedLabelRef.current.remove();
         playbackSpeedLabelRef.current = null;
       }
     }
@@ -2020,40 +1965,63 @@ export default function MapPage() {
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
-      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
+        try { map?.removeLayer(layerId); } catch {}
+        try { map?.removeSource(sourceId); } catch {}
+      });
       heatmapRectsRef.current = [];
       return;
     }
 
     // Clean previous
-    heatmapRectsRef.current.forEach((r) => r.setMap(null));
+    heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
+      try { map.removeLayer(layerId); } catch {}
+      try { map.removeSource(sourceId); } catch {}
+    });
     heatmapRectsRef.current = [];
 
     if (!speedAnalytics.showSpeedHeatmap || speedAnalytics.heatmapCells.length === 0) return;
 
     const GRID_SIZE = 0.002; // ~200m grid cells
-    speedAnalytics.heatmapCells.forEach((cell) => {
-      const rect = new google.maps.Rectangle({
-        bounds: {
-          north: cell.grid_lat + GRID_SIZE,
-          south: cell.grid_lat,
-          east: cell.grid_lng + GRID_SIZE,
-          west: cell.grid_lng,
+    speedAnalytics.heatmapCells.forEach((cell, i) => {
+      const fillColor = speedToColor(cell.avg_speed / 2.237);
+      const fillOpacity = Math.min(0.15 + (cell.point_count / 50) * 0.35, 0.5);
+      const north = cell.grid_lat + GRID_SIZE;
+      const south = cell.grid_lat;
+      const east = cell.grid_lng + GRID_SIZE;
+      const west = cell.grid_lng;
+
+      const sourceId = `rmpg-speed-cell-${i}`;
+      const layerId = `rmpg-speed-cell-layer-${i}`;
+
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[west, north], [east, north], [east, south], [west, south], [west, north]]],
+          },
+          properties: { fillColor, fillOpacity, strokeColor: fillColor },
         },
-        fillColor: speedToColor(cell.avg_speed / 2.237), // convert mph to m/s for speedToColor
-        fillOpacity: Math.min(0.15 + (cell.point_count / 50) * 0.35, 0.5),
-        strokeColor: speedToColor(cell.avg_speed / 2.237),
-        strokeWeight: 0.5,
-        strokeOpacity: 0.3,
-        map,
-        clickable: false,
-        zIndex: 50,
       });
-      heatmapRectsRef.current.push(rect);
+      map.addLayer({
+        id: layerId,
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': ['get', 'fillColor'],
+          'fill-opacity': ['get', 'fillOpacity'],
+        },
+      });
+      heatmapRectsRef.current.push({ sourceId, layerId });
     });
 
     return () => {
-      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
+        try { map.removeLayer(layerId); } catch {}
+        try { map.removeSource(sourceId); } catch {}
+      });
       heatmapRectsRef.current = [];
     };
   }, [speedAnalytics.showSpeedHeatmap, speedAnalytics.heatmapCells, mapLoaded]);
@@ -2067,33 +2035,61 @@ export default function MapPage() {
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
-      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current.forEach((id) => {
+        try { map?.removeLayer(id); } catch {}
+        try { map?.removeSource(id); } catch {}
+      });
       pursuitLinesRef.current = [];
       return;
     }
 
     // Clean previous
-    pursuitLinesRef.current.forEach((l) => l.setMap(null));
+    pursuitLinesRef.current.forEach((id) => {
+      try { map.removeLayer(id); } catch {}
+      try { map.removeSource(id); } catch {}
+    });
     pursuitLinesRef.current = [];
 
     if (speedAnalytics.pursuitSegments.length === 0) return;
 
+    const features: any[] = [];
     speedAnalytics.pursuitSegments.forEach((seg) => {
       if (seg.points.length < 2) return;
-      const line = new google.maps.Polyline({
-        path: seg.points.map((p) => ({ lat: p.lat, lng: p.lng })),
-        geodesic: true,
-        strokeColor: '#dc2626',
-        strokeOpacity: 0.8,
-        strokeWeight: 6,
-        map,
-        zIndex: 100,
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: seg.points.map((p) => [p.lng, p.lat]),
+        },
+        properties: {},
       });
-      pursuitLinesRef.current.push(line);
     });
 
+    if (features.length > 0) {
+      const sourceId = 'rmpg-pursuit-lines';
+      const layerId = 'rmpg-pursuit-lines';
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      });
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': '#dc2626',
+          'line-opacity': 0.8,
+          'line-width': 6,
+        },
+      });
+      pursuitLinesRef.current.push(sourceId);
+    }
+
     return () => {
-      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current.forEach((id) => {
+        try { map.removeLayer(id); } catch {}
+        try { map.removeSource(id); } catch {}
+      });
       pursuitLinesRef.current = [];
     };
   }, [speedAnalytics.pursuitSegments, mapLoaded]);
@@ -2108,17 +2104,23 @@ export default function MapPage() {
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
-      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current.forEach((id) => {
+        try { map?.removeLayer(id); } catch {}
+        try { map?.removeSource(id); } catch {}
+      });
       speedZonePolysRef.current = [];
-      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current.forEach((m) => m.remove());
       speedZoneLabelsRef.current = [];
       return;
     }
 
     // Clean previous
-    speedZonePolysRef.current.forEach((p) => p.setMap(null));
+    speedZonePolysRef.current.forEach((id) => {
+      try { map.removeLayer(id); } catch {}
+      try { map.removeSource(id); } catch {}
+    });
     speedZonePolysRef.current = [];
-    speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+    speedZoneLabelsRef.current.forEach((m) => m.remove());
     speedZoneLabelsRef.current = [];
 
     if (speedAnalytics.speedZones.length === 0) return;
@@ -2131,46 +2133,55 @@ export default function MapPage() {
       parking: '#6b7280',
     };
 
-    speedAnalytics.speedZones.forEach((zone) => {
+    speedAnalytics.speedZones.forEach((zone, i) => {
       if (!zone.is_active || !zone.polygon_coords) return;
       try {
         const coords: { lat: number; lng: number }[] = JSON.parse(zone.polygon_coords);
         if (coords.length < 3) return;
 
         const zoneColor = ZONE_TYPE_COLORS[zone.zone_type] || '#888888';
-        const poly = new google.maps.Polygon({
-          paths: coords,
-          fillColor: zoneColor,
-          fillOpacity: 0.15,
-          strokeColor: zoneColor,
-          strokeWeight: 2,
-          strokeOpacity: 0.6,
-          map,
-          zIndex: 60,
-          clickable: false,
+        const sourceId = `rmpg-speed-zone-${i}`;
+        const layerId = `rmpg-speed-zone-layer-${i}`;
+        const ringCoords = [...coords.map((c) => [c.lng, c.lat]), [coords[0].lng, coords[0].lat]];
+
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [ringCoords] },
+            properties: { zoneColor, zoneOpacity: 0.15 },
+          },
         });
-        speedZonePolysRef.current.push(poly);
+        map.addLayer({
+          id: layerId,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': zoneColor,
+            'fill-opacity': 0.15,
+          },
+        });
+        map.addLayer({
+          id: `${layerId}-outline`,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': zoneColor,
+            'line-opacity': 0.6,
+            'line-width': 2,
+          },
+        });
+        speedZonePolysRef.current.push(sourceId);
 
         // Centroid label
         const cLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
         const cLng = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
-        const label = new google.maps.Marker({
-          position: { lat: cLat, lng: cLng },
-          map,
-          icon: {
-            path: 'M 0,0',
-            scale: 0,
-          },
-          label: {
-            text: `${zone.speed_limit_mph} mph`,
-            color: zoneColor,
-            fontSize: '9px',
-            fontWeight: 'bold',
-            className: 'speed-zone-label',
-          },
-          clickable: false,
-          zIndex: 61,
-        });
+        const textEl = document.createElement('div');
+        textEl.textContent = `${zone.speed_limit_mph} mph`;
+        textEl.style.cssText = `color:${zoneColor};font-size:9px;font-weight:bold;font-family:'JetBrains Mono',monospace;text-shadow:0 0 2px rgba(0,0,0,0.9);white-space:nowrap;`;
+        const label = new mapboxgl.Marker({ element: textEl })
+          .setLngLat([cLng, cLat])
+          .addTo(map);
         speedZoneLabelsRef.current.push(label);
       } catch {
         // Invalid polygon_coords JSON
@@ -2178,9 +2189,13 @@ export default function MapPage() {
     });
 
     return () => {
-      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current.forEach((id) => {
+        try { map.removeLayer(`${id}-outline`); } catch {}
+        try { map.removeLayer(id); } catch {}
+        try { map.removeSource(id); } catch {}
+      });
       speedZonePolysRef.current = [];
-      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current.forEach((m) => m.remove());
       speedZoneLabelsRef.current = [];
     };
   }, [speedAnalytics.speedZones, mapLoaded]);
@@ -2194,7 +2209,7 @@ export default function MapPage() {
     if (!map || !mapLoaded) return;
 
     if (gps.isTracking && gps.latitude != null && gps.longitude != null) {
-      const pos = { lat: gps.latitude, lng: gps.longitude };
+      const pos: [number, number] = [gps.longitude, gps.latitude];
       if (selfMarkerRef.current) {
         // Update existing marker
         if (typeof selfMarkerRef.current.updatePosition === 'function') {
@@ -2318,7 +2333,7 @@ export default function MapPage() {
     }
   }, [fetchCalls, fetchUnits, addToast]);
 
-  // Address search with Google Places Autocomplete
+  // Address search with Mapbox Geocoding API
   const handleAddressSearch = useCallback((query: string) => {
     setAddressSearch(query);
     if (addressSearchTimer.current) clearTimeout(addressSearchTimer.current);
@@ -2329,32 +2344,39 @@ export default function MapPage() {
       return;
     }
 
-    addressSearchTimer.current = setTimeout(() => {
-      if (typeof google === 'undefined' || !google.maps?.places) return;
-      const service = new google.maps.places.AutocompleteService();
-      service.getPlacePredictions(
-        { input: query, types: ['geocode', 'establishment'], componentRestrictions: { country: 'us' } },
-        (predictions, status) => {
-          if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
-            setAddressResults(predictions.map(p => ({ description: p.description, place_id: p.place_id })));
-            setShowAddressResults(true);
-          } else {
-            setAddressResults([]);
-          }
+    addressSearchTimer.current = setTimeout(async () => {
+      const token = mapboxgl.accessToken;
+      if (!token) return;
+      const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=US&autocomplete=true&types=address,place`;
+      try {
+        const resp = await fetch(geocodeUrl);
+        const data = await resp.json();
+        if (data.features && data.features.length > 0) {
+          setAddressResults(data.features.map((f: any) => ({ description: f.place_name, place_id: f.id })));
+          setShowAddressResults(true);
+        } else {
+          setAddressResults([]);
         }
-      );
+      } catch {
+        // Ignore network errors
+      }
     }, 300);
   }, []);
 
-  const handleAddressSelect = useCallback((placeId: string, description: string) => {
+  const handleAddressSelect = useCallback(async (placeId: string, description: string) => {
     const map = mapInstanceRef.current;
-    if (!map || typeof google === 'undefined') return;
+    if (!map) return;
 
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ placeId }, (results, status) => {
-      if (status === 'OK' && results && results[0]) {
-        const loc = results[0].geometry.location;
-        map.panTo(loc);
+    const token = mapboxgl.accessToken;
+    if (!token) return;
+
+    const detailUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${placeId}.json?access_token=${token}&limit=1`;
+    try {
+      const resp = await fetch(detailUrl);
+      const data = await resp.json();
+      if (data.features && data.features[0]) {
+        const [lng, lat] = data.features[0].center;
+        map.panTo([lng, lat]);
         map.setZoom(17);
 
         // Remove previous address marker
@@ -2379,7 +2401,7 @@ export default function MapPage() {
 
         addressMarkerRef.current = createMarker({
           map,
-          position: { lat: loc.lat(), lng: loc.lng() },
+          position: [lng, lat],
           content: el,
           zIndex: 5000,
           title: description,
@@ -2395,7 +2417,9 @@ export default function MapPage() {
           addressDismissTimer.current = null;
         }, 30000);
       }
-    });
+    } catch {
+      // Ignore geocoding errors
+    }
 
     setAddressSearch(description.split(',')[0]);
     setShowAddressResults(false);
@@ -2434,15 +2458,15 @@ export default function MapPage() {
         case 'c': // Center on all units
           e.preventDefault();
           if (mapInstanceRef.current && units.length > 0) {
-            const bounds = new google.maps.LatLngBounds();
+            const bounds = new mapboxgl.LngLatBounds();
             let hasCoords = false;
             units.forEach(u => {
               if (u.latitude != null && u.longitude != null) {
-                bounds.extend({ lat: u.latitude, lng: u.longitude });
+                bounds.extend([u.longitude, u.latitude]);
                 hasCoords = true;
               }
             });
-            if (hasCoords) mapInstanceRef.current.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: layersPanelOpen ? 220 : 60 });
+            if (hasCoords) mapInstanceRef.current.fitBounds(bounds, { padding: { top: 50, right: 50, bottom: 50, left: layersPanelOpen ? 220 : 60 } });
           }
           break;
         case '+':
@@ -2462,7 +2486,7 @@ export default function MapPage() {
           break;
         case 'escape': // Close all panels
           e.preventDefault();
-          infoWindowRef.current?.close();
+          infoWindowRef.current?.remove();
           setLayersPanelOpen(false);
           setSidebarOpen(false);
           break;
@@ -2520,8 +2544,8 @@ export default function MapPage() {
                 if (map) {
                   const center = map.getCenter();
                   if (center) {
-                    map.panTo({ lat: center.lat() + 0.0001, lng: center.lng() });
-                    setTimeout(() => map.panTo(center), 200);
+                    map.panTo([center.lng + 0.0001, center.lat]);
+                    setTimeout(() => map.panTo([center.lng, center.lat]), 200);
                   }
                 }
               }}
@@ -2538,44 +2562,6 @@ export default function MapPage() {
           <RmpgLogo height={20} iconOnly />
         </div>
 
-        {/* Offline fallback: Leaflet map with cached tiles when Google Maps fails
-            due to connectivity (not API key errors). Shows GPS, unit positions, calls. */}
-        {showOfflineFallback && (
-          <OfflineMapFallback
-            className="absolute inset-0 z-[2000]"
-            selfPosition={
-              gps.isTracking && gps.latitude != null && gps.longitude != null
-                ? { lat: gps.latitude, lng: gps.longitude, accuracy: gps.accuracy ?? undefined, heading: gps.heading ?? undefined }
-                : null
-            }
-            unitPositions={unitsWithCoords
-              .map(u => ({
-                call_sign: u.call_sign,
-                lat: u.latitude!,
-                lng: u.longitude!,
-                status: u.status,
-              }))}
-            activeCalls={callsWithCoords}
-            properties={propertiesWithCoords
-              .map(p => ({
-                id: p.id,
-                name: p.name,
-                lat: p.latitude!,
-                lng: p.longitude!,
-                address: p.address,
-                client_name: p.client_name || undefined,
-              }))}
-            onRetry={() => {
-              setRetryingGmaps(true);
-              setMapError(null);
-              setMapRetry((n) => n + 1);
-              // Reset retrying state after a delay (the Google Maps init effect will re-run)
-              setTimeout(() => setRetryingGmaps(false), 5000);
-            }}
-            retrying={retryingGmaps}
-          />
-        )}
-
         {/* API key / auth error dialog (only for configuration problems, not connectivity) */}
         {isAuthError && (
           <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
@@ -2585,15 +2571,13 @@ export default function MapPage() {
               <pre className="text-rmpg-300 text-xs leading-relaxed mb-4 whitespace-pre-wrap text-left">{mapError}</pre>
               <div className="bg-surface-deep border border-rmpg-600 p-3 text-left mb-4" style={{ borderRadius: 2 }}>
                 <p className="text-[10px] text-rmpg-400 font-mono leading-relaxed">
-                  <span className="text-amber-400 font-bold">Checklist:</span><br/>
-                  1. Go to <span className="text-gray-400">console.cloud.google.com/apis/library</span><br/>
-                  2. Enable <span className="text-amber-400">Maps JavaScript API</span><br/>
-                  3. Enable <span className="text-amber-400">Places API (New)</span><br/>
-                  4. Go to <span className="text-gray-400">Billing</span> → ensure billing is active<br/>
-                  5. Go to <span className="text-gray-400">Credentials</span> → check key restrictions<br/>
-                  6. Add key to <span className="text-brand-400">client/.env</span>:<br/>
-                  <span className="text-green-400 ml-2">GOOGLE_MAPS_API_KEY=your_key</span><br/>
-                  7. Restart the dev server
+                   <span className="text-amber-400 font-bold">Checklist:</span><br/>
+                  1. Go to <span className="text-gray-400">account.mapbox.com/access-tokens</span><br/>
+                  2. Create a <span className="text-amber-400">Mapbox Access Token</span><br/>
+                  3. Ensure the token has <span className="text-amber-400">tilesets:read</span> scope<br/>
+                  4. Add token to <span className="text-brand-400">client/.env</span>:<br/>
+                  <span className="text-green-400 ml-2">VITE_MAPBOX_ACCESS_TOKEN=your_token</span><br/>
+                  5. Restart the dev server
                 </p>
               </div>
               <div className="flex gap-3 justify-center">
@@ -3508,7 +3492,7 @@ export default function MapPage() {
                                   if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
                                   const pt = activeTrail?.points?.[idx];
                                   if (pt && playbackMarkerRef.current) {
-                                    playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
+                                    playbackMarkerRef.current.setLngLat([pt.lng, pt.lat]);
                                   }
                                 }}
                                 className="flex-1 h-1 accent-gray-400"
@@ -4944,8 +4928,8 @@ export default function MapPage() {
             isOpen={showSafetyAlertModal}
             onClose={() => setShowSafetyAlertModal(false)}
             onBroadcast={(type, lat, lng, details, radius) => alerts.broadcastAlert(type as SafetyAlertType, lat, lng, details, radius)}
-            defaultLat={mapInstanceRef.current?.getCenter()?.lat() ?? DEFAULT_CENTER.lat}
-            defaultLng={mapInstanceRef.current?.getCenter()?.lng() ?? DEFAULT_CENTER.lng}
+            defaultLat={mapInstanceRef.current?.getCenter()?.lat ?? DEFAULT_CENTER.lat}
+            defaultLng={mapInstanceRef.current?.getCenter()?.lng ?? DEFAULT_CENTER.lng}
           />
         )}
 
@@ -5039,11 +5023,11 @@ export default function MapPage() {
               loading={threatAssessment.loading}
               onAssessCenter={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) threatAssessment.assessLocation(c.lat(), c.lng());
+                if (c) threatAssessment.assessLocation(c.lat, c.lng);
               }}
               onGetApproachRoutes={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) threatAssessment.getApproachRoutes(c.lat(), c.lng());
+                if (c) threatAssessment.getApproachRoutes(c.lat, c.lng);
               }}
               onClear={() => threatAssessment.clearAssessment()}
               onClose={() => setShowThreatAssessment(false)}
@@ -5059,21 +5043,21 @@ export default function MapPage() {
               entryPoints={tactical.entryPoints}
               crowdDensity={(() => {
                 const c = mapInstanceRef.current?.getCenter();
-                return c ? tactical.estimateCrowdDensity(c.lat(), c.lng()) : 'Low (<50)';
+                return c ? tactical.estimateCrowdDensity(c.lat, c.lng) : 'Low (<50)';
               })()}
               onSetRallyPoint={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) tactical.setRallyPoint(c.lat(), c.lng(), 'Rally Point');
+                if (c) tactical.setRallyPoint(c.lat, c.lng, 'Rally Point');
               }}
               onClearRallyPoint={() => tactical.clearRallyPoint()}
               onShowCommandRings={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) tactical.showCommandRings(c.lat(), c.lng());
+                if (c) tactical.showCommandRings(c.lat, c.lng);
               }}
               onClearCommandRings={() => tactical.clearCommandRings()}
               onShowK9Radius={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) tactical.showK9Radius(c.lat(), c.lng());
+                if (c) tactical.showK9Radius(c.lat, c.lng);
               }}
               onClearK9Radius={() => tactical.clearK9Radius()}
               onShowHospitals={() => tactical.showHospitals()}
@@ -5081,14 +5065,14 @@ export default function MapPage() {
               onHideEmergencyServices={() => tactical.hideEmergencyServices()}
               onAddEntryPoint={(label) => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) tactical.addEntryPoint(c.lat(), c.lng(), label);
+                if (c) tactical.addEntryPoint(c.lat, c.lng, label);
               }}
               onClearEntryPoints={() => tactical.clearEntryPoints()}
               onQuickDeploy={(preset: QuickDeployPreset) => {
                 const c = mapInstanceRef.current?.getCenter();
                 if (!c) return;
-                const lat = c.lat();
-                const lng = c.lng();
+                const lat = c.lat;
+                const lng = c.lng;
                 // Clear existing tactical markers first
                 tactical.clearRallyPoint();
                 tactical.clearEntryPoints();
@@ -5143,13 +5127,13 @@ export default function MapPage() {
               loading={perimeter.loading}
               onAnalyzeCoverage={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) perimeter.showPerimeter(c.lat(), c.lng());
+                if (c) perimeter.showPerimeter(c.lat, c.lng);
               }}
               onStartContainment={() => perimeter.startContainment()}
               onClearContainment={() => perimeter.endContainment()}
               onToggleHVTs={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) perimeter.showPerimeter(c.lat(), c.lng());
+                if (c) perimeter.showPerimeter(c.lat, c.lng);
               }}
               onClose={() => setShowPerimeterTools(false)}
             />
@@ -5165,16 +5149,16 @@ export default function MapPage() {
               loading={corridor.loading}
               onAnalyzeCorridor={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) corridor.analyzeCorridor(c.lat() - 0.01, c.lng() - 0.01, c.lat() + 0.01, c.lng() + 0.01);
+                if (c) corridor.analyzeCorridor(c.lat - 0.01, c.lng - 0.01, c.lat + 0.01, c.lng + 0.01);
               }}
               onShowPursuitProjection={(heading) => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) corridor.showPursuitProjection(c.lat(), c.lng(), heading);
+                if (c) corridor.showPursuitProjection(c.lat, c.lng, heading);
               }}
               onClearPursuit={() => corridor.clearPursuit()}
               onShowEscapeRoutes={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) corridor.showEscapeRoutes(c.lat(), c.lng());
+                if (c) corridor.showEscapeRoutes(c.lat, c.lng);
               }}
               onClearEscapeRoutes={() => corridor.clearEscapeRoutes()}
               onClearCorridor={() => corridor.clearCorridor()}

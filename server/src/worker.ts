@@ -8,7 +8,8 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import type { D1Database, KVNamespace, R2Bucket } from '@cloudflare/workers-types';
+import { handleWebSocketUpgrade, getConnectedUserCount } from './worker-middleware/websocket';
+import type { D1Database, KVNamespace, R2Bucket, ExecutionContext } from '@cloudflare/workers-types';
 
 // ─── Environment Bindings ────────────────────────────────
 export interface Env {
@@ -36,6 +37,9 @@ export interface Env {
   AZURE_CLIENT_SECRET?: string;
   AZURE_TENANT_ID?: string;
   TOTP_REQUIRED_ROLES?: string;
+  OLLAMA_URL?: string;
+  AI_MODEL?: string;
+  GOOGLE_VISION_API_KEY?: string;
 }
 
 // ─── Hono App ────────────────────────────────────────────
@@ -177,9 +181,10 @@ app.get('/api/features', async (c) => {
 
 // ─── Presence Endpoint ─────────────────────────────────
 app.get('/api/presence', async (c) => {
-  // In Workers, presence is tracked via Durable Objects or KV
-  // For now, return empty — WebSocket presence requires Durable Objects
-  return c.json({ users: [], count: 0, connections: 0 });
+  const { getConnectedUserCount, broadcastPresence } = await import('./worker-middleware/websocket');
+  setTimeout(() => broadcastPresence(), 0);
+  const count = getConnectedUserCount();
+  return c.json({ users: [], count, connections: count });
 });
 
 // ─── System Status ──────────────────────────────────────
@@ -196,7 +201,7 @@ app.get('/api/system-status', async (c) => {
       status: dbStatus === 'ok' ? 'operational' : 'degraded',
       api: { status: 'ok', response_time_ms: 0 },
       database: { status: dbStatus },
-      websocket: { status: 'ok', connections: 0 },
+      websocket: { status: 'ok', connections: getConnectedUserCount() },
       server: {
         version: '5.8.0',
         uptime_seconds: 0,
@@ -253,6 +258,28 @@ import { mountCommsRoutes } from './routes/comms-worker';
 import { mountReportsRoutes } from './routes/reports-worker';
 import { mountEmailRoutes } from './routes/email-worker';
 import { mountFleetRoutes } from './routes/fleet-worker';
+import { mountCitationRoutes } from './routes/citations-worker';
+import { mountCodeEnforcementRoutes } from './routes/codeEnforcement-worker';
+import { mountFieldInterviewRoutes } from './routes/fieldInterviews-worker';
+import { mountCourtRoutes } from './routes/court-worker';
+import { mountServeRoutes } from './routes/serve-worker';
+import { mountTrespassOrderRoutes } from './routes/trespassOrders-worker';
+import { mountPatrolRoutes } from './routes/patrol-worker';
+import { mountArrestsRoutes } from './routes/arrests-worker';
+import { mountCasesRoutes } from './routes/cases-worker';
+import { mountDashcamVideoRoutes } from './routes/dashcamVideos-worker';
+import { mountForensicsRoutes } from './routes/forensics-worker';
+import { mountOffenderRegistryRoutes } from './routes/offenderRegistry-worker';
+import { mountShiftPlanRoutes } from './routes/shiftPlans-worker';
+import { mountUploadRoutes } from './routes/uploads-worker';
+import { mountUseOfForceRoutes } from './routes/useOfForce-worker';
+import { mountDlRecordsRoutes } from './routes/dlRecords-worker';
+import { mountVoicePersonaRoutes } from './routes/voicePersona-worker';
+import { mountServeIntakeRoutes } from './routes/serveIntake-worker';
+import { mountAiRoutes } from './routes/ai-worker';
+import { mountHrRoutes } from './routes/hr-worker';
+import { mountStatuteRoutes } from './routes/statutes-worker';
+import { mountGeocodeRoutes } from './routes/geocode-worker';
 
 mountAuthRoutes(app);
 mountDispatchRoutes(app);
@@ -266,6 +293,28 @@ mountCommsRoutes(app);
 mountReportsRoutes(app);
 mountEmailRoutes(app);
 mountFleetRoutes(app);
+mountCitationRoutes(app);
+mountCodeEnforcementRoutes(app);
+mountFieldInterviewRoutes(app);
+mountCourtRoutes(app);
+mountServeRoutes(app);
+mountTrespassOrderRoutes(app);
+mountPatrolRoutes(app);
+mountArrestsRoutes(app);
+mountCasesRoutes(app);
+mountDashcamVideoRoutes(app);
+mountForensicsRoutes(app);
+mountOffenderRegistryRoutes(app);
+mountShiftPlanRoutes(app);
+mountUploadRoutes(app);
+mountUseOfForceRoutes(app);
+mountDlRecordsRoutes(app);
+mountVoicePersonaRoutes(app);
+mountServeIntakeRoutes(app);
+mountAiRoutes(app);
+mountHrRoutes(app);
+mountStatuteRoutes(app);
+mountGeocodeRoutes(app);
 
 // ─── SPA Fallback ────────────────────────────────────────
 // In production, the client is built and served via Pages or R2
@@ -282,4 +331,12 @@ app.onError((err, c) => {
 });
 
 // ─── Export Worker ───────────────────────────────────────
-export default app;
+export default {
+  fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === '/api/ws' && request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
+      return handleWebSocketUpgrade(request, env);
+    }
+    return app.fetch(request, env, ctx);
+  },
+};

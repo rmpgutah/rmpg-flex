@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import type { Env } from '../worker';
 import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken, requireRole } from '../worker-middleware/auth';
+import { auditLog } from '../worker-middleware/auditLogger';
 import { D1Db, paramStr, paramNum } from '../worker-middleware/d1Helpers';
 import { localNow } from '../worker-middleware/timeUtils';
 
@@ -298,6 +299,12 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(?, datetime('now','localtime')))
       `).run(unit.id, user.userId, pt.lat, pt.lng, pt.accuracy, pt.heading, pt.speed, unit.status, unit.call_sign, 'browser_desktop', pt.timestamp);
     }
+
+    // Broadcast GPS update via WebSocket
+    try {
+      const { broadcastUnitUpdate } = await import('../worker-middleware/websocket');
+      broadcastUnitUpdate({ action: 'gps_update', unit_id: unit.id, call_sign: unit.call_sign, latitude: latest.lat, longitude: latest.lng, heading: latest.heading, speed: latest.speed, status: unit.status, gps_updated_at: localNow() });
+    } catch { /* ws module may not be available */ }
 
     return c.json({ ok: true, unit_id: unit.id, call_sign: unit.call_sign, inserted: validPoints.length });
   });
@@ -672,6 +679,195 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
       FROM calls_for_service c ORDER BY c.created_at DESC LIMIT 50000
     `).all();
     return c.json(rows);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // WRITE ROUTES
+  // ═══════════════════════════════════════════════════════════
+
+  // POST /api/dispatch/calls - Create a new call
+  api.post('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const user = c.get('user');
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+
+    const {
+      incident_type, priority, location_address,
+      latitude, longitude, narrative, caller_name, caller_phone, caller_address,
+      description, property_id, client_id, reported_by, initial_notes,
+      created_at: customCreatedAt, status: customStatus,
+    } = body;
+
+    if (!incident_type || !priority || !location_address) {
+      return c.json({ error: 'incident_type, priority, and location_address are required', code: 'MISSING_FIELDS' }, 400);
+    }
+
+    const normalizedPriority = String(priority).toUpperCase();
+    if (!['P1', 'P2', 'P3', 'P4'].includes(normalizedPriority)) {
+      return c.json({ error: 'Invalid priority. Must be P1, P2, P3, or P4', code: 'INVALID_PRIORITY' }, 400);
+    }
+
+    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+    const status = customStatus && validStatuses.includes(customStatus) ? customStatus : 'pending';
+
+    const now = localNow();
+
+    // Generate call number: CFS-YY-NNNNN
+    const yy = String(new Date().getFullYear()).slice(-2);
+    const prefix = `${yy}-CFS`;
+    const lastRow = await db.prepare(
+      `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
+    ).get(`${prefix}%`) as any;
+    let nextNum = 1;
+    if (lastRow) {
+      const match = (lastRow.call_number || '').match(/\d{2}-CFS(\d{5})/);
+      if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    const callNumber = `${prefix}${String(nextNum).padStart(5, '0')}`;
+
+    const result = await db.prepare(`
+      INSERT INTO calls_for_service (
+        call_number, incident_type, priority, status,
+        location_address, latitude, longitude,
+        narrative, caller_name, caller_phone, caller_address,
+        description, property_id, client_id, reported_by, initial_notes,
+        created_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      callNumber,
+      String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_'),
+      normalizedPriority,
+      status,
+      String(location_address || ''),
+      latitude != null ? Number(latitude) : null,
+      longitude != null ? Number(longitude) : null,
+      narrative || null,
+      caller_name || null,
+      caller_phone || null,
+      caller_address || null,
+      description || null,
+      property_id != null ? Number(property_id) : null,
+      client_id != null ? Number(client_id) : null,
+      reported_by || null,
+      initial_notes || null,
+      user.userId,
+      customCreatedAt || now,
+    );
+
+    const callId = result.meta.last_row_id;
+    const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+
+    await auditLog(db, c, 'CREATE', 'call', callId!, `Created call ${callNumber}`);
+
+    return c.json(call, 201);
+  });
+
+  // POST /api/dispatch/calls/:id/assign-unit - Assign a unit to a call
+  api.post('/calls/:id/assign-unit', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const user = c.get('user');
+    const callId = paramNum(c.req.param('id'));
+    if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+    const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+
+    const { unit_id } = body;
+    if (!unit_id) return c.json({ error: 'unit_id is required', code: 'UNITID_IS_REQUIRED' }, 400);
+
+    const unit = await db.prepare('SELECT * FROM units WHERE id = ?').get(Number(unit_id)) as any;
+    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+
+    if (['off_duty', 'out_of_service'].includes(unit.status)) {
+      return c.json({ error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')} and cannot be assigned`, code: 'UNIT_UNAVAILABLE' }, 409);
+    }
+
+    const now = localNow();
+    let currentUnits: number[] = [];
+    try {
+      const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+      currentUnits = (Array.isArray(parsed) ? parsed : []).filter((n: any) => typeof n === 'number' && !isNaN(n));
+    } catch { /* ignore parse errors */ }
+
+    const unitIdNum = Number(unit_id);
+    if (isNaN(unitIdNum)) return c.json({ error: 'Invalid unit_id', code: 'INVALID_UNITID' }, 400);
+    if (!currentUnits.includes(unitIdNum)) currentUnits.push(unitIdNum);
+
+    await db.prepare(`
+      UPDATE calls_for_service SET
+        status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
+        assigned_unit_ids = ?,
+        dispatched_at = COALESCE(dispatched_at, ?),
+        dispatcher_id = COALESCE(dispatcher_id, ?)
+      WHERE id = ?
+    `).run(JSON.stringify(currentUnits), now, user.userId, callId);
+
+    await db.prepare(`
+      UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
+    `).run(callId, now, unit_id);
+
+    await auditLog(db, c, 'UNIT_ASSIGNED', 'call', callId, `Assigned ${unit.call_sign} to ${call.call_number}`);
+
+    const updated = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+    return c.json(updated);
+  });
+
+  // POST /api/dispatch/calls/:id/status - Update call status
+  api.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const user = c.get('user');
+    const callId = paramNum(c.req.param('id'));
+    if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+    const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+
+    const { status, notes, disposition } = body;
+    if (!status) return c.json({ error: 'status is required', code: 'STATUS_IS_REQUIRED' }, 400);
+
+    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
+    if (!validStatuses.includes(status)) {
+      return c.json({ error: 'Invalid status', code: 'INVALID_STATUS', valid: validStatuses }, 400);
+    }
+
+    const now = localNow();
+    const timestampField: Record<string, string> = {
+      dispatched: 'dispatched_at', enroute: 'enroute_at', onscene: 'onscene_at',
+      cleared: 'cleared_at', closed: 'closed_at', archived: 'archived_at',
+    };
+    const tsField = timestampField[status];
+
+    let updateQuery = `UPDATE calls_for_service SET status = ?, status_changed_at = ?`;
+    const updateParams: any[] = [status, now];
+
+    if (tsField) {
+      updateQuery += `, ${tsField} = COALESCE(${tsField}, ?)`;
+      updateParams.push(now);
+    }
+    if (notes) {
+      updateQuery += `, notes = ?`;
+      updateParams.push(notes);
+    }
+    if (disposition) {
+      updateQuery += `, disposition = ?`;
+      updateParams.push(disposition);
+    }
+
+    updateQuery += ` WHERE id = ?`;
+    updateParams.push(callId);
+
+    await db.prepare(updateQuery).run(...updateParams);
+    await auditLog(db, c, 'STATUS_CHANGE', 'call', callId, `Status changed to ${status} on ${call.call_number}`);
+
+    const updated = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+    return c.json(updated);
   });
 
   // Mount all dispatch routes under /dispatch

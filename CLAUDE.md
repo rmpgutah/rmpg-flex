@@ -252,8 +252,8 @@ curl -sf https://rmpgutah.us/api/health               # Verify
 curl -sf https://rmpgutah.us/api/health | python3 -m json.tool  # Server version + features
 ```
 
-### Google Maps API Key
-Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
+### Mapbox Access Token
+Set in `client/.env` as `VITE_MAPBOX_ACCESS_TOKEN`
 
 ## Key Systems
 

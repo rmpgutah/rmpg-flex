@@ -298,7 +298,7 @@ export function buildSelfPositionMarker(accuracy: number | null, heading: number
 // Wraps an HTMLElement in a Mapbox-compatible marker with update/remove methods.
 // Use: `const marker = new MapboxHtmlMarker(map, element, [lng, lat]);`
 
-import type { Map as MapboxMap } from 'mapbox-gl';
+import mapboxgl, { type Map as MapboxMap } from 'mapbox-gl';
 
 export interface MapboxHtmlMarker {
   setLngLat(lng: number, lat: number): void;
@@ -371,6 +371,54 @@ class MapboxHtmlMarkerImpl implements MapboxHtmlMarker {
 
 export function createMapboxHtmlMarker(map: MapboxMap, content: HTMLElement, lng: number, lat: number, onClick?: () => void): MapboxHtmlMarker {
   return new MapboxHtmlMarkerImpl(map, content, lng, lat, onClick);
+}
+
+// ── Mapbox Overlay Marker ─────────────────────────────────────
+// Implements the Google Maps OverlayView API so hooks that use
+// getOverlayMarkerClass() still work after migration to Mapbox GL JS.
+
+interface MapboxOverlayMarkerOptions {
+  map: MapboxMap;
+  position: [number, number] | { lat: number; lng: number };
+  content: HTMLElement;
+  zIndex?: number;
+  title?: string;
+  onClick?: () => void;
+}
+
+export class MapboxOverlayMarkerImpl {
+  private marker: mapboxgl.Marker;
+
+  constructor(opts: MapboxOverlayMarkerOptions) {
+    const el = opts.content;
+    if (opts.title) el.title = opts.title;
+    el.style.zIndex = String(opts.zIndex ?? 0);
+
+    if (opts.onClick) {
+      el.addEventListener('click', opts.onClick);
+    }
+
+    const lng = Array.isArray(opts.position) ? opts.position[0] : opts.position.lng;
+    const lat = Array.isArray(opts.position) ? opts.position[1] : opts.position.lat;
+
+    this.marker = new mapboxgl.Marker({ element: el })
+      .setLngLat([lng, lat])
+      .addTo(opts.map);
+  }
+
+  remove() { this.marker.remove(); }
+
+  getLngLat() { return this.marker.getLngLat(); }
+
+  addTo(map: MapboxMap) { this.marker.addTo(map); }
+
+  getElement() { return this.marker.getElement(); }
+}
+
+export type OverlayMarker = mapboxgl.Marker | MapboxOverlayMarkerImpl;
+
+export function getOverlayMarkerClass(): typeof MapboxOverlayMarkerImpl | null {
+  return MapboxOverlayMarkerImpl;
 }
 
 // ── CSS Keyframes (injected once) ────────────────────────────

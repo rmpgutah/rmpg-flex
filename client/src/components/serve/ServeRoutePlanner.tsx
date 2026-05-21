@@ -3,8 +3,8 @@ import {
   X, Route, MapPin, ChevronUp, ChevronDown, CheckSquare, Square,
   Loader2, Navigation, Clock, DollarSign, Gauge, User,
 } from 'lucide-react';
-import { loadGoogleMaps, DARK_MAP_STYLE, onOnlineRetryMaps } from '../../utils/googleMapsLoader';
-import { getGoogleMapsApiKey } from '../../utils/googleMapsApiKey';
+import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK } from '../../utils/mapboxLoader';
+import { getMapboxAccessToken } from '../../utils/mapboxApiKey';
 import { apiFetch } from '../../hooks/useApi';
 import type { ServeJob } from '../../types';
 
@@ -22,8 +22,8 @@ interface ServeRoutePlannerProps {
   officers?: OfficerOption[];
   currentUserId?: number;
   onRouteOptimized: (orderedJobIds: number[], routeData: {
-    totalDistance: number; // miles
-    totalDuration: number; // minutes
+    totalDistance: number;
+    totalDuration: number;
     fuelCost: number;
   }) => void;
 }
@@ -34,16 +34,16 @@ interface StopItem {
   order: number;
 }
 
-const IRS_MILEAGE_RATE = 0.67; // $/mile
+const IRS_MILEAGE_RATE = 0.67;
 
 // ─── Marker Colors ──────────────────────────────────────────────────────
 
 function markerColor(status: ServeJob['status']): string {
   switch (status) {
-    case 'served': return '#22c55e';      // green
-    case 'in_progress': return '#eab308'; // yellow
-    case 'failed': return '#ef4444';      // red
-    default: return '#888888';            // blue — pending/unvisited
+    case 'served': return '#22c55e';
+    case 'in_progress': return '#eab308';
+    case 'failed': return '#ef4444';
+    default: return '#888888';
   }
 }
 
@@ -61,12 +61,7 @@ function timeWindowPriority(tw: ServeJob['time_window']): number {
 }
 
 function priorityWeight(p: ServeJob['priority']): number {
-  switch (p) {
-    case 'rush': return 0;
-    case 'high': return 1;
-    case 'normal': return 2;
-    case 'low': return 3;
-  }
+  switch (p) { case 'rush': return 0; case 'high': return 1; case 'normal': return 2; case 'low': return 3; }
 }
 
 // ─── Geographic Clustering for >25 Stops ────────────────────────────────
@@ -74,54 +69,36 @@ function priorityWeight(p: ServeJob['priority']): number {
 function clusterStops(stops: StopItem[]): StopItem[][] {
   if (stops.length <= 25) return [stops];
   if (stops.length === 0) return [];
-
   const lats = stops.map(s => s.job.recipient_lat!);
   const lngs = stops.map(s => s.job.recipient_lng!);
-  const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-  const midLat = (minLat + maxLat) / 2;
-  const midLng = (minLng + maxLng) / 2;
-
-  // Split into quadrants
+  const midLat = (Math.min(...lats) + Math.max(...lats)) / 2;
+  const midLng = (Math.min(...lngs) + Math.max(...lngs)) / 2;
   const quadrants: StopItem[][] = [[], [], [], []];
   for (const stop of stops) {
-    const lat = stop.job.recipient_lat!;
-    const lng = stop.job.recipient_lng!;
-    const qi = (lat >= midLat ? 0 : 2) + (lng >= midLng ? 0 : 1);
+    const qi = (stop.job.recipient_lat! >= midLat ? 0 : 2) + (stop.job.recipient_lng! >= midLng ? 0 : 1);
     quadrants[qi].push(stop);
   }
-
-  // Recursively split quadrants that are still >25
   const result: StopItem[][] = [];
   for (const q of quadrants) {
     if (q.length === 0) continue;
-    if (q.length <= 25) {
-      result.push(q);
-    } else {
-      result.push(...clusterStops(q));
-    }
+    if (q.length <= 25) result.push(q);
+    else result.push(...clusterStops(q));
   }
   return result;
 }
 
-// ─── Nearest Neighbor for Cluster Chaining ──────────────────────────────
-
 function chainClusters(clusters: StopItem[][]): StopItem[][] {
   if (clusters.length <= 1) return clusters;
-
   const clusterCenters = clusters.map(c => {
     const avgLat = c.reduce((s, st) => s + st.job.recipient_lat!, 0) / c.length;
     const avgLng = c.reduce((s, st) => s + st.job.recipient_lng!, 0) / c.length;
     return { lat: avgLat, lng: avgLng };
   });
-
   const ordered: number[] = [0];
   const used = new Set([0]);
-
   while (ordered.length < clusters.length) {
     const last = clusterCenters[ordered[ordered.length - 1]];
-    let bestDist = Infinity;
-    let bestIdx = -1;
+    let bestDist = Infinity, bestIdx = -1;
     for (let i = 0; i < clusters.length; i++) {
       if (used.has(i)) continue;
       const d = Math.hypot(clusterCenters[i].lat - last.lat, clusterCenters[i].lng - last.lng);
@@ -130,8 +107,30 @@ function chainClusters(clusters: StopItem[][]): StopItem[][] {
     ordered.push(bestIdx);
     used.add(bestIdx);
   }
-
   return ordered.map(i => clusters[i]);
+}
+
+// ─── Mapbox Directions API Helper ───────────────────────────────────────
+
+async function fetchDirections(coordSets: [number, number][][]): Promise<{ legs: any[]; geometry: any } | null> {
+  const token = await getMapboxAccessToken();
+  if (!token) return null;
+  const allResults: any[] = [];
+  for (const coords of coordSets) {
+    if (coords.length < 2) continue;
+    const coordStr = coords.map(c => c.join(',')).join(';');
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
+    const data = await res.json();
+    const route = data.routes?.[0];
+    if (!route) continue;
+    allResults.push(route);
+  }
+  if (allResults.length === 0) return null;
+  const legs = allResults.flatMap(r => r.legs || []);
+  const geometry = allResults.length === 1 ? allResults[0].geometry : null;
+  return { legs, geometry };
 }
 
 // ─── Badge Components ───────────────────────────────────────────────────
@@ -143,11 +142,7 @@ function TimeWindowBadge({ tw }: { tw: ServeJob['time_window'] }) {
     evening: 'bg-purple-900/40 text-purple-400 border-purple-700/50',
     anytime: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
   };
-  return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono ${colors[tw] || colors.anytime}`}>
-      {tw}
-    </span>
-  );
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono ${colors[tw] || colors.anytime}`}>{tw}</span>;
 }
 
 function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
@@ -157,31 +152,21 @@ function PriorityBadge({ p }: { p: ServeJob['priority'] }) {
     normal: 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/50',
     low: 'bg-rmpg-800/30 text-rmpg-500 border-rmpg-700/30',
   };
-  return (
-    <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono uppercase ${colors[p] || colors.normal}`}>
-      {p}
-    </span>
-  );
+  return <span className={`text-[10px] px-1.5 py-0.5 rounded-[2px] border font-mono uppercase ${colors[p] || colors.normal}`}>{p}</span>;
 }
 
 // ─── Component ──────────────────────────────────────────────────────────
 
 export default function ServeRoutePlanner({
-  isOpen,
-  onClose,
-  jobs,
-  officers,
-  currentUserId,
-  onRouteOptimized,
+  isOpen, onClose, jobs, officers, currentUserId, onRouteOptimized,
 }: ServeRoutePlannerProps) {
-  // Filter to jobs with valid coords
   const geocodedJobs = jobs.filter(j => j.recipient_lat != null && j.recipient_lng != null);
 
   const [stops, setStops] = useState<StopItem[]>([]);
   const [optimizing, setOptimizing] = useState(false);
   const [mapReady, setMapReady] = useState(false);
-  const [totalDistance, setTotalDistance] = useState(0); // miles
-  const [totalDuration, setTotalDuration] = useState(0); // minutes
+  const [totalDistance, setTotalDistance] = useState(0);
+  const [totalDuration, setTotalDuration] = useState(0);
   const [currentLocation, setCurrentLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [selectedOfficerId, setSelectedOfficerId] = useState<number>(currentUserId || 0);
@@ -192,20 +177,17 @@ export default function ServeRoutePlanner({
   const [savedRouteLoaded, setSavedRouteLoaded] = useState(false);
 
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const directionsRendererRef = useRef<google.maps.DirectionsRenderer | null>(null);
-  const currentLocMarkerRef = useRef<google.maps.Marker | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const currentLocMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const routeSourceIdRef = useRef<string | null>(null);
 
   // Initialize stops from jobs
   useEffect(() => {
     if (!isOpen) return;
     const items: StopItem[] = geocodedJobs.map((job, i) => ({
-      job,
-      selected: job.status !== 'served' && job.status !== 'failed',
-      order: i,
+      job, selected: job.status !== 'served' && job.status !== 'failed', order: i,
     }));
-    // Sort by time window priority, then priority weight
     items.sort((a, b) => {
       const twDiff = timeWindowPriority(a.job.time_window) - timeWindowPriority(b.job.time_window);
       if (twDiff !== 0) return twDiff;
@@ -218,18 +200,16 @@ export default function ServeRoutePlanner({
     setError(null);
   }, [isOpen, jobs]);
 
-  // Get current location
   useEffect(() => {
     if (!isOpen) return;
     if (!navigator.geolocation) return;
     navigator.geolocation.getCurrentPosition(
       pos => setCurrentLocation({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-      () => { /* ignore error — current location is optional */ },
+      () => {},
       { enableHighAccuracy: true, timeout: 10000 },
     );
   }, [isOpen]);
 
-  // Load saved route on open (Step 3.3)
   useEffect(() => {
     if (!isOpen || savedRouteLoaded) return;
     const officerId = selectedOfficerId || currentUserId;
@@ -239,11 +219,8 @@ export default function ServeRoutePlanner({
       try {
         const saved = await apiFetch<any>(`/process-server/routes/${routeDate}?officer_id=${officerId}`);
         if (cancelled || !saved?.optimized_order_json) return;
-        const orderJson = typeof saved.optimized_order_json === 'string'
-          ? JSON.parse(saved.optimized_order_json)
-          : saved.optimized_order_json;
+        const orderJson = typeof saved.optimized_order_json === 'string' ? JSON.parse(saved.optimized_order_json) : saved.optimized_order_json;
         if (Array.isArray(orderJson) && orderJson.length > 0) {
-          // Reorder stops to match saved ordering
           setStops(prev => {
             const idToStop = new Map(prev.map(s => [s.job.id, s]));
             const ordered: StopItem[] = [];
@@ -251,156 +228,101 @@ export default function ServeRoutePlanner({
               const s = idToStop.get(id);
               if (s) { ordered.push({ ...s, selected: true }); idToStop.delete(id); }
             }
-            // Append remaining stops not in saved order
             for (const s of idToStop.values()) ordered.push(s);
             return ordered.map((s, i) => ({ ...s, order: i }));
           });
         }
         if (saved.total_distance_miles) setTotalDistance(saved.total_distance_miles);
         if (saved.total_time_minutes) setTotalDuration(saved.total_time_minutes);
-      } catch { /* no saved route — that's fine */ }
+      } catch {}
       setSavedRouteLoaded(true);
     })();
     return () => { cancelled = true; };
   }, [isOpen, savedRouteLoaded, selectedOfficerId, currentUserId, routeDate]);
 
-  // Initialize Google Maps
+  // Initialize Mapbox
   useEffect(() => {
     if (!isOpen) return;
-
     let cancelled = false;
-    let unsubOnline = () => {};
 
     const initMap = () => {
       if (cancelled || !mapContainerRef.current) return;
+      const centerLng = currentLocation?.lng || geocodedJobs[0]?.recipient_lng || -111.891;
+      const centerLat = currentLocation?.lat || geocodedJobs[0]?.recipient_lat || 40.7608;
 
-      const center = currentLocation
-        || (geocodedJobs.length > 0
-          ? { lat: geocodedJobs[0].recipient_lat!, lng: geocodedJobs[0].recipient_lng! }
-          : { lat: 40.7608, lng: -111.891 }); // SLC fallback
-
-      const map = new google.maps.Map(mapContainerRef.current, {
-        center,
+      const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: MAPBOX_STYLE_DARK,
+        center: [centerLng, centerLat],
         zoom: 11,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
+        attributionControl: false,
       });
-
       mapRef.current = map;
-      directionsRendererRef.current = new google.maps.DirectionsRenderer({
-        map,
-        suppressMarkers: true, // we draw our own numbered markers
-        polylineOptions: {
-          strokeColor: '#888888',
-          strokeWeight: 4,
-          strokeOpacity: 0.8,
-        },
-      });
-
       setMapReady(true);
     };
 
     (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
+        const token = await getMapboxAccessToken();
         if (cancelled) return;
-        await loadGoogleMaps(apiKey);
+        initMapbox(token);
         if (cancelled) return;
         initMap();
-        unsubOnline = onOnlineRetryMaps(apiKey, initMap);
       } catch {
-        if (!cancelled) setError('Failed to load Google Maps');
+        if (!cancelled) setError('Failed to load Mapbox');
       }
     })();
 
-    return () => {
-      cancelled = true;
-      unsubOnline();
-      setMapReady(false);
-    };
+    return () => { cancelled = true; setMapReady(false); };
   }, [isOpen]);
 
   // Update markers when stops change
   useEffect(() => {
     if (!mapReady || !mapRef.current) return;
 
-    // Clear old markers
-    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new mapboxgl.LngLatBounds();
 
     stops.forEach((stop, idx) => {
       if (!stop.selected) return;
-      const pos = { lat: stop.job.recipient_lat!, lng: stop.job.recipient_lng! };
-      bounds.extend(pos);
+      const lngLat: [number, number] = [stop.job.recipient_lng!, stop.job.recipient_lat!];
+      bounds.extend(lngLat);
 
       const color = markerColor(stop.job.status);
-      const marker = new google.maps.Marker({
-        position: pos,
-        map: mapRef.current!,
-        label: {
-          text: String(idx + 1),
-          color: '#ffffff',
-          fontSize: '11px',
-          fontWeight: 'bold',
-        },
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 1.5,
-          scale: 14,
-        },
-        title: `${stop.job.recipient_name}\n${stop.job.recipient_address || ''}`,
-      });
+      const el = document.createElement('div');
+      el.style.cssText = `width:28px;height:28px;border-radius:50%;background:${color};border:2px solid #fff;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:bold;font-size:11px;box-shadow:0 2px 6px rgba(0,0,0,0.4);cursor:pointer;`;
+      el.textContent = String(idx + 1);
+      el.title = `${stop.job.recipient_name}\n${stop.job.recipient_address || ''}`;
+
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(lngLat)
+        .addTo(mapRef.current!);
       markersRef.current.push(marker);
     });
 
-    // Current location marker
     if (currentLocation) {
-      if (currentLocMarkerRef.current) currentLocMarkerRef.current.setMap(null);
-      currentLocMarkerRef.current = new google.maps.Marker({
-        position: currentLocation,
-        map: mapRef.current,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: '#888888',
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 2,
-          scale: 8,
-        },
-        title: 'Your Location',
-        zIndex: 999,
-      });
-      bounds.extend(currentLocation);
+      const cl: [number, number] = [currentLocation.lng, currentLocation.lat];
+      if (currentLocMarkerRef.current) currentLocMarkerRef.current.remove();
+      const el = document.createElement('div');
+      el.style.cssText = 'width:16px;height:16px;border-radius:50%;background:#888888;border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);';
+      currentLocMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(cl).addTo(mapRef.current!);
+      bounds.extend(cl);
     }
 
     if (stops.some(s => s.selected)) {
-      mapRef.current.fitBounds(bounds, 60);
+      mapRef.current.fitBounds(bounds, { padding: 60 });
     }
   }, [stops, mapReady, currentLocation]);
 
-  // ─── Actions ────────────────────────────────────────────────────────
-
+  // Actions
   const toggleStop = useCallback((idx: number) => {
     setStops(prev => prev.map((s, i) => i === idx ? { ...s, selected: !s.selected } : s));
   }, []);
-
-  const selectAll = useCallback(() => {
-    setStops(prev => prev.map(s => ({ ...s, selected: true })));
-  }, []);
-
-  const deselectAll = useCallback(() => {
-    setStops(prev => prev.map(s => ({ ...s, selected: false })));
-  }, []);
-
+  const selectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: true }))), []);
+  const deselectAll = useCallback(() => setStops(prev => prev.map(s => ({ ...s, selected: false }))), []);
   const moveStop = useCallback((idx: number, dir: -1 | 1) => {
     setStops(prev => {
       const next = [...prev];
@@ -409,6 +331,16 @@ export default function ServeRoutePlanner({
       [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
       return next.map((s, i) => ({ ...s, order: i }));
     });
+  }, []);
+
+  const clearRouteFromMap = useCallback(() => {
+    if (!mapRef.current) return;
+    const srcId = routeSourceIdRef.current;
+    if (srcId) {
+      try { if (mapRef.current.getLayer(srcId)) mapRef.current.removeLayer(srcId); } catch {}
+      try { if (mapRef.current.getSource(srcId)) mapRef.current.removeSource(srcId); } catch {}
+      routeSourceIdRef.current = null;
+    }
   }, []);
 
   const optimizeRoute = useCallback(async () => {
@@ -422,138 +354,74 @@ export default function ServeRoutePlanner({
 
     setOptimizing(true);
     setError(null);
+    clearRouteFromMap();
 
     try {
-      const directionsService = new google.maps.DirectionsService();
       const clusters = chainClusters(clusterStops(selected));
-
       let allOrderedStops: StopItem[] = [];
       let totalDistM = 0;
       let totalDurS = 0;
+      let allGeometries: any[] = [];
 
       for (const cluster of clusters) {
-        if (cluster.length === 1) {
-          allOrderedStops.push(cluster[0]);
-          continue;
-        }
-
-        // Determine origin: for first cluster, use current location if available
         const isFirstCluster = clusters.indexOf(cluster) === 0;
         const origin = isFirstCluster && currentLocation
-          ? currentLocation
-          : { lat: cluster[0].job.recipient_lat!, lng: cluster[0].job.recipient_lng! };
+          ? [currentLocation.lng, currentLocation.lat] as [number, number]
+          : [cluster[0].job.recipient_lng!, cluster[0].job.recipient_lat!] as [number, number];
 
-        const destination = {
-          lat: cluster[cluster.length - 1].job.recipient_lat!,
-          lng: cluster[cluster.length - 1].job.recipient_lng!,
-        };
+        const waypointStops = isFirstCluster && currentLocation ? cluster : cluster.slice(1, -1);
+        const waypointCoords = waypointStops.map(s => [s.job.recipient_lng!, s.job.recipient_lat!] as [number, number]);
+        const destStop = cluster[cluster.length - 1];
+        const destCoord: [number, number] = [destStop.job.recipient_lng!, destStop.job.recipient_lat!];
 
-        // Build waypoints (excluding origin stop if it's the first cluster with current location)
-        const waypointStops = isFirstCluster && currentLocation
-          ? cluster
-          : cluster.slice(1, -1);
+        // Build coordinates array with origin, waypoints, destination
+        const allCoords = [origin, ...waypointCoords, destCoord];
+        const token = await getMapboxAccessToken();
+        if (!token) throw new Error('No Mapbox token');
 
-        const waypoints: google.maps.DirectionsWaypoint[] = (
-          isFirstCluster && currentLocation ? cluster : cluster.slice(1, -1)
-        ).map(s => ({
-          location: new google.maps.LatLng(s.job.recipient_lat!, s.job.recipient_lng!),
-          stopover: true,
-        }));
+        const coordStr = allCoords.map(c => c.join(',')).join(';');
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}?access_token=${token}&geometries=geojson&steps=false&overview=full`;
 
-        const destLocation = isFirstCluster && currentLocation
-          ? new google.maps.LatLng(cluster[cluster.length - 1].job.recipient_lat!, cluster[cluster.length - 1].job.recipient_lng!)
-          : new google.maps.LatLng(destination.lat, destination.lng);
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
+        const data = await res.json();
+        const route = data.routes?.[0];
+        if (!route) continue;
 
-        const result = await new Promise<google.maps.DirectionsResult>((resolve, reject) => {
-          directionsService.route(
-            {
-              origin: isFirstCluster && currentLocation
-                ? new google.maps.LatLng(currentLocation.lat, currentLocation.lng)
-                : new google.maps.LatLng(cluster[0].job.recipient_lat!, cluster[0].job.recipient_lng!),
-              destination: destLocation,
-              waypoints: waypoints.length > 0 ? waypoints : undefined,
-              optimizeWaypoints: true,
-              travelMode: google.maps.TravelMode.DRIVING,
-            },
-            (res, status) => {
-              if (status === 'OK' && res) resolve(res);
-              else reject(new Error(`Directions request failed: ${status}`));
-            },
-          );
-        });
-
-        // Apply waypoint order
-        const waypointOrder = result.routes[0]?.waypoint_order || [];
-        const reorderedWaypoints = waypointOrder.map(i => waypointStops[i]);
-
-        if (isFirstCluster && currentLocation) {
-          // All stops were waypoints + destination
-          const allClusterStops = [...reorderedWaypoints];
-          // The destination is the last stop (not reordered)
-          // But we need to check if destination was included in waypoints
-          allOrderedStops.push(...allClusterStops);
-          // Add the destination stop (last in cluster)
-          if (!allClusterStops.includes(cluster[cluster.length - 1])) {
-            allOrderedStops.push(cluster[cluster.length - 1]);
-          }
-        } else {
-          allOrderedStops.push(cluster[0], ...reorderedWaypoints, cluster[cluster.length - 1]);
+        if (route.geometry) allGeometries.push(route.geometry);
+        for (const leg of (route.legs || [])) {
+          totalDistM += leg.distance || 0;
+          totalDurS += leg.duration || 0;
         }
 
-        // Sum distances and durations
-        const legs = result.routes[0]?.legs || [];
-        for (const leg of legs) {
-          totalDistM += leg.distance?.value || 0;
-          totalDurS += leg.duration?.value || 0;
-        }
-
-        // Render directions for the last cluster (show the full route)
-        if (clusters.indexOf(cluster) === clusters.length - 1 || clusters.length === 1) {
-          directionsRendererRef.current?.setDirections(result);
-        }
+        allOrderedStops.push(...cluster);
       }
 
-      // If multiple clusters, re-render the full route for display
-      if (clusters.length > 1 && allOrderedStops.length >= 2) {
-        try {
-          const fullWaypoints = allOrderedStops.slice(1, -1).slice(0, 23).map(s => ({
-            location: new google.maps.LatLng(s.job.recipient_lat!, s.job.recipient_lng!),
-            stopover: true,
-          }));
+      // Render route on map
+      if (allGeometries.length > 0 && mapRef.current) {
+        const sourceId = `serve-route-${Date.now()}`;
+        routeSourceIdRef.current = sourceId;
 
-          const fullResult = await new Promise<google.maps.DirectionsResult>((resolve, reject) => {
-            directionsService.route(
-              {
-                origin: currentLocation
-                  ? new google.maps.LatLng(currentLocation.lat, currentLocation.lng)
-                  : new google.maps.LatLng(allOrderedStops[0].job.recipient_lat!, allOrderedStops[0].job.recipient_lng!),
-                destination: new google.maps.LatLng(
-                  allOrderedStops[allOrderedStops.length - 1].job.recipient_lat!,
-                  allOrderedStops[allOrderedStops.length - 1].job.recipient_lng!,
-                ),
-                waypoints: fullWaypoints,
-                optimizeWaypoints: false, // already optimized
-                travelMode: google.maps.TravelMode.DRIVING,
-              },
-              (res, status) => {
-                if (status === 'OK' && res) resolve(res);
-                else reject(new Error(`Full route render failed: ${status}`));
-              },
-            );
+        const combinedCoords = allGeometries.flatMap(g => g.coordinates || []);
+        if (combinedCoords.length > 1) {
+          mapRef.current.addSource(sourceId, {
+            type: 'geojson',
+            data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: combinedCoords } },
           });
-          directionsRendererRef.current?.setDirections(fullResult);
-        } catch {
-          // Non-fatal — individual cluster routes still valid
+          mapRef.current.addLayer({
+            id: sourceId,
+            type: 'line',
+            source: sourceId,
+            paint: { 'line-color': '#888888', 'line-width': 4, 'line-opacity': 0.8 },
+          });
         }
       }
 
       const distMiles = totalDistM * 0.000621371;
       const durMinutes = totalDurS / 60;
-
       setTotalDistance(distMiles);
       setTotalDuration(durMinutes);
 
-      // Update stop list order
       const unselected = stops.filter(s => !s.selected);
       const newStops: StopItem[] = [
         ...allOrderedStops.map((s, i) => ({ ...s, order: i })),
@@ -565,18 +433,13 @@ export default function ServeRoutePlanner({
     } finally {
       setOptimizing(false);
     }
-  }, [stops, mapReady, currentLocation]);
+  }, [stops, mapReady, currentLocation, clearRouteFromMap]);
 
   const handleApplyAndClose = useCallback(async () => {
     const selectedStops = stops.filter(s => s.selected);
     const selectedIds = selectedStops.map(s => s.job.id);
-    onRouteOptimized(selectedIds, {
-      totalDistance,
-      totalDuration,
-      fuelCost: totalDistance * IRS_MILEAGE_RATE,
-    });
+    onRouteOptimized(selectedIds, { totalDistance, totalDuration, fuelCost: totalDistance * IRS_MILEAGE_RATE });
 
-    // Persist route to server (Step 3.2)
     const officerId = selectedOfficerId || currentUserId;
     if (officerId && selectedIds.length > 0) {
       try {
@@ -586,23 +449,16 @@ export default function ServeRoutePlanner({
         await apiFetch('/process-server/routes', {
           method: 'POST',
           body: JSON.stringify({
-            officer_id: officerId,
-            route_date: routeDate,
+            officer_id: officerId, route_date: routeDate,
             optimized_order_json: JSON.stringify(selectedIds),
             waypoints_json: JSON.stringify(waypoints),
-            total_distance_miles: totalDistance,
-            total_time_minutes: totalDuration,
+            total_distance_miles: totalDistance, total_time_minutes: totalDuration,
           }),
         });
-      } catch {
-        // Route save failed — non-fatal, local state still applied
-      }
+      } catch {}
     }
-
     onClose();
   }, [stops, totalDistance, totalDuration, selectedOfficerId, currentUserId, routeDate, onRouteOptimized, onClose]);
-
-  // ─── Render ─────────────────────────────────────────────────────────
 
   if (!isOpen) return null;
 
@@ -612,15 +468,11 @@ export default function ServeRoutePlanner({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm animate-in fade-in duration-200" role="dialog" aria-modal="true" aria-label="Route Planner">
       <div className="bg-[#141414] border border-[#2b2b2b] rounded-[2px] w-full h-full max-w-[1400px] max-h-[95vh] flex flex-col shadow-md animate-in zoom-in-95 duration-200">
-        {/* ─── Header ─────────────────────────────────────────────── */}
         <div className="flex items-center justify-between px-4 py-2.5 border-b border-[#2b2b2b] bg-[#0c0c0c]">
           <div className="flex items-center gap-2">
             <Route size={16} className="text-[#d4a017]" />
             <h2 className="text-sm font-semibold text-white tracking-wider">ROUTE PLANNER</h2>
-            <span className="text-[11px] text-rmpg-500 ml-2">
-              {selectedCount} of {stops.length} stops selected
-            </span>
-            {/* Officer selector (Step 3.1) */}
+            <span className="text-[11px] text-rmpg-500 ml-2">{selectedCount} of {stops.length} stops selected</span>
             {officers && officers.length > 0 && (
               <div className="flex items-center gap-1.5 ml-3 pl-3 border-l border-[#2b2b2b]">
                 <User size={12} className="text-rmpg-400" />
@@ -628,185 +480,80 @@ export default function ServeRoutePlanner({
                   value={selectedOfficerId || ''}
                   onChange={e => { setSelectedOfficerId(Number(e.target.value)); setSavedRouteLoaded(false); }}
                   className="px-2 py-0.5 text-[11px] bg-[#0c0c0c] border border-[#2b2b2b] rounded-[2px] text-white focus:border-[#888888] focus:outline-none focus:ring-1 focus:ring-[#888888]/40 transition-colors"
-                  aria-label="Select officer for route"
                 >
-                  {officers.map(o => (
-                    <option key={o.id} value={o.id}>{o.name}</option>
-                  ))}
+                  {officers.map(o => (<option key={o.id} value={o.id}>{o.name}</option>))}
                 </select>
               </div>
             )}
           </div>
-          <div className="flex items-center gap-2">
-            <button type="button"
-              onClick={handleApplyAndClose}
-              className="px-3 py-1 text-xs font-medium text-white bg-[#888888] hover:bg-[#888888]/80 rounded-[2px] border border-[#888888] transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.25)]"
-            >
-              Apply Route
-            </button>
-            <button type="button"
-              onClick={onClose}
-              className="p-1 text-rmpg-500 hover:text-white transition-colors rounded-[2px] hover:bg-[#181818] focus:outline-none focus:ring-1 focus:ring-[#888888]/50"
-              aria-label="Close route planner"
-            >
-              <X size={16} />
-            </button>
+          <div className="flex items-center gap-1.5">
+            <button type="button" onClick={selectAll} className="toolbar-btn text-xs px-2 py-1"><CheckSquare className="w-3 h-3" /> All</button>
+            <button type="button" onClick={deselectAll} className="toolbar-btn text-xs px-2 py-1"><Square className="w-3 h-3" /> None</button>
+            <X size={20} className="text-rmpg-400 hover:text-white cursor-pointer transition-colors" onClick={onClose} aria-label="Close route planner" />
           </div>
         </div>
 
-        {/* ─── Body (responsive: stacked mobile, side-by-side desktop) ─── */}
-        <div className="flex-1 flex flex-col lg:flex-row overflow-hidden">
-          {/* ─── Left Panel: Stop List ─────────────────────────────── */}
-          <div className="w-full lg:w-[380px] flex flex-col border-b lg:border-b-0 lg:border-r border-[#2b2b2b] bg-[#0c0c0c]">
-            {/* Controls */}
-            <div className="flex items-center justify-between px-3 py-2 border-b border-[#2b2b2b]">
-              <div className="flex items-center gap-2">
-                <button type="button"
-                  onClick={selectAll}
-                  className="text-[10px] text-gray-400 hover:text-gray-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
-                >
-                  Select All
-                </button>
-                <span className="text-rmpg-600">|</span>
-                <button type="button"
-                  onClick={deselectAll}
-                  className="text-[10px] text-gray-400 hover:text-gray-300 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
-                >
-                  Deselect All
-                </button>
-              </div>
-              <button type="button"
-                onClick={optimizeRoute}
-                disabled={optimizing || selectedCount < 2}
-                className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-white bg-[#d4a017] hover:bg-[#d4a017]/80 disabled:bg-rmpg-700 disabled:text-rmpg-500 rounded-[2px] border border-[#d4a017] disabled:border-rmpg-600 transition-all duration-150 focus:outline-none focus:ring-1 focus:ring-[#d4a017]/50 hover:shadow-[0_0_8px_rgba(212,160,23,0.2)]"
-              >
-                {optimizing ? (
-                  <><Loader2 size={12} className="animate-spin" /> Optimizing...</>
-                ) : (
-                  <><Navigation size={12} /> Optimize Route</>
-                )}
+        <div className="flex-1 flex overflow-hidden">
+          {/* Left: Stop list */}
+          <div className="w-[380px] border-r border-[#2b2b2b] flex flex-col bg-[#0c0c0c]">
+            <div className="flex items-center gap-1.5 px-3 py-2 border-b border-[#2b2b2b]">
+              <button type="button" onClick={optimizeRoute} disabled={optimizing || !mapReady || selectedCount < 2}
+                className="toolbar-btn toolbar-btn-primary text-xs px-3 py-1.5 flex items-center gap-1.5 disabled:opacity-40 flex-1 justify-center">
+                {optimizing ? <><Loader2 className="w-3 h-3 animate-spin" /> Optimizing...</> : <><Route className="w-3 h-3" /> Optimize Route</>}
               </button>
             </div>
+            {error && <div className="px-3 py-1.5 bg-red-900/30 border-b border-red-700/50 text-red-300 text-[10px]">{error}</div>}
 
-            {/* Error */}
-            {error && (
-              <div className="px-3 py-1.5 text-[11px] text-red-400 bg-red-900/20 border-b border-[#2b2b2b]">
-                {error}
-              </div>
-            )}
-
-            {/* Stop List */}
-            <div className="flex-1 overflow-y-auto scrollbar-dark">
-              {stops.length === 0 ? (
-                <div className="flex flex-col items-center justify-center h-32 text-xs text-rmpg-500">
-                  <MapPin size={20} className="text-rmpg-600 mb-2" />
-                  No geocoded stops available
-                </div>
-              ) : (
-                stops.map((stop, idx) => (
-                  <div
-                    key={stop.job.id}
-                    className={`flex items-center gap-2 px-3 py-2 border-b border-[#181818]/50 hover:bg-[#181818]/60 transition-all duration-100 ${
-                      !stop.selected ? 'opacity-40' : ''
-                    } ${stop.job.status === 'served' ? 'bg-green-900/10' : ''}`}
-                  >
-                    {/* Checkbox */}
-                    <button type="button" onClick={() => toggleStop(idx)} className="shrink-0 text-rmpg-400 hover:text-white transition-colors" aria-label={stop.selected ? 'Deselect stop' : 'Select stop'}>
-                      {stop.selected ? (
-                        <CheckSquare size={14} className="text-gray-400" />
-                      ) : (
-                        <Square size={14} />
-                      )}
-                    </button>
-
-                    {/* Order Number */}
-                    <span className="shrink-0 w-5 h-5 flex items-center justify-center rounded-full text-[10px] font-bold text-[#d4a017] tabular-nums"
-                      style={{ backgroundColor: stop.selected ? markerColor(stop.job.status) : '#444444', boxShadow: stop.selected ? `0 0 6px ${markerColor(stop.job.status)}80` : 'none' }}
-                    >
-                      {idx + 1}
-                    </span>
-
-                    {/* Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="text-xs font-medium text-white truncate">
-                        {stop.job.recipient_name}
-                      </div>
-                      <div className={`text-[10px] text-rmpg-500 truncate ${stop.job.status === 'served' ? 'line-through' : ''}`}>
-                        {stop.job.recipient_address || 'No address'}
-                        {stop.job.recipient_city ? `, ${stop.job.recipient_city}` : ''}
-                      </div>
-                      <div className="flex items-center gap-1.5 mt-0.5">
-                        <TimeWindowBadge tw={stop.job.time_window} />
-                        <PriorityBadge p={stop.job.priority} />
-                      </div>
-                    </div>
-
-                    {/* Reorder Buttons */}
-                    <div className="shrink-0 flex flex-col gap-0.5">
-                      <button type="button"
-                        onClick={() => moveStop(idx, -1)}
-                        disabled={idx === 0}
-                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
-                      >
-                        <ChevronUp size={12} />
+            <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-[#222222] scrollbar-track-transparent">
+              {stops.map((stop, idx) => (
+                <div key={stop.job.id} className={`flex items-center gap-2 px-3 py-2 border-b border-[#222222] transition-colors ${stop.selected ? 'bg-[#141414]' : 'opacity-50'}`}>
+                  <button type="button" onClick={() => toggleStop(idx)} className="flex-shrink-0 p-0.5">
+                    {stop.selected ? <CheckSquare size={16} className="text-brand-400" /> : <Square size={16} className="text-rmpg-600" />}
+                  </button>
+                  <span className="w-5 text-xs font-mono font-bold text-rmpg-300 flex-shrink-0">{idx + 1}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-white truncate">{stop.job.recipient_name}</div>
+                    <div className="text-[10px] text-rmpg-500 truncate">{stop.job.recipient_address || 'No address'}</div>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <PriorityBadge p={stop.job.priority} />
+                    <TimeWindowBadge tw={stop.job.time_window} />
+                    <div className="flex flex-col gap-0.5 ml-1">
+                      <button type="button" onClick={() => moveStop(idx, -1)} disabled={idx === 0} className="text-rmpg-500 hover:text-white disabled:opacity-30">
+                        <ChevronUp size={10} />
                       </button>
-                      <button type="button"
-                        onClick={() => moveStop(idx, 1)}
-                        disabled={idx === stops.length - 1}
-                        className="p-0.5 text-rmpg-500 hover:text-white disabled:text-rmpg-700 transition-colors focus:outline-none focus:ring-1 focus:ring-[#888888]/50 rounded-[2px]"
-                      >
-                        <ChevronDown size={12} />
+                      <button type="button" onClick={() => moveStop(idx, 1)} disabled={idx === stops.length - 1} className="text-rmpg-500 hover:text-white disabled:opacity-30">
+                        <ChevronDown size={10} />
                       </button>
                     </div>
                   </div>
-                ))
-              )}
+                </div>
+              ))}
+            </div>
+
+            <div className="px-4 py-3 border-t border-[#2b2b2b] bg-[#0c0c0c] space-y-2">
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><MapPin size={12} /> Distance:</span><span className="text-white font-mono">{totalDistance.toFixed(1)} mi</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Clock size={12} /> Est. Time:</span><span className="text-white font-mono">{Math.floor(totalDuration / 60)}h {Math.round(totalDuration % 60)}m</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><DollarSign size={12} /> Fuel:</span><span className="text-white font-mono">${fuelCost.toFixed(2)}</span></div>
+              <div className="flex justify-between text-xs"><span className="text-rmpg-500 flex items-center gap-1.5"><Gauge size={12} /> Efficiency:</span><span className="text-white font-mono">{totalDistance > 0 ? `${(selectedCount / totalDistance).toFixed(1)} stops/mi` : '\u2014'}</span></div>
+
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={handleApplyAndClose} className="toolbar-btn toolbar-btn-primary text-xs px-4 py-2 flex-1 justify-center">
+                  <Navigation size={14} /> Apply Route
+                </button>
+                <button type="button" onClick={onClose} className="toolbar-btn text-xs px-4 py-2">Cancel</button>
+              </div>
             </div>
           </div>
 
-          {/* ─── Right Panel: Map ──────────────────────────────────── */}
-          <div className="flex-1 relative min-h-[300px]">
+          {/* Right: Map */}
+          <div className="flex-1 relative bg-[#050505]">
             <div ref={mapContainerRef} className="absolute inset-0" />
-            {!mapReady && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#0c0c0c]">
-                <div className="flex items-center gap-2 text-xs text-rmpg-400">
-                  <Loader2 size={14} className="animate-spin" />
-                  Loading map...
-                </div>
+            {(!mapReady || optimizing) && (
+              <div className="absolute inset-0 flex items-center justify-center bg-[rgba(0,0,0,0.5)]">
+                <Loader2 size={24} className="animate-spin text-brand-400" />
               </div>
             )}
-          </div>
-        </div>
-
-        {/* ─── Stats Bar ──────────────────────────────────────────── */}
-        <div className="flex items-center gap-6 px-4 py-2 border-t border-[#2b2b2b] bg-[#0c0c0c] text-xs" role="status" aria-label="Route statistics">
-          <div className="flex items-center gap-1.5 text-rmpg-400">
-            <MapPin size={12} className="text-gray-400" />
-            <span>Total stops:</span>
-            <span className="text-white font-medium tabular-nums font-mono">{selectedCount}</span>
-          </div>
-          <div className="flex items-center gap-1.5 text-rmpg-400">
-            <Gauge size={12} className="text-emerald-400" />
-            <span>Distance:</span>
-            <span className="text-white font-medium tabular-nums font-mono">
-              {totalDistance > 0 ? `${totalDistance.toFixed(1)} mi` : '--'}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-rmpg-400">
-            <Clock size={12} className="text-amber-400" />
-            <span>Est. time:</span>
-            <span className="text-white font-medium tabular-nums font-mono">
-              {totalDuration > 0
-                ? `${Math.floor(totalDuration / 60)} hr ${Math.round(totalDuration % 60)} min`
-                : '--'}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-rmpg-400">
-            <DollarSign size={12} className="text-green-400" />
-            <span>Fuel cost:</span>
-            <span className="text-white font-medium tabular-nums font-mono">
-              {fuelCost > 0 ? `$${fuelCost.toFixed(2)}` : '--'}
-            </span>
           </div>
         </div>
       </div>

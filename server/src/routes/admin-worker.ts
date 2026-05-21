@@ -495,9 +495,10 @@ export function mountAdminRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
   const ALLOWED_THIRD_PARTY_KEYS = [
     'lead_gen_rapidapi_key', 'dl_ocr_rapidapi_key', 'plate_check_rapidapi_key',
     'google_cloud_vision_key', 'google_cloud_speech_key', 'google_generative_language_key',
+    'mapbox_api_key', 'mapbox_access_token', 'mapbox_username', 'mapbox_password', 'mapbox_style_url',
     'ncic_api_key', 'utah_dps_api_key', 'utah_courts_api_key', 'fbi_wanted_api_key',
     'dea_api_key', 'usms_api_key', 'atf_api_key', 'interpol_api_key', 'nsopw_api_key', 'ofac_api_key',
-    'openweathermap_api_key', 'mapbox_api_key', 'nominatim_api_key', 'opencage_api_key',
+    'openweathermap_api_key', 'nominatim_api_key', 'opencage_api_key',
     'ipinfo_api_key', 'virustotal_api_key', 'abuseipdb_api_key', 'shodan_api_key',
     'have_i_been_pwned_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',
     'abstract_api_key', 'whoisxml_api_key', 'urlscan_api_key', 'emailrep_api_key',
@@ -631,6 +632,120 @@ export function mountAdminRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     await db.prepare(`UPDATE system_config SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
     const row = await db.prepare('SELECT * FROM system_config WHERE id = ?').get(id);
     return c.json(row || {});
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // SHIFT STATS
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/shift-stats', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const hour = new Date().getHours();
+    let shiftName: string;
+    let shiftStart: string;
+    let shiftEnd: string;
+
+    if (hour >= 6 && hour < 14) {
+      shiftName = 'Day Shift (0600-1400)';
+      shiftStart = localNow().split('T')[0] + 'T06:00:00';
+      shiftEnd = localNow().split('T')[0] + 'T14:00:00';
+    } else if (hour >= 14 && hour < 22) {
+      shiftName = 'Swing Shift (1400-2200)';
+      shiftStart = localNow().split('T')[0] + 'T14:00:00';
+      shiftEnd = localNow().split('T')[0] + 'T22:00:00';
+    } else {
+      shiftName = 'Graveyard Shift (2200-0600)';
+      if (hour >= 22) {
+        shiftStart = localNow().split('T')[0] + 'T22:00:00';
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        shiftEnd = tomorrow.toISOString().split('T')[0] + 'T06:00:00';
+      } else {
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        shiftStart = yesterday.toISOString().split('T')[0] + 'T22:00:00';
+        shiftEnd = localNow().split('T')[0] + 'T06:00:00';
+      }
+    }
+
+    const [shiftCalls, shiftIncidents, shiftCitations] = await Promise.all([
+      db.prepare('SELECT COUNT(*) as count FROM calls_for_service WHERE created_at >= ? AND created_at < ?').get(shiftStart, shiftEnd) as any,
+      db.prepare('SELECT COUNT(*) as count FROM incidents WHERE created_at >= ? AND created_at < ?').get(shiftStart, shiftEnd) as any,
+      db.prepare('SELECT COUNT(*) as count FROM citations WHERE created_at >= ? AND created_at < ?').get(shiftStart, shiftEnd) as any,
+    ]);
+
+    let shiftPatrolScans = { count: 0 } as any;
+    try {
+      shiftPatrolScans = await db.prepare('SELECT COUNT(*) as count FROM patrol_scans WHERE scanned_at >= ? AND scanned_at < ?').get(shiftStart, shiftEnd) as any;
+    } catch { /* patrol_scans may not exist */ }
+
+    return c.json({
+      shift_name: shiftName, shift_start: shiftStart, shift_end: shiftEnd,
+      calls: shiftCalls?.count || 0, incidents: shiftIncidents?.count || 0,
+      citations: shiftCitations?.count || 0, patrol_scans: shiftPatrolScans?.count || 0,
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // UPCOMING COURT DATES
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/upcoming-court-dates', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '30', 10)));
+
+    let courtDates: any[] = [];
+    try {
+      courtDates = await db.prepare(`
+        SELECT cit.id, cit.citation_number, cit.court_date, cit.court_location,
+          cit.violation_description, cit.defendant_name, u.full_name as officer_name
+        FROM citations cit LEFT JOIN users u ON cit.issuing_officer_id = u.id
+        WHERE cit.court_date IS NOT NULL
+          AND cit.court_date >= date('now')
+          AND cit.court_date <= date('now', '+' || ? || ' days')
+          AND cit.status NOT IN ('voided', 'dismissed')
+        ORDER BY cit.court_date ASC LIMIT 50
+      `).all(days);
+    } catch { /* citations table may not have court_date */ }
+
+    return c.json({ court_dates: courtDates, count: courtDates.length, period_days: days });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // EXPIRING CERTIFICATIONS
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/expiring-certifications', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const days = Math.min(180, Math.max(1, parseInt(c.req.query('days') || '30', 10)));
+
+    let expiring: any[] = [];
+    try {
+      expiring = await db.prepare(`
+        SELECT pc.id, pc.officer_id, pc.certification_name, pc.expiration_date,
+          u.full_name as officer_name, u.badge_number,
+          CAST(julianday(pc.expiration_date) - julianday('now') AS INTEGER) as days_until_expiry
+        FROM personnel_certifications pc LEFT JOIN users u ON pc.officer_id = u.id
+        WHERE pc.expiration_date IS NOT NULL
+          AND pc.expiration_date >= date('now')
+          AND pc.expiration_date <= date('now', '+' || ? || ' days')
+          AND u.status = 'active'
+        ORDER BY pc.expiration_date ASC LIMIT 50
+      `).all(days);
+    } catch { /* table may not exist */ }
+
+    let expired: any[] = [];
+    try {
+      expired = await db.prepare(`
+        SELECT pc.id, pc.officer_id, pc.certification_name, pc.expiration_date,
+          u.full_name as officer_name, u.badge_number
+        FROM personnel_certifications pc LEFT JOIN users u ON pc.officer_id = u.id
+        WHERE pc.expiration_date IS NOT NULL
+          AND pc.expiration_date < date('now')
+          AND u.status = 'active'
+        ORDER BY pc.expiration_date DESC LIMIT 50
+      `).all();
+    } catch { /* table may not exist */ }
+
+    return c.json({ expiring_soon: expiring, expiring_count: expiring.length, already_expired: expired, expired_count: expired.length, period_days: days });
   });
 
   app.route('/api/admin', api);

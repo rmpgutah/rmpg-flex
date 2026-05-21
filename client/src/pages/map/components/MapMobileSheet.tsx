@@ -4,6 +4,7 @@ import { formatIncidentType } from '../../../utils/caseNumbers';
 import MobileBottomSheet from '../../../components/mobile/MobileBottomSheet';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory, MAP_STYLE_LABELS } from '../utils/mapConstants';
 import type { MapUnit as Unit, ActiveCall, MapStyleId } from '../utils/mapConstants';
+import { mapboxgl } from '../../../utils/mapboxLoader';
 
 interface MapMobileSheetProps {
   mobileLayersOpen: boolean;
@@ -29,7 +30,7 @@ interface MapMobileSheetProps {
     latitude: number | null;
     longitude: number | null;
   };
-  mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
+  mapInstanceRef: React.MutableRefObject<mapboxgl.Map | null>;
 }
 
 export default function MapMobileSheet({

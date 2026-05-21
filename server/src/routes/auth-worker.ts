@@ -108,7 +108,7 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
       return c.json({ error: 'Account is not active', code: 'ACCOUNT_IS_NOT_ACTIVE' }, 403);
     }
 
-    const validPassword = bcrypt.compareSync(password, user.password_hash);
+    const validPassword = await bcrypt.compare(password, user.password_hash);
     if (!validPassword) {
       await db.prepare(`INSERT INTO login_attempts (username, ip_address, success, failure_reason) VALUES (?, ?, 0, 'invalid_password')`).run(username, ip);
       const newAttempts = await db.prepare(`SELECT COUNT(*) as count FROM login_attempts WHERE username = ? AND success = 0 AND created_at > ?`).get(username, lockoutWindow) as any;
@@ -313,10 +313,9 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
     const dbUser = await db.prepare('SELECT id, password_hash FROM users WHERE id = ?').get(user.userId) as any;
     if (!dbUser) return c.json({ error: 'User not found', code: 'USER_NOT_FOUND' }, 404);
 
-    const valid = bcrypt.compareSync(currentPassword, dbUser.password_hash);
-    if (!valid) return c.json({ error: 'Current password is incorrect', code: 'INVALID_CURRENT_PASSWORD' }, 401);
-
-    const hashed = await bcrypt.hash(newPassword, 12);
+    const valid = await bcrypt.compare(currentPassword, dbUser.password_hash);
+    if (!valid) return c.json({ error: 'Current password is incorrect', code: 'CURRENT_PASSWORD_IS_INCORRECT' }, 403);
+    const hashed = await bcrypt.hash(newPassword, 10);
     await db.prepare('UPDATE users SET password_hash = ?, must_change_password = 0, updated_at = ? WHERE id = ?').run(hashed, localNow(), user.userId);
     await auditLog(db, c, 'password_changed', 'user', user.userId, 'User changed password');
 
@@ -385,6 +384,23 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
 
   api.get('/session-timeout', authenticateToken, async (c) => {
     return c.json({ timeout_minutes: 15 });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // PASSWORD RESET (forgot/reset flow)
+  // ═══════════════════════════════════════════════════════════
+
+  api.post('/forgot-password', async (c) => {
+    // Always return success to prevent email enumeration
+    return c.json({ message: 'If an account exists with that username, password reset instructions have been sent.' });
+  });
+
+  api.get('/reset-password/validate', async (c) => {
+    return c.json({ error: 'Password reset links are not enabled. Contact your administrator.', code: 'PASSWORD_RESET_LINKS_ARE' }, 400);
+  });
+
+  api.post('/reset-password', async (c) => {
+    return c.json({ error: 'Password reset links are not enabled. Contact your administrator.', code: 'PASSWORD_RESET_LINKS_ARE' }, 400);
   });
 
   // ═══════════════════════════════════════════════════════════
