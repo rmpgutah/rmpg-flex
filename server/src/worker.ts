@@ -40,6 +40,8 @@ export interface Env {
   OLLAMA_URL?: string;
   AI_MODEL?: string;
   GOOGLE_VISION_API_KEY?: string;
+  VITE_MAPBOX_ACCESS_TOKEN?: string;
+  MAPBOX_ACCESS_TOKEN?: string;
 }
 
 // ─── Hono App ────────────────────────────────────────────
@@ -280,6 +282,8 @@ import { mountAiRoutes } from './routes/ai-worker';
 import { mountHrRoutes } from './routes/hr-worker';
 import { mountStatuteRoutes } from './routes/statutes-worker';
 import { mountGeocodeRoutes } from './routes/geocode-worker';
+import { mountMapboxRoutes } from './routes/mapbox-worker';
+import { mountOcrRoutes } from './routes/ocr-worker';
 
 mountAuthRoutes(app);
 mountDispatchRoutes(app);
@@ -315,6 +319,8 @@ mountAiRoutes(app);
 mountHrRoutes(app);
 mountStatuteRoutes(app);
 mountGeocodeRoutes(app);
+mountOcrRoutes(app);
+mountMapboxRoutes(app);
 
 // ─── SPA Fallback ────────────────────────────────────────
 // In production, the client is built and served via Pages or R2

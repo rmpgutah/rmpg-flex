@@ -1,12 +1,5 @@
-// ============================================================
-// RMPG Flex — Process Service Intake Portal
-// Drag-and-drop upload for Court Filing, Field Sheet, and
-// Information Page PDFs. Auto-creates Person, Property, and
-// CFS dispatch call with geocoded coordinates.
-// ============================================================
-
 import React, { useState, useCallback, useRef } from 'react';
-import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X } from 'lucide-react';
+import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -17,6 +10,7 @@ interface UploadedFile {
   type: string;
   text: string;
   status: 'pending' | 'extracted' | 'error';
+  ocrResult?: any;
 }
 
 interface IntakeResult {
@@ -43,18 +37,40 @@ interface IntakeResult {
   };
 }
 
+interface OcrScanResult {
+  success: boolean;
+  documentType: string;
+  confidence: number;
+  fields: Record<string, { value: string; confidence: number }>;
+  rawText: string;
+  allDates: string[];
+}
+
+function confidenceColor(conf: number): string {
+  if (conf >= 0.7) return 'text-green-400';
+  if (conf >= 0.4) return 'text-amber-400';
+  return 'text-red-400';
+}
+
+function confidenceBar(conf: number): string {
+  if (conf >= 0.7) return 'bg-green-500';
+  if (conf >= 0.4) return 'bg-amber-500';
+  return 'bg-red-500';
+}
+
 export default function ServeIntakePage() {
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState<IntakeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [ocrPreview, setOcrPreview] = useState<OcrScanResult | null>(null);
+  const [editingFields, setEditingFields] = useState<Record<string, string>>({});
+  const [showOcrPreview, setShowOcrPreview] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
-  // Extract text from PDF using canvas-based approach
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
-    // Send raw PDF binary to server for pdftotext extraction
     try {
       const arrayBuffer = await file.arrayBuffer();
       const resp = await fetch('/api/serve-intake/extract-text', {
@@ -69,24 +85,65 @@ export default function ServeIntakePage() {
         const data = await resp.json();
         return data.text || '';
       }
-    } catch { /* fallback */ }
+    } catch { }
     return '';
+  }, []);
+
+  const ocrScanImage = useCallback(async (file: File): Promise<OcrScanResult | null> => {
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const token = localStorage.getItem('rmpg_token');
+      const resp = await fetch('/api/ocr/scan-document', {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
+      });
+      if (resp.ok) {
+        return await resp.json();
+      }
+    } catch { }
+    return null;
   }, []);
 
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {
     const newFiles: UploadedFile[] = [];
     for (const file of Array.from(fileList)) {
-      if (file.type !== 'application/pdf') continue;
-      const text = await extractPdfText(file);
-      const type = file.name.toLowerCase().includes('court') ? 'court_filing'
-        : file.name.toLowerCase().includes('field') ? 'field_sheet'
-        : 'info_page';
-      newFiles.push({ name: file.name, type, text, status: text.length > 50 ? 'extracted' : 'error' });
+      const isImage = file.type.startsWith('image/');
+      const isPdf = file.type === 'application/pdf';
+      if (!isImage && !isPdf) continue;
+
+      let text = '';
+      let ocrResult: any = null;
+      let type = 'info_page';
+
+      if (isPdf) {
+        text = await extractPdfText(file);
+        type = file.name.toLowerCase().includes('court') ? 'court_filing'
+          : file.name.toLowerCase().includes('field') ? 'field_sheet'
+          : 'info_page';
+      } else if (isImage) {
+        const scan = await ocrScanImage(file);
+        if (scan?.success) {
+          ocrResult = scan;
+          type = scan.documentType === 'court_docket' ? 'court_filing'
+            : scan.documentType === 'field_sheet' ? 'field_sheet'
+            : 'info_page';
+          text = scan.rawText || '';
+        }
+      }
+
+      newFiles.push({
+        name: file.name, type, text,
+        status: text.length > 50 || ocrResult?.success ? 'extracted' : 'error',
+        ocrResult,
+      });
     }
     setFiles(prev => [...prev, ...newFiles]);
     setError(null);
     setResult(null);
-  }, [extractPdfText]);
+    setOcrPreview(null);
+  }, [extractPdfText, ocrScanImage]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -100,6 +157,14 @@ export default function ServeIntakePage() {
   }, []);
 
   const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
+
+  const openOcrPreview = (file: UploadedFile) => {
+    if (file.ocrResult?.fields) {
+      setOcrPreview(file.ocrResult);
+      setEditingFields({});
+      setShowOcrPreview(true);
+    }
+  };
 
   const processIntake = useCallback(async () => {
     if (files.length === 0) return;
@@ -123,11 +188,14 @@ export default function ServeIntakePage() {
     setProcessing(false);
   }, [files]);
 
+  const previewFields = ocrPreview?.fields
+    ? Object.entries(ocrPreview.fields).filter(([, f]) => f.value && f.confidence > 0).sort((a, b) => b[1].confidence - a[1].confidence)
+    : [];
+
   return (
     <div className="p-4 space-y-4 max-w-4xl mx-auto">
       <PanelTitleBar title="Process Service Intake" icon={Upload} />
 
-      {/* Drop Zone */}
       <div
         ref={dropRef}
         onDrop={handleDrop}
@@ -136,28 +204,30 @@ export default function ServeIntakePage() {
         onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInputRef.current?.click(); } }}
         role="button"
         tabIndex={0}
-        aria-label="Upload PDF documents: drag and drop or press Enter to browse"
+        aria-label="Upload documents: drag and drop or press Enter to browse"
         className="border-2 border-dashed border-rmpg-600 rounded-sm p-8 text-center cursor-pointer hover:border-rmpg-400 hover:bg-surface-raised/50 focus:outline-none focus:border-rmpg-400 focus:ring-2 focus:ring-[#d4a017]/40 transition-all"
         style={{ background: 'var(--surface-sunken)' }}
       >
         <Upload className="w-10 h-10 text-rmpg-500 mx-auto mb-3" />
-        <p className="text-sm font-bold text-rmpg-300">DRAG & DROP PDF DOCUMENTS</p>
-        <p className="text-[10px] text-rmpg-500 mt-1">Court Filing, Field Sheet, Information Page</p>
+        <p className="text-sm font-bold text-rmpg-300">DRAG & DROP DOCUMENTS</p>
+        <p className="text-[10px] text-rmpg-500 mt-1">PDF or Images (Court Filing, Field Sheet, ID, Passport)</p>
         <p className="text-[9px] text-rmpg-600 mt-2">or click to browse files</p>
         <input
           ref={fileInputRef}
           type="file"
-          accept=".pdf"
+          accept=".pdf,image/*"
           multiple
           className="hidden"
           onChange={e => { if (e.target.files) handleFiles(e.target.files); e.target.value = ''; }}
         />
       </div>
 
-      {/* Uploaded Files */}
       {files.length > 0 && (
         <div className="space-y-1">
-          <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">{files.length} Document{files.length > 1 ? 's' : ''} Loaded</p>
+          <p className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">
+            {files.length} Document{files.length > 1 ? 's' : ''} Loaded
+            <span className="text-rmpg-600 font-normal ml-2">(OCR confidence shown per document)</span>
+          </p>
           {files.map((f, i) => (
             <div key={i} className="flex items-center gap-2 px-3 py-2 panel-beveled bg-surface-raised text-xs">
               <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
@@ -169,15 +239,93 @@ export default function ServeIntakePage() {
               }`}>
                 {f.type.replace(/_/g, ' ')}
               </span>
+              {f.ocrResult && (
+                <span className={`text-[9px] font-bold ${confidenceColor(f.ocrResult.confidence)}`}>
+                  {(f.ocrResult.confidence * 100).toFixed(0)}%
+                </span>
+              )}
               {f.status === 'extracted' ? (
                 <CheckCircle className="w-3.5 h-3.5 text-green-500" />
               ) : (
                 <AlertTriangle className="w-3.5 h-3.5 text-amber-500" />
               )}
-              <span className="text-[9px] text-rmpg-500">{f.text.length} chars</span>
+              {f.ocrResult?.fields && Object.keys(f.ocrResult.fields).length > 0 && (
+                <button
+                  onClick={() => openOcrPreview(f)}
+                  className="text-[9px] text-brand-400 hover:text-brand-300 flex items-center gap-0.5"
+                  title="View OCR extraction details"
+                >
+                  <Eye className="w-3 h-3" /> Review
+                </button>
+              )}
               <IconButton onClick={() => removeFile(i)} aria-label={`Remove ${f.name}`} className="p-0.5 text-rmpg-500 hover:text-red-400"><X className="w-3 h-3" /></IconButton>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* OCR Preview Modal */}
+      {showOcrPreview && ocrPreview && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={() => setShowOcrPreview(false)}>
+          <div className="bg-surface-base border border-[#222] rounded-sm max-w-2xl w-full max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-4 py-3 border-b border-[#222]">
+              <div className="flex items-center gap-2">
+                <Camera className="w-4 h-4 text-brand-400" />
+                <span className="text-xs font-bold text-white uppercase">OCR Extraction Review</span>
+                <span className={`text-[10px] font-bold ${confidenceColor(ocrPreview.confidence)}`}>
+                  Confidence: {(ocrPreview.confidence * 100).toFixed(0)}%
+                </span>
+              </div>
+              <button onClick={() => setShowOcrPreview(false)} className="text-rmpg-500 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 space-y-2">
+              <div className="text-[10px] text-rmpg-400 mb-2">
+                Document Type: <span className="text-white font-bold">{ocrPreview.documentType}</span>
+                {' | '} Extracted Fields: <span className="text-white font-bold">{previewFields.length}</span>
+              </div>
+              <div className="w-full h-1.5 bg-[#222] rounded-sm overflow-hidden">
+                <div className={`h-full rounded-sm transition-all ${confidenceBar(ocrPreview.confidence)}`}
+                  style={{ width: `${Math.min(100, ocrPreview.confidence * 100)}%` }} />
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-3">
+                {previewFields.slice(0, 30).map(([key, field]) => (
+                  <div key={key} className="flex items-start gap-2 p-2 bg-surface-sunken rounded-sm">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1">
+                        <span className="text-[9px] text-rmpg-500 uppercase font-mono">{key.replace(/_/g, ' ')}</span>
+                        <span className={`text-[8px] font-bold ${confidenceColor(field.confidence)}`}>
+                          {(field.confidence * 100).toFixed(0)}%
+                        </span>
+                      </div>
+                      {editingFields[key] !== undefined ? (
+                        <input
+                          type="text"
+                          value={editingFields[key]}
+                          onChange={e => setEditingFields(prev => ({ ...prev, [key]: e.target.value }))}
+                          className="w-full bg-[#111] border border-[#333] rounded-sm px-2 py-0.5 text-xs text-white mt-0.5"
+                          autoFocus
+                        />
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <span className="text-xs text-white truncate">{field.value}</span>
+                          <button
+                            onClick={() => setEditingFields(prev => ({ ...prev, [key]: field.value }))}
+                            className="text-rmpg-500 hover:text-brand-400 flex-shrink-0"
+                            title={`Edit ${key}`}
+                          >
+                            <Edit3 className="w-2.5 h-2.5" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {rawTextPreview(ocrPreview.rawText)}
+            </div>
+          </div>
         </div>
       )}
 
@@ -191,19 +339,17 @@ export default function ServeIntakePage() {
           {processing ? (
             <><Loader2 className="w-4 h-4 animate-spin" /> Processing Documents...</>
           ) : (
-            <><Upload className="w-4 h-4" /> Create Person + Property + Dispatch Call</>
+            <><Upload className="w-4 h-4" /> Create Person + Serve Queue Entry</>
           )}
         </button>
       )}
 
-      {/* Error */}
       {error && (
         <div className="bg-red-900/30 border border-red-700/50 rounded-sm p-3 text-xs text-red-300">
           <AlertTriangle className="w-4 h-4 inline mr-1" /> {error}
         </div>
       )}
 
-      {/* Result */}
       {result && (
         <div className="space-y-3">
           <div className="bg-green-900/20 border border-green-700/40 rounded-sm p-4">
@@ -213,7 +359,6 @@ export default function ServeIntakePage() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              {/* Person */}
               <div className="panel-beveled bg-surface-raised p-3">
                 <div className="flex items-center gap-1.5 mb-2">
                   <User className="w-3.5 h-3.5 text-rmpg-400" />
@@ -228,13 +373,12 @@ export default function ServeIntakePage() {
                 </button>
               </div>
 
-              {/* Property */}
               <div className="panel-beveled bg-surface-raised p-3">
                 <div className="flex items-center gap-1.5 mb-2">
                   <Building2 className="w-3.5 h-3.5 text-rmpg-400" />
-                  <span className="text-[10px] text-rmpg-400 uppercase font-bold">Property Created</span>
+                  <span className="text-[10px] text-rmpg-400 uppercase font-bold">Document Link</span>
                 </div>
-                <p className="text-xs text-white">{result.extracted.address || 'No address'}</p>
+                <p className="text-xs text-white">{result.extracted.address || 'No address extracted'}</p>
                 {result.latitude && result.longitude && (
                   <p className="text-[9px] text-green-400 mt-1">
                     <MapPin className="w-3 h-3 inline" /> {result.latitude.toFixed(6)}, {result.longitude.toFixed(6)}
@@ -242,11 +386,10 @@ export default function ServeIntakePage() {
                 )}
               </div>
 
-              {/* Call */}
               <div className="panel-beveled bg-surface-raised p-3">
                 <div className="flex items-center gap-1.5 mb-2">
                   <Phone className="w-3.5 h-3.5 text-rmpg-400" />
-                  <span className="text-[10px] text-rmpg-400 uppercase font-bold">Dispatch Call</span>
+                  <span className="text-[10px] text-rmpg-400 uppercase font-bold">Serve Queue</span>
                 </div>
                 <p className="text-sm font-bold text-white font-mono">{result.call_number}</p>
                 <p className="text-[10px] text-rmpg-400">PSO Client Request — Pending</p>
@@ -256,7 +399,6 @@ export default function ServeIntakePage() {
               </div>
             </div>
 
-            {/* Extracted Details */}
             <div className="mt-3 pt-3 border-t border-rmpg-700 grid grid-cols-2 gap-2 text-[10px]">
               {result.extracted.court && <div><span className="text-rmpg-500">Court:</span> <span className="text-rmpg-300">{result.extracted.court}</span></div>}
               {result.extracted.plaintiff && <div><span className="text-rmpg-500">Plaintiff:</span> <span className="text-rmpg-300">{result.extracted.plaintiff.substring(0, 60)}</span></div>}
@@ -273,5 +415,21 @@ export default function ServeIntakePage() {
         </div>
       )}
     </div>
+  );
+}
+
+function rawTextPreview(text: string): JSX.Element | null {
+  if (!text || text.length < 10) return null;
+  const preview = text.substring(0, 1000);
+  return (
+    <details className="mt-3">
+      <summary className="text-[9px] text-rmpg-500 cursor-pointer hover:text-rmpg-300 uppercase tracking-wider">
+        Raw OCR Text ({text.length} chars)
+      </summary>
+      <pre className="mt-1 p-2 bg-[#050505] border border-[#1a1a1a] rounded-sm text-[9px] text-rmpg-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+        {preview}
+        {text.length > 1000 && <span className="text-red-400">\n...truncated ({text.length - 1000} more chars)</span>}
+      </pre>
+    </details>
   );
 }
