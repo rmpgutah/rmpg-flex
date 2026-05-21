@@ -12,10 +12,14 @@ export function mountEmailRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
 
   // GET /api/email/unread-count
   api.get('/unread-count', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const user = c.get('user');
-    const row = await db.prepare("SELECT COUNT(*) as count FROM email_cache WHERE folder_id = 'inbox' AND is_read = 0 AND owner_user_id = ?").get(user.userId) as any;
-    return c.json({ count: row?.count || 0 });
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const row = await db.prepare("SELECT COUNT(*) as count FROM email_cache WHERE folder_id = 'inbox' AND is_read = 0 AND owner_user_id = ?").get(user.userId) as any;
+      return c.json({ count: row?.count || 0 });
+    } catch {
+      return c.json({ count: 0 });
+    }
   });
 
   // GET /api/email/status

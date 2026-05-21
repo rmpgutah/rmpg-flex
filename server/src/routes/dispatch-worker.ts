@@ -913,13 +913,24 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
   // PANIC
   // ═══════════════════════════════════════════════════════════
 
-  // GET /api/dispatch/panic - List active panic alerts
+  // GET /api/dispatch/panic - List active (unacknowledged) panic alerts
   api.get('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
     const panics = await db.prepare(`
       SELECT p.*, u.full_name as officer_name, u.badge_number
       FROM panic_alerts p LEFT JOIN users u ON p.officer_id = u.id
       WHERE p.acknowledged_at IS NULL ORDER BY p.created_at DESC LIMIT 100
+    `).all();
+    return c.json(panics);
+  });
+
+  // GET /api/dispatch/panic/active - All active panics (including acknowledged but unresolved)
+  api.get('/panic/active', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const panics = await db.prepare(`
+      SELECT p.*, u.full_name as officer_name, u.badge_number
+      FROM panic_alerts p LEFT JOIN users u ON p.officer_id = u.id
+      WHERE p.resolved_at IS NULL ORDER BY p.created_at DESC LIMIT 100
     `).all();
     return c.json(panics);
   });

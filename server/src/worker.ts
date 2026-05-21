@@ -8,7 +8,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-// import { handleWebSocketUpgrade, getConnectedUserCount } from './worker-middleware/websocket';
+import { handleWebSocketUpgrade, getConnectedUserCount } from './worker-middleware/websocket';
 import type { D1Database, KVNamespace, R2Bucket, ExecutionContext } from '@cloudflare/workers-types';
 
 // ─── Environment Bindings ────────────────────────────────
@@ -86,10 +86,30 @@ app.use('*', async (c, next) => {
 app.use('*', async (c, next) => {
   await next();
   c.header('X-Content-Type-Options', 'nosniff');
-  c.header('X-Frame-Options', 'DENY');
+  c.header('X-Frame-Options', 'SAMEORIGIN');
   c.header('X-XSS-Protection', '0');
   c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
-  c.header('Permissions-Policy', 'camera=(), microphone=(), geolocation=*');
+  c.header('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
+  c.header('Content-Security-Policy', [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com",
+    "style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com",
+    "img-src 'self' data: blob: https: http: https://api.mapbox.com https://tiles.mapbox.com https://*.basemaps.cartocdn.com",
+    "font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
+    "connect-src 'self' ws: wss: https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io https://static.cloudflareinsights.com",
+    "frame-src 'self' blob: https://*.arcgis.com",
+    "media-src 'self' blob: data:",
+    "worker-src 'self' blob:",
+    "child-src 'self' blob:",
+    "manifest-src 'self'",
+    "frame-ancestors 'self'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "object-src 'none'",
+  ].join('; '));
+  c.header('Cross-Origin-Opener-Policy', 'same-origin');
+  c.header('Cross-Origin-Resource-Policy', 'same-origin');
+  c.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
 });
 
 // ─── Health Check ────────────────────────────────────────
@@ -253,7 +273,7 @@ import { mountWarrantRoutes } from './routes/warrants-worker';
 import { mountIncidentRoutes } from './routes/incidents-worker';
 import { mountRecordsRoutes } from './routes/records-worker';
 import { mountNotificationRoutes } from './routes/notifications-worker';
-// import { mountCommsRoutes } from './routes/comms-worker';
+import { mountCommsRoutes } from './routes/comms-worker';
 import { mountReportsRoutes } from './routes/reports-worker';
 import { mountEmailRoutes } from './routes/email-worker';
 import { mountFleetRoutes } from './routes/fleet-worker';
@@ -297,7 +317,7 @@ import { mountHrRoutes } from './routes/hr-worker';
 // import { mountDarRoutes } from './routes/dar-worker';
 // import { mountVoiceRoutes } from './routes/voice-worker';
 // import { mountPdfEngineRoutes } from './routes/pdfEngine-worker';
-// import { mountIntegrationsRoutes } from './routes/integrations-worker';
+import { mountIntegrationsRoutes } from './routes/integrations-worker';
 // import { mountInvoicesRoutes } from './routes/invoices-worker';
 // import { mountJailRosterRoutes } from './routes/jailRoster-worker';
 // import { mountClearpathgpsRoutes } from './routes/clearpathgps-worker';
@@ -314,7 +334,7 @@ mountWarrantRoutes(app);
 mountIncidentRoutes(app);
 mountRecordsRoutes(app);
 mountNotificationRoutes(app);
-// mountCommsRoutes(app);
+mountCommsRoutes(app);
 mountReportsRoutes(app);
 mountEmailRoutes(app);
 mountFleetRoutes(app);
@@ -358,7 +378,7 @@ mountHrRoutes(app);
 // mountDarRoutes(app);
 // mountVoiceRoutes(app);
 // mountPdfEngineRoutes(app);
-// mountIntegrationsRoutes(app);
+mountIntegrationsRoutes(app);
 // mountInvoicesRoutes(app);
 // mountJailRosterRoutes(app);
 // mountClearpathgpsRoutes(app);
@@ -382,6 +402,10 @@ app.onError((err, c) => {
 // ─── Export Worker ───────────────────────────────────────
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
+    const url = new URL(request.url);
+    if (url.pathname === '/api/ws' && request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
+      return handleWebSocketUpgrade(request, env);
+    }
     return app.fetch(request, env, ctx);
   },
 };
