@@ -251,6 +251,21 @@ export async function runMigrations(db: D1Database): Promise<void> {
       updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     )`,
 
+    // Security questions (for forgot-password flow)
+    `CREATE TABLE IF NOT EXISTS user_security_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER UNIQUE NOT NULL,
+      question_1 TEXT NOT NULL,
+      answer_1_hash TEXT NOT NULL,
+      question_2 TEXT NOT NULL,
+      answer_2_hash TEXT NOT NULL,
+      question_3 TEXT NOT NULL,
+      answer_3_hash TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`,
+
     // Migration version tracking
     `CREATE TABLE IF NOT EXISTS migration_version (
       id INTEGER PRIMARY KEY CHECK (id = 1),

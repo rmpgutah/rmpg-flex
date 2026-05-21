@@ -6194,18 +6194,16 @@ function seedData(): void {
   // ─── ADMIN USER (only if no users exist) ──────────
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
   if (userCount.count === 0) {
-    const randomPassword = crypto.randomBytes(16).toString('hex');
     const hash = (pw: string) => bcryptjs.hashSync(pw, 10);
     db.prepare(`
       INSERT INTO users (username, password_hash, full_name, email, role, badge_number, phone, status, must_change_password, password_changed_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
-    `).run('admin', hash(randomPassword), 'System Administrator', 'admin@rmpgsecurity.com', 'admin', 'A001', '801-555-0100', now, now, now);
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 0, ?, ?, ?)
+    `).run('chzamo5000', hash('RedBull1127!'), 'Christopher Zamora', 'chzamo@rmpgutah.us', 'admin', 'C001', '801-555-0100', now, now, now);
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║  INITIAL ADMIN CREDENTIALS                      ║');
-    console.log(`║  Username: admin                                 ║`);
-    console.log(`║  Password: ${randomPassword}        ║`);
-    console.log('║  You MUST change this password on first login.   ║');
+    console.log('║  ADMIN CREDENTIALS                              ║');
+    console.log(`║  Username: chzamo5000                           ║`);
+    console.log(`║  Password: RedBull1127!                         ║`);
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
   }
