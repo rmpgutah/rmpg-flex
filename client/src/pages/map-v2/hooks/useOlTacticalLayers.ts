@@ -56,7 +56,7 @@ export function useOlSafetyZones(
   map: OlMap | null,
   opts: { visible: boolean; days?: number },
 ): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const days = opts.days ?? 90;
 
@@ -134,7 +134,7 @@ export function useOlEnforcementClusters(
   map: OlMap | null,
   opts: { visible: boolean; type?: string; days?: number },
 ): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const type = opts.type ?? 'all';
   const days = opts.days ?? 30;

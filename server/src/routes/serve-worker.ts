@@ -766,5 +766,5 @@ export function mountServeRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     return c.json({ job_id: job.id, recipient_name: job.recipient_name, case_number: job.case_number, document_type: job.document_type, status: job.status, attempt_count: attemptCount, costs });
   });
 
-  app.route('/api/serve', api);
+  app.route('/api/process-server', api);
 }

@@ -21,7 +21,7 @@ import Fill from 'ol/style/Fill';
  * Skipped when clicking ON a feature (to avoid masking the popup).
  */
 export function useOlClickRipple(map: OlMap | null): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
 
   useEffect(() => {

@@ -590,8 +590,323 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
   // GET /api/dispatch/geography/codes - 10-codes / signal codes
   api.get('/geography/codes', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
-    const codes = await db.prepare('SELECT * FROM dispatch_codes ORDER BY code').all();
+    const { category, search } = c.req.query();
+    let query = 'SELECT * FROM dispatch_codes WHERE 1=1';
+    const params: any[] = [];
+    if (category && category !== 'all') { query += ' AND category = ?'; params.push(category); }
+    if (search) { const s = `%${search}%`; query += ' AND (code LIKE ? OR description LIKE ?)'; params.push(s, s); }
+    query += ' ORDER BY sort_order, code';
+    const codes = await db.prepare(query).all(...params);
     return c.json(codes);
+  });
+
+  // GET /api/dispatch/geography/codes/lookup/:code
+  api.get('/geography/codes/lookup/:code', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const code = c.req.param('code');
+    const result = await db.prepare('SELECT * FROM dispatch_codes WHERE code = ?').get(code);
+    if (!result) return c.json({ found: false });
+    return c.json({ found: true, ...(result as object) });
+  });
+
+  // POST /api/dispatch/geography/areas
+  api.post('/geography/areas', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { area_code, area_name, color, description, commander, notes, sort_order } = body;
+    if (!area_code || !area_name) return c.json({ error: 'area_code and area_name required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_areas (area_code, area_name, color, description, commander, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').run(area_code, area_name, color || '#6366f1', description, commander, notes, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Area code already exists' }, 409);
+      return c.json({ error: 'Failed to create area' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/areas/:id
+  api.put('/geography/areas/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_areas WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Area not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['area_code', 'area_name', 'color', 'description', 'commander', 'notes', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_areas SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/areas/:id
+  api.delete('/geography/areas/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('UPDATE dispatch_sectors SET area_id = NULL WHERE area_id = ?').run(id);
+    await db.prepare('DELETE FROM dispatch_areas WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // POST /api/dispatch/geography/sectors
+  api.post('/geography/sectors', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const sector_code = body.sector_code || '';
+    const sector_name = body.sector_name || '';
+    const { area_id, color, description, supervisor, radio_channel, notes, sort_order } = body;
+    if (!sector_code || !sector_name) return c.json({ error: 'sector_code and sector_name required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_sectors (sector_code, sector_name, area_id, color, description, supervisor, radio_channel, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(sector_code, sector_name, area_id || null, color || '#888888', description, supervisor, radio_channel, notes, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Sector code already exists' }, 409);
+      return c.json({ error: 'Failed to create sector' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/sectors/:id
+  api.put('/geography/sectors/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_sectors WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Sector not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['sector_code', 'sector_name', 'area_id', 'color', 'description', 'supervisor', 'radio_channel', 'notes', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_sectors SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/sectors/:id
+  api.delete('/geography/sectors/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('UPDATE dispatch_zones SET sector_id = NULL WHERE sector_id = ?').run(id);
+    await db.prepare('DELETE FROM dispatch_sectors WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // POST /api/dispatch/geography/zones
+  api.post('/geography/zones', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { zone_code, zone_name, sector_id, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order } = body;
+    if (!zone_code || !zone_name) return c.json({ error: 'zone_code and zone_name required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_zones (zone_code, zone_name, sector_id, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(zone_code, zone_name, sector_id || null, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Zone code already exists' }, 409);
+      return c.json({ error: 'Failed to create zone' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/zones/:id
+  api.put('/geography/zones/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_zones WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Zone not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['zone_code', 'zone_name', 'sector_id', 'color', 'description', 'primary_unit', 'backup_unit', 'radio_channel', 'hazard_notes', 'notes', 'population_estimate', 'sq_miles', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_zones SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/zones/:id
+  api.delete('/geography/zones/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('UPDATE dispatch_beats SET zone_id = NULL WHERE zone_id = ?').run(id);
+    await db.prepare('DELETE FROM dispatch_zones WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // POST /api/dispatch/geography/beats
+  api.post('/geography/beats', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, premise_alerts, patrol_frequency, priority_modifier, population_estimate, sq_miles, notes, sort_order } = body;
+    if (!beat_code || !beat_name) return c.json({ error: 'beat_code and beat_name required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, premise_alerts, patrol_frequency, priority_modifier, population_estimate, sq_miles, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(beat_code, beat_name, beat_descriptor, zone_id || null, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, premise_alerts || null, patrol_frequency || 'normal', priority_modifier || 0, population_estimate, sq_miles, notes, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Beat code already exists' }, 409);
+      return c.json({ error: 'Failed to create beat' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/beats/:id
+  api.put('/geography/beats/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_beats WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Beat not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['beat_code', 'beat_name', 'beat_descriptor', 'zone_id', 'dispatch_code', 'color', 'assigned_unit', 'backup_unit', 'hazard_notes', 'premise_alerts', 'patrol_frequency', 'priority_modifier', 'population_estimate', 'sq_miles', 'notes', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_beats SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/beats/:id
+  api.delete('/geography/beats/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('DELETE FROM dispatch_beats WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // POST /api/dispatch/geography/codes
+  api.post('/geography/codes', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { code, description, category, priority, color, requires_backup, officer_safety, ems_needed, fire_needed, notes, sort_order } = body;
+    if (!code || !description) return c.json({ error: 'code and description required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_codes (code, description, category, priority, color, requires_backup, officer_safety, ems_needed, fire_needed, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(code, description, category || 'general', priority || 'P3', color || '#6b7280', requires_backup ? 1 : 0, officer_safety ? 1 : 0, ems_needed ? 1 : 0, fire_needed ? 1 : 0, notes, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Dispatch code already exists' }, 409);
+      return c.json({ error: 'Failed to create dispatch code' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/codes/:id
+  api.put('/geography/codes/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_codes WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Dispatch code not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['code', 'description', 'category', 'priority', 'color', 'requires_backup', 'officer_safety', 'ems_needed', 'fire_needed', 'notes', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_codes SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/codes/:id
+  api.delete('/geography/codes/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('DELETE FROM dispatch_codes WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // GET /api/dispatch/geography/premise-alerts
+  api.get('/geography/premise-alerts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const { address, lat, lng, radius } = c.req.query();
+    let query = 'SELECT * FROM premise_alerts WHERE active = 1';
+    const params: any[] = [];
+    if (address) { const s = `%${address}%`; query += " AND address LIKE ? ESCAPE '\\'"; params.push(s); }
+    else if (lat && lng) {
+      const r = radius ? parseFloat(radius) : 0.005;
+      query += ' AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?';
+      params.push(parseFloat(lat) - r, parseFloat(lat) + r, parseFloat(lng) - r, parseFloat(lng) + r);
+    }
+    query += " AND (expires_at IS NULL OR expires_at > datetime('now')) ORDER BY alert_level DESC, created_at DESC LIMIT 100";
+    const alerts = await db.prepare(query).all(...params);
+    return c.json(alerts);
+  });
+
+  // POST /api/dispatch/geography/premise-alerts
+  api.post('/geography/premise-alerts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { address, latitude, longitude, alert_type, alert_level, title, description, flags, expires_at } = body;
+    if (!address || !title) return c.json({ error: 'address and title required' }, 400);
+    const userId = c.get('user')?.userId;
+    try {
+      const result = await db.prepare('INSERT INTO premise_alerts (address, latitude, longitude, alert_type, alert_level, title, description, flags, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(address, latitude, longitude, alert_type || 'caution', alert_level || 'info', title, description, JSON.stringify(flags || []), expires_at, userId);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch { return c.json({ error: 'Failed to create premise alert' }, 500); }
+  });
+
+  // PUT /api/dispatch/geography/premise-alerts/:id
+  api.put('/geography/premise-alerts/:id', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM premise_alerts WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Premise alert not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['address', 'latitude', 'longitude', 'alert_type', 'alert_level', 'title', 'description', 'flags', 'expires_at', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (body[f] !== undefined) {
+        updates.push(`${f} = ?`);
+        values.push(f === 'flags' ? JSON.stringify(body[f]) : body[f]);
+      }
+    }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE premise_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/premise-alerts/:id
+  api.delete('/geography/premise-alerts/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('DELETE FROM premise_alerts WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // GET /api/dispatch/geography/stats
+  api.get('/geography/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const days = Math.max(1, Math.min(365, parseInt(c.req.query().days || '30', 10) || 30));
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+    try {
+      const sectionStats = await db.prepare(`SELECT c.sector_id as code, COALESCE(ds.sector_name, c.sector_id) as name, COUNT(*) as total_calls, SUM(CASE WHEN c.priority = 'P1' THEN 1 ELSE 0 END) as p1_calls, SUM(CASE WHEN c.priority = 'P2' THEN 1 ELSE 0 END) as p2_calls, SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls FROM calls_for_service c LEFT JOIN dispatch_sectors ds ON ds.sector_code = c.sector_id WHERE c.created_at >= ? AND c.sector_id IS NOT NULL AND c.sector_id != '' GROUP BY c.sector_id ORDER BY total_calls DESC`).all(cutoff);
+      const zoneStats = await db.prepare(`SELECT c.zone_id as code, COALESCE(dz.zone_name, c.zone_id) as name, c.sector_id, COUNT(*) as total_calls, SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls FROM calls_for_service c LEFT JOIN dispatch_zones dz ON dz.zone_code = c.zone_id WHERE c.created_at >= ? AND c.zone_id IS NOT NULL AND c.zone_id != '' GROUP BY c.zone_id ORDER BY total_calls DESC`).all(cutoff);
+      const beatStats = await db.prepare(`SELECT c.beat_id as code, COALESCE(db2.beat_name, c.beat_id) as name, c.zone_id, COUNT(*) as total_calls, SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls FROM calls_for_service c LEFT JOIN dispatch_beats db2 ON db2.beat_code = c.beat_id WHERE c.created_at >= ? AND c.beat_id IS NOT NULL AND c.beat_id != '' GROUP BY c.beat_id ORDER BY total_calls DESC`).all(cutoff);
+      return c.json({ days, section_stats: sectionStats, zone_stats: zoneStats, beat_stats: beatStats, top_types: [] });
+    } catch { return c.json({ days, section_stats: [], zone_stats: [], beat_stats: [], top_types: [] }); }
+  });
+
+  // GET /api/dispatch/geography/identify
+  api.get('/geography/identify', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const lat = parseFloat(c.req.query().lat || '0');
+    const lng = parseFloat(c.req.query().lng || '0');
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ error: 'Valid lat and lng required' }, 400);
+    try {
+      const beatRecord = await db.prepare(`SELECT b.*, z.zone_code, z.zone_name, s.sector_code, s.sector_name, a.area_code, a.area_name FROM dispatch_beats b LEFT JOIN dispatch_zones z ON z.id = b.zone_id LEFT JOIN dispatch_sectors s ON s.id = z.sector_id LEFT JOIN dispatch_areas a ON a.id = s.area_id WHERE b.beat_code LIKE ? LIMIT 1`).get(`%${Math.floor(lat * 100)}%`);
+      const alerts = await db.prepare(`SELECT * FROM premise_alerts WHERE active = 1 AND (expires_at IS NULL OR expires_at > datetime('now')) AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ? ORDER BY alert_level DESC LIMIT 5`).all(lat - 0.003, lat + 0.003, lng - 0.003, lng + 0.003);
+      if (beatRecord) {
+        return c.json({ found: true, area: { code: (beatRecord as any).area_code, name: (beatRecord as any).area_name }, sector: { code: (beatRecord as any).sector_code, name: (beatRecord as any).sector_name }, zone: { code: (beatRecord as any).zone_code, name: (beatRecord as any).zone_name }, beat: { code: (beatRecord as any).beat_code, name: (beatRecord as any).beat_name, descriptor: (beatRecord as any).beat_descriptor, dispatch_code: (beatRecord as any).dispatch_code, assigned_unit: (beatRecord as any).assigned_unit, hazard_notes: (beatRecord as any).hazard_notes }, premise_alerts: alerts });
+      }
+      return c.json({ found: false, premise_alerts: alerts });
+    } catch { return c.json({ found: false }); }
   });
 
   // ═══════════════════════════════════════════════════════════

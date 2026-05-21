@@ -44,7 +44,7 @@ export function useOlGeolocation(map: OlMap | null): {
   enabled: boolean;
   locate: () => Promise<{ ok: boolean; reason?: string }>;
 } {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const geoRef = useRef<Geolocation | null>(null);
   const dotRef = useRef<Feature<Point> | null>(null);

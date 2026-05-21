@@ -80,7 +80,7 @@ function makeStyleFn(heatMode: boolean, beatActivity?: Record<string, number>) {
 }
 
 export function useOlBeatLayer(map: Map | null, opts: OlBeatLayerOptions = {}): { ready: boolean } {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const readyRef = useRef(false);
   const visible = opts.visible !== false;
   const heatMode = !!opts.heatMode;

@@ -46,7 +46,7 @@ const PIN_STYLE = new Style({
  * other panels, with no prop-drilling for the map ref.
  */
 export function useOlAddressSearch(map: OlMap | null) {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const [results, setResults] = useState<AddressResult[]>([]);
   const [searching, setSearching] = useState(false);

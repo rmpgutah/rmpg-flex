@@ -36,7 +36,7 @@ export interface OlGeoJsonLayerOptions {
  * users can hide/show without paying the parse cost again.
  */
 export function useOlGeoJsonLayer(map: OlMap | null, opts: OlGeoJsonLayerOptions): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
 
   useEffect(() => {
     if (!map || layerRef.current) return;

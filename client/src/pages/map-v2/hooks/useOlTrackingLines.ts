@@ -30,7 +30,7 @@ import type { Unit, CallForService, CallPriority } from '../../../types';
  * z=45 (above breadcrumbs at 40, below drawing at 50).
  */
 export function useOlTrackingLines(map: OlMap | null, opts: { visible: boolean }): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const { subscribe } = useWebSocket();
 

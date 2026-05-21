@@ -1382,4 +1382,5 @@ export function mountForensicsRoutes(app: Hono<{ Bindings: Env; Variables: { use
   });
 
   app.route('/api/forensics', api);
+  app.route('/api/forensic-lab', api);
 }

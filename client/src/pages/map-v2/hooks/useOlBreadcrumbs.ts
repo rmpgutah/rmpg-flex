@@ -209,15 +209,15 @@ export function useOlBreadcrumbs(map: OlMap | null, opts: OlBreadcrumbsAdvancedO
   trails: Trail[];
   summaries: { call_sign: string; summary: TrailSummary }[];
 } {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
-  const pointLayerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
-  const stopsLayerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
-  const warnLayerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
-  const brakeLayerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
-  const statusLayerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
-  const arrowsLayerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
-  const milestonesLayerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
-  const hullLayerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const pointLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const stopsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const warnLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const brakeLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const statusLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const arrowsLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const milestonesLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
+  const hullLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const pointSourceRef = useRef<VectorSource | null>(null);
   const stopsSourceRef = useRef<VectorSource | null>(null);

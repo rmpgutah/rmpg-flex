@@ -1,3 +1,4 @@
+/// <reference types="react" />
 import React, { useState, useCallback, useRef } from 'react';
 import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
@@ -418,7 +419,7 @@ export default function ServeIntakePage() {
   );
 }
 
-function rawTextPreview(text: string): JSX.Element | null {
+function rawTextPreview(text: string): React.ReactNode {
   if (!text || text.length < 10) return null;
   const preview = text.substring(0, 1000);
   return (
