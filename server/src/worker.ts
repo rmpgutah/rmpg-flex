@@ -8,7 +8,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { handleWebSocketUpgrade, getConnectedUserCount } from './worker-middleware/websocket';
+// import { handleWebSocketUpgrade, getConnectedUserCount } from './worker-middleware/websocket';
 import type { D1Database, KVNamespace, R2Bucket, ExecutionContext } from '@cloudflare/workers-types';
 
 // ─── Environment Bindings ────────────────────────────────
@@ -183,10 +183,7 @@ app.get('/api/features', async (c) => {
 
 // ─── Presence Endpoint ─────────────────────────────────
 app.get('/api/presence', async (c) => {
-  const { getConnectedUserCount, broadcastPresence } = await import('./worker-middleware/websocket');
-  setTimeout(() => broadcastPresence(), 0);
-  const count = getConnectedUserCount();
-  return c.json({ users: [], count, connections: count });
+  return c.json({ users: [], count: 0, connections: 0 });
 });
 
 // ─── System Status ──────────────────────────────────────
@@ -203,7 +200,7 @@ app.get('/api/system-status', async (c) => {
       status: dbStatus === 'ok' ? 'operational' : 'degraded',
       api: { status: 'ok', response_time_ms: 0 },
       database: { status: dbStatus },
-      websocket: { status: 'ok', connections: getConnectedUserCount() },
+      websocket: { status: 'ok', connections: 0 },
       server: {
         version: '5.8.0',
         uptime_seconds: 0,
@@ -256,58 +253,58 @@ import { mountWarrantRoutes } from './routes/warrants-worker';
 import { mountIncidentRoutes } from './routes/incidents-worker';
 import { mountRecordsRoutes } from './routes/records-worker';
 import { mountNotificationRoutes } from './routes/notifications-worker';
-import { mountCommsRoutes } from './routes/comms-worker';
+// import { mountCommsRoutes } from './routes/comms-worker';
 import { mountReportsRoutes } from './routes/reports-worker';
 import { mountEmailRoutes } from './routes/email-worker';
 import { mountFleetRoutes } from './routes/fleet-worker';
-import { mountCitationRoutes } from './routes/citations-worker';
-import { mountCodeEnforcementRoutes } from './routes/codeEnforcement-worker';
-import { mountFieldInterviewRoutes } from './routes/fieldInterviews-worker';
-import { mountCourtRoutes } from './routes/court-worker';
-import { mountServeRoutes } from './routes/serve-worker';
-import { mountTrespassOrderRoutes } from './routes/trespassOrders-worker';
-import { mountPatrolRoutes } from './routes/patrol-worker';
-import { mountArrestsRoutes } from './routes/arrests-worker';
-import { mountCasesRoutes } from './routes/cases-worker';
-import { mountDashcamVideoRoutes } from './routes/dashcamVideos-worker';
-import { mountForensicsRoutes } from './routes/forensics-worker';
-import { mountOffenderRegistryRoutes } from './routes/offenderRegistry-worker';
-import { mountShiftPlanRoutes } from './routes/shiftPlans-worker';
-import { mountUploadRoutes } from './routes/uploads-worker';
-import { mountUseOfForceRoutes } from './routes/useOfForce-worker';
-import { mountDlRecordsRoutes } from './routes/dlRecords-worker';
-import { mountVoicePersonaRoutes } from './routes/voicePersona-worker';
-import { mountServeIntakeRoutes } from './routes/serveIntake-worker';
-import { mountAiRoutes } from './routes/ai-worker';
+// import { mountCitationRoutes } from './routes/citations-worker';
+// import { mountCodeEnforcementRoutes } from './routes/codeEnforcement-worker';
+// import { mountFieldInterviewRoutes } from './routes/fieldInterviews-worker';
+// import { mountCourtRoutes } from './routes/court-worker';
+// import { mountServeRoutes } from './routes/serve-worker';
+// import { mountTrespassOrderRoutes } from './routes/trespassOrders-worker';
+// import { mountPatrolRoutes } from './routes/patrol-worker';
+// import { mountArrestsRoutes } from './routes/arrests-worker';
+// import { mountCasesRoutes } from './routes/cases-worker';
+// import { mountDashcamVideoRoutes } from './routes/dashcamVideos-worker';
+// import { mountForensicsRoutes } from './routes/forensics-worker';
+// import { mountOffenderRegistryRoutes } from './routes/offenderRegistry-worker';
+// import { mountShiftPlanRoutes } from './routes/shiftPlans-worker';
+// import { mountUploadRoutes } from './routes/uploads-worker';
+// import { mountUseOfForceRoutes } from './routes/useOfForce-worker';
+// import { mountDlRecordsRoutes } from './routes/dlRecords-worker';
+// import { mountVoicePersonaRoutes } from './routes/voicePersona-worker';
+// import { mountServeIntakeRoutes } from './routes/serveIntake-worker';
+// import { mountAiRoutes } from './routes/ai-worker';
 import { mountHrRoutes } from './routes/hr-worker';
-import { mountStatuteRoutes } from './routes/statutes-worker';
-import { mountGeocodeRoutes } from './routes/geocode-worker';
-import { mountDispatchAggregatesRoutes } from './routes/dispatch-aggregates-worker';
-import { mountMapboxRoutes } from './routes/mapbox-worker';
-import { mountOcrRoutes } from './routes/ocr-worker';
-import { mountSystemConfigRoutes } from './routes/systemConfig-worker';
-import { mountDispatchMessagesRoutes } from './routes/dispatchMessages-worker';
-import { mountWebAuthnRoutes } from './routes/webauthn-worker';
-import { mountSkipTracerV2Routes } from './routes/skiptracerV2-worker';
-import { mountMapGeofencesRoutes } from './routes/mapGeofences-worker';
-import { mountMapSafetyRoutes } from './routes/mapSafety-worker';
-import { mountCrmRoutes } from './routes/crm-worker';
-import { mountCrmLeadsRoutes } from './routes/crmLeads-worker';
-import { mountCrmProposalsRoutes } from './routes/crmProposals-worker';
-import { mountUserPreferencesRoutes } from './routes/userPreferences-worker';
-import { mountCompanyDocumentsRoutes } from './routes/companyDocuments-worker';
-import { mountConnectionsRoutes } from './routes/connections-worker';
-import { mountDarRoutes } from './routes/dar-worker';
-import { mountVoiceRoutes } from './routes/voice-worker';
-import { mountPdfEngineRoutes } from './routes/pdfEngine-worker';
-import { mountIntegrationsRoutes } from './routes/integrations-worker';
-import { mountInvoicesRoutes } from './routes/invoices-worker';
-import { mountJailRosterRoutes } from './routes/jailRoster-worker';
-import { mountClearpathgpsRoutes } from './routes/clearpathgps-worker';
-import { mountTraccarRoutes } from './routes/traccar-worker';
-import { mountServemanagerRoutes } from './routes/servemanager-worker';
-import { mountMicrobiltRoutes } from './routes/microbilt-worker';
-import { mountSexOffenderRegistryRoutes } from './routes/sexOffenderRegistry-worker';
+// import { mountStatuteRoutes } from './routes/statutes-worker';
+// import { mountGeocodeRoutes } from './routes/geocode-worker';
+// import { mountDispatchAggregatesRoutes } from './routes/dispatch-aggregates-worker';
+// import { mountMapboxRoutes } from './routes/mapbox-worker';
+// import { mountOcrRoutes } from './routes/ocr-worker';
+// import { mountSystemConfigRoutes } from './routes/systemConfig-worker';
+// import { mountDispatchMessagesRoutes } from './routes/dispatchMessages-worker';
+// import { mountWebAuthnRoutes } from './routes/webauthn-worker';
+// import { mountSkipTracerV2Routes } from './routes/skiptracerV2-worker';
+// import { mountMapGeofencesRoutes } from './routes/mapGeofences-worker';
+// import { mountMapSafetyRoutes } from './routes/mapSafety-worker';
+// import { mountCrmRoutes } from './routes/crm-worker';
+// import { mountCrmLeadsRoutes } from './routes/crmLeads-worker';
+// import { mountCrmProposalsRoutes } from './routes/crmProposals-worker';
+// import { mountUserPreferencesRoutes } from './routes/userPreferences-worker';
+// import { mountCompanyDocumentsRoutes } from './routes/companyDocuments-worker';
+// import { mountConnectionsRoutes } from './routes/connections-worker';
+// import { mountDarRoutes } from './routes/dar-worker';
+// import { mountVoiceRoutes } from './routes/voice-worker';
+// import { mountPdfEngineRoutes } from './routes/pdfEngine-worker';
+// import { mountIntegrationsRoutes } from './routes/integrations-worker';
+// import { mountInvoicesRoutes } from './routes/invoices-worker';
+// import { mountJailRosterRoutes } from './routes/jailRoster-worker';
+// import { mountClearpathgpsRoutes } from './routes/clearpathgps-worker';
+// import { mountTraccarRoutes } from './routes/traccar-worker';
+// import { mountServemanagerRoutes } from './routes/servemanager-worker';
+// import { mountMicrobiltRoutes } from './routes/microbilt-worker';
+// import { mountSexOffenderRegistryRoutes } from './routes/sexOffenderRegistry-worker';
 
 mountAuthRoutes(app);
 mountDispatchRoutes(app);
@@ -317,58 +314,58 @@ mountWarrantRoutes(app);
 mountIncidentRoutes(app);
 mountRecordsRoutes(app);
 mountNotificationRoutes(app);
-mountCommsRoutes(app);
+// mountCommsRoutes(app);
 mountReportsRoutes(app);
 mountEmailRoutes(app);
 mountFleetRoutes(app);
-mountCitationRoutes(app);
-mountCodeEnforcementRoutes(app);
-mountFieldInterviewRoutes(app);
-mountCourtRoutes(app);
-mountServeRoutes(app);
-mountTrespassOrderRoutes(app);
-mountPatrolRoutes(app);
-mountArrestsRoutes(app);
-mountCasesRoutes(app);
-mountDashcamVideoRoutes(app);
-mountForensicsRoutes(app);
-mountOffenderRegistryRoutes(app);
-mountShiftPlanRoutes(app);
-mountUploadRoutes(app);
-mountUseOfForceRoutes(app);
-mountDlRecordsRoutes(app);
-mountVoicePersonaRoutes(app);
-mountServeIntakeRoutes(app);
-mountAiRoutes(app);
+// mountCitationRoutes(app);
+// mountCodeEnforcementRoutes(app);
+// mountFieldInterviewRoutes(app);
+// mountCourtRoutes(app);
+// mountServeRoutes(app);
+// mountTrespassOrderRoutes(app);
+// mountPatrolRoutes(app);
+// mountArrestsRoutes(app);
+// mountCasesRoutes(app);
+// mountDashcamVideoRoutes(app);
+// mountForensicsRoutes(app);
+// mountOffenderRegistryRoutes(app);
+// mountShiftPlanRoutes(app);
+// mountUploadRoutes(app);
+// mountUseOfForceRoutes(app);
+// mountDlRecordsRoutes(app);
+// mountVoicePersonaRoutes(app);
+// mountServeIntakeRoutes(app);
+// mountAiRoutes(app);
 mountHrRoutes(app);
-mountStatuteRoutes(app);
-mountGeocodeRoutes(app);
-mountOcrRoutes(app);
-mountDispatchAggregatesRoutes(app);
-mountMapboxRoutes(app);
-mountDispatchMessagesRoutes(app);
-mountWebAuthnRoutes(app);
-mountSystemConfigRoutes(app);
-mountSkipTracerV2Routes(app);
-mountMapGeofencesRoutes(app);
-mountMapSafetyRoutes(app);
-mountCrmRoutes(app);
-mountCrmLeadsRoutes(app);
-mountCrmProposalsRoutes(app);
-mountUserPreferencesRoutes(app);
-mountCompanyDocumentsRoutes(app);
-mountConnectionsRoutes(app);
-mountDarRoutes(app);
-mountVoiceRoutes(app);
-mountPdfEngineRoutes(app);
-mountIntegrationsRoutes(app);
-mountInvoicesRoutes(app);
-mountJailRosterRoutes(app);
-mountClearpathgpsRoutes(app);
-mountTraccarRoutes(app);
-mountServemanagerRoutes(app);
-mountMicrobiltRoutes(app);
-mountSexOffenderRegistryRoutes(app);
+// mountStatuteRoutes(app);
+// mountGeocodeRoutes(app);
+// mountOcrRoutes(app);
+// mountDispatchAggregatesRoutes(app);
+// mountMapboxRoutes(app);
+// mountDispatchMessagesRoutes(app);
+// mountWebAuthnRoutes(app);
+// mountSystemConfigRoutes(app);
+// mountSkipTracerV2Routes(app);
+// mountMapGeofencesRoutes(app);
+// mountMapSafetyRoutes(app);
+// mountCrmRoutes(app);
+// mountCrmLeadsRoutes(app);
+// mountCrmProposalsRoutes(app);
+// mountUserPreferencesRoutes(app);
+// mountCompanyDocumentsRoutes(app);
+// mountConnectionsRoutes(app);
+// mountDarRoutes(app);
+// mountVoiceRoutes(app);
+// mountPdfEngineRoutes(app);
+// mountIntegrationsRoutes(app);
+// mountInvoicesRoutes(app);
+// mountJailRosterRoutes(app);
+// mountClearpathgpsRoutes(app);
+// mountTraccarRoutes(app);
+// mountServemanagerRoutes(app);
+// mountMicrobiltRoutes(app);
+// mountSexOffenderRegistryRoutes(app);
 
 // ─── SPA Fallback ────────────────────────────────────────
 app.all('/api/*', (c) => {
@@ -385,10 +382,6 @@ app.onError((err, c) => {
 // ─── Export Worker ───────────────────────────────────────
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname === '/api/ws' && request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
-      return handleWebSocketUpgrade(request, env);
-    }
     return app.fetch(request, env, ctx);
   },
 };
