@@ -1,0 +1,26 @@
+ALTER TABLE users ADD COLUMN shift_preference TEXT;
+ALTER TABLE users ADD COLUMN dl_number TEXT;
+ALTER TABLE users ADD COLUMN dl_state TEXT;
+ALTER TABLE users ADD COLUMN dl_expiry TEXT;
+ALTER TABLE users ADD COLUMN blood_type TEXT;
+ALTER TABLE users ADD COLUMN allergies TEXT;
+ALTER TABLE users ADD COLUMN uniform_size TEXT;
+ALTER TABLE users ADD COLUMN employee_id TEXT;
+ALTER TABLE users ADD COLUMN certifications TEXT;
+ALTER TABLE users ADD COLUMN notes TEXT;
+ALTER TABLE users ADD COLUMN profile_image TEXT;
+ALTER TABLE users ADD COLUMN last_password_change TEXT;
+ALTER TABLE users ADD COLUMN totp_pending_secret TEXT;
+ALTER TABLE users ADD COLUMN password_changed_at TEXT;
+ALTER TABLE users ADD COLUMN photo TEXT;
+ALTER TABLE users ADD COLUMN active_case_count INTEGER;
+-- Missing columns for clients (31)
+ALTER TABLE clients ADD COLUMN billing_email TEXT;
+ALTER TABLE clients ADD COLUMN billing_address TEXT;
+ALTER TABLE clients ADD COLUMN contract_type TEXT;
+ALTER TABLE clients ADD COLUMN contract_value REAL;
+ALTER TABLE clients ADD COLUMN payment_terms TEXT;
+ALTER TABLE clients ADD COLUMN auto_renew INTEGER;
+ALTER TABLE clients ADD COLUMN updated_at TEXT;
+ALTER TABLE clients ADD COLUMN client_code TEXT;
+ALTER TABLE clients ADD COLUMN industry TEXT;
