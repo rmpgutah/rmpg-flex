@@ -214,9 +214,6 @@ export default function Layout() {
   const gps = useGpsTracking();
   const presence = usePresence();
 
-  // ── Voice channel (unified voice I/O state machine) ──
-  const { alert: voiceAlert } = useVoiceChannel();
-
   // ── Dispatch voice alerts + visual banner state ──
   const [dispatchAlerts, setDispatchAlerts] = useState<AlertBannerItem[]>([]);
   const addDispatchAlert = useCallback((alert: AlertBannerItem) => {
@@ -226,7 +223,7 @@ export default function Layout() {
     setDispatchAlerts(prev => prev.filter(a => a.id !== id));
   }, []);
   const dismissAllDispatchAlerts = useCallback(() => setDispatchAlerts([]), []);
-  useDispatchVoiceAlerts({ onAlert: addDispatchAlert, voiceAlert });
+  useDispatchVoiceAlerts({ onAlert: addDispatchAlert });
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
@@ -1629,8 +1626,7 @@ export default function Layout() {
         </div>
       )}
 
-      {/* Voice Channel floating indicator (mic button + state overlay) */}
-      <VoiceChannelIndicator />
+
     </div>
   );
 }
