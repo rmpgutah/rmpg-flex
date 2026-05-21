@@ -1,410 +1,5 @@
 -- Sync production D1 to match database.ts schema
--- Generated: 2026-05-21T12:59:08.858Z
-
--- New table: users
-CREATE TABLE IF NOT EXISTS users (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT UNIQUE NOT NULL,
-      password_hash TEXT NOT NULL,
-      full_name TEXT NOT NULL,
-      email TEXT,
-      role TEXT NOT NULL CHECK(role IN ('admin','manager','dispatcher','supervisor','officer','client_viewer')),
-      badge_number TEXT,
-      phone TEXT,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive','terminated')),
-      avatar_url TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-
--- New table: user_preferences
-CREATE TABLE IF NOT EXISTS user_preferences (
-      user_id INTEGER PRIMARY KEY,
-      notify_dispatch_email INTEGER DEFAULT 1,
-      notify_dispatch_inapp INTEGER DEFAULT 1,
-      notify_bolo_email INTEGER DEFAULT 1,
-      notify_bolo_inapp INTEGER DEFAULT 1,
-      notify_warrant_email INTEGER DEFAULT 0,
-      notify_warrant_inapp INTEGER DEFAULT 1,
-      notify_system_email INTEGER DEFAULT 0,
-      notify_system_inapp INTEGER DEFAULT 1,
-      notify_credential_email INTEGER DEFAULT 1,
-      notify_credential_inapp INTEGER DEFAULT 1,
-      notify_pso_email INTEGER DEFAULT 1,
-      notify_pso_inapp INTEGER DEFAULT 1,
-      quiet_hours_start TEXT,
-      quiet_hours_end TEXT,
-      font_scale REAL DEFAULT 1.0,
-      compact_mode INTEGER DEFAULT 0,
-      show_map_labels INTEGER DEFAULT 1,
-      default_map_style TEXT DEFAULT 'dark',
-      dashboard_widgets TEXT,
-      dispatch_sort TEXT DEFAULT 'priority',
-      dispatch_show_cleared INTEGER DEFAULT 0,
-      theme_preference TEXT DEFAULT 'dark',
-      font_size_preference TEXT DEFAULT 'medium',
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    );
-
--- New table: clients
-CREATE TABLE IF NOT EXISTS clients (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      contact_name TEXT,
-      contact_email TEXT,
-      contact_phone TEXT,
-      address TEXT,
-      contract_start TEXT,
-      contract_end TEXT,
-      sla_response_minutes INTEGER DEFAULT 15,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','inactive')),
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-
--- New table: properties
-CREATE TABLE IF NOT EXISTS properties (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      client_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      address TEXT NOT NULL,
-      latitude REAL,
-      longitude REAL,
-      property_type TEXT,
-      gate_code TEXT,
-      alarm_code TEXT,
-      emergency_contact TEXT,
-      post_orders TEXT,
-      hazard_notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (client_id) REFERENCES clients(id)
-    );
-
--- New table: calls_for_service
-CREATE TABLE IF NOT EXISTS calls_for_service (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_number TEXT UNIQUE,
-      incident_type TEXT NOT NULL,
-      priority TEXT NOT NULL CHECK(priority IN ('P1','P2','P3','P4')),
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','dispatched','enroute','onscene','cleared','closed','cancelled','archived')),
-      caller_name TEXT,
-      caller_phone TEXT,
-      caller_relationship TEXT,
-      location_address TEXT NOT NULL,
-      property_id INTEGER,
-      latitude REAL,
-      longitude REAL,
-      description TEXT,
-      notes TEXT,
-      source TEXT DEFAULT 'phone' CHECK(source IN ('phone','radio','alarm','walk_in','email','patrol','online','dispatch','panic','servemanager','intake','other')),
-      assigned_unit_ids TEXT DEFAULT '[]',
-      dispatcher_id INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      dispatched_at TEXT,
-      enroute_at TEXT,
-      onscene_at TEXT,
-      cleared_at TEXT,
-      closed_at TEXT,
-      disposition TEXT,
-      FOREIGN KEY (property_id) REFERENCES properties(id),
-      FOREIGN KEY (dispatcher_id) REFERENCES users(id)
-    );
-
--- New table: gps_breadcrumbs
-CREATE TABLE IF NOT EXISTS gps_breadcrumbs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      unit_id INTEGER NOT NULL,
-      officer_id INTEGER NOT NULL,
-      latitude REAL NOT NULL,
-      longitude REAL NOT NULL,
-      accuracy REAL,
-      heading REAL,
-      speed REAL,
-      unit_status TEXT,
-      call_sign TEXT,
-      officer_name TEXT,
-      badge_number TEXT,
-      current_call_id INTEGER,
-      current_call_number TEXT,
-      current_call_type TEXT,
-      recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (unit_id) REFERENCES units(id),
-      FOREIGN KEY (officer_id) REFERENCES users(id)
-    );
-
--- New table: units
-CREATE TABLE IF NOT EXISTS units (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_sign TEXT UNIQUE NOT NULL,
-      officer_id INTEGER,
-      status TEXT NOT NULL DEFAULT 'off_duty' CHECK(status IN ('available','dispatched','enroute','onscene','busy','off_duty','out_of_service')),
-      latitude REAL,
-      longitude REAL,
-      vehicle_id TEXT,
-      capabilities TEXT DEFAULT '[]',
-      current_call_id INTEGER,
-      last_status_change TEXT DEFAULT (datetime('now','localtime')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      FOREIGN KEY (current_call_id) REFERENCES calls_for_service(id)
-    );
-
--- New table: incidents
-CREATE TABLE IF NOT EXISTS incidents (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      incident_number TEXT UNIQUE,
-      call_id INTEGER,
-      incident_type TEXT NOT NULL,
-      priority TEXT DEFAULT 'P3',
-      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','under_review','approved','returned')),
-      location_address TEXT,
-      property_id INTEGER,
-      latitude REAL,
-      longitude REAL,
-      narrative TEXT,
-      officer_id INTEGER NOT NULL,
-      supervisor_id INTEGER,
-      approved_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
-      FOREIGN KEY (property_id) REFERENCES properties(id),
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      FOREIGN KEY (supervisor_id) REFERENCES users(id)
-    );
-
--- New table: persons
-CREATE TABLE IF NOT EXISTS persons (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      first_name TEXT NOT NULL,
-      last_name TEXT NOT NULL,
-      dob TEXT,
-      gender TEXT,
-      race TEXT,
-      height TEXT,
-      weight TEXT,
-      hair_color TEXT,
-      eye_color TEXT,
-      scars_marks_tattoos TEXT,
-      address TEXT,
-      phone TEXT,
-      email TEXT,
-      photo_url TEXT,
-      flags TEXT DEFAULT '[]',
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-
--- New table: vehicles_records
-CREATE TABLE IF NOT EXISTS vehicles_records (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      plate_number TEXT,
-      state TEXT,
-      make TEXT,
-      model TEXT,
-      year INTEGER,
-      color TEXT,
-      vin TEXT,
-      owner_person_id INTEGER,
-      flags TEXT DEFAULT '[]',
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (owner_person_id) REFERENCES persons(id)
-    );
-
--- New table: bolos
-CREATE TABLE IF NOT EXISTS bolos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      bolo_number TEXT UNIQUE,
-      type TEXT NOT NULL CHECK(type IN ('person','vehicle','other')),
-      title TEXT NOT NULL,
-      description TEXT,
-      subject_description TEXT,
-      vehicle_description TEXT,
-      photo_url TEXT,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','expired','cancelled')),
-      priority TEXT DEFAULT 'P3',
-      issued_by INTEGER NOT NULL,
-      expires_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (issued_by) REFERENCES users(id)
-    );
-
--- New table: messages
-CREATE TABLE IF NOT EXISTS messages (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      from_user_id INTEGER NOT NULL,
-      to_user_id INTEGER,
-      channel TEXT NOT NULL DEFAULT 'direct' CHECK(channel IN ('direct','dispatch','broadcast','zone')),
-      content TEXT NOT NULL,
-      priority TEXT DEFAULT 'routine' CHECK(priority IN ('routine','urgent','emergency')),
-      read_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (from_user_id) REFERENCES users(id),
-      FOREIGN KEY (to_user_id) REFERENCES users(id)
-    );
-
--- New table: evidence
-CREATE TABLE IF NOT EXISTS evidence (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      evidence_number TEXT,
-      incident_id INTEGER NOT NULL,
-      description TEXT,
-      evidence_type TEXT,
-      storage_location TEXT,
-      collected_by INTEGER,
-      status TEXT NOT NULL DEFAULT 'received' CHECK(status IN ('received','in_storage','submitted_to_le','released','disposed')),
-      chain_of_custody TEXT DEFAULT '[]',
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (incident_id) REFERENCES incidents(id),
-      FOREIGN KEY (collected_by) REFERENCES users(id)
-    );
-
--- New table: schedules
-CREATE TABLE IF NOT EXISTS schedules (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      officer_id INTEGER NOT NULL,
-      property_id INTEGER,
-      shift_date TEXT NOT NULL,
-      start_time TEXT NOT NULL,
-      end_time TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'scheduled' CHECK(status IN ('scheduled','active','completed','cancelled')),
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      FOREIGN KEY (property_id) REFERENCES properties(id)
-    );
-
--- New table: time_entries
-CREATE TABLE IF NOT EXISTS time_entries (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      officer_id INTEGER NOT NULL,
-      schedule_id INTEGER,
-      clock_in TEXT NOT NULL,
-      clock_out TEXT,
-      clock_in_latitude REAL,
-      clock_in_longitude REAL,
-      total_hours REAL,
-      break_start TEXT,
-      break_minutes REAL NOT NULL DEFAULT 0,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','completed','edited','on_break')),
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      FOREIGN KEY (schedule_id) REFERENCES schedules(id)
-    );
-
--- New table: activity_log
-CREATE TABLE IF NOT EXISTS activity_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER,
-      action TEXT NOT NULL,
-      entity_type TEXT,
-      entity_id INTEGER,
-      details TEXT,
-      ip_address TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
--- New table: credentials
-CREATE TABLE IF NOT EXISTS credentials (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      officer_id INTEGER NOT NULL,
-      credential_type TEXT NOT NULL,
-      credential_number TEXT,
-      issued_date TEXT,
-      expiry_date TEXT,
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','expired','pending_renewal')),
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (officer_id) REFERENCES users(id)
-    );
-
--- New table: patrol_checkpoints
-CREATE TABLE IF NOT EXISTS patrol_checkpoints (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      property_id INTEGER NOT NULL,
-      name TEXT NOT NULL,
-      description TEXT,
-      latitude REAL,
-      longitude REAL,
-      qr_code TEXT,
-      sequence_order INTEGER DEFAULT 0,
-      scan_required_interval_minutes INTEGER NOT NULL DEFAULT 60,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (property_id) REFERENCES properties(id)
-    );
-
--- New table: patrol_scans
-CREATE TABLE IF NOT EXISTS patrol_scans (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      checkpoint_id INTEGER NOT NULL,
-      officer_id INTEGER NOT NULL,
-      scanned_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      latitude REAL,
-      longitude REAL,
-      notes TEXT,
-      status TEXT NOT NULL DEFAULT 'on_time' CHECK(status IN ('on_time','late','missed')),
-      FOREIGN KEY (checkpoint_id) REFERENCES patrol_checkpoints(id),
-      FOREIGN KEY (officer_id) REFERENCES users(id)
-    );
-
--- New table: sessions
-CREATE TABLE IF NOT EXISTS sessions (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      session_id TEXT UNIQUE NOT NULL,
-      user_id INTEGER NOT NULL,
-      refresh_token_hash TEXT NOT NULL,
-      ip_address TEXT,
-      user_agent TEXT,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      expires_at TEXT NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      last_used_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
--- New table: login_attempts
-CREATE TABLE IF NOT EXISTS login_attempts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      username TEXT NOT NULL,
-      ip_address TEXT,
-      success INTEGER NOT NULL DEFAULT 0,
-      failure_reason TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
-
--- New table: attachments
-CREATE TABLE IF NOT EXISTS attachments (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      file_id TEXT UNIQUE NOT NULL,
-      original_name TEXT NOT NULL,
-      stored_name TEXT NOT NULL,
-      file_path TEXT NOT NULL,
-      mime_type TEXT NOT NULL,
-      file_size INTEGER NOT NULL,
-      entity_type TEXT,
-      entity_id INTEGER,
-      uploaded_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (uploaded_by) REFERENCES users(id)
-    );
-
--- New table: system_config
-CREATE TABLE IF NOT EXISTS system_config (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      config_key TEXT NOT NULL,
-      config_value TEXT NOT NULL,
-      category TEXT NOT NULL DEFAULT 'general',
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    );
+-- Generated: 2026-05-21T13:05:49.873Z
 
 -- New table: ofac_sdn_entries
 CREATE TABLE IF NOT EXISTS ofac_sdn_entries (
@@ -534,158 +129,6 @@ CREATE TABLE IF NOT EXISTS dl_addresses (
       FOREIGN KEY (dl_record_id) REFERENCES dl_records(id) ON DELETE CASCADE
     );
 
--- New table: warrants
-CREATE TABLE IF NOT EXISTS warrants (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      warrant_number TEXT UNIQUE,
-      type TEXT NOT NULL CHECK(type IN ('arrest','search','bench','civil','other')),
-      status TEXT NOT NULL DEFAULT 'active' CHECK(status IN ('active','served','recalled','expired','quashed')),
-      subject_person_id INTEGER,
-      issuing_court TEXT,
-      issuing_judge TEXT,
-      charge_description TEXT NOT NULL,
-      bail_amount REAL,
-      offense_level TEXT CHECK(offense_level IN ('felony','misdemeanor','infraction','civil')),
-      entered_by INTEGER NOT NULL,
-      served_by INTEGER,
-      served_at TEXT,
-      served_location TEXT,
-      expires_at TEXT,
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (subject_person_id) REFERENCES persons(id),
-      FOREIGN KEY (entered_by) REFERENCES users(id),
-      FOREIGN KEY (served_by) REFERENCES users(id)
-    );
-
--- New table: notifications
-CREATE TABLE IF NOT EXISTS notifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      type TEXT NOT NULL CHECK(type IN ('bolo','warrant','dispatch','system','message','credential_expiry','patrol_missed')),
-      title TEXT NOT NULL,
-      body TEXT,
-      entity_type TEXT,
-      entity_id INTEGER,
-      priority TEXT NOT NULL DEFAULT 'normal' CHECK(priority IN ('normal','high','critical')),
-      is_read INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id)
-    );
-
--- New table: call_templates
-CREATE TABLE IF NOT EXISTS call_templates (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      incident_type TEXT NOT NULL,
-      priority TEXT NOT NULL DEFAULT 'P3',
-      description_template TEXT,
-      default_notes TEXT,
-      source TEXT NOT NULL DEFAULT 'dispatch',
-      is_active INTEGER NOT NULL DEFAULT 1,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-
--- New table: supplemental_reports
-CREATE TABLE IF NOT EXISTS supplemental_reports (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      report_number TEXT UNIQUE,
-      incident_id INTEGER NOT NULL,
-      author_id INTEGER NOT NULL,
-      report_type TEXT NOT NULL DEFAULT 'supplemental' CHECK(report_type IN ('supplemental','follow_up','witness_statement','forensic','supervisor_review')),
-      subject TEXT NOT NULL,
-      narrative TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'draft' CHECK(status IN ('draft','submitted','approved')),
-      approved_by INTEGER,
-      approved_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (incident_id) REFERENCES incidents(id),
-      FOREIGN KEY (author_id) REFERENCES users(id),
-      FOREIGN KEY (approved_by) REFERENCES users(id)
-    );
-
--- New table: fleet_vehicles
-CREATE TABLE IF NOT EXISTS fleet_vehicles (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      vehicle_number TEXT UNIQUE NOT NULL,
-      make TEXT,
-      model TEXT,
-      year INTEGER,
-      color TEXT,
-      vin TEXT,
-      plate_number TEXT,
-      plate_state TEXT,
-      status TEXT NOT NULL DEFAULT 'in_service' CHECK(status IN ('in_service','out_of_service','maintenance','retired')),
-      assigned_unit_id INTEGER,
-      current_mileage INTEGER,
-      last_service_date TEXT,
-      next_service_due TEXT,
-      insurance_expiry TEXT,
-      registration_expiry TEXT,
-      equipment TEXT DEFAULT '[]',
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (assigned_unit_id) REFERENCES units(id)
-    );
-
--- New table: fleet_maintenance
-CREATE TABLE IF NOT EXISTS fleet_maintenance (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      vehicle_id INTEGER NOT NULL,
-      type TEXT CHECK(type IN ('oil_change','tire_rotation','brake_service','inspection','repair','other')),
-      description TEXT NOT NULL,
-      mileage_at_service INTEGER,
-      cost REAL,
-      vendor TEXT,
-      performed_by TEXT,
-      performed_at TEXT DEFAULT (datetime('now','localtime')),
-      next_due_date TEXT,
-      next_due_mileage INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id)
-    );
-
--- New table: fleet_fuel_logs
-CREATE TABLE IF NOT EXISTS fleet_fuel_logs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      vehicle_id INTEGER NOT NULL,
-      fuel_date TEXT NOT NULL,
-      gallons REAL NOT NULL,
-      cost_per_gallon REAL,
-      total_cost REAL,
-      odometer_reading INTEGER,
-      fuel_type TEXT NOT NULL DEFAULT 'regular' CHECK(fuel_type IN ('regular','premium','diesel')),
-      station TEXT,
-      notes TEXT,
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-
--- New table: fleet_inspections
-CREATE TABLE IF NOT EXISTS fleet_inspections (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      vehicle_id INTEGER NOT NULL,
-      inspection_type TEXT NOT NULL CHECK(inspection_type IN ('pre_trip','post_trip','monthly','annual')),
-      inspector_name TEXT NOT NULL,
-      inspection_date TEXT NOT NULL,
-      overall_result TEXT NOT NULL CHECK(overall_result IN ('pass','fail','needs_attention')),
-      mileage INTEGER,
-      items TEXT NOT NULL DEFAULT '[]',
-      notes TEXT,
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (vehicle_id) REFERENCES fleet_vehicles(id),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-
 -- New table: fleet_assignments
 CREATE TABLE IF NOT EXISTS fleet_assignments (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -743,69 +186,6 @@ CREATE TABLE IF NOT EXISTS incident_vehicles (
       FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id) ON DELETE CASCADE,
       FOREIGN KEY (added_by) REFERENCES users(id),
       UNIQUE(incident_id, vehicle_id)
-    );
-
--- New table: incident_offenses
-CREATE TABLE IF NOT EXISTS incident_offenses (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      incident_id INTEGER NOT NULL,
-      offense_code TEXT NOT NULL,
-      statute_id INTEGER,
-      description TEXT NOT NULL,
-      offense_date TEXT,
-      offense_level TEXT DEFAULT 'misdemeanor' CHECK(offense_level IN ('infraction','misdemeanor','felony','other')),
-      ucr_code TEXT,
-      nibrs_code TEXT,
-      attempted_completed TEXT DEFAULT 'completed' CHECK(attempted_completed IN ('attempted','completed')),
-      suspect_person_id INTEGER,
-      victim_person_id INTEGER,
-      location_type TEXT,
-      weapon_force TEXT,
-      criminal_activity TEXT,
-      bias_motivation TEXT,
-      disposition TEXT,
-      disposition_date TEXT,
-      counts INTEGER DEFAULT 1,
-      notes TEXT,
-      added_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
-      FOREIGN KEY (statute_id) REFERENCES utah_statutes(id),
-      FOREIGN KEY (suspect_person_id) REFERENCES persons(id),
-      FOREIGN KEY (victim_person_id) REFERENCES persons(id),
-      FOREIGN KEY (added_by) REFERENCES users(id)
-    );
-
--- New table: incident_officers
-CREATE TABLE IF NOT EXISTS incident_officers (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      incident_id INTEGER NOT NULL,
-      officer_id INTEGER NOT NULL,
-      role TEXT NOT NULL DEFAULT 'responding' CHECK(role IN ('primary','responding','backup','supervisor','investigator','evidence_tech','other')),
-      arrived_at TEXT,
-      departed_at TEXT,
-      action_taken TEXT,
-      notes TEXT,
-      added_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      FOREIGN KEY (added_by) REFERENCES users(id),
-      UNIQUE(incident_id, officer_id)
-    );
-
--- New table: incident_links
-CREATE TABLE IF NOT EXISTS incident_links (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      incident_id INTEGER NOT NULL,
-      linked_type TEXT NOT NULL CHECK(linked_type IN ('incident','call','case','warrant','citation','arrest')),
-      linked_id INTEGER NOT NULL,
-      link_reason TEXT,
-      added_by INTEGER NOT NULL,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
-      FOREIGN KEY (added_by) REFERENCES users(id),
-      UNIQUE(incident_id, linked_type, linked_id)
     );
 
 -- New table: training_records
@@ -1164,45 +544,6 @@ CREATE TABLE IF NOT EXISTS ai_model_presets (
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
 
--- New table: geofences
-CREATE TABLE IF NOT EXISTS geofences (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      name TEXT NOT NULL,
-      zone_type TEXT NOT NULL DEFAULT 'general',
-      polygon_coords TEXT,
-      alert_on_enter INTEGER DEFAULT 1,
-      alert_on_exit INTEGER DEFAULT 0,
-      color TEXT DEFAULT '#ff0000',
-      is_active INTEGER DEFAULT 1,
-      created_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (created_by) REFERENCES users(id)
-    );
-
--- New table: arrest_records
-CREATE TABLE IF NOT EXISTS arrest_records (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      jailbase_id TEXT,
-      source_id TEXT,
-      source_name TEXT,
-      full_name TEXT,
-      first_name TEXT,
-      last_name TEXT,
-      middle_name TEXT,
-      date_of_birth TEXT,
-      booking_date TEXT,
-      charges TEXT,
-      mugshot_url TEXT,
-      details_url TEXT,
-      county TEXT,
-      status TEXT DEFAULT 'active',
-      raw_record TEXT,
-      fetched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      UNIQUE(jailbase_id, source_id)
-    );
-
 -- New table: arrest_cross_links
 CREATE TABLE IF NOT EXISTS arrest_cross_links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1215,123 +556,6 @@ CREATE TABLE IF NOT EXISTS arrest_cross_links (
       FOREIGN KEY (arrest_record_id) REFERENCES arrest_records(id),
       UNIQUE(arrest_record_id, linked_type, linked_id)
     );
-
--- New table: serve_queue
-CREATE TABLE IF NOT EXISTS serve_queue (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_id INTEGER,
-      sm_job_id INTEGER,
-      officer_id INTEGER,
-      serve_date TEXT,
-      recipient_name TEXT,
-      recipient_address TEXT,
-      recipient_city TEXT,
-      recipient_state TEXT,
-      recipient_zip TEXT,
-      recipient_lat REAL,
-      recipient_lng REAL,
-      document_type TEXT,
-      case_number TEXT,
-      court_name TEXT,
-      jurisdiction TEXT,
-      client_name TEXT,
-      attorney_name TEXT,
-      priority TEXT DEFAULT 'normal',
-      time_window TEXT,
-      deadline TEXT,
-      max_attempts INTEGER DEFAULT 3,
-      service_instructions TEXT,
-      notes TEXT,
-      status TEXT DEFAULT 'pending',
-      attempt_count INTEGER DEFAULT 0,
-      sort_order INTEGER DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
-      FOREIGN KEY (officer_id) REFERENCES users(id)
-    );
-
--- New table: serve_attempts
-CREATE TABLE IF NOT EXISTS serve_attempts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      serve_queue_id INTEGER NOT NULL,
-      attempt_number INTEGER DEFAULT 1,
-      attempt_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      officer_id INTEGER,
-      result TEXT,
-      latitude REAL,
-      longitude REAL,
-      notes TEXT,
-      attempt_type TEXT,
-      photo_ids TEXT,
-      signature_data TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (serve_queue_id) REFERENCES serve_queue(id),
-      FOREIGN KEY (officer_id) REFERENCES users(id)
-    );
-
--- New table: serve_routes
-CREATE TABLE IF NOT EXISTS serve_routes (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      officer_id INTEGER NOT NULL,
-      route_date TEXT,
-      optimized_order_json TEXT,
-      waypoints_json TEXT,
-      total_distance_miles REAL,
-      total_time_minutes REAL,
-      start_lat REAL,
-      start_lng REAL,
-      end_lat REAL,
-      end_lng REAL,
-      notes TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (officer_id) REFERENCES users(id)
-    );
-
--- New table: serve_skip_traces
-CREATE TABLE IF NOT EXISTS serve_skip_traces (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      serve_queue_id INTEGER NOT NULL,
-      searched_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      search_type TEXT,
-      search_query TEXT,
-      results_json TEXT,
-      addresses_found_json TEXT,
-      searched_by INTEGER,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (serve_queue_id) REFERENCES serve_queue(id),
-      FOREIGN KEY (searched_by) REFERENCES users(id)
-    );
-
--- New table: panic_alerts
-CREATE TABLE IF NOT EXISTS panic_alerts (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      call_id INTEGER,
-      trigger_method TEXT NOT NULL DEFAULT 'ui_button',
-      message TEXT,
-      latitude REAL,
-      longitude REAL,
-      location_address TEXT,
-      audio_file_id TEXT,
-      audio_duration_seconds INTEGER,
-      status TEXT NOT NULL DEFAULT 'active',
-      escalation_level INTEGER DEFAULT 0,
-      acknowledged_at TEXT,
-      acknowledged_by INTEGER,
-      resolved_at TEXT,
-      resolved_by INTEGER,
-      resolution_notes TEXT,
-      responder_unit_ids TEXT DEFAULT '[]',
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (call_id) REFERENCES calls_for_service(id),
-      FOREIGN KEY (acknowledged_by) REFERENCES users(id),
-      FOREIGN KEY (resolved_by) REFERENCES users(id)
-    )
-  `).run();
 
 -- New table: notifications_v2
 CREATE TABLE IF NOT EXISTS notifications_v2 (
@@ -1391,55 +615,6 @@ CREATE TABLE IF NOT EXISTS entity_statutes (
         FOREIGN KEY (statute_id) REFERENCES utah_statutes(id),
         UNIQUE(entity_type, entity_id, statute_id)
       );
-
--- New table: citations
-CREATE TABLE IF NOT EXISTS citations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      citation_number TEXT NOT NULL,
-      type TEXT NOT NULL DEFAULT 'traffic' CHECK(type IN ('traffic','criminal','parking','warning')),
-      status TEXT NOT NULL DEFAULT 'issued' CHECK(status IN ('issued','paid','contested','dismissed','warrant_issued','voided')),
-      -- Subject
-      person_id INTEGER,
-      person_name TEXT,
-      person_dob TEXT,
-      person_dl TEXT,
-      person_address TEXT,
-      -- Vehicle (for traffic/parking)
-      vehicle_description TEXT,
-      vehicle_plate TEXT,
-      vehicle_state TEXT,
-      -- Violation
-      statute_id INTEGER,
-      statute_citation TEXT,
-      violation_description TEXT,
-      offense_level TEXT,
-      fine_amount REAL,
-      -- Location / Occurrence
-      violation_date TEXT NOT NULL,
-      violation_time TEXT,
-      location TEXT,
-      -- Linkage
-      incident_id INTEGER,
-      call_id INTEGER,
-      -- Officer
-      issuing_officer_id INTEGER,
-      issuing_officer_name TEXT,
-      badge_number TEXT,
-      -- Court
-      court_date TEXT,
-      court_name TEXT,
-      court_address TEXT,
-      -- Notes
-      notes TEXT,
-      -- Tracking
-      created_at TEXT DEFAULT (datetime('now','localtime')),
-      updated_at TEXT DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (person_id) REFERENCES persons(id),
-      FOREIGN KEY (statute_id) REFERENCES utah_statutes(id),
-      FOREIGN KEY (incident_id) REFERENCES incidents(id),
-      FOREIGN KEY (issuing_officer_id) REFERENCES users(id)
-    )
-  `);
 
 -- New table: invoices
 CREATE TABLE IF NOT EXISTS invoices (
@@ -1555,115 +730,6 @@ CREATE TABLE IF NOT EXISTS criminal_history (
         created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
         updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
         FOREIGN KEY (person_id) REFERENCES persons(id) ON DELETE CASCADE,
-        FOREIGN KEY (created_by) REFERENCES users(id)
-      );
-
--- New table: field_interviews
-CREATE TABLE IF NOT EXISTS field_interviews (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        fi_number TEXT UNIQUE NOT NULL,
-        person_id INTEGER,
-        subject_first_name TEXT,
-        subject_last_name TEXT,
-        subject_dob TEXT,
-        subject_gender TEXT,
-        subject_race TEXT,
-        subject_height TEXT,
-        subject_weight TEXT,
-        subject_hair TEXT,
-        subject_eye TEXT,
-        subject_clothing TEXT,
-        subject_description TEXT,
-        location TEXT NOT NULL,
-        latitude REAL,
-        longitude REAL,
-        property_id INTEGER,
-        contact_reason TEXT NOT NULL DEFAULT 'other',
-        contact_type TEXT DEFAULT 'field',
-        action_taken TEXT DEFAULT 'none',
-        narrative TEXT,
-        vehicle_plate TEXT,
-        vehicle_description TEXT,
-        vehicle_id INTEGER,
-        associated_call_id TEXT,
-        associated_incident_id TEXT,
-        officer_id INTEGER NOT NULL,
-        officer_name TEXT,
-        status TEXT DEFAULT 'active',
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        archived_at TEXT,
-        FOREIGN KEY (person_id) REFERENCES persons(id),
-        FOREIGN KEY (property_id) REFERENCES properties(id),
-        FOREIGN KEY (officer_id) REFERENCES users(id),
-        FOREIGN KEY (vehicle_id) REFERENCES vehicles_records(id)
-      );
-
--- New table: trespass_orders
-CREATE TABLE IF NOT EXISTS trespass_orders (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        order_number TEXT UNIQUE NOT NULL,
-        person_id INTEGER,
-        subject_first_name TEXT NOT NULL,
-        subject_last_name TEXT NOT NULL,
-        subject_dob TEXT,
-        subject_description TEXT,
-        property_id INTEGER,
-        property_name TEXT,
-        location TEXT NOT NULL,
-        order_type TEXT DEFAULT 'trespass_warning',
-        status TEXT DEFAULT 'active',
-        reason TEXT,
-        conditions TEXT,
-        duration_days INTEGER,
-        effective_date TEXT DEFAULT (datetime('now','localtime')),
-        expiration_date TEXT,
-        served_at TEXT,
-        served_by INTEGER,
-        originating_call_id TEXT,
-        originating_incident_id TEXT,
-        issued_by INTEGER NOT NULL,
-        issued_by_name TEXT,
-        authorized_by TEXT,
-        notes TEXT,
-        archived_at TEXT,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        updated_at TEXT DEFAULT (datetime('now','localtime')),
-        FOREIGN KEY (person_id) REFERENCES persons(id),
-        FOREIGN KEY (property_id) REFERENCES properties(id),
-        FOREIGN KEY (issued_by) REFERENCES users(id),
-        FOREIGN KEY (served_by) REFERENCES users(id)
-      );
-
--- New table: cases
-CREATE TABLE IF NOT EXISTS cases (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        case_number TEXT UNIQUE NOT NULL,
-        title TEXT NOT NULL,
-        case_type TEXT DEFAULT 'general',
-        status TEXT DEFAULT 'open',
-        priority TEXT DEFAULT 'normal',
-        lead_investigator_id INTEGER,
-        assigned_officers TEXT DEFAULT '[]',
-        assigned_at TEXT,
-        solvability_score INTEGER DEFAULT 0,
-        solvability_factors TEXT DEFAULT '{}',
-        linked_incidents TEXT DEFAULT '[]',
-        linked_citations TEXT DEFAULT '[]',
-        linked_evidence TEXT DEFAULT '[]',
-        linked_persons TEXT DEFAULT '[]',
-        linked_field_interviews TEXT DEFAULT '[]',
-        summary TEXT,
-        narrative TEXT,
-        disposition TEXT,
-        disposition_date TEXT,
-        opened_date TEXT DEFAULT (datetime('now','localtime')),
-        due_date TEXT,
-        closed_date TEXT,
-        created_by INTEGER NOT NULL,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        updated_at TEXT DEFAULT (datetime('now','localtime')),
-        archived_at TEXT,
-        FOREIGN KEY (lead_investigator_id) REFERENCES users(id),
         FOREIGN KEY (created_by) REFERENCES users(id)
       );
 
@@ -1806,40 +872,6 @@ CREATE TABLE IF NOT EXISTS vehicle_tows (
         FOREIGN KEY (officer_id) REFERENCES users(id)
       );
 
--- New table: court_events
-CREATE TABLE IF NOT EXISTS court_events (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_number TEXT UNIQUE NOT NULL,
-        event_type TEXT NOT NULL,
-        status TEXT DEFAULT 'scheduled',
-        event_date TEXT NOT NULL,
-        event_time TEXT,
-        court_name TEXT,
-        courtroom TEXT,
-        judge_name TEXT,
-        court_case_number TEXT,
-        citation_id INTEGER,
-        incident_id INTEGER,
-        case_id INTEGER,
-        defendant_person_id INTEGER,
-        defendant_name TEXT,
-        prosecutor TEXT,
-        defense_attorney TEXT,
-        officers_required TEXT DEFAULT '[]',
-        outcome TEXT,
-        sentence TEXT,
-        fine_amount REAL,
-        notes TEXT,
-        created_by INTEGER NOT NULL,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        updated_at TEXT DEFAULT (datetime('now','localtime')),
-        FOREIGN KEY (citation_id) REFERENCES citations(id),
-        FOREIGN KEY (incident_id) REFERENCES incidents(id),
-        FOREIGN KEY (case_id) REFERENCES cases(id),
-        FOREIGN KEY (defendant_person_id) REFERENCES persons(id),
-        FOREIGN KEY (created_by) REFERENCES users(id)
-      );
-
 -- New table: daily_activity_reports
 CREATE TABLE IF NOT EXISTS daily_activity_reports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1874,61 +906,6 @@ CREATE TABLE IF NOT EXISTS daily_activity_reports (
         FOREIGN KEY (reviewed_by) REFERENCES users(id)
       );
 
--- New table: offender_alerts
-CREATE TABLE IF NOT EXISTS offender_alerts (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        person_id INTEGER NOT NULL,
-        alert_type TEXT NOT NULL,
-        status TEXT DEFAULT 'active',
-        description TEXT NOT NULL,
-        severity TEXT DEFAULT 'caution',
-        restricted_properties TEXT DEFAULT '[]',
-        restricted_zones TEXT DEFAULT '[]',
-        restriction_radius_ft INTEGER,
-        effective_date TEXT DEFAULT (datetime('now','localtime')),
-        expiration_date TEXT,
-        source_incident_id INTEGER,
-        source_citation_id INTEGER,
-        source_case_id INTEGER,
-        created_by INTEGER NOT NULL,
-        notes TEXT,
-        created_at TEXT DEFAULT (datetime('now','localtime')),
-        updated_at TEXT DEFAULT (datetime('now','localtime')),
-        FOREIGN KEY (person_id) REFERENCES persons(id),
-        FOREIGN KEY (created_by) REFERENCES users(id)
-      );
-
--- New table: speed_violations
-CREATE TABLE IF NOT EXISTS speed_violations (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      unit_id INTEGER NOT NULL,
-      officer_id INTEGER,
-      call_sign TEXT,
-      officer_name TEXT,
-      badge_number TEXT,
-      speed_mps REAL NOT NULL,
-      speed_mph REAL NOT NULL,
-      speed_limit_mph REAL NOT NULL DEFAULT 80,
-      overage_mph REAL NOT NULL,
-      latitude REAL NOT NULL,
-      longitude REAL NOT NULL,
-      road_name TEXT,
-      nearest_intersection TEXT,
-      beat_id INTEGER,
-      zone_id INTEGER,
-      duration_seconds INTEGER DEFAULT 0,
-      current_call_id INTEGER,
-      current_call_number TEXT,
-      recorded_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      acknowledged_by INTEGER,
-      acknowledged_at TEXT,
-      notes TEXT,
-      FOREIGN KEY (unit_id) REFERENCES units(id),
-      FOREIGN KEY (officer_id) REFERENCES users(id),
-      FOREIGN KEY (acknowledged_by) REFERENCES users(id)
-    )
-  `).run();
-
 -- New table: speed_zones
 CREATE TABLE IF NOT EXISTS speed_zones (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1943,113 +920,6 @@ CREATE TABLE IF NOT EXISTS speed_zones (
       FOREIGN KEY (created_by) REFERENCES users(id)
     )
   `).run();
-
--- New table: dispatch_areas
-CREATE TABLE IF NOT EXISTS dispatch_areas (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        area_code TEXT NOT NULL UNIQUE,
-        area_name TEXT NOT NULL,
-        color TEXT DEFAULT '#6366f1',
-        description TEXT,
-        commander TEXT,
-        notes TEXT,
-        sort_order INTEGER DEFAULT 0,
-        active INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )
-    `);
-
--- New table: dispatch_sectors
-CREATE TABLE IF NOT EXISTS dispatch_sectors (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        sector_code TEXT NOT NULL UNIQUE,
-        sector_name TEXT NOT NULL,
-        area_id INTEGER REFERENCES dispatch_areas(id) ON DELETE SET NULL,
-        county_nbr TEXT,
-        fips_code TEXT,
-        color TEXT DEFAULT '#808080',
-        description TEXT,
-        supervisor TEXT,
-        radio_channel TEXT,
-        notes TEXT,
-        sort_order INTEGER DEFAULT 0,
-        active INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )
-    `).run();
-
--- New table: dispatch_zones
-CREATE TABLE IF NOT EXISTS dispatch_zones (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        zone_code TEXT NOT NULL UNIQUE,
-        zone_name TEXT NOT NULL,
-        sector_id INTEGER REFERENCES dispatch_sectors(id) ON DELETE SET NULL,
-        zone_type TEXT DEFAULT 'municipality',
-        ugrc_code TEXT,
-        color TEXT,
-        description TEXT,
-        primary_unit TEXT,
-        backup_unit TEXT,
-        radio_channel TEXT,
-        hazard_notes TEXT,
-        notes TEXT,
-        population_estimate INTEGER,
-        sq_miles REAL,
-        sort_order INTEGER DEFAULT 0,
-        active INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )
-    `).run();
-
--- New table: dispatch_beats
-CREATE TABLE IF NOT EXISTS dispatch_beats (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        beat_code TEXT NOT NULL UNIQUE,
-        beat_name TEXT NOT NULL,
-        beat_descriptor TEXT,
-        zone_id INTEGER REFERENCES dispatch_zones(id) ON DELETE SET NULL,
-        district_letter TEXT,
-        beat_number INTEGER,
-        dispatch_code TEXT,
-        color TEXT,
-        assigned_unit TEXT,
-        backup_unit TEXT,
-        hazard_notes TEXT,
-        premise_alerts TEXT DEFAULT '[]',
-        patrol_frequency TEXT DEFAULT 'normal',
-        priority_modifier INTEGER DEFAULT 0,
-        population_estimate INTEGER,
-        sq_miles REAL,
-        notes TEXT,
-        sort_order INTEGER DEFAULT 0,
-        active INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )
-    `).run();
-
--- New table: dispatch_codes
-CREATE TABLE IF NOT EXISTS dispatch_codes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        code TEXT NOT NULL UNIQUE,
-        description TEXT NOT NULL,
-        category TEXT DEFAULT 'general',
-        priority TEXT DEFAULT 'P3',
-        color TEXT DEFAULT '#6b7280',
-        requires_backup INTEGER DEFAULT 0,
-        officer_safety INTEGER DEFAULT 0,
-        ems_needed INTEGER DEFAULT 0,
-        fire_needed INTEGER DEFAULT 0,
-        notes TEXT,
-        sort_order INTEGER DEFAULT 0,
-        active INTEGER DEFAULT 1,
-        created_at TEXT DEFAULT (datetime('now')),
-        updated_at TEXT DEFAULT (datetime('now'))
-      )
-    `);
 
 -- New table: premise_alerts
 CREATE TABLE IF NOT EXISTS premise_alerts (
@@ -2067,29 +937,6 @@ CREATE TABLE IF NOT EXISTS premise_alerts (
         active INTEGER DEFAULT 1,
         created_at TEXT DEFAULT (datetime('now')),
         updated_at TEXT DEFAULT (datetime('now'))
-      )
-    `);
-
--- New table: citation_violations
-CREATE TABLE IF NOT EXISTS citation_violations (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        citation_id INTEGER NOT NULL,
-        violation_number INTEGER NOT NULL DEFAULT 1,
-        statute_id INTEGER,
-        statute_citation TEXT,
-        violation_description TEXT NOT NULL,
-        offense_level TEXT DEFAULT 'infraction',
-        fine_amount REAL DEFAULT 0,
-        speed_recorded INTEGER,
-        speed_limit INTEGER,
-        plea TEXT,
-        verdict TEXT,
-        disposition TEXT,
-        disposition_date TEXT,
-        notes TEXT,
-        created_at TEXT DEFAULT (datetime('now')),
-        FOREIGN KEY (citation_id) REFERENCES citations(id) ON DELETE CASCADE,
-        FOREIGN KEY (statute_id) REFERENCES utah_statutes(id)
       )
     `);
 
@@ -2821,41 +1668,6 @@ CREATE TABLE IF NOT EXISTS fleet_vehicle_swaps (
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     );
 
--- New table: call_visit_history
-CREATE TABLE IF NOT EXISTS call_visit_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_id INTEGER NOT NULL,
-      visit_number INTEGER NOT NULL,
-      status TEXT,
-      dispatched_at TEXT,
-      enroute_at TEXT,
-      onscene_at TEXT,
-      cleared_at TEXT,
-      closed_at TEXT,
-      assigned_units TEXT,
-      responding_vehicle_id INTEGER,
-      starting_mileage REAL,
-      ending_mileage REAL,
-      disposition TEXT,
-      note TEXT,
-      created_by TEXT,
-      created_at TEXT DEFAULT (datetime('now','localtime')),
-      time_window TEXT,
-      is_weekend INTEGER DEFAULT 0
-    )
-  `).run();
-
--- New table: call_persons
-CREATE TABLE IF NOT EXISTS call_persons (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      call_id INTEGER NOT NULL,
-      person_id INTEGER NOT NULL,
-      role TEXT,
-      notes TEXT,
-      added_by INTEGER,
-      created_at TEXT DEFAULT (datetime('now','localtime'))
-    );
-
 -- New table: warrant_watch_runs
 CREATE TABLE IF NOT EXISTS warrant_watch_runs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2923,21 +1735,6 @@ CREATE TABLE IF NOT EXISTS scraped_warrants (
       warrant_id TEXT,
       person_id INTEGER,
       scraped_at TEXT DEFAULT (datetime('now','localtime'))
-    );
-
--- New table: warrant_scraper_config
-CREATE TABLE IF NOT EXISTS warrant_scraper_config (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      source_key TEXT UNIQUE,
-      state TEXT,
-      county TEXT,
-      source_url TEXT,
-      enabled INTEGER DEFAULT 1,
-      scrape_interval_minutes INTEGER DEFAULT 360,
-      last_scrape_at TEXT,
-      consecutive_errors INTEGER DEFAULT 0,
-      circuit_broken INTEGER DEFAULT 0,
-      created_at TEXT DEFAULT (datetime('now','localtime'))
     );
 
 -- New table: owntracks_device_map
@@ -3119,9 +1916,7 @@ CREATE TABLE IF NOT EXISTS citation_payments (
       FOREIGN KEY (recorded_by) REFERENCES users(id)
     );
 
--- Missing columns for users
-ALTER TABLE users ADD COLUMN first_name TEXT;
-ALTER TABLE users ADD COLUMN last_name TEXT;
+-- Missing columns for users (30)
 ALTER TABLE users ADD COLUMN middle_name TEXT;
 ALTER TABLE users ADD COLUMN date_of_birth TEXT;
 ALTER TABLE users ADD COLUMN ssn_last4 TEXT;
@@ -3148,30 +1943,18 @@ ALTER TABLE users ADD COLUMN certifications TEXT;
 ALTER TABLE users ADD COLUMN notes TEXT;
 ALTER TABLE users ADD COLUMN profile_image TEXT;
 ALTER TABLE users ADD COLUMN last_password_change TEXT;
-ALTER TABLE users ADD COLUMN login_count INTEGER DEFAULT 0;
-ALTER TABLE users ADD COLUMN last_login_at TEXT;
-ALTER TABLE users ADD COLUMN must_change_password INTEGER DEFAULT 0;
-ALTER TABLE users ADD COLUMN totp_secret_enc TEXT;
-ALTER TABLE users ADD COLUMN totp_enabled INTEGER DEFAULT 0;
-ALTER TABLE users ADD COLUMN totp_backup_codes TEXT;
 ALTER TABLE users ADD COLUMN totp_pending_secret TEXT;
-ALTER TABLE users ADD COLUMN totp_exempt INTEGER DEFAULT 0;
-ALTER TABLE users ADD COLUMN password_history TEXT;
 ALTER TABLE users ADD COLUMN password_changed_at TEXT;
-ALTER TABLE users ADD COLUMN digital_signature TEXT;
-ALTER TABLE users ADD COLUMN voice_rate REAL DEFAULT 1.0;
-ALTER TABLE users ADD COLUMN voice_pitch REAL DEFAULT 0;
-ALTER TABLE users ADD COLUMN voice_brain_enabled INTEGER DEFAULT 0;
 ALTER TABLE users ADD COLUMN photo TEXT;
-ALTER TABLE users ADD COLUMN active_case_count INTEGER DEFAULT 0;
+ALTER TABLE users ADD COLUMN active_case_count INTEGER;
 
--- Missing columns for clients
+-- Missing columns for clients (31)
 ALTER TABLE clients ADD COLUMN billing_email TEXT;
 ALTER TABLE clients ADD COLUMN billing_address TEXT;
 ALTER TABLE clients ADD COLUMN contract_type TEXT;
 ALTER TABLE clients ADD COLUMN contract_value REAL;
 ALTER TABLE clients ADD COLUMN payment_terms TEXT;
-ALTER TABLE clients ADD COLUMN auto_renew INTEGER DEFAULT 0;
+ALTER TABLE clients ADD COLUMN auto_renew INTEGER;
 ALTER TABLE clients ADD COLUMN updated_at TEXT;
 ALTER TABLE clients ADD COLUMN client_code TEXT;
 ALTER TABLE clients ADD COLUMN industry TEXT;
@@ -3180,30 +1963,30 @@ ALTER TABLE clients ADD COLUMN tax_id TEXT;
 ALTER TABLE clients ADD COLUMN payment_method TEXT;
 ALTER TABLE clients ADD COLUMN billing_cycle TEXT;
 ALTER TABLE clients ADD COLUMN billing_day INTEGER;
-ALTER TABLE clients ADD COLUMN discount_percent REAL DEFAULT 0;
-ALTER TABLE clients ADD COLUMN late_fee_percent REAL DEFAULT 0;
-ALTER TABLE clients ADD COLUMN total_invoiced REAL DEFAULT 0;
-ALTER TABLE clients ADD COLUMN total_paid REAL DEFAULT 0;
-ALTER TABLE clients ADD COLUMN outstanding_balance REAL DEFAULT 0;
-ALTER TABLE clients ADD COLUMN incident_count INTEGER DEFAULT 0;
+ALTER TABLE clients ADD COLUMN discount_percent REAL;
+ALTER TABLE clients ADD COLUMN late_fee_percent REAL;
+ALTER TABLE clients ADD COLUMN total_invoiced REAL;
+ALTER TABLE clients ADD COLUMN total_paid REAL;
+ALTER TABLE clients ADD COLUMN outstanding_balance REAL;
+ALTER TABLE clients ADD COLUMN incident_count INTEGER;
 ALTER TABLE clients ADD COLUMN last_incident_date TEXT;
 ALTER TABLE clients ADD COLUMN account_manager TEXT;
-ALTER TABLE clients ADD COLUMN priority_client INTEGER DEFAULT 0;
+ALTER TABLE clients ADD COLUMN priority_client INTEGER;
 ALTER TABLE clients ADD COLUMN client_since TEXT;
 ALTER TABLE clients ADD COLUMN rate_per_hour REAL;
 ALTER TABLE clients ADD COLUMN rate_per_incident REAL;
 ALTER TABLE clients ADD COLUMN rate_per_cfs REAL;
-ALTER TABLE clients ADD COLUMN email_verified INTEGER DEFAULT 0;
+ALTER TABLE clients ADD COLUMN email_verified INTEGER;
 ALTER TABLE clients ADD COLUMN verification_token TEXT;
 ALTER TABLE clients ADD COLUMN avatar TEXT;
 ALTER TABLE clients ADD COLUMN last_active_at TEXT;
 
--- Missing columns for properties
+-- Missing columns for properties (20)
 ALTER TABLE properties ADD COLUMN city TEXT;
 ALTER TABLE properties ADD COLUMN state TEXT;
 ALTER TABLE properties ADD COLUMN zip TEXT;
 ALTER TABLE properties ADD COLUMN access_instructions TEXT;
-ALTER TABLE properties ADD COLUMN is_active INTEGER NOT NULL DEFAULT 1;
+ALTER TABLE properties ADD COLUMN is_active INTEGER NOT NULL;
 ALTER TABLE properties ADD COLUMN updated_at TEXT;
 ALTER TABLE properties ADD COLUMN notes TEXT;
 ALTER TABLE properties ADD COLUMN business_type TEXT;
@@ -3220,7 +2003,7 @@ ALTER TABLE properties ADD COLUMN owner_name TEXT;
 ALTER TABLE properties ADD COLUMN owner_phone TEXT;
 ALTER TABLE properties ADD COLUMN last_inspection_date TEXT;
 
--- Missing columns for calls_for_service
+-- Missing columns for calls_for_service (34)
 ALTER TABLE calls_for_service ADD COLUMN caller_address TEXT;
 ALTER TABLE calls_for_service ADD COLUMN zone_beat TEXT;
 ALTER TABLE calls_for_service ADD COLUMN sector_id TEXT;
@@ -3230,13 +2013,10 @@ ALTER TABLE calls_for_service ADD COLUMN cross_street TEXT;
 ALTER TABLE calls_for_service ADD COLUMN location_building TEXT;
 ALTER TABLE calls_for_service ADD COLUMN location_floor TEXT;
 ALTER TABLE calls_for_service ADD COLUMN location_room TEXT;
-ALTER TABLE calls_for_service ADD COLUMN weapons_involved TEXT;
-ALTER TABLE calls_for_service ADD COLUMN injuries_reported INTEGER DEFAULT 0;
 ALTER TABLE calls_for_service ADD COLUMN num_subjects INTEGER;
 ALTER TABLE calls_for_service ADD COLUMN subject_description TEXT;
 ALTER TABLE calls_for_service ADD COLUMN vehicle_description TEXT;
 ALTER TABLE calls_for_service ADD COLUMN direction_of_travel TEXT;
-ALTER TABLE calls_for_service ADD COLUMN archived_at TEXT;
 ALTER TABLE calls_for_service ADD COLUMN responding_officer TEXT;
 ALTER TABLE calls_for_service ADD COLUMN secondary_type TEXT;
 ALTER TABLE calls_for_service ADD COLUMN contact_method TEXT;
@@ -3244,20 +2024,6 @@ ALTER TABLE calls_for_service ADD COLUMN scene_safety TEXT;
 ALTER TABLE calls_for_service ADD COLUMN weather_conditions TEXT;
 ALTER TABLE calls_for_service ADD COLUMN lighting_conditions TEXT;
 ALTER TABLE calls_for_service ADD COLUMN num_victims INTEGER;
-ALTER TABLE calls_for_service ADD COLUMN alcohol_involved INTEGER DEFAULT 0;
-ALTER TABLE calls_for_service ADD COLUMN drugs_involved INTEGER DEFAULT 0;
-ALTER TABLE calls_for_service ADD COLUMN domestic_violence INTEGER DEFAULT 0;
-ALTER TABLE calls_for_service ADD COLUMN supervisor_notified INTEGER DEFAULT 0;
-ALTER TABLE calls_for_service ADD COLUMN le_notified INTEGER DEFAULT 0;
-ALTER TABLE calls_for_service ADD COLUMN le_agency TEXT;
-ALTER TABLE calls_for_service ADD COLUMN le_case_number TEXT;
-ALTER TABLE calls_for_service ADD COLUMN damage_estimate REAL;
-ALTER TABLE calls_for_service ADD COLUMN damage_description TEXT;
-ALTER TABLE calls_for_service ADD COLUMN action_taken TEXT;
-ALTER TABLE calls_for_service ADD COLUMN updated_at TEXT;
-ALTER TABLE calls_for_service ADD COLUMN received_at TEXT;
-ALTER TABLE calls_for_service ADD COLUMN previous_status TEXT;
-ALTER TABLE calls_for_service ADD COLUMN client_id INTEGER;
 ALTER TABLE calls_for_service ADD COLUMN starting_mileage REAL;
 ALTER TABLE calls_for_service ADD COLUMN ending_mileage REAL;
 ALTER TABLE calls_for_service ADD COLUMN case_id INTEGER;
@@ -3269,125 +2035,29 @@ ALTER TABLE calls_for_service ADD COLUMN zone_name TEXT;
 ALTER TABLE calls_for_service ADD COLUMN beat_name TEXT;
 ALTER TABLE calls_for_service ADD COLUMN beat_descriptor TEXT;
 ALTER TABLE calls_for_service ADD COLUMN contract_id TEXT;
-ALTER TABLE calls_for_service ADD COLUMN priority_score INTEGER DEFAULT 0;
 ALTER TABLE calls_for_service ADD COLUMN response_time_seconds REAL;
-ALTER TABLE calls_for_service ADD COLUMN status_changed_at TEXT;
 ALTER TABLE calls_for_service ADD COLUMN onscene_duration_seconds REAL;
 ALTER TABLE calls_for_service ADD COLUMN overdue_notified TEXT;
-ALTER TABLE calls_for_service ADD COLUMN received_at TEXT;
 
--- Missing columns for gps_breadcrumbs
-ALTER TABLE gps_breadcrumbs ADD COLUMN road_name TEXT;
-ALTER TABLE gps_breadcrumbs ADD COLUMN nearest_intersection TEXT;
-
--- Missing columns for units
+-- Missing columns for units (2)
 ALTER TABLE units ADD COLUMN assigned_beat TEXT;
 ALTER TABLE units ADD COLUMN mileage REAL;
-ALTER TABLE units ADD COLUMN gps_source TEXT;
-ALTER TABLE units ADD COLUMN gps_updated_at TEXT;
 
--- Missing columns for incidents
-ALTER TABLE incidents ADD COLUMN occurred_date TEXT;
-ALTER TABLE incidents ADD COLUMN occurred_time TEXT;
-ALTER TABLE incidents ADD COLUMN end_date TEXT;
-ALTER TABLE incidents ADD COLUMN end_time TEXT;
-ALTER TABLE incidents ADD COLUMN weather_conditions TEXT;
-ALTER TABLE incidents ADD COLUMN lighting_conditions TEXT;
-ALTER TABLE incidents ADD COLUMN injuries INTEGER DEFAULT 0;
-ALTER TABLE incidents ADD COLUMN injury_description TEXT;
-ALTER TABLE incidents ADD COLUMN damage_estimate REAL;
-ALTER TABLE incidents ADD COLUMN damage_description TEXT;
-ALTER TABLE incidents ADD COLUMN weapons_involved TEXT;
-ALTER TABLE incidents ADD COLUMN alcohol_involved INTEGER DEFAULT 0;
-ALTER TABLE incidents ADD COLUMN drugs_involved INTEGER DEFAULT 0;
-ALTER TABLE incidents ADD COLUMN domestic_violence INTEGER DEFAULT 0;
-ALTER TABLE incidents ADD COLUMN review_notes TEXT;
-ALTER TABLE incidents ADD COLUMN disposition TEXT;
-ALTER TABLE incidents ADD COLUMN zone_beat TEXT;
+-- Missing columns for incidents (8)
 ALTER TABLE incidents ADD COLUMN section_id TEXT;
-ALTER TABLE incidents ADD COLUMN sector_id TEXT;
-ALTER TABLE incidents ADD COLUMN zone_id TEXT;
-ALTER TABLE incidents ADD COLUMN beat_id TEXT;
-ALTER TABLE incidents ADD COLUMN responding_le_agency TEXT;
-ALTER TABLE incidents ADD COLUMN le_case_number TEXT;
-ALTER TABLE incidents ADD COLUMN road_conditions TEXT;
-ALTER TABLE incidents ADD COLUMN traffic_control TEXT;
-ALTER TABLE incidents ADD COLUMN vehicle_1_info TEXT;
-ALTER TABLE incidents ADD COLUMN vehicle_2_info TEXT;
-ALTER TABLE incidents ADD COLUMN diagram_notes TEXT;
-ALTER TABLE incidents ADD COLUMN patient_status TEXT;
-ALTER TABLE incidents ADD COLUMN ems_transport TEXT;
-ALTER TABLE incidents ADD COLUMN patient_vitals TEXT;
-ALTER TABLE incidents ADD COLUMN treatment_rendered TEXT;
-ALTER TABLE incidents ADD COLUMN trespass_warning_issued INTEGER DEFAULT 0;
-ALTER TABLE incidents ADD COLUMN trespass_effective_date TEXT;
-ALTER TABLE incidents ADD COLUMN trespass_expiry_date TEXT;
-ALTER TABLE incidents ADD COLUMN property_boundaries TEXT;
-ALTER TABLE incidents ADD COLUMN force_type TEXT;
-ALTER TABLE incidents ADD COLUMN force_justification TEXT;
-ALTER TABLE incidents ADD COLUMN subject_injuries TEXT;
-ALTER TABLE incidents ADD COLUMN officer_injuries TEXT;
-ALTER TABLE incidents ADD COLUMN de_escalation_attempts TEXT;
 ALTER TABLE incidents ADD COLUMN statute_id INTEGER;
 ALTER TABLE incidents ADD COLUMN statute_citation TEXT;
 ALTER TABLE incidents ADD COLUMN citation_fine REAL;
-ALTER TABLE incidents ADD COLUMN client_id INTEGER;
 ALTER TABLE incidents ADD COLUMN contract_id TEXT;
-ALTER TABLE incidents ADD COLUMN approved_at TEXT;
 ALTER TABLE incidents ADD COLUMN assigned_detective_id INTEGER;
-ALTER TABLE incidents ADD COLUMN weather_conditions TEXT;
 ALTER TABLE incidents ADD COLUMN weather_temperature REAL;
 ALTER TABLE incidents ADD COLUMN weather_recorded_at TEXT;
 
--- Missing columns for persons
-ALTER TABLE persons ADD COLUMN middle_name TEXT;
-ALTER TABLE persons ADD COLUMN alias_nickname TEXT;
-ALTER TABLE persons ADD COLUMN ssn_last4 TEXT;
-ALTER TABLE persons ADD COLUMN dl_number TEXT;
-ALTER TABLE persons ADD COLUMN dl_state TEXT;
-ALTER TABLE persons ADD COLUMN dl_expiry TEXT;
-ALTER TABLE persons ADD COLUMN dl_class TEXT;
-ALTER TABLE persons ADD COLUMN employer TEXT;
-ALTER TABLE persons ADD COLUMN occupation TEXT;
-ALTER TABLE persons ADD COLUMN emergency_contact_name TEXT;
-ALTER TABLE persons ADD COLUMN emergency_contact_phone TEXT;
-ALTER TABLE persons ADD COLUMN city TEXT;
-ALTER TABLE persons ADD COLUMN state TEXT;
-ALTER TABLE persons ADD COLUMN zip TEXT;
-ALTER TABLE persons ADD COLUMN build TEXT;
-ALTER TABLE persons ADD COLUMN complexion TEXT;
-ALTER TABLE persons ADD COLUMN clothing_description TEXT;
-ALTER TABLE persons ADD COLUMN gang_affiliation TEXT;
-ALTER TABLE persons ADD COLUMN is_sex_offender INTEGER DEFAULT 0;
-ALTER TABLE persons ADD COLUMN is_veteran INTEGER DEFAULT 0;
-ALTER TABLE persons ADD COLUMN language TEXT;
-ALTER TABLE persons ADD COLUMN updated_at TEXT;
-ALTER TABLE persons ADD COLUMN place_of_birth TEXT;
-ALTER TABLE persons ADD COLUMN citizenship TEXT;
-ALTER TABLE persons ADD COLUMN marital_status TEXT;
-ALTER TABLE persons ADD COLUMN hair_length TEXT;
-ALTER TABLE persons ADD COLUMN hair_style TEXT;
-ALTER TABLE persons ADD COLUMN facial_hair TEXT;
-ALTER TABLE persons ADD COLUMN glasses TEXT;
-ALTER TABLE persons ADD COLUMN shoe_size TEXT;
-ALTER TABLE persons ADD COLUMN blood_type TEXT;
-ALTER TABLE persons ADD COLUMN phone_secondary TEXT;
-ALTER TABLE persons ADD COLUMN social_media TEXT;
-ALTER TABLE persons ADD COLUMN probation_parole TEXT;
-ALTER TABLE persons ADD COLUMN probation_parole_officer TEXT;
-ALTER TABLE persons ADD COLUMN known_associates TEXT;
-ALTER TABLE persons ADD COLUMN emergency_contact_relationship TEXT;
-ALTER TABLE persons ADD COLUMN caution_flags TEXT;
-ALTER TABLE persons ADD COLUMN ssn_full TEXT;
-ALTER TABLE persons ADD COLUMN id_image_url TEXT;
-ALTER TABLE persons ADD COLUMN id_type TEXT;
-ALTER TABLE persons ADD COLUMN id_number TEXT;
-ALTER TABLE persons ADD COLUMN id_state TEXT;
-ALTER TABLE persons ADD COLUMN id_expiry TEXT;
+-- Missing columns for persons (32)
 ALTER TABLE persons ADD COLUMN height_feet INTEGER;
 ALTER TABLE persons ADD COLUMN height_inches INTEGER;
-ALTER TABLE persons ADD COLUMN watchlist_match TEXT DEFAULT NULL;
-ALTER TABLE persons ADD COLUMN watchlist_checked_at TEXT DEFAULT NULL;
+ALTER TABLE persons ADD COLUMN watchlist_match TEXT;
+ALTER TABLE persons ADD COLUMN watchlist_checked_at TEXT;
 ALTER TABLE persons ADD COLUMN aliases TEXT;
 ALTER TABLE persons ADD COLUMN photo TEXT;
 ALTER TABLE persons ADD COLUMN ncic_number TEXT;
@@ -3417,13 +2087,7 @@ ALTER TABLE persons ADD COLUMN alias_dob TEXT;
 ALTER TABLE persons ADD COLUMN home_phone TEXT;
 ALTER TABLE persons ADD COLUMN work_phone TEXT;
 
--- Missing columns for vehicles_records
-ALTER TABLE vehicles_records ADD COLUMN body_style TEXT;
-ALTER TABLE vehicles_records ADD COLUMN doors INTEGER;
-ALTER TABLE vehicles_records ADD COLUMN secondary_color TEXT;
-ALTER TABLE vehicles_records ADD COLUMN insurance_company TEXT;
-ALTER TABLE vehicles_records ADD COLUMN insurance_policy TEXT;
-ALTER TABLE vehicles_records ADD COLUMN registration_expiry TEXT;
+-- Missing columns for vehicles_records (46)
 ALTER TABLE vehicles_records ADD COLUMN damage_description TEXT;
 ALTER TABLE vehicles_records ADD COLUMN distinguishing_features TEXT;
 ALTER TABLE vehicles_records ADD COLUMN updated_at TEXT;
@@ -3436,8 +2100,8 @@ ALTER TABLE vehicles_records ADD COLUMN tow_status TEXT;
 ALTER TABLE vehicles_records ADD COLUMN tow_company TEXT;
 ALTER TABLE vehicles_records ADD COLUMN tow_date TEXT;
 ALTER TABLE vehicles_records ADD COLUMN plate_type TEXT;
-ALTER TABLE vehicles_records ADD COLUMN commercial_vehicle INTEGER DEFAULT 0;
-ALTER TABLE vehicles_records ADD COLUMN hazmat INTEGER DEFAULT 0;
+ALTER TABLE vehicles_records ADD COLUMN commercial_vehicle INTEGER;
+ALTER TABLE vehicles_records ADD COLUMN hazmat INTEGER;
 ALTER TABLE vehicles_records ADD COLUMN odometer TEXT;
 ALTER TABLE vehicles_records ADD COLUMN owner_address TEXT;
 ALTER TABLE vehicles_records ADD COLUMN owner_phone TEXT;
@@ -3445,18 +2109,12 @@ ALTER TABLE vehicles_records ADD COLUMN lien_holder TEXT;
 ALTER TABLE vehicles_records ADD COLUMN stolen_status TEXT;
 ALTER TABLE vehicles_records ADD COLUMN stolen_date TEXT;
 ALTER TABLE vehicles_records ADD COLUMN recovery_date TEXT;
-ALTER TABLE vehicles_records ADD COLUMN registration_expiry TEXT;
-ALTER TABLE vehicles_records ADD COLUMN insurance_company TEXT;
-ALTER TABLE vehicles_records ADD COLUMN insurance_policy TEXT;
 ALTER TABLE vehicles_records ADD COLUMN insurance_status TEXT;
 ALTER TABLE vehicles_records ADD COLUMN insurance_expiry TEXT;
 ALTER TABLE vehicles_records ADD COLUMN insurance_verified_at TEXT;
 ALTER TABLE vehicles_records ADD COLUMN insurance_verified_by INTEGER;
-ALTER TABLE vehicles_records ADD COLUMN is_stolen INTEGER DEFAULT 0;
-ALTER TABLE vehicles_records ADD COLUMN tow_status TEXT;
-ALTER TABLE vehicles_records ADD COLUMN tow_company TEXT;
+ALTER TABLE vehicles_records ADD COLUMN is_stolen INTEGER;
 ALTER TABLE vehicles_records ADD COLUMN tow_lot_location TEXT;
-ALTER TABLE vehicles_records ADD COLUMN tow_date TEXT;
 ALTER TABLE vehicles_records ADD COLUMN tow_release_date TEXT;
 ALTER TABLE vehicles_records ADD COLUMN tow_release_to TEXT;
 ALTER TABLE vehicles_records ADD COLUMN tow_reason TEXT;
@@ -3476,35 +2134,31 @@ ALTER TABLE vehicles_records ADD COLUMN vehicle_use TEXT;
 ALTER TABLE vehicles_records ADD COLUMN ncic_entry_number TEXT;
 ALTER TABLE vehicles_records ADD COLUMN estimated_value REAL;
 ALTER TABLE vehicles_records ADD COLUMN tow_location TEXT;
-ALTER TABLE vehicles_records ADD COLUMN insurance_expiry TEXT;
 
--- Missing columns for bolos
+-- Missing columns for bolos (2)
 ALTER TABLE bolos ADD COLUMN auto_expire_hours INTEGER;
 ALTER TABLE bolos ADD COLUMN expired_at TEXT;
 
--- Missing columns for messages
+-- Missing columns for messages (14)
 ALTER TABLE messages ADD COLUMN subject TEXT;
 ALTER TABLE messages ADD COLUMN parent_id INTEGER;
-ALTER TABLE messages ADD COLUMN thread_id INTEGER;
-ALTER TABLE messages ADD COLUMN case_id INTEGER;
 ALTER TABLE messages ADD COLUMN thread_id TEXT;
+ALTER TABLE messages ADD COLUMN case_id INTEGER;
 ALTER TABLE messages ADD COLUMN file_url TEXT;
 ALTER TABLE messages ADD COLUMN edited_at TEXT;
-ALTER TABLE messages ADD COLUMN subject TEXT;
 ALTER TABLE messages ADD COLUMN scheduled_at TEXT;
 ALTER TABLE messages ADD COLUMN attachment_url TEXT;
 ALTER TABLE messages ADD COLUMN attachment_name TEXT;
-ALTER TABLE messages ADD COLUMN is_template INTEGER DEFAULT 0;
+ALTER TABLE messages ADD COLUMN is_template INTEGER;
 ALTER TABLE messages ADD COLUMN template_name TEXT;
-ALTER TABLE messages ADD COLUMN is_draft INTEGER DEFAULT 0;
+ALTER TABLE messages ADD COLUMN is_draft INTEGER;
 ALTER TABLE messages ADD COLUMN draft_updated_at TEXT;
 ALTER TABLE messages ADD COLUMN delivered_at TEXT;
 
--- Missing columns for evidence
-ALTER TABLE evidence ADD COLUMN evidence_number TEXT;
+-- Missing columns for evidence (28)
 ALTER TABLE evidence ADD COLUMN location_found TEXT;
 ALTER TABLE evidence ADD COLUMN condition TEXT;
-ALTER TABLE evidence ADD COLUMN quantity INTEGER DEFAULT 1;
+ALTER TABLE evidence ADD COLUMN quantity INTEGER;
 ALTER TABLE evidence ADD COLUMN release_authorized_by TEXT;
 ALTER TABLE evidence ADD COLUMN released_to TEXT;
 ALTER TABLE evidence ADD COLUMN release_date TEXT;
@@ -3512,8 +2166,8 @@ ALTER TABLE evidence ADD COLUMN collected_date TEXT;
 ALTER TABLE evidence ADD COLUMN packaging_type TEXT;
 ALTER TABLE evidence ADD COLUMN dimensions TEXT;
 ALTER TABLE evidence ADD COLUMN weight TEXT;
-ALTER TABLE evidence ADD COLUMN photo_taken INTEGER DEFAULT 0;
-ALTER TABLE evidence ADD COLUMN lab_submitted INTEGER DEFAULT 0;
+ALTER TABLE evidence ADD COLUMN photo_taken INTEGER;
+ALTER TABLE evidence ADD COLUMN lab_submitted INTEGER;
 ALTER TABLE evidence ADD COLUMN lab_case_number TEXT;
 ALTER TABLE evidence ADD COLUMN lab_name TEXT;
 ALTER TABLE evidence ADD COLUMN disposal_method TEXT;
@@ -3529,132 +2183,85 @@ ALTER TABLE evidence ADD COLUMN updated_at TEXT;
 ALTER TABLE evidence ADD COLUMN retention_until TEXT;
 ALTER TABLE evidence ADD COLUMN disposition TEXT;
 ALTER TABLE evidence ADD COLUMN storage_temperature REAL;
-ALTER TABLE evidence ADD COLUMN is_biological INTEGER DEFAULT 0;
+ALTER TABLE evidence ADD COLUMN is_biological INTEGER;
 
--- Missing columns for time_entries
-ALTER TABLE time_entries ADD COLUMN break_start TEXT;
-ALTER TABLE time_entries ADD COLUMN break_minutes REAL NOT NULL DEFAULT 0;
+-- Missing columns for time_entries (4)
 ALTER TABLE time_entries ADD COLUMN notes TEXT;
 ALTER TABLE time_entries ADD COLUMN edit_reason TEXT;
 ALTER TABLE time_entries ADD COLUMN edited_by INTEGER;
 ALTER TABLE time_entries ADD COLUMN edited_at TEXT;
 
--- Missing columns for credentials
+-- Missing columns for credentials (1)
 ALTER TABLE credentials ADD COLUMN issuing_authority TEXT;
 
--- Missing columns for patrol_checkpoints
+-- Missing columns for patrol_checkpoints (3)
 ALTER TABLE patrol_checkpoints ADD COLUMN assigned_officer_id INTEGER;
 ALTER TABLE patrol_checkpoints ADD COLUMN location_description TEXT;
 ALTER TABLE patrol_checkpoints ADD COLUMN special_instructions TEXT;
 
--- Missing columns for patrol_scans
+-- Missing columns for patrol_scans (1)
 ALTER TABLE patrol_scans ADD COLUMN weather_json TEXT;
 
--- Missing columns for ofac_sdn_addresses
-ALTER TABLE ofac_sdn_addresses ADD COLUMN add_num INTEGER;
-ALTER TABLE ofac_sdn_addresses ADD COLUMN add_remarks TEXT;
-
--- Missing columns for ofac_sdn_ids
-ALTER TABLE ofac_sdn_ids ADD COLUMN remarks TEXT;
-
--- Missing columns for warrants
+-- Missing columns for warrants (5)
 ALTER TABLE warrants ADD COLUMN statute_id INTEGER;
 ALTER TABLE warrants ADD COLUMN statute_citation TEXT;
 ALTER TABLE warrants ADD COLUMN external_warrant_id TEXT;
 ALTER TABLE warrants ADD COLUMN external_source_key TEXT;
-ALTER TABLE warrants ADD COLUMN auto_created INTEGER DEFAULT 0;
+ALTER TABLE warrants ADD COLUMN auto_created INTEGER;
 
--- Missing columns for fleet_vehicles
-ALTER TABLE fleet_vehicles ADD COLUMN total_maintenance_cost REAL DEFAULT 0;
-ALTER TABLE fleet_vehicles ADD COLUMN total_fuel_cost REAL DEFAULT 0;
-ALTER TABLE fleet_vehicles ADD COLUMN total_trips INTEGER DEFAULT 0;
+-- Missing columns for fleet_vehicles (4)
+ALTER TABLE fleet_vehicles ADD COLUMN total_maintenance_cost REAL;
+ALTER TABLE fleet_vehicles ADD COLUMN total_fuel_cost REAL;
+ALTER TABLE fleet_vehicles ADD COLUMN total_trips INTEGER;
 ALTER TABLE fleet_vehicles ADD COLUMN avg_mpg REAL;
-ALTER TABLE fleet_vehicles ADD COLUMN next_service_mileage INTEGER;
 
--- Missing columns for fleet_maintenance
+-- Missing columns for fleet_maintenance (2)
 ALTER TABLE fleet_maintenance ADD COLUMN labor_cost REAL;
 ALTER TABLE fleet_maintenance ADD COLUMN service_tasks TEXT;
 
--- Missing columns for fleet_fuel_logs
+-- Missing columns for fleet_fuel_logs (2)
 ALTER TABLE fleet_fuel_logs ADD COLUMN distance REAL;
 ALTER TABLE fleet_fuel_logs ADD COLUMN efficiency REAL;
 
--- Missing columns for training_records
-ALTER TABLE training_records ADD COLUMN training_type TEXT;
-ALTER TABLE training_records ADD COLUMN expiration_date TEXT;
-
--- Missing columns for training_requirements
-ALTER TABLE training_requirements ADD COLUMN required_for_role TEXT;
-ALTER TABLE training_requirements ADD COLUMN is_active INTEGER DEFAULT 1;
-
--- Missing columns for radio_transcripts
-ALTER TABLE radio_transcripts ADD COLUMN audio_file TEXT;
-ALTER TABLE radio_transcripts ADD COLUMN file_size INTEGER;
-ALTER TABLE radio_transcripts ADD COLUMN linked_call_id INTEGER;
-
--- Missing columns for dashcam_videos
-ALTER TABLE dashcam_videos ADD COLUMN incident_id INTEGER;
-
--- Missing columns for cpgps_vehicles
-ALTER TABLE cpgps_vehicles ADD COLUMN unit_number TEXT;
-
--- Missing columns for cpgps_trips
-ALTER TABLE cpgps_trips ADD COLUMN start_time TEXT;
-
--- Missing columns for cpgps_locations
-ALTER TABLE cpgps_locations ADD COLUMN timestamp TEXT;
-
--- Missing columns for serve_queue
+-- Missing columns for serve_queue (2)
 ALTER TABLE serve_queue ADD COLUMN recipient_person_id INTEGER;
 ALTER TABLE serve_queue ADD COLUMN property_id INTEGER;
 
--- Missing columns for utah_statutes
-ALTER TABLE utah_statutes ADD COLUMN citation_fine REAL;
-ALTER TABLE utah_statutes ADD COLUMN statute_code TEXT;
-
--- Missing columns for citations
+-- Missing columns for citations (32)
 ALTER TABLE citations ADD COLUMN section_id TEXT;
 ALTER TABLE citations ADD COLUMN sector_id TEXT;
 ALTER TABLE citations ADD COLUMN zone_id TEXT;
 ALTER TABLE citations ADD COLUMN beat_id TEXT;
-ALTER TABLE citations ADD COLUMN zone_beat TEXT;
-ALTER TABLE citations ADD COLUMN latitude REAL;
-ALTER TABLE citations ADD COLUMN longitude REAL;
 ALTER TABLE citations ADD COLUMN vehicle_vin TEXT;
-ALTER TABLE citations ADD COLUMN vehicle_year TEXT;
-ALTER TABLE citations ADD COLUMN vehicle_make TEXT;
-ALTER TABLE citations ADD COLUMN vehicle_model TEXT;
-ALTER TABLE citations ADD COLUMN vehicle_color TEXT;
 ALTER TABLE citations ADD COLUMN vehicle_id INTEGER;
 ALTER TABLE citations ADD COLUMN speed_recorded INTEGER;
-ALTER TABLE citations ADD COLUMN speed_limit INTEGER;
 ALTER TABLE citations ADD COLUMN radar_type TEXT;
 ALTER TABLE citations ADD COLUMN bac_level REAL;
 ALTER TABLE citations ADD COLUMN bond_amount REAL;
 ALTER TABLE citations ADD COLUMN bond_type TEXT;
-ALTER TABLE citations ADD COLUMN is_warning INTEGER DEFAULT 0;
-ALTER TABLE citations ADD COLUMN is_equipment_violation INTEGER DEFAULT 0;
+ALTER TABLE citations ADD COLUMN is_warning INTEGER;
+ALTER TABLE citations ADD COLUMN is_equipment_violation INTEGER;
 ALTER TABLE citations ADD COLUMN weather_conditions TEXT;
 ALTER TABLE citations ADD COLUMN road_conditions TEXT;
-ALTER TABLE citations ADD COLUMN accident_related INTEGER DEFAULT 0;
-ALTER TABLE citations ADD COLUMN dui_related INTEGER DEFAULT 0;
-ALTER TABLE citations ADD COLUMN school_zone INTEGER DEFAULT 0;
-ALTER TABLE citations ADD COLUMN construction_zone INTEGER DEFAULT 0;
-ALTER TABLE citations ADD COLUMN commercial_vehicle INTEGER DEFAULT 0;
-ALTER TABLE citations ADD COLUMN hazmat INTEGER DEFAULT 0;
+ALTER TABLE citations ADD COLUMN accident_related INTEGER;
+ALTER TABLE citations ADD COLUMN dui_related INTEGER;
+ALTER TABLE citations ADD COLUMN school_zone INTEGER;
+ALTER TABLE citations ADD COLUMN construction_zone INTEGER;
+ALTER TABLE citations ADD COLUMN commercial_vehicle INTEGER;
+ALTER TABLE citations ADD COLUMN hazmat INTEGER;
 ALTER TABLE citations ADD COLUMN voided_reason TEXT;
 ALTER TABLE citations ADD COLUMN voided_by INTEGER;
 ALTER TABLE citations ADD COLUMN voided_at TEXT;
 ALTER TABLE citations ADD COLUMN court_time TEXT;
 ALTER TABLE citations ADD COLUMN court_room TEXT;
-ALTER TABLE citations ADD COLUMN appearance_required INTEGER DEFAULT 0;
+ALTER TABLE citations ADD COLUMN appearance_required INTEGER;
 ALTER TABLE citations ADD COLUMN plea TEXT;
 ALTER TABLE citations ADD COLUMN verdict TEXT;
 ALTER TABLE citations ADD COLUMN sentence TEXT;
 ALTER TABLE citations ADD COLUMN disposition_date TEXT;
 ALTER TABLE citations ADD COLUMN case_id INTEGER;
 
--- Missing columns for field_interviews
+-- Missing columns for field_interviews (7)
 ALTER TABLE field_interviews ADD COLUMN date TEXT;
 ALTER TABLE field_interviews ADD COLUMN gang_affiliation TEXT;
 ALTER TABLE field_interviews ADD COLUMN section_id INTEGER;
@@ -3663,15 +2270,15 @@ ALTER TABLE field_interviews ADD COLUMN beat_id INTEGER;
 ALTER TABLE field_interviews ADD COLUMN zone_beat TEXT;
 ALTER TABLE field_interviews ADD COLUMN updated_at TEXT;
 
--- Missing columns for trespass_orders
+-- Missing columns for trespass_orders (1)
 ALTER TABLE trespass_orders ADD COLUMN subject_photo_url TEXT;
 
--- Missing columns for cases
+-- Missing columns for cases (2)
 ALTER TABLE cases ADD COLUMN deadline TEXT;
 ALTER TABLE cases ADD COLUMN sla_hours INTEGER;
 
--- Missing columns for court_events
-ALTER TABLE court_events ADD COLUMN continuance_count INTEGER DEFAULT 0;
+-- Missing columns for court_events (8)
+ALTER TABLE court_events ADD COLUMN continuance_count INTEGER;
 ALTER TABLE court_events ADD COLUMN defendant_dob TEXT;
 ALTER TABLE court_events ADD COLUMN bail_amount REAL;
 ALTER TABLE court_events ADD COLUMN bond_status TEXT;
@@ -3680,114 +2287,29 @@ ALTER TABLE court_events ADD COLUMN judge_notes TEXT;
 ALTER TABLE court_events ADD COLUMN prosecutor_phone TEXT;
 ALTER TABLE court_events ADD COLUMN prosecutor_email TEXT;
 
--- Missing columns for offender_alerts
+-- Missing columns for offender_alerts (4)
 ALTER TABLE offender_alerts ADD COLUMN alert_latitude REAL;
 ALTER TABLE offender_alerts ADD COLUMN alert_longitude REAL;
 ALTER TABLE offender_alerts ADD COLUMN alert_address TEXT;
-ALTER TABLE offender_alerts ADD COLUMN alert_enabled INTEGER DEFAULT 1;
+ALTER TABLE offender_alerts ADD COLUMN alert_enabled INTEGER;
 
--- Missing columns for dispatch_sectors
+-- Missing columns for dispatch_sectors (2)
 ALTER TABLE dispatch_sectors ADD COLUMN county_nbr TEXT;
 ALTER TABLE dispatch_sectors ADD COLUMN fips_code TEXT;
 
--- Missing columns for dispatch_zones
+-- Missing columns for dispatch_zones (1)
 ALTER TABLE dispatch_zones ADD COLUMN ugrc_code TEXT;
 
--- Missing columns for dispatch_beats
+-- Missing columns for dispatch_beats (2)
 ALTER TABLE dispatch_beats ADD COLUMN district_letter TEXT;
 ALTER TABLE dispatch_beats ADD COLUMN beat_number INTEGER;
 
--- Missing columns for forensic_cases
-ALTER TABLE forensic_cases ADD COLUMN linked_incident_id INTEGER;
-ALTER TABLE forensic_cases ADD COLUMN lab_number TEXT;
-ALTER TABLE forensic_cases ADD COLUMN lead_examiner_id INTEGER;
-ALTER TABLE forensic_cases ADD COLUMN linked_case_id INTEGER;
-
--- Missing columns for forensic_exhibits
-ALTER TABLE forensic_exhibits ADD COLUMN condition_on_receipt TEXT;
-ALTER TABLE forensic_exhibits ADD COLUMN packaging_type TEXT;
-ALTER TABLE forensic_exhibits ADD COLUMN packaging_sealed INTEGER DEFAULT 0;
-ALTER TABLE forensic_exhibits ADD COLUMN collected_by TEXT;
-ALTER TABLE forensic_exhibits ADD COLUMN collected_date TEXT;
-ALTER TABLE forensic_exhibits ADD COLUMN collected_location TEXT;
-ALTER TABLE forensic_exhibits ADD COLUMN received_from TEXT;
-ALTER TABLE forensic_exhibits ADD COLUMN storage_location TEXT;
-ALTER TABLE forensic_exhibits ADD COLUMN storage_requirements TEXT;
-ALTER TABLE forensic_exhibits ADD COLUMN is_hazardous INTEGER DEFAULT 0;
-ALTER TABLE forensic_exhibits ADD COLUMN is_biohazard INTEGER DEFAULT 0;
-ALTER TABLE forensic_exhibits ADD COLUMN current_custodian TEXT;
-ALTER TABLE forensic_exhibits ADD COLUMN current_custodian_id INTEGER;
-ALTER TABLE forensic_exhibits ADD COLUMN examination_requested TEXT;
-
--- Missing columns for email_logs
-ALTER TABLE email_logs ADD COLUMN to_email TEXT;
-
--- Missing columns for email_cache
-ALTER TABLE email_cache ADD COLUMN owner_user_id INTEGER;
-
--- Missing columns for email_rules
-ALTER TABLE email_rules ADD COLUMN owner_user_id INTEGER;
-
--- Missing columns for email_folders
-ALTER TABLE email_folders ADD COLUMN owner_user_id INTEGER;
-
--- Missing columns for email_links
-ALTER TABLE email_links ADD COLUMN auto_linked INTEGER DEFAULT 0;
-
--- Missing columns for scheduled_emails
-ALTER TABLE scheduled_emails ADD COLUMN owner_user_id INTEGER;
-
--- Missing columns for record_locks
-ALTER TABLE record_locks ADD COLUMN user_id INTEGER;
-
--- Missing columns for hr_documents
-ALTER TABLE hr_documents ADD COLUMN officer_id INTEGER;
-ALTER TABLE hr_documents ADD COLUMN document_type TEXT;
-
--- Missing columns for hr_grievances
-ALTER TABLE hr_grievances ADD COLUMN officer_id INTEGER;
-
--- Missing columns for hr_workers_comp
-ALTER TABLE hr_workers_comp ADD COLUMN injury_date TEXT;
-
--- Missing columns for hr_attendance
-ALTER TABLE hr_attendance ADD COLUMN attendance_date TEXT;
-
--- Missing columns for fleet_damage_reports
-ALTER TABLE fleet_damage_reports ADD COLUMN reported_at TEXT;
-
--- Missing columns for person_associates
-ALTER TABLE person_associates ADD COLUMN associated_person_id INTEGER;
-
--- Missing columns for patrol_breaks
-ALTER TABLE patrol_breaks ADD COLUMN start_time TEXT;
-
--- Missing columns for warrant_watch_runs
-ALTER TABLE warrant_watch_runs ADD COLUMN created_at TEXT;
-
--- Missing columns for warrant_watch_log
-ALTER TABLE warrant_watch_log ADD COLUMN run_id INTEGER;
-
--- Missing columns for scraped_warrants
-ALTER TABLE scraped_warrants ADD COLUMN middle_name TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN age INTEGER;
-ALTER TABLE scraped_warrants ADD COLUMN gender TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN race TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN city TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN state TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN photo_url TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN detail_url TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN first_seen_at TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN last_seen_at TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN cleared_at TEXT;
-ALTER TABLE scraped_warrants ADD COLUMN dob_verified INTEGER DEFAULT 0;
-
--- Missing columns for warrant_scraper_config
+-- Missing columns for warrant_scraper_config (13)
 ALTER TABLE warrant_scraper_config ADD COLUMN source_name TEXT;
 ALTER TABLE warrant_scraper_config ADD COLUMN last_run_at TEXT;
 ALTER TABLE warrant_scraper_config ADD COLUMN last_error TEXT;
 ALTER TABLE warrant_scraper_config ADD COLUMN source_type TEXT;
-ALTER TABLE warrant_scraper_config ADD COLUMN priority INTEGER DEFAULT 3;
+ALTER TABLE warrant_scraper_config ADD COLUMN priority INTEGER;
 ALTER TABLE warrant_scraper_config ADD COLUMN content_hash TEXT;
 ALTER TABLE warrant_scraper_config ADD COLUMN content_hash_updated_at TEXT;
 ALTER TABLE warrant_scraper_config ADD COLUMN etag TEXT;
