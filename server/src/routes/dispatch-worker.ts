@@ -637,6 +637,50 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     return c.json(rows);
   });
 
+  // GET /api/dispatch/codes - 10-codes / signal codes (alias for /geography/codes)
+  api.get('/codes', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const codes = await db.prepare('SELECT * FROM dispatch_codes ORDER BY code').all();
+      return c.json(codes);
+    } catch { return c.json([]); }
+  });
+
+  // GET /api/dispatch/dashboard - Dispatch dashboard summary
+  api.get('/dashboard', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const [activeCalls, pendingCalls, activeUnits, p1Calls, p2Calls] = await Promise.all([
+        db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status IN ('dispatched','enroute','onscene')").get(),
+        db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'pending'").get(),
+        db.prepare("SELECT COUNT(*) as count FROM units WHERE status != 'offline'").get(),
+        db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE priority = 'P1' AND status NOT IN ('cleared','closed','archived','cancelled')").get(),
+        db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE priority = 'P2' AND status NOT IN ('cleared','closed','archived','cancelled')").get(),
+      ]);
+      return c.json({
+        active_calls: (activeCalls as any)?.count || 0,
+        pending_calls: (pendingCalls as any)?.count || 0,
+        active_units: (activeUnits as any)?.count || 0,
+        p1_calls: (p1Calls as any)?.count || 0,
+        p2_calls: (p2Calls as any)?.count || 0,
+      });
+    } catch { return c.json({ active_calls: 0, pending_calls: 0, active_units: 0, p1_calls: 0, p2_calls: 0 }); }
+  });
+
+  // GET /api/dispatch/messages - Dispatch messages
+  api.get('/messages', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const limit = Math.min(1000, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
+      const rows = await db.prepare(`
+        SELECT m.*, u.full_name as sender_name FROM dispatch_messages m
+        LEFT JOIN users u ON m.sender_id = u.id
+        ORDER BY m.created_at DESC LIMIT ?
+      `).all(limit);
+      return c.json(rows);
+    } catch { return c.json([]); }
+  });
+
   // Mount all dispatch routes under /dispatch
   app.route('/api/dispatch', api);
 }

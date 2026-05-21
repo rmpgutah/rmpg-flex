@@ -57,5 +57,24 @@ export function mountWarrantRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     return c.json(warrant);
   });
 
+  // GET /api/warrants/dashboard
+  api.get('/dashboard', async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const [total, active, extraditable, recent] = await Promise.all([
+        db.prepare('SELECT COUNT(*) as count FROM warrants').get(),
+        db.prepare("SELECT COUNT(*) as count FROM warrants WHERE status = 'active'").get(),
+        db.prepare('SELECT COUNT(*) as count FROM warrants WHERE extradition = 1').get(),
+        db.prepare("SELECT COUNT(*) as count FROM warrants WHERE created_at >= datetime('now','localtime','-30 days')").get(),
+      ]);
+      return c.json({
+        total: (total as any)?.count || 0,
+        active: (active as any)?.count || 0,
+        extraditable: (extraditable as any)?.count || 0,
+        recent_30d: (recent as any)?.count || 0,
+      });
+    } catch { return c.json({ total: 0, active: 0, extraditable: 0, recent_30d: 0 }); }
+  });
+
   app.route('/api/warrants', api);
 }
