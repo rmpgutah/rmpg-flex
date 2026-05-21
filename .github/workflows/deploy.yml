@@ -1,132 +1,164 @@
-name: "Deploy to Production"
+name: "Deploy to Cloudflare Workers + D1 + Pages"
 
-# ─── Manual-only trigger ─────────────────────────────────────────
-# This workflow is intentionally NOT auto-triggered on push to main.
+# Auto-deploys to Cloudflare on every push to main.
+# Also triggerable manually with workflow_dispatch.
 #
-# The canonical deploy path is the local script `bash deploy/deploy.sh`
-# (see CLAUDE.md), which uses the developer's SSH key directly against
-# the VPS. The GitHub Actions deploy requires a valid `VPS_SSH_KEY`
-# secret to be configured in repo settings — as of now, the secret is
-# either missing or malformed, which caused every push to main to
-# produce a red-X deploy failure and drown real issues in noise.
+# Prerequisites — set these repository secrets:
+#   CLOUDFLARE_API_TOKEN — API token with Workers + Pages + D1 permissions
+#     (create at https://dash.cloudflare.com/profile/api-tokens)
 #
-# To re-enable auto-deploy:
-#   1. On the VPS, run: ssh-keygen -t ed25519 -f rmpg_deploy -N ''
-#   2. Append rmpg_deploy.pub to /root/.ssh/authorized_keys on the VPS
-#   3. Paste the PRIVATE key (rmpg_deploy file content) into the
-#      VPS_SSH_KEY repository secret at Settings → Secrets and variables
-#   4. Add `push: { branches: [main] }` back to the `on:` section below
-# ──────────────────────────────────────────────────────────────────
+# If the client typecheck gate is red:
+#   That's a known pre-existing issue (Google Maps / OpenLayers types).
+#   Uncomment the `continue-on-error: true` line under "Client typecheck"
+#   to allow deploys while that issue is unresolved.
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
     inputs:
-      include_installers:
-        description: "Include desktop installers (--all flag)"
+      branch:
+        description: "Branch to deploy"
+        required: false
+        default: "main"
+      skip_tests:
+        description: "Skip test suite (bypass quality gate)"
         required: false
         default: "false"
         type: boolean
 
+concurrency:
+  group: cloudflare-deploy-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  deploy:
-    name: Deploy to Hostinger VPS
+  quality-gates:
+    name: Quality gates
     runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-
+    timeout-minutes: 15
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
           cache-dependency-path: |
-            client/package-lock.json
             server/package-lock.json
+            client/package-lock.json
 
-      - name: Install client dependencies
-        working-directory: client
-        run: npm ci
-
-      - name: Install server dependencies
+      - name: Install server deps
         working-directory: server
-        run: npm ci
+        run: npm ci --no-audit --no-fund
 
-      - name: TypeScript check
+      - name: Install client deps
         working-directory: client
-        run: npx tsc --noEmit || true
+        run: npm ci --no-audit --no-fund
 
-      - name: Run server tests
+      - name: Server typecheck
         working-directory: server
-        run: npx vitest run
+        run: npx tsc --noEmit
 
-      - name: Build client
+      - name: Server tests
+        if: ${{ github.event.inputs.skip_tests != 'true' }}
+        working-directory: server
+        run: npx vitest run --reporter=default
+
+      - name: Client typecheck
+        working-directory: client
+        continue-on-error: true  # known pre-existing Google Maps / OL type errors
+        run: npx tsc --noEmit
+
+      - name: Client production build
         working-directory: client
         run: npx vite build
 
-      - name: Set up SSH key
+      - name: Upload client build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
+          retention-days: 1
+
+  deploy-worker:
+    name: Deploy Worker + D1
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [quality-gates]
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
+
+      - name: Install server deps
+        working-directory: server
+        run: npm ci --no-audit --no-fund
+
+      - name: Apply D1 migrations
+        continue-on-error: true  # migrations handled by app code at boot
+        run: npx wrangler d1 migrations apply rmpg-flex --remote
         env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          # Strip CRLF (Windows line endings) and ensure trailing newline —
-          # common cause of "Load key: error in libcrypto" on GitHub Actions
-          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          # Sanity check: verify the key is parseable before attempting to use it
-          if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
-            echo "::error::VPS_SSH_KEY secret is not a valid OpenSSH private key."
-            echo "::error::Regenerate: ssh-keygen -t ed25519 -f rmpg_deploy -N ''"
-            echo "::error::Paste the PRIVATE key (rmpg_deploy file) into the VPS_SSH_KEY secret."
-            exit 1
-          fi
-          ssh-keyscan -H 194.113.64.90 >> ~/.ssh/known_hosts
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      - name: Rsync code to Hostinger VPS
-        run: |
-          rsync -az --delete \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            --exclude='server/data' \
-            --exclude='server/certs' \
-            --exclude='server/.env' \
-            --exclude='server/uploads' \
-            --exclude='client/.env' \
-            --exclude='desktop' \
-            --exclude='.DS_Store' \
-            --exclude='.claude' \
-            --exclude='client/android' \
-            ./ root@194.113.64.90:/opt/rmpg-flex/
+      - name: Deploy Worker
+        run: npx wrangler deploy
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
 
-      - name: Deploy on VPS (install deps, restart service)
-        run: |
-          ssh root@194.113.64.90 bash << 'REMOTEEOF'
-            set -e
-            APP_DIR="/opt/rmpg-flex"
-            cd "$APP_DIR"
+  deploy-pages:
+    name: Deploy Pages
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    needs: [quality-gates]
+    environment: production
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.inputs.branch || github.ref }}
 
-            echo ">>> Installing server dependencies..."
-            cd server && npm install --production --legacy-peer-deps 2>&1 | tail -5 && cd ..
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: server/package-lock.json
 
-            echo ">>> Restarting RMPG Flex service..."
-            systemctl restart rmpg-flex
+      - name: Install server deps (for wrangler)
+        working-directory: server
+        run: npm ci --no-audit --no-fund
 
-            echo ">>> Waiting for service to start..."
-            sleep 3
+      - uses: actions/download-artifact@v4
+        with:
+          name: client-dist
+          path: client/dist
 
-            if systemctl is-active --quiet rmpg-flex; then
-              echo "✓ rmpg-flex service is running"
-            else
-              echo "✗ rmpg-flex service failed to start"
-              journalctl -u rmpg-flex --no-pager -n 30
-              exit 1
-            fi
-          REMOTEEOF
+      - name: Deploy to Cloudflare Pages
+        run: npx wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+
+  verify:
+    name: Verify deployment
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    needs: [deploy-worker, deploy-pages]
+    steps:
+      - name: Wait for propagation
+        run: sleep 5
 
       - name: Health check
         run: |
-          sleep 5
-          curl -sf https://rmpgutah.us/api/health || (echo "Health check failed!" && exit 1)
+          HEALTH=$(curl -sf https://rmpgutah.us/api/health || echo "FAILED")
+          if [ "$HEALTH" = "FAILED" ]; then
+            echo "::error::Health check failed!"
+            exit 1
+          fi
+          echo "$HEALTH" | python3 -m json.tool
+          echo "::notice::Deploy verified — API healthy"

@@ -55,8 +55,15 @@ deploy/           Deployment scripts (deploy.sh → Cloudflare Workers/Pages)
 - `server/uploads/` — User-uploaded attachments (local development only)
 
 ### Deploy Safety
-- **Deploy command**: `bash deploy/deploy.sh` (production) or `bash deploy/deploy.sh --dry-run` (preview)
-- Deploy script runs typecheck + tests before deploying to Cloudflare Workers + Pages
+- **Local deploy**: `bash deploy/deploy.sh` (production) or `bash deploy/deploy.sh --dry-run` (preview)
+  - Runs typecheck + tests before deploying to Cloudflare Workers + Pages
+- **Auto-deploy (CI)**: Push to `main` triggers `.github/workflows/deploy.yml` which:
+  1. Runs quality gates (server typecheck + tests, client build)
+  2. Deploys Worker via `npx wrangler deploy`
+  3. Deploys Pages via `npx wrangler pages deploy`
+  4. Verifies with `curl https://rmpgutah.us/api/health`
+- **Required GitHub secret**: `CLOUDFLARE_API_TOKEN` — API token with Workers + Pages + D1 edit permissions
+  - Create at https://dash.cloudflare.com/profile/api-tokens → "Edit Cloudflare Workers" template
 - After deploy, always verify: `curl -sf https://rmpgutah.us/api/health`
 - **Always bump `CACHE_NAME` in `client/public/sw.js`** when deploying client changes
 - Cloudflare handles TLS automatically — no SSL cert management needed
