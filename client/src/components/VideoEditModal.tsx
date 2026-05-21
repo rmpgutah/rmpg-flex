@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { Video } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { BodyCamVideo, VideoClassification, VideoRetention } from '../types';
 
 export interface BodyCamVideoEditData {
@@ -51,8 +51,18 @@ const EMPTY: BodyCamVideoEditData = {
 };
 
 export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmitting }: Props) {
-  const [form, setForm] = useState<BodyCamVideoEditData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<BodyCamVideoEditData>({
+    storageKey: 'rmpg_video_edit_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && video) {
@@ -65,7 +75,7 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
         notes: video.notes || '',
       };
       setForm(init);
-      snapshot(init);
+      snapshot();
     }
   }, [isOpen, video, snapshot]);
 
@@ -88,6 +98,8 @@ export default function VideoEditModal({ isOpen, onClose, onSave, video, isSubmi
       submitLabel="Save Changes"
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
       maxWidth="max-w-lg"
     >
       {/* Title */}

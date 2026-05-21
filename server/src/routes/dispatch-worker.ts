@@ -9,6 +9,7 @@ import { Hono } from 'hono';
 import type { Env } from '../worker';
 import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken, requireRole } from '../worker-middleware/auth';
+import { auditLog } from '../worker-middleware/auditLogger';
 import { D1Db, paramStr, paramNum } from '../worker-middleware/d1Helpers';
 import { localNow } from '../worker-middleware/timeUtils';
 
@@ -299,6 +300,12 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
       `).run(unit.id, user.userId, pt.lat, pt.lng, pt.accuracy, pt.heading, pt.speed, unit.status, unit.call_sign, 'browser_desktop', pt.timestamp);
     }
 
+    // Broadcast GPS update via WebSocket
+    try {
+      const { broadcastUnitUpdate } = await import('../worker-middleware/websocket');
+      broadcastUnitUpdate({ action: 'gps_update', unit_id: unit.id, call_sign: unit.call_sign, latitude: latest.lat, longitude: latest.lng, heading: latest.heading, speed: latest.speed, status: unit.status, gps_updated_at: localNow() });
+    } catch { /* ws module may not be available */ }
+
     return c.json({ ok: true, unit_id: unit.id, call_sign: unit.call_sign, inserted: validPoints.length });
   });
 
@@ -471,6 +478,43 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     });
   });
 
+  // GET /api/dispatch/stats - Full dispatch stats (from aggregates.ts)
+  api.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+
+    const [callsByStatus, callsByPriority, unitsByStatus, activeCalls, todayTotal, avgResponseTime, pendingCalls, oldestPending, avgDispatchDelay, onHoldCount, p1Today, resolvedToday, responseByPriority] = await Promise.all([
+      db.prepare("SELECT status, COUNT(*) as count FROM calls_for_service WHERE DATE(created_at) = DATE('now') GROUP BY status").all(),
+      db.prepare("SELECT priority, COUNT(*) as count FROM calls_for_service WHERE DATE(created_at) = DATE('now') GROUP BY priority").all(),
+      db.prepare('SELECT status, COUNT(*) as count FROM units GROUP BY status').all(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE DATE(created_at) = DATE('now')").get(),
+      db.prepare("SELECT AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_minutes FROM calls_for_service WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now')").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'pending'").get(),
+      db.prepare("SELECT ROUND((julianday('now') - julianday(created_at)) * 24 * 60, 1) as age_minutes FROM calls_for_service WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1").get(),
+      db.prepare("SELECT ROUND(AVG((julianday(dispatched_at) - julianday(created_at)) * 24 * 60), 1) as avg_minutes FROM calls_for_service WHERE dispatched_at IS NOT NULL AND DATE(created_at) = DATE('now') AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 > 0 AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 < 720").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'on_hold'").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE priority = 'P1' AND DATE(created_at) = DATE('now')").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status IN ('cleared', 'closed') AND DATE(created_at) = DATE('now')").get(),
+      db.prepare("SELECT priority, ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as avg_minutes, COUNT(*) as count FROM calls_for_service WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now') AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 > 0 AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 < 720 GROUP BY priority").all(),
+    ]);
+
+    return c.json({
+      activeCalls: (activeCalls as any)?.count ?? 0,
+      todayTotal: (todayTotal as any)?.count ?? 0,
+      avgResponseMinutes: (avgResponseTime as any)?.avg_minutes ? Math.round((avgResponseTime as any).avg_minutes * 10) / 10 : null,
+      callsByStatus,
+      callsByPriority,
+      unitsByStatus,
+      pendingCalls: (pendingCalls as any)?.count || 0,
+      oldestPendingMinutes: (oldestPending as any)?.age_minutes || null,
+      avgDispatchDelayMinutes: (avgDispatchDelay as any)?.avg_minutes || null,
+      onHoldCalls: (onHoldCount as any)?.count || 0,
+      p1CallsToday: (p1Today as any)?.count || 0,
+      resolvedToday: (resolvedToday as any)?.count || 0,
+      responseByPriority,
+    });
+  });
+
   // ═══════════════════════════════════════════════════════════
   // GEOGRAPHY
   // ═══════════════════════════════════════════════════════════
@@ -546,8 +590,323 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
   // GET /api/dispatch/geography/codes - 10-codes / signal codes
   api.get('/geography/codes', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
-    const codes = await db.prepare('SELECT * FROM dispatch_codes ORDER BY code').all();
+    const { category, search } = c.req.query();
+    let query = 'SELECT * FROM dispatch_codes WHERE 1=1';
+    const params: any[] = [];
+    if (category && category !== 'all') { query += ' AND category = ?'; params.push(category); }
+    if (search) { const s = `%${search}%`; query += ' AND (code LIKE ? OR description LIKE ?)'; params.push(s, s); }
+    query += ' ORDER BY sort_order, code';
+    const codes = await db.prepare(query).all(...params);
     return c.json(codes);
+  });
+
+  // GET /api/dispatch/geography/codes/lookup/:code
+  api.get('/geography/codes/lookup/:code', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const code = c.req.param('code');
+    const result = await db.prepare('SELECT * FROM dispatch_codes WHERE code = ?').get(code);
+    if (!result) return c.json({ found: false });
+    return c.json({ found: true, ...(result as object) });
+  });
+
+  // POST /api/dispatch/geography/areas
+  api.post('/geography/areas', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { area_code, area_name, color, description, commander, notes, sort_order } = body;
+    if (!area_code || !area_name) return c.json({ error: 'area_code and area_name required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_areas (area_code, area_name, color, description, commander, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?)').run(area_code, area_name, color || '#6366f1', description, commander, notes, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Area code already exists' }, 409);
+      return c.json({ error: 'Failed to create area' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/areas/:id
+  api.put('/geography/areas/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_areas WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Area not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['area_code', 'area_name', 'color', 'description', 'commander', 'notes', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_areas SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/areas/:id
+  api.delete('/geography/areas/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('UPDATE dispatch_sectors SET area_id = NULL WHERE area_id = ?').run(id);
+    await db.prepare('DELETE FROM dispatch_areas WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // POST /api/dispatch/geography/sectors
+  api.post('/geography/sectors', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const sector_code = body.sector_code || '';
+    const sector_name = body.sector_name || '';
+    const { area_id, color, description, supervisor, radio_channel, notes, sort_order } = body;
+    if (!sector_code || !sector_name) return c.json({ error: 'sector_code and sector_name required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_sectors (sector_code, sector_name, area_id, color, description, supervisor, radio_channel, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(sector_code, sector_name, area_id || null, color || '#888888', description, supervisor, radio_channel, notes, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Sector code already exists' }, 409);
+      return c.json({ error: 'Failed to create sector' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/sectors/:id
+  api.put('/geography/sectors/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_sectors WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Sector not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['sector_code', 'sector_name', 'area_id', 'color', 'description', 'supervisor', 'radio_channel', 'notes', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_sectors SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/sectors/:id
+  api.delete('/geography/sectors/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('UPDATE dispatch_zones SET sector_id = NULL WHERE sector_id = ?').run(id);
+    await db.prepare('DELETE FROM dispatch_sectors WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // POST /api/dispatch/geography/zones
+  api.post('/geography/zones', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { zone_code, zone_name, sector_id, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order } = body;
+    if (!zone_code || !zone_name) return c.json({ error: 'zone_code and zone_name required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_zones (zone_code, zone_name, sector_id, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(zone_code, zone_name, sector_id || null, color, description, primary_unit, backup_unit, radio_channel, hazard_notes, notes, population_estimate, sq_miles, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Zone code already exists' }, 409);
+      return c.json({ error: 'Failed to create zone' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/zones/:id
+  api.put('/geography/zones/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_zones WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Zone not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['zone_code', 'zone_name', 'sector_id', 'color', 'description', 'primary_unit', 'backup_unit', 'radio_channel', 'hazard_notes', 'notes', 'population_estimate', 'sq_miles', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_zones SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/zones/:id
+  api.delete('/geography/zones/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('UPDATE dispatch_beats SET zone_id = NULL WHERE zone_id = ?').run(id);
+    await db.prepare('DELETE FROM dispatch_zones WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // POST /api/dispatch/geography/beats
+  api.post('/geography/beats', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, premise_alerts, patrol_frequency, priority_modifier, population_estimate, sq_miles, notes, sort_order } = body;
+    if (!beat_code || !beat_name) return c.json({ error: 'beat_code and beat_name required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_beats (beat_code, beat_name, beat_descriptor, zone_id, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, premise_alerts, patrol_frequency, priority_modifier, population_estimate, sq_miles, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(beat_code, beat_name, beat_descriptor, zone_id || null, dispatch_code, color, assigned_unit, backup_unit, hazard_notes, premise_alerts || null, patrol_frequency || 'normal', priority_modifier || 0, population_estimate, sq_miles, notes, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Beat code already exists' }, 409);
+      return c.json({ error: 'Failed to create beat' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/beats/:id
+  api.put('/geography/beats/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_beats WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Beat not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['beat_code', 'beat_name', 'beat_descriptor', 'zone_id', 'dispatch_code', 'color', 'assigned_unit', 'backup_unit', 'hazard_notes', 'premise_alerts', 'patrol_frequency', 'priority_modifier', 'population_estimate', 'sq_miles', 'notes', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_beats SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/beats/:id
+  api.delete('/geography/beats/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('DELETE FROM dispatch_beats WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // POST /api/dispatch/geography/codes
+  api.post('/geography/codes', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { code, description, category, priority, color, requires_backup, officer_safety, ems_needed, fire_needed, notes, sort_order } = body;
+    if (!code || !description) return c.json({ error: 'code and description required' }, 400);
+    try {
+      const result = await db.prepare('INSERT INTO dispatch_codes (code, description, category, priority, color, requires_backup, officer_safety, ems_needed, fire_needed, notes, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(code, description, category || 'general', priority || 'P3', color || '#6b7280', requires_backup ? 1 : 0, officer_safety ? 1 : 0, ems_needed ? 1 : 0, fire_needed ? 1 : 0, notes, sort_order || 0);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Dispatch code already exists' }, 409);
+      return c.json({ error: 'Failed to create dispatch code' }, 500);
+    }
+  });
+
+  // PUT /api/dispatch/geography/codes/:id
+  api.put('/geography/codes/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM dispatch_codes WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Dispatch code not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['code', 'description', 'category', 'priority', 'color', 'requires_backup', 'officer_safety', 'ems_needed', 'fire_needed', 'notes', 'sort_order', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) { if (body[f] !== undefined) { updates.push(`${f} = ?`); values.push(body[f]); } }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE dispatch_codes SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/codes/:id
+  api.delete('/geography/codes/:id', requireRole('admin'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('DELETE FROM dispatch_codes WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // GET /api/dispatch/geography/premise-alerts
+  api.get('/geography/premise-alerts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const { address, lat, lng, radius } = c.req.query();
+    let query = 'SELECT * FROM premise_alerts WHERE active = 1';
+    const params: any[] = [];
+    if (address) { const s = `%${address}%`; query += " AND address LIKE ? ESCAPE '\\'"; params.push(s); }
+    else if (lat && lng) {
+      const r = radius ? parseFloat(radius) : 0.005;
+      query += ' AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ?';
+      params.push(parseFloat(lat) - r, parseFloat(lat) + r, parseFloat(lng) - r, parseFloat(lng) + r);
+    }
+    query += " AND (expires_at IS NULL OR expires_at > datetime('now')) ORDER BY alert_level DESC, created_at DESC LIMIT 100";
+    const alerts = await db.prepare(query).all(...params);
+    return c.json(alerts);
+  });
+
+  // POST /api/dispatch/geography/premise-alerts
+  api.post('/geography/premise-alerts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const { address, latitude, longitude, alert_type, alert_level, title, description, flags, expires_at } = body;
+    if (!address || !title) return c.json({ error: 'address and title required' }, 400);
+    const userId = c.get('user')?.userId;
+    try {
+      const result = await db.prepare('INSERT INTO premise_alerts (address, latitude, longitude, alert_type, alert_level, title, description, flags, expires_at, created_by) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(address, latitude, longitude, alert_type || 'caution', alert_level || 'info', title, description, JSON.stringify(flags || []), expires_at, userId);
+      return c.json({ success: true, id: result.meta?.last_row_id });
+    } catch { return c.json({ error: 'Failed to create premise alert' }, 500); }
+  });
+
+  // PUT /api/dispatch/geography/premise-alerts/:id
+  api.put('/geography/premise-alerts/:id', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    const old = await db.prepare('SELECT * FROM premise_alerts WHERE id = ?').get(id);
+    if (!old) return c.json({ error: 'Premise alert not found' }, 404);
+    const body = await c.req.json();
+    const fields = ['address', 'latitude', 'longitude', 'alert_type', 'alert_level', 'title', 'description', 'flags', 'expires_at', 'active'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (body[f] !== undefined) {
+        updates.push(`${f} = ?`);
+        values.push(f === 'flags' ? JSON.stringify(body[f]) : body[f]);
+      }
+    }
+    if (updates.length === 0) return c.json({ error: 'No fields to update' }, 400);
+    updates.push('updated_at = ?'); values.push(new Date().toISOString().slice(0, 19));
+    values.push(id);
+    await db.prepare(`UPDATE premise_alerts SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    return c.json({ success: true });
+  });
+
+  // DELETE /api/dispatch/geography/premise-alerts/:id
+  api.delete('/geography/premise-alerts/:id', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = parseInt(c.req.param('id') || '0', 10);
+    await db.prepare('DELETE FROM premise_alerts WHERE id = ?').run(id);
+    return c.json({ success: true });
+  });
+
+  // GET /api/dispatch/geography/stats
+  api.get('/geography/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const days = Math.max(1, Math.min(365, parseInt(c.req.query().days || '30', 10) || 30));
+    const cutoff = new Date(Date.now() - days * 86400000).toISOString();
+    try {
+      const sectionStats = await db.prepare(`SELECT c.sector_id as code, COALESCE(ds.sector_name, c.sector_id) as name, COUNT(*) as total_calls, SUM(CASE WHEN c.priority = 'P1' THEN 1 ELSE 0 END) as p1_calls, SUM(CASE WHEN c.priority = 'P2' THEN 1 ELSE 0 END) as p2_calls, SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls FROM calls_for_service c LEFT JOIN dispatch_sectors ds ON ds.sector_code = c.sector_id WHERE c.created_at >= ? AND c.sector_id IS NOT NULL AND c.sector_id != '' GROUP BY c.sector_id ORDER BY total_calls DESC`).all(cutoff);
+      const zoneStats = await db.prepare(`SELECT c.zone_id as code, COALESCE(dz.zone_name, c.zone_id) as name, c.sector_id, COUNT(*) as total_calls, SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls FROM calls_for_service c LEFT JOIN dispatch_zones dz ON dz.zone_code = c.zone_id WHERE c.created_at >= ? AND c.zone_id IS NOT NULL AND c.zone_id != '' GROUP BY c.zone_id ORDER BY total_calls DESC`).all(cutoff);
+      const beatStats = await db.prepare(`SELECT c.beat_id as code, COALESCE(db2.beat_name, c.beat_id) as name, c.zone_id, COUNT(*) as total_calls, SUM(CASE WHEN c.status NOT IN ('closed','archived','cancelled') THEN 1 ELSE 0 END) as active_calls FROM calls_for_service c LEFT JOIN dispatch_beats db2 ON db2.beat_code = c.beat_id WHERE c.created_at >= ? AND c.beat_id IS NOT NULL AND c.beat_id != '' GROUP BY c.beat_id ORDER BY total_calls DESC`).all(cutoff);
+      return c.json({ days, section_stats: sectionStats, zone_stats: zoneStats, beat_stats: beatStats, top_types: [] });
+    } catch { return c.json({ days, section_stats: [], zone_stats: [], beat_stats: [], top_types: [] }); }
+  });
+
+  // GET /api/dispatch/geography/identify
+  api.get('/geography/identify', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    const lat = parseFloat(c.req.query().lat || '0');
+    const lng = parseFloat(c.req.query().lng || '0');
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ error: 'Valid lat and lng required' }, 400);
+    try {
+      const beatRecord = await db.prepare(`SELECT b.*, z.zone_code, z.zone_name, s.sector_code, s.sector_name, a.area_code, a.area_name FROM dispatch_beats b LEFT JOIN dispatch_zones z ON z.id = b.zone_id LEFT JOIN dispatch_sectors s ON s.id = z.sector_id LEFT JOIN dispatch_areas a ON a.id = s.area_id WHERE b.beat_code LIKE ? LIMIT 1`).get(`%${Math.floor(lat * 100)}%`);
+      const alerts = await db.prepare(`SELECT * FROM premise_alerts WHERE active = 1 AND (expires_at IS NULL OR expires_at > datetime('now')) AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ? ORDER BY alert_level DESC LIMIT 5`).all(lat - 0.003, lat + 0.003, lng - 0.003, lng + 0.003);
+      if (beatRecord) {
+        return c.json({ found: true, area: { code: (beatRecord as any).area_code, name: (beatRecord as any).area_name }, sector: { code: (beatRecord as any).sector_code, name: (beatRecord as any).sector_name }, zone: { code: (beatRecord as any).zone_code, name: (beatRecord as any).zone_name }, beat: { code: (beatRecord as any).beat_code, name: (beatRecord as any).beat_name, descriptor: (beatRecord as any).beat_descriptor, dispatch_code: (beatRecord as any).dispatch_code, assigned_unit: (beatRecord as any).assigned_unit, hazard_notes: (beatRecord as any).hazard_notes }, premise_alerts: alerts });
+      }
+      return c.json({ found: false, premise_alerts: alerts });
+    } catch { return c.json({ found: false }); }
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -637,48 +996,193 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     return c.json(rows);
   });
 
-  // GET /api/dispatch/codes - 10-codes / signal codes (alias for /geography/codes)
-  api.get('/codes', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+  // ═══════════════════════════════════════════════════════════
+  // WRITE ROUTES
+  // ═══════════════════════════════════════════════════════════
+
+  // POST /api/dispatch/calls - Create a new call
+  api.post('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
-    try {
-      const codes = await db.prepare('SELECT * FROM dispatch_codes ORDER BY code').all();
-      return c.json(codes);
-    } catch { return c.json([]); }
+    const user = c.get('user');
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+
+    const {
+      incident_type, priority, location_address,
+      latitude, longitude, narrative, caller_name, caller_phone, caller_address,
+      description, property_id, client_id, reported_by, initial_notes,
+      created_at: customCreatedAt, status: customStatus,
+    } = body;
+
+    if (!incident_type || !priority || !location_address) {
+      return c.json({ error: 'incident_type, priority, and location_address are required', code: 'MISSING_FIELDS' }, 400);
+    }
+
+    const normalizedPriority = String(priority).toUpperCase();
+    if (!['P1', 'P2', 'P3', 'P4'].includes(normalizedPriority)) {
+      return c.json({ error: 'Invalid priority. Must be P1, P2, P3, or P4', code: 'INVALID_PRIORITY' }, 400);
+    }
+
+    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+    const status = customStatus && validStatuses.includes(customStatus) ? customStatus : 'pending';
+
+    const now = localNow();
+
+    // Generate call number: CFS-YY-NNNNN
+    const yy = String(new Date().getFullYear()).slice(-2);
+    const prefix = `${yy}-CFS`;
+    const lastRow = await db.prepare(
+      `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
+    ).get(`${prefix}%`) as any;
+    let nextNum = 1;
+    if (lastRow) {
+      const match = (lastRow.call_number || '').match(/\d{2}-CFS(\d{5})/);
+      if (match) nextNum = parseInt(match[1], 10) + 1;
+    }
+    const callNumber = `${prefix}${String(nextNum).padStart(5, '0')}`;
+
+    const result = await db.prepare(`
+      INSERT INTO calls_for_service (
+        call_number, incident_type, priority, status,
+        location_address, latitude, longitude,
+        narrative, caller_name, caller_phone, caller_address,
+        description, property_id, client_id, reported_by, initial_notes,
+        created_by, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      callNumber,
+      String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_'),
+      normalizedPriority,
+      status,
+      String(location_address || ''),
+      latitude != null ? Number(latitude) : null,
+      longitude != null ? Number(longitude) : null,
+      narrative || null,
+      caller_name || null,
+      caller_phone || null,
+      caller_address || null,
+      description || null,
+      property_id != null ? Number(property_id) : null,
+      client_id != null ? Number(client_id) : null,
+      reported_by || null,
+      initial_notes || null,
+      user.userId,
+      customCreatedAt || now,
+    );
+
+    const callId = result.meta.last_row_id;
+    const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+
+    await auditLog(db, c, 'CREATE', 'call', callId!, `Created call ${callNumber}`);
+
+    return c.json(call, 201);
   });
 
-  // GET /api/dispatch/dashboard - Dispatch dashboard summary
-  api.get('/dashboard', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+  // POST /api/dispatch/calls/:id/assign-unit - Assign a unit to a call
+  api.post('/calls/:id/assign-unit', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
+    const user = c.get('user');
+    const callId = paramNum(c.req.param('id'));
+    if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+    const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+
+    const { unit_id } = body;
+    if (!unit_id) return c.json({ error: 'unit_id is required', code: 'UNITID_IS_REQUIRED' }, 400);
+
+    const unit = await db.prepare('SELECT * FROM units WHERE id = ?').get(Number(unit_id)) as any;
+    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+
+    if (['off_duty', 'out_of_service'].includes(unit.status)) {
+      return c.json({ error: `Unit ${unit.call_sign} is ${unit.status.replace(/_/g, ' ')} and cannot be assigned`, code: 'UNIT_UNAVAILABLE' }, 409);
+    }
+
+    const now = localNow();
+    let currentUnits: number[] = [];
     try {
-      const [activeCalls, pendingCalls, activeUnits, p1Calls, p2Calls] = await Promise.all([
-        db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status IN ('dispatched','enroute','onscene')").get(),
-        db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'pending'").get(),
-        db.prepare("SELECT COUNT(*) as count FROM units WHERE status != 'offline'").get(),
-        db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE priority = 'P1' AND status NOT IN ('cleared','closed','archived','cancelled')").get(),
-        db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE priority = 'P2' AND status NOT IN ('cleared','closed','archived','cancelled')").get(),
-      ]);
-      return c.json({
-        active_calls: (activeCalls as any)?.count || 0,
-        pending_calls: (pendingCalls as any)?.count || 0,
-        active_units: (activeUnits as any)?.count || 0,
-        p1_calls: (p1Calls as any)?.count || 0,
-        p2_calls: (p2Calls as any)?.count || 0,
-      });
-    } catch { return c.json({ active_calls: 0, pending_calls: 0, active_units: 0, p1_calls: 0, p2_calls: 0 }); }
+      const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+      currentUnits = (Array.isArray(parsed) ? parsed : []).filter((n: any) => typeof n === 'number' && !isNaN(n));
+    } catch { /* ignore parse errors */ }
+
+    const unitIdNum = Number(unit_id);
+    if (isNaN(unitIdNum)) return c.json({ error: 'Invalid unit_id', code: 'INVALID_UNITID' }, 400);
+    if (!currentUnits.includes(unitIdNum)) currentUnits.push(unitIdNum);
+
+    await db.prepare(`
+      UPDATE calls_for_service SET
+        status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
+        assigned_unit_ids = ?,
+        dispatched_at = COALESCE(dispatched_at, ?),
+        dispatcher_id = COALESCE(dispatcher_id, ?)
+      WHERE id = ?
+    `).run(JSON.stringify(currentUnits), now, user.userId, callId);
+
+    await db.prepare(`
+      UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
+    `).run(callId, now, unit_id);
+
+    await auditLog(db, c, 'UNIT_ASSIGNED', 'call', callId, `Assigned ${unit.call_sign} to ${call.call_number}`);
+
+    const updated = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+    return c.json(updated);
   });
 
-  // GET /api/dispatch/messages - Dispatch messages
-  api.get('/messages', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+  // POST /api/dispatch/calls/:id/status - Update call status
+  api.post('/calls/:id/status', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
-    try {
-      const limit = Math.min(1000, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
-      const rows = await db.prepare(`
-        SELECT m.*, u.full_name as sender_name FROM dispatch_messages m
-        LEFT JOIN users u ON m.sender_id = u.id
-        ORDER BY m.created_at DESC LIMIT ?
-      `).all(limit);
-      return c.json(rows);
-    } catch { return c.json([]); }
+    const user = c.get('user');
+    const callId = paramNum(c.req.param('id'));
+    if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+    const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    let body: any;
+    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+
+    const { status, notes, disposition } = body;
+    if (!status) return c.json({ error: 'status is required', code: 'STATUS_IS_REQUIRED' }, 400);
+
+    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
+    if (!validStatuses.includes(status)) {
+      return c.json({ error: 'Invalid status', code: 'INVALID_STATUS', valid: validStatuses }, 400);
+    }
+
+    const now = localNow();
+    const timestampField: Record<string, string> = {
+      dispatched: 'dispatched_at', enroute: 'enroute_at', onscene: 'onscene_at',
+      cleared: 'cleared_at', closed: 'closed_at', archived: 'archived_at',
+    };
+    const tsField = timestampField[status];
+
+    let updateQuery = `UPDATE calls_for_service SET status = ?, status_changed_at = ?`;
+    const updateParams: any[] = [status, now];
+
+    if (tsField) {
+      updateQuery += `, ${tsField} = COALESCE(${tsField}, ?)`;
+      updateParams.push(now);
+    }
+    if (notes) {
+      updateQuery += `, notes = ?`;
+      updateParams.push(notes);
+    }
+    if (disposition) {
+      updateQuery += `, disposition = ?`;
+      updateParams.push(disposition);
+    }
+
+    updateQuery += ` WHERE id = ?`;
+    updateParams.push(callId);
+
+    await db.prepare(updateQuery).run(...updateParams);
+    await auditLog(db, c, 'STATUS_CHANGE', 'call', callId, `Status changed to ${status} on ${call.call_number}`);
+
+    const updated = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+    return c.json(updated);
   });
 
   // Mount all dispatch routes under /dispatch

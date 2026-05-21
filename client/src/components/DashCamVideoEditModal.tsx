@@ -8,7 +8,7 @@
 import React, { useState, useEffect } from 'react';
 import { Car } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { DashCamVideo, VideoClassification } from '../types';
 
 export interface DashCamVideoEditData {
@@ -49,8 +49,18 @@ const EMPTY: DashCamVideoEditData = {
 };
 
 export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, isSubmitting }: Props) {
-  const [form, setForm] = useState<DashCamVideoEditData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<DashCamVideoEditData>({
+    storageKey: 'rmpg_dashcam_video_edit_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && video) {
@@ -65,7 +75,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         notes: video.notes || '',
       };
       setForm(init);
-      snapshot(init);
+      snapshot();
     }
   }, [isOpen, video, snapshot]);
 
@@ -88,6 +98,8 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       submitLabel="Save Changes"
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
       maxWidth="max-w-lg"
     >
       {/* Title */}

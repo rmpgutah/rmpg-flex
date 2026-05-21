@@ -1,6 +1,6 @@
 // ============================================================
 // RMPG Flex — Mapbox GL JS Loader & Configuration
-// Replaces Google Maps loader — Mapbox GL JS is an npm package,
+// Mapbox GL JS loader — loaded as an npm package,
 // loaded directly via import (no script tag injection needed).
 //
 // Designed for vehicle/mobile use on intermittent WiFi/cellular:
@@ -128,7 +128,7 @@ export function monitorTileLoading(
     recoveryIndicator.style.display = 'block';
     tilesLoaded = false;
     startStallTimer();
-    map.redraw();
+    map.triggerRepaint();
   };
   window.addEventListener('online', onOnline);
 

@@ -11,7 +11,7 @@ import Stroke from 'ol/style/Stroke';
 import Fill from 'ol/style/Fill';
 
 /**
- * Subtle Google-Maps-style click ripple on /map-v2.
+ * Subtle click ripple animation on /map-v2.
  *
  * On every map click that isn't on a feature, render an expanding
  * ring at the click coordinate that fades out over 600ms. Helps
@@ -21,7 +21,7 @@ import Fill from 'ol/style/Fill';
  * Skipped when clicking ON a feature (to avoid masking the popup).
  */
 export function useOlClickRipple(map: OlMap | null): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
 
   useEffect(() => {

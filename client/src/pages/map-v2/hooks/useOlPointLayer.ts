@@ -58,7 +58,7 @@ export interface OlPointLayerOptions<T> {
  * useOlFeaturePopup hook surfaces details on click.
  */
 export function useOlPointLayer<T>(map: OlMap | null, opts: OlPointLayerOptions<T>): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const clusterEnabled = !!opts.cluster;
   const clusterDistance = (typeof opts.cluster === 'object' && opts.cluster?.distance) || 50;

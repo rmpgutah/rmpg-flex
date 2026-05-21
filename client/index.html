@@ -34,18 +34,15 @@
     <!--
       CSP Note: 'unsafe-inline' is required in script-src and style-src for:
       1. Vite dev mode injects inline scripts/styles for HMR
-      2. Google Maps API dynamically injects inline scripts and styles
-      3. Inline styles used in Google Maps InfoWindow content
+      2. Mapbox GL JS popup InfoWindow inline styles
       TODO (production hardening): Replace 'unsafe-inline' with nonce-based CSP
       by generating a per-request nonce on the server and injecting it into both
       the CSP header and all inline <script>/<style> tags. This requires server-side
-      rendering of index.html (not static serving). Google Maps inline scripts
-      would still need 'unsafe-inline' or a hash-based approach.
+      rendering of index.html (not static serving).
     -->
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://*.basemaps.cartocdn.com https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com https://*.google.com https://*.googleusercontent.com https://*.arcgis.com https://js.arcgis.com; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' wss://rmpgutah.us https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com; frame-src 'self' blob: https://*.arcgis.com; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; frame-ancestors 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https://api.mapbox.com https://tiles.mapbox.com https://*.basemaps.cartocdn.com https://unpkg.com https://*.arcgis.com https://js.arcgis.com; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' wss://rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com; frame-src 'self' blob: https://*.arcgis.com; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; frame-ancestors 'self'" />
     <link rel="manifest" href="/manifest.json" />
     <title>RMPG Flex - Rocky Mountain Protective Group</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   </head>
   <body class="bg-[#0a0a0a] text-white">
     <div id="root">

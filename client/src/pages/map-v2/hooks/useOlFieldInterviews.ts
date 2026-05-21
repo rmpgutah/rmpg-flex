@@ -52,7 +52,7 @@ export function useOlFieldInterviews(
   map: OlMap | null,
   opts: { visible: boolean; days?: number },
 ): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const days = opts.days ?? 30;
 

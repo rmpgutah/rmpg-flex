@@ -13,8 +13,8 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
-import { loadGoogleMaps, DARK_MAP_STYLE, onOnlineRetryMaps } from '../utils/googleMapsLoader';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
+import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import ServeJobCard from '../components/serve/ServeJobCard';
 import ServeAttemptModal from '../components/serve/ServeAttemptModal';
 import ServeRoutePlanner from '../components/serve/ServeRoutePlanner';
@@ -170,10 +170,10 @@ export default function ServePage() {
 
   // ── Map state ──────────────────────────────────────────────────────
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.Marker[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const routeSourceRef = useRef<string | null>(null);
   const [mapReady, setMapReady] = useState(false);
 
   // ── Route state ────────────────────────────────────────────────────
@@ -287,7 +287,7 @@ export default function ServePage() {
     if (!job) return;
     if (job.recipient_lat != null && job.recipient_lng != null) {
       window.open(
-        `https://www.google.com/maps/dir/?api=1&destination=${job.recipient_lat},${job.recipient_lng}`,
+        `https://www.openstreetmap.org/directions?engine=graphhopper_car&to=${job.recipient_lat},${job.recipient_lng}`,
         '_blank',
         'noopener,noreferrer',
       );
@@ -295,7 +295,7 @@ export default function ServePage() {
       const addr = encodeURIComponent(
         `${job.recipient_address} ${job.recipient_city || ''} ${job.recipient_state || ''} ${job.recipient_zip || ''}`,
       );
-      window.open(`https://www.google.com/maps/dir/?api=1&destination=${addr}`, '_blank', 'noopener,noreferrer');
+      window.open(`https://www.openstreetmap.org/search?query=${addr}`, '_blank', 'noopener,noreferrer');
     }
   }, [jobs]);
 
@@ -482,42 +482,42 @@ export default function ServePage() {
     if (activeTab !== 'Map') return;
 
     let cancelled = false;
-    let unsubOnline = () => {};
 
     const initMap = () => {
       if (cancelled || !mapContainerRef.current) return;
 
-      // If map already exists, just update markers
       if (mapRef.current) {
         updateMapMarkers();
         return;
       }
 
-      const center = { lat: 40.7608, lng: -111.891 }; // SLC default
-      const map = new google.maps.Map(mapContainerRef.current, {
+      const center: [number, number] = [-111.891, 40.7608]; // SLC default [lng, lat]
+      const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: MAPBOX_STYLE_DARK,
         center,
         zoom: 11,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        mapTypeControl: false,
-        streetViewControl: false,
-        fullscreenControl: false,
+        attributionControl: false,
       });
 
+      map.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
       mapRef.current = map;
-      infoWindowRef.current = new google.maps.InfoWindow();
-      setMapReady(true);
+      popupRef.current = new mapboxgl.Popup({ offset: 25, closeButton: false });
+
+      map.on('load', () => {
+        if (cancelled) return;
+        setMapReady(true);
+      });
     };
 
     (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
+        const token = await getMapboxAccessToken();
         if (cancelled) return;
-        await loadGoogleMaps(apiKey);
+        initMapbox(token);
         if (cancelled) return;
         initMap();
-        unsubOnline = onOnlineRetryMaps(apiKey, initMap);
       } catch {
         if (!cancelled) setMapReady(false);
       }
@@ -525,7 +525,6 @@ export default function ServePage() {
 
     return () => {
       cancelled = true;
-      unsubOnline();
     };
   }, [activeTab]);
 
@@ -534,50 +533,47 @@ export default function ServePage() {
     if (!mapRef.current) return;
 
     // Clear old markers
-    markersRef.current.forEach(m => m.setMap(null));
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    // Clear old polyline
-    if (polylineRef.current) {
-      polylineRef.current.setMap(null);
-      polylineRef.current = null;
+    // Clear old route source layer
+    if (routeSourceRef.current) {
+      try {
+        if (mapRef.current.getLayer(routeSourceRef.current)) mapRef.current.removeLayer(routeSourceRef.current);
+        if (mapRef.current.getSource(routeSourceRef.current)) mapRef.current.removeSource(routeSourceRef.current);
+      } catch { /* layer/source may not exist */ }
+      routeSourceRef.current = null;
     }
 
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new mapboxgl.LngLatBounds();
     let hasMarkers = false;
 
     jobs.forEach(job => {
       if (job.recipient_lat == null || job.recipient_lng == null) return;
       hasMarkers = true;
-      const pos = { lat: job.recipient_lat, lng: job.recipient_lng };
-      bounds.extend(pos);
+      const lngLat: [number, number] = [job.recipient_lng, job.recipient_lat];
+      bounds.extend(lngLat);
 
       const color = MARKER_COLORS[job.status] || MARKER_COLORS.pending;
-      const marker = new google.maps.Marker({
-        position: pos,
-        map: mapRef.current!,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          fillColor: color,
-          fillOpacity: 1,
-          strokeColor: '#ffffff',
-          strokeWeight: 1.5,
-          scale: 10,
-        },
-        title: job.recipient_name,
-      });
+      const el = document.createElement('div');
+      el.style.cssText = `width:12px;height:12px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,0.4);cursor:pointer;`;
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+        .setLngLat(lngLat)
+        .addTo(mapRef.current!);
 
-      marker.addListener('click', () => {
+      // Popup on click
+      el.addEventListener('click', () => {
         const fullAddr = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
           .filter(Boolean).join(', ');
-        infoWindowRef.current?.setContent(`
-          <div style="color:#fff;background:#141414;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
-            <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
-            <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
-            <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
-          </div>
-        `);
-        infoWindowRef.current?.open(mapRef.current!, marker);
+        if (popupRef.current) {
+          popupRef.current.setLngLat(lngLat).setHTML(`
+            <div style="color:#fff;background:#141414;padding:8px 12px;border-radius:4px;min-width:180px;font-family:system-ui;">
+              <div style="font-weight:600;font-size:13px;margin-bottom:4px;">${job.recipient_name}</div>
+              <div style="font-size:11px;color:#8a9aaa;">${fullAddr || 'No address'}</div>
+              <div style="font-size:10px;color:#6b7280;margin-top:4px;text-transform:uppercase;">${job.status.replace(/_/g, ' ')} &middot; ${(job.document_type || '').replace(/_/g, ' ')}</div>
+            </div>
+          `).addTo(mapRef.current!);
+        }
       });
 
       markersRef.current.push(marker);
@@ -585,25 +581,33 @@ export default function ServePage() {
 
     // Draw polyline if route planned
     if (routeData && routeData.orderedIds.length > 1) {
-      const path = routeData.orderedIds
+      const coords: [number, number][] = routeData.orderedIds
         .map(id => jobs.find(j => j.id === id))
         .filter((j): j is ServeJob => !!j && j.recipient_lat != null && j.recipient_lng != null)
-        .map(j => ({ lat: j.recipient_lat!, lng: j.recipient_lng! }));
+        .map(j => [j.recipient_lng!, j.recipient_lat!]);
 
-      if (path.length > 1) {
-        polylineRef.current = new google.maps.Polyline({
-          path,
-          geodesic: true,
-          strokeColor: '#888888',
-          strokeOpacity: 0.8,
-          strokeWeight: 3,
-          map: mapRef.current,
+      if (coords.length > 1) {
+        const sourceId = 'serve-route-line';
+        routeSourceRef.current = sourceId;
+        mapRef.current.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
+        });
+        mapRef.current.addLayer({
+          id: sourceId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': '#888888',
+            'line-opacity': 0.8,
+            'line-width': 3,
+          },
         });
       }
     }
 
     if (hasMarkers) {
-      mapRef.current.fitBounds(bounds, 60);
+      mapRef.current.fitBounds(bounds, { padding: 60 });
     }
   }, [jobs, routeData]);
 
@@ -959,12 +963,12 @@ export default function ServePage() {
                     </button>
                     <button type="button"
                       onClick={() => {
-                        // Build Google Maps URL with all waypoints
+                        // Build navigation URL with all waypoints
                         const geocoded = routeJobs.filter(j => j.status !== 'served' && j.recipient_lat != null && j.recipient_lng != null);
                         if (geocoded.length === 0) return;
                         const dest = geocoded[geocoded.length - 1];
-                        const waypoints = geocoded.slice(0, -1).map(j => `${j.recipient_lat},${j.recipient_lng}`).join('|');
-                        const url = `https://www.google.com/maps/dir/?api=1&destination=${dest.recipient_lat},${dest.recipient_lng}${waypoints ? `&waypoints=${encodeURIComponent(waypoints)}` : ''}&travelmode=driving`;
+                        const waypoints = geocoded.slice(0, -1).map(j => `${j.recipient_lng},${j.recipient_lat}`).join(';');
+                        const url = `https://www.openstreetmap.org/directions?engine=graphhopper_car&to=${dest.recipient_lat},${dest.recipient_lng}${waypoints ? `&via=${encodeURIComponent(waypoints)}` : ''}`;
                         window.open(url, '_blank', 'noopener,noreferrer');
                       }}
                       className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-400 bg-emerald-900/20 hover:bg-emerald-900/40 border border-emerald-700/40 rounded-[2px] transition-all duration-150 hover:shadow-[0_0_8px_rgba(16,185,129,0.15)] focus:outline-none focus:ring-1 focus:ring-emerald-500/50"

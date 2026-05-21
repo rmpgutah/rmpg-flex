@@ -22,7 +22,7 @@ import { useFormValidation } from '../hooks/useFormValidation';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
-import { getGoogleMapsApiKey } from '../utils/googleMapsApiKey';
+import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -315,9 +315,9 @@ export default function OffenderRegistryPage() {
 
   useEffect(() => {
     let cancelled = false;
-    getGoogleMapsApiKey()
-      .then((apiKey) => {
-        if (!cancelled) setStaticMapApiKey(apiKey);
+    getMapboxAccessToken()
+      .then((token) => {
+        if (!cancelled) setStaticMapApiKey(token);
       })
       .catch(() => {
         if (!cancelled) setStaticMapApiKey('');
@@ -548,7 +548,7 @@ export default function OffenderRegistryPage() {
                   <div className="h-40 bg-[#0c0c0c] relative">
                     {staticMapApiKey ? (
                       <img
-                        src={`https://maps.googleapis.com/maps/api/staticmap?center=${selected.location_lat},${selected.location_lng}&zoom=15&size=600x200&maptype=roadmap&markers=color:red%7C${selected.location_lat},${selected.location_lng}&key=${staticMapApiKey}&style=feature:all|element:geometry|color:0x121212&style=feature:all|element:labels.text.fill|color:0x8a8a8a`}
+                        src={`https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/pin-l+ef4444(${selected.location_lng},${selected.location_lat})/${selected.location_lng},${selected.location_lat},15/600x200?access_token=${staticMapApiKey}`}
                         alt="Ban zone map"
                         className="w-full h-full object-cover"
                         onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}

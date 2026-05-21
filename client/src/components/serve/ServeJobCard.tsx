@@ -346,12 +346,12 @@ export default React.memo(function ServeJobCard({
 
       {/* Action buttons row */}
       <div className="flex items-center border-t border-rmpg-700/40 divide-x divide-rmpg-700/40">
-        {/* Enhancement 49: Google Maps directions link */}
+        {/* Directions link */}
         <button type="button"
-          onClick={(e) => { e.stopPropagation(); window.open(`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(fullAddress)}`, '_blank', 'noopener,noreferrer'); }}
+          onClick={(e) => { e.stopPropagation(); window.open(`https://www.openstreetmap.org/directions?to=${encodeURIComponent(fullAddress)}`, '_blank', 'noopener,noreferrer'); }}
           className="flex-1 flex items-center justify-center gap-1 py-1.5 text-[10px] font-bold text-amber-400 hover:bg-amber-900/30 transition-colors duration-150 focus:outline-none focus:ring-1 focus:ring-[#888888]/50 focus:bg-amber-900/20"
-          title="Open in Google Maps"
-          aria-label={`Open Google Maps to ${job.recipient_name}`}
+          title="Open in Maps"
+          aria-label={`Open Maps to ${job.recipient_name}`}
         >
           <MapPin className="w-3 h-3" />
           Map

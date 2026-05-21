@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CreditCard } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -77,14 +77,24 @@ interface ManualDlEntryModalProps {
 }
 
 export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmitting }: ManualDlEntryModalProps) {
-  const [form, setForm] = useState<ManualDlFormData>({ ...EMPTY_FORM });
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<ManualDlFormData>({
+    storageKey: 'rmpg_manual_dl_entry_form',
+    defaultValue: { ...EMPTY_FORM },
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen) {
       const initial = { ...EMPTY_FORM };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     }
   }, [isOpen, snapshot]);
 
@@ -107,6 +117,8 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
       submitLabel="Save DL Record"
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
       maxWidth="max-w-3xl"
     >
       {/* License Information */}

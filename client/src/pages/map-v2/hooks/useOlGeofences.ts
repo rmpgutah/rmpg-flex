@@ -66,7 +66,7 @@ function parsePolygonCoords(coordStr: string | undefined): { lat: number; lng: n
  * z=15 (above beats at 10, below tactical circles at 60).
  */
 export function useOlGeofences(map: OlMap | null, opts: { visible: boolean }): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
 
   useEffect(() => {

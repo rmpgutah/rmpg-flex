@@ -552,5 +552,265 @@ export function mountAdminRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
   });
 
   // Mount all admin routes under /admin
+  // ═══════════════════════════════════════════════════════════
+  // THIRD-PARTY API KEYS
+  // ═══════════════════════════════════════════════════════════
+
+  const ALLOWED_THIRD_PARTY_KEYS = [
+    'lead_gen_rapidapi_key', 'dl_ocr_rapidapi_key', 'plate_check_rapidapi_key',
+    'google_cloud_vision_key', 'google_cloud_speech_key', 'google_generative_language_key',
+    'mapbox_api_key', 'mapbox_access_token', 'mapbox_username', 'mapbox_password', 'mapbox_style_url',
+    'ncic_api_key', 'utah_dps_api_key', 'utah_courts_api_key', 'fbi_wanted_api_key',
+    'dea_api_key', 'usms_api_key', 'atf_api_key', 'interpol_api_key', 'nsopw_api_key', 'ofac_api_key',
+    'openweathermap_api_key', 'nominatim_api_key', 'opencage_api_key',
+    'ipinfo_api_key', 'virustotal_api_key', 'abuseipdb_api_key', 'shodan_api_key',
+    'have_i_been_pwned_key', 'censys_api_key', 'hunter_io_api_key', 'numverify_api_key',
+    'abstract_api_key', 'whoisxml_api_key', 'urlscan_api_key', 'emailrep_api_key',
+    'twilio_api_key', 'twilio_account_sid', 'sendgrid_api_key', 'pushover_api_key',
+    'ntfy_topic_key', 'slack_webhook_url', 'discord_webhook_url', 'telegram_bot_token',
+    'openai_api_key', 'anthropic_api_key', 'replicate_api_key', 'huggingface_api_key',
+    'deepgram_api_key', 'assemblyai_api_key',
+    'aws_access_key_id', 'aws_secret_access_key', 'aws_s3_bucket',
+    'backblaze_key_id', 'backblaze_app_key', 'cloudflare_api_key', 'wasabi_access_key',
+    'openmeteo_api_key', 'clearpath_gps_api_key', 'microbilt_client_id', 'microbilt_client_secret',
+    'nhtsa_api_key', 'fcc_api_key', 'here_api_key', 'what3words_api_key',
+    'plaid_api_key', 'clearbit_api_key', 'pipl_api_key', 'towerdata_api_key',
+    'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
+    'owntracks_webhook_token', 'traccar_webhook_token',
+  ];
+
+  // GET /api/admin/third-party-keys
+  api.get('/third-party-keys', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const result = await Promise.all(ALLOWED_THIRD_PARTY_KEYS.map(async (k) => {
+      const row = await db.prepare("SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1").get(k) as any;
+      return { config_key: k, has_value: !!row?.config_value };
+    }));
+    return c.json(result);
+  });
+
+  // GET /api/admin/third-party-keys/:key
+  api.get('/third-party-keys/:key', async (c) => {
+    const key = c.req.param('key');
+    if (!ALLOWED_THIRD_PARTY_KEYS.includes(key)) return c.json({ error: 'Unknown key' }, 400);
+    const db = new D1Db(c.env.DB);
+    const row = await db.prepare("SELECT config_value FROM system_config WHERE config_key = ? AND is_active = 1 LIMIT 1").get(key) as any;
+    return c.json({ configured: !!row?.config_value });
+  });
+
+  // PUT /api/admin/third-party-keys
+  api.put('/third-party-keys', async (c) => {
+    const body = await c.req.json();
+    const { key, value } = body;
+    if (!key || !value || typeof value !== 'string') return c.json({ error: 'key and value are required' }, 400);
+    if (!ALLOWED_THIRD_PARTY_KEYS.includes(key)) return c.json({ error: 'Unknown key' }, 400);
+
+    const db = new D1Db(c.env.DB);
+    const now = localNow();
+    const existing = await db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as any;
+    if (existing) {
+      await db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(value, now, key);
+    } else {
+      await db.prepare("INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 1, ?, ?)").run(key, value, now, now);
+    }
+    return c.json({ success: true, message: `${key} saved` });
+  });
+
+  // DELETE /api/admin/third-party-keys
+  api.delete('/third-party-keys', async (c) => {
+    const body = await c.req.json();
+    const { key } = body;
+    if (!key || !ALLOWED_THIRD_PARTY_KEYS.includes(key)) return c.json({ error: 'Unknown key' }, 400);
+    const db = new D1Db(c.env.DB);
+    await db.prepare("UPDATE system_config SET config_value = '', is_active = 0, updated_at = ? WHERE config_key = ?").run(localNow(), key);
+    return c.json({ success: true, message: `${key} cleared` });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // TRAFFIC PULL STATUS
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/traccar-pull-status', async (c) => {
+    return c.json({ status: 'idle', last_pull: null, next_pull: null });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // SYSTEM CONFIG
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/admin/config
+  api.get('/config', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const rows = await db.prepare('SELECT * FROM system_config ORDER BY category, config_key').all();
+    // Group by category
+    const grouped: Record<string, any[]> = {};
+    for (const row of rows) {
+      const cat = (row as any).category || 'general';
+      if (!grouped[cat]) grouped[cat] = [];
+      grouped[cat].push(row);
+    }
+    return c.json(grouped);
+  });
+
+  // GET /api/admin/config/branding
+  api.get('/config/branding', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const rows = await db.prepare("SELECT * FROM system_config WHERE category = 'branding' ORDER BY config_key").all();
+    return c.json(rows);
+  });
+
+  // POST /api/admin/config
+  api.post('/config', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const body = await c.req.json();
+    const now = localNow();
+    const key = body.config_key || body.key;
+    const value = body.config_value || body.value;
+    const category = body.category || 'system_settings';
+    if (!key) return c.json({ error: 'config_key is required' }, 400);
+
+    const existing = await db.prepare('SELECT id FROM system_config WHERE config_key = ?').get(key) as any;
+    if (existing) {
+      await db.prepare('UPDATE system_config SET config_value = ?, updated_at = ? WHERE id = ?').run(value || '', now, existing.id);
+    } else {
+      await db.prepare('INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, ?, 1, ?, ?)').run(key, value || '', category, now, now);
+    }
+    const row = await db.prepare('SELECT * FROM system_config WHERE config_key = ?').get(key);
+    return c.json(row);
+  });
+
+  // PUT /api/admin/config/:id
+  api.put('/config/:id', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = paramNum(c.req.param('id'));
+    const body = await c.req.json();
+    const now = localNow();
+    const sets: string[] = ['updated_at = ?'];
+    const vals: any[] = [now];
+
+    if (body.config_value !== undefined) { sets.push('config_value = ?'); vals.push(body.config_value); }
+    if (body.category !== undefined) { sets.push('category = ?'); vals.push(body.category); }
+    if (body.is_active !== undefined) { sets.push('is_active = ?'); vals.push(body.is_active ? 1 : 0); }
+    vals.push(id);
+
+    await db.prepare(`UPDATE system_config SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+    const row = await db.prepare('SELECT * FROM system_config WHERE id = ?').get(id);
+    return c.json(row || {});
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // SHIFT STATS
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/shift-stats', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const hour = new Date().getHours();
+    let shiftName: string;
+    let shiftStart: string;
+    let shiftEnd: string;
+
+    if (hour >= 6 && hour < 14) {
+      shiftName = 'Day Shift (0600-1400)';
+      shiftStart = localNow().split('T')[0] + 'T06:00:00';
+      shiftEnd = localNow().split('T')[0] + 'T14:00:00';
+    } else if (hour >= 14 && hour < 22) {
+      shiftName = 'Swing Shift (1400-2200)';
+      shiftStart = localNow().split('T')[0] + 'T14:00:00';
+      shiftEnd = localNow().split('T')[0] + 'T22:00:00';
+    } else {
+      shiftName = 'Graveyard Shift (2200-0600)';
+      if (hour >= 22) {
+        shiftStart = localNow().split('T')[0] + 'T22:00:00';
+        const tomorrow = new Date(Date.now() + 24 * 60 * 60 * 1000);
+        shiftEnd = tomorrow.toISOString().split('T')[0] + 'T06:00:00';
+      } else {
+        const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000);
+        shiftStart = yesterday.toISOString().split('T')[0] + 'T22:00:00';
+        shiftEnd = localNow().split('T')[0] + 'T06:00:00';
+      }
+    }
+
+    const [shiftCalls, shiftIncidents, shiftCitations] = await Promise.all([
+      db.prepare('SELECT COUNT(*) as count FROM calls_for_service WHERE created_at >= ? AND created_at < ?').get(shiftStart, shiftEnd) as any,
+      db.prepare('SELECT COUNT(*) as count FROM incidents WHERE created_at >= ? AND created_at < ?').get(shiftStart, shiftEnd) as any,
+      db.prepare('SELECT COUNT(*) as count FROM citations WHERE created_at >= ? AND created_at < ?').get(shiftStart, shiftEnd) as any,
+    ]);
+
+    let shiftPatrolScans = { count: 0 } as any;
+    try {
+      shiftPatrolScans = await db.prepare('SELECT COUNT(*) as count FROM patrol_scans WHERE scanned_at >= ? AND scanned_at < ?').get(shiftStart, shiftEnd) as any;
+    } catch { /* patrol_scans may not exist */ }
+
+    return c.json({
+      shift_name: shiftName, shift_start: shiftStart, shift_end: shiftEnd,
+      calls: shiftCalls?.count || 0, incidents: shiftIncidents?.count || 0,
+      citations: shiftCitations?.count || 0, patrol_scans: shiftPatrolScans?.count || 0,
+    });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // UPCOMING COURT DATES
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/upcoming-court-dates', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const days = Math.min(90, Math.max(1, parseInt(c.req.query('days') || '30', 10)));
+
+    let courtDates: any[] = [];
+    try {
+      courtDates = await db.prepare(`
+        SELECT cit.id, cit.citation_number, cit.court_date, cit.court_location,
+          cit.violation_description, cit.defendant_name, u.full_name as officer_name
+        FROM citations cit LEFT JOIN users u ON cit.issuing_officer_id = u.id
+        WHERE cit.court_date IS NOT NULL
+          AND cit.court_date >= date('now')
+          AND cit.court_date <= date('now', '+' || ? || ' days')
+          AND cit.status NOT IN ('voided', 'dismissed')
+        ORDER BY cit.court_date ASC LIMIT 50
+      `).all(days);
+    } catch { /* citations table may not have court_date */ }
+
+    return c.json({ court_dates: courtDates, count: courtDates.length, period_days: days });
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // EXPIRING CERTIFICATIONS
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/expiring-certifications', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const days = Math.min(180, Math.max(1, parseInt(c.req.query('days') || '30', 10)));
+
+    let expiring: any[] = [];
+    try {
+      expiring = await db.prepare(`
+        SELECT pc.id, pc.officer_id, pc.certification_name, pc.expiration_date,
+          u.full_name as officer_name, u.badge_number,
+          CAST(julianday(pc.expiration_date) - julianday('now') AS INTEGER) as days_until_expiry
+        FROM personnel_certifications pc LEFT JOIN users u ON pc.officer_id = u.id
+        WHERE pc.expiration_date IS NOT NULL
+          AND pc.expiration_date >= date('now')
+          AND pc.expiration_date <= date('now', '+' || ? || ' days')
+          AND u.status = 'active'
+        ORDER BY pc.expiration_date ASC LIMIT 50
+      `).all(days);
+    } catch { /* table may not exist */ }
+
+    let expired: any[] = [];
+    try {
+      expired = await db.prepare(`
+        SELECT pc.id, pc.officer_id, pc.certification_name, pc.expiration_date,
+          u.full_name as officer_name, u.badge_number
+        FROM personnel_certifications pc LEFT JOIN users u ON pc.officer_id = u.id
+        WHERE pc.expiration_date IS NOT NULL
+          AND pc.expiration_date < date('now')
+          AND u.status = 'active'
+        ORDER BY pc.expiration_date DESC LIMIT 50
+      `).all();
+    } catch { /* table may not exist */ }
+
+    return c.json({ expiring_soon: expiring, expiring_count: expiring.length, already_expired: expired, expired_count: expired.length, period_days: days });
+  });
+
   app.route('/api/admin', api);
 }

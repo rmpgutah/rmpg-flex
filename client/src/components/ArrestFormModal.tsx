@@ -2,13 +2,13 @@
 // RMPG Flex — Arrest / Booking Form Modal
 // Create or edit manual booking records with tabbed sections.
 // Follows VehicleFormModal pattern: FormModal wrapper,
-// useFormDirty hook, 4-tab layout, EMPTY_FORM constant.
+// useFormDraft hook, 4-tab layout, EMPTY_FORM constant.
 // ============================================================
 
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import { localToday } from '../utils/dateUtils';
 
 // ── Types ─────────────────────────────────────────────────
@@ -96,8 +96,18 @@ export default function ArrestFormModal({
   editingRecord,
   submitError,
 }: ArrestFormModalProps) {
-  const [form, setForm] = useState<ArrestFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<ArrestFormData>({
+    storageKey: 'rmpg_arrest_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<SectionId>('booking');
 
   // ── Init form on open ───────────────────────────────────
@@ -139,11 +149,11 @@ export default function ArrestFormModal({
           notes: editingRecord.notes || '',
         };
         setForm(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         const fresh = { ...EMPTY_FORM, booking_date: localToday() };
         setForm(fresh);
-        snapshot(fresh);
+        snapshot();
       }
     }
   }, [isOpen, editingRecord]);
@@ -188,6 +198,8 @@ export default function ArrestFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Submit Error */}
       {submitError && (

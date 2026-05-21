@@ -14,8 +14,7 @@ import LoginPage from './pages/LoginPage';
 // Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
-// MapPage (Google Maps) retired 2026-04-19 — Google API keys revoked.
-// /map redirects to /map-v2 (OpenLayers). Phase 5 will delete pages/map/.
+// MapPage retired; Mapbox is the active map library.
 const MapPageV2 = lazyRetry(() => import('./pages/map-v2'));
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
@@ -163,11 +162,75 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 /** 404 Not Found page */
 function NotFoundPage() {
   return (
-    <div className="flex items-center justify-center h-full p-8">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-rmpg-300 mb-2">404</h1>
-        <p className="text-sm text-rmpg-400 mb-4">Page not found</p>
-        <a href="/" className="btn-primary">Return to Dashboard</a>
+    <div className="flex items-center justify-center h-full p-8" style={{ background: '#0a0a0a' }}>
+      <div className="text-center max-w-md">
+        {/* Logo with fallback */}
+        <img
+          src="/rmpg flex.png"
+          alt="RMPG Flex"
+          className="mx-auto mb-6 opacity-20"
+          style={{ height: 80, width: 80, objectFit: 'contain' }}
+          draggable={false}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+
+        {/* Error code */}
+        <div className="mb-4">
+          <span
+            className="text-6xl font-black tracking-tight"
+            style={{ color: '#1a1a1a', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
+          >
+            404
+          </span>
+        </div>
+
+        {/* Status bar — mimics CAD console */}
+        <div
+          className="inline-flex items-center gap-2 px-4 py-2 mb-6 border"
+          style={{
+            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
+            borderColor: '#222222',
+            borderRadius: 2,
+          }}
+        >
+          <div
+            className="w-2 h-2 rounded-full"
+            style={{ background: '#dc2626', boxShadow: '0 0 6px rgba(220,38,38,0.6)' }}
+          />
+          <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-[#888888]">
+            Route Not Found
+          </span>
+        </div>
+
+        {/* Message */}
+        <p className="text-sm text-[#888888] mb-2 leading-relaxed">
+          The requested page does not exist or has been moved.
+        </p>
+        <p className="text-[11px] text-[#555555] mb-6">
+          If you believe this is an error, contact your system administrator.
+        </p>
+
+        {/* Action */}
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors"
+          style={{
+            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
+            border: '1px solid #d4a017',
+            color: '#d4a017',
+            borderRadius: 2,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(180deg, #242424 0%, #1a1a1a 100%)';
+            e.currentTarget.style.borderColor = '#e8b52a';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)';
+            e.currentTarget.style.borderColor = '#d4a017';
+          }}
+        >
+          Return to Dashboard
+        </a>
       </div>
     </div>
   );

@@ -26,7 +26,7 @@ const ACCURACY_STYLE = new Style({
 });
 
 /**
- * "Find me" geolocation for /map-v2 — Google-Maps-style blue dot with
+ * "Find me" geolocation for /map-v2 — GPS position blue dot with
  * accuracy circle, plus a programmatic locate() that pans the view to
  * the latest fix.
  *
@@ -44,7 +44,7 @@ export function useOlGeolocation(map: OlMap | null): {
   enabled: boolean;
   locate: () => Promise<{ ok: boolean; reason?: string }>;
 } {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const geoRef = useRef<Geolocation | null>(null);
   const dotRef = useRef<Feature<Point> | null>(null);

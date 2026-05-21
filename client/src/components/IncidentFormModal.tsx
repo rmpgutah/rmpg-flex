@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Scale } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { Incident, CallPriority } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
 import {
@@ -354,8 +354,18 @@ export default function IncidentFormModal({
   clients = [],
   defaultType = '',
 }: IncidentFormModalProps) {
-  const [formData, setFormData] = useState<IncidentFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(formData, isOpen);
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<IncidentFormData>({
+    storageKey: 'rmpg_incident_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<SectionId>('basic');
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
@@ -467,14 +477,14 @@ export default function IncidentFormModal({
           supervisor_notified: !!inc.supervisor_notified,
         };
         setFormData(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         const initial: IncidentFormData = {
           ...EMPTY_FORM,
           ...(defaultType ? { incident_type: defaultType as IncidentType, priority: 'P1' as CallPriority } : {}),
         };
         setFormData(initial);
-        snapshot(initial);
+        snapshot();
       }
       setActiveSection(defaultType && USE_OF_FORCE_TYPES.includes(defaultType) ? 'use_of_force' : 'basic');
     }
@@ -504,6 +514,8 @@ export default function IncidentFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-4xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Section Tabs (dynamic based on incident type) */}
       <div className="flex gap-1 -mt-1 mb-2 flex-wrap">

@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { UserCircle, Eye, EyeOff, Upload, X, CreditCard } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { Person } from '../types';
 import { apiUploadFiles } from '../hooks/useApi';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
@@ -225,8 +225,18 @@ export default function PersonFormModal({
   editingPerson,
   submitError,
 }: PersonFormModalProps) {
-  const [form, setForm] = useState<PersonFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<PersonFormData>({
+    storageKey: 'rmpg_person_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<'basic' | 'physical' | 'id' | 'contact' | 'law' | 'other'>('basic');
   const [showSSN, setShowSSN] = useState(false);
   const [idImageFile, setIdImageFile] = useState<File | null>(null);
@@ -325,10 +335,10 @@ export default function PersonFormModal({
           work_phone: (editingPerson as any).work_phone || '',
         };
         setForm(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         setForm(EMPTY_FORM);
-        snapshot(EMPTY_FORM);
+        snapshot();
       }
       setActiveSection('basic');
       setShowSSN(false);
@@ -426,6 +436,8 @@ export default function PersonFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-4xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Submit Error */}
       {submitError && (

@@ -53,7 +53,6 @@ import { useAuth } from '../context/AuthContext';
 import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE } from '../utils/googleMapsLoader';
 import ScrapersTab from './warrants/ScrapersTab';
 
 // ============================================================

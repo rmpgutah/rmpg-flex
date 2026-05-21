@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { MapPinned } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
-import { useFormDirty } from '../../../hooks/useFormDirty';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 export interface DeploymentFormData {
   officer_id: string;
@@ -41,17 +41,27 @@ const EMPTY: DeploymentFormData = {
 export default function DeploymentFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, properties, initialData, mode = 'create',
 }: Props) {
-  const [form, setForm] = useState<DeploymentFormData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<DeploymentFormData>({
+    storageKey: 'rmpg_personnel_deployment_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
       const initial = { ...EMPTY, ...initialData };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen) {
       setForm(EMPTY);
-      snapshot(EMPTY);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
@@ -73,6 +83,8 @@ export default function DeploymentFormModal({
       submitLabel={mode === 'edit' ? 'Update' : 'Create Deployment'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Assignment */}
       <div className="panel-inset p-3 space-y-3">

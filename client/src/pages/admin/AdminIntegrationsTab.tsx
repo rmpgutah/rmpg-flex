@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
-  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin,
+  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin, Navigation, Server,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -65,13 +65,11 @@ function validateKey(value: string, config: ApiKeyConfig): string | null {
   return null; // valid
 }
 
-const GOOGLE_CLOUD_KEYS: ApiKeyConfig[] = [
-  { key: 'google_maps_api_key', label: 'Maps JavaScript API', desc: 'Client-side map rendering — used by Map page, dispatch overlays, beat polygons', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
-  { key: 'google_maps_server_key', label: 'Geocoding / Directions API', desc: 'Server-side address resolution, route optimization, reverse geocoding', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
-  { key: 'google_places_api_key', label: 'Places Autocomplete API', desc: 'Address search autocomplete in New Call, Incident, and Serve Intake forms', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
-  { key: 'google_cloud_vision_key', label: 'Cloud Vision API', desc: 'Image analysis — DL photo OCR, evidence photo tagging, document scanning', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
-  { key: 'google_cloud_speech_key', label: 'Cloud Speech-to-Text API', desc: 'Voice transcription for radio recordings and body camera audio', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
-  { key: 'google_generative_language_key', label: 'Generative Language API (Gemini)', desc: 'AI-powered narrative generation, report summarization, CAD command intelligence', pattern: /^AIza[A-Za-z0-9_-]{35}$/, formatHint: 'Must start with AIza and be 39 characters' },
+const MAPBOX_KEYS: ApiKeyConfig[] = [
+  { key: 'mapbox_username', label: 'Account Username', desc: 'Your Mapbox account username — used in style URLs and studio access (mapbox.com → Account)' },
+  { key: 'mapbox_password', label: 'Account Password', desc: 'Mapbox account password — used for API token management and Mapbox Studio login', formatHint: 'Your Mapbox account password (encrypted at rest)' },
+  { key: 'mapbox_style_url', label: 'Custom Style URL', desc: 'Your Mapbox Studio custom style URL — creates a branded map (mapbox://styles/username/style_id)', formatHint: 'mapbox://styles/{username}/{style_id}' },
+  { key: 'mapbox_access_token', label: 'Public Access Token', desc: 'PRIMARY — Client-side map rendering, geocoding, directions. Starts with pk.', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Access Tokens' },
 ];
 
 const AI_ML_KEYS: ApiKeyConfig[] = [
@@ -122,8 +120,7 @@ const GPS_WEBHOOK_KEYS: ApiKeyConfig[] = [
 
 const FREE_OPEN_APIS: ApiKeyConfig[] = [
   { key: 'openweathermap_api_key', label: 'OpenWeatherMap', desc: 'Free tier: 1000 calls/day — current weather, forecasts, alerts for dispatch scene conditions', formatHint: '32-character hex key from openweathermap.org' },
-  { key: 'mapbox_api_key', label: 'Mapbox', desc: 'Free tier: 50k loads/month — satellite imagery, routing, isochrones, offline maps', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com' },
-  { key: 'nominatim_api_key', label: 'OpenStreetMap Nominatim', desc: 'Free geocoding — address-to-coordinates fallback when Google quota exceeded (email as key)' },
+  { key: 'nominatim_api_key', label: 'OpenStreetMap Nominatim', desc: 'Free geocoding — address-to-coordinates fallback (email as key)' },
   { key: 'opencage_api_key', label: 'OpenCage Geocoder', desc: 'Free tier: 2500 calls/day — reverse geocoding, address parsing, timezone lookup' },
   { key: 'ipinfo_api_key', label: 'IPinfo', desc: 'Free tier: 50k/month — IP geolocation for login audit, session tracking, threat intel' },
   { key: 'virustotal_api_key', label: 'VirusTotal', desc: 'Free tier: 4 lookups/min — file hash checks, URL scanning for evidence/forensics' },
@@ -581,8 +578,8 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       {/* ── GPS Background Tracking ── */}
       <ApiKeyPanel title="GPS Background Tracking (OwnTracks / Traccar)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
 
-      {/* ── Google Cloud Console Keys ── */}
-      <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-gray-400" />} keys={GOOGLE_CLOUD_KEYS} />
+      {/* ── Mapbox API (DOMINANT MAP SOURCE) ── */}
+      <ApiKeyPanel title="Mapbox API — Primary Map System" icon={<Navigation className="w-4 h-4 text-brand-400" />} keys={MAPBOX_KEYS} />
 
       {/* ── Law Enforcement / Government APIs ── */}
       <ApiKeyPanel title="Law Enforcement / Government" icon={<Shield className="w-4 h-4 text-red-400" />} keys={LAW_ENFORCEMENT_KEYS} />

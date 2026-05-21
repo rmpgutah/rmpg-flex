@@ -65,9 +65,9 @@ function makeHaloStyle(radius: number, opacity: number): Style {
  * useOlFeaturePopup). Acknowledged alerts dim slightly.
  */
 export function useOlAlerts(map: OlMap | null, opts: { visible: boolean }): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
-  const haloLayerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const haloLayerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const haloSourceRef = useRef<VectorSource | null>(null);
   const { subscribe } = useWebSocket();
 

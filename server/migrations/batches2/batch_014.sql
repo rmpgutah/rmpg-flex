@@ -1,0 +1,26 @@
+ALTER TABLE messages ADD COLUMN is_template INTEGER;
+ALTER TABLE messages ADD COLUMN template_name TEXT;
+ALTER TABLE messages ADD COLUMN is_draft INTEGER;
+ALTER TABLE messages ADD COLUMN draft_updated_at TEXT;
+ALTER TABLE messages ADD COLUMN delivered_at TEXT;
+-- Missing columns for evidence (28)
+ALTER TABLE evidence ADD COLUMN location_found TEXT;
+ALTER TABLE evidence ADD COLUMN condition TEXT;
+ALTER TABLE evidence ADD COLUMN quantity INTEGER;
+ALTER TABLE evidence ADD COLUMN release_authorized_by TEXT;
+ALTER TABLE evidence ADD COLUMN released_to TEXT;
+ALTER TABLE evidence ADD COLUMN release_date TEXT;
+ALTER TABLE evidence ADD COLUMN collected_date TEXT;
+ALTER TABLE evidence ADD COLUMN packaging_type TEXT;
+ALTER TABLE evidence ADD COLUMN dimensions TEXT;
+ALTER TABLE evidence ADD COLUMN weight TEXT;
+ALTER TABLE evidence ADD COLUMN photo_taken INTEGER;
+ALTER TABLE evidence ADD COLUMN lab_submitted INTEGER;
+ALTER TABLE evidence ADD COLUMN lab_case_number TEXT;
+ALTER TABLE evidence ADD COLUMN lab_name TEXT;
+ALTER TABLE evidence ADD COLUMN disposal_method TEXT;
+ALTER TABLE evidence ADD COLUMN disposal_date TEXT;
+ALTER TABLE evidence ADD COLUMN disposal_authorized_by TEXT;
+ALTER TABLE evidence ADD COLUMN serial_number TEXT;
+ALTER TABLE evidence ADD COLUMN brand TEXT;
+ALTER TABLE evidence ADD COLUMN model TEXT;

@@ -92,7 +92,7 @@ interface UseOlDrawToolOpts {
  * over typical patrol-area scales.
  */
 export function useOlDrawTool(map: OlMap | null, opts: UseOlDrawToolOpts): void {
-  const layerRef = useRef<VectorLayer<Feature<Geometry>> | null>(null);
+  const layerRef = useRef<VectorLayer<VectorSource> | null>(null);
   const sourceRef = useRef<VectorSource | null>(null);
   const drawRef = useRef<Draw | null>(null);
   const labelOverlayRef = useRef<Overlay | null>(null);

@@ -10,10 +10,14 @@
 // ============================================================
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { MapPin, Plus, RefreshCw, Trash2, X } from 'lucide-react';
+import { Edit2, MapPin, Plus, RefreshCw, Save, Trash2, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useGeographyTree } from '../hooks/useGeographyTree';
+import { useFormDraft } from '../hooks/useFormDraft';
+import { useToast } from '../components/ToastProvider';
 import PanelTitleBar from '../components/PanelTitleBar';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 import type { Area, Beat, Sector, TierId, Zone } from '../types/geography';
 
 // ── Types ────────────────────────────────────────────────────
@@ -46,6 +50,41 @@ const INITIAL_STATE: PageState = {
 export default function GeographyPage() {
   const { tree, loading, error, refetch } = useGeographyTree();
   const [state, setState] = useState<PageState>(INITIAL_STATE);
+  const { addToast } = useToast();
+
+  // ── Editing state ──
+  const [editing, setEditing] = useState<TierId | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  // ── Per-tier form drafts ──
+  const a = useFormDraft<Partial<Area>>({
+    storageKey: 'rmpg_geo_area_form',
+    defaultValue: {},
+    isActive: editing === 'area',
+  });
+  const s = useFormDraft<Partial<Sector>>({
+    storageKey: 'rmpg_geo_sector_form',
+    defaultValue: {},
+    isActive: editing === 'sector',
+  });
+  const z = useFormDraft<Partial<Zone>>({
+    storageKey: 'rmpg_geo_zone_form',
+    defaultValue: {},
+    isActive: editing === 'zone',
+  });
+  const b = useFormDraft<Partial<Beat>>({
+    storageKey: 'rmpg_geo_beat_form',
+    defaultValue: {},
+    isActive: editing === 'beat',
+  });
+
+  // Snapshot after form has been populated (render has completed)
+  useEffect(() => {
+    if (editing === 'area') a.snapshot();
+    if (editing === 'sector') s.snapshot();
+    if (editing === 'zone') z.snapshot();
+    if (editing === 'beat') b.snapshot();
+  }, [editing]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Derived: items per column based on selection + search ──
 
@@ -215,10 +254,10 @@ export default function GeographyPage() {
         }
         refetch();
       } catch (e) {
-        alert(`Create ${tier} failed: ${(e as Error)?.message || 'unknown error'}`);
+        addToast(`Create ${tier} failed: ${(e as Error)?.message || 'unknown error'}`, 'error');
       }
     },
-    [state.selectedAreaId, state.selectedSectorId, state.selectedZoneId, refetch],
+    [state.selectedAreaId, state.selectedSectorId, state.selectedZoneId, refetch, addToast],
   );
 
   // ── Delete handler (current selection) ──
@@ -253,19 +292,128 @@ export default function GeographyPage() {
         if (selected.tier === 'zone') return { ...s, selectedZoneId: null, selectedBeatId: null };
         return { ...s, selectedBeatId: null };
       });
+      if (editing === selected.tier) setEditing(null);
       refetch();
+      addToast(`Deleted ${selected.tier} "${name}"`, 'success');
     } catch (e) {
-      alert(`Delete failed: ${(e as Error)?.message || 'unknown error'}`);
+      addToast(`Delete failed: ${(e as Error)?.message || 'unknown error'}`, 'error');
     }
-  }, [selected, refetch]);
+  }, [selected, refetch, addToast, editing]);
+
+  // ── Edit handlers ──
+
+  const handleStartEdit = () => {
+    if (!selected) return;
+    const tier = selected.tier;
+    const data = selected.data;
+    if (tier === 'area') a.setForm(data as Partial<Area>);
+    else if (tier === 'sector') s.setForm(data as Partial<Sector>);
+    else if (tier === 'zone') z.setForm(data as Partial<Zone>);
+    else if (tier === 'beat') b.setForm(data as Partial<Beat>);
+    setEditing(tier);
+  };
+
+  const handleCancelEdit = useCallback(() => {
+    if (editing === 'area') a.clearDraft();
+    else if (editing === 'sector') s.clearDraft();
+    else if (editing === 'zone') z.clearDraft();
+    else if (editing === 'beat') b.clearDraft();
+    setEditing(null);
+  }, [editing, a.clearDraft, s.clearDraft, z.clearDraft, b.clearDraft]);
+
+  const handleSaveEdit = useCallback(async () => {
+    if (!selected || !editing || selected.tier !== editing) return;
+    setSaving(true);
+
+    const tier = editing;
+    const id = selected.data.id;
+
+    const formData: Record<string, any> =
+      tier === 'area' ? { ...a.form } :
+      tier === 'sector' ? { ...s.form } :
+      tier === 'zone' ? { ...z.form } :
+      { ...b.form };
+
+    // Fields the server does NOT accept on PUT — strip before sending
+    const EXCLUDE = new Set([
+      'id', 'created_at', 'updated_at',
+      'sectors', 'zones', 'beats',          // navigation children
+      'sector_count', 'zone_count', 'beat_count', // computed counts
+      'area_code', 'area_name',              // JOINed on sectors
+      'sector_code', 'sector_name',          // JOINed on zones
+      'zone_code', 'zone_name',              // JOINed on beats
+      'area_id', 'sector_id', 'zone_id',     // parent FKs (contextual)
+      'district_letter', 'beat_number',      // derived columns
+      'county_nbr', 'fips_code',             // read-only GIS refs
+      'ugrc_code',                           // read-only GIS ref
+      'zone_type',                           // not in PUT fields list
+      'premise_alerts',                      // not in PUT fields list
+      'population_estimate',                  // not in PUT fields list (zone/beat)
+      'sq_miles',                            // not in PUT fields list (zone/beat)
+    ]);
+
+    const payload: Record<string, any> = {};
+    for (const [k, v] of Object.entries(formData)) {
+      if (!EXCLUDE.has(k) && v !== undefined) {
+        payload[k] = v;
+      }
+    }
+
+    if (Object.keys(payload).length === 0) {
+      addToast('No fields changed', 'warning');
+      setSaving(false);
+      return;
+    }
+
+    try {
+      await apiFetch(`/dispatch/geography/${tier}s/${id}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload),
+      });
+      if (tier === 'area') a.clearDraft();
+      else if (tier === 'sector') s.clearDraft();
+      else if (tier === 'zone') z.clearDraft();
+      else if (tier === 'beat') b.clearDraft();
+      setEditing(null);
+      refetch();
+      addToast(`${tier.charAt(0).toUpperCase() + tier.slice(1)} updated`, 'success');
+    } catch (e) {
+      addToast(`Save failed: ${(e as Error)?.message || 'unknown error'}`, 'error');
+    } finally {
+      setSaving(false);
+    }
+  }, [selected, editing, a, s, z, b, refetch, addToast]);
+
+  // ── Derived form state for the active editing tier ──
+  const activeEditForm = useMemo((): Record<string, any> => {
+    if (editing === 'area') return a.form as Record<string, any>;
+    if (editing === 'sector') return s.form as Record<string, any>;
+    if (editing === 'zone') return z.form as Record<string, any>;
+    if (editing === 'beat') return b.form as Record<string, any>;
+    return {};
+  }, [editing, a.form, s.form, z.form, b.form]);
+
+  const setActiveEditField = useCallback((field: string, value: any) => {
+    if (editing === 'area') a.setForm((prev: any) => ({ ...prev, [field]: value }));
+    else if (editing === 'sector') s.setForm((prev: any) => ({ ...prev, [field]: value }));
+    else if (editing === 'zone') z.setForm((prev: any) => ({ ...prev, [field]: value }));
+    else if (editing === 'beat') b.setForm((prev: any) => ({ ...prev, [field]: value }));
+  }, [editing, a.setForm, s.setForm, z.setForm, b.setForm]);
+
+  // ── Combined dirty state ──
+  const isAnyDirty = a.isDirty || s.isDirty || z.isDirty || b.isDirty;
 
   // ── Keyboard: Esc clears selection, / focuses search ──
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
+      if ((e.target as HTMLElement)?.tagName === 'INPUT' || (e.target as HTMLElement)?.tagName === 'TEXTAREA') return;
       if (e.key === 'Escape') {
-        setState(INITIAL_STATE);
+        if (editing) {
+          handleCancelEdit();
+        } else {
+          setState(INITIAL_STATE);
+        }
       } else if (e.key === '/') {
         e.preventDefault();
         (document.getElementById('geography-search-input') as HTMLInputElement)?.focus();
@@ -273,7 +421,7 @@ export default function GeographyPage() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [editing, handleCancelEdit]);
 
   // ── Render ──
 
@@ -315,6 +463,15 @@ export default function GeographyPage() {
 
   return (
     <div className="p-4 flex flex-col h-full gap-2 min-h-0">
+      <UnsavedChangesGuard hasUnsavedChanges={isAnyDirty} />
+      <FloatingSaveBar
+        visible={isAnyDirty}
+        onSave={handleSaveEdit}
+        onCancel={handleCancelEdit}
+        isSaving={saving}
+        saveLabel="Save"
+      />
+
       <PanelTitleBar
         title="DISPATCH GEOGRAPHY — AREAS / SECTORS / ZONES / BEATS"
         icon={MapPin}
@@ -409,7 +566,17 @@ export default function GeographyPage() {
           })}
           width={240}
         />
-        <DetailPane selected={selected} onDelete={handleDelete} />
+        <DetailPane
+          selected={selected}
+          onDelete={handleDelete}
+          editing={editing}
+          onStartEdit={handleStartEdit}
+          onCancelEdit={handleCancelEdit}
+          onSaveEdit={handleSaveEdit}
+          editForm={activeEditForm}
+          onEditFieldChange={setActiveEditField}
+          saving={saving}
+        />
       </div>
 
       {/* Stats bar */}
@@ -514,12 +681,55 @@ function TierColumn<T extends { id: number }>(props: TierColumnProps<T>) {
 
 // ── DetailPane ───────────────────────────────────────────────
 
+// Fields never shown (navigation children, timestamps, internal IDs)
+const HIDDEN = new Set([
+  'sectors', 'zones', 'beats',
+  'created_at', 'updated_at',
+  'id',
+]);
+
+// Fields shown read-only even in edit mode (parent FKs, computed, JOINed)
+const READ_ONLY = new Set([
+  'area_id', 'sector_id', 'zone_id',
+  'area_code', 'area_name',
+  'sector_code', 'sector_name',
+  'zone_code', 'zone_name',
+  'sector_count', 'zone_count', 'beat_count',
+  'district_letter', 'beat_number',
+  'county_nbr', 'fips_code',
+  'ugrc_code',
+]);
+
+// Fields rendered as textareas instead of text inputs
+const TEXTAREA_FIELDS = new Set([
+  'description', 'notes', 'hazard_notes', 'premise_alerts',
+]);
+
+// Fields rendered as number inputs
+const NUMBER_FIELDS = new Set([
+  'sort_order', 'priority_modifier', 'population_estimate', 'sq_miles', 'beat_number',
+]);
+
 function DetailPane({
   selected,
   onDelete,
+  editing,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  editForm,
+  onEditFieldChange,
+  saving,
 }: {
   selected: SelectedItem;
   onDelete: () => void;
+  editing: TierId | null;
+  onStartEdit: () => void;
+  onCancelEdit: () => void;
+  onSaveEdit: () => void;
+  editForm: Record<string, any>;
+  onEditFieldChange: (field: string, value: any) => void;
+  saving: boolean;
 }) {
   if (!selected) {
     return (
@@ -534,29 +744,22 @@ function DetailPane({
   }
 
   const data = selected.data as any;
+  const tier = selected.tier;
+  const isEditing = editing === tier;
+
   const primaryName =
     data.area_name || data.sector_name || data.zone_name || data.beat_name;
   const primaryCode =
     data.area_code || data.sector_code || data.zone_code || data.beat_code;
 
-  // Fields to hide (navigation children, timestamps, internal IDs)
-  const HIDDEN = new Set([
-    'sectors',
-    'zones',
-    'beats',
-    'created_at',
-    'updated_at',
-    'id',
-  ]);
-
-  const fields = Object.entries(data)
+  const fields = Object.entries(isEditing ? editForm : data)
     .filter(([k]) => !HIDDEN.has(k))
-    .filter(([, v]) => v !== undefined);
+    .filter(([k, v]) => v !== undefined);
 
   return (
     <div className="flex-1 p-4 overflow-y-auto min-w-[280px]">
       <div className="text-[10px] font-bold tracking-wider text-[#d4a017] mb-2">
-        {selected.tier.toUpperCase()} DETAIL
+        {tier.toUpperCase()} DETAIL{isEditing ? ' (EDITING)' : ''}
       </div>
       <div className="text-[14px] font-bold text-[var(--text-primary)] mb-1">
         {primaryName}
@@ -564,29 +767,139 @@ function DetailPane({
       <div className="text-[10px] text-[var(--text-muted)] font-mono mb-4">
         {primaryCode}
       </div>
-      <dl className="text-[11px] grid grid-cols-[120px_1fr] gap-x-3 gap-y-1">
-        {fields.map(([k, v]) => (
-          <div key={k} className="contents">
-            <dt className="text-[var(--text-muted)] uppercase text-[9px] pt-0.5">
-              {k.replace(/_/g, ' ')}
-            </dt>
-            <dd className="text-[var(--text-primary)] break-words">
-              {v == null || v === '' ? (
-                <span className="text-[var(--text-muted)] italic">—</span>
-              ) : (
-                String(v)
-              )}
-            </dd>
-          </div>
-        ))}
-      </dl>
-      <div className="mt-6 flex gap-2">
+
+      {isEditing ? (
+        /* ── Edit mode: render form inputs ── */
+        <div className="space-y-2 mb-6">
+          {fields.map(([k, v]) => {
+            const isReadOnly = READ_ONLY.has(k);
+            const label = k.replace(/_/g, ' ').toUpperCase();
+
+            if (isReadOnly) {
+              return (
+                <div key={k} className="flex items-start gap-2">
+                  <span className="text-[9px] text-[var(--text-muted)] uppercase w-[110px] flex-shrink-0 pt-1">
+                    {label}
+                  </span>
+                  <span className="text-[11px] text-[var(--text-primary)] break-words pt-1">
+                    {v == null || v === '' ? (
+                      <span className="text-[var(--text-muted)] italic">—</span>
+                    ) : (
+                      String(v)
+                    )}
+                  </span>
+                </div>
+              );
+            }
+
+            // Parent FK fields shown as read-only labels with the parent name
+            if (k === 'active') {
+              return (
+                <label key={k} className="flex items-center gap-2 text-[11px]">
+                  <input
+                    type="checkbox"
+                    checked={v == null ? true : Boolean(v)}
+                    onChange={(e) => onEditFieldChange(k, e.target.checked ? 1 : 0)}
+                    className="accent-[#d4a017]"
+                  />
+                  <span className="text-[var(--text-primary)]">{label}</span>
+                </label>
+              );
+            }
+
+            if (TEXTAREA_FIELDS.has(k)) {
+              return (
+                <div key={k} className="flex items-start gap-2">
+                  <span className="text-[9px] text-[var(--text-muted)] uppercase w-[110px] flex-shrink-0 pt-1">
+                    {label}
+                  </span>
+                  <textarea
+                    value={v == null ? '' : String(v)}
+                    onChange={(e) => onEditFieldChange(k, e.target.value)}
+                    className="input-dark text-[11px] flex-1 min-h-[48px] resize-y"
+                    rows={2}
+                  />
+                </div>
+              );
+            }
+
+            if (NUMBER_FIELDS.has(k)) {
+              return (
+                <div key={k} className="flex items-center gap-2">
+                  <span className="text-[9px] text-[var(--text-muted)] uppercase w-[110px] flex-shrink-0">
+                    {label}
+                  </span>
+                  <input
+                    type="number"
+                    value={v == null ? '' : String(v)}
+                    onChange={(e) => onEditFieldChange(k, e.target.value === '' ? null : Number(e.target.value))}
+                    className="input-dark text-[11px] flex-1"
+                  />
+                </div>
+              );
+            }
+
+            return (
+              <div key={k} className="flex items-center gap-2">
+                <span className="text-[9px] text-[var(--text-muted)] uppercase w-[110px] flex-shrink-0">
+                  {label}
+                </span>
+                <input
+                  type="text"
+                  value={v == null ? '' : String(v)}
+                  onChange={(e) => onEditFieldChange(k, e.target.value)}
+                  className="input-dark text-[11px] flex-1"
+                />
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        /* ── View mode: read-only field list ── */
+        <dl className="text-[11px] grid grid-cols-[120px_1fr] gap-x-3 gap-y-1 mb-6">
+          {fields.map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-[var(--text-muted)] uppercase text-[9px] pt-0.5">
+                {k.replace(/_/g, ' ')}
+              </dt>
+              <dd className="text-[var(--text-primary)] break-words">
+                {v == null || v === '' ? (
+                  <span className="text-[var(--text-muted)] italic">—</span>
+                ) : (
+                  String(v)
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )}
+
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        {isEditing ? (
+          <button
+            onClick={onSaveEdit}
+            disabled={saving}
+            className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-[#d4a017] bg-[#d4a017]/10 text-[#d4a017] hover:bg-[#d4a017]/20 disabled:opacity-50"
+          >
+            <Save size={11} />
+            Save
+          </button>
+        ) : (
+          <button
+            onClick={onStartEdit}
+            className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-[#333] hover:border-[#d4a017] hover:bg-[#d4a017]/10 text-[var(--text-muted)] hover:text-[#d4a017]"
+          >
+            <Edit2 size={11} />
+            Edit
+          </button>
+        )}
         <button
-          onClick={onDelete}
+          onClick={isEditing ? onCancelEdit : onDelete}
           className="flex items-center gap-1 px-3 py-1.5 text-[10px] border border-[#333] hover:border-red-400 hover:bg-red-900/20 text-[var(--text-muted)] hover:text-red-300"
         >
           <Trash2 size={11} />
-          Delete
+          {isEditing ? 'Cancel' : 'Delete'}
         </button>
       </div>
     </div>
