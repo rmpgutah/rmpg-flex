@@ -138,6 +138,20 @@ function createTables(): void {
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    CREATE TABLE IF NOT EXISTS user_security_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      question_1 TEXT NOT NULL,
+      answer_1_hash TEXT NOT NULL,
+      question_2 TEXT NOT NULL,
+      answer_2_hash TEXT NOT NULL,
+      question_3 TEXT NOT NULL,
+      answer_3_hash TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS clients (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL,
@@ -4884,6 +4898,24 @@ function migrateSchema(): void {
       created_at TEXT DEFAULT (datetime('now','localtime'))
     );
     CREATE INDEX IF NOT EXISTS idx_security_notifications_user ON security_notifications(user_id);
+  `);
+
+  // ── User security questions for forgot-password flow ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS user_security_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      question_1 TEXT NOT NULL,
+      answer_1_hash TEXT NOT NULL,
+      question_2 TEXT NOT NULL,
+      answer_2_hash TEXT NOT NULL,
+      question_3 TEXT NOT NULL,
+      answer_3_hash TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS idx_user_security_questions_user ON user_security_questions(user_id);
   `);
 
   // ══════════════════════════════════════════════════════════════

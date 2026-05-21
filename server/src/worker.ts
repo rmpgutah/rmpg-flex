@@ -8,7 +8,7 @@
 
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
-import { handleWebSocketUpgrade, getConnectedUserCount } from './worker-middleware/websocket';
+// import { handleWebSocketUpgrade, getConnectedUserCount } from './worker-middleware/websocket';
 import type { D1Database, KVNamespace, R2Bucket, ExecutionContext } from '@cloudflare/workers-types';
 
 // ─── Environment Bindings ────────────────────────────────
@@ -183,10 +183,7 @@ app.get('/api/features', async (c) => {
 
 // ─── Presence Endpoint ─────────────────────────────────
 app.get('/api/presence', async (c) => {
-  const { getConnectedUserCount, broadcastPresence } = await import('./worker-middleware/websocket');
-  setTimeout(() => broadcastPresence(), 0);
-  const count = getConnectedUserCount();
-  return c.json({ users: [], count, connections: count });
+  return c.json({ users: [], count: 0, connections: 0 });
 });
 
 // ─── System Status ──────────────────────────────────────
@@ -203,7 +200,7 @@ app.get('/api/system-status', async (c) => {
       status: dbStatus === 'ok' ? 'operational' : 'degraded',
       api: { status: 'ok', response_time_ms: 0 },
       database: { status: dbStatus },
-      websocket: { status: 'ok', connections: getConnectedUserCount() },
+      websocket: { status: 'ok', connections: 0 },
       server: {
         version: '5.8.0',
         uptime_seconds: 0,
@@ -385,10 +382,6 @@ app.onError((err, c) => {
 // ─── Export Worker ───────────────────────────────────────
 export default {
   fetch(request: Request, env: Env, ctx: ExecutionContext): Response | Promise<Response> {
-    const url = new URL(request.url);
-    if (url.pathname === '/api/ws' && request.headers.get('Upgrade')?.toLowerCase() === 'websocket') {
-      return handleWebSocketUpgrade(request, env);
-    }
     return app.fetch(request, env, ctx);
   },
 };
