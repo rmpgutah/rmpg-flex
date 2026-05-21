@@ -1,8 +1,6 @@
 import { Hono } from "hono";
-import type { Env } from "../worker";
-import type { JwtPayload } from "../worker-middleware/auth";
 
-export function mountAiRoutes(app: Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>): void {
-  const api = new Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>();
+export function mountAiRoutes(app: any): void {
+  const api = new Hono();
   app.route("/api/ai", api);
 }
