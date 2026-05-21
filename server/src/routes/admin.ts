@@ -1795,9 +1795,7 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'dl_ocr_rapidapi_key',
   'plate_check_rapidapi_key',
   // Google Cloud Console
-  'google_maps_api_key',
-  'google_maps_server_key',
-  'google_places_api_key',
+  'google_cloud_vision_key',
   'google_cloud_vision_key',
   'google_cloud_speech_key',
   'google_generative_language_key',

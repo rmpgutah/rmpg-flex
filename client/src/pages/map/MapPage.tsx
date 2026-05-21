@@ -1438,71 +1438,85 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Remove existing heatmap layer
-    if (heatmapLayerRef.current) {
-      heatmapLayerRef.current.setMap(null);
-      heatmapLayerRef.current = null;
-    }
+    // Remove existing heatmap source and layer
+    if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
+    if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
 
     // Skip basic heatmap rendering when advanced heatmap is active (it manages its own layers)
     if (!showHeatmap || heatmapData.length === 0 || advancedHeatmapEnabled) return;
 
-    // Fix 9: guard for missing visualization library
-    if (!google.maps.visualization?.HeatmapLayer) {
-      console.warn('[MapPage] google.maps.visualization.HeatmapLayer not available');
-      return;
-    }
-
-    // Build weighted data points for HeatmapLayer
-    const weightedData = heatmapData
-      // Fix 11: validate heatmap data points have finite lat/lng
+    // Build weighted GeoJSON data points for heatmap
+    const weightedFeatures = heatmapData
       .filter((p: any) => p.latitude != null && p.longitude != null && isFinite(p.latitude) && isFinite(p.longitude))
-      // Fix 12: cap heatmap points at 10000
       .slice(0, 10000)
       .map((point: any) => ({
-        location: new google.maps.LatLng(point.latitude, point.longitude),
-        weight: heatmapMode === 'risk' ? (point.risk_weight || point.count || 1) : (point.count || 1),
+        type: 'Feature' as const,
+        properties: {
+          weight: heatmapMode === 'risk' ? (point.risk_weight || point.count || 1) : (point.count || 1),
+        },
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [point.longitude, point.latitude],
+        },
       }));
 
-    // Choose gradient based on mode (Fix 14: dark-theme compatible colors)
-    const gradient = heatmapMode === 'risk'
-      ? [
-          'rgba(0,0,0,0)',        // transparent
-          'rgba(255,165,0,0.3)',  // orange low
-          'rgba(255,100,0,0.5)',  // deep orange
-          'rgba(255,50,0,0.7)',   // red-orange
-          'rgba(255,0,0,0.85)',   // red
-          'rgba(200,0,0,1)',      // dark red
-        ]
-      : [
-          'rgba(0,0,0,0)',
-          'rgba(0,128,255,0.2)',  // blue low
-          'rgba(0,200,100,0.4)', // green
-          'rgba(200,200,0,0.6)', // yellow
-          'rgba(255,140,0,0.8)', // orange
-          'rgba(255,50,0,0.95)', // red high
-        ];
-
-    try { // Fix 10: try/catch around heatmap creation
-      const heatmap = new google.maps.visualization.HeatmapLayer({
-        data: weightedData,
-        map,
-        radius: 30,
-        opacity: 0.7,
-        gradient,
-        dissipating: true, // Fix 13: ensure dissipating is always true
+    try {
+      map.addSource('rmpg-heatmap', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: weightedFeatures,
+        },
       });
 
-      heatmapLayerRef.current = heatmap;
+      const heatmapColor = heatmapMode === 'risk'
+        ? [
+            'rgba(0,0,0,0)',
+            'rgba(255,165,0,0.3)',
+            'rgba(255,100,0,0.5)',
+            'rgba(255,50,0,0.7)',
+            'rgba(255,0,0,0.85)',
+            'rgba(200,0,0,1)',
+          ]
+        : [
+            'rgba(0,0,0,0)',
+            'rgba(0,128,255,0.2)',
+            'rgba(0,200,100,0.4)',
+            'rgba(200,200,0,0.6)',
+            'rgba(255,140,0,0.8)',
+            'rgba(255,50,0,0.95)',
+          ];
+
+      const colorExpr = ['interpolate', ['linear'], ['heatmap-density'],
+        0, heatmapColor[0],
+        0.2, heatmapColor[1],
+        0.4, heatmapColor[2],
+        0.6, heatmapColor[3],
+        0.8, heatmapColor[4],
+        1, heatmapColor[5],
+      ];
+
+      map.addLayer({
+        id: 'rmpg-heatmap-layer',
+        type: 'heatmap',
+        source: 'rmpg-heatmap',
+        paint: {
+          'heatmap-weight': ['get', 'weight'],
+          'heatmap-radius': 30,
+          'heatmap-opacity': 0.7,
+          'heatmap-color': colorExpr,
+        },
+      });
+
+      heatmapLayerRef.current = { setMap: null } as any;
     } catch (err) {
       console.warn('[MapPage] Error creating heatmap layer:', err);
     }
 
     return () => {
-      if (heatmapLayerRef.current) {
-        heatmapLayerRef.current.setMap(null);
-        heatmapLayerRef.current = null;
-      }
+      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
+      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      heatmapLayerRef.current = null;
     };
   }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, advancedHeatmapEnabled]);
 
@@ -1515,56 +1529,77 @@ export default function MapPage() {
     if (!map || !mapLoaded) return;
 
     // Clear existing lines
-    trackingLinesRef.current.forEach((line) => line.setMap(null));
+    if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
+    if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
     trackingLinesRef.current = [];
     setTrackingLineCount(0);
 
     if (!showTrackingLines) return;
 
-    // Draw lines from each dispatched/enroute/onscene unit to their assigned call
+    const features: any[] = [];
+
     units.forEach((unit) => {
       if (unit.latitude == null || unit.longitude == null) return;
       if (!unit.current_call_id) return;
       if (!CLEARABLE_STATUSES.includes(unit.status)) return;
-      // Fix 19: validate unit has finite coordinates
       if (!isFinite(unit.latitude) || !isFinite(unit.longitude)) return;
 
-      // Find the call this unit is assigned to
       const call = calls.find((c) => String(c.id) === String(unit.current_call_id));
       if (!call || call.latitude == null || call.longitude == null) return;
-      // Fix 19: validate call has finite coordinates
       if (!isFinite(call.latitude) || !isFinite(call.longitude)) return;
-
-      // Fix 21: skip zero-length lines
       if (unit.latitude === call.latitude && unit.longitude === call.longitude) return;
 
       const statusColor = UNIT_STATUS_COLORS[unit.status] || '#666666';
       const isDashed = unit.status === 'dispatched';
 
-      try { // Fix 20: try/catch around Polyline creation
-      const line = new google.maps.Polyline({
-        path: [
-          { lat: unit.latitude, lng: unit.longitude },
-          { lat: call.latitude, lng: call.longitude },
-        ],
-        geodesic: true,
-        strokeColor: statusColor,
-        strokeOpacity: isDashed ? 0 : 0.6,
-        strokeWeight: 2,
-        icons: isDashed ? [{
-          icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.6, strokeWeight: 2, scale: 3 },
-          offset: '0',
-          repeat: '15px',
-        }] : undefined,
-        map,
+      features.push({
+        type: 'Feature',
+        properties: { color: statusColor, isDashed },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [unit.longitude, unit.latitude],
+            [call.longitude, call.latitude],
+          ],
+        },
+      });
+    });
+
+    if (features.length === 0) return;
+
+    try {
+      map.addSource('rmpg-tracking-lines', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
       });
 
-      trackingLinesRef.current.push(line);
-      } catch (err) {
-        console.warn('[MapPage] Error creating tracking line:', err);
-      }
-    });
-    setTrackingLineCount(trackingLinesRef.current.length);
+      const dashExpr = ['case',
+        ['==', ['get', 'isDashed'], true],
+        [1, 4],
+        1,
+      ];
+
+      map.addLayer({
+        id: 'rmpg-tracking-lines',
+        type: 'line',
+        source: 'rmpg-tracking-lines',
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-opacity': ['case', ['==', ['get', 'isDashed'], true], 0, 0.6],
+          'line-width': 2,
+          'line-dasharray': dashExpr,
+        },
+      });
+
+      setTrackingLineCount(features.length);
+    } catch (err) {
+      console.warn('[MapPage] Error creating tracking lines:', err);
+    }
+
+    return () => {
+      if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
+      if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+    };
   }, [units, calls, showTrackingLines, mapLoaded]);
 
   // ============================================================
@@ -1580,13 +1615,13 @@ export default function MapPage() {
     if (!map || !mapLoaded) return;
 
     // Clear existing breadcrumb visuals
-    breadcrumbLinesRef.current.forEach((line) => line.setMap(null));
-    breadcrumbLinesRef.current = [];
-    breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
+    if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
+    if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
+    breadcrumbMarkersRef.current.forEach((m) => m.remove());
     breadcrumbMarkersRef.current = [];
-    breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+    breadcrumbArrowsRef.current.forEach((a) => a.remove());
     breadcrumbArrowsRef.current = [];
-    speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+    speedAlertMarkersRef.current.forEach((m) => m.remove());
     speedAlertMarkersRef.current = [];
 
     if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
@@ -1595,7 +1630,7 @@ export default function MapPage() {
     if (!token) return;
 
     if (!breadcrumbInfoRef.current) {
-      breadcrumbInfoRef.current = new google.maps.InfoWindow();
+      breadcrumbInfoRef.current = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     }
 
     const formatSpeedMph = (mps: number | null) => mps == null ? '—' : `${(mps * 2.237).toFixed(0)} mph`;
@@ -1623,13 +1658,11 @@ export default function MapPage() {
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     const fetchTrails = async () => {
-      breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
-      breadcrumbLinesRef.current = [];
-      breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
-      breadcrumbMarkersRef.current = [];
-      breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+      breadcrumbArrowsRef.current.forEach((a) => a.remove());
       breadcrumbArrowsRef.current = [];
-      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      breadcrumbMarkersRef.current.forEach((m) => m.remove());
+      breadcrumbMarkersRef.current = [];
+      speedAlertMarkersRef.current.forEach((m) => m.remove());
       speedAlertMarkersRef.current = [];
 
       try {
@@ -1637,12 +1670,13 @@ export default function MapPage() {
         if (!trails) return;
         setPlaybackTrails(trails);
 
+        const lineFeatures: any[] = [];
+
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
 
           const unitColor = TRAIL_COLORS[idx % TRAIL_COLORS.length];
 
-          // Draw segments with color mode
           for (let i = 0; i < trail.points.length - 1; i++) {
             const p1 = trail.points[i];
             const p2 = trail.points[i + 1];
@@ -1655,7 +1689,6 @@ export default function MapPage() {
             } else if (breadcrumbColorMode === 'status') {
               segColor = statusToColor(p1.status);
             } else if (breadcrumbColorMode === 'accel') {
-              // Compute inline acceleration between consecutive points
               const dt = (new Date(p2.time).getTime() - new Date(p1.time).getTime()) / 1000;
               if (dt > 0 && p1.speed != null && p2.speed != null) {
                 const accel = (p2.speed - p1.speed) / dt;
@@ -1667,48 +1700,44 @@ export default function MapPage() {
               segColor = unitColor;
             }
 
-            const seg = new google.maps.Polyline({
-              path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
-              geodesic: true,
-              strokeColor: segColor,
-              strokeOpacity: opacity,
-              strokeWeight: 3,
-              map,
+            lineFeatures.push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: [[p1.lng, p1.lat], [p2.lng, p2.lat]] },
+              properties: { strokeColor: segColor, strokeOpacity: opacity },
             });
-            breadcrumbLinesRef.current.push(seg);
           }
 
-          // Directional arrows every 8th point
           trail.points.forEach((pt, ptIdx) => {
             if (ptIdx % 8 !== 4 || pt.heading == null) return;
             const freshness = (ptIdx + 1) / trail.points.length;
-            const arrow = new google.maps.Marker({
-              position: { lat: pt.lat, lng: pt.lng },
-              map,
-              icon: {
-                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 2.5,
-                rotation: pt.heading,
-                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : breadcrumbColorMode === 'status' ? statusToColor(pt.status) : breadcrumbColorMode === 'accel' ? accelToColor(null) : unitColor,
-                fillOpacity: 0.3 + freshness * 0.5,
-                strokeColor: '#fff',
-                strokeWeight: 0.5,
-                strokeOpacity: 0.6,
-              },
-              clickable: false,
-              zIndex: 1,
-            });
+            const arrowColor = breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : breadcrumbColorMode === 'status' ? statusToColor(pt.status) : breadcrumbColorMode === 'accel' ? accelToColor(null) : unitColor;
+            const arrowOpacity = 0.3 + freshness * 0.5;
+
+            const arrowEl = document.createElement('div');
+            arrowEl.style.cssText = 'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:12px solid transparent;line-height:0;';
+            const arrowSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            arrowSvg.setAttribute('width', '14');
+            arrowSvg.setAttribute('height', '14');
+            arrowSvg.setAttribute('viewBox', '0 0 24 24');
+            arrowSvg.style.cssText = `transform:rotate(${pt.heading}deg);opacity:${arrowOpacity};overflow:visible;`;
+            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            poly.setAttribute('points', '12,2 22,22 2,22');
+            poly.setAttribute('fill', arrowColor);
+            poly.setAttribute('stroke', '#fff');
+            poly.setAttribute('stroke-width', '0.5');
+            arrowSvg.appendChild(poly);
+            arrowEl.appendChild(arrowSvg);
+
+            const arrow = new mapboxgl.Marker({ element: arrowEl }).setLngLat([pt.lng, pt.lat]).addTo(map);
             breadcrumbArrowsRef.current.push(arrow);
           });
 
-          // Dot markers at each breadcrumb point
           trail.points.forEach((pt, ptIdx) => {
             const isLast = ptIdx === trail.points.length - 1;
             let dotColor: string;
             if (breadcrumbColorMode === 'speed') dotColor = speedToColor(pt.speed);
             else if (breadcrumbColorMode === 'status') dotColor = statusToColor(pt.status);
             else if (breadcrumbColorMode === 'accel') {
-              // Compute accel from prev point
               if (ptIdx > 0) {
                 const prev = trail.points[ptIdx - 1];
                 const dt = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
@@ -1718,20 +1747,12 @@ export default function MapPage() {
               } else { dotColor = accelToColor(null); }
             } else dotColor = unitColor;
 
-            const dot = new google.maps.Circle({
-              center: { lat: pt.lat, lng: pt.lng },
-              radius: 4,
-              fillColor: dotColor,
-              fillOpacity: isLast ? 1 : 0.6,
-              strokeColor: '#fff',
-              strokeWeight: isLast ? 2 : 0.5,
-              strokeOpacity: 0.8,
-              map,
-              clickable: true,
-              zIndex: ptIdx,
-            });
+            const dotEl = document.createElement('div');
+            const dotSize = isLast ? 10 : 8;
+            dotEl.style.cssText = `width:${dotSize}px;height:${dotSize}px;background:${dotColor};border:${isLast ? 2 : 0.5}px solid ${isLast ? '#fbbf24' : '#fff'};border-radius:50%;opacity:${isLast ? 1 : 0.6};cursor:pointer;box-shadow:${isLast ? '0 0 6px ' + dotColor : 'none'};`;
+            const dot = new mapboxgl.Marker({ element: dotEl }).setLngLat([pt.lng, pt.lat]).addTo(map);
 
-            dot.addListener('click', () => {
+            dot.getElement().addEventListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
               const locationRow = pt.road_name
                 ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
@@ -1822,37 +1843,46 @@ export default function MapPage() {
                   </table>
                 </div>
               `;
-              breadcrumbInfoRef.current?.setContent(html);
-              breadcrumbInfoRef.current?.setPosition({ lat: pt.lat, lng: pt.lng });
-              breadcrumbInfoRef.current?.open(map);
+              breadcrumbInfoRef.current?.setHTML(html);
+              breadcrumbInfoRef.current?.setLngLat([pt.lng, pt.lat]);
+              breadcrumbInfoRef.current?.addTo(map);
             });
 
             breadcrumbMarkersRef.current.push(dot);
           });
         });
 
+        // Create or update breadcrumb line source & layer
+        if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
+        if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
+        if (lineFeatures.length > 0) {
+          map.addSource('rmpg-breadcrumb-lines', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: lineFeatures },
+          });
+          map.addLayer({
+            id: 'rmpg-breadcrumb-lines',
+            type: 'line',
+            source: 'rmpg-breadcrumb-lines',
+            paint: {
+              'line-color': ['get', 'strokeColor'],
+              'line-opacity': ['get', 'strokeOpacity'],
+              'line-width': 3,
+            },
+          });
+        }
+
         // Speed alert triangle markers (>= 80 mph)
-        speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+        speedAlertMarkersRef.current.forEach((m) => m.remove());
         speedAlertMarkersRef.current = [];
         trails.forEach((trail) => {
           trail.points.forEach((pt) => {
             const mph = pt.speed != null ? pt.speed * 2.237 : 0;
             if (mph >= 80) {
-              const marker = new google.maps.Marker({
-                position: { lat: pt.lat, lng: pt.lng },
-                map,
-                icon: {
-                  path: 'M 0,-8 L 7,5 L -7,5 Z',
-                  scale: 1.4,
-                  fillColor: '#dc2626',
-                  fillOpacity: 0.9,
-                  strokeColor: '#fbbf24',
-                  strokeWeight: 1.5,
-                },
-                label: { text: '!', color: '#fff', fontSize: '9px', fontWeight: 'bold' },
-                title: `Speed alert: ${Math.round(mph)} mph — ${trail.call_sign}`,
-                zIndex: 5000,
-              });
+              const el = document.createElement('div');
+              el.innerHTML = `<svg width="18" height="16" viewBox="0 0 18 16"><polygon points="9,0 18,14 0,14" fill="#dc2626" stroke="#fbbf24" stroke-width="1.5"/><text x="9" y="11" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">!</text></svg>`;
+              el.title = `Speed alert: ${Math.round(mph)} mph \u2014 ${trail.call_sign}`;
+              const marker = new mapboxgl.Marker({ element: el }).setLngLat([pt.lng, pt.lat]).addTo(map);
               speedAlertMarkersRef.current.push(marker);
             }
           });
@@ -1867,14 +1897,13 @@ export default function MapPage() {
     return () => {
       clearInterval(interval);
       clearTimeout(retryTimeout);
-      // Clean up polylines, markers, and arrows on unmount to prevent memory leaks
-      breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
-      breadcrumbLinesRef.current = [];
-      breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
+      if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
+      if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
+      breadcrumbMarkersRef.current.forEach((m) => m.remove());
       breadcrumbMarkersRef.current = [];
-      breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+      breadcrumbArrowsRef.current.forEach((a) => a.remove());
       breadcrumbArrowsRef.current = [];
-      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      speedAlertMarkersRef.current.forEach((m) => m.remove());
       speedAlertMarkersRef.current = [];
     };
   }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);

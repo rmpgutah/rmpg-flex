@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { UserRole } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
@@ -144,8 +144,18 @@ export default function UserFormModal({
   isSubmitting,
   editingUser,
 }: UserFormModalProps) {
-  const [form, setForm] = useState<UserFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<UserFormData>({
+    storageKey: 'rmpg_user_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<SectionId>('account');
 
   useEffect(() => {
@@ -189,10 +199,10 @@ export default function UserFormModal({
           profile_image: editingUser.profile_image || '',
         };
         setForm(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         setForm(EMPTY_FORM);
-        snapshot(EMPTY_FORM);
+        snapshot();
       }
     }
   // Depend on editingUser?.id (not object reference) to prevent LiveSync
@@ -222,6 +232,8 @@ export default function UserFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Section Tabs */}
       <div className="flex flex-wrap gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">

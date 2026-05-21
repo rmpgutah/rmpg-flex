@@ -1,22 +1,22 @@
 import { getDb } from '../models/database';
 import { broadcastDispatchUpdate } from './websocket';
-import { resolveGoogleMapsApiKey } from './configEncryption';
+import { resolveMapboxAccessToken } from './configEncryption';
 
 // Lazily resolved so the DB is ready when first used
-let _cachedGoogleKey: string | undefined;
+let _cachedMapboxToken: string | undefined;
 let _cacheTime = 0;
 let _cacheResolving = false;
 const CACHE_TTL_MS = 5 * 60 * 1000; // re-check every 5 min
 
-function getGoogleMapsApiKey(): string | undefined {
+function getMapboxAccessToken(): string | undefined {
   const now = Date.now();
-  if ((!_cachedGoogleKey || now - _cacheTime > CACHE_TTL_MS) && !_cacheResolving) {
+  if ((!_cachedMapboxToken || now - _cacheTime > CACHE_TTL_MS) && !_cacheResolving) {
     _cacheResolving = true;
-    _cachedGoogleKey = resolveGoogleMapsApiKey();
+    _cachedMapboxToken = resolveMapboxAccessToken();
     _cacheTime = Date.now();
     _cacheResolving = false;
   }
-  return _cachedGoogleKey;
+  return _cachedMapboxToken;
 }
 
 // [FIX 54] Add request timeout for geocode API calls

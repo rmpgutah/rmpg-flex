@@ -9,6 +9,13 @@ export function mountPersonnelRoutes(app: Hono<{ Bindings: Env; Variables: { use
   const api = new Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>();
   api.use('/*', authenticateToken);
 
+  // GET /api/personnel
+  api.get('/', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const users = await db.prepare(`SELECT id, username, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at FROM users ORDER BY full_name`).all();
+    return c.json(users);
+  });
+
   // GET /api/personnel/users - List users
   api.get('/users', requireRole('admin', 'manager'), async (c) => {
     const db = new D1Db(c.env.DB);
@@ -30,6 +37,13 @@ export function mountPersonnelRoutes(app: Hono<{ Bindings: Env; Variables: { use
     const db = new D1Db(c.env.DB);
     const roster = await db.prepare(`SELECT id, username, full_name, role, badge_number, status FROM users WHERE status = 'active' ORDER BY badge_number`).all();
     return c.json(roster);
+  });
+
+  // GET /api/personnel/credentials
+  api.get('/credentials', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const credentials = await db.prepare(`SELECT c.*, u.full_name as officer_name, u.badge_number FROM credentials c LEFT JOIN users u ON c.officer_id = u.id ORDER BY c.expiry_date ASC LIMIT 1000`).all();
+    return c.json(credentials);
   });
 
   app.route('/api/personnel', api);

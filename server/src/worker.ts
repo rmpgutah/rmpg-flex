@@ -248,6 +248,11 @@ import { mountPersonnelRoutes } from './routes/personnel-worker';
 import { mountWarrantRoutes } from './routes/warrants-worker';
 import { mountIncidentRoutes } from './routes/incidents-worker';
 import { mountRecordsRoutes } from './routes/records-worker';
+import { mountNotificationRoutes } from './routes/notifications-worker';
+import { mountCommsRoutes } from './routes/comms-worker';
+import { mountReportsRoutes } from './routes/reports-worker';
+import { mountEmailRoutes } from './routes/email-worker';
+import { mountFleetRoutes } from './routes/fleet-worker';
 
 mountAuthRoutes(app);
 mountDispatchRoutes(app);
@@ -256,6 +261,11 @@ mountPersonnelRoutes(app);
 mountWarrantRoutes(app);
 mountIncidentRoutes(app);
 mountRecordsRoutes(app);
+mountNotificationRoutes(app);
+mountCommsRoutes(app);
+mountReportsRoutes(app);
+mountEmailRoutes(app);
+mountFleetRoutes(app);
 
 // ─── SPA Fallback ────────────────────────────────────────
 // In production, the client is built and served via Pages or R2

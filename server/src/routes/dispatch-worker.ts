@@ -471,6 +471,43 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     });
   });
 
+  // GET /api/dispatch/stats - Full dispatch stats (from aggregates.ts)
+  api.get('/stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+
+    const [callsByStatus, callsByPriority, unitsByStatus, activeCalls, todayTotal, avgResponseTime, pendingCalls, oldestPending, avgDispatchDelay, onHoldCount, p1Today, resolvedToday, responseByPriority] = await Promise.all([
+      db.prepare("SELECT status, COUNT(*) as count FROM calls_for_service WHERE DATE(created_at) = DATE('now') GROUP BY status").all(),
+      db.prepare("SELECT priority, COUNT(*) as count FROM calls_for_service WHERE DATE(created_at) = DATE('now') GROUP BY priority").all(),
+      db.prepare('SELECT status, COUNT(*) as count FROM units GROUP BY status').all(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE DATE(created_at) = DATE('now')").get(),
+      db.prepare("SELECT AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60) as avg_minutes FROM calls_for_service WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now')").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'pending'").get(),
+      db.prepare("SELECT ROUND((julianday('now') - julianday(created_at)) * 24 * 60, 1) as age_minutes FROM calls_for_service WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1").get(),
+      db.prepare("SELECT ROUND(AVG((julianday(dispatched_at) - julianday(created_at)) * 24 * 60), 1) as avg_minutes FROM calls_for_service WHERE dispatched_at IS NOT NULL AND DATE(created_at) = DATE('now') AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 > 0 AND (julianday(dispatched_at) - julianday(created_at)) * 24 * 60 < 720").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status = 'on_hold'").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE priority = 'P1' AND DATE(created_at) = DATE('now')").get(),
+      db.prepare("SELECT COUNT(*) as count FROM calls_for_service WHERE status IN ('cleared', 'closed') AND DATE(created_at) = DATE('now')").get(),
+      db.prepare("SELECT priority, ROUND(AVG((julianday(onscene_at) - julianday(created_at)) * 24 * 60), 1) as avg_minutes, COUNT(*) as count FROM calls_for_service WHERE onscene_at IS NOT NULL AND DATE(created_at) = DATE('now') AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 > 0 AND (julianday(onscene_at) - julianday(created_at)) * 24 * 60 < 720 GROUP BY priority").all(),
+    ]);
+
+    return c.json({
+      activeCalls: (activeCalls as any)?.count ?? 0,
+      todayTotal: (todayTotal as any)?.count ?? 0,
+      avgResponseMinutes: (avgResponseTime as any)?.avg_minutes ? Math.round((avgResponseTime as any).avg_minutes * 10) / 10 : null,
+      callsByStatus,
+      callsByPriority,
+      unitsByStatus,
+      pendingCalls: (pendingCalls as any)?.count || 0,
+      oldestPendingMinutes: (oldestPending as any)?.age_minutes || null,
+      avgDispatchDelayMinutes: (avgDispatchDelay as any)?.avg_minutes || null,
+      onHoldCalls: (onHoldCount as any)?.count || 0,
+      p1CallsToday: (p1Today as any)?.count || 0,
+      resolvedToday: (resolvedToday as any)?.count || 0,
+      responseByPriority,
+    });
+  });
+
   // ═══════════════════════════════════════════════════════════
   // GEOGRAPHY
   // ═══════════════════════════════════════════════════════════

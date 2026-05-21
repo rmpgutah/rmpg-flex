@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Award } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 
 export interface CredentialFormData {
   officer_id: string;
@@ -67,8 +67,18 @@ export default function CredentialFormModal({
   initialData,
   mode = 'create',
 }: CredentialFormModalProps) {
-  const [form, setForm] = useState<CredentialFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<CredentialFormData>({
+    storageKey: 'rmpg_credential_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
@@ -82,10 +92,10 @@ export default function CredentialFormModal({
         notes: initialData.notes || '',
       };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen && !initialData) {
       setForm(EMPTY_FORM);
-      snapshot(EMPTY_FORM);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
@@ -95,7 +105,7 @@ export default function CredentialFormModal({
   };
 
   const handleClose = () => {
-    setForm(EMPTY_FORM);
+    clearDraft();
     onClose();
   };
 
@@ -109,6 +119,8 @@ export default function CredentialFormModal({
       submitLabel={mode === 'edit' ? 'Update Credential' : 'Add Credential'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Officer */}
       <div>

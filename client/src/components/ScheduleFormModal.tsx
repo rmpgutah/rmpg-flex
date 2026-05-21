@@ -1,6 +1,25 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Calendar } from 'lucide-react';
 import FormModal from './FormModal';
+import { useFormDraft } from '../hooks/useFormDraft';
+
+interface ScheduleFormData {
+  officer_id: string;
+  property_id: string;
+  shift_date: string;
+  start_time: string;
+  end_time: string;
+  notes: string;
+}
+
+const EMPTY_FORM: ScheduleFormData = {
+  officer_id: '',
+  property_id: '',
+  shift_date: '',
+  start_time: '18:00',
+  end_time: '06:00',
+  notes: '',
+};
 
 interface ScheduleFormModalProps {
   isOpen: boolean;
@@ -26,32 +45,43 @@ export default function ScheduleFormModal({
   officers,
   properties,
 }: ScheduleFormModalProps) {
-  const [officerId, setOfficerId] = useState('');
-  const [propertyId, setPropertyId] = useState('');
-  const [shiftDate, setShiftDate] = useState('');
-  const [startTime, setStartTime] = useState('18:00');
-  const [endTime, setEndTime] = useState('06:00');
-  const [notes, setNotes] = useState('');
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<ScheduleFormData>({
+    storageKey: 'rmpg_schedule_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
+
+  React.useEffect(() => {
+    if (isOpen) {
+      setForm(EMPTY_FORM);
+      snapshot();
+    }
+  }, [isOpen, snapshot, setForm]);
+
+  const set = (field: keyof ScheduleFormData, value: string) =>
+    setForm((prev) => ({ ...prev, [field]: value }));
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     onSubmit({
-      officer_id: officerId,
-      property_id: propertyId || undefined,
-      shift_date: shiftDate,
-      start_time: startTime,
-      end_time: endTime,
-      notes: notes || undefined,
+      officer_id: form.officer_id,
+      property_id: form.property_id || undefined,
+      shift_date: form.shift_date,
+      start_time: form.start_time,
+      end_time: form.end_time,
+      notes: form.notes || undefined,
     });
   };
 
   const handleClose = () => {
-    setOfficerId('');
-    setPropertyId('');
-    setShiftDate('');
-    setStartTime('18:00');
-    setEndTime('06:00');
-    setNotes('');
+    clearDraft();
     onClose();
   };
 
@@ -64,6 +94,9 @@ export default function ScheduleFormModal({
       icon={Calendar}
       submitLabel="Create Schedule"
       isSubmitting={isSubmitting}
+      isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Officer */}
       <div>
@@ -72,8 +105,8 @@ export default function ScheduleFormModal({
         </label>
         <select
           required
-          value={officerId}
-          onChange={(e) => setOfficerId(e.target.value)}
+          value={form.officer_id}
+          onChange={(e) => set('officer_id', e.target.value)}
           className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
         >
           <option value="">Select officer...</option>
@@ -91,8 +124,8 @@ export default function ScheduleFormModal({
           Property
         </label>
         <select
-          value={propertyId}
-          onChange={(e) => setPropertyId(e.target.value)}
+          value={form.property_id}
+          onChange={(e) => set('property_id', e.target.value)}
           className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
         >
           <option value="">None (floating)</option>
@@ -112,8 +145,8 @@ export default function ScheduleFormModal({
         <input
           type="date"
           required
-          value={shiftDate}
-          onChange={(e) => setShiftDate(e.target.value)}
+          value={form.shift_date}
+          onChange={(e) => set('shift_date', e.target.value)}
           className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
         />
       </div>
@@ -127,8 +160,8 @@ export default function ScheduleFormModal({
           <input
             type="time"
             required
-            value={startTime}
-            onChange={(e) => setStartTime(e.target.value)}
+            value={form.start_time}
+            onChange={(e) => set('start_time', e.target.value)}
             className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
@@ -139,8 +172,8 @@ export default function ScheduleFormModal({
           <input
             type="time"
             required
-            value={endTime}
-            onChange={(e) => setEndTime(e.target.value)}
+            value={form.end_time}
+            onChange={(e) => set('end_time', e.target.value)}
             className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500"
           />
         </div>
@@ -152,14 +185,14 @@ export default function ScheduleFormModal({
           Notes
         </label>
         <textarea
-          value={notes}
-          onChange={(e) => setNotes(e.target.value)}
+          value={form.notes}
+          onChange={(e) => set('notes', e.target.value)}
           rows={3}
           placeholder="Optional shift notes..."
           maxLength={2000}
           className="w-full bg-surface-sunken border border-rmpg-600 text-sm text-white px-3 py-2 focus:outline-none focus:border-brand-500 resize-none"
         />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{notes.length}/2000</div>
+        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
       </div>
     </FormModal>
   );

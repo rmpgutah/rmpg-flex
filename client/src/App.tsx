@@ -14,8 +14,7 @@ import LoginPage from './pages/LoginPage';
 // Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
-// MapPage (Google Maps) retired 2026-04-19 — Google API keys revoked.
-// /map redirects to /map-v2 (OpenLayers). Phase 5 will delete pages/map/.
+// MapPage retired; Mapbox is the active map library.
 const MapPageV2 = lazyRetry(() => import('./pages/map-v2'));
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(

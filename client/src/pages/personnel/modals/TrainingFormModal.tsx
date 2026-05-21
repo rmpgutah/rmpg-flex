@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { GraduationCap } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
-import { useFormDirty } from '../../../hooks/useFormDirty';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { TrainingCategory } from '../../../types';
 
 export interface TrainingFormData {
@@ -58,17 +58,27 @@ const EMPTY: TrainingFormData = {
 export default function TrainingFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, initialData, mode = 'create',
 }: Props) {
-  const [form, setForm] = useState<TrainingFormData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<TrainingFormData>({
+    storageKey: 'rmpg_personnel_training_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
       const initial = { ...EMPTY, ...initialData };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen) {
       setForm(EMPTY);
-      snapshot(EMPTY);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
@@ -90,6 +100,8 @@ export default function TrainingFormModal({
       submitLabel={mode === 'edit' ? 'Update' : 'Add Training'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Officer & Course */}
       <div className="panel-inset p-3 space-y-3">
