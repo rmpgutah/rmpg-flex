@@ -603,7 +603,7 @@ export default function MenuBar({
           { type: 'action', label: 'Issue BOLO', icon: AlertTriangle, action: () => navigate('/communications') },
           { type: 'action', label: 'View Active BOLOs', icon: Eye, action: () => navigate('/communications') },
           { type: 'separator' },
-          { type: 'action', label: 'Radio Console', icon: Radio, action: () => navigate('/radio') },
+
         ],
       },
       {
