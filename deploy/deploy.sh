@@ -11,13 +11,21 @@
 
 set -e
 
-ENVIRONMENT="${1:---production}"
+RAW_ENV="${1:-production}"
 DRY_RUN=false
 
-if [ "$ENVIRONMENT" = "--dry-run" ]; then
+if [ "$RAW_ENV" = "--dry-run" ]; then
   DRY_RUN=true
   ENVIRONMENT="production"
+elif [ "$RAW_ENV" = "--staging" ]; then
+  ENVIRONMENT="staging"
+elif [ "$RAW_ENV" = "--production" ]; then
+  ENVIRONMENT="production"
+else
+  ENVIRONMENT="$RAW_ENV"
 fi
+# Strip leading dashes from environment for wrangler compat
+ENVIRONMENT="${ENVIRONMENT#--}"
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"

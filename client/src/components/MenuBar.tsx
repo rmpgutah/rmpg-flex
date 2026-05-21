@@ -710,7 +710,7 @@ export default function MenuBar({
     ],
   };
 
-  const menus = [fileMenu, viewMenu, toolsMenu, helpMenu];
+  const menus = [fileMenu, helpMenu];
 
   // ============================================================
   // Rendering
