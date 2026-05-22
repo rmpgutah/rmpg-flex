@@ -28,6 +28,7 @@ import {
   ClipboardList,
   Brain,
   Map,
+  Download,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -67,6 +68,7 @@ import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 import AdminAISettingsTab from './admin/AdminAISettingsTab';
 import AdminGodModeTab from './admin/AdminGodModeTab';
 import AdminMapSettingsTab from './admin/AdminMapSettingsTab';
+import AdminDownloadsTab from './admin/AdminDownloadsTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -231,7 +233,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings' | 'downloads';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -245,7 +247,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings', 'downloads'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -641,6 +643,7 @@ export default function AdminPage() {
         { id: 'branding', label: 'Branding & Reports', icon: Palette },
         { id: 'retention', label: 'Data Retention', icon: Archive },
         { id: 'offline', label: 'Offline Mode', icon: WifiOff },
+        { id: 'downloads', label: 'Downloads', icon: Download },
       ],
     },
     {
@@ -861,6 +864,14 @@ export default function AdminPage() {
 
         {activeTab === 'map_settings' && (
           <AdminMapSettingsTab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
+        {activeTab === 'downloads' && (
+          <AdminDownloadsTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
