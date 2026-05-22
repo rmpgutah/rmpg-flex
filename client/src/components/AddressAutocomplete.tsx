@@ -59,6 +59,10 @@ interface AddressAutocompleteProps {
 interface Suggestion {
   place_name: string;
   id: string;
+  /** source: 'mapbox' or 'nominatim' */
+  source?: string;
+  /** raw feature/result for detail lookup */
+  raw?: any;
 }
 
 interface MapboxFeature {
@@ -177,6 +181,7 @@ export default function AddressAutocomplete({
   const [selectedIdx, setSelectedIdx] = useState(-1);
   const [loadError, setLoadError] = useState(false);
   const [tokenReady, setTokenReady] = useState(false);
+  const [useNominatim, setUseNominatim] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextChangeRef = useRef(false);
 
@@ -190,20 +195,22 @@ export default function AddressAutocomplete({
         const token = await getMapboxAccessToken();
         if (cancelled) return;
         if (!token) {
-          setLoadError(true);
+          setUseNominatim(true);
+          setLoadError(false);
+          injectAutocompleteStyles();
           return;
         }
         setTokenReady(true);
         injectAutocompleteStyles();
       } catch {
-        if (!cancelled) setLoadError(true);
+        if (!cancelled) { setUseNominatim(true); injectAutocompleteStyles(); }
       }
     })();
 
     return () => { cancelled = true; };
   }, []);
 
-  // Geocode query via Mapbox Geocoding API
+  // Geocode query via Mapbox or Nominatim fallback
   const fetchSuggestions = useCallback(async (query: string) => {
     if (!query || query.length < 3) {
       setSuggestions([]);
@@ -212,6 +219,23 @@ export default function AddressAutocomplete({
     }
 
     try {
+      if (useNominatim) {
+        const res = await fetch(`/api/geocode/search?q=${encodeURIComponent(query)}&limit=5`);
+        if (!res.ok) return;
+        const data = await res.json();
+        const results: any[] = data.results || [];
+        const mapped: Suggestion[] = results.map((r: any, i: number) => ({
+          place_name: r.display_name,
+          id: `nom-${i}`,
+          source: 'nominatim',
+          raw: r,
+        }));
+        setSuggestions(mapped);
+        setShowDropdown(mapped.length > 0);
+        setSelectedIdx(-1);
+        return;
+      }
+
       const token = await getMapboxAccessToken();
       if (!token) return;
 
@@ -219,33 +243,38 @@ export default function AddressAutocomplete({
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=${country}&autocomplete=true&types=${types}&limit=5`;
 
       const res = await fetch(url);
-      if (!res.ok) return;
+      if (!res.ok) {
+        setUseNominatim(true);
+        return;
+      }
 
-      const data = await res.json();
-      const features: MapboxFeature[] = data.features || [];
+      const mapData = await res.json();
+      const features: MapboxFeature[] = mapData.features || [];
 
       const mapped: Suggestion[] = features.map((f: MapboxFeature) => ({
         place_name: f.place_name,
         id: f.id,
+        source: 'mapbox',
+        raw: f,
       }));
 
       setSuggestions(mapped);
       setShowDropdown(mapped.length > 0);
       setSelectedIdx(-1);
     } catch {
-      // silent fail — suggestions are non-critical
+      setUseNominatim(true);
     }
-  }, [country, addressOnly]);
+  }, [country, addressOnly, useNominatim]);
 
   // Debounced geocoding on input change
   useEffect(() => {
-    if (!tokenReady) return;
+    if (!tokenReady && !useNominatim) return;
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
       fetchSuggestions(value);
     }, 300);
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [value, tokenReady, fetchSuggestions]);
+  }, [value, tokenReady, useNominatim, fetchSuggestions]);
 
   // Handle suggestion selection — fetch detail and parse address
   const handleSelectSuggestion = useCallback(async (suggestion: Suggestion) => {
@@ -254,9 +283,34 @@ export default function AddressAutocomplete({
     skipNextChangeRef.current = true;
     onChange(suggestion.place_name);
 
+    if (suggestion.source === 'nominatim') {
+      const raw = suggestion.raw || {};
+      const addr = raw;
+      const street = addr.street || '';
+      const city = addr.city || '';
+      const state = addr.state || '';
+      const zip = addr.zip || '';
+      if (onSelect) {
+        onSelect({
+          formatted: suggestion.place_name,
+          street,
+          city,
+          state,
+          zip,
+          country: 'United States',
+          latitude: addr.latitude ?? null,
+          longitude: addr.longitude ?? null,
+        });
+      }
+      return;
+    }
+
     try {
       const token = await getMapboxAccessToken();
-      if (!token) return;
+      if (!token) {
+        if (onSelect) onSelect({ formatted: suggestion.place_name, street: '', city: '', state: '', zip: '', country: '', latitude: null, longitude: null });
+        return;
+      }
 
       const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${suggestion.id}.json?access_token=${token}&types=address,place`;
       const res = await fetch(url);
@@ -320,8 +374,8 @@ export default function AddressAutocomplete({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // If token failed to load, render a plain input
-  if (loadError || disabled) {
+  // If explicitly disabled, render a plain input
+  if (disabled) {
     return (
       <input
         type="text"

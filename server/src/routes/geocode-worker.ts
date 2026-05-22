@@ -9,6 +9,11 @@ const MAX_QUERY_LENGTH = 200;
 const MAX_LIMIT = 10;
 const USER_AGENT = 'RMPG-Flex-CAD/5.7 (rmpgutah.us)';
 
+interface NominatimAddress {
+  road?: string; house_number?: string; city?: string; town?: string;
+  village?: string; state?: string; postcode?: string; [key: string]: any;
+}
+
 interface NominatimResult {
   display_name: string;
   lat: string;
@@ -16,6 +21,7 @@ interface NominatimResult {
   place_id?: number;
   type?: string;
   importance?: number;
+  address?: NominatimAddress;
 }
 
 interface SearchResult {
@@ -23,6 +29,10 @@ interface SearchResult {
   latitude: number;
   longitude: number;
   type?: string;
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
 }
 
 export function mountGeocodeRoutes(app: Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>): void {
@@ -44,7 +54,7 @@ export function mountGeocodeRoutes(app: Hono<{ Bindings: Env; Variables: { user:
 
     const url =
       `https://nominatim.openstreetmap.org/search?` +
-      `q=${encodeURIComponent(q)}&format=json&limit=${limit}&countrycodes=us&addressdetails=0`;
+      `q=${encodeURIComponent(q)}&format=json&limit=${limit}&countrycodes=us&addressdetails=1`;
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), NOMINATIM_TIMEOUT_MS);
@@ -59,12 +69,23 @@ export function mountGeocodeRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       }
       const data: NominatimResult[] = await upstream.json();
       const results: SearchResult[] = (Array.isArray(data) ? data : [])
-        .map((r) => ({
-          display_name: r.display_name,
-          latitude: parseFloat(r.lat),
-          longitude: parseFloat(r.lon),
-          type: r.type,
-        }))
+        .map((r) => {
+          const addr = r.address || {};
+          const street = [addr.house_number, addr.road].filter(Boolean).join(' ');
+          const city = addr.city || addr.town || addr.village || addr.municipality || '';
+          const state = addr.state || '';
+          const zip = addr.postcode || '';
+          return {
+            display_name: r.display_name,
+            latitude: parseFloat(r.lat),
+            longitude: parseFloat(r.lon),
+            type: r.type,
+            street,
+            city,
+            state,
+            zip,
+          };
+        })
         .filter((r) => Number.isFinite(r.latitude) && Number.isFinite(r.longitude));
       return c.json({ results });
     } catch (err: any) {

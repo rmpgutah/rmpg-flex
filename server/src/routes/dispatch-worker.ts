@@ -1517,6 +1517,555 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     }
   });
 
+  // ═══════════════════════════════════════════════════════════
+  // PUT /calls/:id — Full call update
+  // ═══════════════════════════════════════════════════════════
+  api.put('/calls/:id', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+      let body: any;
+      try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+
+      const {
+        incident_type, priority, status, caller_name, caller_phone, caller_relationship,
+        location_address, property_id, latitude, longitude, description, notes, disposition,
+        cross_street, location_building, location_floor, location_room,
+        weapons_involved, injuries_reported, num_subjects,
+        subject_description, vehicle_description, direction_of_travel,
+        case_number, case_id, source, caller_address, zone_beat, sector_id, zone_id, beat_id,
+        responding_officer, secondary_type,
+        contact_method, scene_safety, weather_conditions, lighting_conditions,
+        num_victims, alcohol_involved, drugs_involved, domestic_violence,
+        supervisor_notified, le_notified, le_agency, le_case_number,
+        damage_estimate, damage_description, action_taken,
+        starting_mileage, ending_mileage,
+        mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
+        k9_requested, ems_requested, fire_requested, hazmat,
+        gang_related, evidence_collected, body_camera_active, photos_taken,
+        trespass_issued, vehicle_pursuit, foot_pursuit,
+        pso_service_type, pso_authorization, pso_requestor_name,
+        pso_requestor_phone, pso_requestor_email, pso_billing_code, pso_attempt_number,
+        process_service_type, process_served_to, process_served_address,
+        process_attempts, process_served_at, process_service_result,
+        contract_id, client_id: updateClientId,
+      } = body;
+
+      // Auto-resolve client_id from property
+      let resolvedUpdateClientId = updateClientId;
+      if (resolvedUpdateClientId === undefined && property_id !== undefined && property_id) {
+        const prop = await db.prepare('SELECT client_id FROM properties WHERE id = ?').get(property_id) as any;
+        if (prop) resolvedUpdateClientId = prop.client_id;
+      }
+
+      // Validate priority
+      if (priority !== undefined) {
+        const VALID_PRIORITIES = ['P1', 'P2', 'P3', 'P4'];
+        if (!VALID_PRIORITIES.includes(String(priority).toUpperCase())) {
+          return c.json({ error: `Invalid priority. Must be one of: ${VALID_PRIORITIES.join(', ')}`, code: 'INVALID_PRIORITY' }, 400);
+        }
+      }
+
+      // Validate status transitions
+      if (status !== undefined) {
+        const VALID_CALL_STATUSES = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
+        if (!VALID_CALL_STATUSES.includes(status)) {
+          return c.json({ error: `Invalid status. Must be one of: ${VALID_CALL_STATUSES.join(', ')}`, code: 'INVALID_STATUS' }, 400);
+        }
+        const TERMINAL_STATUSES = ['archived'];
+        if (TERMINAL_STATUSES.includes(call.status) && status !== 'closed') {
+          if (user.role !== 'admin') {
+            return c.json({ error: `Cannot change status from '${call.status}' to '${status}' via update. Use the unarchive endpoint instead.`, code: 'INVALID_STATUS_TRANSITION' }, 400);
+          }
+        }
+      }
+
+      // Validate location_address
+      if (location_address !== undefined && String(location_address).trim().length < 3) {
+        return c.json({ error: 'location_address must be at least 3 characters', code: 'ADDRESS_TOO_SHORT' }, 400);
+      }
+      if (location_address && String(location_address).length > 500) {
+        return c.json({ error: 'Location address too long (max 500 chars)', code: 'FIELD_TOO_LONG' }, 400);
+      }
+      if (description && String(description).length > 10000) {
+        return c.json({ error: 'Description too long (max 10000 chars)', code: 'FIELD_TOO_LONG' }, 400);
+      }
+
+      const updates: string[] = [];
+      const params: any[] = [];
+      const addField = (col: string, val: any) => {
+        if (val !== undefined) { updates.push(`${col} = ?`); params.push(val === '' ? null : val); }
+      };
+
+      addField('incident_type', incident_type);
+      addField('priority', priority ? String(priority).toUpperCase() : priority);
+      addField('status', status);
+      addField('caller_name', caller_name);
+      addField('caller_phone', caller_phone);
+      addField('caller_relationship', caller_relationship);
+      addField('location_address', location_address);
+      addField('property_id', property_id);
+      if (latitude !== undefined && latitude !== null && latitude !== '') {
+        updates.push('latitude = ?'); params.push(Number(latitude));
+      }
+      if (longitude !== undefined && longitude !== null && longitude !== '') {
+        updates.push('longitude = ?'); params.push(Number(longitude));
+      }
+      addField('description', description);
+      addField('notes', notes);
+      addField('disposition', disposition);
+      addField('cross_street', cross_street);
+      addField('location_building', location_building);
+      addField('location_floor', location_floor);
+      addField('location_room', location_room);
+      addField('weapons_involved', weapons_involved === 'None' ? null : weapons_involved);
+      addField('injuries_reported', injuries_reported !== undefined ? toBoolInt(injuries_reported) : undefined);
+      addField('num_subjects', num_subjects);
+      addField('subject_description', subject_description);
+      addField('vehicle_description', vehicle_description);
+      addField('direction_of_travel', direction_of_travel);
+      addField('source', source);
+      addField('caller_address', caller_address);
+      addField('zone_beat', zone_beat);
+      addField('sector_id', sector_id);
+      addField('zone_id', zone_id);
+      addField('beat_id', beat_id);
+      addField('responding_officer', responding_officer);
+      addField('secondary_type', secondary_type);
+      addField('contact_method', contact_method);
+      addField('scene_safety', scene_safety);
+      addField('weather_conditions', weather_conditions);
+      addField('lighting_conditions', lighting_conditions);
+      addField('num_victims', num_victims);
+      addField('alcohol_involved', alcohol_involved !== undefined ? toBoolInt(alcohol_involved) : undefined);
+      addField('drugs_involved', drugs_involved !== undefined ? toBoolInt(drugs_involved) : undefined);
+      addField('domestic_violence', domestic_violence !== undefined ? toBoolInt(domestic_violence) : undefined);
+      addField('supervisor_notified', supervisor_notified !== undefined ? toBoolInt(supervisor_notified) : undefined);
+      addField('le_notified', le_notified !== undefined ? toBoolInt(le_notified) : undefined);
+      addField('le_agency', le_agency === 'None' ? null : le_agency);
+      addField('le_case_number', le_case_number);
+      addField('case_number', case_number);
+      addField('case_id', case_id);
+      addField('damage_estimate', damage_estimate);
+      addField('damage_description', damage_description);
+      addField('action_taken', action_taken);
+      addField('starting_mileage', starting_mileage);
+      addField('ending_mileage', ending_mileage);
+      addField('mental_health_crisis', mental_health_crisis !== undefined ? toBoolInt(mental_health_crisis) : undefined);
+      addField('juvenile_involved', juvenile_involved !== undefined ? toBoolInt(juvenile_involved) : undefined);
+      addField('felony_in_progress', felony_in_progress !== undefined ? toBoolInt(felony_in_progress) : undefined);
+      addField('officer_safety_caution', officer_safety_caution !== undefined ? toBoolInt(officer_safety_caution) : undefined);
+      addField('k9_requested', k9_requested !== undefined ? toBoolInt(k9_requested) : undefined);
+      addField('ems_requested', ems_requested !== undefined ? toBoolInt(ems_requested) : undefined);
+      addField('fire_requested', fire_requested !== undefined ? toBoolInt(fire_requested) : undefined);
+      addField('hazmat', hazmat !== undefined ? toBoolInt(hazmat) : undefined);
+      addField('gang_related', gang_related !== undefined ? toBoolInt(gang_related) : undefined);
+      addField('evidence_collected', evidence_collected !== undefined ? toBoolInt(evidence_collected) : undefined);
+      addField('body_camera_active', body_camera_active !== undefined ? toBoolInt(body_camera_active) : undefined);
+      addField('photos_taken', photos_taken !== undefined ? toBoolInt(photos_taken) : undefined);
+      addField('trespass_issued', trespass_issued !== undefined ? toBoolInt(trespass_issued) : undefined);
+      addField('vehicle_pursuit', vehicle_pursuit !== undefined ? toBoolInt(vehicle_pursuit) : undefined);
+      addField('foot_pursuit', foot_pursuit !== undefined ? toBoolInt(foot_pursuit) : undefined);
+      addField('pso_service_type', pso_service_type);
+      addField('pso_authorization', pso_authorization);
+      addField('pso_requestor_name', pso_requestor_name);
+      addField('pso_requestor_phone', pso_requestor_phone);
+      addField('pso_requestor_email', pso_requestor_email);
+      addField('pso_billing_code', pso_billing_code);
+      addField('pso_attempt_number', pso_attempt_number);
+      addField('process_service_type', process_service_type);
+      addField('process_served_to', process_served_to);
+      addField('process_served_address', process_served_address);
+      addField('process_attempts', process_attempts !== undefined ? (isNaN(Number(process_attempts)) ? null : Number(process_attempts)) : undefined);
+      addField('process_served_at', process_served_at);
+      addField('process_service_result', process_service_result);
+      addField('contract_id', contract_id);
+      addField('client_id', resolvedUpdateClientId);
+
+      // Admin/Manager timeline override
+      if (['admin', 'manager'].includes(user.role || '')) {
+        const { dispatched_at, enroute_at, onscene_at, cleared_at, closed_at, created_at: created_at_override, received_at } = body;
+        const isValidIso = (v: any) => typeof v === 'string' && v.length >= 10 && !isNaN(new Date(v).getTime());
+        if (received_at !== undefined) { if (received_at === null || received_at === '') { updates.push('received_at = NULL'); } else if (isValidIso(received_at)) { addField('received_at', received_at); } }
+        if (dispatched_at !== undefined) { if (dispatched_at === null || dispatched_at === '') { updates.push('dispatched_at = NULL'); } else if (isValidIso(dispatched_at)) { addField('dispatched_at', dispatched_at); } }
+        if (enroute_at !== undefined) { if (enroute_at === null || enroute_at === '') { updates.push('enroute_at = NULL'); } else if (isValidIso(enroute_at)) { addField('enroute_at', enroute_at); } }
+        if (onscene_at !== undefined) { if (onscene_at === null || onscene_at === '') { updates.push('onscene_at = NULL'); } else if (isValidIso(onscene_at)) { addField('onscene_at', onscene_at); } }
+        if (cleared_at !== undefined) { if (cleared_at === null || cleared_at === '') { updates.push('cleared_at = NULL'); } else if (isValidIso(cleared_at)) { addField('cleared_at', cleared_at); } }
+        if (closed_at !== undefined) { if (closed_at === null || closed_at === '') { updates.push('closed_at = NULL'); } else if (isValidIso(closed_at)) { addField('closed_at', closed_at); } }
+        if (created_at_override !== undefined && isValidIso(created_at_override)) { addField('created_at', created_at_override); }
+      }
+
+      // Track status_changed_at
+      if (status !== undefined && status !== call.status) {
+        updates.push('status_changed_at = ?');
+        params.push(localNow());
+      }
+
+      if (updates.length === 0) {
+        return c.json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }, 400);
+      }
+
+      // Recalculate priority_score
+      const effectivePriority = (priority !== undefined ? String(priority).toUpperCase() : call.priority) || 'P3';
+      const hasWeapons = weapons_involved !== undefined ? weapons_involved : call.weapons_involved;
+      const hasDV = domestic_violence !== undefined ? domestic_violence : call.domestic_violence;
+      const hasInjuries = injuries_reported !== undefined ? injuries_reported : call.injuries_reported;
+      const hasFelony = felony_in_progress !== undefined ? felony_in_progress : call.felony_in_progress;
+      let score = effectivePriority === 'P1' ? 90 : effectivePriority === 'P2' ? 60 : effectivePriority === 'P3' ? 30 : 10;
+      if (hasWeapons) score += 20;
+      if (hasDV) score += 15;
+      if (hasInjuries) score += 15;
+      if (hasFelony) score += 10;
+      if (score !== (call.priority_score || 0)) {
+        updates.push('priority_score = ?');
+        params.push(score);
+      }
+
+      updates.push('updated_at = ?');
+      params.push(localNow());
+      params.push(callId);
+
+      await db.prepare(`UPDATE calls_for_service SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+      // Propagate case_number
+      if (case_number !== undefined) {
+        try {
+          const now = localNow();
+          await db.prepare('UPDATE calls_for_service SET case_number = ?, updated_at = ? WHERE parent_call_id = ? AND id != ?')
+            .run(case_number || null, now, call.id, call.id);
+          if (call.parent_call_id) {
+            await db.prepare('UPDATE calls_for_service SET case_number = ?, updated_at = ? WHERE id = ?')
+              .run(case_number || null, now, call.parent_call_id);
+            await db.prepare('UPDATE calls_for_service SET case_number = ?, updated_at = ? WHERE parent_call_id = ? AND id != ?')
+              .run(case_number || null, now, call.parent_call_id, call.id);
+          }
+        } catch { /* best-effort */ }
+      }
+
+      // Activity log
+      const changedFields = updates.filter(u => !u.includes('updated_at') && !u.includes('priority_score') && !u.includes('status_changed_at')).map(u => u.split(' = ')[0]);
+      await db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_updated', 'call', ?, ?, ?)`)
+        .run(user.userId, callId, `Updated call ${call.call_number}: ${changedFields.join(', ')} (${changedFields.length} field(s))`, 'worker');
+
+      const updated = await db.prepare(`
+        SELECT c.*, p.name as property_name, p.address as property_address,
+          u.full_name as dispatcher_name,
+          cl.name as client_name,
+          (SELECT i.incident_number FROM incidents i WHERE i.call_id = c.id ORDER BY i.id DESC LIMIT 1) as incident_number,
+          (SELECT COUNT(*) FROM call_persons cp
+            JOIN persons per ON cp.person_id = per.id
+            WHERE cp.call_id = c.id
+              AND per.flags IS NOT NULL
+              AND per.flags LIKE '%ACTIVE_WARRANT%') as has_active_warrant
+        FROM calls_for_service c
+        LEFT JOIN properties p ON c.property_id = p.id
+        LEFT JOIN users u ON c.dispatcher_id = u.id
+        LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+        WHERE c.id = ?
+      `).get(callId) as any;
+
+      // Broadcast
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+      } catch { /* non-critical */ }
+
+      return c.json(updated);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // GET /calls/:id/warnings — Call warnings (weapons, warrants, etc.)
+  // ═══════════════════════════════════════════════════════════
+  api.get('/calls/:id/warnings', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+      const warnings: Array<{ type: string; label: string; severity: 'critical' | 'high' | 'medium'; source: string }> = [];
+
+      // Check call flags
+      if (call.weapons_involved) {
+        warnings.push({ type: 'ARMED', label: 'ARMED / WEAPONS', severity: 'critical', source: 'call' });
+      }
+      if (call.domestic_violence) {
+        warnings.push({ type: 'DV', label: 'DOMESTIC VIOLENCE', severity: 'high', source: 'call' });
+      }
+      if (call.injuries_reported) {
+        warnings.push({ type: 'INJURIES', label: 'INJURIES REPORTED', severity: 'high', source: 'call' });
+      }
+      if (call.alcohol_involved) {
+        warnings.push({ type: 'ALCOHOL', label: 'ALCOHOL INVOLVED', severity: 'medium', source: 'call' });
+      }
+      if (call.drugs_involved) {
+        warnings.push({ type: 'DRUGS', label: 'DRUGS INVOLVED', severity: 'medium', source: 'call' });
+      }
+
+      // Check linked persons for caution flags and warrants
+      try {
+        const linkedPersons = await db.prepare(`
+          SELECT p.id, p.first_name, p.last_name, p.caution_flags, p.is_sex_offender, p.gang_affiliation, p.probation_parole
+          FROM incident_persons ip
+          JOIN persons p ON ip.person_id = p.id
+          JOIN incidents i ON ip.incident_id = i.id
+          WHERE i.call_id = ?
+          LIMIT 1000
+        `).all(call.id) as any[];
+
+        for (const person of linkedPersons) {
+          if (person.caution_flags) {
+            const flags = person.caution_flags.split(',').map((f: string) => f.trim()).filter(Boolean);
+            for (const flag of flags) {
+              warnings.push({ type: 'CAUTION', label: flag.toUpperCase(), severity: 'high', source: `${person.first_name} ${person.last_name}` });
+            }
+          }
+          if (person.is_sex_offender) {
+            warnings.push({ type: 'SEX_OFFENDER', label: 'SEX OFFENDER', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
+          }
+          if (person.gang_affiliation) {
+            warnings.push({ type: 'GANG', label: 'GANG AFFILIATED', severity: 'critical', source: `${person.first_name} ${person.last_name}` });
+          }
+          if (person.probation_parole) {
+            warnings.push({ type: 'PROBATION', label: 'ON PROBATION/PAROLE', severity: 'high', source: `${person.first_name} ${person.last_name}` });
+          }
+        }
+      } catch { /* non-critical */ }
+
+      // Check for active warrants at location
+      try {
+        const activeWarrants = await db.prepare(`
+          SELECT w.warrant_number, w.charge_description, w.type, w.offense_level,
+                 p.first_name, p.last_name
+          FROM warrants w
+          LEFT JOIN persons p ON w.subject_person_id = p.id
+          WHERE w.status = 'active'
+          AND w.subject_person_id IN (
+            SELECT ip.person_id FROM incident_persons ip
+            JOIN incidents i ON ip.incident_id = i.id
+            WHERE i.call_id = ?
+          )
+          LIMIT 1000
+        `).all(call.id) as any[];
+
+        for (const warrant of activeWarrants) {
+          warnings.push({
+            type: 'WARRANT',
+            label: `ACTIVE WARRANT: ${warrant.charge_description || warrant.type}`.toUpperCase(),
+            severity: 'critical',
+            source: `${warrant.first_name || ''} ${warrant.last_name || ''}`.trim() || warrant.warrant_number
+          });
+        }
+      } catch { /* non-critical */ }
+
+      // Check property hazard notes
+      if (call.property_id) {
+        try {
+          const property = await db.prepare('SELECT hazard_notes FROM properties WHERE id = ?').get(call.property_id) as any;
+          if (property?.hazard_notes) {
+            warnings.push({ type: 'HAZARD', label: 'PROPERTY HAZARD', severity: 'high', source: 'Property file' });
+          }
+        } catch { /* non-critical */ }
+      }
+
+      // Incident type-based warnings
+      const itype = (call.incident_type || '').toLowerCase();
+      if (itype.includes('shooting') || itype.includes('shots_fired') || itype.includes('armed')) {
+        if (!warnings.find(w => w.type === 'ARMED')) {
+          warnings.push({ type: 'ARMED', label: 'POSSIBLE WEAPONS', severity: 'critical', source: 'Incident type' });
+        }
+      }
+      if (itype.includes('barricade') || itype.includes('hostage') || itype.includes('standoff')) {
+        warnings.push({ type: 'BARRICADE', label: 'BARRICADED SUBJECT', severity: 'critical', source: 'Incident type' });
+      }
+      if (itype.includes('hazmat') || itype.includes('chemical') || itype.includes('spill')) {
+        warnings.push({ type: 'HAZMAT', label: 'HAZMAT', severity: 'critical', source: 'Incident type' });
+      }
+
+      return c.json(warnings);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to get warnings', code: 'GET_WARNINGS_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // PUT /units/:id — Update unit fields
+  // ═══════════════════════════════════════════════════════════
+  api.put('/units/:id', requireRole('admin', 'manager', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const unitId = paramNum(c.req.param('id'));
+      if (isNaN(unitId)) return c.json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' }, 400);
+
+      const unit = await db.prepare('SELECT * FROM units WHERE id = ?').get(unitId) as any;
+      if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+
+      let body: any;
+      try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+
+      const { call_sign, officer_id, status, vehicle_id, capabilities } = body;
+      const updates: string[] = [];
+      const params: any[] = [];
+
+      if (call_sign !== undefined) {
+        const trimmed = call_sign.trim();
+        if (!trimmed) return c.json({ error: 'call_sign cannot be empty', code: 'CALLSIGN_CANNOT_BE_EMPTY' }, 400);
+        const dup = await db.prepare('SELECT id FROM units WHERE call_sign = ? AND id != ?').get(trimmed, unitId) as any;
+        if (dup) return c.json({ error: 'A unit with this call sign already exists', code: 'A_UNIT_WITH_THIS' }, 409);
+        updates.push('call_sign = ?');
+        params.push(trimmed);
+      }
+      if (officer_id !== undefined) {
+        updates.push('officer_id = ?');
+        params.push(officer_id || null);
+      }
+      if (status !== undefined) {
+        const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
+        if (!VALID_UNIT_STATUSES.includes(status)) {
+          return c.json({ error: 'Invalid unit status', valid: VALID_UNIT_STATUSES }, 400);
+        }
+        updates.push('status = ?');
+        params.push(status);
+        updates.push('last_status_change = ?');
+        params.push(localNow());
+      }
+      if (vehicle_id !== undefined) {
+        updates.push('vehicle_id = ?');
+        params.push(vehicle_id || null);
+      }
+      if (capabilities !== undefined) {
+        updates.push('capabilities = ?');
+        params.push(typeof capabilities === 'string' ? capabilities : JSON.stringify(capabilities));
+      }
+
+      if (updates.length === 0) {
+        return c.json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }, 400);
+      }
+
+      updates.push('updated_at = ?');
+      params.push(localNow());
+      params.push(unitId);
+
+      await db.prepare(`UPDATE units SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+      const updated = await db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(unitId) as any;
+
+      await db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'unit_updated', 'unit', ?, ?, ?)`)
+        .run(user.userId, unitId, `Updated unit: ${updated?.call_sign || unitId}`, 'worker');
+
+      try {
+        const { broadcastUnitUpdate } = await import('../worker-middleware/websocket');
+        broadcastUnitUpdate({ action: 'unit_updated', unit: updated });
+      } catch { /* non-critical */ }
+
+      return c.json(updated);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to update unit', code: 'UNITS_UPDATE_UNIT_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // PUT /units/:id/status — Update unit status + location
+  // ═══════════════════════════════════════════════════════════
+  api.put('/units/:id/status', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const unitId = paramNum(c.req.param('id'));
+      if (isNaN(unitId)) return c.json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' }, 400);
+
+      const unit = await db.prepare('SELECT * FROM units WHERE id = ?').get(unitId) as any;
+      if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+
+      let body: any;
+      try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+
+      const { status, latitude, longitude } = body;
+      const now = localNow();
+      const updates: string[] = [];
+      const params: any[] = [];
+
+      const VALID_UNIT_STATUSES = ['available', 'dispatched', 'enroute', 'onscene', 'busy', 'off_duty', 'out_of_service'];
+      if (status && !VALID_UNIT_STATUSES.includes(status)) {
+        return c.json({ error: 'Invalid unit status', valid: VALID_UNIT_STATUSES }, 400);
+      }
+
+      if (status) {
+        // Validate status transitions
+        const INVALID_TRANSITIONS: Record<string, string[]> = {
+          off_duty: ['onscene'],
+          out_of_service: ['onscene', 'enroute'],
+        };
+        const blocked = INVALID_TRANSITIONS[unit.status];
+        if (blocked && blocked.includes(status)) {
+          if (user.role !== 'admin') {
+            return c.json({ error: `Cannot transition from '${unit.status}' to '${status}'. Must go through 'available' or 'dispatched' first.`, code: 'INVALID_STATUS_TRANSITION', current_status: unit.status, requested_status: status }, 400);
+          }
+        }
+        updates.push('status = ?');
+        params.push(status);
+        updates.push('last_status_change = ?');
+        params.push(now);
+        if (status === 'available' || status === 'off_duty') {
+          updates.push('current_call_id = NULL');
+        }
+      }
+      if (latitude !== undefined) {
+        const lat = parseFloat(String(latitude));
+        if (isNaN(lat) || lat < -90 || lat > 90) {
+          return c.json({ error: 'latitude must be between -90 and 90', code: 'INVALID_LAT' }, 400);
+        }
+        updates.push('latitude = ?');
+        params.push(lat);
+      }
+      if (longitude !== undefined) {
+        const lng = parseFloat(String(longitude));
+        if (isNaN(lng) || lng < -180 || lng > 180) {
+          return c.json({ error: 'longitude must be between -180 and 180', code: 'INVALID_LNG' }, 400);
+        }
+        updates.push('longitude = ?');
+        params.push(lng);
+      }
+      if (latitude !== undefined || longitude !== undefined) {
+        updates.push('gps_updated_at = ?');
+        params.push(now);
+      }
+
+      if (updates.length === 0) {
+        return c.json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }, 400);
+      }
+
+      params.push(unitId);
+      await db.prepare(`UPDATE units SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+      await db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'status_change', 'unit', ?, ?, ?)`)
+        .run(user.userId, unitId, `${unit.call_sign} status: ${status || 'location update'}`, 'worker');
+
+      const updated = await db.prepare('SELECT u.*, usr.full_name as officer_name FROM units u LEFT JOIN users usr ON u.officer_id = usr.id WHERE u.id = ?').get(unitId) as any;
+
+      try {
+        const { broadcastUnitUpdate } = await import('../worker-middleware/websocket');
+        broadcastUnitUpdate({ action: 'unit_status_changed', unit: updated });
+      } catch { /* non-critical */ }
+
+      return c.json(updated);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to update unit status', code: 'UNITS_STATUS_UPDATE_ERROR' }, 500);
+    }
+  });
+
   // Mount all dispatch routes under /dispatch
   app.route('/api/dispatch', api);
 }

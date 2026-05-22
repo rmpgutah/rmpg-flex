@@ -311,6 +311,7 @@ export default function ClientFormModal({
               className="input-dark text-xs w-full"
               value={form.address}
               onChange={(val) => set('address', val)}
+              onSelect={(addr) => set('address', addr.street || addr.formatted)}
               placeholder="145 S State St, SLC, UT 84111"
             />
           </div>
@@ -364,6 +365,7 @@ export default function ClientFormModal({
                 className="input-dark text-xs w-full"
                 value={form.billing_address}
                 onChange={(val) => set('billing_address', val)}
+                onSelect={(addr) => set('billing_address', addr.street || addr.formatted)}
                 placeholder="Same as above or different"
               />
             </div>
