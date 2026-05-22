@@ -75,6 +75,59 @@ export function mountCommsRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     return c.json({ data: activity, total: (countRow as any)?.total ?? 0, limit: limitNum, offset: offsetNum });
   });
 
+  // GET /api/comms/messages - List messages for current user
+  api.get('/messages', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const { channel, unreadOnly, thread_id, limit = '100000' } = c.req.query();
+      const limitNum = Math.min(100000, Math.max(1, parseInt(limit, 10) || 100000));
+
+      let whereClause = 'WHERE (m.to_user_id = ? OR m.to_user_id IS NULL OR m.from_user_id = ?)';
+      const params: any[] = [user.userId, user.userId];
+
+      if (channel) {
+        whereClause += ' AND m.channel = ?';
+        params.push(channel);
+      }
+
+      if (unreadOnly === 'true') {
+        whereClause += ' AND m.read_at IS NULL AND m.to_user_id = ?';
+        params.push(user.userId);
+      }
+
+      if (thread_id) {
+        const tid = parseInt(thread_id, 10);
+        if (!isNaN(tid)) {
+          whereClause += ' AND (m.thread_id = ? OR m.id = ?)';
+          params.push(tid, tid);
+        }
+      }
+
+      const messages = await db.prepare(`
+        SELECT m.*,
+          f.full_name as from_name, f.badge_number as from_badge,
+          t.full_name as to_name
+        FROM messages m
+        LEFT JOIN users f ON m.from_user_id = f.id
+        LEFT JOIN users t ON m.to_user_id = t.id
+        ${whereClause}
+        ORDER BY m.created_at DESC
+        LIMIT ?
+      `).all(...params, limitNum);
+
+      const unreadCount = ((await db.prepare(`
+        SELECT COUNT(*) as count FROM messages
+        WHERE to_user_id = ? AND read_at IS NULL
+      `).get(user.userId)) as any)?.count ?? 0;
+
+      return c.json({ data: messages, unreadCount });
+    } catch (error: any) {
+      console.error('[Comms] Get messages error:', error?.message);
+      return c.json({ error: 'Failed to get messages', code: 'GET_MESSAGES_ERROR' }, 500);
+    }
+  });
+
   // POST /api/comms/messages - Send a message
   api.post('/messages', async (c) => {
     const db = new D1Db(c.env.DB);

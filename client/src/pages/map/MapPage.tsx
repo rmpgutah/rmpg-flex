@@ -1640,6 +1640,7 @@ export default function MapPage() {
           for (let i = 0; i < trail.points.length - 1; i++) {
             const p1 = trail.points[i];
             const p2 = trail.points[i + 1];
+            if (!isFinite(p1.lng) || !isFinite(p1.lat) || !isFinite(p2.lng) || !isFinite(p2.lat)) continue;
             const freshness = (i + 1) / trail.points.length;
             const opacity = 0.25 + freshness * 0.6;
 
@@ -1688,6 +1689,7 @@ export default function MapPage() {
             arrowSvg.appendChild(poly);
             arrowEl.appendChild(arrowSvg);
 
+            if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
             const arrow = new mapboxgl.Marker({ element: arrowEl }).setLngLat([pt.lng, pt.lat]).addTo(map);
             breadcrumbArrowsRef.current.push(arrow);
           });
@@ -1707,6 +1709,7 @@ export default function MapPage() {
               } else { dotColor = accelToColor(null); }
             } else dotColor = unitColor;
 
+            if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
             const dotEl = document.createElement('div');
             const dotSize = isLast ? 10 : 8;
             dotEl.style.cssText = `width:${dotSize}px;height:${dotSize}px;background:${dotColor};border:${isLast ? 2 : 0.5}px solid ${isLast ? '#fbbf24' : '#fff'};border-radius:50%;opacity:${isLast ? 1 : 0.6};cursor:pointer;box-shadow:${isLast ? '0 0 6px ' + dotColor : 'none'};`;
@@ -1804,8 +1807,10 @@ export default function MapPage() {
                 </div>
               `;
               breadcrumbInfoRef.current?.setHTML(html);
-              breadcrumbInfoRef.current?.setLngLat([pt.lng, pt.lat]);
-              breadcrumbInfoRef.current?.addTo(map);
+              if (isFinite(pt.lng) && isFinite(pt.lat)) {
+                breadcrumbInfoRef.current?.setLngLat([pt.lng, pt.lat]);
+                breadcrumbInfoRef.current?.addTo(map);
+              }
             });
 
             breadcrumbMarkersRef.current.push(dot);
@@ -1838,6 +1843,7 @@ export default function MapPage() {
         trails.forEach((trail) => {
           trail.points.forEach((pt) => {
             const mph = pt.speed != null ? pt.speed * 2.237 : 0;
+            if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
             if (mph >= 80) {
               const el = document.createElement('div');
               el.innerHTML = `<svg width="18" height="16" viewBox="0 0 18 16"><polygon points="9,0 18,14 0,14" fill="#dc2626" stroke="#fbbf24" stroke-width="1.5"/><text x="9" y="11" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">!</text></svg>`;
@@ -1882,6 +1888,7 @@ export default function MapPage() {
     // Create or update playback marker
     if (!playbackMarkerRef.current) {
       const pt = trail.points[playbackIdx] || trail.points[0];
+      if (!isFinite(pt.lng) || !isFinite(pt.lat)) { setIsPlaying(false); return; }
       const arrowEl = document.createElement('div');
       arrowEl.textContent = '\u25B6';
       arrowEl.style.cssText = `color:${speedToColor(pt.speed)};font-size:20px;text-shadow:0 0 3px #fff;transform:rotate(${pt.heading || 0}deg);font-family:system-ui;`;
@@ -1905,6 +1912,7 @@ export default function MapPage() {
       }
 
       const pt = trail.points[currentIdx];
+      if (!isFinite(pt.lng) || !isFinite(pt.lat)) { currentIdx++; step(); return; }
       if (playbackMarkerRef.current) {
         playbackMarkerRef.current.setLngLat([pt.lng, pt.lat]);
         const el = playbackMarkerRef.current.getElement();
@@ -2055,11 +2063,15 @@ export default function MapPage() {
     const features: any[] = [];
     speedAnalytics.pursuitSegments.forEach((seg) => {
       if (seg.points.length < 2) return;
+      const coords = seg.points
+        .filter((p: any) => isFinite(p.lng) && isFinite(p.lat))
+        .map((p: any) => [p.lng, p.lat]);
+      if (coords.length < 2) return;
       features.push({
         type: 'Feature',
         geometry: {
           type: 'LineString',
-          coordinates: seg.points.map((p) => [p.lng, p.lat]),
+          coordinates: coords,
         },
         properties: {},
       });
@@ -2138,11 +2150,13 @@ export default function MapPage() {
       try {
         const coords: { lat: number; lng: number }[] = JSON.parse(zone.polygon_coords);
         if (coords.length < 3) return;
+        const validCoords = coords.filter((c) => isFinite(c.lat) && isFinite(c.lng));
+        if (validCoords.length < 3) return;
 
         const zoneColor = ZONE_TYPE_COLORS[zone.zone_type] || '#888888';
         const sourceId = `rmpg-speed-zone-${i}`;
         const layerId = `rmpg-speed-zone-layer-${i}`;
-        const ringCoords = [...coords.map((c) => [c.lng, c.lat]), [coords[0].lng, coords[0].lat]];
+        const ringCoords = [...validCoords.map((c) => [c.lng, c.lat]), [validCoords[0].lng, validCoords[0].lat]];
 
         map.addSource(sourceId, {
           type: 'geojson',
@@ -2174,8 +2188,8 @@ export default function MapPage() {
         speedZonePolysRef.current.push(sourceId);
 
         // Centroid label
-        const cLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
-        const cLng = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
+        const cLat = validCoords.reduce((s, c) => s + c.lat, 0) / validCoords.length;
+        const cLng = validCoords.reduce((s, c) => s + c.lng, 0) / validCoords.length;
         const textEl = document.createElement('div');
         textEl.textContent = `${zone.speed_limit_mph} mph`;
         textEl.style.cssText = `color:${zoneColor};font-size:9px;font-weight:bold;font-family:'JetBrains Mono',monospace;text-shadow:0 0 2px rgba(0,0,0,0.9);white-space:nowrap;`;
@@ -2376,6 +2390,7 @@ export default function MapPage() {
       const data = await resp.json();
       if (data.features && data.features[0]) {
         const [lng, lat] = data.features[0].center;
+        if (!isFinite(lng) || !isFinite(lat)) return;
         map.panTo([lng, lat]);
         map.setZoom(17);
 
@@ -3491,7 +3506,7 @@ export default function MapPage() {
                                   setIsPlaying(false);
                                   if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
                                   const pt = activeTrail?.points?.[idx];
-                                  if (pt && playbackMarkerRef.current) {
+                                  if (pt && isFinite(pt.lng) && isFinite(pt.lat) && playbackMarkerRef.current) {
                                     playbackMarkerRef.current.setLngLat([pt.lng, pt.lat]);
                                   }
                                 }}

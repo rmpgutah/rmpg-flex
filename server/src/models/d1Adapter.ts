@@ -439,6 +439,53 @@ export async function runMigrations(db: D1Database): Promise<void> {
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
     )`,
+    `CREATE TABLE IF NOT EXISTS leave_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      type TEXT NOT NULL DEFAULT 'vacation',
+      start_date TEXT NOT NULL,
+      end_date TEXT NOT NULL,
+      hours_requested REAL NOT NULL DEFAULT 0,
+      reason TEXT,
+      status TEXT NOT NULL DEFAULT 'pending',
+      reviewed_by INTEGER,
+      reviewed_at TEXT,
+      review_notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS leave_balances (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      vacation_total REAL NOT NULL DEFAULT 80,
+      vacation_used REAL NOT NULL DEFAULT 0,
+      sick_total REAL NOT NULL DEFAULT 40,
+      sick_used REAL NOT NULL DEFAULT 0,
+      personal_total REAL NOT NULL DEFAULT 24,
+      personal_used REAL NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS performance_reviews (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      officer_id INTEGER NOT NULL,
+      reviewer_id INTEGER,
+      review_period_start TEXT NOT NULL,
+      review_period_end TEXT NOT NULL,
+      review_date TEXT,
+      type TEXT NOT NULL DEFAULT 'annual',
+      overall_rating REAL,
+      categories TEXT DEFAULT '{}',
+      strengths TEXT,
+      areas_for_improvement TEXT,
+      goals TEXT,
+      officer_comments TEXT,
+      status TEXT NOT NULL DEFAULT 'draft',
+      acknowledged_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )`,
   ];
   for (const sql of tableStatements) {
     try { await db.exec(sql); } catch { /* table may already exist */ }
