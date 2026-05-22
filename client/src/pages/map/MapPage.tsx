@@ -819,10 +819,8 @@ export default function MapPage() {
         style: cfg.custom_style_url || MAPBOX_STYLE_DARK,
         center: [savedCenter.lng, savedCenter.lat],
         zoom: savedZoom,
-        minZoom: cfg.min_zoom,
-        maxZoom: cfg.max_zoom,
         attributionControl: cfg.show_attribution,
-        touchZoomRotate: cfg.rotation_enabled,
+        touchZoomRotate: true,
       };
 
       if (cfg.max_bounds_sw_lat != null && cfg.max_bounds_sw_lng != null && cfg.max_bounds_ne_lat != null && cfg.max_bounds_ne_lng != null) {
@@ -971,7 +969,6 @@ export default function MapPage() {
         if (!cancelled) {
           setMapError('offline');
         }
-        return;
       }
 
       if (cancelled) return;

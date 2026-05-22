@@ -1251,43 +1251,39 @@ const PROPERTY_FIELD_MAP: Record<string, (v: any) => any> = {
 router.post('/properties', (req: Request, res: Response) => {
   try {
     const db = getDb();
-    const {
-      client_id, name, address, city, state, zip, latitude, longitude, property_type,
-      gate_code, alarm_code, emergency_contact, post_orders, hazard_notes,
-      access_instructions, is_active, notes,
-      business_type, structure_type, occupancy_status, year_built, square_footage,
-      number_of_stories, security_features, key_holder_name, key_holder_phone,
-      key_holder_relationship, owner_name, owner_phone, last_inspection_date,
-    } = req.body;
+    const body = req.body;
 
-    if (!req.body.client_id) {
+    if (!body.client_id) {
       res.status(400).json({ error: 'client_id is required', code: 'CLIENTID_IS_REQUIRED' });
       return;
     }
-    if (!req.body.name || !req.body.address) {
+    if (!body.name || !body.address) {
       res.status(400).json({ error: 'name and address are required', code: 'NAME_AND_ADDRESS_ARE' });
       return;
     }
 
-    const result = db.prepare(`
-      INSERT INTO properties (client_id, name, address, city, state, zip, latitude, longitude, property_type,
-        gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active, notes,
-        business_type, structure_type, occupancy_status, year_built, square_footage,
-        number_of_stories, security_features, key_holder_name, key_holder_phone,
-        key_holder_relationship, owner_name, owner_phone, last_inspection_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      client_id, name, address, city || null, state || null, zip || null,
-      latitude || null, longitude || null,
-      property_type || null, gate_code || null, alarm_code || null,
-      emergency_contact || null, post_orders || null, hazard_notes || null,
-      access_instructions || null, is_active !== undefined ? (is_active ? 1 : 0) : 1, notes || null,
-      business_type || null, structure_type || null, occupancy_status || null,
-      year_built || null, square_footage || null, number_of_stories || null,
-      security_features || null, key_holder_name || null, key_holder_phone || null,
-      key_holder_relationship || null, owner_name || null, owner_phone || null,
-      last_inspection_date || null,
-    );
+    const pColumns: string[] = ['client_id', 'name', 'address'];
+    const pPlaceholders: string[] = ['?', '?', '?'];
+    const pValues: any[] = [body.client_id, body.name, body.address];
+    const pBodyKeys = Object.keys(body);
+
+    for (const [key, transform] of Object.entries(PROPERTY_FIELD_MAP)) {
+      if (key === 'client_id' || key === 'name' || key === 'address') continue;
+      if (pBodyKeys.includes(key)) {
+        pColumns.push(key);
+        pPlaceholders.push('?');
+        pValues.push(transform(body[key]));
+      }
+    }
+
+    const now = localNow();
+    pColumns.push('created_at', 'updated_at');
+    pPlaceholders.push('?', '?');
+    pValues.push(now, now);
+
+    const result = db.prepare(
+      `INSERT INTO properties (${pColumns.join(', ')}) VALUES (${pPlaceholders.join(', ')})`
+    ).run(...pValues);
 
     db.prepare(`
       INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
@@ -2195,6 +2191,16 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       key_holder_phone: v => v ?? null, key_holder_relationship: v => v ?? null,
       owner_name: v => v ?? null, owner_phone: v => v ?? null,
       last_inspection_date: v => v ?? null,
+      inspection_status: v => v ?? null,
+      alarm_company: v => v ?? null, alarm_account: v => v ?? null,
+      camera_system: v => v ?? null,
+      parking_info: v => v ?? null, roof_access: v => v ?? null,
+      utility_shutoffs: v => v ?? null, known_hazards: v => v ?? null,
+      contact_email: v => v ?? null,
+      secondary_contact_name: v => v ?? null,
+      secondary_contact_phone: v => v ?? null,
+      patrol_frequency: v => v ?? null,
+      opening_hours: v => v ?? null, closing_hours: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(pFieldMap)) {
@@ -2306,6 +2312,7 @@ router.post('/evidence', (req: Request, res: Response) => {
       disposal_method, disposal_date, disposal_authorized_by,
       serial_number, brand, model, estimated_value, category, notes,
       location_found, condition, quantity, is_biological,
+      narcotics_flag, temperature_sensitive,
     } = req.body;
 
     if (!req.body.description || !req.body.evidence_type) {
@@ -2333,9 +2340,10 @@ router.post('/evidence', (req: Request, res: Response) => {
         photo_taken, lab_submitted, lab_case_number, lab_name,
         disposal_method, disposal_date, disposal_authorized_by,
         serial_number, brand, model, estimated_value, category, notes,
-        location_found, condition, quantity, is_biological
+        location_found, condition, quantity, is_biological,
+        narcotics_flag, temperature_sensitive
       )
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       evidenceNumber, incident_id || null, description, evidence_type,
       storage_location || null, req.user!.userId,
@@ -2344,7 +2352,8 @@ router.post('/evidence', (req: Request, res: Response) => {
       disposal_method || null, disposal_date || null, disposal_authorized_by || null,
       serial_number || null, brand || null, model || null, estimated_value || null, category || null,
       notes || null,
-      location_found || null, condition || null, quantity ?? 1, is_biological ? 1 : 0
+      location_found || null, condition || null, quantity ?? 1, is_biological ? 1 : 0,
+      narcotics_flag ? 1 : 0, temperature_sensitive ? 1 : 0
     );
 
     db.prepare(`

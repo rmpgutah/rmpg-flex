@@ -9,7 +9,7 @@ import { Hono } from 'hono';
 import type { Env } from '../worker';
 import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken, requireRole } from '../worker-middleware/auth';
-import { D1Db, paramNum, paramStr, localNow } from '../worker-middleware/d1Helpers';
+import { D1Db, paramNum, paramStr, localNow, filterFieldMap } from '../worker-middleware/d1Helpers';
 
 export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>): void {
   const api = new Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>();
@@ -217,12 +217,12 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
 
   // GET /api/records/persons - List persons
   api.get('/persons', async (c) => {
+    const { page = '1', limit = '100000', flags, archived } = c.req.query();
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit, 10)) || 100000));
+    const offset = (pageNum - 1) * limitNum;
     try {
       const db = new D1Db(c.env.DB);
-      const { page = '1', limit = '100000', flags, archived } = c.req.query();
-      const pageNum = Math.max(1, parseInt(page, 10) || 1);
-      const limitNum = Math.min(100000, Math.max(1, (parseInt(limit, 10)) || 100000));
-      const offset = (pageNum - 1) * limitNum;
 
       let whereClause = 'WHERE 1=1';
       const params: any[] = [];
@@ -239,7 +239,6 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       }
 
       const countRow = await db.prepare(`SELECT COUNT(*) as total FROM persons ${whereClause}`).get(...params) as any;
-
       const persons = await db.prepare(`
         SELECT * FROM persons ${whereClause}
         ORDER BY last_name, first_name
@@ -256,6 +255,27 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
         },
       });
     } catch (err: any) {
+      if (err?.message?.includes('no such column') && archived !== 'all') {
+        try {
+          const db2 = new D1Db(c.env.DB);
+          const cleanWhere = 'WHERE 1=1' + (flags ? ' AND flags LIKE ?' : '');
+          const cleanParams = flags ? [`%"${flags}"%`] : [];
+          const countRow2 = await db2.prepare(`SELECT COUNT(*) as total FROM persons ${cleanWhere}`).get(...cleanParams) as any;
+          const persons2 = await db2.prepare(`
+            SELECT * FROM persons ${cleanWhere}
+            ORDER BY last_name, first_name
+            LIMIT ? OFFSET ?
+          `).all(...cleanParams, limitNum, offset);
+          return c.json({
+            data: persons2,
+            pagination: {
+              page: pageNum, limit: limitNum,
+              total: countRow2?.total ?? 0,
+              totalPages: Math.ceil((countRow2?.total ?? 0) / limitNum),
+            },
+          });
+        } catch { /* fall through */ }
+      }
       console.error('Get persons error:', err);
       return c.json({ error: 'Failed to get persons', code: 'GET_PERSONS_ERROR' }, 500);
     }
@@ -310,25 +330,76 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   });
 
   const PERSON_FIELD_MAP: Record<string, (v: any) => any> = {
+    // Core identity
     first_name: v => v ?? null, last_name: v => v ?? null,
-    middle_name: v => v ?? null, suffix: v => v ?? null, dob: v => v ?? null,
-    ssn: v => v ?? null, phone: v => v ?? null, email: v => v ?? null,
-    address: v => v ?? null, city: v => v ?? null, state: v => v ?? null,
-    zip: v => v ?? null, race: v => v ?? null, sex: v => v ?? null,
-    height: v => v ?? null, weight: v => v ?? null,
+    middle_name: v => v ?? null, alias_nickname: v => v ?? null,
+    alias_dob: v => v ?? null, suffix: v => v ?? null,
+    dob: v => v ?? null, gender: v => v ?? null, race: v => v ?? null,
+    sex: v => v ?? null,
+    // Physical description
+    height: v => v ?? null,
+    height_feet: v => v != null && v !== '' ? parseInt(String(v), 10) : null,
+    height_inches: v => v != null && v !== '' ? parseInt(String(v), 10) : null,
+    weight: v => v ?? null, build: v => v ?? null, complexion: v => v ?? null,
     hair_color: v => v ?? null, eye_color: v => v ?? null,
+    hair_length: v => v ?? null, hair_style: v => v ?? null,
+    facial_hair: v => v ?? null, glasses: v => v ?? null,
+    shoe_size: v => v ?? null, blood_type: v => v ?? null,
+    scars_marks_tattoos: v => v ?? null,
+    tattoo_description: v => v ?? null, scar_description: v => v ?? null,
+    piercing_description: v => v ?? null,
+    distinguishing_features: v => v ?? null,
+    identifying_marks_location: v => v ?? null,
+    clothing_description: v => v ?? null,
+    // Contact
+    address: v => v ?? null, city: v => v ?? null, state: v => v ?? null,
+    zip: v => v ?? null, phone: v => v ?? null, phone_secondary: v => v ?? null,
+    home_phone: v => v ?? null, work_phone: v => v ?? null,
+    email: v => v ?? null, email_secondary: v => v ?? null,
+    // Identification documents
+    dl_number: v => v ?? null, dl_state: v => v ?? null,
+    dl_class: v => v ?? null, dl_expiry: v => v ?? null,
+    ssn_full: v => v ?? null, ssn_last4: v => v ?? null,
+    id_type: v => v ?? null, id_number: v => v ?? null,
+    id_state: v => v ?? null, id_expiry: v => v ?? null,
+    id_image_url: v => v ?? null, photo_url: v => v ?? null,
+    ncic_number: v => v ?? null, sor_number: v => v ?? null,
+    fbi_number: v => v ?? null, state_id_number: v => v ?? null,
+    passport_number: v => v ?? null, passport_country: v => v ?? null,
+    // Employment
+    employer: v => v ?? null, occupation: v => v ?? null,
+    // Demographics
+    language: v => v ?? null, place_of_birth: v => v ?? null,
+    citizenship: v => v ?? null, nationality: v => v ?? null,
+    marital_status: v => v ?? null, education_level: v => v ?? null,
+    // Social / online
+    social_media: v => v ?? null,
+    // Emergency contact
+    emergency_contact_name: v => v ?? null,
+    emergency_contact_phone: v => v ?? null,
+    emergency_contact_relationship: v => v ?? null,
+    // Law enforcement / flags
+    gang_affiliation: v => v ?? null,
+    probation_parole: v => v ?? null,
+    probation_parole_officer: v => v ?? null,
+    known_associates: v => v ?? null,
+    caution_flags: v => v ?? null,
+    is_sex_offender: v => v ? 1 : 0, is_veteran: v => v ? 1 : 0,
+    date_last_seen: v => v ?? null, location_last_seen: v => v ?? null,
+    // Military / legal
+    military_branch: v => v ?? null, military_status: v => v ?? null,
+    tribal_affiliation: v => v ?? null,
+    immigration_status: v => v ?? null,
+    disability_flags: v => v ?? null, mental_health_flags: v => v ?? null,
+    substance_abuse: v => v ?? null, medication_notes: v => v ?? null,
+    // Misc
     identifiers: v => v ?? null, mugshot_url: v => v ?? null,
     aka_names: v => v ?? null, employment: v => v ?? null,
-    phone2: v => v ?? null, drivers_license_number: v => v ?? null,
-    drivers_license_state: v => v ?? null, physical_marks: v => v ?? null,
-    occupation: v => v ?? null, education: v => v ?? null,
-    marital_status: v => v ?? null, nationality: v => v ?? null,
-    aliases: v => v ?? null, place_of_birth: v => v ?? null,
-    citizenship: v => v ?? null, id_type: v => v ?? null,
-    id_number: v => v ?? null, id_state: v => v ?? null,
-    id_expiration: v => v ?? null, caution: v => v ?? null,
-    caution_reason: v => v ?? null, notes: v => v ?? null,
-    photo_url: v => v ?? null,
+    aliases: v => v ?? null,
+    physical_marks: v => v ?? null,
+    education: v => v ?? null,
+    caution: v => v ?? null, caution_reason: v => v ?? null,
+    notes: v => v ?? null,
   };
 
   // POST /api/records/persons — Create person
@@ -341,24 +412,9 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
         return c.json({ error: 'first_name and last_name are required', code: 'FIRSTNAME_AND_LASTNAME_ARE' }, 400);
       }
 
-      const columns: string[] = [];
-      const placeholders: string[] = [];
-      const values: any[] = [];
-      const bodyKeys = Object.keys(body);
-
-      for (const [key, transform] of Object.entries(PERSON_FIELD_MAP)) {
-        if (bodyKeys.includes(key)) {
-          columns.push(key);
-          placeholders.push('?');
-          values.push(transform(body[key]));
-        }
-      }
-
-      if (bodyKeys.includes('flags')) {
-        columns.push('flags');
-        placeholders.push('?');
-        values.push(JSON.stringify(body.flags ?? []));
-      }
+      const { columns, placeholders, values } = await filterFieldMap(db, 'persons', PERSON_FIELD_MAP, body, {
+        flags: v => JSON.stringify(v ?? []),
+      });
 
       const now = localNow();
       columns.push('created_at', 'updated_at');
@@ -386,27 +442,15 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       if (!existing) return c.json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }, 404);
 
       const body = await c.req.json();
-      const fields: string[] = [];
-      const values: any[] = [];
-      const bodyKeys = Object.keys(body);
+      const { setClauses, values } = await filterFieldMap(db, 'persons', PERSON_FIELD_MAP, body, {
+        flags: v => JSON.stringify(v ?? []),
+      });
 
-      for (const [key, transform] of Object.entries(PERSON_FIELD_MAP)) {
-        if (bodyKeys.includes(key)) {
-          fields.push(`${key} = ?`);
-          values.push(transform(body[key]));
-        }
-      }
-
-      if (bodyKeys.includes('flags')) {
-        fields.push('flags = ?');
-        values.push(JSON.stringify(body.flags ?? []));
-      }
-
-      if (fields.length > 0) {
-        fields.push('updated_at = ?');
+      if (setClauses.length > 0) {
+        setClauses.push('updated_at = ?');
         values.push(localNow());
         values.push(id);
-        await db.prepare(`UPDATE persons SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+        await db.prepare(`UPDATE persons SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
       }
 
       const updated = await db.prepare('SELECT * FROM persons WHERE id = ?').get(id);
@@ -442,6 +486,8 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   api.post('/persons/:id/archive', async (c) => {
     try {
       const db = new D1Db(c.env.DB);
+      const existingCols = await db.getColumns('persons');
+      if (!existingCols.has('archived_at')) return c.json({ error: 'Archive feature not available', code: 'ARCHIVE_NOT_AVAILABLE' }, 501);
       const id = paramNum(c.req.param('id'));
       const person = await db.prepare('SELECT * FROM persons WHERE id = ?').get(id) as any;
       if (!person) return c.json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }, 404);
@@ -466,6 +512,8 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   api.post('/persons/:id/unarchive', async (c) => {
     try {
       const db = new D1Db(c.env.DB);
+      const existingCols = await db.getColumns('persons');
+      if (!existingCols.has('archived_at')) return c.json({ error: 'Archive feature not available', code: 'ARCHIVE_NOT_AVAILABLE' }, 501);
       const id = paramNum(c.req.param('id'));
       const person = await db.prepare('SELECT * FROM persons WHERE id = ?').get(id) as any;
       if (!person) return c.json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }, 404);
@@ -491,12 +539,12 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
 
   // GET /api/records/vehicles - List vehicles
   api.get('/vehicles', async (c) => {
+    const { page = '1', limit = '100000', archived } = c.req.query();
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit, 10)) || 100000));
+    const offset = (pageNum - 1) * limitNum;
     try {
       const db = new D1Db(c.env.DB);
-      const { page = '1', limit = '100000', archived } = c.req.query();
-      const pageNum = Math.max(1, parseInt(page, 10) || 1);
-      const limitNum = Math.min(100000, Math.max(1, (parseInt(limit, 10)) || 100000));
-      const offset = (pageNum - 1) * limitNum;
 
       let whereClause = 'WHERE 1=1';
       if (archived === 'true') {
@@ -526,6 +574,25 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
         },
       });
     } catch (err: any) {
+      if (err?.message?.includes('no such column') && archived !== 'all') {
+        try {
+          const db2 = new D1Db(c.env.DB);
+          const cleanWhere = 'WHERE 1=1';
+          const countRow2 = await db2.prepare(`SELECT COUNT(*) as total FROM vehicles_records v ${cleanWhere}`).get() as any;
+          const vehicles2 = await db2.prepare(`
+            SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
+            FROM vehicles_records v
+            LEFT JOIN persons p ON v.owner_person_id = p.id
+            ${cleanWhere}
+            ORDER BY v.created_at DESC
+            LIMIT ? OFFSET ?
+          `).all(limitNum, offset);
+          return c.json({
+            data: vehicles2,
+            pagination: { page: pageNum, limit: limitNum, total: countRow2?.total ?? 0, totalPages: Math.ceil((countRow2?.total ?? 0) / limitNum) },
+          });
+        } catch { /* fall through */ }
+      }
       console.error('Get vehicles error:', err);
       return c.json({ error: 'Failed to get vehicles', code: 'GET_VEHICLES_ERROR' }, 500);
     }
@@ -591,22 +658,9 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     try {
       const db = new D1Db(c.env.DB);
       const body = await c.req.json();
-      const bodyKeys = Object.keys(body || {});
-      const columns: string[] = [];
-      const placeholders: string[] = [];
-      const values: any[] = [];
-
-      for (const [key, transform] of Object.entries(VEHICLE_FIELD_MAP)) {
-        if (bodyKeys.includes(key)) {
-          columns.push(key);
-          placeholders.push('?');
-          values.push(transform(body[key]));
-        }
-      }
-
-      columns.push('flags');
-      placeholders.push('?');
-      values.push(JSON.stringify(body.flags || []));
+      const { columns, placeholders, values } = await filterFieldMap(db, 'vehicles_records', VEHICLE_FIELD_MAP, body, {
+        flags: v => JSON.stringify(v ?? []),
+      });
 
       const now = localNow();
       columns.push('created_at', 'updated_at');
@@ -634,27 +688,15 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       if (!existing) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
 
       const body = await c.req.json();
-      const fields: string[] = [];
-      const values: any[] = [];
-      const bodyKeys = Object.keys(body);
+      const { setClauses, values } = await filterFieldMap(db, 'vehicles_records', VEHICLE_FIELD_MAP, body, {
+        flags: v => JSON.stringify(v ?? []),
+      });
 
-      for (const [key, transform] of Object.entries(VEHICLE_FIELD_MAP)) {
-        if (bodyKeys.includes(key)) {
-          fields.push(`${key} = ?`);
-          values.push(transform(body[key]));
-        }
-      }
-
-      if (bodyKeys.includes('flags')) {
-        fields.push('flags = ?');
-        values.push(JSON.stringify(body.flags ?? []));
-      }
-
-      if (fields.length > 0) {
-        fields.push('updated_at = ?');
+      if (setClauses.length > 0) {
+        setClauses.push('updated_at = ?');
         values.push(localNow());
         values.push(id);
-        await db.prepare(`UPDATE vehicles_records SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+        await db.prepare(`UPDATE vehicles_records SET ${setClauses.join(', ')} WHERE id = ?`).run(...values);
       }
 
       const updated = await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id);
@@ -690,6 +732,8 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   api.post('/vehicles/:id/archive', async (c) => {
     try {
       const db = new D1Db(c.env.DB);
+      const existingCols = await db.getColumns('vehicles_records');
+      if (!existingCols.has('archived_at')) return c.json({ error: 'Archive feature not available', code: 'ARCHIVE_NOT_AVAILABLE' }, 501);
       const id = paramNum(c.req.param('id'));
       const v = await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id) as any;
       if (!v) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
@@ -714,6 +758,8 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   api.post('/vehicles/:id/unarchive', async (c) => {
     try {
       const db = new D1Db(c.env.DB);
+      const existingCols = await db.getColumns('vehicles_records');
+      if (!existingCols.has('archived_at')) return c.json({ error: 'Archive feature not available', code: 'ARCHIVE_NOT_AVAILABLE' }, 501);
       const id = paramNum(c.req.param('id'));
       const v = await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id) as any;
       if (!v) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
@@ -765,10 +811,21 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
         key_holder_phone: v => v ?? null,
         key_holder_relationship: v => v ?? null, owner_name: v => v ?? null,
         owner_phone: v => v ?? null, last_inspection_date: v => v ?? null,
+        inspection_status: v => v ?? null,
+        alarm_company: v => v ?? null, alarm_account: v => v ?? null,
+        camera_system: v => v ?? null,
+        parking_info: v => v ?? null, roof_access: v => v ?? null,
+        utility_shutoffs: v => v ?? null, known_hazards: v => v ?? null,
+        contact_email: v => v ?? null,
+        secondary_contact_name: v => v ?? null,
+        secondary_contact_phone: v => v ?? null,
+        patrol_frequency: v => v ?? null,
+        opening_hours: v => v ?? null, closing_hours: v => v ?? null,
       };
 
+      const existingCols = await db.getColumns('properties');
       for (const [key, transform] of Object.entries(PROPERTY_FIELDS)) {
-        if (Object.keys(body).includes(key)) {
+        if (Object.keys(body).includes(key) && existingCols.has(key)) {
           columns.push(key);
           placeholders.push('?');
           values.push(transform(body[key]));
@@ -776,9 +833,11 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       }
 
       const now = localNow();
-      columns.push('created_at', 'updated_at');
-      placeholders.push('?', '?');
-      values.push(now, now);
+      if (existingCols.has('created_at') && existingCols.has('updated_at')) {
+        columns.push('created_at', 'updated_at');
+        placeholders.push('?', '?');
+        values.push(now, now);
+      }
 
       const result = await db.prepare(
         `INSERT INTO properties (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
@@ -805,10 +864,6 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       if (!existing) return c.json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' }, 404);
 
       const body = await c.req.json();
-      const pFields: string[] = [];
-      const pValues: any[] = [];
-      const pBodyKeys = Object.keys(body);
-
       const pFieldMap: Record<string, (v: any) => any> = {
         name: v => v ?? null, address: v => v ?? null,
         city: v => v ?? null, state: v => v ?? null, zip: v => v ?? null,
@@ -825,18 +880,35 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
         key_holder_phone: v => v ?? null,
         key_holder_relationship: v => v ?? null, owner_name: v => v ?? null,
         owner_phone: v => v ?? null, last_inspection_date: v => v ?? null,
+        inspection_status: v => v ?? null,
+        alarm_company: v => v ?? null, alarm_account: v => v ?? null,
+        camera_system: v => v ?? null,
+        parking_info: v => v ?? null, roof_access: v => v ?? null,
+        utility_shutoffs: v => v ?? null, known_hazards: v => v ?? null,
+        contact_email: v => v ?? null,
+        secondary_contact_name: v => v ?? null,
+        secondary_contact_phone: v => v ?? null,
+        patrol_frequency: v => v ?? null,
+        opening_hours: v => v ?? null, closing_hours: v => v ?? null,
       };
 
+      const existingCols = await db.getColumns('properties');
+      const pFields: string[] = [];
+      const pValues: any[] = [];
+      const pBodyKeys = Object.keys(body);
+
       for (const [key, transform] of Object.entries(pFieldMap)) {
-        if (pBodyKeys.includes(key)) {
+        if (pBodyKeys.includes(key) && existingCols.has(key)) {
           pFields.push(`${key} = ?`);
           pValues.push(transform(body[key]));
         }
       }
 
       if (pFields.length > 0) {
-        pFields.push('updated_at = ?');
-        pValues.push(localNow());
+        if (existingCols.has('updated_at')) {
+          pFields.push('updated_at = ?');
+          pValues.push(localNow());
+        }
         pValues.push(id);
         await db.prepare(`UPDATE properties SET ${pFields.join(', ')} WHERE id = ?`).run(...pValues);
       }
@@ -878,6 +950,8 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   api.post('/properties/:id/archive', async (c) => {
     try {
       const db = new D1Db(c.env.DB);
+      const existingCols = await db.getColumns('properties');
+      if (!existingCols.has('archived_at')) return c.json({ error: 'Archive feature not available', code: 'ARCHIVE_NOT_AVAILABLE' }, 501);
       const id = paramNum(c.req.param('id'));
       const prop = await db.prepare('SELECT * FROM properties WHERE id = ?').get(id) as any;
       if (!prop) return c.json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' }, 404);
@@ -902,6 +976,8 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   api.post('/properties/:id/unarchive', async (c) => {
     try {
       const db = new D1Db(c.env.DB);
+      const existingCols = await db.getColumns('properties');
+      if (!existingCols.has('archived_at')) return c.json({ error: 'Archive feature not available', code: 'ARCHIVE_NOT_AVAILABLE' }, 501);
       const id = paramNum(c.req.param('id'));
       const prop = await db.prepare('SELECT * FROM properties WHERE id = ?').get(id) as any;
       if (!prop) return c.json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' }, 404);
@@ -927,12 +1003,12 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
 
   // GET /api/records/evidence - List evidence
   api.get('/evidence', async (c) => {
+    const { page = '1', limit = '100000', archived } = c.req.query();
+    const pageNum = Math.max(1, parseInt(page, 10) || 1);
+    const limitNum = Math.min(100000, Math.max(1, (parseInt(limit, 10)) || 100000));
+    const offset = (pageNum - 1) * limitNum;
     try {
       const db = new D1Db(c.env.DB);
-      const { page = '1', limit = '100000', archived } = c.req.query();
-      const pageNum = Math.max(1, parseInt(page, 10) || 1);
-      const limitNum = Math.min(100000, Math.max(1, (parseInt(limit, 10)) || 100000));
-      const offset = (pageNum - 1) * limitNum;
 
       let whereClause = 'WHERE 1=1';
       if (archived === 'true') {
@@ -963,6 +1039,26 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
         },
       });
     } catch (err: any) {
+      if (err?.message?.includes('no such column') && archived !== 'all') {
+        try {
+          const db2 = new D1Db(c.env.DB);
+          const cleanWhere = 'WHERE 1=1';
+          const countRow2 = await db2.prepare(`SELECT COUNT(*) as total FROM evidence e ${cleanWhere}`).get() as any;
+          const evidence2 = await db2.prepare(`
+            SELECT e.*, i.incident_number, u.full_name as collected_by_name
+            FROM evidence e
+            LEFT JOIN incidents i ON e.incident_id = i.id
+            LEFT JOIN users u ON e.collected_by = u.id
+            ${cleanWhere}
+            ORDER BY e.created_at DESC
+            LIMIT ? OFFSET ?
+          `).all(limitNum, offset);
+          return c.json({
+            data: evidence2,
+            pagination: { page: pageNum, limit: limitNum, total: countRow2?.total ?? 0, totalPages: Math.ceil((countRow2?.total ?? 0) / limitNum) },
+          });
+        } catch { /* fall through */ }
+      }
       return c.json({ error: 'Failed to get evidence', code: 'GET_EVIDENCE_ERROR' }, 500);
     }
   });
@@ -1039,13 +1135,19 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       }
       const evidenceNumber = `EV-${currentYear}-${String(nextNum).padStart(5, '0')}`;
 
-      const columns: string[] = ['evidence_number', 'description', 'evidence_type', 'collected_by'];
-      const placeholders: string[] = ['?', '?', '?', '?'];
-      const values: any[] = [evidenceNumber, body.description, body.evidence_type, user.userId];
+      const existingCols = await db.getColumns('evidence');
+      const columns: string[] = [];
+      const placeholders: string[] = [];
+      const values: any[] = [];
+
+      if (existingCols.has('evidence_number')) { columns.push('evidence_number'); placeholders.push('?'); values.push(evidenceNumber); }
+      if (existingCols.has('description')) { columns.push('description'); placeholders.push('?'); values.push(body.description); }
+      if (existingCols.has('evidence_type')) { columns.push('evidence_type'); placeholders.push('?'); values.push(body.evidence_type); }
+      if (existingCols.has('collected_by')) { columns.push('collected_by'); placeholders.push('?'); values.push(user.userId); }
 
       for (const [key, transform] of Object.entries(EVIDENCE_FIELD_MAP)) {
         if (key === 'description' || key === 'evidence_type') continue;
-        if (Object.keys(body).includes(key)) {
+        if (Object.keys(body).includes(key) && existingCols.has(key)) {
           columns.push(key);
           placeholders.push('?');
           values.push(transform(body[key]));
@@ -1053,9 +1155,11 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       }
 
       const now = localNow();
-      columns.push('created_at', 'updated_at');
-      placeholders.push('?', '?');
-      values.push(now, now);
+      if (existingCols.has('created_at') && existingCols.has('updated_at')) {
+        columns.push('created_at', 'updated_at');
+        placeholders.push('?', '?');
+        values.push(now, now);
+      }
 
       const result = await db.prepare(
         `INSERT INTO evidence (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
@@ -1091,20 +1195,23 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       const user = c.get('user');
       const body = await c.req.json();
 
+      const existingCols = await db.getColumns('evidence');
       const fields: string[] = [];
       const values: any[] = [];
       const bodyKeys = Object.keys(body);
 
       for (const [key, transform] of Object.entries(EVIDENCE_FIELD_MAP)) {
-        if (bodyKeys.includes(key)) {
+        if (bodyKeys.includes(key) && existingCols.has(key)) {
           fields.push(`${key} = ?`);
           values.push(transform(body[key]));
         }
       }
 
       if (fields.length > 0) {
-        fields.push('updated_at = ?');
-        values.push(localNow());
+        if (existingCols.has('updated_at')) {
+          fields.push('updated_at = ?');
+          values.push(localNow());
+        }
         values.push(id);
         await db.prepare(`UPDATE evidence SET ${fields.join(', ')} WHERE id = ?`).run(...values);
       }
@@ -1153,6 +1260,8 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   api.post('/evidence/:id/archive', async (c) => {
     try {
       const db = new D1Db(c.env.DB);
+      const existingCols = await db.getColumns('evidence');
+      if (!existingCols.has('archived_at')) return c.json({ error: 'Archive feature not available', code: 'ARCHIVE_NOT_AVAILABLE' }, 501);
       const id = paramNum(c.req.param('id'));
       const ev = await db.prepare('SELECT * FROM evidence WHERE id = ?').get(id) as any;
       if (!ev) return c.json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }, 404);
@@ -1177,6 +1286,8 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   api.post('/evidence/:id/unarchive', async (c) => {
     try {
       const db = new D1Db(c.env.DB);
+      const existingCols = await db.getColumns('evidence');
+      if (!existingCols.has('archived_at')) return c.json({ error: 'Archive feature not available', code: 'ARCHIVE_NOT_AVAILABLE' }, 501);
       const id = paramNum(c.req.param('id'));
       const ev = await db.prepare('SELECT * FROM evidence WHERE id = ?').get(id) as any;
       if (!ev) return c.json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }, 404);

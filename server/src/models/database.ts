@@ -1987,6 +1987,20 @@ function migrateSchema(): void {
   addCol('properties', 'owner_name', 'TEXT');
   addCol('properties', 'owner_phone', 'TEXT');
   addCol('properties', 'last_inspection_date', 'TEXT');
+  addCol('properties', 'inspection_status', 'TEXT');
+  addCol('properties', 'alarm_company', 'TEXT');
+  addCol('properties', 'alarm_account', 'TEXT');
+  addCol('properties', 'camera_system', 'TEXT');
+  addCol('properties', 'parking_info', 'TEXT');
+  addCol('properties', 'roof_access', 'TEXT');
+  addCol('properties', 'utility_shutoffs', 'TEXT');
+  addCol('properties', 'known_hazards', 'TEXT');
+  addCol('properties', 'contact_email', 'TEXT');
+  addCol('properties', 'secondary_contact_name', 'TEXT');
+  addCol('properties', 'secondary_contact_phone', 'TEXT');
+  addCol('properties', 'patrol_frequency', 'TEXT');
+  addCol('properties', 'opening_hours', 'TEXT');
+  addCol('properties', 'closing_hours', 'TEXT');
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema

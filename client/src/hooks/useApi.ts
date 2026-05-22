@@ -58,39 +58,40 @@ export function authedImageUrl(url: string | null | undefined): string {
 
 // ─── Mutation deduplication (prevent rapid double-click) ────
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
-const DEDUP_WINDOW_MS = 500; // 500ms dedup window
+const DEDUP_WINDOW_MS = 500;
 
 // ─── Retry config for 502/503 (server restart recovery) ────
-// When nginx returns 502/503 during a deploy restart, the request never
-// reached Express. Safe to retry ALL methods (including POST/PUT/DELETE)
-// because the server never processed the original request.
 const RETRY_STATUS_CODES = [502, 503];
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000; // 2 seconds between retries
+const RETRY_DELAY_MS = 2000;
 
 async function fetchWithRetry(
   url: string,
   init: RequestInit,
   retries = MAX_RETRIES,
 ): Promise<Response> {
-  // Skip retries for large bodies (file uploads) — re-sending large payloads is wasteful
   const bodySize = init.body instanceof Blob ? init.body.size
-    : init.body instanceof FormData ? Infinity  // FormData is always large-ish
+    : init.body instanceof FormData ? Infinity
     : typeof init.body === 'string' ? init.body.length
     : 0;
-  if (bodySize > 1_000_000) retries = 0; // 1MB threshold
+  if (bodySize > 1_000_000) retries = 0;
 
-  // Mutation deduplication — return existing in-flight promise for same URL+method
   const method = init.method || 'GET';
   if (['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase())) {
     const dedupKey = `${method}:${url}`;
     const existing = inflightMutations.get(dedupKey);
     if (existing && Date.now() - existing.ts < DEDUP_WINDOW_MS) {
-      return existing.promise.then((res) => res.clone());
+      return existing.promise.then((res) => {
+        const text = res.clone().text();
+        return text.then((body) => new Response(body, {
+          status: res.status,
+          statusText: res.statusText,
+          headers: res.headers,
+        }));
+      });
     }
   }
 
-  // Track in-flight mutations for deduplication
   const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
   const dedupKey = isMutation ? `${method}:${url}` : '';
 
@@ -100,17 +101,14 @@ async function fetchWithRetry(
       try {
         const res = await fetch(url, init);
         if (RETRY_STATUS_CODES.includes(res.status) && attempt < retries) {
-          // Server is restarting — wait with exponential backoff and retry
-          const delay = RETRY_DELAY_MS * Math.pow(2, attempt); // 2s → 4s → 8s
+          const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
           console.warn(`[API] ${init.method || 'GET'} ${url} → ${res.status}, retrying in ${delay / 1000}s (${attempt + 1}/${retries})...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
         return res;
       } catch (err) {
-        // Don't retry intentional aborts (component unmount, navigation, etc.)
         if (err instanceof DOMException && err.name === 'AbortError') throw err;
-        // Network error (connection refused / failed to fetch) — retry with backoff
         lastError = err instanceof Error ? err : new Error(String(err));
         if (attempt < retries) {
           const delay = RETRY_DELAY_MS * Math.pow(2, attempt);

@@ -68,10 +68,80 @@ export class D1Db {
   }
 
   transaction<T>(fn: () => Promise<T>): Promise<T> {
-    // D1 auto-batches statements within a single prepare/bind chain.
-    // For explicit transactions, we rely on the caller to batch.
-    // D1 doesn't support explicit BEGIN/COMMIT in the same way.
     return fn();
+  }
+
+  private static columnCache = new Map<string, Promise<Set<string>>>();
+
+  async getColumns(table: string): Promise<Set<string>> {
+    const cached = D1Db.columnCache.get(table);
+    if (cached) return cached;
+
+    const promise = (async () => {
+      const rows = await this.db.prepare(`PRAGMA table_info(\`${table}\`)`).all<{ name: string }>();
+      return new Set(rows.results?.map(r => r.name) ?? []);
+    })();
+
+    D1Db.columnCache.set(table, promise);
+    return promise;
+  }
+}
+
+export async function filterFieldMap<T extends Record<string, any>>(
+  db: D1Db,
+  table: string,
+  fieldMap: Record<string, (v: any) => any>,
+  body: T,
+  extraKeys?: Record<string, (v: any) => any>,
+): Promise<{ columns: string[]; placeholders: string[]; values: any[]; setClauses: string[] }> {
+  const existingCols = await db.getColumns(table);
+  const columns: string[] = [];
+  const placeholders: string[] = [];
+  const values: any[] = [];
+  const setClauses: string[] = [];
+  const bodyKeys = Object.keys(body);
+
+  for (const [key, transform] of Object.entries(fieldMap)) {
+    if (bodyKeys.includes(key) && existingCols.has(key)) {
+      columns.push(key);
+      placeholders.push('?');
+      values.push(transform(body[key]));
+      setClauses.push(`${key} = ?`);
+    }
+  }
+
+  if (extraKeys) {
+    for (const [key, transform] of Object.entries(extraKeys)) {
+      if (bodyKeys.includes(key) && existingCols.has(key)) {
+        columns.push(key);
+        placeholders.push('?');
+        values.push(transform(body[key]));
+        setClauses.push(`${key} = ?`);
+      }
+    }
+  }
+
+  return { columns, placeholders, values, setClauses };
+}
+
+/**
+ * Retry a database operation after discovering table columns.
+ * If `fn` throws a `no such column` error, this queries PRAGMA table_info,
+ * caches the result, and re-invokes `fn` so it can build a valid query.
+ */
+export async function withColumnRetry<T>(
+  db: D1Db,
+  table: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await fn();
+  } catch (err: any) {
+    if (err?.message?.includes('no such column')) {
+      await db.getColumns(table);
+      return fn();
+    }
+    throw err;
   }
 }
 
