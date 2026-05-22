@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { decryptConfigValue } from '../utils/configEncryption';
 
 const router = Router();
 router.use(authenticateToken);
@@ -89,7 +90,16 @@ router.get('/mapbox-config', (_req: Request, res: Response) => {
       "SELECT config_value FROM system_config WHERE config_key = 'mapbox_access_token' AND is_active = 1 LIMIT 1"
     ).get() as { config_value: string } | undefined;
 
-    res.json({ mapbox_access_token: row?.config_value || '' });
+    let token = row?.config_value || '';
+    if (token) {
+      try {
+        token = decryptConfigValue(token);
+      } catch {
+        // Not encrypted — return as-is (e.g. stored via Worker path)
+      }
+    }
+
+    res.json({ mapbox_access_token: token });
   } catch (error: any) {
     console.error('Get mapbox config error:', error);
     res.status(500).json({ error: 'Failed to get mapbox config', code: 'MAPBOX_CONFIG_GET_ERROR' });

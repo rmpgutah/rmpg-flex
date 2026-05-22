@@ -48,6 +48,7 @@ import {
   Mail,
   GraduationCap,
   Microscope,
+  Download,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -58,7 +59,7 @@ import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
 import StatusBar from './StatusBar';
 import MenuBar from './MenuBar';
-// Sidebar removed — navigation moved to top icon toolbar
+import Sidebar from './Sidebar';
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
@@ -188,6 +189,7 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
   { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
+  { path: '/downloads', icon: Download, label: 'Downloads', group: 'system' },
   { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
@@ -1443,9 +1445,12 @@ export default function Layout() {
       />
 
       {/* ============================================================ */}
-      {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
+      {/* MAIN CONTENT AREA — Sidebar + Page Content                    */}
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
+        {/* Sidebar — hidden on mobile */}
+        {!isMobile && <Sidebar isAdmin={isAdmin} isContractManager={isContractManager} />}
+
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>

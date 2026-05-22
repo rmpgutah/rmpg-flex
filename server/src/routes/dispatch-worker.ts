@@ -422,6 +422,8 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
       return c.json(rows);
     } catch (err: any) {
       if (err?.message?.includes('no such table')) return c.json([]);
+      if (err?.message?.includes('no such column')) return c.json([]);
+      console.error('[Dispatch] speed-violations error:', err?.message || err);
       return c.json({ error: 'Speed violations query failed' }, 500);
     }
   });

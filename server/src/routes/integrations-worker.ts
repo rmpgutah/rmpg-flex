@@ -195,9 +195,14 @@ export function mountIntegrationsRoutes(app: Hono<{ Bindings: Env; Variables: { 
       const envToken = ((c.env as any).MAPBOX_ACCESS_TOKEN || '').trim();
       const storedToken = await getIntegrationConfigValue(db, 'mapbox_access_token', c.env.JWT_SECRET) || null;
       const accessToken = envToken || storedToken || '';
+
+      if (accessToken.startsWith('sk.')) {
+        console.error('[Mapbox] Secret token (sk.*) configured — browser Mapbox GL JS requires a public token (pk.*). Update MAPBOX_ACCESS_TOKEN env var or Admin → Integrations → mapbox_access_token.');
+      }
+
       return c.json({
-        configured: accessToken.length > 0,
-        accessToken: accessToken || undefined,
+        configured: accessToken.length > 0 && !accessToken.startsWith('sk.'),
+        accessToken: accessToken.startsWith('sk.') ? undefined : (accessToken || undefined),
         source: envToken ? 'env' : storedToken ? 'system_config' : 'missing',
       });
     } catch {
