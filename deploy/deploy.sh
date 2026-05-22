@@ -75,19 +75,26 @@ echo "    Client build complete"
 echo ""
 
 # ─── Deploy to Cloudflare ────────────────────────────────
+# Build env flags: only pass --env for non-production (has an [env.X] section in wrangler.toml)
+if [ "$ENVIRONMENT" = "production" ]; then
+  ENV_FLAG=""
+else
+  ENV_FLAG="--env $ENVIRONMENT"
+fi
+
 if [ "$DRY_RUN" = true ]; then
   echo ">>> [DRY RUN] Previewing deployment..."
-  npx wrangler deploy --dry-run --env "$ENVIRONMENT"
+  npx wrangler deploy --dry-run $ENV_FLAG
 else
   echo ">>> Deploying to Cloudflare Workers..."
 
   # Deploy D1 migrations first
   echo "    [1/3] Applying D1 migrations..."
-  npx wrangler d1 migrations apply rmpg-flex --env "$ENVIRONMENT" || echo "    (no new migrations or already applied)"
+  npx wrangler d1 migrations apply rmpg-flex $ENV_FLAG || echo "    (no new migrations or already applied)"
 
   # Deploy Worker
   echo "    [2/3] Deploying Worker..."
-  npx wrangler deploy --env "$ENVIRONMENT"
+  npx wrangler deploy $ENV_FLAG
 
   # Deploy client to Cloudflare Pages
   echo "    [3/3] Deploying client to Pages..."

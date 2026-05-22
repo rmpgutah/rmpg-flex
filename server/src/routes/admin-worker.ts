@@ -812,5 +812,111 @@ export function mountAdminRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     return c.json({ expiring_soon: expiring, expiring_count: expiring.length, already_expired: expired, expired_count: expired.length, period_days: days });
   });
 
+  // ═══════════════════════════════════════════════════════════
+  // CLIENT ERROR REPORTING (no auth — ErrorBoundary fires even on auth pages)
+  // ═══════════════════════════════════════════════════════════
+
+  // POST /api/admin/health/client-error — Log client-side errors
+  api.post('/health/client-error', async (c) => {
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const { message, stack, componentStack, url } = body;
+      console.error(`[Client Error] ${message || 'Unknown'}`, { url, stackLength: stack?.length || 0 });
+      return c.json({ logged: true });
+    } catch {
+      return c.json({ logged: false }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // TRAINING
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/admin/training — Training management data
+  api.get('/training', async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const training = await db.prepare(`
+        SELECT c.*, u.full_name as officer_name
+        FROM officer_credentials c
+        LEFT JOIN users u ON u.id = c.officer_id
+        WHERE c.type = 'training' OR c.type = 'certification'
+        ORDER BY c.expiry_date ASC
+      `).all();
+      return c.json(training || []);
+    } catch {
+      return c.json([]);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // AUDIT LOGS (alias for backward compat, some clients use /audit/logs)
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/audit/logs', requireRole('admin', 'manager'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const limit = Math.min(10000, Math.max(1, parseInt(c.req.query('limit') || '100', 10) || 100));
+      const rows = await db.prepare(`
+        SELECT a.*, u.full_name as user_name FROM audit_log a
+        LEFT JOIN users u ON a.user_id = u.id
+        ORDER BY a.created_at DESC LIMIT ?
+      `).all(limit);
+      return c.json(rows);
+    } catch { return c.json([]); }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // DATABASE STATS
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/database/stats', async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const [users, calls, incidents, warrants, citations, properties, clients] = await Promise.all([
+        db.prepare('SELECT COUNT(*) as count FROM users').get(),
+        db.prepare('SELECT COUNT(*) as count FROM calls_for_service').get(),
+        db.prepare('SELECT COUNT(*) as count FROM incidents').get(),
+        db.prepare('SELECT COUNT(*) as count FROM warrants').get(),
+        db.prepare('SELECT COUNT(*) as count FROM citations').get(),
+        db.prepare('SELECT COUNT(*) as count FROM properties').get(),
+        db.prepare('SELECT COUNT(*) as count FROM clients').get(),
+      ]);
+      return c.json({
+        users: (users as any)?.count || 0,
+        calls: (calls as any)?.count || 0,
+        incidents: (incidents as any)?.count || 0,
+        warrants: (warrants as any)?.count || 0,
+        citations: (citations as any)?.count || 0,
+        properties: (properties as any)?.count || 0,
+        clients: (clients as any)?.count || 0,
+      });
+    } catch { return c.json({ users: 0, calls: 0, incidents: 0, warrants: 0, citations: 0, properties: 0, clients: 0 }); }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // SYSTEM OVERVIEW
+  // ═══════════════════════════════════════════════════════════
+
+  api.get('/system-overview', async (c) => {
+    const db = new D1Db(c.env.DB);
+    try {
+      const dbStats = await Promise.all([
+        db.prepare('SELECT COUNT(*) as count FROM users').get(),
+        db.prepare('SELECT COUNT(*) as count FROM units WHERE is_active = 1').get(),
+        db.prepare('SELECT COUNT(*) as count FROM calls_for_service WHERE status IN (\'pending\',\'dispatched\',\'enroute\')').get(),
+        db.prepare('SELECT COUNT(*) as count FROM incidents WHERE created_at >= datetime(\'now\', \'-30 days\')').get(),
+        db.prepare('SELECT COUNT(*) as count FROM citations WHERE created_at >= datetime(\'now\', \'-30 days\')').get(),
+      ]);
+      return c.json({
+        total_users: (dbStats[0] as any)?.count || 0,
+        active_units: (dbStats[1] as any)?.count || 0,
+        active_calls: (dbStats[2] as any)?.count || 0,
+        incidents_30d: (dbStats[3] as any)?.count || 0,
+        citations_30d: (dbStats[4] as any)?.count || 0,
+      });
+    } catch { return c.json({ total_users: 0, active_units: 0, active_calls: 0, incidents_30d: 0, citations_30d: 0 }); }
+  });
+
   app.route('/api/admin', api);
 }
