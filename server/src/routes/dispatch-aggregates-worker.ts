@@ -228,8 +228,8 @@ export function mountDispatchAggregatesRoutes(app: Hono<{ Bindings: Env; Variabl
                db2.beat_code as dispatch_code, ds.sector_name, dz.zone_name,
                db2.beat_name, db2.beat_descriptor
         FROM dispatch_beats db2
-        JOIN dispatch_zones dz ON dz.id = db2.zone_id
-        JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+        LEFT JOIN dispatch_zones dz ON dz.id = db2.zone_id
+        LEFT JOIN dispatch_sectors ds ON ds.id = dz.sector_id
       `;
       const params: any[] = [];
       if (search && typeof search === 'string' && search.length >= 1 && search.length <= 100) {

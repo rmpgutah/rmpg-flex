@@ -404,21 +404,146 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
 
   // GET /api/dispatch/gps/speed-violations
   api.get('/gps/speed-violations', requireRole('admin', 'manager', 'supervisor'), async (c) => {
-    const db = new D1Db(c.env.DB);
-    const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '24', 10) || 24, 1), 168);
-    const unacknowledged = c.req.query('unacknowledged');
+    try {
+      const db = new D1Db(c.env.DB);
+      const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '24', 10) || 24, 1), 168);
+      const unacknowledged = c.req.query('unacknowledged');
 
-    let whereClause = `sv.recorded_at >= datetime('now','localtime','-${hours} hours')`;
-    if (unacknowledged === 'true') whereClause += ' AND sv.acknowledged_by IS NULL';
-    else if (unacknowledged === 'false') whereClause += ' AND sv.acknowledged_by IS NOT NULL';
+      let whereClause = `sv.recorded_at >= datetime('now','localtime','-${hours} hours')`;
+      if (unacknowledged === 'true') whereClause += ' AND sv.acknowledged_by IS NULL';
+      else if (unacknowledged === 'false') whereClause += ' AND sv.acknowledged_by IS NOT NULL';
 
-    const rows = await db.prepare(`
-      SELECT sv.*, u.full_name as ack_by_name FROM speed_violations sv
-      LEFT JOIN users u ON sv.acknowledged_by = u.id WHERE ${whereClause}
-      ORDER BY sv.recorded_at DESC LIMIT 500
-    `).all();
+      const rows = await db.prepare(`
+        SELECT sv.*, u.full_name as ack_by_name FROM speed_violations sv
+        LEFT JOIN users u ON sv.acknowledged_by = u.id WHERE ${whereClause}
+        ORDER BY sv.recorded_at DESC LIMIT 500
+      `).all();
 
-    return c.json(rows);
+      return c.json(rows);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      return c.json({ error: 'Speed violations query failed' }, 500);
+    }
+  });
+
+  // GET /api/dispatch/gps/speed-zones — List all speed zones
+  api.get('/gps/speed-zones', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const rows = await db.prepare('SELECT * FROM speed_zones ORDER BY name').all();
+      return c.json(rows);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      return c.json({ error: 'Failed to fetch speed zones' }, 500);
+    }
+  });
+
+  // GET /api/dispatch/gps/pursuit-segments — Detect high-speed pursuit sequences
+  api.get('/gps/pursuit-segments', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
+      const unitId = c.req.query('unit_id') ? parseInt(c.req.query('unit_id')!, 10) : null;
+      const PURSUIT_SPEED_MPS = 26.8;
+      const MIN_POINTS = 3;
+
+      let whereClause = `b.recorded_at >= datetime('now','localtime','-${hours} hours') AND b.speed >= ${PURSUIT_SPEED_MPS}`;
+      const params: any[] = [];
+      if (unitId && !isNaN(unitId)) { whereClause += ' AND b.unit_id = ?'; params.push(unitId); }
+
+      const rows = await db.prepare(`
+        SELECT b.unit_id, b.call_sign, b.officer_name, b.badge_number,
+          b.latitude, b.longitude, b.speed, b.heading, b.recorded_at,
+          b.current_call_number, b.current_call_type
+        FROM gps_breadcrumbs b
+        WHERE ${whereClause}
+        ORDER BY b.unit_id, b.recorded_at ASC
+        LIMIT 10000
+      `).all(...params) as any[];
+
+      const segments: any[] = [];
+      let current: any[] = [];
+      let lastUnitId: number | null = null;
+      let lastTime: number | null = null;
+
+      for (const row of rows) {
+        const rowTime = new Date(row.recorded_at).getTime();
+        if (row.unit_id !== lastUnitId || (lastTime && (rowTime - lastTime) > 60000)) {
+          if (current.length >= MIN_POINTS) {
+            const first = current[0];
+            const last = current[current.length - 1];
+            const durationSec = (new Date(last.recorded_at).getTime() - new Date(first.recorded_at).getTime()) / 1000;
+            const avgSpeed = current.reduce((s, p) => s + (p.speed || 0), 0) / current.length;
+            const maxSpeed = Math.max(...current.map(p => p.speed || 0));
+            segments.push({
+              unit_id: first.unit_id, call_sign: first.call_sign, officer_name: first.officer_name,
+              badge_number: first.badge_number, start_time: first.recorded_at, end_time: last.recorded_at,
+              duration_seconds: durationSec, avg_speed_mps: Math.round(avgSpeed * 10) / 10,
+              max_speed_mps: Math.round(maxSpeed * 10) / 10, points: current.length,
+              start_lat: first.latitude, start_lng: first.longitude, end_lat: last.latitude, end_lng: last.longitude,
+              call_number: first.current_call_number, call_type: first.current_call_type,
+            });
+          }
+          current = [];
+        }
+        current.push(row);
+        lastUnitId = row.unit_id;
+        lastTime = rowTime;
+      }
+      if (current.length >= MIN_POINTS) {
+        const first = current[0];
+        const last = current[current.length - 1];
+        const durationSec = (new Date(last.recorded_at).getTime() - new Date(first.recorded_at).getTime()) / 1000;
+        const avgSpeed = current.reduce((s, p) => s + (p.speed || 0), 0) / current.length;
+        const maxSpeed = Math.max(...current.map(p => p.speed || 0));
+        segments.push({
+          unit_id: first.unit_id, call_sign: first.call_sign, officer_name: first.officer_name,
+          badge_number: first.badge_number, start_time: first.recorded_at, end_time: last.recorded_at,
+          duration_seconds: durationSec, avg_speed_mps: Math.round(avgSpeed * 10) / 10,
+          max_speed_mps: Math.round(maxSpeed * 10) / 10, points: current.length,
+          start_lat: first.latitude, start_lng: first.longitude, end_lat: last.latitude, end_lng: last.longitude,
+          call_number: first.current_call_number, call_type: first.current_call_type,
+        });
+      }
+
+      return c.json(segments);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table') || err?.message?.includes('no such column')) return c.json([]);
+      return c.json({ error: 'Pursuit segments query failed' }, 500);
+    }
+  });
+
+  // GET /api/dispatch/queue — Active dispatch queue with priority scoring
+  api.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const calls = await db.prepare(`
+        SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
+          ROUND((julianday('now','localtime') - julianday(c.created_at)) * 24 * 60, 1) as age_minutes,
+          c.priority_score, c.response_time_seconds
+        FROM calls_for_service c
+        LEFT JOIN properties p ON c.property_id = p.id
+        LEFT JOIN users u ON c.dispatcher_id = u.id
+        WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')
+        ORDER BY
+          CASE c.status WHEN 'on_hold' THEN 1 ELSE 0 END,
+          COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC,
+          c.created_at ASC
+        LIMIT 200
+      `).all() as any[];
+
+      const expectedMinutes: Record<string, number> = { P1: 8, P2: 15, P3: 30, P4: 60 };
+      const enriched = calls.map((c: any) => {
+        const expected = expectedMinutes[c.priority] || 30;
+        const isOverdue = c.age_minutes && c.age_minutes > expected && c.status === 'pending';
+        return { ...c, _overdue: isOverdue, _expected_response_minutes: expected };
+      });
+
+      return c.json(enriched);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      return c.json({ error: 'Queue query failed' }, 500);
+    }
   });
 
   // ═══════════════════════════════════════════════════════════
@@ -933,6 +1058,184 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
       WHERE p.resolved_at IS NULL ORDER BY p.created_at DESC LIMIT 100
     `).all();
     return c.json(panics);
+  });
+
+  // POST /api/dispatch/panic — Emergency PANIC button
+  api.post('/panic', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const { latitude, longitude, message, trigger_method } = await c.req.json();
+
+      const userInfo = await db.prepare('SELECT id, full_name, badge_number FROM users WHERE id = ?').get(user.userId) as any;
+      if (!userInfo) return c.json({ error: 'User not found', code: 'USER_NOT_FOUND' }, 404);
+
+      if (message != null && (typeof message !== 'string' || message.length > 500)) {
+        return c.json({ error: 'Message must be a string of 500 characters or less', code: 'INVALID_MESSAGE' }, 400);
+      }
+
+      const now = localNow();
+      const callNumber = `PAN-${new Date().getFullYear()}-${String(Date.now()).slice(-6)}`;
+      const locationAddress = latitude != null && longitude != null && Number.isFinite(Number(latitude)) && Number.isFinite(Number(longitude))
+        ? `GPS: ${Number(latitude).toFixed(5)}, ${Number(longitude).toFixed(5)}`
+        : 'Unknown location';
+      const description = `PANIC ALARM — Officer ${userInfo.full_name} (Badge: ${userInfo.badge_number || 'N/A'}) triggered emergency alert.${message ? ' Message: ' + message : ''}`;
+
+      // Create call
+      const callResult = await db.prepare(`
+        INSERT INTO calls_for_service (call_number, incident_type, priority, status, caller_name, location_address, latitude, longitude, description, source, dispatcher_id, created_at, dispatched_at)
+        VALUES (?, 'officer_assist', 'P1', 'dispatched', ?, ?, ?, ?, ?, 'panic', ?, ?, ?)
+      `).run(callNumber, userInfo.full_name, locationAddress, latitude ?? null, longitude ?? null, description, user.userId, now, now);
+
+      const callId = Number(callResult.meta.last_row_id);
+
+      // Auto-assign officer's unit
+      const unit = await db.prepare('SELECT id, call_sign FROM units WHERE officer_id = ?').get(user.userId) as any;
+      if (unit) {
+        const unitIds = JSON.stringify([unit.id]);
+        await db.prepare('UPDATE units SET status = ?, current_call_id = ?, last_status_change = ? WHERE id = ?').run('dispatched', callId, now, unit.id);
+        await db.prepare('UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?').run(unitIds, callId);
+      }
+
+      // Insert panic_alerts record
+      const panicResult = await db.prepare(`
+        INSERT INTO panic_alerts (user_id, call_id, trigger_method, message, latitude, longitude, location_address, status, escalation_level, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 0, ?, ?)
+      `).run(user.userId, callId, trigger_method || 'ui_button', message || null, latitude ?? null, longitude ?? null, locationAddress, now, now);
+
+      const panicId = Number(panicResult.meta.last_row_id);
+
+      const call = await db.prepare(`SELECT c.*, u.full_name as dispatcher_name FROM calls_for_service c LEFT JOIN users u ON c.dispatcher_id = u.id WHERE c.id = ?`).get(callId);
+
+      return c.json({ success: true, message: 'Panic alert sent — dispatch call created', call_number: callNumber, call_id: callId, panic_id: panicId, call });
+    } catch (error: any) {
+      return c.json({ error: 'Internal server error', code: 'PANIC_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/dispatch/panic/:id/acknowledge — Acknowledge a panic alert
+  api.post('/panic/:id/acknowledge', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const panicId = paramNum(c.req.param('id'));
+      if (isNaN(panicId)) return c.json({ error: 'Invalid panic ID', code: 'INVALID_ID' }, 400);
+
+      const panic = await db.prepare('SELECT * FROM panic_alerts WHERE id = ?').get(panicId) as any;
+      if (!panic) return c.json({ error: 'Panic alert not found', code: 'NOT_FOUND' }, 404);
+      if (panic.status !== 'active') return c.json({ error: `Panic alert is already ${panic.status}`, code: 'INVALID_STATUS' }, 409);
+
+      const now = localNow();
+      await db.prepare('UPDATE panic_alerts SET status = ?, acknowledged_at = ?, acknowledged_by = ?, updated_at = ? WHERE id = ?').run('acknowledged', now, user.userId, now, panicId);
+
+      return c.json({ success: true, message: 'Panic alert acknowledged' });
+    } catch (error: any) {
+      return c.json({ error: 'Internal server error', code: 'PANIC_ACK_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/dispatch/panic/:id/resolve — Resolve a panic alert
+  api.post('/panic/:id/resolve', requireRole('admin', 'supervisor', 'manager'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const panicId = paramNum(c.req.param('id'));
+      if (isNaN(panicId)) return c.json({ error: 'Invalid panic ID', code: 'INVALID_ID' }, 400);
+
+      const { resolution_notes } = await c.req.json();
+      if (!resolution_notes || typeof resolution_notes !== 'string' || resolution_notes.trim().length < 10) {
+        return c.json({ error: 'Resolution notes are required (minimum 10 characters)', code: 'INVALID_NOTES' }, 400);
+      }
+
+      const panic = await db.prepare('SELECT * FROM panic_alerts WHERE id = ?').get(panicId) as any;
+      if (!panic) return c.json({ error: 'Panic alert not found', code: 'NOT_FOUND' }, 404);
+      if (panic.status === 'resolved' || panic.status === 'cancelled' || panic.status === 'false_alarm') {
+        return c.json({ error: `Panic alert is already ${panic.status}`, code: 'INVALID_STATUS' }, 409);
+      }
+
+      const now = localNow();
+      await db.prepare('UPDATE panic_alerts SET status = ?, resolved_at = ?, resolved_by = ?, resolution_notes = ?, updated_at = ? WHERE id = ?')
+        .run('resolved', now, user.userId, resolution_notes.trim(), now, panicId);
+
+      return c.json({ success: true, message: 'Panic alert resolved' });
+    } catch (error: any) {
+      return c.json({ error: 'Internal server error', code: 'PANIC_RESOLVE_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/dispatch/panic/:id/cancel — Officer cancels own panic
+  api.post('/panic/:id/cancel', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const panicId = paramNum(c.req.param('id'));
+      if (isNaN(panicId)) return c.json({ error: 'Invalid panic ID', code: 'INVALID_ID' }, 400);
+
+      const panic = await db.prepare('SELECT * FROM panic_alerts WHERE id = ?').get(panicId) as any;
+      if (!panic) return c.json({ error: 'Panic alert not found', code: 'NOT_FOUND' }, 404);
+      if (panic.user_id !== user.userId) return c.json({ error: 'Only the triggering officer can cancel their own panic alert', code: 'FORBIDDEN' }, 403);
+      if (panic.status !== 'active') return c.json({ error: `Panic alert is already ${panic.status} and cannot be cancelled`, code: 'INVALID_STATUS' }, 409);
+
+      const now = localNow();
+      await db.prepare('UPDATE panic_alerts SET status = ?, updated_at = ? WHERE id = ?').run('cancelled', now, panicId);
+
+      return c.json({ success: true, message: 'Panic alert cancelled' });
+    } catch (error: any) {
+      return c.json({ error: 'Internal server error', code: 'PANIC_CANCEL_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/dispatch/panic/:id/false-alarm — Mark as false alarm
+  api.post('/panic/:id/false-alarm', requireRole('admin', 'supervisor', 'manager'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const panicId = paramNum(c.req.param('id'));
+      if (isNaN(panicId)) return c.json({ error: 'Invalid panic ID', code: 'INVALID_ID' }, 400);
+
+      const { resolution_notes } = await c.req.json();
+      if (!resolution_notes || typeof resolution_notes !== 'string' || resolution_notes.trim().length < 10) {
+        return c.json({ error: 'Resolution notes are required (minimum 10 characters)', code: 'INVALID_NOTES' }, 400);
+      }
+
+      const panic = await db.prepare('SELECT * FROM panic_alerts WHERE id = ?').get(panicId) as any;
+      if (!panic) return c.json({ error: 'Panic alert not found', code: 'NOT_FOUND' }, 404);
+      if (panic.status === 'resolved' || panic.status === 'cancelled' || panic.status === 'false_alarm') {
+        return c.json({ error: `Panic alert is already ${panic.status}`, code: 'INVALID_STATUS' }, 409);
+      }
+
+      const now = localNow();
+      await db.prepare('UPDATE panic_alerts SET status = ?, resolution_notes = ?, resolved_by = ?, resolved_at = ?, updated_at = ? WHERE id = ?')
+        .run('false_alarm', resolution_notes.trim(), user.userId, now, now, panicId);
+
+      return c.json({ success: true, message: 'Panic alert marked as false alarm' });
+    } catch (error: any) {
+      return c.json({ error: 'Internal server error', code: 'PANIC_FALSE_ALARM_ERROR' }, 500);
+    }
+  });
+
+  // GET /api/dispatch/panic/history — Historical panic log
+  api.get('/panic/history', requireRole('admin', 'supervisor', 'manager'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const limit = Math.min(100000, Math.max(1, parseInt(c.req.query('limit') || '100000', 10)));
+      const offset = Math.max(0, parseInt(c.req.query('offset') || '0', 10));
+
+      const total = ((await db.prepare('SELECT COUNT(*) as count FROM panic_alerts').get()) as any)?.count || 0;
+      const data = await db.prepare(`
+        SELECT pa.*, u.full_name as officer_name, u.badge_number as officer_badge,
+          ack.full_name as acknowledged_by_name, res.full_name as resolved_by_name
+        FROM panic_alerts pa
+        LEFT JOIN users u ON pa.user_id = u.id
+        LEFT JOIN users ack ON pa.acknowledged_by = ack.id
+        LEFT JOIN users res ON pa.resolved_by = res.id
+        ORDER BY pa.created_at DESC LIMIT ? OFFSET ?
+      `).all(limit, offset);
+
+      return c.json({ data, total, limit, offset });
+    } catch (error: any) {
+      return c.json({ error: 'Internal server error', code: 'PANIC_HISTORY_ERROR' }, 500);
+    }
   });
 
   // ═══════════════════════════════════════════════════════════

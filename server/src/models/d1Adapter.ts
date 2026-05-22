@@ -283,6 +283,167 @@ export async function runMigrations(db: D1Database): Promise<void> {
     }
   }
 
+  // ── Column additions for existing tables (safe to re-run) ──
+  const columnAdditions = [
+    // Warrants — add columns from the database.ts schema
+    "ALTER TABLE warrants ADD COLUMN subject_person_id INTEGER",
+    "ALTER TABLE warrants ADD COLUMN issuing_court TEXT",
+    "ALTER TABLE warrants ADD COLUMN issuing_judge TEXT",
+    "ALTER TABLE warrants ADD COLUMN charge_description TEXT",
+    "ALTER TABLE warrants ADD COLUMN bail_amount REAL",
+    "ALTER TABLE warrants ADD COLUMN offense_level TEXT",
+    "ALTER TABLE warrants ADD COLUMN entered_by INTEGER",
+    "ALTER TABLE warrants ADD COLUMN served_by INTEGER",
+    "ALTER TABLE warrants ADD COLUMN served_at TEXT",
+    "ALTER TABLE warrants ADD COLUMN served_location TEXT",
+    "ALTER TABLE warrants ADD COLUMN expires_at TEXT",
+    "ALTER TABLE warrants ADD COLUMN notes TEXT",
+    "ALTER TABLE warrants ADD COLUMN archived_at TEXT",
+    "ALTER TABLE warrants ADD COLUMN priority_score REAL DEFAULT 0",
+    "ALTER TABLE warrants ADD COLUMN statute_id INTEGER",
+    "ALTER TABLE warrants ADD COLUMN statute_citation TEXT",
+    // Properties — add archived_at (used by records-worker)
+    "ALTER TABLE properties ADD COLUMN archived_at TEXT",
+  ];
+  for (const sql of columnAdditions) {
+    try { await db.exec(sql); } catch { /* column may already exist */ }
+  }
+
+  // ── Additional tables ──
+  const tableStatements = [
+    `CREATE TABLE IF NOT EXISTS cases (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      case_number TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      case_type TEXT DEFAULT 'general',
+      status TEXT DEFAULT 'open',
+      priority TEXT DEFAULT 'normal',
+      lead_investigator_id INTEGER,
+      assigned_officers TEXT DEFAULT '[]',
+      assigned_at TEXT,
+      solvability_score INTEGER DEFAULT 0,
+      solvability_factors TEXT DEFAULT '{}',
+      linked_incidents TEXT DEFAULT '[]',
+      linked_citations TEXT DEFAULT '[]',
+      linked_evidence TEXT DEFAULT '[]',
+      linked_persons TEXT DEFAULT '[]',
+      linked_field_interviews TEXT DEFAULT '[]',
+      summary TEXT,
+      narrative TEXT,
+      disposition TEXT,
+      disposition_date TEXT,
+      opened_date TEXT DEFAULT (datetime('now','localtime')),
+      due_date TEXT,
+      closed_date TEXT,
+      created_by INTEGER NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
+      archived_at TEXT,
+      FOREIGN KEY (lead_investigator_id) REFERENCES users(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS panic_alerts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      call_id INTEGER,
+      trigger_method TEXT NOT NULL DEFAULT 'ui_button',
+      message TEXT,
+      latitude REAL,
+      longitude REAL,
+      location_address TEXT,
+      audio_file_id TEXT,
+      audio_duration_seconds INTEGER,
+      status TEXT NOT NULL DEFAULT 'active',
+      escalation_level INTEGER DEFAULT 0,
+      acknowledged_at TEXT,
+      acknowledged_by INTEGER,
+      resolved_at TEXT,
+      resolved_by INTEGER,
+      resolution_notes TEXT,
+      responder_unit_ids TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (call_id) REFERENCES calls_for_service(id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS persons (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      first_name TEXT NOT NULL,
+      last_name TEXT NOT NULL,
+      date_of_birth TEXT,
+      ssn TEXT,
+      driver_license TEXT,
+      phone TEXT,
+      email TEXT,
+      address TEXT,
+      city TEXT,
+      state TEXT,
+      zip TEXT,
+      photo_url TEXT,
+      race TEXT,
+      sex TEXT,
+      height TEXT,
+      weight TEXT,
+      eye_color TEXT,
+      hair_color TEXT,
+      scars_marks TEXT,
+      occupation TEXT,
+      place_of_employment TEXT,
+      alias_names TEXT DEFAULT '[]',
+      gang_affiliation TEXT,
+      warning_flags TEXT DEFAULT '[]',
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS activity_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER,
+      action TEXT NOT NULL,
+      entity_type TEXT,
+      entity_id INTEGER,
+      details TEXT,
+      ip_address TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS properties (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      property_id TEXT UNIQUE,
+      type TEXT,
+      owner_name TEXT,
+      owner_id TEXT,
+      address TEXT,
+      city TEXT,
+      state TEXT,
+      zip_code TEXT,
+      latitude REAL,
+      longitude REAL,
+      parcel_number TEXT,
+      property_use TEXT,
+      zoning TEXT,
+      assessed_value REAL,
+      market_value REAL,
+      year_built INTEGER,
+      lot_size_sqft REAL,
+      building_sqft REAL,
+      bedrooms INTEGER,
+      bathrooms REAL,
+      stories INTEGER,
+      pool INTEGER DEFAULT 0,
+      garage_spaces INTEGER DEFAULT 0,
+      alarm_system INTEGER DEFAULT 0,
+      security_cameras INTEGER DEFAULT 0,
+      has_prior_incidents INTEGER DEFAULT 0,
+      prior_incident_count INTEGER DEFAULT 0,
+      risk_score REAL DEFAULT 0,
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )`,
+  ];
+  for (const sql of tableStatements) {
+    try { await db.exec(sql); } catch { /* table may already exist */ }
+  }
+
   // Initialize migration version if not exists
   const versionRow = await db.prepare('SELECT version FROM migration_version WHERE id = 1').first() as any;
   if (!versionRow) {

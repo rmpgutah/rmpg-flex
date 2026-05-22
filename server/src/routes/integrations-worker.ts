@@ -231,7 +231,8 @@ export function mountIntegrationsRoutes(app: Hono<{ Bindings: Env; Variables: { 
         last_used_at: k.last_used_at, request_count: k.request_count, created_at: k.created_at,
       }));
       return c.json(mapped);
-    } catch {
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
       return c.json({ error: 'Failed to list API keys', code: 'FAILED_TO_LIST_API' }, 500);
     }
   });

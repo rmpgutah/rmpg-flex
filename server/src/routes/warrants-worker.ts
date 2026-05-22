@@ -187,6 +187,42 @@ export function mountWarrantRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     }
   });
 
+  // GET /api/warrants/expiring — Active warrants expiring within N days
+  api.get('/expiring', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const days = parseInt(c.req.query('days') || '30', 10);
+      const warrants = await db.prepare(`
+        SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
+          (p.first_name || ' ' || p.last_name) as subject_name
+        FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
+        WHERE w.status = 'active' AND w.expires_at IS NOT NULL
+          AND w.expires_at <= date('now', '+' || ? || ' days')
+          AND w.expires_at >= date('now')
+        ORDER BY w.expires_at ASC
+      `).all(days);
+      return c.json({ data: warrants, count: warrants.length });
+    } catch {
+      return c.json({ error: 'Failed to get expiring warrants', code: 'EXPIRING_ERROR' }, 500);
+    }
+  });
+
+  // GET /api/warrants/expired — Active warrants that have already expired
+  api.get('/expired', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const warrants = await db.prepare(`
+        SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name
+        FROM warrants w LEFT JOIN persons p ON w.subject_person_id = p.id
+        WHERE w.status = 'active' AND w.expires_at IS NOT NULL AND w.expires_at < date('now')
+        ORDER BY w.expires_at ASC
+      `).all();
+      return c.json({ data: warrants, count: warrants.length });
+    } catch {
+      return c.json({ error: 'Failed to get expired warrants', code: 'EXPIRED_ERROR' }, 500);
+    }
+  });
+
   // GET /api/warrants/national-coverage
   api.get('/national-coverage', async (c) => {
     try {

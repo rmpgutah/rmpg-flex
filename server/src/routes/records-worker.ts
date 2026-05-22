@@ -50,6 +50,17 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
 
       return c.json(properties);
     } catch (err: any) {
+      if (err?.message?.includes('no such column')) {
+        const db = new D1Db(c.env.DB);
+        try {
+          const rows = await db.prepare(`
+            SELECT p.*, c.name as client_name FROM properties p
+            LEFT JOIN clients c ON p.client_id = c.id
+            ORDER BY c.name, p.name LIMIT 1000
+          `).all();
+          return c.json(rows);
+        } catch { /* fall through to error */ }
+      }
       return c.json({ error: 'Failed to list properties', code: 'PROPERTIES_LIST_ERROR' }, 500);
     }
   });

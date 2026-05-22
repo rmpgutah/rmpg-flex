@@ -65,7 +65,9 @@ self.addEventListener('activate', (event) => {
         }
       });
     })
-    .then(() => self.clients.claim())
+    .then(() => {
+      try { self.clients.claim(); } catch (e) { /* race condition — non-fatal */ }
+    })
     .then(() => {
       // Kick off background tile pre-caching (non-blocking)
       precacheTiles();
