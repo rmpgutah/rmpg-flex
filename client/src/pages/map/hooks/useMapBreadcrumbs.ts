@@ -283,8 +283,9 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
           });
         });
 
-        if (map.getSource(breadcrumbSourceId)) {
-          (map.getSource(breadcrumbSourceId) as mapboxgl.GeoJSONSource).setData({
+        const breadcrumbSrc = map.getSource(breadcrumbSourceId);
+        if (breadcrumbSrc) {
+          (breadcrumbSrc as mapboxgl.GeoJSONSource).setData({
             type: 'FeatureCollection',
             features: lineFeatures,
           });
@@ -303,8 +304,9 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
         }
 
         if (arrowFeatures.length > 0) {
-          if (map.getSource(breadcrumbArrowsSourceId)) {
-            (map.getSource(breadcrumbArrowsSourceId) as mapboxgl.GeoJSONSource).setData({
+          const arrowSrc = map.getSource(breadcrumbArrowsSourceId);
+          if (arrowSrc) {
+            (arrowSrc as mapboxgl.GeoJSONSource).setData({
               type: 'FeatureCollection',
               features: arrowFeatures,
             });
@@ -324,8 +326,9 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
         }
 
         if (alertFeatures.length > 0) {
-          if (map.getSource(speedAlertSourceId)) {
-            (map.getSource(speedAlertSourceId) as mapboxgl.GeoJSONSource).setData({
+          const alertSrc = map.getSource(speedAlertSourceId);
+          if (alertSrc) {
+            (alertSrc as mapboxgl.GeoJSONSource).setData({
               type: 'FeatureCollection',
               features: alertFeatures,
             });

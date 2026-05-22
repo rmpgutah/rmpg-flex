@@ -87,8 +87,9 @@ export function useMapHeatmap({ mapInstanceRef, mapLoaded }: UseMapHeatmapParams
           'rgba(255,50,0,0.95)',
         ];
 
-    if (map.getSource(heatmapSourceId)) {
-      (map.getSource(heatmapSourceId) as mapboxgl.GeoJSONSource).setData({
+    const heatSrc = map.getSource(heatmapSourceId);
+    if (heatSrc) {
+      (heatSrc as mapboxgl.GeoJSONSource).setData({
         type: 'FeatureCollection',
         features,
       });

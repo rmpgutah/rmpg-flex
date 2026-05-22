@@ -47,6 +47,12 @@ const ALLOWED_TYPES = new Set([
 
 const MAX_FILE_SIZE = 500 * 1024 * 1024; // 500MB
 
+/** Sanitize a filename for safe use in Content-Disposition headers — strips characters
+ *  that could break the header syntax (quotes, backslashes, CR, LF, semicolons). */
+function safeContentDispositionFilename(name: string): string {
+  return name.replace(/["\r\n\\;]/g, '').trim().slice(0, 500);
+}
+
 // Configure multer storage
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => {
@@ -228,8 +234,9 @@ router.get('/:fileId', authenticateTokenOrQuery, (req: Request, res: Response) =
 
     // Set appropriate headers
     res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
+    res.set('Content-Disposition', `inline; filename="${safeContentDispositionFilename(attachment.original_name)}"`);
     res.set('Content-Length', String(attachment.file_size));
+    res.set('X-Content-Type-Options', 'nosniff');
     // Allow browser caching for 5 minutes
     res.set('Cache-Control', 'private, max-age=300');
 
@@ -259,7 +266,8 @@ router.get('/:fileId/download', authenticateTokenOrQuery, (req: Request, res: Re
     }
 
     res.set('Content-Type', 'application/octet-stream');
-    res.set('Content-Disposition', `attachment; filename="${attachment.original_name}"`);
+    res.set('Content-Disposition', `attachment; filename="${safeContentDispositionFilename(attachment.original_name)}"`);
+    res.set('X-Content-Type-Options', 'nosniff');
     res.sendFile(filePath);
   } catch (error: any) {
     console.error('Download error:', error);
@@ -292,8 +300,9 @@ router.get('/:fileId/thumbnail', authenticateTokenOrQuery, (req: Request, res: R
     }
 
     res.set('Content-Type', attachment.mime_type);
-    res.set('Content-Disposition', `inline; filename="${attachment.original_name}"`);
+    res.set('Content-Disposition', `inline; filename="${safeContentDispositionFilename(attachment.original_name)}"`);
     res.set('Content-Length', String(attachment.file_size));
+    res.set('X-Content-Type-Options', 'nosniff');
     res.set('Cache-Control', 'private, max-age=600');
 
     res.sendFile(filePath);

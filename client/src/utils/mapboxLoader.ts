@@ -260,7 +260,8 @@ export async function fetchMapboxConfig(): Promise<{ mapbox_access_token?: strin
       }
       _fetchFailCount = 0;
       return await res.json();
-    } catch {
+    } catch (e) {
+      console.warn('[mapboxLoader] Failed to fetch Mapbox config:', e);
       _fetchFailCount++;
       _serverConfigPromise = null;
       return {};

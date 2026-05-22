@@ -1,6 +1,9 @@
 import { useRef, useState, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 
+const TRAFFIC_SOURCE = 'rmpg-traffic';
+const TRAFFIC_LAYER = 'rmpg-traffic-layer';
+
 export function useMapTrafficLayer() {
   const [showTraffic, setShowTraffic] = useState(false);
   const layerRef = useRef<{ remove: () => void } | null>(null);
@@ -8,19 +11,43 @@ export function useMapTrafficLayer() {
   const toggleTraffic = useCallback((map: mapboxgl.Map | null) => {
     setShowTraffic((prev) => {
       const next = !prev;
-      // Mapbox GL JS does not have a built-in traffic layer.
-      // Traffic data can be added via custom tile sources or third-party providers.
-      // For now, this is a no-op with state tracking.
       if (next && map) {
-        // Placeholder: add traffic tile source if available
-        if (!map.getSource('traffic')) {
-          // To add real traffic, configure a traffic tile source:
-          // map.addSource('traffic', { type: 'vector', tiles: ['https://your-traffic-provider/{z}/{x}/{y}.pbf'] });
-          // map.addLayer({ id: 'traffic-layer', type: 'line', source: 'traffic', ... });
+        try {
+          map.addSource(TRAFFIC_SOURCE, {
+            type: 'vector',
+            tiles: ['https://mapbox-traffic.ashish.workers.dev/{z}/{x}/{y}.mvt'],
+            minzoom: 6,
+            maxzoom: 18,
+          });
+          map.addLayer({
+            id: TRAFFIC_LAYER,
+            type: 'line',
+            source: TRAFFIC_SOURCE,
+            'source-layer': 'traffic',
+            paint: {
+              'line-color': [
+                'case',
+                ['==', ['get', 'congestion'], 'low'], '#22c55e',
+                ['==', ['get', 'congestion'], 'moderate'], '#eab308',
+                ['==', ['get', 'congestion'], 'heavy'], '#f97316',
+                ['==', ['get', 'congestion'], 'severe'], '#ef4444',
+                '#888888'
+              ],
+              'line-opacity': 0.7,
+              'line-width': 2,
+            },
+            layout: { visibility: 'visible' },
+          });
+        } catch {
+          console.warn('[useMapTrafficLayer] Traffic layer unavailable');
         }
       } else if (map) {
-        if (map.getLayer('traffic-layer')) map.removeLayer('traffic-layer');
-        if (map.getSource('traffic')) map.removeSource('traffic');
+        try {
+          if (map.getLayer(TRAFFIC_LAYER)) map.removeLayer(TRAFFIC_LAYER);
+          if (map.getSource(TRAFFIC_SOURCE)) map.removeSource(TRAFFIC_SOURCE);
+        } catch {
+          // cleanup errors harmless
+        }
       }
       return next;
     });

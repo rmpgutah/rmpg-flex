@@ -196,12 +196,12 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
     try {
       const saved = localStorage.getItem('rmpg_map_layer_groups');
       return saved ? JSON.parse(saved) : {};
-    } catch { return {}; }
+    } catch (e) { console.warn('[MapLayersPanel] Failed to load layer groups:', e); return {}; }
   });
   const toggleGroup = (group: string) => {
     setCollapsedGroups(prev => {
       const next = { ...prev, [group]: !prev[group] };
-      try { localStorage.setItem('rmpg_map_layer_groups', JSON.stringify(next)); } catch { /* noop */ }
+      try { localStorage.setItem('rmpg_map_layer_groups', JSON.stringify(next)); } catch (e) { console.warn('[MapLayersPanel] Failed to save layer groups:', e); }
       return next;
     });
   };

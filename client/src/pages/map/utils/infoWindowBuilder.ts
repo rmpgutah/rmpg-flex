@@ -491,7 +491,7 @@ export function buildPropertyInfoWindow(
           const name = `${p.first_name} ${p.last_name}`;
           const rel = (p.relationship || '').replace(/_/g, ' ');
           let flagsArr: string[] = [];
-          try { flagsArr = JSON.parse(p.flags || '[]'); } catch { /* ignore */ }
+          try { flagsArr = JSON.parse(p.flags || '[]'); } catch { flagsArr = []; }
           const hasWarning = flagsArr.includes('trespass') || flagsArr.includes('violent') || flagsArr.includes('armed') || p.relationship === 'trespass_warning' || p.relationship === 'banned';
           return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 2px;border-bottom:1px solid ${C_BORDER}20;transition:background 0.1s ease;" onmouseenter="this.style.background='${C_RAISED}'" onmouseleave="this.style.background='transparent'">
             <div style="display:flex;align-items:center;gap:4px;overflow:hidden;">

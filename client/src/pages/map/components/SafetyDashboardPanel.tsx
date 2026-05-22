@@ -30,7 +30,7 @@ import {
 
 // ─── Types ──────────────────────────────────────────────────
 
-interface ShiftRisk {
+export interface ShiftRisk {
   shift_name: string;
   weapon_calls: number;
   dv_calls: number;

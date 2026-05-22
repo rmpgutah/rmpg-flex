@@ -157,7 +157,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
     try {
       if (map.getLayer(ROUTE_LAYER_ID)) map.removeLayer(ROUTE_LAYER_ID);
       if (map.getSource(ROUTE_SOURCE_ID)) map.removeSource(ROUTE_SOURCE_ID);
-    } catch { /* ignore cleanup errors */ }
+    } catch (e) { console.warn('[useMapRouting] Cleanup error:', e); }
   }, [map]);
 
   // ── Public API ───────────────────────────────────────────

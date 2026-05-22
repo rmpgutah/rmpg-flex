@@ -80,7 +80,7 @@ app.use('*', async (c, next) => {
    const primary = c.env.PRIMARY_DOMAIN;
 
    if (host === `www.${primary}`) {
-     return c.redirect(`${url.protocol}//${primary}${url.pathname}${url.search}`, 301);
+      return c.redirect(`${url.protocol}//${primary}${url.pathname}${url.search}`, 308);
    }
 
    if (host !== primary) {

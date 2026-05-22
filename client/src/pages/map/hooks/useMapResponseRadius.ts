@@ -130,7 +130,7 @@ export function useMapResponseRadius(
       const point: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
       const lngLat = map.unproject(point);
 
-      const source = map.getSource(cursorSourceId) as mapboxgl.GeoJSONSource | undefined;
+      const source = map.getSource(cursorSourceId) as mapboxgl.GeoJSONSource | null;
       if (source) {
         const updatedFeatures = CURSOR_RINGS.map((ring) => ({
           type: 'Feature' as const,

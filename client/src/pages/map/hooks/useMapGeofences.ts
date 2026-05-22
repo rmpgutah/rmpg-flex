@@ -46,7 +46,9 @@ function playGeofenceBeep(isEnter: boolean): void {
     if (audible === 'false' || audible === '0') return;
 
     if (!audioCtxCache) {
-      audioCtxCache = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AC) return;
+      audioCtxCache = new AC();
     }
     const ctx = audioCtxCache;
     if (ctx.state === 'suspended') ctx.resume();
@@ -319,8 +321,9 @@ export function useMapGeofences(
 
       const coords = vertices.map(v => [v.lng, v.lat] as [number, number]);
       const lineData = { type: 'Feature' as const, geometry: { type: 'LineString' as const, coordinates: coords }, properties: {} };
-      if (map.getSource(drawSourceId)) {
-        (map.getSource(drawSourceId) as mapboxgl.GeoJSONSource).setData(lineData);
+      const drawSrc = map.getSource(drawSourceId);
+      if (drawSrc) {
+        (drawSrc as mapboxgl.GeoJSONSource).setData(lineData);
       } else {
         map.addSource(drawSourceId, { type: 'geojson', data: lineData });
         map.addLayer({ id: `${drawSourceId}-line`, type: 'line', source: drawSourceId, paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.9 } });
@@ -362,7 +365,7 @@ export function useMapGeofences(
   }, [map]);
 
   useEffect(() => {
-    const unsub = subscribe('data_changed' as any, (msg: any) => {
+    const unsub = subscribe('data_changed' as 'dispatch_update', (msg: any) => {
       const payload = msg.payload || msg.data;
       if (payload && payload.entity === 'geofence' && payload.event) {
         const alert: GeofenceAlert = {

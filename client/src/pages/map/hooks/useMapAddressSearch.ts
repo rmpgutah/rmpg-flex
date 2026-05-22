@@ -10,7 +10,10 @@ function getRecentSearches(): { description: string; place_id: string }[] {
   try {
     const raw = localStorage.getItem(RECENT_SEARCHES_KEY);
     return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+  } catch (e) {
+    console.warn('[useMapAddressSearch] Failed to parse recent searches:', e);
+    return [];
+  }
 }
 
 function addRecentSearch(description: string, placeId: string) {
@@ -18,7 +21,9 @@ function addRecentSearch(description: string, placeId: string) {
     const recent = getRecentSearches().filter(r => r.place_id !== placeId);
     recent.unshift({ description, place_id: placeId });
     localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(recent.slice(0, MAX_RECENT_SEARCHES)));
-  } catch { /* ignore */ }
+  } catch (e) {
+    console.warn('[useMapAddressSearch] Failed to save recent search:', e);
+  }
 }
 
 interface UseMapAddressSearchParams {
@@ -81,7 +86,8 @@ export function useMapAddressSearch({ mapInstanceRef, infoWindowRef }: UseMapAdd
         } else {
           setAddressResults([]);
         }
-      } catch {
+      } catch (e) {
+        console.warn('[useMapAddressSearch] Address search failed:', e);
         setAddressResults([]);
       }
     }, 300);
@@ -120,8 +126,8 @@ export function useMapAddressSearch({ mapInstanceRef, infoWindowRef }: UseMapAdd
         }
         addressDismissTimer.current = null;
       }, 30000);
-    } catch {
-      // geocode failed
+    } catch (e) {
+      console.warn('[useMapAddressSearch] Geocode select failed:', e);
     }
 
     setAddressSearch(description.split(',')[0]);

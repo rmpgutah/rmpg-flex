@@ -217,8 +217,9 @@ export function useMapMeasurement(): MeasurementState {
     if (mode === 'distance' && path.length >= 2) {
       const coords = path.map(p => [p.lng, p.lat] as [number, number]);
       const lineData = { type: 'Feature' as const, geometry: { type: 'LineString' as const, coordinates: coords }, properties: {} };
-      if (map.getSource(sourceId)) {
-        (map.getSource(sourceId) as mapboxgl.GeoJSONSource).setData(lineData);
+      const src = map.getSource(sourceId);
+      if (src) {
+        (src as mapboxgl.GeoJSONSource).setData(lineData);
       } else {
         map.addSource(sourceId, { type: 'geojson', data: lineData });
         map.addLayer({ id: `${sourceId}-line`, type: 'line', source: sourceId, paint: { 'line-color': '#d4a017', 'line-width': 3, 'line-opacity': 0.9 } });
@@ -229,8 +230,9 @@ export function useMapMeasurement(): MeasurementState {
       const coords = path.map(p => [p.lng, p.lat] as [number, number]);
       coords.push(coords[0]); // close polygon
       const polyData = { type: 'Feature' as const, geometry: { type: 'Polygon' as const, coordinates: [coords] }, properties: {} };
-      if (map.getSource(polygonSourceId)) {
-        (map.getSource(polygonSourceId) as mapboxgl.GeoJSONSource).setData(polyData);
+      const polySrc = map.getSource(polygonSourceId);
+      if (polySrc) {
+        (polySrc as mapboxgl.GeoJSONSource).setData(polyData);
       } else {
         map.addSource(polygonSourceId, { type: 'geojson', data: polyData });
         map.addLayer({ id: `${polygonSourceId}-fill`, type: 'fill', source: polygonSourceId, paint: { 'fill-color': '#d4a017', 'fill-opacity': 0.15 } });

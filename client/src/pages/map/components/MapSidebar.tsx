@@ -146,8 +146,9 @@ export default function MapSidebar({
                   const hasCoords = unit.latitude != null && unit.longitude != null;
                   const statusColor = UNIT_STATUS_COLORS[unit.status];
                   // Fix 100: visual indicator for stale unit positions
-                  const isStale = hasCoords && (unit as any).gps_updated_at
-                    ? (Date.now() - new Date((unit as any).gps_updated_at).getTime()) > GPS_STALE_THRESHOLD_MS
+                  const gpsUpdatedAt = (unit as unknown as Record<string, unknown>).gps_updated_at as string | undefined;
+                  const isStale = hasCoords && gpsUpdatedAt
+                    ? (Date.now() - new Date(gpsUpdatedAt).getTime()) > GPS_STALE_THRESHOLD_MS
                     : false;
                   return (
                     <button type="button"

@@ -212,7 +212,7 @@ export function useMapAlerts(map: mapboxgl.Map | null): UseMapAlertsReturn {
   }, [playAlertSound]);
 
   useEffect(() => {
-    const unsub = subscribe('safety:broadcast' as any, handleIncomingAlert);
+    const unsub = subscribe('safety:broadcast' as 'dispatch_update', handleIncomingAlert);
     return unsub;
   }, [subscribe, handleIncomingAlert]);
 
