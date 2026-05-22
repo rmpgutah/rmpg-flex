@@ -1101,10 +1101,16 @@ export default function IncidentFormModal({
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served To</label>
                 <input type="text" className="input-dark mt-1" placeholder="Name of person served" value={formData.process_served_to} onChange={(e) => update('process_served_to', e.target.value)} />
               </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served Address</label>
-                <input type="text" className="input-dark mt-1" placeholder="Address where served" value={formData.process_served_address} onChange={(e) => update('process_served_address', e.target.value)} />
-              </div>
+               <div>
+                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served Address</label>
+                 <AddressAutocomplete
+                   className="input-dark mt-1 w-full"
+                   placeholder="Address where served"
+                   value={formData.process_served_address}
+                   onChange={(value) => update('process_served_address', value)}
+                   name="process_served_address"
+                 />
+               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served At</label>
                 <input type="datetime-local" className="input-dark mt-1" value={formData.process_served_at} onChange={(e) => update('process_served_at', e.target.value)} />

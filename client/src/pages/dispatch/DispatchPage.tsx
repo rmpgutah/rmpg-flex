@@ -4134,7 +4134,13 @@ export default function DispatchPage() {
                         <div className="space-y-1 mt-0.5">
                           <input type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
                           <input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
-                          <input type="text" className="input-dark text-xs" placeholder="Caller address" value={editData.caller_address} onChange={(e) => updateEditField('caller_address', e.target.value)} />
+                           <AddressAutocomplete
+                             className="input-dark text-xs"
+                             placeholder="Caller address"
+                             value={editData.caller_address}
+                             onChange={(value) => updateEditField('caller_address', value)}
+                             name="caller_address"
+                           />
                           <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
                             <option value="employee">Employee</option><option value="victim">Victim</option>

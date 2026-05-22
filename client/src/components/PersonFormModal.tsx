@@ -528,15 +528,22 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Place of Birth</label>
-              <input name="place_of_birth" type="text" className="input-dark mt-1" placeholder="City, State or Country" value={form.place_of_birth} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Citizenship</label>
-              <select name="citizenship" className="select-dark mt-1" value={form.citizenship} onChange={handleChange}>
-                <option value="">-- Select --</option>
+           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+             <div>
+               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Place of Birth</label>
+               <AddressAutocomplete
+                 name="place_of_birth"
+                 className="input-dark mt-1 w-full"
+                 placeholder="City, State or Country"
+                 value={form.place_of_birth}
+                 onChange={(val) => setForm((prev) => ({ ...prev, place_of_birth: val }))}
+                 addressOnly={false}
+               />
+             </div>
+             <div>
+               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Citizenship</label>
+               <select name="citizenship" className="select-dark mt-1" value={form.citizenship} onChange={handleChange}>
+                 <option value="">-- Select --</option>
                 {CITIZENSHIP_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
@@ -919,18 +926,40 @@ export default function PersonFormModal({
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">City</label>
-              <input name="city" type="text" className="input-dark mt-1" value={form.city} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">State</label>
-              <input name="state" type="text" maxLength={2} className="input-dark mt-1" placeholder="UT" value={form.state} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ZIP</label>
-              <input name="zip" type="text" className="input-dark mt-1" value={form.zip} onChange={handleChange} />
-            </div>
+           <div>
+             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">City</label>
+             <AddressAutocomplete
+               name="city"
+               className="input-dark mt-1 w-full"
+               placeholder="City"
+               value={form.city}
+               onChange={(val) => setForm((prev) => ({ ...prev, city: val }))}
+               addressOnly={false}
+             />
+           </div>
+           <div>
+             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">State</label>
+             <AddressAutocomplete
+               name="state"
+               className="input-dark mt-1 w-full"
+               placeholder="State (e.g., UT)"
+               value={form.state}
+               onChange={(val) => setForm((prev) => ({ ...prev, state: val }))}
+               addressOnly={false}
+               country="us"
+             />
+           </div>
+           <div>
+             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ZIP</label>
+             <AddressAutocomplete
+               name="zip"
+               className="input-dark mt-1 w-full"
+               placeholder="ZIP Code"
+               value={form.zip}
+               onChange={(val) => setForm((prev) => ({ ...prev, zip: val }))}
+               addressOnly={false}
+             />
+           </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
@@ -1100,14 +1129,20 @@ export default function PersonFormModal({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Date Last Seen</label>
-              <input name="date_last_seen" type="date" className="input-dark mt-1" value={form.date_last_seen} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location Last Seen</label>
-              <input name="location_last_seen" type="text" className="input-dark mt-1" placeholder="Address or description of last known location" value={form.location_last_seen} onChange={handleChange} />
-            </div>
+             <div>
+               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Date Last Seen</label>
+               <input name="date_last_seen" type="date" className="input-dark mt-1" value={form.date_last_seen} onChange={handleChange} />
+             </div>
+             <div>
+               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location Last Seen</label>
+               <AddressAutocomplete
+                 name="location_last_seen"
+                 className="input-dark mt-1 w-full"
+                 placeholder="Address or description of last known location"
+                 value={form.location_last_seen}
+                 onChange={(val) => setForm((prev) => ({ ...prev, location_last_seen: val }))}
+               />
+             </div>
           </div>
 
           <div>

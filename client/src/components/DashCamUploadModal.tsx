@@ -4,6 +4,7 @@
 
 import React, { useState, useRef } from 'react';
 import { Upload, X, Car, Loader2, MapPin, Gauge } from 'lucide-react';
+import AddressAutocomplete from './AddressAutocomplete';
 
 interface FleetVehicle {
   id: number;
@@ -275,10 +276,16 @@ export default function DashCamUploadModal({
                 <input type="number" step="0.0001" value={longitude} onChange={e => setLongitude(e.target.value)} placeholder="e.g. -111.8910" className="input-dark" />
               </div>
             </div>
-            <div>
-              <label className="field-label">Street Address</label>
-              <input type="text" value={address} onChange={e => setAddress(e.target.value)} placeholder="e.g. 123 S State St, Salt Lake City, UT" className="input-dark" />
-            </div>
+             <div>
+               <label className="field-label">Street Address</label>
+               <AddressAutocomplete
+                 value={address}
+                 onChange={(value) => setAddress(value)}
+                 placeholder="Enter address..."
+                 className="input-dark"
+                 name="address"
+               />
+             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="field-label">Case Number</label>

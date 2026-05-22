@@ -411,20 +411,42 @@ export default function UserFormModal({
               }}
             />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className={labelCls}>City</label>
-              <input type="text" value={form.city} onChange={e => set('city', e.target.value)} placeholder="Salt Lake City" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>State</label>
-              <input type="text" value={form.state} onChange={e => set('state', e.target.value)} maxLength={2} placeholder="UT" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Zip Code</label>
-              <input type="text" value={form.zip} onChange={e => set('zip', e.target.value)} maxLength={10} placeholder="84101" pattern="\d{5}(-\d{4})?" className={inputCls} />
-            </div>
-          </div>
+           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+             <div>
+               <label className={labelCls}>City</label>
+               <AddressAutocomplete
+                 className={inputCls}
+                 placeholder="Salt Lake City"
+                 value={form.city}
+                 onChange={(val) => set('city', val)}
+                 name="city"
+                 addressOnly={false}
+               />
+             </div>
+             <div>
+               <label className={labelCls}>State</label>
+               <AddressAutocomplete
+                 className={inputCls}
+                 placeholder="UT"
+                 value={form.state}
+                 onChange={(val) => set('state', val)}
+                 name="state"
+                 addressOnly={false}
+                 country="us"
+               />
+             </div>
+             <div>
+               <label className={labelCls}>Zip Code</label>
+               <AddressAutocomplete
+                 className={inputCls}
+                 placeholder="84101"
+                 value={form.zip}
+                 onChange={(val) => set('zip', val)}
+                 name="zip"
+                 addressOnly={false}
+               />
+             </div>
+           </div>
         </div>
       )}
 

@@ -73,14 +73,22 @@ app.use('*', async (c, next) => {
   await next();
 });
 
-// ─── Domain Redirect (www → apex) ────────────────────────
-app.use('*', async (c, next) => {
-  const url = new URL(c.req.url);
-  if (url.hostname === `www.${c.env.PRIMARY_DOMAIN}`) {
-    return c.redirect(`${url.protocol}//${c.env.PRIMARY_DOMAIN}${url.pathname}${url.search}`, 301);
-  }
-  await next();
-});
+ // ─── Hostname Validation and Redirect (www → apex) ────────
+ app.use('*', async (c, next) => {
+   const url = new URL(c.req.url);
+   const host = url.hostname;
+   const primary = c.env.PRIMARY_DOMAIN;
+
+   if (host === `www.${primary}`) {
+     return c.redirect(`${url.protocol}//${primary}${url.pathname}${url.search}`, 301);
+   }
+
+   if (host !== primary) {
+     return c.json({ error: 'Not Found' }, 404);
+   }
+
+   await next();
+ });
 
 // ─── Security Headers ────────────────────────────────────
 app.use('*', async (c, next) => {

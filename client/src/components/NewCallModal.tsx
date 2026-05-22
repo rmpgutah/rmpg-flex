@@ -603,10 +603,16 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                       <input type="text" className="input-dark" placeholder="Person to be served" value={formData.process_served_to || ''} onChange={(e) => update('process_served_to', e.target.value)} />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
-                    <input type="text" className="input-dark w-full" placeholder="Address for service" value={formData.process_served_address || ''} onChange={(e) => update('process_served_address', e.target.value)} />
-                  </div>
+                   <div>
+                     <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
+                     <AddressAutocomplete
+                       className="input-dark w-full"
+                       placeholder="Address for service"
+                       value={formData.process_served_address || ''}
+                       onChange={(value) => update('process_served_address', value)}
+                       name="process_served_address"
+                     />
+                   </div>
                 </div>
               )}
             </div>
