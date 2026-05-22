@@ -111,6 +111,7 @@ import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
 import geocodeRoutes from './routes/geocode';
+import adminMapConfigRoutes from './routes/adminMapConfig';
 import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
@@ -407,6 +408,7 @@ app.use('/api/voice-persona', voicePersonaRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
+app.use('/api/admin', adminMapConfigRoutes);
 app.use('/api/geocode', geocodeRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias

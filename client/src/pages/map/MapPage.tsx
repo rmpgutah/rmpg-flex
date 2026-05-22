@@ -103,6 +103,7 @@ import { useMapPanicZone } from './hooks/useMapPanicZone';
 import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
 import { useMapCallHistory } from './hooks/useMapCallHistory';
 import { useMapIncidentReports } from './hooks/useMapIncidentReports';
+import { fetchMapConfig, type MapSettings } from './hooks/useMapConfig';
 import PredictionsPanel from './components/PredictionsPanel';
 import GeofenceManager from './components/GeofenceManager';
 import { useMapThreatAssessment } from './hooks/useMapThreatAssessment';
@@ -456,7 +457,20 @@ export default function MapPage() {
   const [showGeofences, setShowGeofences] = useState(false);
   const [showAnalysisDashboard, setShowAnalysisDashboard] = useState(false);
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
+  const clusteringInitRef = useRef(false);
   const [clusteringEnabled, setClusteringEnabled] = useState(false);
+
+  // Apply admin cluster defaults once on mount
+  useEffect(() => {
+    if (!clusteringInitRef.current) {
+      fetchMapConfig().then(cfg => {
+        if (!clusteringInitRef.current) {
+          clusteringInitRef.current = true;
+          setClusteringEnabled(cfg.clustering_enabled);
+        }
+      });
+    }
+  }, []);
 
   // Separate marker tracking for clustering & drag dispatch
   const unitMarkersMapRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
@@ -786,30 +800,39 @@ export default function MapPage() {
     let dismissObserver: MutationObserver | null = null;
     let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
-    function initMap(apiKey: string) {
+    function initMap(apiKey: string, cfg: MapSettings) {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
       // Fix 31: restore map center/zoom from localStorage
-      let savedCenter = DEFAULT_CENTER;
-      let savedZoom = 12;
+      let savedCenter = { lat: cfg.default_center_lat, lng: cfg.default_center_lng };
+      let savedZoom = cfg.default_zoom;
       try {
         const sc = localStorage.getItem('rmpg_map_center');
         const sz = localStorage.getItem('rmpg_map_zoom');
         if (sc) savedCenter = JSON.parse(sc);
-        if (sz) savedZoom = parseInt(sz, 10) || 12;
+        if (sz) savedZoom = parseInt(sz, 10) || cfg.default_zoom;
       } catch { /* use defaults */ }
 
-      const map = new mapboxgl.Map({
+      const mapOptions: mapboxgl.MapboxOptions = {
         container: mapRef.current!,
-        style: MAPBOX_STYLE_DARK,
+        style: cfg.custom_style_url || MAPBOX_STYLE_DARK,
         center: [savedCenter.lng, savedCenter.lat],
         zoom: savedZoom,
-        attributionControl: false,
-        // 'greedy' allows single-finger pan on mobile/tablet — critical for
-        // in-vehicle use where two-finger gestures are awkward while driving.
-        touchZoomRotate: true,
-      });
+        minZoom: cfg.min_zoom,
+        maxZoom: cfg.max_zoom,
+        attributionControl: cfg.show_attribution,
+        touchZoomRotate: cfg.rotation_enabled,
+      };
+
+      if (cfg.max_bounds_sw_lat != null && cfg.max_bounds_sw_lng != null && cfg.max_bounds_ne_lat != null && cfg.max_bounds_ne_lng != null) {
+        mapOptions.maxBounds = [
+          [cfg.max_bounds_sw_lng, cfg.max_bounds_sw_lat],
+          [cfg.max_bounds_ne_lng, cfg.max_bounds_ne_lat],
+        ] as [[number, number], [number, number]];
+      }
+
+      const map = new mapboxgl.Map(mapOptions);
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
@@ -891,8 +914,10 @@ export default function MapPage() {
       if (!authFailed) setMapLoaded(true);
     }
 
+    let mapConfig: MapSettings | null = null;
+
     function attemptLoad(apiKey: string, attempt: number) {
-      if (cancelled) return;
+      if (cancelled || !mapConfig) return;
 
       // If device is offline, pause retries and wait for connectivity
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -910,7 +935,7 @@ export default function MapPage() {
 
       try {
         initMapbox(apiKey);
-        initMap('');
+        initMap(apiKey, mapConfig);
       } catch (err: any) {
         if (cancelled) return;
         const errMsg = err?.message || String(err);
@@ -934,9 +959,15 @@ export default function MapPage() {
 
     (async () => {
       try {
-        await resolveMapboxAccessToken();
+        mapConfig = await fetchMapConfig();
       } catch {
-        // No Mapbox token — map will use fallback style
+        mapConfig = { default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12, min_zoom: 1, max_zoom: 22, default_style: 'dark', enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'], show_attribution: false, rotation_enabled: false, max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null, custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14 };
+      }
+
+      let mapboxToken = '';
+      try {
+        mapboxToken = await resolveMapboxAccessToken();
+      } catch {
         if (!cancelled) {
           setMapError('offline');
         }
@@ -944,14 +975,16 @@ export default function MapPage() {
       }
 
       if (cancelled) return;
-      attemptLoad('', 0);
+      attemptLoad(mapboxToken, 0);
 
       // Auto-retry when device comes back online
+      const onlineToken = mapboxToken;
       unsubOnline = (() => {
-        if (!cancelled && !mapInstanceRef.current) {
+        if (!cancelled && !mapInstanceRef.current && mapConfig) {
           devLog('[MapPage] Online auto-retry triggered — reinitializing map');
           setMapError(null);
-          initMap('');
+          initMapbox(onlineToken);
+          initMap(onlineToken, mapConfig);
         }
       }) as any;
     })();

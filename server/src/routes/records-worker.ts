@@ -2,14 +2,14 @@
 // RMPG Flex — Records Routes (Cloudflare Workers / Hono)
 // ============================================================
 // Ported from server/src/routes/records.ts for Workers runtime.
-// Read + write endpoints for persons, vehicles, properties.
+// Read + write endpoints for persons, vehicles, properties, evidence.
 // ============================================================
 
 import { Hono } from 'hono';
 import type { Env } from '../worker';
 import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken, requireRole } from '../worker-middleware/auth';
-import { D1Db, paramNum, localNow } from '../worker-middleware/d1Helpers';
+import { D1Db, paramNum, paramStr, localNow } from '../worker-middleware/d1Helpers';
 
 export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>): void {
   const api = new Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>();
@@ -212,22 +212,53 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   });
 
   // ═══════════════════════════════════════════════════════════
-  // PERSONS (read-only)
+  // PERSONS
   // ═══════════════════════════════════════════════════════════
 
-  // GET /api/records/persons - Search persons
+  // GET /api/records/persons - List persons
   api.get('/persons', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const q = c.req.query('q') || '';
-    if (q.length < 2) return c.json([]);
+    try {
+      const db = new D1Db(c.env.DB);
+      const { page = '1', limit = '100000', flags, archived } = c.req.query();
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(100000, Math.max(1, (parseInt(limit, 10)) || 100000));
+      const offset = (pageNum - 1) * limitNum;
 
-    const persons = await db.prepare(`
-      SELECT * FROM persons
-      WHERE last_name LIKE ? OR first_name LIKE ? OR dob LIKE ? OR plate_number LIKE ?
-      ORDER BY last_name, first_name LIMIT 200
-    `).all(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+      let whereClause = 'WHERE 1=1';
+      const params: any[] = [];
 
-    return c.json(persons);
+      if (flags) {
+        whereClause += ' AND flags LIKE ?';
+        params.push(`%"${flags}"%`);
+      }
+
+      if (archived === 'true') {
+        whereClause += ' AND archived_at IS NOT NULL';
+      } else if (archived !== 'all') {
+        whereClause += ' AND archived_at IS NULL';
+      }
+
+      const countRow = await db.prepare(`SELECT COUNT(*) as total FROM persons ${whereClause}`).get(...params) as any;
+
+      const persons = await db.prepare(`
+        SELECT * FROM persons ${whereClause}
+        ORDER BY last_name, first_name
+        LIMIT ? OFFSET ?
+      `).all(...params, limitNum, offset);
+
+      return c.json({
+        data: persons,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: countRow?.total ?? 0,
+          totalPages: Math.ceil((countRow?.total ?? 0) / limitNum),
+        },
+      });
+    } catch (err: any) {
+      console.error('Get persons error:', err);
+      return c.json({ error: 'Failed to get persons', code: 'GET_PERSONS_ERROR' }, 500);
+    }
   });
 
   // GET /api/records/persons/:id - Get person details
@@ -239,167 +270,44 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     return c.json(person);
   });
 
-  // ═══════════════════════════════════════════════════════════
-  // VEHICLES (read-only)
-  // ═══════════════════════════════════════════════════════════
+  // POST /api/records/persons/check-duplicates - Check for duplicate persons
+  api.post('/persons/check-duplicates', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const body = await c.req.json();
+      const { first_name, last_name, dob } = body;
 
-  // GET /api/records/vehicles - Search vehicles
-  api.get('/vehicles', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const q = c.req.query('q') || '';
-    if (q.length < 2) return c.json([]);
+      const conditions: string[] = [];
+      const params: any[] = [];
 
-    const vehicles = await db.prepare(`
-      SELECT * FROM vehicles_records
-      WHERE plate_number LIKE ? OR vin LIKE ? OR make LIKE ? OR model LIKE ?
-      ORDER BY created_at DESC LIMIT 200
-    `).all(`%${q}%`, `%${q}%`, `%${q}%`, `%${q}%`);
+      if (first_name) {
+        conditions.push('LOWER(first_name) = LOWER(?)');
+        params.push(first_name);
+      }
+      if (last_name) {
+        conditions.push('LOWER(last_name) = LOWER(?)');
+        params.push(last_name);
+      }
+      if (dob) {
+        conditions.push('dob = ?');
+        params.push(dob);
+      }
 
-    return c.json(vehicles);
-  });
+      if (conditions.length === 0) {
+        return c.json({ matches: [] });
+      }
 
-  // GET /api/records/vehicles/:id - Get vehicle details
-  api.get('/vehicles/:id', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const id = paramNum(c.req.param('id'));
-    const vehicle = await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id);
-    if (!vehicle) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
-    return c.json(vehicle);
-  });
+      const matches = await db.prepare(`
+        SELECT id, first_name, last_name, dob, address, dl_number
+        FROM persons WHERE ${conditions.join(' AND ')}
+        ORDER BY last_name, first_name LIMIT 20
+      `).all(...params);
 
-  // ═══════════════════════════════════════════════════════════
-  // EVIDENCE (read-only)
-  // ═══════════════════════════════════════════════════════════
-
-  // GET /api/records/evidence - Search evidence
-  api.get('/evidence', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const q = c.req.query('q') || '';
-    if (q.length < 2) return c.json([]);
-
-    const evidence = await db.prepare(`
-      SELECT e.*, i.incident_number FROM evidence e
-      LEFT JOIN incidents i ON e.incident_id = i.id
-      WHERE e.item_number LIKE ? OR e.description LIKE ? OR e.category LIKE ?
-      ORDER BY e.created_at DESC LIMIT 200
-    `).all(`%${q}%`, `%${q}%`, `%${q}%`);
-
-    return c.json(evidence);
-  });
-
-  // ═══════════════════════════════════════════════════════════
-  // WARRANTS (read-only)
-  // ═══════════════════════════════════════════════════════════
-
-  // GET /api/records/warrants - Search warrants
-  api.get('/warrants', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const q = c.req.query('q') || '';
-    const status = c.req.query('status');
-
-    let where = '1=1';
-    const params: any[] = [];
-
-    if (q.length >= 2) {
-      where += " AND (w.warrant_number LIKE ? OR p.last_name LIKE ? OR p.first_name LIKE ?)";
-      params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+      return c.json({ matches });
+    } catch (err: any) {
+      return c.json({ error: 'Failed to check duplicates', code: 'CHECK_DUPLICATES_ERROR' }, 500);
     }
-    if (status) {
-      where += ' AND w.status = ?';
-      params.push(status);
-    }
-
-    const warrants = await db.prepare(`
-      SELECT w.*, p.last_name, p.first_name, p.dob
-      FROM warrants w LEFT JOIN persons p ON w.person_id = p.id
-      WHERE ${where} ORDER BY w.created_at DESC LIMIT 500
-    `).all(...params);
-
-    return c.json(warrants);
   });
-
-  // ═══════════════════════════════════════════════════════════
-  // BOLOS (read-only)
-  // ═══════════════════════════════════════════════════════════
-
-  // GET /api/records/bolos - Search BOLOs
-  api.get('/bolos', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const q = c.req.query('q') || '';
-    const status = c.req.query('status');
-
-    let where = '1=1';
-    const params: any[] = [];
-
-    if (q.length >= 2) {
-      where += " AND (b.bolo_number LIKE ? OR b.subject LIKE ? OR b.description LIKE ?)";
-      params.push(`%${q}%`, `%${q}%`, `%${q}%`);
-    }
-    if (status) {
-      where += ' AND b.status = ?';
-      params.push(status);
-    }
-
-    const bolos = await db.prepare(`SELECT b.* FROM bolos b WHERE ${where} ORDER BY b.created_at DESC LIMIT 500`).all(...params);
-    return c.json(bolos);
-  });
-
-  // ═══════════════════════════════════════════════════════════
-  // COMPOUND SEARCH
-  // ═══════════════════════════════════════════════════════════
-
-  // GET /api/records/compound-search
-  api.get('/compound-search', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const name = c.req.query('name') || '';
-    const dob = c.req.query('dob') || '';
-    const plate = c.req.query('plate') || '';
-
-    const results: Record<string, any[]> = {};
-
-    if (name.length >= 2) {
-      results.persons = await db.prepare(`
-        SELECT * FROM persons WHERE last_name LIKE ? OR first_name LIKE ? LIMIT 50
-      `).all(`%${name}%`, `%${name}%`);
-    }
-
-    if (plate.length >= 2) {
-      results.vehicles = await db.prepare(`SELECT * FROM vehicles_records WHERE plate_number LIKE ? LIMIT 50`).all(`%${plate}%`);
-    }
-
-    if (dob) {
-      results.persons_by_dob = await db.prepare(`SELECT * FROM persons WHERE dob = ? LIMIT 50`).all(dob);
-    }
-
-    return c.json(results);
-  });
-
-  // ═══════════════════════════════════════════════════════════
-  // UNIVERSAL SEARCH
-  // ═══════════════════════════════════════════════════════════
-
-  // GET /api/records/universal-search
-  api.get('/universal-search', async (c) => {
-    const db = new D1Db(c.env.DB);
-    const q = c.req.query('q') || '';
-    if (q.length < 2) return c.json({ results: [], total: 0 });
-
-    const [persons, vehicles, calls, incidents, warrants, bolos] = await Promise.all([
-      db.prepare(`SELECT id, last_name, first_name, dob, 'person' as type FROM persons WHERE last_name LIKE ? OR first_name LIKE ? LIMIT 10`).all(`%${q}%`, `%${q}%`),
-      db.prepare(`SELECT id, plate_number, make, model, 'vehicle' as type FROM vehicles_records WHERE plate_number LIKE ? OR vin LIKE ? LIMIT 10`).all(`%${q}%`, `%${q}%`),
-      db.prepare(`SELECT id, call_number, incident_type, location_address, 'call' as type FROM calls_for_service WHERE call_number LIKE ? OR location_address LIKE ? LIMIT 10`).all(`%${q}%`, `%${q}%`),
-      db.prepare(`SELECT id, incident_number, incident_type, location_address, 'incident' as type FROM incidents WHERE incident_number LIKE ? OR location_address LIKE ? LIMIT 10`).all(`%${q}%`, `%${q}%`),
-      db.prepare(`SELECT id, warrant_number, 'warrant' as type FROM warrants WHERE warrant_number LIKE ? LIMIT 10`).all(`%${q}%`),
-      db.prepare(`SELECT id, bolo_number, 'bolo' as type FROM bolos WHERE bolo_number LIKE ? LIMIT 10`).all(`%${q}%`),
-    ]);
-
-    const results = [...(persons as any[]), ...(vehicles as any[]), ...(calls as any[]), ...(incidents as any[]), ...(warrants as any[]), ...(bolos as any[])];
-    return c.json({ results, total: results.length });
-  });
-
-  // ═══════════════════════════════════════════════════════════
-  // PERSONS (write)
-  // ═══════════════════════════════════════════════════════════
 
   const PERSON_FIELD_MAP: Record<string, (v: any) => any> = {
     first_name: v => v ?? null, last_name: v => v ?? null,
@@ -509,9 +417,145 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     }
   });
 
+  // DELETE /api/records/persons/:id — Delete person
+  api.delete('/persons/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const person = await db.prepare('SELECT * FROM persons WHERE id = ?').get(id) as any;
+      if (!person) return c.json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }, 404);
+
+      const user = c.get('user');
+      await db.prepare('DELETE FROM persons WHERE id = ?').run(id);
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'person_deleted', 'person', id, `Deleted person: ${person.first_name} ${person.last_name} (ID ${id})`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json({ success: true, id });
+    } catch (err: any) {
+      console.error('Delete person error:', err);
+      return c.json({ error: 'Failed to delete person', code: 'DELETE_PERSON_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/persons/:id/archive — Archive person
+  api.post('/persons/:id/archive', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const person = await db.prepare('SELECT * FROM persons WHERE id = ?').get(id) as any;
+      if (!person) return c.json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }, 404);
+      if (person.archived_at) return c.json({ error: 'Person is already archived', code: 'PERSON_ALREADY_ARCHIVED' }, 400);
+
+      const now = localNow();
+      await db.prepare('UPDATE persons SET archived_at = ? WHERE id = ?').run(now, id);
+
+      const user = c.get('user');
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'person_archived', 'person', id, `Archived person: ${person.first_name} ${person.last_name}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json(await db.prepare('SELECT * FROM persons WHERE id = ?').get(id));
+    } catch (err: any) {
+      console.error('Archive person error:', err);
+      return c.json({ error: 'Failed to archive person', code: 'ARCHIVE_PERSON_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/persons/:id/unarchive — Unarchive person
+  api.post('/persons/:id/unarchive', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const person = await db.prepare('SELECT * FROM persons WHERE id = ?').get(id) as any;
+      if (!person) return c.json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }, 404);
+      if (!person.archived_at) return c.json({ error: 'Person is not archived', code: 'PERSON_NOT_ARCHIVED' }, 400);
+
+      await db.prepare('UPDATE persons SET archived_at = NULL WHERE id = ?').run(id);
+
+      const user = c.get('user');
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'person_unarchived', 'person', id, `Unarchived person: ${person.first_name} ${person.last_name}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json(await db.prepare('SELECT * FROM persons WHERE id = ?').get(id));
+    } catch (err: any) {
+      console.error('Unarchive person error:', err);
+      return c.json({ error: 'Failed to unarchive person', code: 'UNARCHIVE_PERSON_ERROR' }, 500);
+    }
+  });
+
   // ═══════════════════════════════════════════════════════════
-  // VEHICLES (write)
+  // VEHICLES
   // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/vehicles - List vehicles
+  api.get('/vehicles', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const { page = '1', limit = '100000', archived } = c.req.query();
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(100000, Math.max(1, (parseInt(limit, 10)) || 100000));
+      const offset = (pageNum - 1) * limitNum;
+
+      let whereClause = 'WHERE 1=1';
+      if (archived === 'true') {
+        whereClause += ' AND v.archived_at IS NOT NULL';
+      } else if (archived !== 'all') {
+        whereClause += ' AND v.archived_at IS NULL';
+      }
+
+      const countRow = await db.prepare(`SELECT COUNT(*) as total FROM vehicles_records v ${whereClause}`).get() as any;
+
+      const vehicles = await db.prepare(`
+        SELECT v.*, p.first_name as owner_first_name, p.last_name as owner_last_name
+        FROM vehicles_records v
+        LEFT JOIN persons p ON v.owner_person_id = p.id
+        ${whereClause}
+        ORDER BY v.created_at DESC
+        LIMIT ? OFFSET ?
+      `).all(limitNum, offset);
+
+      return c.json({
+        data: vehicles,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: countRow?.total ?? 0,
+          totalPages: Math.ceil((countRow?.total ?? 0) / limitNum),
+        },
+      });
+    } catch (err: any) {
+      console.error('Get vehicles error:', err);
+      return c.json({ error: 'Failed to get vehicles', code: 'GET_VEHICLES_ERROR' }, 500);
+    }
+  });
+
+  // GET /api/records/vehicles/:id - Get vehicle details
+  api.get('/vehicles/:id', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const id = paramNum(c.req.param('id'));
+    const vehicle = await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id);
+    if (!vehicle) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+    return c.json(vehicle);
+  });
+
+  // GET /api/records/vehicles/:id/incidents - Get incidents linked to vehicle
+  api.get('/vehicles/:id/incidents', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const incidents = await db.prepare(`
+        SELECT i.*, l.role FROM incidents i
+        JOIN incident_vehicles l ON i.id = l.incident_id
+        WHERE l.vehicle_id = ?
+        ORDER BY i.created_at DESC LIMIT 50
+      `).all(id);
+      return c.json(incidents);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to get vehicle incidents', code: 'VEHICLE_INCIDENTS_ERROR' }, 500);
+    }
+  });
 
   const VEHICLE_FIELD_MAP: Record<string, (v: any) => any> = {
     plate_number: v => v ?? null, state: v => v ?? null,
@@ -618,6 +662,74 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     } catch (err: any) {
       console.error('Update vehicle error:', err);
       return c.json({ error: 'Failed to update vehicle', code: 'UPDATE_VEHICLE_ERROR' }, 500);
+    }
+  });
+
+  // DELETE /api/records/vehicles/:id — Delete vehicle
+  api.delete('/vehicles/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const v = await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id) as any;
+      if (!v) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+
+      const user = c.get('user');
+      await db.prepare('DELETE FROM vehicles_records WHERE id = ?').run(id);
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'vehicle_deleted', 'vehicle', id, `Deleted vehicle: ${v.plate_number || v.vin || 'ID ' + id}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json({ success: true, id });
+    } catch (err: any) {
+      console.error('Delete vehicle error:', err);
+      return c.json({ error: 'Failed to delete vehicle', code: 'DELETE_VEHICLE_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/vehicles/:id/archive — Archive vehicle
+  api.post('/vehicles/:id/archive', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const v = await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id) as any;
+      if (!v) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+      if (v.archived_at) return c.json({ error: 'Vehicle is already archived', code: 'VEHICLE_ALREADY_ARCHIVED' }, 400);
+
+      const now = localNow();
+      await db.prepare('UPDATE vehicles_records SET archived_at = ? WHERE id = ?').run(now, id);
+
+      const user = c.get('user');
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'vehicle_archived', 'vehicle', id, `Archived vehicle: ${v.plate_number || v.vin || 'ID ' + id}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json(await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id));
+    } catch (err: any) {
+      console.error('Archive vehicle error:', err);
+      return c.json({ error: 'Failed to archive vehicle', code: 'ARCHIVE_VEHICLE_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/vehicles/:id/unarchive — Unarchive vehicle
+  api.post('/vehicles/:id/unarchive', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const v = await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id) as any;
+      if (!v) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+      if (!v.archived_at) return c.json({ error: 'Vehicle is not archived', code: 'VEHICLE_NOT_ARCHIVED' }, 400);
+
+      await db.prepare('UPDATE vehicles_records SET archived_at = NULL WHERE id = ?').run(id);
+
+      const user = c.get('user');
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'vehicle_unarchived', 'vehicle', id, `Unarchived vehicle: ${v.plate_number || v.vin || 'ID ' + id}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json(await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(id));
+    } catch (err: any) {
+      console.error('Unarchive vehicle error:', err);
+      return c.json({ error: 'Failed to unarchive vehicle', code: 'UNARCHIVE_VEHICLE_ERROR' }, 500);
     }
   });
 
@@ -739,6 +851,459 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       console.error('Update property error:', err);
       return c.json({ error: 'Failed to update property', code: 'UPDATE_PROPERTY_ERROR' }, 500);
     }
+  });
+
+  // DELETE /api/records/properties/:id — Delete property
+  api.delete('/properties/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const prop = await db.prepare('SELECT * FROM properties WHERE id = ?').get(id) as any;
+      if (!prop) return c.json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' }, 404);
+
+      const user = c.get('user');
+      await db.prepare('DELETE FROM properties WHERE id = ?').run(id);
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'property_deleted', 'property', id, `Deleted property: ${prop.name} (ID ${id})`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json({ success: true, id });
+    } catch (err: any) {
+      console.error('Delete property error:', err);
+      return c.json({ error: 'Failed to delete property', code: 'DELETE_PROPERTY_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/properties/:id/archive — Archive property
+  api.post('/properties/:id/archive', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const prop = await db.prepare('SELECT * FROM properties WHERE id = ?').get(id) as any;
+      if (!prop) return c.json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' }, 404);
+      if (prop.archived_at) return c.json({ error: 'Property is already archived', code: 'PROPERTY_ALREADY_ARCHIVED' }, 400);
+
+      const now = localNow();
+      await db.prepare('UPDATE properties SET archived_at = ? WHERE id = ?').run(now, id);
+
+      const user = c.get('user');
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'property_archived', 'property', id, `Archived property: ${prop.name}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json(await db.prepare('SELECT * FROM properties WHERE id = ?').get(id));
+    } catch (err: any) {
+      console.error('Archive property error:', err);
+      return c.json({ error: 'Failed to archive property', code: 'ARCHIVE_PROPERTY_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/properties/:id/unarchive — Unarchive property
+  api.post('/properties/:id/unarchive', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const prop = await db.prepare('SELECT * FROM properties WHERE id = ?').get(id) as any;
+      if (!prop) return c.json({ error: 'Property not found', code: 'PROPERTY_NOT_FOUND' }, 404);
+      if (!prop.archived_at) return c.json({ error: 'Property is not archived', code: 'PROPERTY_NOT_ARCHIVED' }, 400);
+
+      await db.prepare('UPDATE properties SET archived_at = NULL WHERE id = ?').run(id);
+
+      const user = c.get('user');
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'property_unarchived', 'property', id, `Unarchived property: ${prop.name}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json(await db.prepare('SELECT * FROM properties WHERE id = ?').get(id));
+    } catch (err: any) {
+      console.error('Unarchive property error:', err);
+      return c.json({ error: 'Failed to unarchive property', code: 'UNARCHIVE_PROPERTY_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // EVIDENCE
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/evidence - List evidence
+  api.get('/evidence', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const { page = '1', limit = '100000', archived } = c.req.query();
+      const pageNum = Math.max(1, parseInt(page, 10) || 1);
+      const limitNum = Math.min(100000, Math.max(1, (parseInt(limit, 10)) || 100000));
+      const offset = (pageNum - 1) * limitNum;
+
+      let whereClause = 'WHERE 1=1';
+      if (archived === 'true') {
+        whereClause += ' AND e.archived_at IS NOT NULL';
+      } else if (archived !== 'all') {
+        whereClause += ' AND e.archived_at IS NULL';
+      }
+
+      const countRow = await db.prepare(`SELECT COUNT(*) as total FROM evidence e ${whereClause}`).get() as any;
+
+      const evidence = await db.prepare(`
+        SELECT e.*, i.incident_number, u.full_name as collected_by_name
+        FROM evidence e
+        LEFT JOIN incidents i ON e.incident_id = i.id
+        LEFT JOIN users u ON e.collected_by = u.id
+        ${whereClause}
+        ORDER BY e.created_at DESC
+        LIMIT ? OFFSET ?
+      `).all(limitNum, offset);
+
+      return c.json({
+        data: evidence,
+        pagination: {
+          page: pageNum,
+          limit: limitNum,
+          total: countRow?.total ?? 0,
+          totalPages: Math.ceil((countRow?.total ?? 0) / limitNum),
+        },
+      });
+    } catch (err: any) {
+      return c.json({ error: 'Failed to get evidence', code: 'GET_EVIDENCE_ERROR' }, 500);
+    }
+  });
+
+  // GET /api/records/evidence/:id - Get evidence detail
+  api.get('/evidence/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const item = await db.prepare(`
+        SELECT e.*, i.incident_number, u.full_name as collected_by_name
+        FROM evidence e
+        LEFT JOIN incidents i ON e.incident_id = i.id
+        LEFT JOIN users u ON e.collected_by = u.id
+        WHERE e.id = ?
+      `).get(id);
+      if (!item) return c.json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }, 404);
+      return c.json(item);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to get evidence', code: 'GET_EVIDENCE_BY_ID_ERROR' }, 500);
+    }
+  });
+
+  const EVIDENCE_FIELD_MAP: Record<string, (v: any) => any> = {
+    incident_id: v => v || null,
+    description: v => v ?? null,
+    evidence_type: v => v ?? null,
+    category: v => v ?? null,
+    storage_location: v => v ?? null,
+    collected_date: v => v ?? null,
+    packaging_type: v => v ?? null,
+    serial_number: v => v ?? null,
+    brand: v => v ?? null,
+    model: v => v ?? null,
+    estimated_value: v => v ?? null,
+    dimensions: v => v ?? null,
+    weight: v => v ?? null,
+    photo_taken: v => v ? 1 : 0,
+    lab_submitted: v => v ? 1 : 0,
+    lab_case_number: v => v ?? null,
+    lab_name: v => v ?? null,
+    disposal_method: v => v ?? null,
+    disposal_date: v => v ?? null,
+    disposal_authorized_by: v => v ?? null,
+    notes: v => v ?? null,
+    location_found: v => v ?? null,
+    condition: v => v ?? null,
+    quantity: v => v === '' || v == null ? null : parseInt(v, 10) || null,
+    is_biological: v => v ? 1 : 0,
+    narcotics_flag: v => v ? 1 : 0,
+    temperature_sensitive: v => v ? 1 : 0,
+  };
+
+  // POST /api/records/evidence — Create evidence
+  api.post('/evidence', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const body = await c.req.json();
+
+      if (!body.description || !body.evidence_type) {
+        return c.json({ error: 'description and evidence_type are required', code: 'DESCRIPTION_AND_EVIDENCETYPE_ARE' }, 400);
+      }
+
+      const currentYear = new Date().getFullYear();
+      const lastEvidence = await db.prepare(
+        `SELECT evidence_number FROM evidence WHERE evidence_number LIKE ? ORDER BY id DESC LIMIT 1`
+      ).get(`EV-${currentYear}-%`) as any;
+
+      let nextNum = 1;
+      if (lastEvidence) {
+        const parts = lastEvidence.evidence_number.split('-');
+        nextNum = parseInt(parts[2], 10) + 1;
+      }
+      const evidenceNumber = `EV-${currentYear}-${String(nextNum).padStart(5, '0')}`;
+
+      const columns: string[] = ['evidence_number', 'description', 'evidence_type', 'collected_by'];
+      const placeholders: string[] = ['?', '?', '?', '?'];
+      const values: any[] = [evidenceNumber, body.description, body.evidence_type, user.userId];
+
+      for (const [key, transform] of Object.entries(EVIDENCE_FIELD_MAP)) {
+        if (key === 'description' || key === 'evidence_type') continue;
+        if (Object.keys(body).includes(key)) {
+          columns.push(key);
+          placeholders.push('?');
+          values.push(transform(body[key]));
+        }
+      }
+
+      const now = localNow();
+      columns.push('created_at', 'updated_at');
+      placeholders.push('?', '?');
+      values.push(now, now);
+
+      const result = await db.prepare(
+        `INSERT INTO evidence (${columns.join(', ')}) VALUES (${placeholders.join(', ')})`
+      ).run(...values);
+
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'evidence_created', 'evidence', result.meta.last_row_id ?? 0, `Created evidence: ${evidenceNumber} - ${body.description}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      const created = await db.prepare(`
+        SELECT e.*, i.incident_number, u.full_name as collected_by_name
+        FROM evidence e
+        LEFT JOIN incidents i ON e.incident_id = i.id
+        LEFT JOIN users u ON e.collected_by = u.id
+        WHERE e.id = ?
+      `).get(result.meta.last_row_id);
+
+      return c.json(created, 201);
+    } catch (err: any) {
+      console.error('Create evidence error:', err);
+      return c.json({ error: 'Failed to create evidence', code: 'CREATE_EVIDENCE_ERROR' }, 500);
+    }
+  });
+
+  // PUT /api/records/evidence/:id — Update evidence
+  api.put('/evidence/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const existing = await db.prepare('SELECT * FROM evidence WHERE id = ?').get(id) as any;
+      if (!existing) return c.json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }, 404);
+
+      const user = c.get('user');
+      const body = await c.req.json();
+
+      const fields: string[] = [];
+      const values: any[] = [];
+      const bodyKeys = Object.keys(body);
+
+      for (const [key, transform] of Object.entries(EVIDENCE_FIELD_MAP)) {
+        if (bodyKeys.includes(key)) {
+          fields.push(`${key} = ?`);
+          values.push(transform(body[key]));
+        }
+      }
+
+      if (fields.length > 0) {
+        fields.push('updated_at = ?');
+        values.push(localNow());
+        values.push(id);
+        await db.prepare(`UPDATE evidence SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+      }
+
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'evidence_updated', 'evidence', id, `Updated evidence: ${existing.description || 'ID ' + existing.id}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      const updated = await db.prepare(`
+        SELECT e.*, i.incident_number, u.full_name as collected_by_name
+        FROM evidence e
+        LEFT JOIN incidents i ON e.incident_id = i.id
+        LEFT JOIN users u ON e.collected_by = u.id
+        WHERE e.id = ?
+      `).get(id);
+
+      return c.json(updated);
+    } catch (err: any) {
+      console.error('Update evidence error:', err);
+      return c.json({ error: 'Failed to update evidence', code: 'UPDATE_EVIDENCE_ERROR' }, 500);
+    }
+  });
+
+  // DELETE /api/records/evidence/:id — Delete evidence
+  api.delete('/evidence/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const ev = await db.prepare('SELECT * FROM evidence WHERE id = ?').get(id) as any;
+      if (!ev) return c.json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }, 404);
+
+      const user = c.get('user');
+      await db.prepare('DELETE FROM evidence WHERE id = ?').run(id);
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'evidence_deleted', 'evidence', id, `Deleted evidence: ${ev.description || 'ID ' + ev.id}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json({ success: true, id });
+    } catch (err: any) {
+      console.error('Delete evidence error:', err);
+      return c.json({ error: 'Failed to delete evidence', code: 'DELETE_EVIDENCE_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/evidence/:id/archive — Archive evidence
+  api.post('/evidence/:id/archive', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const ev = await db.prepare('SELECT * FROM evidence WHERE id = ?').get(id) as any;
+      if (!ev) return c.json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }, 404);
+      if (ev.archived_at) return c.json({ error: 'Evidence is already archived', code: 'EVIDENCE_ALREADY_ARCHIVED' }, 400);
+
+      const now = localNow();
+      await db.prepare('UPDATE evidence SET archived_at = ? WHERE id = ?').run(now, id);
+
+      const user = c.get('user');
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'evidence_archived', 'evidence', id, `Archived evidence: ${ev.description || 'ID ' + ev.id}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json(await db.prepare('SELECT * FROM evidence WHERE id = ?').get(id));
+    } catch (err: any) {
+      console.error('Archive evidence error:', err);
+      return c.json({ error: 'Failed to archive evidence', code: 'ARCHIVE_EVIDENCE_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/evidence/:id/unarchive — Unarchive evidence
+  api.post('/evidence/:id/unarchive', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const ev = await db.prepare('SELECT * FROM evidence WHERE id = ?').get(id) as any;
+      if (!ev) return c.json({ error: 'Evidence not found', code: 'EVIDENCE_NOT_FOUND' }, 404);
+      if (!ev.archived_at) return c.json({ error: 'Evidence is not archived', code: 'EVIDENCE_NOT_ARCHIVED' }, 400);
+
+      await db.prepare('UPDATE evidence SET archived_at = NULL WHERE id = ?').run(id);
+
+      const user = c.get('user');
+      await db.prepare(
+        'INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)'
+      ).run(user.userId, 'evidence_unarchived', 'evidence', id, `Unarchived evidence: ${ev.description || 'ID ' + ev.id}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json(await db.prepare('SELECT * FROM evidence WHERE id = ?').get(id));
+    } catch (err: any) {
+      console.error('Unarchive evidence error:', err);
+      return c.json({ error: 'Failed to unarchive evidence', code: 'UNARCHIVE_EVIDENCE_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // WARRANTS (read-only)
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/warrants - Search warrants
+  api.get('/warrants', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const q = c.req.query('q') || '';
+    const status = c.req.query('status');
+
+    let where = '1=1';
+    const params: any[] = [];
+
+    if (q.length >= 2) {
+      where += " AND (w.warrant_number LIKE ? OR p.last_name LIKE ? OR p.first_name LIKE ?)";
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+    if (status) {
+      where += ' AND w.status = ?';
+      params.push(status);
+    }
+
+    const warrants = await db.prepare(`
+      SELECT w.*, p.last_name, p.first_name, p.dob
+      FROM warrants w LEFT JOIN persons p ON w.person_id = p.id
+      WHERE ${where} ORDER BY w.created_at DESC LIMIT 500
+    `).all(...params);
+
+    return c.json(warrants);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // BOLOS (read-only)
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/bolos - Search BOLOs
+  api.get('/bolos', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const q = c.req.query('q') || '';
+    const status = c.req.query('status');
+
+    let where = '1=1';
+    const params: any[] = [];
+
+    if (q.length >= 2) {
+      where += " AND (b.bolo_number LIKE ? OR b.subject LIKE ? OR b.description LIKE ?)";
+      params.push(`%${q}%`, `%${q}%`, `%${q}%`);
+    }
+    if (status) {
+      where += ' AND b.status = ?';
+      params.push(status);
+    }
+
+    const bolos = await db.prepare(`SELECT b.* FROM bolos b WHERE ${where} ORDER BY b.created_at DESC LIMIT 500`).all(...params);
+    return c.json(bolos);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // COMPOUND SEARCH
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/compound-search
+  api.get('/compound-search', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const name = c.req.query('name') || '';
+    const dob = c.req.query('dob') || '';
+    const plate = c.req.query('plate') || '';
+
+    const results: Record<string, any[]> = {};
+
+    if (name.length >= 2) {
+      results.persons = await db.prepare(`
+        SELECT * FROM persons WHERE last_name LIKE ? OR first_name LIKE ? LIMIT 50
+      `).all(`%${name}%`, `%${name}%`);
+    }
+
+    if (plate.length >= 2) {
+      results.vehicles = await db.prepare(`SELECT * FROM vehicles_records WHERE plate_number LIKE ? LIMIT 50`).all(`%${plate}%`);
+    }
+
+    if (dob) {
+      results.persons_by_dob = await db.prepare(`SELECT * FROM persons WHERE dob = ? LIMIT 50`).all(dob);
+    }
+
+    return c.json(results);
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // UNIVERSAL SEARCH
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/universal-search
+  api.get('/universal-search', async (c) => {
+    const db = new D1Db(c.env.DB);
+    const q = c.req.query('q') || '';
+    if (q.length < 2) return c.json({ results: [], total: 0 });
+
+    const [persons, vehicles, calls, incidents, warrants, bolos] = await Promise.all([
+      db.prepare(`SELECT id, last_name, first_name, dob, 'person' as type FROM persons WHERE last_name LIKE ? OR first_name LIKE ? LIMIT 10`).all(`%${q}%`, `%${q}%`),
+      db.prepare(`SELECT id, plate_number, make, model, 'vehicle' as type FROM vehicles_records WHERE plate_number LIKE ? OR vin LIKE ? LIMIT 10`).all(`%${q}%`, `%${q}%`),
+      db.prepare(`SELECT id, call_number, incident_type, location_address, 'call' as type FROM calls_for_service WHERE call_number LIKE ? OR location_address LIKE ? LIMIT 10`).all(`%${q}%`, `%${q}%`),
+      db.prepare(`SELECT id, incident_number, incident_type, location_address, 'incident' as type FROM incidents WHERE incident_number LIKE ? OR location_address LIKE ? LIMIT 10`).all(`%${q}%`, `%${q}%`),
+      db.prepare(`SELECT id, warrant_number, 'warrant' as type FROM warrants WHERE warrant_number LIKE ? LIMIT 10`).all(`%${q}%`),
+      db.prepare(`SELECT id, bolo_number, 'bolo' as type FROM bolos WHERE bolo_number LIKE ? LIMIT 10`).all(`%${q}%`),
+    ]);
+
+    const results = [...(persons as any[]), ...(vehicles as any[]), ...(calls as any[]), ...(incidents as any[]), ...(warrants as any[]), ...(bolos as any[])];
+    return c.json({ results, total: results.length });
   });
 
   // Mount all records routes under /records

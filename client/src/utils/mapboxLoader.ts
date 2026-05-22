@@ -244,7 +244,7 @@ export async function fetchMapboxConfig(): Promise<{ mapbox_access_token?: strin
 
   _serverConfigPromise = (async () => {
     try {
-      const token = localStorage.getItem('token');
+      const token = localStorage.getItem('rmpg_token');
       if (!token) {
         _serverConfigPromise = null;
         return {};

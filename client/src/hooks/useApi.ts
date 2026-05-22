@@ -86,7 +86,7 @@ async function fetchWithRetry(
     const dedupKey = `${method}:${url}`;
     const existing = inflightMutations.get(dedupKey);
     if (existing && Date.now() - existing.ts < DEDUP_WINDOW_MS) {
-      return existing.promise;
+      return existing.promise.then((res) => res.clone());
     }
   }
 
