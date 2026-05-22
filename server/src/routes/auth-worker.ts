@@ -69,6 +69,7 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
   // ═══════════════════════════════════════════════════════════
 
   api.post('/login', async (c) => {
+    try {
     const db = new D1Db(c.env.DB);
     const body = await c.req.json();
     const { username, password } = body;
@@ -174,6 +175,10 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
         totp_enabled: false,
       },
     });
+    } catch (err: any) {
+      console.error('Login error:', err?.message || err);
+      return c.json({ error: 'Failed to login', code: 'LOGIN_ERROR' }, 500);
+    }
   });
 
   // ═══════════════════════════════════════════════════════════
