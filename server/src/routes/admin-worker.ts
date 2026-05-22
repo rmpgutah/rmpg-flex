@@ -813,22 +813,7 @@ export function mountAdminRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
   });
 
   // ═══════════════════════════════════════════════════════════
-  // CLIENT ERROR REPORTING (no auth — ErrorBoundary fires even on auth pages)
-  // ═══════════════════════════════════════════════════════════
-
-  // POST /api/admin/health/client-error — Log client-side errors
-  api.post('/health/client-error', async (c) => {
-    try {
-      const body = await c.req.json().catch(() => ({}));
-      const { message, stack, componentStack, url } = body;
-      console.error(`[Client Error] ${message || 'Unknown'}`, { url, stackLength: stack?.length || 0 });
-      return c.json({ logged: true });
-    } catch {
-      return c.json({ logged: false }, 500);
-    }
-  });
-
-  // ═══════════════════════════════════════════════════════════
+  // TRAINING
   // TRAINING
   // ═══════════════════════════════════════════════════════════
 
@@ -916,6 +901,23 @@ export function mountAdminRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
         citations_30d: (dbStats[4] as any)?.count || 0,
       });
     } catch { return c.json({ total_users: 0, active_units: 0, active_calls: 0, incidents_30d: 0, citations_30d: 0 }); }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // CLIENT ERROR REPORTING — mounted directly on app (no auth)
+  // ErrorBoundary sends crash reports here; must work even when
+  // auth is failing (login page errors, expired tokens, etc.)
+  // ═══════════════════════════════════════════════════════════
+
+  app.post('/api/admin/health/client-error', async (c) => {
+    try {
+      const body = await c.req.json().catch(() => ({}));
+      const { message, stack, componentStack, url } = body;
+      console.error(`[Client Error] ${message || 'Unknown'}`, { url, stackLength: stack?.length || 0 });
+      return c.json({ logged: true });
+    } catch {
+      return c.json({ logged: false }, 500);
+    }
   });
 
   app.route('/api/admin', api);
