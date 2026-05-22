@@ -5879,6 +5879,21 @@ function createIndexes(): void {
 
     CREATE INDEX IF NOT EXISTS idx_health_log_integration ON integration_health_log(integration_id, checked_at);
 
+    CREATE TABLE IF NOT EXISTS integration_api_keys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      key_prefix TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      scopes TEXT NOT NULL DEFAULT '["service_request"]',
+      last_used_at TEXT,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_integration_api_keys_active ON integration_api_keys(is_active);
+
     CREATE TABLE IF NOT EXISTS time_entry_edits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       time_entry_id INTEGER NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,

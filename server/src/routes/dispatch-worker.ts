@@ -1043,7 +1043,7 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     const db = new D1Db(c.env.DB);
     const panics = await db.prepare(`
       SELECT p.*, u.full_name as officer_name, u.badge_number
-      FROM panic_alerts p LEFT JOIN users u ON p.officer_id = u.id
+      FROM panic_alerts p LEFT JOIN users u ON p.user_id = u.id
       WHERE p.acknowledged_at IS NULL ORDER BY p.created_at DESC LIMIT 100
     `).all();
     return c.json(panics);
@@ -1054,7 +1054,7 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     const db = new D1Db(c.env.DB);
     const panics = await db.prepare(`
       SELECT p.*, u.full_name as officer_name, u.badge_number
-      FROM panic_alerts p LEFT JOIN users u ON p.officer_id = u.id
+      FROM panic_alerts p LEFT JOIN users u ON p.user_id = u.id
       WHERE p.resolved_at IS NULL ORDER BY p.created_at DESC LIMIT 100
     `).all();
     return c.json(panics);
