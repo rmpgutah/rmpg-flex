@@ -5419,42 +5419,117 @@ export default function MapPage() {
         </div>}
 
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
-        {activeRoute && (
+        {activeRoute && (() => {
+          const ManeuverIcon = ({ type, modifier }: { type: string; modifier?: string }) => {
+            let symbol: string;
+            let color = '#888888';
+            if (type === 'turn' || type === 'ramp' || type === 'off ramp') {
+              if (modifier === 'left' || modifier === 'sharp left') { symbol = '↰'; color = '#d4a017'; }
+              else if (modifier === 'right' || modifier === 'sharp right') { symbol = '↱'; color = '#d4a017'; }
+              else if (modifier === 'slight left') { symbol = '↲'; color = '#d4a017'; }
+              else if (modifier === 'slight right') { symbol = '↳'; color = '#d4a017'; }
+              else { symbol = '⬀'; color = '#d4a017'; }
+            } else if (type === 'merge') { symbol = '⇉'; color = '#60a5fa'; }
+            else if (type === 'fork') { symbol = '⑂'; color = '#f59e0b'; }
+            else if (type === 'roundabout' || type === 'rotary') { symbol = '↻'; color = '#34d399'; }
+            else if (type === 'arrive') { symbol = '⬇'; color = '#22c55e'; }
+            else if (type === 'depart') { symbol = '⬆'; color = '#888888'; }
+            else if (type === 'straight' || type === 'continue') { symbol = '↑'; color = '#888888'; }
+            else if (type === 'end of road') { symbol = '⊣'; color = '#f87171'; }
+            else { symbol = '●'; }
+            return <span style={{ fontSize: 11, color, width: 16, textAlign: 'center', flexShrink: 0 }}>{symbol}</span>;
+          };
+          return (
           <div
             className="absolute z-[1000] backdrop-blur-md"
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: 16, minWidth: 200 }),
-              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
-              border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
-              padding: '8px 14px',
+                : { bottom: 48, left: 16, minWidth: 240, maxWidth: 320 }),
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.95)' : 'rgba(6,12,20,0.95)',
+              border: '1px solid #d4a01740',
               fontFamily: "'JetBrains Mono', 'Courier New', monospace",
               borderRadius: 2,
-              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
+              boxShadow: '0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(212,160,23,0.15)',
+              fontSize: 11,
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
-                {activeRoute.unitCallSign} → {activeRoute.callNumber}
-              </span>
+            {/* Header */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: '1px solid #222222', background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <Navigation2 style={{ width: 11, height: 11, color: '#d4a017' }} />
+                <span style={{ fontSize: 10, color: '#d4a017', fontWeight: 900, letterSpacing: '0.05em' }}>
+                  {activeRoute.unitCallSign} → {activeRoute.callNumber}
+                </span>
+              </div>
               <button
                 onClick={clearRoute}
-                style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
+                style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: 14, padding: '0 0 0 8px', lineHeight: 1 }}
                 title="Clear route"
               >
-                ✕
+                <X style={{ width: 12, height: 12 }} />
               </button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
+
+            {/* Main stats */}
+            <div style={{ padding: '8px 10px', borderBottom: '1px solid #1a1a1a' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+                <div>
+                  <div style={{ fontSize: 8, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 1 }}>ETA</div>
+                  <div style={{ fontSize: 20, color: '#d4a017', fontWeight: 900, lineHeight: 1.2 }}>{activeRoute.eta}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 8, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 1 }}>Arrive</div>
+                  <div style={{ fontSize: 14, color: '#ffffff', fontWeight: 700, lineHeight: 1.2 }}>{activeRoute.arrivalTime}</div>
+                </div>
+                <div>
+                  <div style={{ fontSize: 8, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 1 }}>Distance</div>
+                  <div style={{ fontSize: 14, color: '#cccccc', fontWeight: 700, lineHeight: 1.2 }}>{activeRoute.distance}</div>
+                </div>
+              </div>
+              {activeRoute.trafficDelay && (
+                <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Clock style={{ width: 10, height: 10, color: activeRoute.trafficDelay.includes('delay') ? '#f59e0b' : '#22c55e' }} />
+                  <span style={{ fontSize: 9, color: activeRoute.trafficDelay.includes('delay') ? '#f59e0b' : '#22c55e', fontWeight: 600 }}>
+                    {activeRoute.trafficDelay}
+                  </span>
+                </div>
+              )}
+              {routeLoading && (
+                <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: '#f59e0b' }}>
+                  <Loader2 style={{ width: 8, height: 8 }} className="animate-spin" />
+                  Updating route…
+                </div>
+              )}
             </div>
-            {routeLoading && (
-              <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
+
+            {/* Turn-by-turn directions */}
+            {activeRoute.steps.length > 0 && (
+              <div style={{ maxHeight: 160, overflowY: 'auto', padding: '4px 0' }}>
+                {activeRoute.steps.map((step, i) => (
+                  <div
+                    key={i}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 8,
+                      padding: '3px 10px',
+                      borderBottom: i < activeRoute.steps.length - 1 ? '1px solid #141414' : 'none',
+                      opacity: 0.85,
+                    }}
+                  >
+                    <ManeuverIcon type={step.type} modifier={step.modifier} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 10, color: '#cccccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                        {step.instruction}
+                      </div>
+                    </div>
+                    <span style={{ fontSize: 8, color: '#666666', whiteSpace: 'nowrap' }}>{step.distance}</span>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
-        )}
+          );
+        })()}
 
         {/* ── Bottom Right Buttons (Recenter + GPS Locate) ── */}
         <div

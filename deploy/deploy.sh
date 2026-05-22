@@ -97,8 +97,24 @@ else
   npx wrangler deploy $ENV_FLAG
 
   # Deploy client to Cloudflare Pages
-  echo "    [3/3] Deploying client to Pages..."
+  echo "    [3/4] Deploying client to Pages..."
   npx wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main
+
+  # Sync downloads to R2 bucket
+  echo "    [4/4] Syncing downloads to R2..."
+  if [ -d "server/downloads" ]; then
+    for f in server/downloads/*; do
+      [ -f "$f" ] || continue
+      filename=$(basename "$f")
+      # Skip index.html — not needed in R2 (SPA serves the page)
+      [ "$filename" = "index.html" ] && continue
+      echo "        Uploading $filename..."
+      npx wrangler r2 object put "rmpg-flex-downloads/$filename" --file="$f" 2>/dev/null || echo "        (skipped $filename)"
+    done
+    echo "          ✓ Downloads sync complete"
+  else
+    echo "          (no server/downloads directory)"
+  fi
 
   echo ""
   echo "╔══════════════════════════════════════════════════╗"
@@ -107,6 +123,7 @@ else
   echo "║  Worker:  https://rmpg-flex.rmpgutah.us         ║"
   echo "║  Pages:   https://rmpgutah.us                   ║"
   echo "║  D1:      rmpg-flex                             ║"
+  echo "║  R2:      rmpg-flex-downloads synced            ║"
   echo "╚══════════════════════════════════════════════════╝"
 fi
 

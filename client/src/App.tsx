@@ -11,6 +11,7 @@ import ErrorBoundary from './components/ErrorBoundary';
 import WebUpdateBanner from './components/WebUpdateBanner';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
+import DownloadsPage from './pages/DownloadsPage';
 // Core pages loaded eagerly (most used)
 import DashboardPage from './pages/DashboardPage';
 import DispatchPage from './pages/dispatch';
@@ -257,6 +258,7 @@ function AppRoutes() {
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
           />
+          <Route path="/downloads" element={<DownloadsPage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />

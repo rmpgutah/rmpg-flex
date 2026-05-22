@@ -578,6 +578,293 @@ export async function getVisionKey(db: D1DbProxy): Promise<string | null> {
   return null;
 }
 
+// ── Vehicle Information Extraction ────────────────────────────
+
+export function extractVehicle(text: string): { plate: string; state: string; make: string; model: string; year: string; color: string; vin: string } | null {
+  const uText = text.toUpperCase();
+  let plate = '', state = '', make = '', model = '', year = '', color = '', vin = '';
+
+  // VIN: 17-char alphanumeric (no I,O,Q)
+  const vinMatch = uText.match(/\b([A-HJ-NPR-Z0-9]{17})\b/);
+  if (vinMatch) vin = vinMatch[1];
+
+  // License plate: after LABEL patterns
+  const plateMatch = afterLabel(uText, [
+    /(?:PLATE|LICENSE\s*PLATE|TAG|LIC\s*PLATE|LP)[:\s]*([A-Z0-9]{1,10})\b/,
+    /(?:VEHICLE\s*PLATE|VEH\s*TAG|VLT)[:\s]*([A-Z0-9]{1,10})\b/,
+  ]);
+  if (plateMatch) plate = plateMatch;
+
+  // Plate state
+  const stateMatch = uText.match(new RegExp(`PLATE\\s*(?:STATE|ST|--?)\\s*(${FIVE_STATES.replace(/\\b/g, '')}|[A-Z]{2})(?:\\s|$)`));
+  if (stateMatch) state = stateMatch[1];
+
+  // Make/Model
+  const makes = ['ACURA','ALFA ROMEO','ASTON MARTIN','AUDI','BMW','BUICK','CADILLAC','CHEVROLET','CHEVY','CHRYSLER','DODGE','FERRARI','FIAT','FORD','GMC','HONDA','HYUNDAI','INFINITI','JAGUAR','JEEP','KIA','LAMBORGHINI','LAND ROVER','LEXUS','LINCOLN','MASERATI','MAZDA','MERCEDES','MERCURY','MINI','MITSUBISHI','NISSAN','OLDSMOBILE','PLYMOUTH','PONTIAC','PORSCHE','RAM','RANGE ROVER','SATURN','SCION','SUBARU','SUZUKI','TESLA','TOYOTA','VOLKSWAGEN','VOLVO'];
+  const makeMatch = text.match(new RegExp(`\\b(${makes.join('|')})\\b`, 'i'));
+  if (makeMatch) make = makeMatch[1];
+
+  // Model: line after make
+  if (make) {
+    const afterMake = text.substring(text.toUpperCase().indexOf(make.toUpperCase()) + make.length, text.toUpperCase().indexOf(make.toUpperCase()) + make.length + 60);
+    const modelMatch = afterMake.match(/([A-Z][A-Z0-9]{2,12})/);
+    if (modelMatch) model = modelMatch[1];
+  }
+
+  // Year: 1990-2028
+  const yearMatch = text.match(/\b(19[9]\d|20[0-2]\d)\b/);
+  if (yearMatch) year = yearMatch[1];
+
+  // Color
+  const colors = ['BLACK','WHITE','SILVER','GRAY','GREY','RED','BLUE','GREEN','YELLOW','BROWN','BEIGE','MAROON','PURPLE','ORANGE','GOLD','TAN','TEAL','NAVY','AQUA','LIME','CRIMSON','BURGUNDY','CHARCOAL','BRONZE','COPPER'];
+  const colorMatch = uText.match(new RegExp(`\\b(${colors.join('|')})\\b`));
+  if (colorMatch) color = colorMatch[1];
+
+  if (!plate && !vin && !make) return null;
+  return { plate, state, make, model, year, color, vin };
+}
+
+// ── Phone Number Extraction ──────────────────────────────────
+
+export function extractPhoneNumbers(text: string): string[] {
+  const phones: string[] = [];
+  const patterns = [
+    /\((\d{3})\)\s*(\d{3})[-.]?(\d{4})/g,
+    /(\d{3})[-.](\d{3})[-.](\d{4})/g,
+    /\b(\d{3})(\d{3})(\d{4})\b/g,
+  ];
+  for (const p of patterns) {
+    let m;
+    while ((m = p.exec(text)) !== null) {
+      const formatted = `(${m[1]}) ${m[2]}-${m[3]}`;
+      if (!phones.includes(formatted)) phones.push(formatted);
+    }
+  }
+  return phones.slice(0, 5);
+}
+
+// ── SSN / DL Number Extraction ───────────────────────────────
+
+export function extractSSN(text: string): string {
+  const m = text.match(/\b(\d{3})-(\d{2})-(\d{4})\b/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : '';
+}
+
+export function extractDLNumber(text: string): string {
+  const uText = text.toUpperCase();
+  return afterLabel(uText, [
+    /(?:DL|LICENSE|DRIVERS?\s*LIC|IDENTIFICATION)[:\s#]*(?:NO|NUM|NUMBER|#)?[:\s]*([A-Z0-9]{4,18})\b/,
+    /(?:STATE\s*ID|ID\s*CARD)[:\s#]*(?:NO|NUM|NUMBER|#)?[:\s]*([A-Z0-9]{4,18})\b/,
+  ]) || '';
+}
+
+// ── Multi-Document Correlation ───────────────────────────────
+// Merges fields from multiple document sources, keeping the
+// highest-confidence value per field, and tracks which document
+// each field came from.
+
+export interface CorrelatedField {
+  value: string;
+  confidence: number;
+  source: string;         // document type this came from
+  sourceIndex: number;    // index in the original documents array
+}
+
+export function correlateFields(documents: Array<{ type: string; text: string; index: number }>): Record<string, CorrelatedField> {
+  const result: Record<string, CorrelatedField> = {};
+
+  const extractors: Array<{ key: string; extract: (text: string) => { value: string; confidence: number } }> = [
+    // Person name fields — multiple label attempts
+    { key: 'first_name', extract: (t) => {
+      const n = t.match(/Party to Serve[:\s]*([A-Za-z]+)/i) || t.match(/Recipient[:\s]*([A-Za-z]+)/i);
+      return { value: n?.[1] || '', confidence: n ? 0.7 : 0 };
+    }},
+    { key: 'last_name', extract: (t) => {
+      const nameLine = t.match(/Party to Serve[:\s]*([^\n]+)/i) || t.match(/Recipient[:\s]*([^\n]+)/i);
+      if (!nameLine) return { value: '', confidence: 0 };
+      const parts = nameLine[1].replace(/,.*$/, '').trim().split(/\s+/);
+      return { value: parts[parts.length - 1] || '', confidence: 0.7 };
+    }},
+    { key: 'middle_name', extract: (t) => {
+      const nameLine = t.match(/Party to Serve[:\s]*([^\n]+)/i) || t.match(/Recipient[:\s]*([^\n]+)/i);
+      if (!nameLine) return { value: '', confidence: 0 };
+      const parts = nameLine[1].replace(/,.*$/, '').trim().split(/\s+/);
+      if (parts.length > 2) return { value: parts.slice(1, -1).join(' '), confidence: 0.5 };
+      return { value: '', confidence: 0 };
+    }},
+    { key: 'defendant', extract: (t) => {
+      const d = t.match(/Defendant[:\s]+([^\n]+)/i);
+      return { value: d?.[1]?.trim() || '', confidence: d ? 0.7 : 0 };
+    }},
+    { key: 'plaintiff', extract: (t) => {
+      const p = t.match(/Plaintiff[:\s]+([^\n]+)/i) || (t.match(/Plaintiff[\s\S]*?\n([A-Z][A-Za-z .]+)/i));
+      return { value: p?.[1]?.trim() || '', confidence: p ? 0.6 : 0 };
+    }},
+    { key: 'full_name', extract: (t) => {
+      const n = t.match(/Party to Serve[:\s]*([^\n]+)/i) || t.match(/Recipient[:\s]*([^\n]+)/i) || t.match(/Defendant[:\s]+([^\n]+)/i);
+      return { value: n?.[1]?.trim() || '', confidence: n ? 0.7 : 0 };
+    }},
+    // Address
+    { key: 'address', extract: (t) => {
+      const a = t.match(/^Address\s*\n\s*(.+)$/im) || t.match(/(\d+\s+[A-Za-z].*?,\s*[A-Za-z ]+,\s*[A-Z]{2}\s*\d{5}[^)\n]*)/);
+      return { value: a?.[1]?.trim() || '', confidence: a ? 0.6 : 0 };
+    }},
+    { key: 'city', extract: (t) => {
+      const addr = t.match(/^Address\s*\n\s*(.+)$/im) || t.match(/(\d+\s+[A-Za-z].*?,\s*[A-Za-z ]+,\s*[A-Z]{2}\s*\d{5}[^)\n]*)/);
+      if (!addr) return { value: '', confidence: 0 };
+      const parts = addr[1].split(',').map(s => s.trim());
+      return { value: parts[1] || '', confidence: 0.5 };
+    }},
+    { key: 'state', extract: (t) => {
+      const st = t.match(/([A-Z]{2})\s*\d{5}/);
+      return { value: st?.[1] || 'UT', confidence: st ? 0.7 : 0.2 };
+    }},
+    { key: 'zip_code', extract: (t) => {
+      const z = t.match(/\b(\d{5}(?:-\d{4})?)\b/);
+      return { value: z?.[1] || '', confidence: z ? 0.7 : 0 };
+    }},
+    // DOB
+    { key: 'dob', extract: (t) => {
+      const d = t.match(/DOB[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+      return { value: d?.[1] || '', confidence: d ? 0.7 : 0 };
+    }},
+    // Case Info
+    { key: 'case_number', extract: (t) => {
+      const c = t.match(/Case\s*[#:]\s*(\S+)/i) || t.match(/\((\d{5,})\)/);
+      return { value: c?.[1] || '', confidence: c ? 0.8 : 0 };
+    }},
+    { key: 'court', extract: (t) => {
+      const c = t.match(/((?:FIRST|SECOND|THIRD|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH)\s+JUDICIAL\s+DISTRICT\s+COURT[^,\n]*)/i);
+      return { value: c?.[1]?.trim() || '', confidence: c ? 0.8 : 0 };
+    }},
+    { key: 'job_number', extract: (t) => {
+      const j = t.match(/(?:Job|JOB)[:\s#]*(\d+)/);
+      return { value: j?.[1] || '', confidence: j ? 0.7 : 0 };
+    }},
+    // Attorney
+    { key: 'attorney_name', extract: (t) => {
+      const a = t.match(/Attorney for Plaintiff[:\s]+([^\n]+)/i) || t.match(/Attorney[:\s]+([^\n]+)/i);
+      return { value: a?.[1]?.trim() || '', confidence: a ? 0.6 : 0 };
+    }},
+    { key: 'attorney_phone', extract: (t) => {
+      const phones = extractPhoneNumbers(t);
+      if (phones.length > 0) {
+        const attorneySection = t.split(/Attorney|Counsel|Bar/i).slice(1).join(' ');
+        if (attorneySection && phones.some(p => attorneySection.includes(p.replace(/[()-\s]/g, '')))) {
+          return { value: phones[0], confidence: 0.5 };
+        }
+      }
+      return { value: '', confidence: 0 };
+    }},
+    { key: 'attorney_email', extract: (t) => {
+      const e = t.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+      return { value: e?.[1] || '', confidence: e ? 0.6 : 0 };
+    }},
+    // Court Documents
+    { key: 'document_type_court', extract: (t) => {
+      if (/SUBPOENA/i.test(t)) return { value: 'subpoena', confidence: 0.8 };
+      if (/SUMMONS/i.test(t)) return { value: 'summons', confidence: 0.8 };
+      if (/COMPLAINT/i.test(t)) return { value: 'complaint', confidence: 0.7 };
+      if (/EVICTION|UNLAWFUL\s*DETAINER/i.test(t)) return { value: 'eviction', confidence: 0.7 };
+      if (/RESTRAINING|PROTECTIVE\s*ORDER/i.test(t)) return { value: 'restraining_order', confidence: 0.7 };
+      if (/WRIT/i.test(t)) return { value: 'writ', confidence: 0.6 };
+      if (/NOTICE/i.test(t)) return { value: 'notice', confidence: 0.5 };
+      if (/PETITION/i.test(t)) return { value: 'petition', confidence: 0.6 };
+      return { value: '', confidence: 0 };
+    }},
+    // Fee / Financial
+    { key: 'fee', extract: (t) => {
+      const f = t.match(/Fee[:\s]*\$?(\d+\.?\d*)/i);
+      return { value: f?.[1] || '', confidence: f ? 0.5 : 0 };
+    }},
+    // Instructions
+    { key: 'instructions', extract: (t) => {
+      const m = t.match(/Instructions\s*\n([\s\S]*?)(?:\n\n|\nAddress|\n\$|\n[A-Z][a-z]+ [A-Z]|\nPlaintiff)/i);
+      return { value: m?.[1]?.replace(/\n/g, ' ')?.trim() || '', confidence: m ? 0.5 : 0 };
+    }},
+    // Due Date
+    { key: 'due_date', extract: (t) => {
+      const d = t.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i);
+      return { value: d?.[1] || '', confidence: d ? 0.6 : 0 };
+    }},
+    // Vehicles (extract from text, max one)
+    { key: 'vehicle_plate', extract: (t) => {
+      const v = extractVehicle(t);
+      return { value: v?.plate || '', confidence: v?.plate ? 0.5 : 0 };
+    }},
+    { key: 'vehicle_vin', extract: (t) => {
+      const v = extractVehicle(t);
+      return { value: v?.vin || '', confidence: v?.vin ? 0.6 : 0 };
+    }},
+    { key: 'vehicle_make', extract: (t) => {
+      const v = extractVehicle(t);
+      return { value: v?.make || '', confidence: v?.make ? 0.4 : 0 };
+    }},
+    { key: 'vehicle_model', extract: (t) => {
+      const v = extractVehicle(t);
+      return { value: v?.model || '', confidence: v?.model ? 0.3 : 0 };
+    }},
+    { key: 'vehicle_year', extract: (t) => {
+      const v = extractVehicle(t);
+      return { value: v?.year || '', confidence: v?.year ? 0.3 : 0 };
+    }},
+    { key: 'vehicle_color', extract: (t) => {
+      const v = extractVehicle(t);
+      return { value: v?.color || '', confidence: v?.color ? 0.3 : 0 };
+    }},
+    // Phone / SSN
+    { key: 'phone_numbers', extract: (t) => {
+      const phones = extractPhoneNumbers(t);
+      return { value: phones.join('; '), confidence: phones.length > 0 ? 0.5 : 0 };
+    }},
+    { key: 'ssn', extract: (t) => {
+      const s = extractSSN(t);
+      return { value: s, confidence: s ? 0.3 : 0 };
+    }},
+    { key: 'dl_number', extract: (t) => {
+      const d = extractDLNumber(t);
+      return { value: d, confidence: d ? 0.4 : 0 };
+    }},
+    // Attorney bar number
+    { key: 'attorney_bar_number', extract: (t) => {
+      const b = t.match(/Bar#?\s*(\d+)/i);
+      return { value: b?.[1] || '', confidence: b ? 0.5 : 0 };
+    }},
+  ];
+
+  for (const doc of documents) {
+    const text = doc.text;
+    for (const ext of extractors) {
+      const extracted = ext.extract(text);
+      if (!extracted.value) continue;
+
+      const existing = result[ext.key];
+      if (!existing || extracted.confidence > existing.confidence) {
+        result[ext.key] = {
+          value: extracted.value,
+          confidence: extracted.confidence,
+          source: doc.type,
+          sourceIndex: doc.index,
+        };
+      }
+    }
+  }
+
+  return result;
+}
+
+// ── Overall document confidence score ────────────────────────
+
+export function calculateDocumentConfidence(fields: Record<string, CorrelatedField>): number {
+  const vals = Object.values(fields);
+  if (vals.length === 0) return 0;
+  const avg = vals.reduce((sum, f) => sum + f.confidence, 0) / vals.length;
+  // Boost by field count (more extracted fields = higher confidence)
+  const countBonus = Math.min(0.2, vals.length * 0.01);
+  return Math.min(1, avg + countBonus);
+}
+
+
 interface D1DbProxy {
   prepare(sql: string): {
     get(...params: any[]): Promise<any>;

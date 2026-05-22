@@ -334,6 +334,7 @@ import { mountServemanagerRoutes } from './routes/servemanager-worker';
 import { mountMicrobiltRoutes } from './routes/microbilt-worker';
 import { mountSexOffenderRegistryRoutes } from './routes/sexOffenderRegistry-worker';
 import { mountAdminMapConfigRoutes } from './routes/adminMapConfig-worker';
+import { mountDownloadRoutes } from './routes/downloads-worker';
 
 mountAuthRoutes(app);
 mountDispatchRoutes(app);
@@ -396,6 +397,7 @@ mountServemanagerRoutes(app);
 mountMicrobiltRoutes(app);
 mountSexOffenderRegistryRoutes(app);
 mountAdminMapConfigRoutes(app);
+mountDownloadRoutes(app);
 
 // ─── SPA Fallback ────────────────────────────────────────
 app.all('/api/*', (c) => {

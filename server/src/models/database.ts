@@ -5498,6 +5498,10 @@ function migrateSchema(): void {
   addCol('field_interviews', 'zone_beat', 'TEXT');
   addCol('field_interviews', 'updated_at', 'TEXT');
 
+  // Serve intake — batch FK and evidence links for the OCR pipeline
+  addCol('serve_queue', 'intake_batch_id', 'INTEGER');
+  addCol('serve_queue', 'intake_document_ids', "TEXT DEFAULT '[]'");
+
   console.log('Schema migration completed.');
 }
 
@@ -6287,6 +6291,56 @@ function seedData(): void {
   evidenceLocations.forEach(([name, desc], i) => {
     insertConfig.run(name, JSON.stringify({ description: desc }), 'evidence_location', i, now, now);
   });
+
+  // ── Serve Intake OCR: document tracking ─────────────
+  // Tracks each uploaded document with OCR metadata, extracted text, and
+  // linkages to created records (persons, property, call, serve_queue, vehicles).
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS serve_intake_batches (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      client_id INTEGER,
+      status TEXT NOT NULL DEFAULT 'processing' CHECK(status IN ('processing','completed','failed','partial')),
+      total_documents INTEGER NOT NULL DEFAULT 0,
+      persons_created INTEGER NOT NULL DEFAULT 0,
+      properties_created INTEGER NOT NULL DEFAULT 0,
+      vehicles_created INTEGER NOT NULL DEFAULT 0,
+      dispatch_call_id INTEGER,
+      serve_queue_id INTEGER,
+      batch_result TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id),
+      FOREIGN KEY (dispatch_call_id) REFERENCES calls_for_service(id),
+      FOREIGN KEY (serve_queue_id) REFERENCES serve_queue(id)
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_sib_user ON serve_intake_batches(user_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_sib_status ON serve_intake_batches(status)`).run();
+
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS serve_intake_documents (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      batch_id INTEGER NOT NULL REFERENCES serve_intake_batches(id) ON DELETE CASCADE,
+      original_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL,
+      file_size_bytes INTEGER NOT NULL DEFAULT 0,
+      document_type TEXT NOT NULL DEFAULT 'unknown',
+      ocr_engine TEXT DEFAULT 'pdftext',
+      extracted_text TEXT,
+      ocr_confidence REAL DEFAULT 0,
+      ocr_fields TEXT,
+      person_ids TEXT DEFAULT '[]',
+      vehicle_ids TEXT DEFAULT '[]',
+      property_id INTEGER,
+      evidence_id INTEGER,
+      hash_sha256 TEXT,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','processing','extracted','correlated','failed')),
+      error_message TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_sid_batch ON serve_intake_documents(batch_id)`).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_sid_status ON serve_intake_documents(status)`).run();
 
   // ─── PANIC / RADIO CONFIG DEFAULTS ─────────────────
   const panicConfigs = [

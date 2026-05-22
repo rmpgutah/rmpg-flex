@@ -112,6 +112,14 @@ import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
 import geocodeRoutes from './routes/geocode';
 import adminMapConfigRoutes from './routes/adminMapConfig';
+import useOfForceRoutes from './routes/useOfForce';
+import dispatchMessagesRoutes from './routes/dispatchMessages';
+import crmCompetitorMonitorRoutes from './routes/crmCompetitorMonitor';
+import dashboardStatsRoutes from './routes/dashboardStats';
+import auditPdfEngineRoutes from './routes/auditPdfEngine';
+import pdfArtifactsRoutes from './routes/pdfArtifacts';
+import pdfEmailRoutes from './routes/pdfEmail';
+import pdfEngineFlagsRoutes from './routes/pdfEngine';
 import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
@@ -410,6 +418,14 @@ app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
 app.use('/api/admin', adminMapConfigRoutes);
 app.use('/api/geocode', geocodeRoutes);
+app.use('/api/use-of-force', useOfForceRoutes);
+app.use('/api/audit', auditPdfEngineRoutes);
+app.use('/api/dispatch-messages', dispatchMessagesRoutes);
+app.use('/api/crm/competitor-monitor', crmCompetitorMonitorRoutes);
+app.use('/api/dashboard', dashboardStatsRoutes);
+app.use('/api/pdf-artifacts', pdfArtifactsRoutes);
+app.use('/api/pdf-engine', pdfEmailRoutes);
+app.use('/api/admin/pdf-engine', pdfEngineFlagsRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
