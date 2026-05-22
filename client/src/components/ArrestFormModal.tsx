@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { ShieldAlert } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
+import AddressAutocomplete from './AddressAutocomplete';
 import { localToday } from '../utils/dateUtils';
 
 // ── Types ─────────────────────────────────────────────────
@@ -343,11 +344,17 @@ export default function ArrestFormModal({
             </div>
           </div>
 
-          {/* Address */}
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Address</label>
-            <input name="address" type="text" className="input-dark mt-1" placeholder="Street address" value={form.address} onChange={handleChange} />
-          </div>
+           {/* Address */}
+           <div>
+             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Address</label>
+             <AddressAutocomplete
+               value={form.address}
+               onChange={(value) => setForm(prev => ({ ...prev, address: value }))}
+               placeholder="Enter address..."
+               className="input-dark mt-1 w-full"
+               name="address"
+             />
+           </div>
         </>
       )}
 

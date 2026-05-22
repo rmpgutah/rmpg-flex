@@ -45,6 +45,7 @@ import { formatAddressDisplay } from '../utils/statusLabels';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -1438,10 +1439,21 @@ export default function CitationsPage() {
               </div>
             </div>
 
-            <div>
-              <label className="field-label">Address</label>
-              <input type="text" value={form.person_address} onChange={e => updateField('person_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
+             <div>
+               <label className="field-label">Address</label>
+               <AddressAutocomplete
+                 value={form.person_address}
+                 onChange={(value) => updateField('person_address', value)}
+                 placeholder="Enter address..."
+                 className="input-dark w-full py-2 text-xs min-h-[36px]"
+                 name="person_address"
+                 onSelect={(addr) => {
+                   // Update related fields when address is selected
+                   updateField('person_address', addr.formatted);
+                   // Optionally auto-fill city/state/zip if we had separate fields
+                 }}
+               />
+             </div>
           </div>
         </section>
 
@@ -1559,10 +1571,20 @@ export default function CitationsPage() {
               <label className="field-label">Court Name</label>
               <input type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
-            <div>
-              <label className="field-label">Court Address</label>
-              <input type="text" value={form.court_address} onChange={e => updateField('court_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
+             <div>
+               <label className="field-label">Court Address</label>
+               <AddressAutocomplete
+                 value={form.court_address}
+                 onChange={(value) => updateField('court_address', value)}
+                 placeholder="Enter court address..."
+                 className="input-dark w-full py-2 text-xs min-h-[36px]"
+                 name="court_address"
+                 onSelect={(addr) => {
+                   // Update the court address field with the selected formatted address
+                   updateField('court_address', addr.formatted);
+                 }}
+               />
+             </div>
           </div>
         </section>
 

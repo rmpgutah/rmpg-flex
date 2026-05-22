@@ -9,6 +9,7 @@ import React, { useState, useEffect } from 'react';
 import { Car } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
+import AddressAutocomplete from './AddressAutocomplete';
 import type { DashCamVideo, VideoClassification } from '../types';
 
 export interface DashCamVideoEditData {
@@ -155,16 +156,21 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
             step="1"
           />
         </div>
-        <div>
-          <label className="field-label mb-1 block">Address</label>
-          <input
-            type="text"
-            className="input-dark"
-            value={form.address}
-            onChange={e => set('address', e.target.value)}
-            placeholder="e.g. 1200 N Main St, Vernal"
-          />
-        </div>
+         <div>
+           <label className="field-label mb-1 block">Address</label>
+           <AddressAutocomplete
+             value={form.address}
+             onChange={(value) => set('address', value)}
+             placeholder="Enter address..."
+             className="input-dark"
+             name="address"
+             onSelect={(addr) => {
+               set('address', addr.formatted);
+               set('latitude', addr.latitude != null ? String(addr.latitude) : '');
+               set('longitude', addr.longitude != null ? String(addr.longitude) : '');
+             }}
+           />
+         </div>
       </div>
 
       {/* Latitude + Longitude */}

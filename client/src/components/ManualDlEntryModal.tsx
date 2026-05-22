@@ -8,6 +8,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { CreditCard } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
+import AddressAutocomplete from './AddressAutocomplete';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -228,34 +229,47 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
         </div>
       </fieldset>
 
-      {/* Address */}
-      <fieldset>
-        <legend className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-2">Address</legend>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="col-span-2">
-            <label className="field-label">Street Address</label>
-            <input className="input-dark w-full" value={form.address} onChange={e => set('address', e.target.value)} />
-          </div>
-          <div>
-            <label className="field-label">Apt / Unit</label>
-            <input className="input-dark w-full" value={form.address2} onChange={e => set('address2', e.target.value)} />
-          </div>
-          <div>
-            <label className="field-label">City</label>
-            <input className="input-dark w-full" value={form.city} onChange={e => set('city', e.target.value)} />
-          </div>
-          <div>
-            <label className="field-label">State</label>
-            <select className="select-dark w-full" value={form.address_state} onChange={e => set('address_state', e.target.value)}>
-              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="field-label">ZIP</label>
-            <input className="input-dark w-full" value={form.postal_code} onChange={e => set('postal_code', e.target.value)} placeholder="84101" />
-          </div>
-        </div>
-      </fieldset>
+       {/* Address */}
+       <fieldset>
+         <legend className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-2">Address</legend>
+         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+           <div className="col-span-2">
+             <label className="field-label">Street Address</label>
+             <AddressAutocomplete
+               value={form.address}
+               onChange={(value) => set('address', value)}
+               placeholder="Enter street address..."
+               className="input-dark w-full"
+               name="address"
+               onSelect={(addr) => {
+                 // Auto-fill related fields when address is selected
+                 set('address', addr.formatted);
+                 set('city', addr.city);
+                 set('address_state', addr.state);
+                 set('postal_code', addr.zip);
+               }}
+             />
+           </div>
+           <div>
+             <label className="field-label">Apt / Unit</label>
+             <input className="input-dark w-full" value={form.address2} onChange={e => set('address2', e.target.value)} />
+           </div>
+           <div>
+             <label className="field-label">City</label>
+             <input className="input-dark w-full" value={form.city} onChange={e => set('city', e.target.value)} />
+           </div>
+           <div>
+             <label className="field-label">State</label>
+             <select className="select-dark w-full" value={form.address_state} onChange={e => set('address_state', e.target.value)}>
+               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+             </select>
+           </div>
+           <div>
+             <label className="field-label">ZIP</label>
+             <input className="input-dark w-full" value={form.postal_code} onChange={e => set('postal_code', e.target.value)} placeholder="84101" />
+           </div>
+         </div>
+       </fieldset>
     </FormModal>
   );
 }
