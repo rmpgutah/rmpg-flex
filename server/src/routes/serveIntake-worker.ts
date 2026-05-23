@@ -237,57 +237,39 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
       const defendantZip = parsed.zip || '';
       const caseNumber = parsed.case_number || '';
 
-      // Ensure persons exist
+      // Ensure persons exist (match actual persons table: first_name, last_name, address)
       const persons: any[] = [];
-      if (defendantName) {
-        const existing = await db.prepare('SELECT id FROM persons WHERE full_name = ?').get(defendantName) as any;
+      const name = extractName(defendantName);
+      if (defendantName && name.first) {
+        const existing = await db.prepare('SELECT id FROM persons WHERE first_name = ? AND last_name = ? LIMIT 1').get(name.first, name.last) as any;
         if (existing) {
           persons.push({ id: existing.id, role: 'defendant' });
         } else {
-          const nameParts = defendantName.split(/\s+/);
           const res = await db.prepare(
-            'INSERT INTO persons (first_name, last_name, full_name, address, city, state, zip_code, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
-          ).run(nameParts[0] || '', nameParts.slice(1).join(' ') || '', defendantName,
-            defendantAddress || null, defendantCity || null, defendantState || null, defendantZip || null, now, now);
+            'INSERT INTO persons (first_name, last_name, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
+          ).run(name.first, name.last,
+            defendantAddress || null, now, now);
           persons.push({ id: Number(res.meta.last_row_id), role: 'defendant' });
         }
       }
-      if (plaintiffName) {
-        const existing = await db.prepare('SELECT id FROM persons WHERE full_name = ?').get(plaintiffName) as any;
-        if (existing) {
-          persons.push({ id: existing.id, role: 'plaintiff' });
-        } else {
-          const nameParts = plaintiffName.split(/\s+/);
-          const res = await db.prepare(
-            'INSERT INTO persons (first_name, last_name, full_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)'
-          ).run(nameParts[0] || '', nameParts.slice(1).join(' ') || '', plaintiffName, now, now);
-          persons.push({ id: Number(res.meta.last_row_id), role: 'plaintiff' });
-        }
-      }
 
-      // Create serve_queue entry
+      // Create serve_queue entry (match actual serve_queue schema)
       const serveResult = await db.prepare(`
-        INSERT INTO serve_queue (client_id, case_number, defendant_name, plaintiff_name,
-          defendant_address, defendant_city, defendant_state, defendant_zip,
-          instructions, document_text, parsed_data, status, assigned_officer_id,
-          created_by, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)
+        INSERT INTO serve_queue (client_id, case_number, recipient_name, recipient_address,
+          recipient_city, recipient_state, recipient_zip, document_type, court_name,
+          client_name, attorney_name, priority, deadline, service_instructions, notes,
+          officer_id, sm_job_id, status, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        client_id || null, caseNumber, defendantName, plaintiffName,
+        client_id || null, caseNumber || null, defendantName || null,
         defendantAddress || null, defendantCity || null, defendantState || null, defendantZip || null,
-        parsed.instructions || null, combinedText.substring(0, 10000), JSON.stringify(parsed),
-        null, user.userId, now, now
+        parsed.document_type || 'unknown', parsed.jurisdiction || parsed.court || null,
+        plaintiffName || null, parsed.plaintiff_attorney || null,
+        'normal', parsed.court_date || null, parsed.instructions || null, combinedText.substring(0, 2000) || null,
+        null, parsed.job_number || null, 'pending', now, now
       );
       const serveId = Number(serveResult.meta.last_row_id);
 
-      // Link persons
-      for (const p of persons) {
-        await db.prepare(
-          'INSERT INTO serve_queue_persons (serve_queue_id, person_id, role, created_at) VALUES (?, ?, ?, ?)'
-        ).run(serveId, p.id, p.role, now);
-      }
-
-      const name = extractName(defendantName);
       return c.json({
         success: true,
         person_id: persons.find(p => p.role === 'defendant')?.id || persons[0]?.id || null,
