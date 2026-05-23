@@ -133,6 +133,14 @@ function parseInfoPage(text: string): any {
   };
 }
 
+function extractName(nameStr: string): { first: string; middle: string; last: string } {
+  if (!nameStr) return { first: '', middle: '', last: '' };
+  const parts = nameStr.replace(/,.*$/, '').replace(/ an individual/i, '').trim().split(/\s+/);
+  if (parts.length >= 3) return { first: parts[0], middle: parts.slice(1, -1).join(' '), last: parts[parts.length - 1] };
+  if (parts.length === 2) return { first: parts[0], middle: '', last: parts[1] };
+  return { first: nameStr, middle: '', last: '' };
+}
+
 export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>): void {
   const api = new Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>();
   api.use('/*', authenticateToken);
@@ -279,9 +287,34 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
         ).run(serveId, p.id, p.role, now);
       }
 
+      const name = extractName(defendantName);
       return c.json({
-        success: true, id: serveId, parsed,
+        success: true,
+        person_id: persons.find(p => p.role === 'defendant')?.id || persons[0]?.id || null,
+        property_id: null,
+        call_id: null,
+        call_number: `SQ-${String(serveId).padStart(6, '0')}`,
+        serve_queue_id: serveId,
+        latitude: null,
+        longitude: null,
+        weather: null,
+        lighting: null,
+        parsed,
         persons: persons.map(p => ({ id: p.id, role: p.role })),
+        extracted: {
+          name,
+          dob: '',
+          address: defendantAddress,
+          plaintiff: plaintiffName,
+          court: parsed.jurisdiction || parsed.court || '',
+          docs: '',
+          instructions: parsed.instructions || '',
+          jobNumber: parsed.job_number || '',
+          caseNumber,
+          dueDate: parsed.court_date || '',
+          attorney: { name: parsed.plaintiff_attorney || '', phone: '', email: '', bar: '' },
+          fee: '',
+        },
       }, 201);
     } catch (err: any) {
       return c.json({ error: 'Intake processing failed', code: 'INTAKE_PROCESSING_FAILED' }, 500);

@@ -1,10 +1,13 @@
-/// <reference types="react" />
-import React, { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Upload, FileText, CheckCircle, AlertTriangle, Loader2, MapPin, User, Building2, Phone, X, Camera, Edit3, Eye } from 'lucide-react';
+import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist';
+import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+
+GlobalWorkerOptions.workerSrc = workerUrl;
 
 interface UploadedFile {
   name: string;
@@ -74,20 +77,17 @@ export default function ServeIntakePage() {
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const resp = await fetch('/api/serve-intake/extract-text', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('rmpg_token')}`,
-          'Content-Type': 'application/octet-stream',
-        },
-        body: arrayBuffer,
-      });
-      if (resp.ok) {
-        const data = await resp.json();
-        return data.text || '';
+      const pdf = await getDocument({ data: arrayBuffer }).promise;
+      const pages: string[] = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        pages.push(content.items.map(item => (item as any).str).join(' '));
       }
-    } catch { }
-    return '';
+      return pages.join('\n');
+    } catch {
+      return '';
+    }
   }, []);
 
   const ocrScanImage = useCallback(async (file: File): Promise<OcrScanResult | null> => {
@@ -366,9 +366,9 @@ export default function ServeIntakePage() {
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Person Created</span>
                 </div>
                 <p className="text-sm font-bold text-white">
-                  {result.extracted.name.first} {result.extracted.name.middle} {result.extracted.name.last}
+                  {result.extracted?.name?.first} {result.extracted?.name?.middle} {result.extracted?.name?.last}
                 </p>
-                {result.extracted.dob && <p className="text-[10px] text-rmpg-400">DOB: {result.extracted.dob}</p>}
+                {result.extracted?.dob && <p className="text-[10px] text-rmpg-400">DOB: {result.extracted.dob}</p>}
                 <button onClick={() => navigate('/records')} className="text-[9px] text-brand-400 mt-1 hover:underline">
                   View in Records →
                 </button>
@@ -379,7 +379,7 @@ export default function ServeIntakePage() {
                   <Building2 className="w-3.5 h-3.5 text-rmpg-400" />
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Document Link</span>
                 </div>
-                <p className="text-xs text-white">{result.extracted.address || 'No address extracted'}</p>
+                <p className="text-xs text-white">{result.extracted?.address || 'No address extracted'}</p>
                 {result.latitude && result.longitude && (
                   <p className="text-[9px] text-green-400 mt-1">
                     <MapPin className="w-3 h-3 inline" /> {result.latitude.toFixed(6)}, {result.longitude.toFixed(6)}
@@ -401,12 +401,12 @@ export default function ServeIntakePage() {
             </div>
 
             <div className="mt-3 pt-3 border-t border-rmpg-700 grid grid-cols-2 gap-2 text-[10px]">
-              {result.extracted.court && <div><span className="text-rmpg-500">Court:</span> <span className="text-rmpg-300">{result.extracted.court}</span></div>}
-              {result.extracted.plaintiff && <div><span className="text-rmpg-500">Plaintiff:</span> <span className="text-rmpg-300">{result.extracted.plaintiff.substring(0, 60)}</span></div>}
-              {result.extracted.docs && <div><span className="text-rmpg-500">Documents:</span> <span className="text-rmpg-300">{result.extracted.docs}</span></div>}
-              {result.extracted.jobNumber && <div><span className="text-rmpg-500">Job #:</span> <span className="text-rmpg-300">{result.extracted.jobNumber}</span></div>}
-              {result.extracted.dueDate && <div><span className="text-rmpg-500">Due:</span> <span className="text-rmpg-300">{result.extracted.dueDate}</span></div>}
-              {result.extracted.attorney.name && <div><span className="text-rmpg-500">Attorney:</span> <span className="text-rmpg-300">{result.extracted.attorney.name}</span></div>}
+              {result.extracted?.court && <div><span className="text-rmpg-500">Court:</span> <span className="text-rmpg-300">{result.extracted.court}</span></div>}
+              {result.extracted?.plaintiff && <div><span className="text-rmpg-500">Plaintiff:</span> <span className="text-rmpg-300">{result.extracted.plaintiff.substring(0, 60)}</span></div>}
+              {result.extracted?.docs && <div><span className="text-rmpg-500">Documents:</span> <span className="text-rmpg-300">{result.extracted.docs}</span></div>}
+              {result.extracted?.jobNumber && <div><span className="text-rmpg-500">Job #:</span> <span className="text-rmpg-300">{result.extracted.jobNumber}</span></div>}
+              {result.extracted?.dueDate && <div><span className="text-rmpg-500">Due:</span> <span className="text-rmpg-300">{result.extracted.dueDate}</span></div>}
+              {result.extracted?.attorney?.name && <div><span className="text-rmpg-500">Attorney:</span> <span className="text-rmpg-300">{result.extracted.attorney.name}</span></div>}
             </div>
           </div>
 
