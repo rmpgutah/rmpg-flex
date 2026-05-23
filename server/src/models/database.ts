@@ -2061,6 +2061,37 @@ function migrateSchema(): void {
     console.log('Evidence table migration skipped or already done:', (err as Error).message);
   }
 
+  // ── EVIDENCE — add 'checked_out' to status CHECK constraint ──
+  // Checkout/checkin workflow writes status='checked_out' but the original
+  // CHECK only allowed received/in_storage/submitted_to_le/released/disposed.
+  try {
+    const evSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='evidence'").get() as any;
+    if (evSchema && evSchema.sql && !evSchema.sql.includes("'checked_out'")) {
+      db.pragma('foreign_keys = OFF');
+      db.exec(`DROP TABLE IF EXISTS evidence_new`);
+      const currentSql = evSchema.sql as string;
+      let checkMatch = currentSql.match(/CHECK\(status IN \(([^)]+)\)\)/);
+      if (checkMatch) {
+        const newCheck = currentSql.replace(
+          checkMatch[0],
+          `CHECK(status IN ('received','in_storage','submitted_to_le','released','disposed','checked_out'))`
+        );
+        const newSql = newCheck.replace('CREATE TABLE evidence', 'CREATE TABLE evidence_new');
+        db.exec(newSql);
+        const evCols = db.prepare("PRAGMA table_info(evidence)").all() as any[];
+        const evColNames = evCols.map((c: any) => c.name).join(', ');
+        db.exec(`INSERT INTO evidence_new (${evColNames}) SELECT ${evColNames} FROM evidence`);
+        db.exec(`DROP TABLE evidence`);
+        db.exec(`ALTER TABLE evidence_new RENAME TO evidence`);
+        db.pragma('foreign_keys = ON');
+        console.log('Migrated evidence: status CHECK now includes checked_out');
+      }
+    }
+  } catch (err) {
+    db.pragma('foreign_keys = ON');
+    console.log('Evidence checked_out migration skipped:', (err as Error).message);
+  }
+
   // ── RECORD LINKS — cross-record connections ───────────
   try {
     db.exec(`
@@ -4711,6 +4742,29 @@ function migrateSchema(): void {
   // ── Feature 8: Evidence temperature tracking ──
   addCol('evidence', 'storage_temperature', 'REAL');
   addCol('evidence', 'is_biological', 'INTEGER DEFAULT 0');
+
+  // ── Evidence — crime lab flags (POST/PUT write these) ──
+  addCol('evidence', 'narcotics_flag', 'INTEGER DEFAULT 0');
+  addCol('evidence', 'temperature_sensitive', 'INTEGER DEFAULT 0');
+
+  // ── Evidence — checkout/checkin workflow ──
+  addCol('evidence', 'checked_out_by', 'INTEGER');
+  addCol('evidence', 'checked_out_at', 'TEXT');
+  addCol('evidence', 'checkout_reason', 'TEXT');
+  addCol('evidence', 'expected_return_date', 'TEXT');
+  addCol('evidence', 'condition_on_return', 'TEXT');
+
+  // ── Evidence — release request/approval workflow ──
+  addCol('evidence', 'release_status', 'TEXT');
+  addCol('evidence', 'release_requested_by', 'INTEGER');
+  addCol('evidence', 'release_requested_at', 'TEXT');
+  addCol('evidence', 'release_to', 'TEXT');
+  addCol('evidence', 'release_reason', 'TEXT');
+  addCol('evidence', 'release_approved_by', 'INTEGER');
+  addCol('evidence', 'release_approved_at', 'TEXT');
+
+  // ── Evidence — location tracking ──
+  addCol('evidence', 'location_detail', 'TEXT');
   db.exec(`
     CREATE TABLE IF NOT EXISTS evidence_temperature_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

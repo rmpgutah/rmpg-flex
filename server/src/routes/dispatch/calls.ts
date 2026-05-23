@@ -251,6 +251,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
       alcohol_involved, drugs_involved, domestic_violence,
       supervisor_notified, le_notified, le_agency, le_case_number,
       damage_estimate, damage_description, responding_officer, action_taken,
+      secondary_type, contact_method,
       contract_id,
       // Extended operational flags
       mental_health_crisis, juvenile_involved, felony_in_progress, officer_safety_caution,
@@ -566,6 +567,8 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         evidence_collected: toBoolInt(evidence_collected),
         body_camera_active: toBoolInt(body_camera_active),
         photos_taken: toBoolInt(photos_taken),
+        secondary_type: secondary_type || null,
+        contact_method: contact_method || null,
         trespass_issued: toBoolInt(trespass_issued),
         vehicle_pursuit: toBoolInt(vehicle_pursuit),
         foot_pursuit: toBoolInt(foot_pursuit),
