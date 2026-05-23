@@ -650,11 +650,9 @@ router.get('/panic/:id/audio', requireRole('admin', 'supervisor', 'manager'), (r
       return;
     }
 
-    const safeName = attachment.original_name.replace(/["\r\n\\;]/g, '').trim().slice(0, 500);
     res.setHeader('Content-Type', attachment.mime_type || 'audio/webm');
     res.setHeader('Content-Length', attachment.file_size);
-    res.setHeader('Content-Disposition', `inline; filename="${safeName}"`);
-    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Content-Disposition', `inline; filename="${attachment.original_name}"`);
     fs.createReadStream(filePath).pipe(res);
   } catch (error: any) {
     console.error('[Panic] audio stream error:', error?.message || 'Unknown error');

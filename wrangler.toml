@@ -8,11 +8,8 @@ compatibility_flags = ["nodejs_compat"]
 
 # Route API requests to this Worker
 routes = [
-  { pattern = "rmpgutah.us/api/*", zone_name = "rmpgutah.us" },
-  { pattern = "www.rmpgutah.us/api/*", zone_name = "rmpgutah.us" },
-  { pattern = "rmpgutah.us/ws*", zone_name = "rmpgutah.us" },
-  { pattern = "rmpgutah.us/downloads/*", zone_name = "rmpgutah.us" },
-  { pattern = "rmpgutah.us/updates/*", zone_name = "rmpgutah.us" }
+  { pattern = "rmpgutah.us/*", zone_name = "rmpgutah.us" },
+  { pattern = "www.rmpgutah.us/*", zone_name = "rmpgutah.us" }
 ]
 
 # ─── D1 Database ─────────────────────────────────────────

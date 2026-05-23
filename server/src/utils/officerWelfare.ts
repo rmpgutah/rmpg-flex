@@ -6,7 +6,7 @@
  * 3-stage escalation protocol.
  */
 
-import { broadcastDispatchUpdate, sendToUser } from './websocket';
+import { broadcastDispatchUpdate, sendToUser } from '../utils/websocket';
 
 // ─── Types ──────────────────────────────────────────────────
 

@@ -15,7 +15,7 @@ export interface DropdownGroup {
 }
 
 interface DropdownProps {
-  options: (string | DropdownOption)[];
+  options?: (string | DropdownOption)[];
   value?: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -58,7 +58,7 @@ export default function Dropdown({
     if (groups) {
       return groups.flatMap((g) => g.options.map(normalizeOption));
     }
-    return options.map(normalizeOption);
+    return (options || []).map(normalizeOption);
   }, [options, groups]);
 
   const selectedOption = useMemo(

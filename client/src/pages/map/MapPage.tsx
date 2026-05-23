@@ -81,7 +81,7 @@ import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
-import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes } from './utils/mapMarkerBuilders';
+import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
 import { useMapHeatmapTimelapse } from './hooks/useMapHeatmapTimelapse';
 import { useMapHeatmapAdvanced, type HeatmapAdvancedMode, type HeatmapColorScheme, type HeatmapResolution, type HeatmapAdvancedOptions } from './hooks/useMapHeatmapAdvanced';
 import { useMapPredictions } from './hooks/useMapPredictions';
@@ -113,7 +113,7 @@ import { useMapCorridor } from './hooks/useMapCorridor';
 import { useMapEnvironment } from './hooks/useMapEnvironment';
 import { useMapTactical } from './hooks/useMapTactical';
 import { useMapAlerts, type SafetyAlertType } from './hooks/useMapAlerts';
-import SafetyDashboardPanel, { type ShiftRisk } from './components/SafetyDashboardPanel';
+import SafetyDashboardPanel from './components/SafetyDashboardPanel';
 import SafetyAlertModal from './components/SafetyAlertModal';
 import ThreatAssessmentPanel from './components/ThreatAssessmentPanel';
 import TacticalToolsPanel, { type QuickDeployPreset } from './components/TacticalToolsPanel';
@@ -229,6 +229,7 @@ export default function MapPage() {
   const heatmapLayerRef = useRef<any | null>(null);
   const trackingLinesRef = useRef<any[]>([]);
   const [trackingLineCount, setTrackingLineCount] = useState(0);
+  const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapRetry, setMapRetry] = useState(0);
@@ -242,11 +243,7 @@ export default function MapPage() {
     try {
       const saved = localStorage.getItem('rmpg_map_layers');
       if (saved) return JSON.parse(saved) as { units: boolean; incidents: boolean; properties: boolean };
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-        console.warn('[MapPage] localStorage quota exceeded for layers');
-      }
-    }
+    } catch { /* use defaults */ }
     return { units: true, incidents: true, properties: true };
   });
 
@@ -255,11 +252,7 @@ export default function MapPage() {
   useEffect(() => {
     if (layerSaveTimerRef.current) clearTimeout(layerSaveTimerRef.current);
     layerSaveTimerRef.current = setTimeout(() => {
-      try { localStorage.setItem('rmpg_map_layers', JSON.stringify(layers)); } catch (e) {
-        if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-          console.warn('[MapPage] localStorage quota exceeded');
-        }
-      }
+      try { localStorage.setItem('rmpg_map_layers', JSON.stringify(layers)); } catch { /* quota exceeded */ }
     }, 300);
     return () => { if (layerSaveTimerRef.current) clearTimeout(layerSaveTimerRef.current); };
   }, [layers]);
@@ -352,17 +345,13 @@ export default function MapPage() {
 
   // Fix 32-33: Sidebar open/closed state and active tab persisted via usePersistedTab
   const [sidebarOpen, setSidebarOpen] = useState(() => {
-    try { const v = localStorage.getItem('rmpg_map_sidebar_open'); return v !== 'false'; } catch (e) { console.warn('[MapPage] Failed to read sidebar state:', e); return true; }
+    try { const v = localStorage.getItem('rmpg_map_sidebar_open'); return v !== 'false'; } catch { return true; }
   });
   const [sidebarTab, setSidebarTab] = usePersistedTab('rmpg_map_sidebar', 'units', ['units', 'calls'] as const);
 
   // Fix 32: persist sidebar open/closed state
   useEffect(() => {
-    try { localStorage.setItem('rmpg_map_sidebar_open', String(sidebarOpen)); } catch (e) {
-      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-        console.warn('[MapPage] localStorage quota exceeded');
-      }
-    }
+    try { localStorage.setItem('rmpg_map_sidebar_open', String(sidebarOpen)); } catch { /* noop */ }
   }, [sidebarOpen]);
 
   // Map style — seed from server preference if user hasn't picked one locally yet
@@ -622,15 +611,15 @@ export default function MapPage() {
   }, [geofences.alerts.length, addToast]);
 
   // Shift risk data for safety dashboard
-  const [shiftRisk, setShiftRisk] = useState<ShiftRisk | null>(null);
+  const [shiftRisk, setShiftRisk] = useState<Record<string, any> | null>(null);
   useEffect(() => {
     if (!showSafetyDashboard) return;
     let cancelled = false;
     const fetchShiftRisk = async () => {
       try {
         const data = await apiFetch('/map/safety/shift-risk-summary');
-        if (!cancelled) setShiftRisk(data as ShiftRisk | null);
-      } catch (e) { console.warn('[MapPage] Shift risk fetch failed:', e); }
+        if (!cancelled) setShiftRisk(data as Record<string, any> | null);
+      } catch { /* non-critical */ }
     };
     fetchShiftRisk();
     const iv = setInterval(fetchShiftRisk, 60000);
@@ -823,9 +812,7 @@ export default function MapPage() {
         const sz = localStorage.getItem('rmpg_map_zoom');
         if (sc) savedCenter = JSON.parse(sc);
         if (sz) savedZoom = parseInt(sz, 10) || cfg.default_zoom;
-      } catch (e) {
-        console.warn('[MapPage] Failed to load saved map position:', e);
-      }
+      } catch { /* use defaults */ }
 
       const mapOptions: mapboxgl.MapboxOptions = {
         container: mapRef.current!,
@@ -857,11 +844,7 @@ export default function MapPage() {
             localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
             localStorage.setItem('rmpg_map_zoom', String(z));
           }
-        } catch (e) {
-          if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-            console.warn('[MapPage] localStorage quota exceeded');
-          }
-        }
+        } catch { /* quota exceeded */ }
       });
 
       infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false });
@@ -903,6 +886,11 @@ export default function MapPage() {
 
       // CartoDB dark_matter tiles handled by Mapbox style
 
+      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
+      // Without mapId, markers are created but silently never render.
+      // Since we use a raster styled map (no mapId), always use the
+      // OverlayView-based fallback which works reliably on all map types.
+      useAdvancedMarkersRef.current = false;
       devLog('[MapPage] Using CartoDB dark_matter overlay + OverlayView markers');
 
       // Monitor tile loading — detect blank map on slow WiFi
@@ -970,16 +958,14 @@ export default function MapPage() {
     (async () => {
       try {
         mapConfig = await fetchMapConfig();
-      } catch (e) {
-        console.warn('[MapPage] Failed to fetch map config, using defaults:', e);
+      } catch {
         mapConfig = { default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12, min_zoom: 1, max_zoom: 22, default_style: 'dark', enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'], show_attribution: false, rotation_enabled: false, max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null, custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14 };
       }
 
       let mapboxToken = '';
       try {
         mapboxToken = await resolveMapboxAccessToken();
-      } catch (e) {
-        console.warn('[MapPage] Failed to resolve Mapbox token:', e);
+      } catch {
         if (!cancelled) {
           setMapError('offline');
         }
@@ -990,14 +976,14 @@ export default function MapPage() {
 
       // Auto-retry when device comes back online
       const onlineToken = mapboxToken;
-      unsubOnline = () => {
+      unsubOnline = (() => {
         if (!cancelled && !mapInstanceRef.current && mapConfig) {
           devLog('[MapPage] Online auto-retry triggered — reinitializing map');
           setMapError(null);
           initMapbox(onlineToken);
           initMap(onlineToken, mapConfig);
         }
-      };
+      }) as any;
     })();
 
     return () => {
@@ -1044,7 +1030,7 @@ export default function MapPage() {
   // Update Markers
   // ============================================================
 
-  // Helper: create a marker using OverlayView-based fallback
+  // Helper: create a marker using AdvancedMarkerElement or OverlayView fallback
   const createMarker = useCallback((opts: {
     map: mapboxgl.Map;
     position: [number, number];
@@ -1053,8 +1039,20 @@ export default function MapPage() {
     title?: string;
     onClick?: () => void;
   }): any => {
+    if (useAdvancedMarkersRef.current) {
+      try {
+        const marker = new mapboxgl.Marker(opts.content)
+          .setLngLat(opts.position)
+          .addTo(opts.map);
+        if (opts.onClick) opts.content.addEventListener('click', opts.onClick);
+        return marker;
+      } catch {
+        // Fall through to overlay
+      }
+    }
+    // Fallback: OverlayView-based marker
     const Cls = getOverlayMarkerClass();
-    if (!Cls) return null;
+    if (!Cls) return null as any;
     return new Cls(opts);
   }, []);
 
@@ -1496,11 +1494,11 @@ export default function MapPage() {
           'heatmap-weight': ['get', 'weight'],
           'heatmap-radius': 30,
           'heatmap-opacity': 0.7,
-          'heatmap-color': colorExpr as unknown as mapboxgl.Expression,
+          'heatmap-color': colorExpr as any,
         },
       });
 
-      heatmapLayerRef.current = { setMap: null };
+      heatmapLayerRef.current = { setMap: null } as any;
     } catch (err) {
       console.warn('[MapPage] Error creating heatmap layer:', err);
     }
@@ -1579,7 +1577,7 @@ export default function MapPage() {
           'line-color': ['get', 'color'],
           'line-opacity': ['case', ['==', ['get', 'isDashed'], true], 0, 0.6],
           'line-width': 2,
-          'line-dasharray': dashExpr as unknown as mapboxgl.Expression,
+          'line-dasharray': dashExpr as any,
         },
       });
 
@@ -1885,8 +1883,7 @@ export default function MapPage() {
             }
           });
         });
-      } catch (e) {
-        console.warn('[MapPage] Trail data processing error:', e);
+      } catch {
         retryTimeout = setTimeout(fetchTrails, 5000);
       }
     };
@@ -2007,8 +2004,8 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
       heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
-        if (map?.getLayer(layerId)) map.removeLayer(layerId);
-        if (map?.getSource(sourceId)) map.removeSource(sourceId);
+        try { map?.removeLayer(layerId); } catch {}
+        try { map?.removeSource(sourceId); } catch {}
       });
       heatmapRectsRef.current = [];
       return;
@@ -2016,8 +2013,8 @@ export default function MapPage() {
 
     // Clean previous
     heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
-      if (map.getLayer(layerId)) map.removeLayer(layerId);
-      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      try { map.removeLayer(layerId); } catch {}
+      try { map.removeSource(sourceId); } catch {}
     });
     heatmapRectsRef.current = [];
 
@@ -2060,8 +2057,8 @@ export default function MapPage() {
 
     return () => {
       heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
-        if (map.getLayer(layerId)) map.removeLayer(layerId);
-        if (map.getSource(sourceId)) map.removeSource(sourceId);
+        try { map.removeLayer(layerId); } catch {}
+        try { map.removeSource(sourceId); } catch {}
       });
       heatmapRectsRef.current = [];
     };
@@ -2077,8 +2074,8 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
       pursuitLinesRef.current.forEach((id) => {
-        if (map?.getLayer(id)) map.removeLayer(id);
-        if (map?.getSource(id)) map.removeSource(id);
+        try { map?.removeLayer(id); } catch {}
+        try { map?.removeSource(id); } catch {}
       });
       pursuitLinesRef.current = [];
       return;
@@ -2086,8 +2083,8 @@ export default function MapPage() {
 
     // Clean previous
     pursuitLinesRef.current.forEach((id) => {
-      if (map.getLayer(id)) map.removeLayer(id);
-      if (map.getSource(id)) map.removeSource(id);
+      try { map.removeLayer(id); } catch {}
+      try { map.removeSource(id); } catch {}
     });
     pursuitLinesRef.current = [];
 
@@ -2132,8 +2129,8 @@ export default function MapPage() {
 
     return () => {
       pursuitLinesRef.current.forEach((id) => {
-        if (map.getLayer(id)) map.removeLayer(id);
-        if (map.getSource(id)) map.removeSource(id);
+        try { map.removeLayer(id); } catch {}
+        try { map.removeSource(id); } catch {}
       });
       pursuitLinesRef.current = [];
     };
@@ -2150,8 +2147,8 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
       speedZonePolysRef.current.forEach((id) => {
-        if (map?.getLayer(id)) map.removeLayer(id);
-        if (map?.getSource(id)) map.removeSource(id);
+        try { map?.removeLayer(id); } catch {}
+        try { map?.removeSource(id); } catch {}
       });
       speedZonePolysRef.current = [];
       speedZoneLabelsRef.current.forEach((m) => m.remove());
@@ -2161,8 +2158,8 @@ export default function MapPage() {
 
     // Clean previous
     speedZonePolysRef.current.forEach((id) => {
-      if (map.getLayer(id)) map.removeLayer(id);
-      if (map.getSource(id)) map.removeSource(id);
+      try { map.removeLayer(id); } catch {}
+      try { map.removeSource(id); } catch {}
     });
     speedZonePolysRef.current = [];
     speedZoneLabelsRef.current.forEach((m) => m.remove());
@@ -2230,16 +2227,16 @@ export default function MapPage() {
           .setLngLat([cLng, cLat])
           .addTo(map);
         speedZoneLabelsRef.current.push(label);
-      } catch (e) {
-        console.warn('[MapPage] Invalid speed zone polygon:', e);
+      } catch {
+        // Invalid polygon_coords JSON
       }
     });
 
     return () => {
       speedZonePolysRef.current.forEach((id) => {
-        if (map.getLayer(`${id}-outline`)) map.removeLayer(`${id}-outline`);
-        if (map.getLayer(id)) map.removeLayer(id);
-        if (map.getSource(id)) map.removeSource(id);
+        try { map.removeLayer(`${id}-outline`); } catch {}
+        try { map.removeLayer(id); } catch {}
+        try { map.removeSource(id); } catch {}
       });
       speedZonePolysRef.current = [];
       speedZoneLabelsRef.current.forEach((m) => m.remove());
@@ -2404,8 +2401,8 @@ export default function MapPage() {
         } else {
           setAddressResults([]);
         }
-      } catch (e) {
-        console.warn('[MapPage] Address search error:', e);
+      } catch {
+        // Ignore network errors
       }
     }, 300);
   }, []);
@@ -2465,8 +2462,8 @@ export default function MapPage() {
           addressDismissTimer.current = null;
         }, 30000);
       }
-    } catch (e) {
-      console.warn('[MapPage] Geocode address select error:', e);
+    } catch {
+      // Ignore geocoding errors
     }
 
     setAddressSearch(description.split(',')[0]);
@@ -4962,7 +4959,7 @@ export default function MapPage() {
         {!isMobile && showSafetyDashboard && (
           <div className="absolute top-2 right-2 z-30" style={{ maxWidth: 320 }}>
             <SafetyDashboardPanel
-              shiftRisk={shiftRisk}
+              shiftRisk={shiftRisk as any}
               environment={safetyEnvironmentProp}
               unitSafety={safetyUnitSafetyProp}
               onClose={() => setShowSafetyDashboard(false)}
@@ -5419,117 +5416,42 @@ export default function MapPage() {
         </div>}
 
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
-        {activeRoute && (() => {
-          const ManeuverIcon = ({ type, modifier }: { type: string; modifier?: string }) => {
-            let symbol: string;
-            let color = '#888888';
-            if (type === 'turn' || type === 'ramp' || type === 'off ramp') {
-              if (modifier === 'left' || modifier === 'sharp left') { symbol = '↰'; color = '#d4a017'; }
-              else if (modifier === 'right' || modifier === 'sharp right') { symbol = '↱'; color = '#d4a017'; }
-              else if (modifier === 'slight left') { symbol = '↲'; color = '#d4a017'; }
-              else if (modifier === 'slight right') { symbol = '↳'; color = '#d4a017'; }
-              else { symbol = '⬀'; color = '#d4a017'; }
-            } else if (type === 'merge') { symbol = '⇉'; color = '#60a5fa'; }
-            else if (type === 'fork') { symbol = '⑂'; color = '#f59e0b'; }
-            else if (type === 'roundabout' || type === 'rotary') { symbol = '↻'; color = '#34d399'; }
-            else if (type === 'arrive') { symbol = '⬇'; color = '#22c55e'; }
-            else if (type === 'depart') { symbol = '⬆'; color = '#888888'; }
-            else if (type === 'straight' || type === 'continue') { symbol = '↑'; color = '#888888'; }
-            else if (type === 'end of road') { symbol = '⊣'; color = '#f87171'; }
-            else { symbol = '●'; }
-            return <span style={{ fontSize: 11, color, width: 16, textAlign: 'center', flexShrink: 0 }}>{symbol}</span>;
-          };
-          return (
+        {activeRoute && (
           <div
             className="absolute z-[1000] backdrop-blur-md"
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: 16, minWidth: 240, maxWidth: 320 }),
-              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.95)' : 'rgba(6,12,20,0.95)',
-              border: '1px solid #d4a01740',
+                : { bottom: 48, left: 16, minWidth: 200 }),
+              background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
+              border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
+              padding: '8px 14px',
               fontFamily: "'JetBrains Mono', 'Courier New', monospace",
               borderRadius: 2,
-              boxShadow: '0 4px 24px rgba(0,0,0,0.4), 0 0 0 1px rgba(212,160,23,0.15)',
-              fontSize: 11,
+              boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
           >
-            {/* Header */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 10px', borderBottom: '1px solid #222222', background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <Navigation2 style={{ width: 11, height: 11, color: '#d4a017' }} />
-                <span style={{ fontSize: 10, color: '#d4a017', fontWeight: 900, letterSpacing: '0.05em' }}>
-                  {activeRoute.unitCallSign} → {activeRoute.callNumber}
-                </span>
-              </div>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
+                {activeRoute.unitCallSign} → {activeRoute.callNumber}
+              </span>
               <button
                 onClick={clearRoute}
-                style={{ background: 'none', border: 'none', color: '#888888', cursor: 'pointer', fontSize: 14, padding: '0 0 0 8px', lineHeight: 1 }}
+                style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
                 title="Clear route"
               >
-                <X style={{ width: 12, height: 12 }} />
+                ✕
               </button>
             </div>
-
-            {/* Main stats */}
-            <div style={{ padding: '8px 10px', borderBottom: '1px solid #1a1a1a' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
-                <div>
-                  <div style={{ fontSize: 8, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 1 }}>ETA</div>
-                  <div style={{ fontSize: 20, color: '#d4a017', fontWeight: 900, lineHeight: 1.2 }}>{activeRoute.eta}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 8, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 1 }}>Arrive</div>
-                  <div style={{ fontSize: 14, color: '#ffffff', fontWeight: 700, lineHeight: 1.2 }}>{activeRoute.arrivalTime}</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: 8, color: '#666666', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 1 }}>Distance</div>
-                  <div style={{ fontSize: 14, color: '#cccccc', fontWeight: 700, lineHeight: 1.2 }}>{activeRoute.distance}</div>
-                </div>
-              </div>
-              {activeRoute.trafficDelay && (
-                <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
-                  <Clock style={{ width: 10, height: 10, color: activeRoute.trafficDelay.includes('delay') ? '#f59e0b' : '#22c55e' }} />
-                  <span style={{ fontSize: 9, color: activeRoute.trafficDelay.includes('delay') ? '#f59e0b' : '#22c55e', fontWeight: 600 }}>
-                    {activeRoute.trafficDelay}
-                  </span>
-                </div>
-              )}
-              {routeLoading && (
-                <div style={{ marginTop: 4, display: 'flex', alignItems: 'center', gap: 4, fontSize: 8, color: '#f59e0b' }}>
-                  <Loader2 style={{ width: 8, height: 8 }} className="animate-spin" />
-                  Updating route…
-                </div>
-              )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
             </div>
-
-            {/* Turn-by-turn directions */}
-            {activeRoute.steps.length > 0 && (
-              <div style={{ maxHeight: 160, overflowY: 'auto', padding: '4px 0' }}>
-                {activeRoute.steps.map((step, i) => (
-                  <div
-                    key={i}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 8,
-                      padding: '3px 10px',
-                      borderBottom: i < activeRoute.steps.length - 1 ? '1px solid #141414' : 'none',
-                      opacity: 0.85,
-                    }}
-                  >
-                    <ManeuverIcon type={step.type} modifier={step.modifier} />
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 10, color: '#cccccc', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {step.instruction}
-                      </div>
-                    </div>
-                    <span style={{ fontSize: 8, color: '#666666', whiteSpace: 'nowrap' }}>{step.distance}</span>
-                  </div>
-                ))}
-              </div>
+            {routeLoading && (
+              <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
             )}
           </div>
-          );
-        })()}
+        )}
 
         {/* ── Bottom Right Buttons (Recenter + GPS Locate) ── */}
         <div

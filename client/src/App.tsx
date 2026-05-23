@@ -79,6 +79,17 @@ const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
+const UseOfForcePage = lazyRetry(() => import('./pages/UseOfForcePage'));
+const SecurityDashboardPage = lazyRetry(() => import('./pages/SecurityDashboardPage'));
+const HelpPage = lazyRetry(() => import('./pages/HelpPage'));
+const NotificationsPage = lazyRetry(() => import('./pages/NotificationsPage'));
+const ColoradoDocPage = lazyRetry(() => import('./pages/ColoradoDocPage'));
+const CommandCenterPage = lazyRetry(() => import('./pages/CommandCenterPage'));
+const GeoDataViewerPage = lazyRetry(() => import('./pages/GeoDataViewerPage'));
+const InvoicesPage = lazyRetry(() => import('./pages/InvoicesPage'));
+const IpedPage = lazyRetry(() => import('./pages/IpedPage'));
+const NationalWarrantSearchPage = lazyRetry(() => import('./pages/NationalWarrantSearchPage'));
+const DashcamPage = lazyRetry(() => import('./pages/DashcamPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 
@@ -253,12 +264,12 @@ function AppRoutes() {
       {isAuthenticated && <KeyboardShortcuts />}
       <Suspense fallback={<LoadingSplash message="Loading module" />}>
         <Routes>
-          {/* Public */}
+          {/* Public routes */}
+          <Route path="/downloads" element={<DownloadsPage />} />
           <Route
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
           />
-          <Route path="/downloads" element={<DownloadsPage />} />
 
           {/* Detached windows — no Layout wrapper */}
           <Route path="/detached/incident/:id" element={<ProtectedRoute><RouteErrorBoundary><IncidentDetailWindow /></RouteErrorBoundary></ProtectedRoute>} />
@@ -320,6 +331,17 @@ function AppRoutes() {
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
             <Route path="/admin" element={<RouteErrorBoundary><AdminPage /></RouteErrorBoundary>} />
+            <Route path="/dashcams" element={<RouteErrorBoundary><DashcamPage /></RouteErrorBoundary>} />
+            <Route path="/use-of-force" element={<RouteErrorBoundary><UseOfForcePage /></RouteErrorBoundary>} />
+            <Route path="/security-dashboard" element={<RouteErrorBoundary><SecurityDashboardPage /></RouteErrorBoundary>} />
+            <Route path="/help" element={<RouteErrorBoundary><HelpPage /></RouteErrorBoundary>} />
+            <Route path="/notifications" element={<RouteErrorBoundary><NotificationsPage /></RouteErrorBoundary>} />
+            <Route path="/colorado-doc" element={<RouteErrorBoundary><ColoradoDocPage /></RouteErrorBoundary>} />
+            <Route path="/command-center" element={<RouteErrorBoundary><CommandCenterPage /></RouteErrorBoundary>} />
+            <Route path="/geo-data-viewer" element={<RouteErrorBoundary><GeoDataViewerPage /></RouteErrorBoundary>} />
+            <Route path="/invoices" element={<RouteErrorBoundary><InvoicesPage /></RouteErrorBoundary>} />
+            <Route path="/iped" element={<RouteErrorBoundary><IpedPage /></RouteErrorBoundary>} />
+            <Route path="/national-warrant-search" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>

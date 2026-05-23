@@ -240,28 +240,26 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
     clearSource(fireSourceId);
   }, [clearSource]);
 
-  const entryFeaturesRef = useRef<any[]>([]);
-
   const addEntryPoint = useCallback((lat: number, lng: number, label: string) => {
     if (!map) return;
 
     entryCounterRef.current += 1;
     const num = entryCounterRef.current;
 
-    const newFeature = {
-      type: 'Feature' as const,
-      geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] },
-      properties: { label, number: num },
-    };
-    entryFeaturesRef.current = [...entryFeaturesRef.current, newFeature];
-
     const source = map.getSource(entrySourceId) as mapboxgl.GeoJSONSource | undefined;
     if (source) {
-      source.setData({ type: 'FeatureCollection', features: entryFeaturesRef.current });
+      const data = source._data as any;
+      const features = data?.features || [];
+      features.push({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] },
+        properties: { label, number: num },
+      });
+      source.setData({ type: 'FeatureCollection', features });
     } else {
       map.addSource(entrySourceId, {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features: entryFeaturesRef.current },
+        data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { label, number: num } }] },
       });
       map.addLayer({
         id: entrySourceId,
@@ -277,7 +275,6 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
   const clearEntryPoints = useCallback(() => {
     clearSource(entrySourceId);
     entryCounterRef.current = 0;
-    entryFeaturesRef.current = [];
     setEntryPoints([]);
   }, [clearSource]);
 

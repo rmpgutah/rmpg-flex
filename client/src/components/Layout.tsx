@@ -48,7 +48,6 @@ import {
   Mail,
   GraduationCap,
   Microscope,
-  Download,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -59,7 +58,7 @@ import { usePresence } from '../hooks/usePresence';
 import RmpgLogo from './RmpgLogo';
 import StatusBar from './StatusBar';
 import MenuBar from './MenuBar';
-import Sidebar from './Sidebar';
+// Sidebar removed — navigation moved to top icon toolbar
 import ErrorBoundary from './ErrorBoundary';
 import NotificationCenter from './NotificationCenter';
 import PanicButton from './PanicButton';
@@ -123,6 +122,18 @@ const PAGE_TITLES: Record<string, string> = {
   '/serve': 'Process Server',
   '/hr': 'HR Console',
   '/admin': 'Admin',
+  '/use-of-force': 'Use of Force',
+  '/security-dashboard': 'Security Dashboard',
+  '/help': 'Help & About',
+  '/notifications': 'Notifications',
+  '/colorado-doc': 'Colorado DOC Search',
+  '/dashcams': 'Dashcam System',
+  '/command-center': 'Command Center',
+  '/geo-data-viewer': 'Geo Data Viewer',
+  '/invoices': 'Invoices',
+  '/iped': 'IPED Forensics',
+  '/national-warrant-search': 'National Warrant Search',
+  '/downloads': 'Downloads',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -172,6 +183,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
+    { path: '/dashcams', icon: Camera, label: 'Dashcam System' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
@@ -189,7 +201,6 @@ const TOOLBAR_NAV: NavItem[] = [
   ]},
   { path: '/crm', icon: Briefcase, label: 'Overwatch', group: 'analysis' },
   { path: '/training', icon: GraduationCap, label: 'Training', group: 'analysis' },
-  { path: '/downloads', icon: Download, label: 'Downloads', group: 'system' },
   { path: '/forensics', icon: Network, label: 'Connections', group: 'analysis', adminOnly: true },
   { path: '/audit', icon: ScrollText, label: 'Audit', group: 'system', shortcut: 'F11', adminOnly: true },
   { path: '/admin', icon: Settings, label: 'Admin', group: 'system', shortcut: 'F12', adminOnly: true },
@@ -1445,12 +1456,9 @@ export default function Layout() {
       />
 
       {/* ============================================================ */}
-      {/* MAIN CONTENT AREA — Sidebar + Page Content                    */}
+      {/* MAIN CONTENT AREA — Full width (no sidebar)                  */}
       {/* ============================================================ */}
       <div className="flex flex-1 min-h-0 overflow-hidden">
-        {/* Sidebar — hidden on mobile */}
-        {!isMobile && <Sidebar isAdmin={isAdmin} isContractManager={isContractManager} />}
-
         {/* Page Content (recessed panel) */}
         {/* 12: Main content area with subtle inset shadow for depth */}
         <main id="main-content" className="flex-1 overflow-auto min-h-0 panel-inset animate-page-enter scrollbar-dark" key={location.pathname} style={{ background: '#141414', boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)' }}>

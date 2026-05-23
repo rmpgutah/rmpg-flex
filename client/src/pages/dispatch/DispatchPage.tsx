@@ -1108,7 +1108,7 @@ export default function DispatchPage() {
   useEffect(() => {
     if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); return; }
     let cancelled = false;
-    cancelEditing();
+    setIsEditing(false);
     setShowAttachUnitDropdown(false);
     setNewNote('');
     setNewTimelineText('');
@@ -1214,11 +1214,8 @@ export default function DispatchPage() {
       }
       if (e.key === 'F4' && selectedCall) {
         e.preventDefault();
-        if (isEditingRef.current) {
-          cancelEditing();
-        } else {
-          startEditing();
-        }
+        // Toggle edit mode on selected call
+        setIsEditing(prev => !prev);
         return;
       }
       if (e.key === 'F5') {
@@ -5783,7 +5780,7 @@ export default function DispatchPage() {
               ))}
             </div>
             <div className="border-t border-rmpg-600 my-1" />
-            <button type="button" className="context-menu-item" onClick={() => { setSelectedCall(contextMenu.call); setContextMenu(null); }}>
+            <button type="button" className="context-menu-item" onClick={() => { setSelectedCall(contextMenu.call); setIsEditing(true); setContextMenu(null); }}>
               <Pencil style={{ width: 12, height: 12 }} /> Edit Call
             </button>
             <button type="button" className="context-menu-item" onClick={() => { navigator.clipboard.writeText(contextMenu.call.call_number); setContextMenu(null); addToast('Call number copied', 'success'); }}>

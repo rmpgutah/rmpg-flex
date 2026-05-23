@@ -8,7 +8,7 @@
 //       area so maps work on vehicle WiFi dead zones.
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v321';
+const CACHE_NAME = 'rmpg-flex-v320';
 const TILE_CACHE_NAME = 'rmpg-flex-tiles-v2';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const MAX_TILE_CACHE_ENTRIES = 3000; // Tile cache limit
@@ -152,18 +152,6 @@ async function precacheTiles() {
 // Fetch — network-first for code/pages, cache-first for images and tiles
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
-
-  // ── Cloudflare Insights beacon — return no-op ──────
-  // Prevents DNS/SSL delays on Windows when the beacon domain is unreachable.
-  if (url.hostname === 'static.cloudflareinsights.com') {
-    event.respondWith(
-      new Response('/* no-op */', {
-        status: 200,
-        headers: { 'Content-Type': 'application/javascript' },
-      })
-    );
-    return;
-  }
 
   // Never cache API calls, WebSocket, POST requests, or external map tiles
   if (

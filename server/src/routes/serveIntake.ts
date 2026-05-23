@@ -1,8 +1,8 @@
 // ============================================================
-// RMPG Flex — Process Service Intake (Advanced OCR Pipeline)
-// Multi-document correlation engine that creates fully linked
-// Person, Property, Vehicle, Evidence, Dispatch Call, and
-// Serve Queue records from uploaded court documents.
+// RMPG Flex — Process Service Intake
+// Parses uploaded PDF documents (Court Filing, Field Sheet,
+// Information Page) and auto-creates Person, Property, and
+// CFS dispatch call records with linkage.
 // ============================================================
 
 import { Router, Request, Response } from 'express';
@@ -18,26 +18,174 @@ import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
 import { join } from 'path';
 import { tmpdir } from 'os';
 import { promisify } from 'util';
-import {
-  detectDocType, extractVehicle, extractPhoneNumbers,
-  extractSSN, extractDLNumber, correlateFields,
-  calculateDocumentConfidence, normalizeDate,
-} from '../utils/ocrEngine';
-import type { CorrelatedField } from '../utils/ocrEngine';
-import { logger } from '../utils/logger';
-
 const execFileAsync = promisify(execFile);
 
 const router = Router();
 router.use(authenticateToken);
 
-// ── Helpers ─────────────────────────────────────────────────
+// ── Auto-Detect Document Type by Content ─────────────────────
 
-function safeStr(v: any): string { return (v == null) ? '' : String(v); }
+function detectDocType(text: string): 'court_docket' | 'field_sheet' | 'info_page' | 'unknown' {
+  // Court Docket: contains SUMMONS, Plaintiff/Defendant, Attorney for Plaintiff
+  if (/SUMMONS|COMPLAINT|Attorney for Plaintiff|JUDICIAL DISTRICT COURT/i.test(text)) return 'court_docket';
+  // Field Sheet: contains Party to Serve, Instructions, Address + city/state/zip on separate line
+  if (/Party to Serve|Instructions\s*\n.*Sub-serve|Date & Time.*Description of Service/i.test(text)) return 'field_sheet';
+  // Info Page: contains JOB number header, CLIENT/SERVER columns, Service Attempts, Recipient
+  if (/^JOB\b/im.test(text) || /Service Attempts|Recipient:|Job Activity|Af\s*fi\s*davits/i.test(text)) return 'info_page';
+  return 'unknown';
+}
 
-// ── POST /extract-text — Extract text from PDF (pdftotext) ──
+// ── Text Extraction Helpers ──────────────────────────────────
+
+function extractBetween(text: string, before: string, after: string): string {
+  const startIdx = text.indexOf(before);
+  if (startIdx === -1) return '';
+  const start = startIdx + before.length;
+  const endIdx = after ? text.indexOf(after, start) : text.length;
+  return (endIdx === -1 ? text.substring(start) : text.substring(start, endIdx)).trim();
+}
+
+function extractField(text: string, label: string): string {
+  const patterns = [
+    new RegExp(`${label}[:\\s]+([^\\n]+)`, 'i'),
+    new RegExp(`${label}\\s*\\n\\s*([^\\n]+)`, 'i'),
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) return m[1].trim();
+  }
+  return '';
+}
+
+function extractName(text: string): { first: string; middle: string; last: string } {
+  // Try "Party to Serve: Muhammad A Nawaz" or "Recipient: Muhammad A Nawaz"
+  const nameStr = extractField(text, 'Party to Serve') || extractField(text, 'Recipient') || extractField(text, 'Defendant');
+  if (!nameStr) return { first: '', middle: '', last: '' };
+  const parts = nameStr.replace(/,.*$/, '').replace(/an individual/i, '').trim().split(/\s+/);
+  if (parts.length >= 3) return { first: parts[0], middle: parts.slice(1, -1).join(' '), last: parts[parts.length - 1] };
+  if (parts.length === 2) return { first: parts[0], middle: '', last: parts[1] };
+  return { first: nameStr, middle: '', last: '' };
+}
+
+function extractDOB(text: string): string {
+  const m = text.match(/DOB[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i) || text.match(/DOB[:\s]*(\d{4}-\d{2}-\d{2})/i);
+  if (!m) return '';
+  const d = m[1];
+  if (d.includes('/')) {
+    const [mm, dd, yyyy] = d.split('/');
+    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
+  }
+  return d;
+}
+
+function extractAddress(text: string): string {
+  // Field Sheet format: "Address" on one line, actual address on next line
+  const m = text.match(/^Address\s*\n\s*(.+(?:,\s*[A-Z]{2}\s*\d{5}).*)$/im);
+  if (m) return m[1].trim();
+  // Also try: line containing street number + city + state + zip
+  const addrLine = text.match(/(\d+\s+[A-Za-z].*?,\s*[A-Za-z ]+,\s*[A-Z]{2}\s*\d{5}[^)\n]*)/);
+  if (addrLine) return addrLine[1].trim();
+  return extractField(text, 'Address') || '';
+}
+
+function extractPlaintiff(text: string): string {
+  return extractBetween(text, 'Plaintiff', 'Defendant') || extractField(text, 'Plaintiff') || '';
+}
+
+function extractCourt(text: string): string {
+  const m = text.match(/(THIRD|FIRST|SECOND|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH)\s+JUDICIAL\s+DISTRICT\s+COURT[^,\n]*/i);
+  return m ? m[0].trim() : '';
+}
+
+function extractDocuments(text: string): string {
+  return extractField(text, 'Documents') || '';
+}
+
+function extractInstructions(text: string): string {
+  const m = text.match(/Instructions\s*\n([\s\S]*?)(?:\n\n|\nMuhammad|\nAddress|\n[A-Z][a-z]+ [A-Z])/i);
+  return m ? m[1].replace(/\n/g, ' ').trim() : '';
+}
+
+function extractJobNumber(text: string): string {
+  const m = text.match(/(?:Job|JOB)[:\s#]*(\d+)/);
+  return m ? m[1] : '';
+}
+
+function extractCaseNumber(text: string): string {
+  const m = text.match(/\((\d{5,})\)/);
+  return m ? m[1] : '';
+}
+
+function extractDueDate(text: string): string {
+  const m = text.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i) || text.match(/Due[:\s]*([A-Z][a-z]+ \d{1,2}, \d{4})/i);
+  return m ? m[1] : '';
+}
+
+function extractAttorney(text: string): { name: string; phone: string; email: string; bar: string } {
+  const name = extractField(text, 'Attorney for Plaintiff') || '';
+  const phone = (text.match(/Tel[:\s]*([\(\d\)\-\s]+)/i) || [])[1]?.trim() || '';
+  const email = (text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i) || [])[1] || '';
+  const bar = (text.match(/Bar#?\s*(\d+)/i) || [])[1] || '';
+  return { name, phone, email, bar };
+}
+
+function extractFee(text: string): string {
+  return extractField(text, 'Fee') || '';
+}
+
+function extractServiceWindows(text: string): string {
+  const windows: string[] = [];
+  if (/6AM-9AM|6am.*9am/i.test(text)) windows.push('6AM-9AM');
+  if (/9AM-6PM|9am.*6pm/i.test(text)) windows.push('9AM-6PM');
+  if (/6PM-9PM|6pm.*9pm/i.test(text)) windows.push('6PM-9PM');
+  if (/weekend/i.test(text)) windows.push('Weekend required');
+  return windows.join(', ');
+}
+
+function extractServeInstructions(text: string): string {
+  // Get ONLY the serve instructions — not the case details
+  const m = text.match(/Instructions\s*\n([\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n)/i);
+  if (m) return m[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+  // Fallback: look for Sub-serve pattern
+  const sub = text.match(/(Sub-serve[\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n)/i);
+  if (sub) return sub[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+  return '';
+}
+
+function extractCaseNotes(text: string): string {
+  const parts: string[] = [];
+  const plaintiff = extractPlaintiff(text);
+  if (plaintiff) parts.push(`Plaintiff: ${plaintiff.replace(/\n/g, ' ').trim()}`);
+  const court = extractCourt(text);
+  if (court) parts.push(`Court: ${court}`);
+  const docs = extractDocuments(text);
+  if (docs) parts.push(`Documents: ${docs}`);
+  const caseNum = extractCaseNumber(text);
+  if (caseNum) parts.push(`Case #${caseNum}`);
+  const attorney = extractAttorney(text);
+  if (attorney.name) parts.push(`Attorney: ${attorney.name}${attorney.bar ? ` Bar#${attorney.bar}` : ''}`);
+  if (attorney.phone) parts.push(`Attorney Tel: ${attorney.phone}`);
+  if (attorney.email) parts.push(`Attorney Email: ${attorney.email}`);
+  // Court clerk info
+  const clerk = text.match(/call the clerk.*?at\s*\((\d{3})\)\s*(\d{3}[-.]?\d{4})/i);
+  if (clerk) parts.push(`Court Clerk: (${clerk[1]}) ${clerk[2]}`);
+  // Court address
+  const courtAddr = text.match(/(\d+ South State St.*?\d{5})/i);
+  if (courtAddr) parts.push(`Court Address: ${courtAddr[1]}`);
+  return parts.join('. ');
+}
+
+function extractClientAddress(text: string): string {
+  // ICU Investigations address from Field Sheet header
+  const m = text.match(/ICU Investigations.*?\n([\d]+ .*?\n.*?\d{5})/i);
+  if (m) return m[1].replace(/\n/g, ', ').trim();
+  return '';
+}
+
+// ── PDF Text Extraction ──────────────────────────────────────
 
 router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  // Collect raw body (PDF binary from multipart/form-data or raw)
   const chunks: Buffer[] = [];
   req.on('data', (chunk: Buffer) => chunks.push(chunk));
   req.on('end', async () => {
@@ -45,6 +193,7 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
       const body = Buffer.concat(chunks);
       if (body.length < 100) { res.json({ text: '', length: 0 }); return; }
 
+      // Save to temp file and run pdftotext
       const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-'));
       const tmpPdf = join(tmpDir, 'input.pdf');
       writeFileSync(tmpPdf, body);
@@ -53,6 +202,7 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
         const { stdout } = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
         res.json({ text: stdout, length: stdout.length });
       } catch {
+        // Fallback: try without -layout
         try {
           const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
           res.json({ text: stdout, length: stdout.length });
@@ -69,20 +219,7 @@ router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'disp
   });
 });
 
-// ── POST /get-vehicle-info — Extract vehicle info from text ──
-
-router.post('/get-vehicle-info', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
-  try {
-    const { text } = req.body;
-    if (!text) { res.json({ vehicle: null }); return; }
-    const vehicle = extractVehicle(text);
-    res.json({ vehicle });
-  } catch (err: any) {
-    res.status(500).json({ error: 'Vehicle extraction failed' });
-  }
-});
-
-// ── POST /intake — Full OCR + Multi-Document Intake Pipeline ─
+// ── Main Intake Endpoint ─────────────────────────────────────
 
 router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
   try {
@@ -90,128 +227,116 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const userId = req.user!.userId;
     const now = localNow();
 
+    // Expect { documents: [{ type: 'court_filing'|'field_sheet'|'info_page', text: string }] }
     const { documents, client_id } = req.body;
     if (!documents || !Array.isArray(documents) || documents.length === 0) {
       res.status(400).json({ error: 'documents array required with at least one document' });
       return;
     }
 
-    // ── Step 1: Create intake batch ──
-    const batchResult = db.prepare(`
-      INSERT INTO serve_intake_batches (user_id, client_id, status, total_documents, created_at)
-      VALUES (?, ?, 'processing', ?, ?)
-    `).run(userId, client_id || null, documents.length, now);
-    const batchId = batchResult.lastInsertRowid as number;
-
-    const docRows: Array<{ id: number; type: string; text: string }> = [];
-
-    // ── Step 2: Process each document ──
-    for (let i = 0; i < documents.length; i++) {
-      const doc = documents[i];
-      const rawText = doc.text || '';
-      const docType = doc.type !== 'unknown' ? doc.type : detectDocType(rawText);
-
-      const docInsert = db.prepare(`
-        INSERT INTO serve_intake_documents (
-          batch_id, original_name, mime_type, file_size_bytes,
-          document_type, ocr_engine, extracted_text, ocr_confidence,
-          status, created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(
-        batchId, doc.filename || `document_${i + 1}`, doc.mime_type || 'text/plain',
-        rawText.length, docType, 'multidocument',
-        rawText.substring(0, 50000), 0, 'extracted', now,
-      );
-
-      const docId = docInsert.lastInsertRowid as number;
-      docRows.push({ id: docId, type: docType, text: rawText });
-    }
-
-    // ── Step 3: Multi-document correlation ──
-    const correlatedFields = correlateFields(
-      docRows.map((r, idx) => ({ type: r.type, text: r.text, index: idx }))
-    );
-    const overallConfidence = calculateDocumentConfidence(correlatedFields);
-
-    // Update document confidence
-    for (const row of docRows) {
-      db.prepare('UPDATE serve_intake_documents SET ocr_confidence = ? WHERE id = ?')
-        .run(overallConfidence, row.id);
-    }
-
-    // Helper to get best correlated value
-    const getField = (key: string): string => {
-      const f = correlatedFields[key];
-      return f?.value || '';
-    };
-
-    // ── Step 4: Split name into parts ──
-    const firstName = getField('first_name');
-    const lastName = getField('last_name');
-    const middleName = getField('middle_name');
-    const fullName = getField('full_name') || `${firstName}${middleName ? ' ' + middleName : ''} ${lastName}`.trim();
-
-    // Resolve name from all available sources
-    let defFirst = firstName;
-    let defLast = lastName;
-    let defMiddle = middleName;
-
-    if (!defFirst && !defLast) {
-      const defendant = getField('defendant');
-      if (defendant) {
-        const parts = defendant.replace(/,.*$/, '').replace(/an individual/i, '').trim().split(/\s+/);
-        defFirst = parts[0] || '';
-        defLast = parts[parts.length - 1] || '';
-        defMiddle = parts.length > 2 ? parts.slice(1, -1).join(' ') : '';
+    // Auto-detect document types by scanning content
+    let fieldSheetText = '';
+    let courtDocketText = '';
+    let infoPageText = '';
+    for (const d of documents) {
+      const txt = d.text || '';
+      const detected = d.type !== 'unknown' ? d.type : detectDocType(txt);
+      if (detected === 'field_sheet' || (!fieldSheetText && detectDocType(txt) === 'field_sheet')) fieldSheetText = txt;
+      else if (detected === 'court_docket' || (!courtDocketText && detectDocType(txt) === 'court_docket')) courtDocketText = txt;
+      else if (detected === 'info_page' || (!infoPageText && detectDocType(txt) === 'info_page')) infoPageText = txt;
+      else {
+        // Unknown doc — merge into whichever is empty
+        if (!fieldSheetText) fieldSheetText = txt;
+        else if (!courtDocketText) courtDocketText = txt;
+        else if (!infoPageText) infoPageText = txt;
       }
     }
+    const allText = [fieldSheetText, courtDocketText, infoPageText].filter(Boolean).join('\n\n');
 
-    if (!defLast) {
+    // Extract from specific document sources with fallback to allText
+    // Name: Field Sheet (Party to Serve) > Info Page (Recipient) > Court Docket (Defendant)
+    const name = extractName(fieldSheetText) || extractName(infoPageText) || extractName(courtDocketText) || extractName(allText);
+    // DOB: Field Sheet (Other: DOB) > Info Page (DOB:)
+    const dob = extractDOB(fieldSheetText) || extractDOB(infoPageText) || extractDOB(allText);
+    // Address: Field Sheet (Address line below label) — primary source
+    const address = extractAddress(fieldSheetText) || extractAddress(infoPageText) || extractAddress(allText);
+    // Plaintiff: Court Docket (before "Plaintiff,") > Field Sheet (Plaintiff field)
+    const plaintiff = extractPlaintiff(courtDocketText) || extractPlaintiff(fieldSheetText) || extractPlaintiff(allText);
+    // Court: Court Docket (JUDICIAL DISTRICT COURT) > Field Sheet (Court field)
+    const court = extractCourt(courtDocketText) || extractCourt(fieldSheetText) || extractCourt(allText);
+    // Documents: Field Sheet (Documents field) > Info Page
+    const docs = extractDocuments(fieldSheetText) || extractDocuments(infoPageText) || extractDocuments(allText);
+    // Instructions: Field Sheet (Instructions section)
+    const instructions = extractServeInstructions(fieldSheetText) || extractInstructions(fieldSheetText) || extractServeInstructions(allText);
+    // Job#: Field Sheet header > Info Page JOB
+    const jobNumber = extractJobNumber(fieldSheetText) || extractJobNumber(infoPageText) || extractJobNumber(allText);
+    // Case#: Court Docket (parenthetical) > Info Page
+    const caseNumber = extractCaseNumber(courtDocketText) || extractCaseNumber(infoPageText) || extractCaseNumber(allText);
+    // Due date: Field Sheet (Due:) > Info Page
+    const dueDate = extractDueDate(fieldSheetText) || extractDueDate(infoPageText) || extractDueDate(allText);
+    // Attorney: Court Docket header (name, phone, email, bar#)
+    const attorney = extractAttorney(courtDocketText) || extractAttorney(allText);
+    // Fee: Field Sheet
+    const fee = extractFee(fieldSheetText) || extractFee(infoPageText) || extractFee(allText);
+
+    if (!name.last) {
       res.status(400).json({ error: 'Could not extract defendant/recipient name from documents' });
       return;
     }
 
-    const address = getField('address');
-    const city = getField('city');
-    const state = getField('state') || 'UT';
-    const zipCode = getField('zip_code');
-    const dob = getField('dob');
-    const plaintiff = getField('plaintiff');
-    const court = getField('court');
-    const caseNumber = getField('case_number');
-    const jobNumber = getField('job_number');
-    const attorneyName = getField('attorney_name');
-    const attorneyPhone = getField('attorney_phone');
-    const attorneyEmail = getField('attorney_email');
-    const attorneyBar = getField('attorney_bar_number');
-    const instructions = getField('instructions');
-    const dueDate = getField('due_date');
-    const fee = getField('fee');
-    const docTypeCourt = getField('document_type_court') || 'summons';
-    const phoneNumbers = getField('phone_numbers');
-    const ssn = getField('ssn');
-    const dlNumber = getField('dl_number');
+    // 1. Create or find Person
+    let personId: number;
+    const existing = db.prepare('SELECT id FROM persons WHERE first_name = ? AND last_name = ? LIMIT 1').get(name.first, name.last) as any;
+    if (existing) {
+      personId = existing.id;
+      // Update with any new info
+      if (dob) db.prepare('UPDATE persons SET dob = COALESCE(NULLIF(dob, \'\'), ?) WHERE id = ?').run(dob, personId);
+      if (address) db.prepare('UPDATE persons SET address = COALESCE(NULLIF(address, \'\'), ?) WHERE id = ?').run(address, personId);
+    } else {
+      const result = db.prepare('INSERT INTO persons (first_name, last_name, middle_name, dob, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(name.first, name.last, name.middle, dob || null, address || null, now, now);
+      personId = result.lastInsertRowid as number;
+    }
 
-    // Vehicle data
-    const vehiclePlate = getField('vehicle_plate');
-    const vehicleVin = getField('vehicle_vin');
-    const vehicleMake = getField('vehicle_make');
-    const vehicleModel = getField('vehicle_model');
-    const vehicleYear = getField('vehicle_year');
-    const vehicleColor = getField('vehicle_color');
-    const hasVehicle = !!(vehiclePlate || vehicleVin);
+    // 2. Create Property if address provided
+    let propertyId: number | null = null;
+    if (address) {
+      const existingProp = db.prepare('SELECT id FROM properties WHERE address = ? LIMIT 1').get(address) as any;
+      if (existingProp) {
+        propertyId = existingProp.id;
+      } else {
+        // Parse city/state/zip from address
+        const addrMatch = address.match(/,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})/);
+        const city = addrMatch ? addrMatch[1].trim() : '';
+        const state = addrMatch ? addrMatch[2] : 'UT';
+        const zip = addrMatch ? addrMatch[3] : '';
+        const result = db.prepare('INSERT INTO properties (client_id, name, address, city, state, zip, property_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+          client_id || 1, `${address.split(',')[0]} — ${name.last} Residence`, address, city, state, zip, 'residential', now, now
+        );
+        propertyId = result.lastInsertRowid as number;
+      }
 
-    // ── Step 5: Geocode address ──
+      // Link person to property
+      try {
+        db.prepare('INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES (?, ?, ?, ?, ?, ?)').run('person', personId, 'property', propertyId, 'resident', userId);
+      } catch { /* already linked */ }
+    }
+
+    // 3. Geocode the address for map display
     let latitude: number | null = null;
     let longitude: number | null = null;
     if (address) {
       try {
         const geo = await geocodeAddress(address);
         if (geo) { latitude = geo.latitude; longitude = geo.longitude; }
-      } catch {}
+      } catch { /* geocode failed — continue without coords */ }
     }
 
-    // Geography resolution
+    // Update property with coordinates
+    if (propertyId && latitude && longitude) {
+      db.prepare('UPDATE properties SET latitude = ?, longitude = ? WHERE id = ? AND latitude IS NULL').run(latitude, longitude, propertyId);
+    }
+
+    // 3b. Auto-resolve Section/Zone/Beat from coordinates
     let sectionId = '', zoneId = '', beatId = '', zoneBeat = '', dispatchCode = '';
     if (latitude && longitude) {
       try {
@@ -221,24 +346,27 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
           zoneId = beat.city_code || '';
           sectionId = beat.district_letter || '';
           zoneBeat = beat.beat_code || '';
-          const district = db.prepare(`
-            SELECT db2.beat_code, dz.zone_code, ds.sector_code
-            FROM dispatch_beats db2
-            JOIN dispatch_zones dz ON dz.id = db2.zone_id
-            JOIN dispatch_sectors ds ON ds.id = dz.sector_id
-            WHERE db2.beat_code = ? LIMIT 1
-          `).get(beat.beat_code) as any;
-          if (district) {
-            sectionId = district.sector_code || sectionId;
-            zoneId = district.zone_code || zoneId;
-            beatId = district.beat_code || beatId;
-            dispatchCode = district.beat_code || '';
-          }
+          // Lookup geography tables for full names
+          try {
+            const district = db.prepare(`
+              SELECT db2.beat_code, dz.zone_code, ds.sector_code
+              FROM dispatch_beats db2
+              JOIN dispatch_zones dz ON dz.id = db2.zone_id
+              JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+              WHERE db2.beat_code = ? LIMIT 1
+            `).get(beat.beat_code) as any;
+            if (district) {
+              sectionId = district.sector_code || sectionId;
+              zoneId = district.zone_code || zoneId;
+              beatId = district.beat_code || beatId;
+              dispatchCode = district.beat_code || '';
+            }
+          } catch { /* geography tables not populated */ }
         }
-      } catch {}
+      } catch { /* geofence not configured */ }
     }
 
-    // ── Step 6: Weather + lighting for the address ──
+    // 4. Fetch current weather for service location
     let weatherConditions = '';
     let lightingConditions = '';
     if (latitude && longitude) {
@@ -262,8 +390,9 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
           const humidity = c.relative_humidity_2m ? `${c.relative_humidity_2m}%` : '';
           weatherConditions = [desc, temp, wind ? `Wind ${wind}` : '', humidity ? `Humidity ${humidity}` : ''].filter(Boolean).join(', ');
         }
-      } catch {}
+      } catch { /* weather fetch failed */ }
 
+      // Determine lighting based on time of day
       const hour = new Date().getHours();
       if (hour >= 6 && hour < 8) lightingConditions = 'Dawn';
       else if (hour >= 8 && hour < 17) lightingConditions = 'Daylight';
@@ -271,136 +400,53 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       else lightingConditions = 'Dark';
     }
 
-    // ── Step 7: Create PERSON record(s) ──
-    const createdPersons: Array<{ id: number; role: string; first_name: string; last_name: string }> = [];
+    // 5. Build separated description (instructions only) and notes (case details)
+    const serviceWindows = extractServiceWindows(allText);
+    const caseNotes = extractCaseNotes(courtDocketText || allText);
+    const clientAddress = extractClientAddress(fieldSheetText || allText);
+    const fullName = `${name.first}${name.middle ? ' ' + name.middle : ''} ${name.last}`;
+    const subjectDesc = `${fullName}${dob ? ', DOB ' + dob : ''}`;
 
-    // 7a: Defendant/Recipient
-    let personId: number;
-    const existing = db.prepare('SELECT id FROM persons WHERE first_name = ? AND last_name = ? LIMIT 1')
-      .get(defFirst, defLast) as any;
+    // ── Build structured description for dispatch display ──
+    const docType = docs ? docs.toUpperCase() : 'DOCUMENTS';
+    const processType = /complaint/i.test(docs) ? 'complaint'
+      : /subpoena/i.test(docs) ? 'subpoena'
+      : /eviction|unlawful detainer/i.test(docs) ? 'eviction'
+      : /restraining|protective/i.test(docs) ? 'restraining_order'
+      : 'summons';
+    const deadlineStr = dueDate || '';
 
-    if (existing) {
-      personId = existing.id;
-      if (dob) db.prepare('UPDATE persons SET dob = COALESCE(NULLIF(dob, \'\'), ?) WHERE id = ?').run(normalizeDate(dob), personId);
-      if (address) db.prepare('UPDATE persons SET address = COALESCE(NULLIF(address, \'\'), ?) WHERE id = ?').run(address, personId);
-      if (phoneNumbers) db.prepare('UPDATE persons SET phone = COALESCE(NULLIF(phone, \'\'), ?) WHERE id = ?').run(phoneNumbers.split(';')[0], personId);
-      if (dlNumber) db.prepare("UPDATE persons SET dl_number = COALESCE(NULLIF(dl_number, ''), ?) WHERE id = ?").run(dlNumber, personId);
-    } else {
-      const result = db.prepare(`INSERT INTO persons (first_name, last_name, middle_name, dob, address, phone, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
-        .run(defFirst, defLast, defMiddle || null, normalizeDate(dob) || null, address || null,
-          phoneNumbers?.split(';')[0] || null, now, now);
-      personId = result.lastInsertRowid as number;
+    // Description: structured dispatch summary
+    const descLines: string[] = [];
+    descLines.push(`SERVE ${docType} TO ${fullName.toUpperCase()}`);
+    if (address) descLines.push(`AT ${address.toUpperCase()}`);
+    if (deadlineStr) descLines.push(`DUE: ${deadlineStr}`);
+    if (instructions) {
+      const cleaned = instructions.replace(/\r\n/g, ' ').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
+      descLines.push(`INSTRUCTIONS: ${cleaned.length > 400 ? cleaned.slice(0, 400) + '...' : cleaned}`);
     }
-    createdPersons.push({ id: personId, role: 'defendant', first_name: defFirst, last_name: defLast });
+    if (serviceWindows) descLines.push(`SERVICE WINDOWS: ${serviceWindows}`);
+    const descParts = descLines.join('\n');
 
-    // 7b: Plaintiff (if found and different from defendant)
-    let plaintiffPersonId: number | null = null;
-    if (plaintiff && !plaintiff.toLowerCase().includes(defFirst.toLowerCase())) {
-      const pParts = plaintiff.replace(/,.*$/, '').replace(/an individual/i, '').trim().split(/\s+/);
-      const pFirst = pParts[0] || '';
-      const pLast = pParts[pParts.length - 1] || '';
-      const pMiddle = pParts.length > 2 ? pParts.slice(1, -1).join(' ') : '';
-
-      if (pFirst && pLast) {
-        const existingPl = db.prepare('SELECT id FROM persons WHERE first_name = ? AND last_name = ? LIMIT 1').get(pFirst, pLast) as any;
-        if (existingPl) {
-          plaintiffPersonId = existingPl.id;
-        } else {
-          const plResult = db.prepare('INSERT INTO persons (first_name, last_name, middle_name, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-            .run(pFirst, pLast, pMiddle || null, now, now);
-          plaintiffPersonId = plResult.lastInsertRowid as number;
-        }
-        createdPersons.push({ id: plaintiffPersonId!, role: 'plaintiff', first_name: pFirst, last_name: pLast });
-      }
+    // Notes: structured JSON array (matches dispatch call note format)
+    const noteEntries: Array<{ id: string; author: string; text: string; timestamp: string }> = [];
+    // Case details note (caseNotes already extracted above)
+    if (caseNotes) {
+      noteEntries.push({ id: String(Date.now()), author: 'Serve Intake', text: caseNotes, timestamp: now });
     }
-
-    // 7c: Attorney as person record
-    let attorneyPersonId: number | null = null;
-    if (attorneyName) {
-      const aParts = attorneyName.split(/\s+/);
-      const aFirst = aParts[0] || '';
-      const aLast = aParts[aParts.length - 1] || '';
-      if (aFirst && aLast) {
-        const existingAtty = db.prepare('SELECT id FROM persons WHERE first_name = ? AND last_name = ? LIMIT 1').get(aFirst, aLast) as any;
-        if (existingAtty) {
-          attorneyPersonId = existingAtty.id;
-        } else {
-          const attyResult = db.prepare('INSERT INTO persons (first_name, last_name, notes, created_at, updated_at) VALUES (?, ?, ?, ?, ?)')
-            .run(aFirst, aLast, `Attorney — ${attorneyBar ? `Bar#${attorneyBar}` : ''}`, now, now);
-          attorneyPersonId = attyResult.lastInsertRowid as number;
-        }
-        createdPersons.push({ id: attorneyPersonId!, role: 'attorney', first_name: aFirst, last_name: aLast });
-      }
+    // Instructions note (full, untruncated)
+    if (instructions && instructions.length > 50) {
+      noteEntries.push({ id: String(Date.now() + 1), author: 'Serve Intake', text: `Service Instructions: ${instructions}`, timestamp: now });
     }
-
-    // ── Step 8: Create PROPERTY record ──
-    let propertyId: number | null = null;
-    if (address) {
-      const existingProp = db.prepare('SELECT id FROM properties WHERE address = ? LIMIT 1').get(address) as any;
-      if (existingProp) {
-        propertyId = existingProp.id;
-      } else {
-        const addrMatch = address.match(/,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})/);
-        const propCity = addrMatch ? addrMatch[1].trim() : city || '';
-        const propState = addrMatch ? addrMatch[2] : state || 'UT';
-        const propZip = addrMatch ? addrMatch[3] : zipCode || '';
-        const result = db.prepare(`INSERT INTO properties (client_id, name, address, city, state, zip, property_type, latitude, longitude, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .run(
-            client_id || 1, `${address.split(',')[0]} — ${defLast} Service Address`,
-            address, propCity, propState, propZip, 'residential',
-            latitude, longitude, now, now
-          );
-        propertyId = result.lastInsertRowid as number;
-      }
-
-      // Link person <-> property
-      if (propertyId) {
-        try {
-          db.prepare('INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-            .run('person', personId, 'property', propertyId, 'resident', userId);
-        } catch {}
-      }
+    // Plaintiff/client info
+    if (plaintiff) {
+      noteEntries.push({ id: String(Date.now() + 2), author: 'Serve Intake', text: `Plaintiff: ${plaintiff.replace(/\n/g, ' ').trim()}`, timestamp: now });
     }
+    const notesParts = noteEntries.length > 0 ? JSON.stringify(noteEntries) : null;
 
-    // ── Step 9: Create VEHICLE record (if plate/VIN found) ──
-    let vehicleId: number | null = null;
-    if (hasVehicle) {
-      // Check for existing vehicle by VIN or plate
-      let existingVeh: any = null;
-      if (vehicleVin) {
-        existingVeh = db.prepare('SELECT id FROM vehicles_records WHERE vin = ? LIMIT 1').get(vehicleVin) as any;
-      }
-      if (!existingVeh && vehiclePlate) {
-        existingVeh = db.prepare('SELECT id FROM vehicles_records WHERE plate_number = ? LIMIT 1').get(vehiclePlate) as any;
-      }
-
-      if (existingVeh) {
-        vehicleId = existingVeh.id;
-      } else {
-        const vehResult = db.prepare(`INSERT INTO vehicles_records (plate_number, state, make, model, year, color, vin, owner_person_id, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-          .run(
-            vehiclePlate || null, null, vehicleMake || null, vehicleModel || null,
-            vehicleYear ? parseInt(vehicleYear, 10) || null : null,
-            vehicleColor || null, vehicleVin || null,
-            personId || null, now
-          );
-        vehicleId = vehResult.lastInsertRowid as number;
-      }
-
-      // Link person <-> vehicle
-      if (vehicleId) {
-        try {
-          db.prepare('INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-            .run('person', personId, 'vehicle', vehicleId, 'owner', userId);
-        } catch {}
-      }
-    }
-
-    // ── Step 10: Create DISPATCH CALL ──
+    // Auto-generate call number
     const year = new Date().getFullYear().toString().slice(-2);
-    const lastCall = db.prepare("SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1")
-      .get(`${year}-CFS%`) as any;
+    const lastCall = db.prepare("SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1").get(`${year}-CFS%`) as any;
     let seq = 1;
     if (lastCall) {
       const m = lastCall.call_number.match(/CFS(\d+)/);
@@ -408,60 +454,14 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     }
     const callNumber = `${year}-CFS${String(seq).padStart(5, '0')}`;
 
-    const callerName = attorneyName || plaintiff?.replace(/\n/g, ' ').trim() || 'Process Service Client';
-    const callerPhone = attorneyPhone || '';
-
-    // Build description
-    const processType = /subpoena/i.test(docTypeCourt) ? 'subpoena'
-      : /complaint/i.test(docTypeCourt) ? 'complaint'
-      : /eviction|unlawful detainer/i.test(docTypeCourt) ? 'eviction'
-      : /restraining|protective/i.test(docTypeCourt) ? 'restraining_order'
-      : 'summons';
-
-    const descLines: string[] = [];
-    const docTypeUpper = docTypeCourt.toUpperCase() || 'DOCUMENTS';
-    descLines.push(`SERVE ${docTypeUpper} TO ${fullName.toUpperCase()}`);
-    if (address) descLines.push(`AT ${address.toUpperCase()}`);
-    if (dueDate) descLines.push(`DUE: ${dueDate}`);
-    if (instructions) {
-      const cleaned = instructions.replace(/\r\n/g, ' ').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-      descLines.push(`INSTRUCTIONS: ${cleaned.length > 400 ? cleaned.slice(0, 400) + '...' : cleaned}`);
-    }
-    const descParts = descLines.join('\n');
-
-    // Build notes as structured JSON
-    const noteEntries: Array<{ id: string; author: string; text: string; timestamp: string }> = [];
-    const caseParts: string[] = [];
-    if (plaintiff) caseParts.push(`Plaintiff: ${plaintiff.replace(/\n/g, ' ').trim()}`);
-    if (court) caseParts.push(`Court: ${court}`);
-    if (caseNumber) caseParts.push(`Case #${caseNumber}`);
-    if (attorneyName) caseParts.push(`Attorney: ${attorneyName}${attorneyBar ? ` Bar#${attorneyBar}` : ''}`);
-    if (attorneyPhone) caseParts.push(`Attorney Tel: ${attorneyPhone}`);
-    if (attorneyEmail) caseParts.push(`Attorney Email: ${attorneyEmail}`);
-    if (hasVehicle) {
-      const vehDesc = [vehicleYear, vehicleMake, vehicleModel, vehicleColor, `Plate:${vehiclePlate}`, `VIN:${vehicleVin}`].filter(Boolean).join(' ');
-      caseParts.push(`Vehicle: ${vehDesc}`);
-    }
-    if (ssn) caseParts.push(`SSN: ${ssn}`);
-    if (dlNumber) caseParts.push(`DL#: ${dlNumber}`);
-
-    if (caseParts.length > 0) {
-      noteEntries.push({ id: String(Date.now()), author: 'Serve Intake', text: caseParts.join('. '), timestamp: now });
-    }
-    if (instructions && instructions.length > 50) {
-      noteEntries.push({ id: String(Date.now() + 1), author: 'Serve Intake', text: `Service Instructions: ${instructions}`, timestamp: now });
-    }
-    if (phoneNumbers && phoneNumbers.length > 0) {
-      noteEntries.push({ id: String(Date.now() + 2), author: 'Serve Intake', text: `Phone numbers found in documents: ${phoneNumbers}`, timestamp: now });
-    }
-    const notesParts = noteEntries.length > 0 ? JSON.stringify(noteEntries) : null;
-
-    const subjectDesc = `${fullName}${dob ? ', DOB ' + normalizeDate(dob) : ''}`;
+    // Determine caller info from document (attorney or client)
+    const callerName = attorney.name || plaintiff.replace(/\n/g, ' ').trim() || 'Process Service Client';
+    const callerPhone = attorney.phone || '';
 
     const callResult = db.prepare(`
       INSERT INTO calls_for_service (
         call_number, case_number, incident_type, priority, status,
-        caller_name, caller_phone, caller_relationship,
+        caller_name, caller_phone, caller_relationship, caller_address,
         location_address, property_id, latitude, longitude,
         weather_conditions, lighting_conditions,
         sector_id, zone_id, beat_id, zone_beat, dispatch_code,
@@ -469,15 +469,14 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         subject_description,
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,
         pso_service_type, pso_billing_code, pso_authorization,
-        pso_attempt_number,
+        pso_attempt_number, pso_service_windows,
         process_service_type, process_served_to, process_served_address,
         process_attempts, client_id, contract_id,
         secondary_type, contact_method,
-        tags,
         created_at, updated_at
       ) VALUES (
         ?, ?, ?, ?, ?,
-        ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?,
         ?, ?, ?, ?, ?,
@@ -485,230 +484,85 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         ?,
         ?, ?, ?,
         ?, ?, ?,
-        ?,
+        ?, ?,
         ?, ?, ?,
         ?, ?, ?,
         ?, ?,
-        ?,
         ?, ?
       )
     `).run(
       callNumber, caseNumber || null, 'pso_client_request', 'P4', 'pending',
-      callerName, callerPhone, 'client',
+      callerName, callerPhone, 'client', clientAddress || null,
       address || 'Unknown', propertyId, latitude, longitude,
       weatherConditions || null, lightingConditions || null,
       sectionId || null, zoneId || null, beatId || null, zoneBeat || null, dispatchCode || null,
       descParts, notesParts, 'intake', userId,
       subjectDesc,
-      attorneyName || callerName, attorneyPhone || null, attorneyEmail || null,
+      attorney.name || callerName, attorney.phone || null, attorney.email || null,
       'process_service', fee || null, jobNumber || null,
-      1,
+      1, serviceWindows || null,
       processType, fullName, address || null,
       0, client_id || 1, jobNumber || null,
-      docTypeUpper, 'email',
-      JSON.stringify(['serve_intake', `batch:${batchId}`]),
+      docType, 'email',
       now, now
     );
     const callId = callResult.lastInsertRowid as number;
 
-    // ── Step 11: Create EVIDENCE records for documents ──
-    const createdEvidenceIds: number[] = [];
+    // Link person to call
     try {
-      // Use the dispatch call as the incident holder for evidence
-      for (let i = 0; i < docRows.length; i++) {
-        const evResult = db.prepare(`
-          INSERT INTO evidence (incident_id, description, evidence_type, status, collected_by, created_at)
-          VALUES (?, ?, ?, 'in_storage', ?, ?)
-        `).run(
-          callId,
-          `Serve Intake Document — ${docRows[i].type} (batch ${batchId}, doc ${docRows[i].id})`,
-          'document', userId, now,
-        );
-        const evId = evResult.lastInsertRowid as number;
-        createdEvidenceIds.push(evId);
+      db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)').run(callId, personId, 'involved', userId, now);
+    } catch { /* already linked */ }
 
-        // Link evidence -> person
-        try {
-          db.prepare('INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-            .run('evidence', evId, 'person', personId, 'associated_document', userId);
-        } catch {}
-
-        // Update document record with evidence ID
-        db.prepare('UPDATE serve_intake_documents SET evidence_id = ? WHERE id = ?').run(evId, docRows[i].id);
-      }
-    } catch (evErr: any) {
-      logger.warn({ err: evErr, batchId }, 'Evidence creation failed (non-fatal)');
-    }
-
-    // ── Step 12: Link everything ──
-
-    // Person <-> Call
-    try {
-      db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, notes, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        .run(callId, personId, 'involved',
-          `Defendant/Recipient — Intake batch ${batchId}`, userId, now);
-    } catch {}
-
-    if (plaintiffPersonId) {
-      try {
-        db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, notes, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(callId, plaintiffPersonId, 'reporter',
-            `Plaintiff — Intake batch ${batchId}`, userId, now);
-      } catch {}
-    }
-
-    if (attorneyPersonId) {
-      try {
-        db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, notes, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(callId, attorneyPersonId, 'attorney',
-            `Attorney for Plaintiff — Intake batch ${batchId}`, userId, now);
-      } catch {}
-    }
-
-    // Vehicle <-> Call
-    if (vehicleId) {
-      try {
-        db.prepare('INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-          .run(callId, vehicleId, 'involved',
-            `Vehicle associated with defendant — Intake batch ${batchId}`, userId, now);
-      } catch {}
-    }
-
-    // Person <-> Person links (defendant <-> plaintiff, etc.)
-    if (plaintiffPersonId) {
-      try {
-        db.prepare('INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-          .run('person', plaintiffPersonId, 'person', personId, 'plaintiff_vs_defendant', userId);
-      } catch {}
-    }
-
-    // Evidence <-> Call
-    for (const evId of createdEvidenceIds) {
-      try {
-        db.prepare('INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES (?, ?, ?, ?, ?, ?)')
-          .run('evidence', evId, 'property', propertyId || 0, 'served_at_property', userId);
-      } catch {}
-      try {
-        db.prepare('INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by, notes) VALUES (?, ?, ?, ?, ?, ?, ?)')
-          .run('person', personId, 'evidence', evId, 'subject_of_document', userId, fullName);
-      } catch {}
-    }
-
-    // ── Step 13: Create SERVE QUEUE entry ──
+    // 6. Auto-create serve queue entry for the process server
     let serveQueueId: number | null = null;
     try {
+      // Cap address length before applying the comma-separated city/state/zip
+      // regex — `[^,]+` against an unbounded user-supplied string is a
+      // polynomial-ReDoS vector (CodeQL js/polynomial-redos #2747).
+      // 1000 chars is far longer than any real US address.
       const addrCapped = address ? String(address).slice(0, 1000) : null;
       const addrMatch = addrCapped ? addrCapped.match(/,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})/) : null;
-
-      const windowLabels: string[] = [];
-      if (/6AM-9AM|6am.*9am/i.test(instructions)) windowLabels.push('6AM-9AM');
-      if (/9AM-6PM|9am.*6pm/i.test(instructions)) windowLabels.push('9AM-6PM');
-      if (/6PM-9PM|6pm.*9pm/i.test(instructions)) windowLabels.push('6PM-9PM');
-      if (/weekend/i.test(instructions)) windowLabels.push('Weekend');
-      const serviceWindows = windowLabels.join(', ');
-
       const sqResult = db.prepare(`
         INSERT INTO serve_queue (
           call_id, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
           recipient_lat, recipient_lng, document_type, case_number, court_name,
           client_name, attorney_name, priority, deadline, service_instructions, notes,
-          sm_job_id, status, created_at, updated_at,
-          recipient_person_id, property_id, intake_batch_id
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          sm_job_id, status, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         callId, fullName, address || null,
-        addrMatch ? addrMatch[1].trim() : city || null,
-        addrMatch ? addrMatch[2] : state || 'UT',
-        addrMatch ? addrMatch[3] : zipCode || null,
+        addrMatch ? addrMatch[1].trim() : null, addrMatch ? addrMatch[2] : 'UT', addrMatch ? addrMatch[3] : null,
         latitude, longitude,
         processType, caseNumber || null, court || null,
-        plaintiff?.replace(/\n/g, ' ').trim() || null, attorneyName || null,
-        'normal', dueDate || null, instructions || null, caseParts.join('. ') || null,
-        jobNumber || null, 'pending', now, now,
-        personId, propertyId, batchId,
+        plaintiff.replace(/\n/g, ' ').trim() || null, attorney.name || null,
+        'normal', deadlineStr || null, instructions || null, caseNotes || null,
+        jobNumber || null, 'pending', now, now
       );
       serveQueueId = sqResult.lastInsertRowid as number;
-    } catch (sqErr: any) {
-      logger.error({ err: sqErr, batchId }, 'Serve queue creation error (non-fatal)');
-    }
+    } catch (sqErr) { console.error('[ServeIntake] Serve queue creation error (non-fatal):', sqErr instanceof Error ? sqErr.message : sqErr); }
 
-    // ── Step 14: Update batch with results ──
-    const docIds = docRows.map(r => r.id);
-    db.prepare(`
-      UPDATE serve_intake_batches SET
-        status = 'completed',
-        persons_created = ?,
-        properties_created = ?,
-        vehicles_created = ?,
-        dispatch_call_id = ?,
-        serve_queue_id = ?,
-        batch_result = ?
-      WHERE id = ?
-    `).run(
-      createdPersons.length,
-      propertyId ? 1 : 0,
-      vehicleId ? 1 : 0,
-      callId, serveQueueId,
-      JSON.stringify({
-        person_ids: createdPersons.map(p => p.id),
-        property_id: propertyId,
-        vehicle_id: vehicleId,
-        evidence_ids: createdEvidenceIds,
-        document_ids: docIds,
-      }),
-      batchId,
-    );
-
-    // Update serve queue document IDs
-    if (serveQueueId) {
-      db.prepare('UPDATE serve_queue SET intake_document_ids = ? WHERE id = ?')
-        .run(JSON.stringify(docIds), serveQueueId);
-    }
-
-    auditLog(req, 'SERVE_INTAKE', 'serve_intake_batches', batchId, JSON.stringify({
-      person_ids: createdPersons.map(p => p.id),
-      property_id: propertyId,
-      vehicle_id: vehicleId,
-      evidence_ids: createdEvidenceIds,
-      call_id: callId,
-      serve_queue_id: serveQueueId,
-    }));
+    auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, JSON.stringify({ person_id: personId, property_id: propertyId, serve_queue_id: serveQueueId, job_number: jobNumber }));
 
     broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'pso_client_request' } });
 
     res.json({
       success: true,
-      batch_id: batchId,
       person_id: personId,
-      persons: createdPersons,
       property_id: propertyId,
-      vehicle_id: vehicleId,
-      evidence_ids: createdEvidenceIds,
       call_id: callId,
       call_number: callNumber,
       serve_queue_id: serveQueueId,
       latitude, longitude,
-      confidence: overallConfidence,
       weather: weatherConditions || null,
       lighting: lightingConditions || null,
-      correlated_fields: Object.fromEntries(
-        Object.entries(correlatedFields).map(([k, v]) => [k, { value: v.value, confidence: v.confidence, source: v.source }])
-      ),
       extracted: {
-        name: { first: defFirst, middle: defMiddle, last: defLast },
-        fullName,
-        dob: normalizeDate(dob) || '',
-        address, city, state: state || 'UT', zip: zipCode || '',
-        plaintiff, court, docs: docTypeCourt,
-        instructions, jobNumber, caseNumber, dueDate,
-        attorney: { name: attorneyName, phone: attorneyPhone, email: attorneyEmail, bar: attorneyBar },
-        fee, phoneNumbers, ssn, dlNumber,
-        processType,
-        vehicle: hasVehicle ? { plate: vehiclePlate, vin: vehicleVin, make: vehicleMake, model: vehicleModel, year: vehicleYear, color: vehicleColor } : null,
+        name, dob, address, plaintiff, court, docs, instructions,
+        jobNumber, caseNumber, dueDate, attorney, fee,
+        processType, serviceWindows, deadlineStr,
       },
     });
   } catch (err: any) {
-    logger.error({ err }, 'Serve intake pipeline error');
+    console.error('[ServeIntake] Error:', err?.message);
     res.status(500).json({ error: 'Intake processing failed: ' + (err?.message || 'Unknown error') });
   }
 });

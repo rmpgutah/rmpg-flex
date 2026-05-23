@@ -453,8 +453,8 @@ export function useGeoJsonLayers({
       const vis = nowVisible ? 'visible' : 'none';
 
       if (map) {
-        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', vis); } catch (e) { console.warn('[GeoJSON] Failed to toggle layer:', fillId, e); }
-        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', vis); } catch (e) { console.warn('[GeoJSON] Failed to toggle layer:', lineId, e); }
+        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', vis); } catch {}
+        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', vis); } catch {}
       }
 
       // Show/hide label markers
@@ -491,8 +491,8 @@ export function useGeoJsonLayers({
         const fillId = getFillLayerId(cfg.id);
         const lineId = getLineLayerId(cfg.id);
         const viz = !cfg.minZoom || zoom >= cfg.minZoom ? 'visible' : 'none';
-        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', viz); } catch (e) { console.warn('[GeoJSON] Failed to set zoom visibility:', fillId, e); }
-        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch (e) { console.warn('[GeoJSON] Failed to set zoom visibility:', lineId, e); }
+        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', viz); } catch {}
+        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch {}
       }
     };
     map.on('zoom', onZoom);

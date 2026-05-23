@@ -13,23 +13,6 @@ import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken } from '../worker-middleware/auth';
 import { D1Db, paramNum, paramStr } from '../worker-middleware/d1Helpers';
 
-/** Sanitize a filename for safe use in Content-Disposition headers */
-function safeContentDispositionFilename(name: string): string {
-  return name.replace(/["\r\n\\;]/g, '').trim().slice(0, 500);
-}
-
-// Allowed MIME types (matching Express uploads.ts)
-const ALLOWED_MIME_TYPES = new Set([
-  'image/jpeg', 'image/png', 'image/gif', 'image/webp', 'image/bmp', 'image/tiff',
-  'application/pdf', 'application/msword',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'application/vnd.ms-excel',
-  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-  'text/plain', 'text/csv',
-  'video/mp4', 'video/quicktime', 'video/x-msvideo', 'video/webm', 'video/x-matroska',
-  'audio/mpeg', 'audio/wav', 'audio/ogg',
-]);
-
 // HMAC file access signing (session-independent, 1yr TTL)
 // Uses Web Crypto API (available in Workers)
 async function signFileAccess(secret: string, fileId: string, ttlSeconds = 31536000): Promise<{ sig: string; exp: number }> {
@@ -162,9 +145,8 @@ export function mountUploadRoutes(app: Hono<{ Bindings: Env; Variables: { user: 
 
       const data = await obj.arrayBuffer();
       c.header('Content-Type', attachment.mime_type || 'application/octet-stream');
-      c.header('Content-Disposition', `inline; filename="${safeContentDispositionFilename(attachment.original_name)}"`);
+      c.header('Content-Disposition', `inline; filename="${attachment.original_name}"`);
       c.header('Content-Length', String(attachment.file_size));
-      c.header('X-Content-Type-Options', 'nosniff');
       c.header('Cache-Control', 'private, max-age=300');
       return c.body(data);
     } catch (error: any) {
@@ -189,8 +171,7 @@ export function mountUploadRoutes(app: Hono<{ Bindings: Env; Variables: { user: 
 
       const data = await obj.arrayBuffer();
       c.header('Content-Type', 'application/octet-stream');
-      c.header('Content-Disposition', `attachment; filename="${safeContentDispositionFilename(attachment.original_name)}"`);
-      c.header('X-Content-Type-Options', 'nosniff');
+      c.header('Content-Disposition', `attachment; filename="${attachment.original_name}"`);
       return c.body(data);
     } catch (error: any) {
       return c.json({ error: 'Download failed', code: 'DOWNLOAD_FAILED' }, 500);
@@ -218,9 +199,8 @@ export function mountUploadRoutes(app: Hono<{ Bindings: Env; Variables: { user: 
 
       const data = await obj.arrayBuffer();
       c.header('Content-Type', attachment.mime_type);
-      c.header('Content-Disposition', `inline; filename="${safeContentDispositionFilename(attachment.original_name)}"`);
+      c.header('Content-Disposition', `inline; filename="${attachment.original_name}"`);
       c.header('Content-Length', String(attachment.file_size));
-      c.header('X-Content-Type-Options', 'nosniff');
       c.header('Cache-Control', 'private, max-age=600');
       return c.body(data);
     } catch (error: any) {
@@ -247,14 +227,6 @@ export function mountUploadRoutes(app: Hono<{ Bindings: Env; Variables: { user: 
 
       if (files.length === 0) {
         return c.json({ error: 'No files provided', code: 'NO_FILES_PROVIDED' }, 400);
-      }
-
-      // Validate MIME types
-      for (const file of files) {
-        const mime = file.type || 'application/octet-stream';
-        if (!ALLOWED_MIME_TYPES.has(mime)) {
-          return c.json({ error: `File type ${mime} is not allowed`, code: 'FILE_TYPE_NOT_ALLOWED' }, 400);
-        }
       }
 
       const db = new D1Db(c.env.DB);

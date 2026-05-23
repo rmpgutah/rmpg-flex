@@ -73,22 +73,26 @@ app.use('*', async (c, next) => {
   await next();
 });
 
- // ─── Hostname Validation and Redirect (www → apex) ────────
- app.use('*', async (c, next) => {
-   const url = new URL(c.req.url);
-   const host = url.hostname;
-   const primary = c.env.PRIMARY_DOMAIN;
+  // ─── Hostname Validation and Redirect (www → apex) ────────
+  // API routes on www are handled directly (Pages proxies /api/* here)
+  app.use('*', async (c, next) => {
+    const url = new URL(c.req.url);
+    const host = url.hostname;
+    const primary = c.env.PRIMARY_DOMAIN;
 
-   if (host === `www.${primary}`) {
-      return c.redirect(`${url.protocol}//${primary}${url.pathname}${url.search}`, 308);
-   }
+    if (host === `www.${primary}`) {
+      if (url.pathname.startsWith('/api/') || url.pathname.startsWith('/ws')) {
+        return await next();
+      }
+      return c.redirect(`${url.protocol}//${primary}${url.pathname}${url.search}`, 301);
+    }
 
-   if (host !== primary) {
-     return c.json({ error: 'Not Found' }, 404);
-   }
+    if (host !== primary) {
+      return c.json({ error: 'Not Found' }, 404);
+    }
 
-   await next();
- });
+    await next();
+  });
 
 // ─── Security Headers ────────────────────────────────────
 app.use('*', async (c, next) => {
@@ -100,11 +104,11 @@ app.use('*', async (c, next) => {
   c.header('Permissions-Policy', 'camera=(self), microphone=(self), geolocation=(self), payment=()');
   c.header('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com",
     "style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com",
     "img-src 'self' data: blob: https: http: https://api.mapbox.com https://tiles.mapbox.com https://*.basemaps.cartocdn.com",
     "font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
-    "connect-src 'self' ws: wss: https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io",
+    "connect-src 'self' ws: wss: https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io https://static.cloudflareinsights.com",
     "frame-src 'self' blob: https://*.arcgis.com",
     "media-src 'self' blob: data:",
     "worker-src 'self' blob:",
@@ -334,8 +338,7 @@ import { mountServemanagerRoutes } from './routes/servemanager-worker';
 import { mountMicrobiltRoutes } from './routes/microbilt-worker';
 import { mountSexOffenderRegistryRoutes } from './routes/sexOffenderRegistry-worker';
 import { mountAdminMapConfigRoutes } from './routes/adminMapConfig-worker';
-import { mountDownloadRoutes } from './routes/downloads-worker';
-import { mountOfflineRoutes } from './routes/offline-worker';
+import { mountHowenRoutes } from './routes/howen-worker';
 
 mountAuthRoutes(app);
 mountDispatchRoutes(app);
@@ -398,12 +401,28 @@ mountServemanagerRoutes(app);
 mountMicrobiltRoutes(app);
 mountSexOffenderRegistryRoutes(app);
 mountAdminMapConfigRoutes(app);
-mountDownloadRoutes(app);
-mountOfflineRoutes(app);
+mountHowenRoutes(app);
 
-// ─── SPA Fallback ────────────────────────────────────────
-app.all('/api/*', (c) => {
-  return c.json({ error: 'API endpoint not found' }, 404);
+// ─── SPA Fallback (Pages Proxy) ──────────────────────────
+// Non-API requests are proxied to the Pages project (rmpg-flex.pages.dev)
+// which serves the React SPA with client-side routing.
+app.all('*', async (c) => {
+  const url = new URL(c.req.url);
+  if (url.pathname.startsWith('/api/')) {
+    return c.json({ error: 'API endpoint not found' }, 404);
+  }
+  const pagesUrl = `https://rmpg-flex.pages.dev${url.pathname}${url.search}`;
+  const pagesResp = await fetch(pagesUrl, {
+    method: c.req.method,
+    headers: c.req.raw.headers,
+    body: ['GET', 'HEAD'].includes(c.req.method) ? undefined : c.req.raw.body,
+    redirect: 'manual',
+  });
+  return new Response(pagesResp.body, {
+    status: pagesResp.status,
+    statusText: pagesResp.statusText,
+    headers: pagesResp.headers,
+  });
 });
 
 // ─── Global Error Handler ────────────────────────────────

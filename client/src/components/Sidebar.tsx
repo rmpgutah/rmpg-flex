@@ -5,7 +5,7 @@ import {
   ClipboardList, Search, CreditCard, Package, Briefcase, AlertTriangle,
   FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video,
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
-  Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail, Download,
+  Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -97,7 +97,6 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'System',
     items: [
       { path: '/audit', icon: ScrollText, label: 'Audit Log', adminOnly: true },
-      { path: '/downloads', icon: Download, label: 'Downloads' },
       { path: '/admin', icon: Settings, label: 'Admin', adminOnly: true },
     ],
   },

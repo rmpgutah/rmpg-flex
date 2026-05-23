@@ -76,11 +76,10 @@ function parseJwtExpiry(token: string): number | null {
   }
 }
 
-/** Fetch with an AbortController timeout so auth requests never hang indefinitely.
- *  Converts AbortError into a user-friendly TimeoutError. */
+/** Fetch with an AbortController timeout so auth requests never hang indefinitely. */
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AUTH_FETCH_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(new DOMException('Timed out', 'AbortError')), timeoutMs);
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   return fetch(url, { ...options, signal: controller.signal }).finally(() => clearTimeout(timer));
 }
 
@@ -444,12 +443,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setError(message);
         throw new Error(message);
       }
-    } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setError('Verification request timed out. Please try again.');
-        throw new Error('Verification request timed out.');
-      }
-      throw err;
     } finally {
       setLoginBusy(false);
     }
@@ -515,10 +508,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(message);
       }
     } catch (err: any) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setError('Security key request timed out. Please try again.');
-        throw new Error('Security key request timed out.');
-      }
       console.warn('[WEBAUTHN] Auth error:', err?.name, err?.code, err?.message);
       // Handle WebAuthn-specific errors with clear messages
       if (err?.name === 'NotAllowedError') {
@@ -628,12 +617,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         );
       }
     } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        const message = 'Login request timed out. Check your connection and try again.';
-        setError(message);
-        throw new Error(message);
-      }
-
       // If the server is unavailable, allow dev login in development only
       if (import.meta.env.DEV && err instanceof TypeError && err.message.includes('fetch')) {
         const mockToken = 'dev-token-' + Date.now();
@@ -707,10 +690,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         throw new Error(errData.error || 'Invalid backup code');
       }
     } catch (err: unknown) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        setError('Verification request timed out. Please try again.');
-        throw new Error('Verification request timed out.');
-      }
       const message = err instanceof Error ? err.message : 'Verification failed';
       setError(message);
       throw err;

@@ -119,8 +119,8 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   const clearMapObjects = useCallback(() => {
     if (!map) return;
     for (const id of sourceIdsRef.current) {
-      try { if (map.getLayer(id)) map.removeLayer(id); } catch (e) { console.warn('[GpsBreadcrumbPanel] Failed to remove layer:', id, e); }
-      try { if (map.getSource(id)) map.removeSource(id); } catch (e) { console.warn('[GpsBreadcrumbPanel] Failed to remove source:', id, e); }
+      try { if (map.getLayer(id)) map.removeLayer(id); } catch {}
+      try { if (map.getSource(id)) map.removeSource(id); } catch {}
     }
     sourceIdsRef.current = [];
     if (playbackMarkerRef.current) {

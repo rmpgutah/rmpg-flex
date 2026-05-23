@@ -18,6 +18,7 @@ import DuplicateCallWarning from './DuplicateCallWarning';
 import BoloAlertBanner from './BoloAlertBanner';
 import { useDistrictIdentify, useDistrictOptions } from '../hooks/useDistrictLookup';
 import { apiFetch } from '../hooks/useApi';
+import Dropdown from './ui/Dropdown';
 
 interface NewCallModalProps {
   isOpen: boolean;
@@ -460,20 +461,18 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Incident Type</label>
-              <select
-                className="select-dark"
+              <Dropdown
+                groups={Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => ({
+                  label: category,
+                  options: types.map((t) => ({ value: t.value, label: t.label })),
+                }))}
                 value={formData.incident_type}
-                onChange={(e) => update('incident_type', e.target.value)}
+                onChange={(v) => update('incident_type', v)}
                 required
-              >
-                {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => (
-                  <optgroup key={category} label={category}>
-                    {types.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                searchable
+                placeholder="Select Incident Type"
+                className="mt-0.5"
+              />
             </div>
             {mode === 'full' && (
               <div>

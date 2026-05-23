@@ -14,6 +14,7 @@ import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
+import Dropdown from './ui/Dropdown';
 
 interface IncidentFormModalProps {
   isOpen: boolean;
@@ -542,28 +543,24 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Incident Type</label>
-              <select
-                className="select-dark mt-1"
+              <Dropdown
+                groups={Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => ({
+                  label: category,
+                  options: types.map((t) => ({ value: t.value, label: t.label })),
+                }))}
                 value={formData.incident_type}
-                onChange={(e) => {
-                  update('incident_type', e.target.value);
-                  // Reset to basic tab if current sub-section no longer applies
-                  const newTabs = getSectionTabs(e.target.value);
+                onChange={(v) => {
+                  update('incident_type', v);
+                  const newTabs = getSectionTabs(v);
                   if (!newTabs.find((t) => t.id === activeSection)) {
                     setActiveSection('basic');
                   }
                 }}
                 required
-              >
-                <option value="" disabled>-- Select Type --</option>
-                {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => (
-                  <optgroup key={category} label={category}>
-                    {types.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                searchable
+                placeholder="-- Select Type --"
+                className="mt-1"
+              />
               {/* Feature 30: Incident Type Auto-suggest based on narrative keywords */}
               {formData.narrative && !formData.incident_type && (() => {
                 const text = formData.narrative.toLowerCase();

@@ -14,5 +14,3 @@ export { default as FormAutoSaveIndicator } from './FormAutoSaveIndicator';
 export { default as InlineEdit } from './InlineEdit';
 export { default as ProgressBar } from './ProgressBar';
 export { default as Tooltip } from './Tooltip';
-export { default as Dropdown } from './Dropdown';
-export type { DropdownOption, DropdownGroup } from './Dropdown';

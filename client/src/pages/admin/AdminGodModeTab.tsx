@@ -8,6 +8,10 @@ import {
   Lock, Unlock, Merge, Terminal, Radio, Globe, Clock
 } from 'lucide-react';
 
+const safeStr = (v: any): string => {
+  try { return JSON.stringify(v)?.slice(0, 80) ?? ''; } catch { return ''; }
+};
+
 interface DbStats {
   database_size_mb: number;
   freelist_mb: number;
@@ -319,19 +323,19 @@ export default function AdminGodModeTab() {
       )}
 
       {/* System Overview */}
-      {systemOverview && (
+      {systemOverview?.server && (
         <div className="bg-[#141414] border border-[#181818] rounded-sm p-3">
           <h3 className="text-xs font-bold text-gray-400 uppercase mb-2 flex items-center gap-1.5"><Activity size={14} /> System Overview</h3>
           <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-2">
-            <StatBox label="Uptime" value={systemOverview.server.uptime} />
-            <StatBox label="Node" value={systemOverview.server.node_version} />
-            <StatBox label="CPUs" value={String(systemOverview.server.cpus)} />
-            <StatBox label="Memory" value={`${systemOverview.server.free_memory_gb}/${systemOverview.server.total_memory_gb} GB`} />
-            <StatBox label="Load" value={systemOverview.server.load_average.join(' / ')} />
-            <StatBox label="Active Users (24h)" value={String(systemOverview.active_users_24h)} />
+            <StatBox label="Uptime" value={systemOverview.server.uptime ?? '—'} />
+            <StatBox label="Node" value={systemOverview.server.node_version ?? '?'} />
+            <StatBox label="CPUs" value={String(systemOverview.server.cpus ?? '?')} />
+            <StatBox label="Memory" value={`${systemOverview.server.free_memory_gb ?? 0}/${systemOverview.server.total_memory_gb ?? 0} GB`} />
+            <StatBox label="Load" value={systemOverview.server.load_average?.join(' / ') ?? '—'} />
+            <StatBox label="Active Users (24h)" value={String(systemOverview.active_users_24h ?? 0)} />
           </div>
           <div className="mt-2 grid grid-cols-3 md:grid-cols-5 lg:grid-cols-7 gap-1">
-            {Object.entries(systemOverview.record_counts).filter(([, v]) => v >= 0).map(([table, count]) => (
+            {Object.entries(systemOverview.record_counts ?? {}).filter(([, v]) => v >= 0).map(([table, count]) => (
               <div key={table} className="bg-[#0c0c0c] px-2 py-1 rounded-sm">
                 <div className="text-[9px] text-gray-500 uppercase truncate">{table.replace(/_/g, ' ')}</div>
                 <div className="text-[11px] font-mono text-white">{formatNumber(count)}</div>
@@ -360,7 +364,7 @@ export default function AdminGodModeTab() {
           {/* Top tables */}
           <div className="bg-[#0c0c0c] rounded-sm p-2 max-h-40 overflow-y-auto">
             <div className="text-[9px] text-gray-500 uppercase mb-1">Top Tables by Row Count</div>
-            {dbStats.tables.slice(0, 15).map(t => (
+            {(dbStats.tables || []).slice(0, 15).map(t => (
               <div key={t.name} className="flex justify-between text-[11px] py-0.5 border-b border-[#181818]/50">
                 <span className="text-gray-300 font-mono">{t.name}</span>
                 <span className="text-white font-mono">{formatNumber(t.row_count)}</span>
@@ -738,7 +742,7 @@ export default function AdminGodModeTab() {
                 <span className="text-gray-400 font-bold min-w-[80px] truncate">{a.username || a.user || '—'}</span>
                 <span className="text-yellow-400 min-w-[60px]">{a.action || '—'}</span>
                 <span className="text-gray-500">{a.entity_type || ''}</span>
-                <span className="text-gray-600 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : JSON.stringify(a.details).slice(0, 80)) : ''}</span>
+                <span className="text-gray-600 truncate max-w-[300px]">{a.details ? (typeof a.details === 'string' ? a.details.slice(0, 80) : safeStr(a.details)) : ''}</span>
               </div>
             ))}
           </div>

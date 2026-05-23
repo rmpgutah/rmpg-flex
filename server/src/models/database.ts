@@ -5448,6 +5448,67 @@ function migrateSchema(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_cpgps_mappings_officer ON cpgps_officer_mappings(officer_id);
 
+    -- ═══ Howen / VizTrack Dashcam System ════════════════════
+    -- HERO-ME40-02 devices, H-protocol, GPS + events + video
+
+    CREATE TABLE IF NOT EXISTS howen_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL UNIQUE,
+      imei TEXT,
+      iccid TEXT,
+      fw_version TEXT,
+      hw_version TEXT,
+      model TEXT,
+      unit_id INTEGER,
+      vehicle_id INTEGER,
+      label TEXT,
+      plate_number TEXT,
+      last_lat REAL,
+      last_lon REAL,
+      last_speed REAL,
+      last_heading REAL,
+      last_gps_at TEXT,
+      last_connection_at TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_howen_devices_device_id ON howen_devices(device_id);
+    CREATE INDEX IF NOT EXISTS idx_howen_devices_unit ON howen_devices(unit_id);
+
+    CREATE TABLE IF NOT EXISTS howen_gps_breadcrumbs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      speed REAL,
+      heading REAL,
+      altitude REAL,
+      satellite_count INTEGER,
+      recorded_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_howen_gps_device_time ON howen_gps_breadcrumbs(device_id, recorded_at);
+
+    CREATE TABLE IF NOT EXISTS howen_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      unit_id INTEGER,
+      event_type TEXT NOT NULL,
+      severity TEXT DEFAULT 'info',
+      latitude REAL,
+      longitude REAL,
+      speed REAL,
+      heading REAL,
+      description TEXT,
+      raw_json TEXT,
+      event_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_howen_events_device ON howen_events(device_id, event_at);
+    CREATE INDEX IF NOT EXISTS idx_howen_events_type ON howen_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_howen_events_unit ON howen_events(unit_id);
+
     CREATE TABLE IF NOT EXISTS forensic_case_links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       case_id INTEGER NOT NULL,
@@ -5497,10 +5558,6 @@ function migrateSchema(): void {
   addCol('field_interviews', 'beat_id', 'INTEGER');
   addCol('field_interviews', 'zone_beat', 'TEXT');
   addCol('field_interviews', 'updated_at', 'TEXT');
-
-  // Serve intake — batch FK and evidence links for the OCR pipeline
-  addCol('serve_queue', 'intake_batch_id', 'INTEGER');
-  addCol('serve_queue', 'intake_document_ids', "TEXT DEFAULT '[]'");
 
   console.log('Schema migration completed.');
 }
@@ -6291,56 +6348,6 @@ function seedData(): void {
   evidenceLocations.forEach(([name, desc], i) => {
     insertConfig.run(name, JSON.stringify({ description: desc }), 'evidence_location', i, now, now);
   });
-
-  // ── Serve Intake OCR: document tracking ─────────────
-  // Tracks each uploaded document with OCR metadata, extracted text, and
-  // linkages to created records (persons, property, call, serve_queue, vehicles).
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS serve_intake_batches (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      user_id INTEGER NOT NULL,
-      client_id INTEGER,
-      status TEXT NOT NULL DEFAULT 'processing' CHECK(status IN ('processing','completed','failed','partial')),
-      total_documents INTEGER NOT NULL DEFAULT 0,
-      persons_created INTEGER NOT NULL DEFAULT 0,
-      properties_created INTEGER NOT NULL DEFAULT 0,
-      vehicles_created INTEGER NOT NULL DEFAULT 0,
-      dispatch_call_id INTEGER,
-      serve_queue_id INTEGER,
-      batch_result TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
-      FOREIGN KEY (user_id) REFERENCES users(id),
-      FOREIGN KEY (dispatch_call_id) REFERENCES calls_for_service(id),
-      FOREIGN KEY (serve_queue_id) REFERENCES serve_queue(id)
-    )
-  `).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_sib_user ON serve_intake_batches(user_id)`).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_sib_status ON serve_intake_batches(status)`).run();
-
-  db.prepare(`
-    CREATE TABLE IF NOT EXISTS serve_intake_documents (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      batch_id INTEGER NOT NULL REFERENCES serve_intake_batches(id) ON DELETE CASCADE,
-      original_name TEXT NOT NULL,
-      mime_type TEXT NOT NULL,
-      file_size_bytes INTEGER NOT NULL DEFAULT 0,
-      document_type TEXT NOT NULL DEFAULT 'unknown',
-      ocr_engine TEXT DEFAULT 'pdftext',
-      extracted_text TEXT,
-      ocr_confidence REAL DEFAULT 0,
-      ocr_fields TEXT,
-      person_ids TEXT DEFAULT '[]',
-      vehicle_ids TEXT DEFAULT '[]',
-      property_id INTEGER,
-      evidence_id INTEGER,
-      hash_sha256 TEXT,
-      status TEXT NOT NULL DEFAULT 'pending' CHECK(status IN ('pending','processing','extracted','correlated','failed')),
-      error_message TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
-    )
-  `).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_sid_batch ON serve_intake_documents(batch_id)`).run();
-  db.prepare(`CREATE INDEX IF NOT EXISTS idx_sid_status ON serve_intake_documents(status)`).run();
 
   // ─── PANIC / RADIO CONFIG DEFAULTS ─────────────────
   const panicConfigs = [

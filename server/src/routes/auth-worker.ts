@@ -743,8 +743,6 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
       const row = await db.prepare('SELECT digital_signature FROM users WHERE id = ?').get(user.userId) as { digital_signature: string | null } | null;
       return c.json({ signature: row?.digital_signature || null });
     } catch (err: any) {
-      if (err?.message?.includes('no such column')) return c.json({ signature: null });
-      console.error('[Auth] Get signature error:', err?.message || err);
       return c.json({ error: 'Failed to get signature', code: 'GET_SIGNATURE_ERROR' }, 500);
     }
   });
@@ -767,8 +765,6 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
       await db.prepare('UPDATE users SET digital_signature = ?, updated_at = ? WHERE id = ?').run(signature || null, now, user.userId);
       return c.json({ success: true });
     } catch (err: any) {
-      if (err?.message?.includes('no such column')) return c.json({ success: true });
-      console.error('[Auth] Save signature error:', err?.message || err);
       return c.json({ error: 'Failed to save signature', code: 'SAVE_SIGNATURE_ERROR' }, 500);
     }
   });

@@ -244,8 +244,6 @@ export function mountDispatchAggregatesRoutes(app: Hono<{ Bindings: Env; Variabl
       return c.json(districts);
     } catch (err: any) {
       if (err?.message?.includes('no such table')) return c.json([]);
-      if (err?.message?.includes('no such column')) return c.json([]);
-      console.error('[Dispatch Aggregates] districts error:', err?.message || err);
       return c.json({ error: 'Districts list failed' }, 500);
     }
   });
