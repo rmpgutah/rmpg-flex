@@ -58,7 +58,7 @@ crons = ["*/30 * * * *"]   # every 30 min; tune per source ToS
 
 | Source | Mode | URL verified | Adapter |
 |---|---|---|---|
-| warrants.utah.gov | query-lookup | partial (403 WAF — confirmed public search form by operator) | **scaffold, 2 TODOs** |
+| warrants.utah.gov | query-lookup | ✅ live API captured via chrome-devtools MCP 2026-05-24 | ✅ implemented |
 | Salt Lake County Sheriff | list-poll | **URL UNKNOWN** | not started |
 | Utah County Sheriff | list-poll | **URL UNKNOWN** | not started |
 | Davis County Sheriff | list-poll | **URL UNKNOWN** | not started |
