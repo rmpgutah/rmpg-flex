@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Map, Save, Loader2, RefreshCw, Eye, Globe2, ZoomIn,
-  Palette, SlidersHorizontal, ToggleLeft, ToggleRight,
-  Layers, Crosshair, Navigation2, PanelRightOpen,
+  Map, Save, Loader2, RefreshCw, Globe2,
+  Palette, ToggleLeft, ToggleRight,
+  Layers, Crosshair, Navigation2, SlidersHorizontal,
+  Hand, Monitor, Settings2, Type, Cpu,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { invalidateMapConfigCache, type MapSettings } from '../../pages/map/hooks/useMapConfig';
@@ -40,6 +41,26 @@ const DEFAULT_VALUES: MapSettings = {
   clustering_enabled: true,
   cluster_radius: 50,
   cluster_max_zoom: 14,
+  default_pitch: 0,
+  default_bearing: 0,
+  min_pitch: 0,
+  max_pitch: 85,
+  scroll_zoom: true,
+  box_zoom: true,
+  drag_rotate: true,
+  drag_pan: true,
+  double_click_zoom: true,
+  touch_zoom_rotate: true,
+  cooperative_gestures: false,
+  show_compass: true,
+  show_zoom_controls: true,
+  keyboard_enabled: true,
+  language: '',
+  render_world_copies: true,
+  fade_duration: 300,
+  click_tolerance: 3,
+  local_ideograph_font_family: '',
+  cross_source_collisions: true,
 };
 
 export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }: Props) {
