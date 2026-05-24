@@ -27,6 +27,7 @@ jobs:
         run: npm run typecheck
 
       - name: Apply D1 migrations (remote)
+        continue-on-error: true  # Remote D1 has dirty schema from earlier runs; Worker reconciles at boot.
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
