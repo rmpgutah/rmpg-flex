@@ -14,6 +14,8 @@ import { sendCsv } from '../../utils/csvExport';
 import { isLegalTransition, LEGAL_TRANSITIONS } from './callLifecycle';
 import { startWelfareWatch, clearWelfareWatch } from '../../utils/officerWelfare';
 import { paramStr } from '../../utils/reqHelpers';
+import { findNearestUnits } from '../../utils/proximityAlerts';
+import { getPremiseAlertsNear, pushPremiseAlertsToUnit } from '../../utils/premiseAlertsForCall';
 
 const router = Router();
 
@@ -206,6 +208,25 @@ router.post('/calls/:id/dispatch', validateParamIdMiddleware, requireRole('admin
       console.error('[Dispatch] Officer notification failed (non-fatal):', notifErr.message);
     }
 
+    // DI-3: Push premise alerts within 50m to each dispatched unit's MDT.
+    try {
+      if (call.latitude != null && call.longitude != null) {
+        const alerts = getPremiseAlertsNear(call.latitude, call.longitude);
+        if (alerts.length > 0) {
+          for (const unitId of unit_ids) {
+            pushPremiseAlertsToUnit({
+              unitId,
+              callId: call.id,
+              callNumber: call.call_number,
+              alerts,
+            });
+          }
+        }
+      }
+    } catch (paErr) {
+      console.error('[CallActions] premise alert push (dispatch):', paErr instanceof Error ? paErr.message : paErr);
+    }
+
     res.json(updated);
   } catch (error: any) {
     console.error('Dispatch error:', error?.message || 'Unknown error');
@@ -314,6 +335,24 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     if (updated) {
       broadcastDispatchUpdate({ action: 'unit_assigned', call: updated, unit_id });
+    }
+
+    // DI-3: Push premise alerts (within 50m of call) to the assigned officer's MDT.
+    // Best-effort — never throw out of dispatch.
+    try {
+      if (call.latitude != null && call.longitude != null) {
+        const alerts = getPremiseAlertsNear(call.latitude, call.longitude);
+        if (alerts.length > 0) {
+          pushPremiseAlertsToUnit({
+            unitId: unit_id,
+            callId: call.id,
+            callNumber: call.call_number,
+            alerts,
+          });
+        }
+      }
+    } catch (paErr) {
+      console.error('[CallActions] premise alert push (assign-unit):', paErr instanceof Error ? paErr.message : paErr);
     }
     const unitData = db.prepare(`
       SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
@@ -2336,5 +2375,76 @@ router.patch('/calls/:id/pin', validateParamIdMiddleware, requireRole('admin', '
     res.status(500).json({ error: 'Failed to toggle pin', code: 'PIN_ERROR' });
   }
 });
+
+// ── Closest-unit recommendation (Spillman parity) ─────────────────
+// Up to N available units ranked by Haversine distance, with ETA estimates
+// and assigned officer info. Reuses findNearestUnits which already powers
+// panic auto-dispatch — same code path, exposed for normal calls.
+router.get(
+  '/calls/:id/recommended-units',
+  validateParamIdMiddleware,
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const id = parseInt(paramStr(req.params.id), 10);
+      if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: 'Invalid call id', code: 'INVALID_ID' });
+        return;
+      }
+      const call = db.prepare('SELECT id, call_number, latitude, longitude, priority, incident_type FROM calls_for_service WHERE id = ?').get(id) as
+        | { id: number; call_number: string; latitude: number | null; longitude: number | null; priority: string; incident_type: string }
+        | undefined;
+      if (!call) {
+        res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+        return;
+      }
+      if (call.latitude == null || call.longitude == null) {
+        res.json({ callId: id, callNumber: call.call_number, recommended: [], reason: 'NO_CALL_GPS' });
+        return;
+      }
+
+      const limitRaw = parseInt(String(req.query.limit ?? '5'), 10);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 25 ? limitRaw : 5;
+
+      const nearest = findNearestUnits(call.latitude, call.longitude, limit);
+
+      const enriched = nearest.map((u) => {
+        // FIX (QA C2): the canonical table is `units`, not `dispatch_units`.
+        // The previous join returned nothing → blank officer/badge for every row.
+        const unit = db.prepare(`
+          SELECT u.call_sign, u.status, u.officer_id, u.current_call_id, u.unit_type,
+                 us.first_name, us.last_name, us.badge_number
+          FROM units u
+          LEFT JOIN users us ON us.id = u.officer_id
+          WHERE u.call_sign = ?
+        `).get(u.callSign) as any;
+        return {
+          callSign: u.callSign,
+          distanceMeters: u.distance,
+          distanceMiles: Math.round((u.distance / 1609.34) * 10) / 10,
+          etaMinutes: u.etaMinutes,
+          status: u.status,
+          unitType: unit?.unit_type ?? null,
+          officerName: unit ? [unit.first_name, unit.last_name].filter(Boolean).join(' ') || null : null,
+          badgeNumber: unit?.badge_number ?? null,
+          currentCallId: unit?.current_call_id ?? null,
+        };
+      });
+
+      res.json({
+        callId: id,
+        callNumber: call.call_number,
+        callPriority: call.priority,
+        callLat: call.latitude,
+        callLng: call.longitude,
+        recommended: enriched,
+      });
+    } catch (err) {
+      console.error('[callActions] recommended-units error', err);
+      res.status(500).json({ error: 'Failed to compute recommended units', code: 'RECOMMEND_ERROR' });
+    }
+  },
+);
 
 export default router;

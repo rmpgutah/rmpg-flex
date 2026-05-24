@@ -34,6 +34,7 @@ import {
   composePursuitNarrative,
 } from '../utils/narrativeComposer';
 import type { AlertBannerItem } from '../components/DispatchAlertBanner';
+import { getLocalAudioMode, vibrateForSeverity } from '../utils/audioMode';
 
 /**
  * Normalize DB column names to voice system field names.
@@ -96,9 +97,15 @@ export function useDispatchVoiceAlerts(options?: {
   useEffect(() => {
     const unsubs: Array<() => void> = [];
 
-    // Route TTS through voice channel when active, otherwise direct
+    // Route TTS through voice channel when active, otherwise direct.
+    // DI-5: gate on per-unit audio_mode. 'silent' suppresses all TTS
+    // entirely (visual banner still fires via onAlert). 'vibrate' fires
+    // the Web Vibration API and skips TTS. 'audible' is the default.
     type AlertSeverity = 'minor' | 'moderate' | 'major';
     const speak = (text: string, severity: AlertSeverity) => {
+      const mode = getLocalAudioMode();
+      if (mode === 'silent') return;
+      if (mode === 'vibrate') { vibrateForSeverity(severity); return; }
       if (voiceAlert) {
         voiceAlert(text, severity);
       } else {

@@ -8,6 +8,7 @@ import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { geocodeAddress } from '../utils/geocode';
+import { validateIncidentForNibrs } from '../utils/nibrsValidator';
 import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
@@ -830,6 +831,23 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/incidents/:id/nibrs-validate — Preview NIBRS validation (no state change)
+// Lets the incident edit UI show "what would fail submit" inline. Same logic
+// the PUT /submit gate runs; just returns the report without enforcing it.
+router.get('/:id/nibrs-validate', (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: 'Invalid incident id', code: 'INVALID_ID' });
+      return;
+    }
+    res.json(validateIncidentForNibrs(id));
+  } catch (err) {
+    console.error('[incidents] nibrs-validate error', err);
+    res.status(500).json({ error: 'Failed to validate', code: 'NIBRS_VALIDATE_ERR' });
+  }
+});
+
 // PUT /api/incidents/:id/submit - Submit for review
 router.put('/:id/submit', (req: Request, res: Response) => {
   try {
@@ -851,6 +869,24 @@ router.put('/:id/submit', (req: Request, res: Response) => {
     if (!incident.narrative || incident.narrative.trim().length === 0) {
       res.status(400).json({ error: 'Narrative is required before submitting', code: 'NARRATIVE_IS_REQUIRED_BEFORE' });
       return;
+    }
+
+    // NB-2: NIBRS validation gate. Errors block submit; warnings pass through
+    // and are returned in the response for the UI to surface. Admin can bypass
+    // with ?force=1 (logged as ADMIN_OVERRIDE).
+    const validation = validateIncidentForNibrs(incident.id);
+    const force = req.query.force === '1' && req.user?.role === 'admin';
+    if (!validation.valid && !force) {
+      res.status(422).json({
+        error: 'Incident fails NIBRS validation',
+        code: 'NIBRS_VALIDATION_FAILED',
+        validation,
+      });
+      return;
+    }
+    if (!validation.valid && force) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id,
+        `Admin God Mode: bypassed NIBRS validation (${validation.errors.length} errors)`);
     }
 
     db.prepare(`

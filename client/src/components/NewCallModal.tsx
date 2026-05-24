@@ -17,6 +17,7 @@ import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
 import BoloAlertBanner from './BoloAlertBanner';
+import RunCardPreview from './RunCardPreview';
 import { useDistrictIdentify, useDistrictOptions } from '../hooks/useDistrictLookup';
 import { apiFetch } from '../hooks/useApi';
 
@@ -475,6 +476,22 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   </optgroup>
                 ))}
               </select>
+              <div className="mt-1.5">
+                <RunCardPreview
+                  incidentType={formData.incident_type}
+                  onCardLoaded={(card) => {
+                    if (!card) return;
+                    // Auto-elevate priority to the run card's default ONLY if the
+                    // dispatcher hasn't already raised it — never downgrade.
+                    const order = ['P4', 'P3', 'P2', 'P1'];
+                    const currentIdx = order.indexOf(formData.priority);
+                    const cardIdx = order.indexOf(card.default_priority);
+                    if (cardIdx > currentIdx) {
+                      setFormData((prev) => ({ ...prev, priority: card.default_priority as typeof prev.priority }));
+                    }
+                  }}
+                />
+              </div>
             </div>
             {mode === 'full' && (
               <div>

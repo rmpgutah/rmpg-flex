@@ -45,6 +45,8 @@ try {
 // Import routes
 import authRoutes from './routes/auth';
 import dispatchRoutes from './routes/dispatch';
+import nibrsRoutes from './routes/nibrs';
+import incidentSupplementsRoutes from './routes/incidentSupplements';
 import incidentRoutes from './routes/incidents';
 import recordsRoutes from './routes/records';
 import businessVehiclesRoutes from './routes/businessVehicles';
@@ -384,6 +386,8 @@ app.use('/owntracks', owntracksDeprecatedRouter);
 app.use('/api/auth', authRoutes);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/incidents', incidentSupplementsRoutes);
+app.use('/api/nibrs', nibrsRoutes);
 app.use('/api/records/subjects', subjectSearchRoutes);
 app.use('/api/records', recordsRoutes);
 app.use('/api/business-vehicles', businessVehiclesRoutes);

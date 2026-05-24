@@ -889,7 +889,7 @@ function createTables(): void {
     CREATE TABLE IF NOT EXISTS incident_links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       incident_id INTEGER NOT NULL,
-      linked_type TEXT NOT NULL CHECK(linked_type IN ('incident','call','case','warrant','citation','arrest')),
+      linked_type TEXT NOT NULL CHECK(linked_type IN ('incident','call','case','warrant','citation','arrest','field_interview')),
       linked_id INTEGER NOT NULL,
       link_reason TEXT,
       added_by INTEGER NOT NULL,
@@ -3623,6 +3623,239 @@ function migrateSchema(): void {
     }
   } catch (err) {
     console.log('[migrate] Dispatch codes seed:', (err as Error).message);
+  }
+
+  // ── DISPATCH RUN CARDS (Spillman parity) ───────────────────
+  // Canned dispatch templates: incident_type → unit count / roles / auto-flags / priority.
+  // Applied on call creation when a matching active card exists, populating defaults
+  // and recording dispatch_run_cards.id on calls_for_service for audit. Dispatcher
+  // can still override every value after the card is applied.
+  try {
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS dispatch_run_cards (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        incident_type TEXT NOT NULL UNIQUE,
+        display_name TEXT NOT NULL,
+        default_priority TEXT NOT NULL DEFAULT 'P3',
+        required_units INTEGER NOT NULL DEFAULT 1,
+        backup_units INTEGER NOT NULL DEFAULT 0,
+        required_roles TEXT NOT NULL DEFAULT '[]',
+        auto_flags TEXT NOT NULL DEFAULT '{}',
+        recommended_codes TEXT NOT NULL DEFAULT '[]',
+        officer_safety_alert INTEGER NOT NULL DEFAULT 0,
+        silent_response_default INTEGER NOT NULL DEFAULT 0,
+        ems_requested INTEGER NOT NULL DEFAULT 0,
+        fire_requested INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        active INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT DEFAULT (datetime('now')),
+        updated_at TEXT DEFAULT (datetime('now'))
+      )
+    `).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_run_cards_active ON dispatch_run_cards(active, incident_type)`).run();
+    addCol('calls_for_service', 'run_card_id', 'INTEGER');
+    addCol('calls_for_service', 'run_card_applied_at', 'TEXT');
+    // DI-5: per-unit audio mode for silent dispatch
+    addCol('units', 'audio_mode', "TEXT DEFAULT 'audible'");
+
+    // ── NIBRS code tables (NB-1) ──────────────────────────────
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS nibrs_offense_codes (
+        code TEXT PRIMARY KEY,
+        description TEXT NOT NULL,
+        ucr_group TEXT NOT NULL DEFAULT 'A',
+        category TEXT NOT NULL,
+        attempted_completed_required INTEGER NOT NULL DEFAULT 0,
+        victim_required INTEGER NOT NULL DEFAULT 0,
+        weapon_required INTEGER NOT NULL DEFAULT 0,
+        bias_required INTEGER NOT NULL DEFAULT 0,
+        property_required INTEGER NOT NULL DEFAULT 0,
+        drug_required INTEGER NOT NULL DEFAULT 0,
+        notes TEXT,
+        active INTEGER NOT NULL DEFAULT 1
+      )
+    `).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_nibrs_offense_group ON nibrs_offense_codes(ucr_group, active)`).run();
+    db.prepare(`CREATE TABLE IF NOT EXISTS nibrs_location_codes (code TEXT PRIMARY KEY, description TEXT NOT NULL)`).run();
+    db.prepare(`CREATE TABLE IF NOT EXISTS nibrs_weapon_codes (code TEXT PRIMARY KEY, description TEXT NOT NULL)`).run();
+    db.prepare(`CREATE TABLE IF NOT EXISTS nibrs_bias_codes (code TEXT PRIMARY KEY, description TEXT NOT NULL)`).run();
+    db.prepare(`CREATE TABLE IF NOT EXISTS nibrs_property_descriptions (code TEXT PRIMARY KEY, description TEXT NOT NULL)`).run();
+    db.prepare(`CREATE TABLE IF NOT EXISTS nibrs_property_loss_types (code TEXT PRIMARY KEY, description TEXT NOT NULL)`).run();
+    try {
+      const { seedNibrsCodes } = require('../seeds/nibrsCodes');
+      seedNibrsCodes(db);
+    } catch (err) {
+      console.log('[migrate] NIBRS code seed:', (err as Error).message);
+    }
+
+    // ── DV + Pursuit supplements (NB-4) ───────────────────────
+    // Each incident gets at most one DV supplement and one Pursuit
+    // supplement (1:1 via UNIQUE incident_id). Fields mirror the
+    // Spillman supplement forms officers expect.
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS dv_supplements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        incident_id INTEGER NOT NULL UNIQUE REFERENCES incidents(id) ON DELETE CASCADE,
+        relationship TEXT,                    -- spouse, ex-spouse, dating, cohabitant, child, parent, sibling, other
+        prior_incidents_count INTEGER DEFAULT 0,
+        prior_incidents_notes TEXT,
+        children_present INTEGER DEFAULT 0,
+        children_witnessed INTEGER DEFAULT 0,
+        weapons_in_home INTEGER DEFAULT 0,
+        weapons_in_home_notes TEXT,
+        strangulation_alleged INTEGER DEFAULT 0,
+        substance_abuse_alleged INTEGER DEFAULT 0,
+        threats_to_kill INTEGER DEFAULT 0,
+        threats_of_suicide INTEGER DEFAULT 0,
+        lethality_score INTEGER,              -- 0-11 Lethality Assessment Program score
+        lethality_questions TEXT,             -- JSON: { q1: bool, q2: bool, ... }
+        lethality_high_danger INTEGER DEFAULT 0,
+        mandatory_arrest_triggered INTEGER DEFAULT 0,
+        victim_safety_plan_text TEXT,
+        victim_shelter_referred INTEGER DEFAULT 0,
+        victim_shelter_name TEXT,
+        protective_order_issued INTEGER DEFAULT 0,
+        protective_order_number TEXT,
+        primary_aggressor_person_id INTEGER REFERENCES persons(id),
+        created_by INTEGER NOT NULL REFERENCES users(id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )
+    `).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_dv_supplements_incident ON dv_supplements(incident_id)`).run();
+
+    db.prepare(`
+      CREATE TABLE IF NOT EXISTS pursuit_supplements (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        incident_id INTEGER NOT NULL UNIQUE REFERENCES incidents(id) ON DELETE CASCADE,
+        pursuit_type TEXT,                    -- vehicle, foot, marine, mixed
+        reason TEXT,                          -- e.g. felony_in_progress, stolen_vehicle, traffic_violation
+        statute_basis TEXT,
+        started_at TEXT,
+        ended_at TEXT,
+        duration_seconds INTEGER,
+        distance_miles REAL,
+        max_speed_mph INTEGER,
+        weather_conditions TEXT,
+        road_conditions TEXT,
+        traffic_density TEXT,                 -- light, moderate, heavy
+        time_of_day TEXT,                     -- day, night, dusk, dawn
+        jurisdictions TEXT,                   -- JSON array of agencies/jurisdictions crossed
+        agencies_assisting TEXT,              -- JSON array
+        spike_strips_deployed INTEGER DEFAULT 0,
+        spike_strips_effective INTEGER DEFAULT 0,
+        pit_maneuver_attempted INTEGER DEFAULT 0,
+        pit_maneuver_successful INTEGER DEFAULT 0,
+        outcome TEXT,                         -- arrest, terminated_by_supervisor, escaped, collision, suspect_surrender
+        terminated_reason TEXT,
+        terminated_by_supervisor_id INTEGER REFERENCES users(id),
+        collision_occurred INTEGER DEFAULT 0,
+        collision_details TEXT,
+        suspect_injuries TEXT,
+        officer_injuries TEXT,
+        bystander_injuries TEXT,
+        property_damage_estimate REAL,
+        supervisory_approval_user_id INTEGER REFERENCES users(id),
+        supervisory_approval_at TEXT,
+        review_completed INTEGER DEFAULT 0,
+        review_findings TEXT,
+        review_completed_by INTEGER REFERENCES users(id),
+        review_completed_at TEXT,
+        created_by INTEGER NOT NULL REFERENCES users(id),
+        created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+        updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+      )
+    `).run();
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_pursuit_supplements_incident ON pursuit_supplements(incident_id)`).run();
+
+    // ── NB-5: Expand incident_links CHECK to include field_interview ──
+    // SQLite can't ALTER a CHECK constraint in place — must rebuild the
+    // table. Guarded by inspecting sqlite_master.sql for the new token
+    // so it runs at most once per DB.
+    try {
+      const existingSql = (db.prepare(
+        "SELECT sql FROM sqlite_master WHERE type='table' AND name='incident_links'"
+      ).get() as { sql: string } | undefined)?.sql || '';
+      if (existingSql && !existingSql.includes('field_interview')) {
+        const rebuild = db.transaction(() => {
+          db.prepare(`
+            CREATE TABLE incident_links_new (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              incident_id INTEGER NOT NULL,
+              linked_type TEXT NOT NULL CHECK(linked_type IN ('incident','call','case','warrant','citation','arrest','field_interview')),
+              linked_id INTEGER NOT NULL,
+              link_reason TEXT,
+              added_by INTEGER NOT NULL,
+              created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+              FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+              FOREIGN KEY (added_by) REFERENCES users(id),
+              UNIQUE(incident_id, linked_type, linked_id)
+            )
+          `).run();
+          db.prepare(`
+            INSERT INTO incident_links_new (id, incident_id, linked_type, linked_id, link_reason, added_by, created_at)
+            SELECT id, incident_id, linked_type, linked_id, link_reason, added_by, created_at FROM incident_links
+          `).run();
+          db.prepare(`DROP TABLE incident_links`).run();
+          db.prepare(`ALTER TABLE incident_links_new RENAME TO incident_links`).run();
+        });
+        rebuild();
+        console.log('[migrate] incident_links CHECK expanded to include field_interview');
+      }
+    } catch (err) {
+      console.log('[migrate] incident_links field_interview expand:', (err as Error).message);
+    }
+
+    const rcCount = db.prepare('SELECT COUNT(*) AS cnt FROM dispatch_run_cards').get() as any;
+    if (rcCount?.cnt === 0) {
+      type RC = { t: string; n: string; p: string; ru: number; bu: number; roles: string[]; flags: Record<string, any>; codes: string[]; safety: number; silent: number; ems: number; fire: number; notes: string };
+      const cards: RC[] = [
+        { t: 'structure_fire', n: 'Structure Fire', p: 'P1', ru: 2, bu: 1, roles: ['patrol','supervisor'], flags: { officer_safety_caution: 1 }, codes: ['10-70','904'], safety: 1, silent: 0, ems: 1, fire: 1, notes: 'Auto-dispatch 2 patrol + supervisor; request EMS + fire.' },
+        { t: 'vehicle_fire', n: 'Vehicle Fire', p: 'P2', ru: 1, bu: 1, roles: ['patrol'], flags: {}, codes: ['904'], safety: 0, silent: 0, ems: 1, fire: 1, notes: 'EMS + fire requested.' },
+        { t: 'shots_fired', n: 'Shots Fired', p: 'P1', ru: 3, bu: 2, roles: ['patrol','supervisor'], flags: { weapons_involved: 'firearm', officer_safety_caution: 1, felony_in_progress: 1 }, codes: ['10-71'], safety: 1, silent: 0, ems: 1, fire: 0, notes: 'High-risk — multiple units, supervisor, stage EMS.' },
+        { t: 'shooting', n: 'Shooting / Active Shooter', p: 'P1', ru: 4, bu: 2, roles: ['patrol','supervisor','k9'], flags: { weapons_involved: 'firearm', officer_safety_caution: 1, felony_in_progress: 1, injuries_reported: 1 }, codes: ['10-71','998'], safety: 1, silent: 0, ems: 1, fire: 0, notes: 'Multi-unit, K9, supervisor; stage EMS.' },
+        { t: 'stabbing', n: 'Stabbing / Knife Attack', p: 'P1', ru: 2, bu: 1, roles: ['patrol','supervisor'], flags: { weapons_involved: 'knife', officer_safety_caution: 1, injuries_reported: 1 }, codes: ['10-72'], safety: 1, silent: 0, ems: 1, fire: 0, notes: 'Stage EMS; supervisor.' },
+        { t: 'robbery_in_progress', n: 'Robbery In Progress', p: 'P1', ru: 3, bu: 1, roles: ['patrol','supervisor'], flags: { weapons_involved: 'unknown', officer_safety_caution: 1, felony_in_progress: 1 }, codes: ['211'], safety: 1, silent: 1, ems: 0, fire: 0, notes: 'Silent run, contain perimeter.' },
+        { t: 'burglary_in_progress', n: 'Burglary In Progress', p: 'P1', ru: 2, bu: 1, roles: ['patrol','k9'], flags: { officer_safety_caution: 1, felony_in_progress: 1 }, codes: ['10-31','459'], safety: 1, silent: 1, ems: 0, fire: 0, notes: 'Silent run; K9 staged.' },
+        { t: 'domestic_in_progress', n: 'Domestic In Progress', p: 'P1', ru: 2, bu: 0, roles: ['patrol'], flags: { domestic_violence: 1, officer_safety_caution: 1 }, codes: ['10-15','10-16'], safety: 1, silent: 0, ems: 1, fire: 0, notes: '2-officer rule; EMS staged.' },
+        { t: 'domestic_disturbance', n: 'Domestic Disturbance (Past)', p: 'P2', ru: 2, bu: 0, roles: ['patrol'], flags: { domestic_violence: 1 }, codes: ['10-15'], safety: 0, silent: 0, ems: 0, fire: 0, notes: '2-officer rule even on past-tense calls.' },
+        { t: 'mva_injury', n: 'MVA — Injury', p: 'P2', ru: 1, bu: 0, roles: ['patrol'], flags: { injuries_reported: 1 }, codes: ['10-50'], safety: 0, silent: 0, ems: 1, fire: 1, notes: 'EMS + fire (extrication potential).' },
+        { t: 'mva_non_injury', n: 'MVA — Non-Injury', p: 'P3', ru: 1, bu: 0, roles: ['patrol'], flags: {}, codes: ['10-51'], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'Single unit; document only.' },
+        { t: 'hit_and_run', n: 'Hit and Run', p: 'P2', ru: 1, bu: 0, roles: ['patrol'], flags: {}, codes: ['10-57'], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'BOLO suspect vehicle.' },
+        { t: 'dui_driver', n: 'Intoxicated / DUI Driver', p: 'P2', ru: 1, bu: 1, roles: ['patrol'], flags: { alcohol_involved: 1 }, codes: ['10-55','502'], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'Backup for transport / SFST.' },
+        { t: 'traffic_stop', n: 'Traffic Stop (Officer Initiated)', p: 'P3', ru: 1, bu: 0, roles: ['patrol'], flags: {}, codes: ['10-38'], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'Officer-initiated; backup on request.' },
+        { t: 'felony_traffic_stop', n: 'Felony Traffic Stop', p: 'P1', ru: 2, bu: 2, roles: ['patrol','supervisor'], flags: { officer_safety_caution: 1, felony_in_progress: 1, weapons_involved: 'unknown' }, codes: ['10-38','10-32'], safety: 1, silent: 0, ems: 0, fire: 0, notes: 'High-risk stop protocol.' },
+        { t: 'vehicle_pursuit', n: 'Vehicle Pursuit', p: 'P1', ru: 3, bu: 1, roles: ['patrol','supervisor','k9'], flags: { vehicle_pursuit: 1, officer_safety_caution: 1 }, codes: ['10-80'], safety: 1, silent: 0, ems: 0, fire: 0, notes: 'Supervisor must monitor; lead + secondary + spike strip unit.' },
+        { t: 'foot_pursuit', n: 'Foot Pursuit', p: 'P1', ru: 2, bu: 2, roles: ['patrol','k9'], flags: { foot_pursuit: 1, officer_safety_caution: 1 }, codes: ['10-80'], safety: 1, silent: 0, ems: 0, fire: 0, notes: 'Containment + K9.' },
+        { t: 'panic_alarm', n: 'Panic / Hold-Up Alarm', p: 'P1', ru: 2, bu: 1, roles: ['patrol'], flags: { officer_safety_caution: 1 }, codes: ['10-90'], safety: 1, silent: 1, ems: 0, fire: 0, notes: 'Silent approach mandatory.' },
+        { t: 'residential_alarm', n: 'Residential Burglar Alarm', p: 'P3', ru: 1, bu: 1, roles: ['patrol'], flags: {}, codes: [], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'Single unit; backup auto-suggested.' },
+        { t: 'commercial_alarm', n: 'Commercial Burglar Alarm', p: 'P3', ru: 1, bu: 1, roles: ['patrol'], flags: {}, codes: [], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'Single unit; backup auto-suggested.' },
+        { t: 'fire_alarm', n: 'Fire Alarm', p: 'P2', ru: 1, bu: 0, roles: ['patrol'], flags: {}, codes: ['10-70'], safety: 0, silent: 0, ems: 0, fire: 1, notes: 'Fire dispatched; patrol secures scene.' },
+        { t: 'medical_emergency', n: 'Medical Emergency', p: 'P2', ru: 1, bu: 0, roles: ['patrol'], flags: { injuries_reported: 1 }, codes: ['10-52','901'], safety: 0, silent: 0, ems: 1, fire: 1, notes: 'Patrol stages until EMS clears.' },
+        { t: 'mental_subject', n: 'Mental Health Crisis', p: 'P2', ru: 2, bu: 0, roles: ['patrol'], flags: { mental_health_crisis: 1 }, codes: ['10-96'], safety: 0, silent: 0, ems: 1, fire: 0, notes: '2-officer; CIT-trained if available; EMS staged.' },
+        { t: 'suicidal_subject', n: 'Suicidal Subject', p: 'P1', ru: 2, bu: 1, roles: ['patrol','supervisor'], flags: { mental_health_crisis: 1, officer_safety_caution: 1 }, codes: ['10-96'], safety: 1, silent: 0, ems: 1, fire: 0, notes: 'Supervisor + CIT; EMS staged.' },
+        { t: 'officer_assist', n: 'Officer Needs Assistance', p: 'P1', ru: 3, bu: 2, roles: ['patrol','supervisor'], flags: { officer_safety_caution: 1 }, codes: ['10-78','10-00'], safety: 1, silent: 0, ems: 1, fire: 0, notes: 'All available units; supervisor; stage EMS.' },
+        { t: 'officer_down', n: 'Officer Down', p: 'P1', ru: 5, bu: 3, roles: ['patrol','supervisor','k9'], flags: { officer_safety_caution: 1, injuries_reported: 1 }, codes: ['10-0','999'], safety: 1, silent: 0, ems: 1, fire: 1, notes: 'ALL units; supervisor; EMS + fire emergency.' },
+        { t: 'bomb_threat', n: 'Bomb Threat', p: 'P1', ru: 2, bu: 2, roles: ['patrol','supervisor'], flags: { officer_safety_caution: 1, hazmat: 1 }, codes: ['10-89'], safety: 1, silent: 1, ems: 1, fire: 1, notes: 'Silent approach (no RF); EOD; evacuate.' },
+        { t: 'hazmat', n: 'HAZMAT Incident', p: 'P1', ru: 1, bu: 1, roles: ['patrol','supervisor'], flags: { hazmat: 1 }, codes: [], safety: 1, silent: 0, ems: 1, fire: 1, notes: 'Stage upwind; fire HAZMAT team primary.' },
+        { t: 'trespass', n: 'Trespass Complaint', p: 'P3', ru: 1, bu: 0, roles: ['patrol'], flags: {}, codes: [], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'Single unit; check trespass orders on file.' },
+        { t: 'suspicious_person', n: 'Suspicious Person', p: 'P3', ru: 1, bu: 0, roles: ['patrol'], flags: {}, codes: ['925'], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'Single unit; FI card on contact.' },
+        { t: 'welfare_check', n: 'Welfare Check', p: 'P3', ru: 1, bu: 0, roles: ['patrol'], flags: {}, codes: [], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'Single unit; EMS on request.' },
+        { t: 'disturbance', n: 'General Disturbance / Noise', p: 'P3', ru: 1, bu: 0, roles: ['patrol'], flags: {}, codes: ['415'], safety: 0, silent: 0, ems: 0, fire: 0, notes: 'Single unit.' },
+      ];
+      const ins = db.prepare(`INSERT INTO dispatch_run_cards
+        (incident_type, display_name, default_priority, required_units, backup_units,
+         required_roles, auto_flags, recommended_codes, officer_safety_alert,
+         silent_response_default, ems_requested, fire_requested, notes)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+      for (const c of cards) {
+        ins.run(c.t, c.n, c.p, c.ru, c.bu, JSON.stringify(c.roles), JSON.stringify(c.flags),
+                JSON.stringify(c.codes), c.safety, c.silent, c.ems, c.fire, c.notes);
+      }
+      console.log('[migrate] Seeded ' + cards.length + ' dispatch run cards');
+    }
+  } catch (err) {
+    console.log('[migrate] dispatch_run_cards:', (err as Error).message);
   }
 
   // ── FLEET — fuel log enrichment for Simply Fleet imports ──

@@ -37,6 +37,7 @@ import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
+import RecommendedUnitsInline from '../../components/RecommendedUnitsInline';
 import type { CommandAction } from '../../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
@@ -3906,6 +3907,19 @@ export default function DispatchPage() {
                           </div>
                         )}
                       </div>
+                      {/* DI-2: Persistent closest-unit recommendation (server-authoritative GPS) */}
+                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                        <div className="mt-1 mb-1">
+                          <RecommendedUnitsInline
+                            callId={selectedCall.id}
+                            limit={3}
+                            onAssign={(callSign) => {
+                              const u = units.find((x) => x.call_sign === callSign);
+                              if (u) handleAssignUnit(u.id);
+                            }}
+                          />
+                        </div>
+                      )}
                       {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
                       {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
                         <div className="flex gap-1 mt-1 mb-1">

@@ -15,6 +15,7 @@ import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 import { buildThreatContext } from '../../utils/threatContext';
 import { findNearestUnits } from '../../utils/proximityAlerts';
+import { applyRunCard } from './runCards';
 
 // ── Upgrade 1: Priority score calculation ──
 // Higher scores = more urgent. Used for sorting the dispatch queue.
@@ -341,6 +342,19 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     // Fix 51: Normalize incident_type for consistent heatmap grouping (trim, lowercase)
     const normalizedIncidentType = String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_');
 
+    // ── Run Card application (Spillman parity) ──
+    // Look up an active run card matching the normalized incident_type. The card
+    // fills only the flags the dispatcher didn't explicitly provide; caller-provided
+    // values always win. Card metadata (id, applied_at) is recorded for audit.
+    const rcResult = applyRunCard(db, normalizedIncidentType, normalizedPriority, {
+      weapons_involved, injuries_reported, domestic_violence,
+      alcohol_involved, mental_health_crisis, officer_safety_caution,
+      felony_in_progress, vehicle_pursuit, foot_pursuit, hazmat,
+      ems_requested, fire_requested,
+    });
+    const rcFlags = rcResult.appliedFlags;
+    const rcCard = rcResult.card;
+
     // Generate call number: YY-CFS#####
     const callNumber = generateCallNumber(db);
 
@@ -552,8 +566,10 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         zone_name: autoZoneName,
         beat_name: autoBeatName,
         beat_descriptor: autoBeatDescriptor,
-        weapons_involved: (weapons_involved && weapons_involved !== 'None') ? weapons_involved : null,
-        injuries_reported: toBoolInt(injuries_reported),
+        weapons_involved: (weapons_involved && weapons_involved !== 'None')
+          ? weapons_involved
+          : (typeof rcFlags.weapons_involved === 'string' && rcFlags.weapons_involved !== 'None' ? rcFlags.weapons_involved : null),
+        injuries_reported: toBoolInt(injuries_reported ?? rcFlags.injuries_reported),
         num_subjects: num_subjects ?? null,
         num_victims: num_victims ?? null,
         subject_description: subject_description || null,
@@ -562,9 +578,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         scene_safety: scene_safety || null,
         weather_conditions: weather_conditions || null,
         lighting_conditions: lighting_conditions || null,
-        alcohol_involved: toBoolInt(alcohol_involved),
+        alcohol_involved: toBoolInt(alcohol_involved ?? rcFlags.alcohol_involved),
         drugs_involved: toBoolInt(drugs_involved),
-        domestic_violence: toBoolInt(domestic_violence),
+        domestic_violence: toBoolInt(domestic_violence ?? rcFlags.domestic_violence),
         supervisor_notified: toBoolInt(supervisor_notified),
         le_notified: toBoolInt(le_notified),
         le_agency: (le_agency && le_agency !== 'None') ? le_agency : null,
@@ -573,21 +589,21 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         damage_description: damage_description || null,
         responding_officer: responding_officer || null,
         action_taken: action_taken || null,
-        mental_health_crisis: toBoolInt(mental_health_crisis),
+        mental_health_crisis: toBoolInt(mental_health_crisis ?? rcFlags.mental_health_crisis),
         juvenile_involved: toBoolInt(juvenile_involved),
-        felony_in_progress: toBoolInt(felony_in_progress),
-        officer_safety_caution: toBoolInt(officer_safety_caution),
+        felony_in_progress: toBoolInt(felony_in_progress ?? rcFlags.felony_in_progress),
+        officer_safety_caution: toBoolInt(officer_safety_caution ?? rcFlags.officer_safety_caution),
         k9_requested: toBoolInt(k9_requested),
-        ems_requested: toBoolInt(ems_requested),
-        fire_requested: toBoolInt(fire_requested),
-        hazmat: toBoolInt(hazmat),
+        ems_requested: toBoolInt(ems_requested ?? rcFlags.ems_requested ?? (rcCard?.ems_requested ? 1 : 0)),
+        fire_requested: toBoolInt(fire_requested ?? rcFlags.fire_requested ?? (rcCard?.fire_requested ? 1 : 0)),
+        hazmat: toBoolInt(hazmat ?? rcFlags.hazmat),
         gang_related: toBoolInt(gang_related),
         evidence_collected: toBoolInt(evidence_collected),
         body_camera_active: toBoolInt(body_camera_active),
         photos_taken: toBoolInt(photos_taken),
         trespass_issued: toBoolInt(trespass_issued),
-        vehicle_pursuit: toBoolInt(vehicle_pursuit),
-        foot_pursuit: toBoolInt(foot_pursuit),
+        vehicle_pursuit: toBoolInt(vehicle_pursuit ?? rcFlags.vehicle_pursuit),
+        foot_pursuit: toBoolInt(foot_pursuit ?? rcFlags.foot_pursuit),
         pso_service_type: pso_service_type || null,
         pso_authorization: pso_authorization || null,
         pso_requestor_name: pso_requestor_name || null,
@@ -613,6 +629,8 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         closed_at: closed_at || null,
         archived_at: archived_at || null,
         disposition: customDisposition || null,
+        run_card_id: rcCard?.id ?? null,
+        run_card_applied_at: rcCard ? localNow() : null,
       };
       const cols = Object.keys(callData);
       const placeholders = cols.map(c => '@' + c).join(', ');
@@ -648,6 +666,17 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         VALUES (?, 'call_created', 'call', ?, ?, ?)
       `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${normalizedIncidentType}`, req.ip || 'unknown');
 
+      if (rcCard) {
+        db.prepare(`
+          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+          VALUES (?, 'run_card_applied', 'call', ?, ?, ?)
+        `).run(
+          req.user!.userId, call.id,
+          `Run Card "${rcCard.display_name}" applied: ${rcCard.required_units}u, ${rcCard.backup_units} backup, priority ${rcCard.default_priority}${rcCard.silent_response_default ? ', SILENT' : ''}`,
+          req.ip || 'unknown',
+        );
+      }
+
       return call;
     });
     const call = createCallTx();
@@ -664,7 +693,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     } catch { /* non-critical */ }
 
     // Broadcast to dispatch channel (immediate, threat context added async below)
-    broadcastDispatchUpdate({ action: 'call_created', call, nearestUnits });
+    broadcastDispatchUpdate({ action: 'call_created', call, nearestUnits, runCard: rcCard });
 
     // Build threat context asynchronously and broadcast enrichment if available
     buildThreatContext({
