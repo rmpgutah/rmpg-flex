@@ -107,12 +107,20 @@ app.onError((err, c) => {
   const path = new URL(c.req.url).pathname;
   const route = `${method} ${path}`;
   const detail = err instanceof Error ? err.message : String(err);
-  console.error(`Unhandled in ${route}:`, err);
+  // userId is set by authMiddleware. If it's undefined here, the
+  // request reached the handler without going through auth — likely a
+  // path-matching gap in the app.use() coverage above. That was the
+  // exact root cause of the call-create FK failures fixed 2026-05-24:
+  // POST /api/dispatch/calls slipped past auth, userId was undefined,
+  // dispatcher_id bound as NULL, FK to users(id) rejected.
+  const userId = c.get('userId') as number | undefined;
+  console.error(`Unhandled in ${route} (userId=${userId}):`, err);
   return c.json({
     error: 'Internal server error',
     code: 'UNHANDLED',
     route,
     detail,
+    auth: userId == null ? 'NO_AUTH' : `userId=${userId}`,
   }, 500);
 });
 
@@ -121,12 +129,29 @@ app.route('/api/health', health);
 app.route('/api/auth', auth);
 app.route('/api/map-data', mapData);
 
-// Auth middleware for protected routes — must use /{path}/* pattern
-// to match sub-paths (Hono glob * doesn't cross / boundaries)
+// Auth middleware for protected routes.
+//
+// Hono's path matcher: `app.use('/path/*', mw)` matches `/path/X` for
+// any X but does NOT match the bare `/path` itself. Without explicit
+// coverage of the bare path, POST /api/dispatch/calls (no path after
+// `/calls`) slipped past auth entirely, leaving `userId = undefined`
+// inside the handler. dispatcher_id then bound as NULL on the INSERT
+// and the FK to users(id) failed (NULL ≠ any row). Symptom: the
+// dispatcher saw a "FOREIGN KEY constraint failed" toast on every
+// call create.
+//
+// Each protected router needs BOTH lines: the bare path and the /*
+// sub-path glob. The /run-cards, /welfare, /premise-alerts, /bolos,
+// /panic, /premise-history mounts below already do this; the four
+// canonical dispatch resources had only the /* line.
 app.use('/api/dispatch', authMiddleware);
+app.use('/api/dispatch/calls', authMiddleware);
 app.use('/api/dispatch/calls/*', authMiddleware);
+app.use('/api/dispatch/units', authMiddleware);
 app.use('/api/dispatch/units/*', authMiddleware);
+app.use('/api/dispatch/gps', authMiddleware);
 app.use('/api/dispatch/gps/*', authMiddleware);
+app.use('/api/dispatch/geography', authMiddleware);
 app.use('/api/dispatch/geography/*', authMiddleware);
 app.use('/api/dispatch/run-cards', authMiddleware);
 app.use('/api/dispatch/run-cards/*', authMiddleware);
