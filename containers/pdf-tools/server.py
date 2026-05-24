@@ -112,6 +112,17 @@ async def health() -> dict:
 #   extract=y|n           — copy text / images out
 #   accessibility=y|n     — screen-reader access
 #   useAes=y              — always AES-256 (default for new PDFs)
+def _validate_password_arg(field_name: str, value: str, max_len: int = 128) -> None:
+    """Validate password fields before they are passed to subprocess args."""
+    if not isinstance(value, str):
+        raise HTTPException(400, f"{field_name} must be a string")
+    if len(value) > max_len:
+        raise HTTPException(400, f"{field_name} must be <= {max_len} characters")
+    # Disallow control chars that can break logging/parsing and are unsafe as CLI args.
+    if any(ord(ch) < 32 for ch in value):
+        raise HTTPException(400, f"{field_name} contains invalid control characters")
+
+
 @app.post("/encrypt")
 async def encrypt(
     pdf: UploadFile = File(...),
@@ -148,6 +159,9 @@ async def encrypt(
     if not owner_password:
         owner_password = base64.urlsafe_b64encode(secrets.token_bytes(24)).decode().rstrip("=")
         generated_owner = True
+
+    _validate_password_arg("user_password", user_password)
+    _validate_password_arg("owner_password", owner_password)
 
     with temp_workdir() as workdir:
         in_path = os.path.join(workdir, "in.pdf")
