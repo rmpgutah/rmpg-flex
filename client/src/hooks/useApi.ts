@@ -395,6 +395,11 @@ async function tryRefreshToken(): Promise<string | null> {
 const CF_WORKER_PREFIXES = [
   '/api/warrants/watch/',
   '/api/warrants/utah/',
+  // PDF Tools sidecar (qpdf encryption + pdftotext/ocrmypdf text extraction)
+  // — hosted on the CF Worker via the PdfToolsContainer Durable Object
+  // binding. Worker proxies multipart bodies through to the container.
+  '/api/pdf-tools/',
+  '/api/document-intake/',
 ];
 const CF_WORKER_BASE = 'https://api.rmpgutah.us';
 
