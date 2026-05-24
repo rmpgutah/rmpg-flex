@@ -240,7 +240,16 @@ export default function AddressAutocomplete({
       if (!token) return;
 
       const types = addressOnly ? 'address,place' : 'address,place,poi,neighborhood';
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=${country}&autocomplete=true&types=${types}&limit=5`;
+      // Utah bias for Mapbox direct calls:
+      //   proximity = SLC center (-111.89, 40.76) — Mapbox ranks
+      //               results closer to this point higher
+      //   bbox      = Utah bounding box (west,south,east,north) —
+      //               soft constraint, not as strict as Nominatim's
+      //               `bounded=1`, but combined with proximity it
+      //               keeps Wasatch Front addresses on top
+      // Without this, "South 200 East" matches Indiana grid streets
+      // before SLC's identically-named arterial.
+      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=${country}&autocomplete=true&types=${types}&limit=5&proximity=-111.89,40.76&bbox=-114.052,36.998,-109.041,42.001`;
 
       const res = await fetch(url);
       if (!res.ok) {
