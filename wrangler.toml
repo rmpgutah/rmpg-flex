@@ -41,6 +41,15 @@ preview_id = "8e01c392038e4f76838ca9a1130c908e"
 binding = "MAP_DATA"
 bucket_name = "system-essentials"
 
+# UPLOADS — general-purpose user upload bucket.
+# Currently holds business-photos/ prefix (PR-E). Future R2-backed
+# routes (companyDocuments, dashcamVideos, attachments) can layer
+# their own prefixes under this same bucket to keep the binding
+# count low. Bucket was provisioned 2026-05-24.
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "rmpg-flex-uploads"
+
 # ─── Cloudflare Containers ─────────────────────────────────
 # PDF Tools sidecar (qpdf + pdftotext + ocrmypdf). The Worker
 # can't shell out to native binaries — this container holds

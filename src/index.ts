@@ -42,6 +42,9 @@ import pdfTools from './routes/pdfTools';
 import documentIntake from './routes/documentIntake';
 import audit from './routes/audit';
 import documentFolders from './routes/documents/folders';
+import businessVehicles from './routes/business/vehicles';
+import businessVisits from './routes/business/visits';
+import businessPhotos from './routes/business/photos';
 import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import {
   recommendedUnits,
@@ -57,6 +60,7 @@ type Bindings = {
   DB: D1Database;
   KV: KVNamespace;
   MAP_DATA: R2Bucket;
+  UPLOADS: R2Bucket;
   JWT_SECRET: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
@@ -171,6 +175,22 @@ app.route('/api/nibrs', nibrs);
 // incidentsRouter's exact patterns match first.
 app.route('/api/incidents', incidentsRouter);
 app.route('/api/incidents', incidentSupplements);
+
+// Business records cluster — PR-E. Migration 0023_business_records
+// creates the businesses + business_vehicles + business_visits +
+// business_photos + call_businesses tables. Photos route is
+// R2-backed (UPLOADS bucket, business-photos/ prefix); the streamer
+// at /api/business-photos/file/:key{.+} flows through the Worker
+// so premise photos stay auth-gated.
+app.use('/api/business-vehicles', authMiddleware);
+app.use('/api/business-vehicles/*', authMiddleware);
+app.use('/api/business-visits', authMiddleware);
+app.use('/api/business-visits/*', authMiddleware);
+app.use('/api/business-photos', authMiddleware);
+app.use('/api/business-photos/*', authMiddleware);
+app.route('/api/business-vehicles', businessVehicles);
+app.route('/api/business-visits', businessVisits);
+app.route('/api/business-photos', businessPhotos);
 
 // Stub endpoints for dashboard/feature compatibility
 app.use('/api/user/*', authMiddleware);

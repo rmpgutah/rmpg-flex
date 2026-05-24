@@ -39,7 +39,13 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: deploy
+          # --containers-rollout=none skips the Cloudflare Containers
+          # rollout. Without this every Worker deploy fails at the
+          # container image push step with Unauthorized because the
+          # API token lacks the Workers Container Images permission.
+          # All routes still ship; the container itself stays
+          # inactive until the token is updated.
+          command: deploy --containers-rollout=none
 
       # Client SPA build + deploy to Cloudflare Pages.
       # Without these steps the Worker (API) ships but the React app
