@@ -75,6 +75,16 @@ const API_ROUTES: RouteRule[] = [
   // bare /api/dispatch/calls/:id rule so they win the match.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings)(\/.*)?$/ },
 
+  // /api/dispatch/calls/:id/{persons,vehicles}[/...] — rewrite implements
+  // POST/DELETE/PATCH plus the quick-add fast-path; legacy implements ONLY
+  // GET on these (no POST handler) so the dispatch panel's "Link Person"
+  // / "Link Vehicle" pickers were silently 404'ing on submit. The client's
+  // catch only console.errors, so the user saw no toast and an empty list
+  // after refetch — exactly the "I pick + submit, no error, link doesn't
+  // appear" symptom reported 2026-05-24. Routing ALL methods on the entire
+  // sub-tree to the rewrite makes the round-trip self-consistent.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(persons|vehicles)(\/.*)?$/ },
+
   // /api/dispatch/calls/check-duplicate — rewrite has correct route ordering
   // (literal /check-duplicate registered before parametric /:id). Legacy
   // hits the /:id handler first and 500s on NaN cast.
