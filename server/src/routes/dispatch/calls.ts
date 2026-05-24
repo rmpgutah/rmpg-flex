@@ -1409,8 +1409,17 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       });
     }
   } catch (error: any) {
-    console.error('Update call error:', error?.message || 'Unknown error');
-    res.status(500).json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR' });
+    // Surface the real cause so production failures are diagnosable from the
+    // client. Without this, every PUT /calls/:id failure is an opaque 500 and
+    // the UI just shows "nothing happened". `detail` is intentionally verbose
+    // — this endpoint requires an authenticated dispatcher/officer role, so
+    // leaking SQL column names to that audience is acceptable.
+    console.error('Update call error:', error?.message || 'Unknown error', error?.stack);
+    res.status(500).json({
+      error: 'Failed to update call',
+      code: 'UPDATE_CALL_ERROR',
+      detail: error?.message || String(error),
+    });
   }
 });
 

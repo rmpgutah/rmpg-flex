@@ -74,6 +74,7 @@ import VehicleFormModal, { type VehicleFormData } from '../../components/Vehicle
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
+import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import {
   humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo,
@@ -255,6 +256,12 @@ export default function DispatchPage() {
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
+
+  // Hold the screen wake lock while a non-terminal call is selected.
+  // Released automatically when the call closes or the page unmounts.
+  useScreenWakeLock(
+    !!selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)
+  );
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);

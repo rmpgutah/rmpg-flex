@@ -723,11 +723,39 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }
   }, [isTracking, startTracking]);
 
-  // AUTO-START on mount — GPS is mandatory for all logged-in users
+  // AUTO-START on first user gesture — modern browsers gate Geolocation
+  // (and WakeLock) behind a user-activation token. Calling watchPosition on
+  // mount without a gesture causes the browser to silently withhold
+  // callbacks (symptom: "No position callback in 45s" watchdog warnings)
+  // and emit a "[Violation] geolocation in response to a user gesture" log.
+  // We wait for the first click/keydown anywhere in the app, then start.
   useEffect(() => {
-    startTracking();
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      window.removeEventListener('click', start);
+      window.removeEventListener('keydown', start);
+      window.removeEventListener('touchstart', start);
+      startTracking();
+    };
+    // Permissions API: if the user has already granted location permission
+    // in a prior session, browsers honor watchPosition without a fresh
+    // gesture — start immediately in that case.
+    const permApi = (navigator as any).permissions;
+    if (permApi?.query) {
+      permApi.query({ name: 'geolocation' }).then((res: any) => {
+        if (res.state === 'granted') start();
+      }).catch(() => { /* permissions API not available — wait for gesture */ });
+    }
+    window.addEventListener('click', start, { once: true });
+    window.addEventListener('keydown', start, { once: true });
+    window.addEventListener('touchstart', start, { once: true });
     return () => {
       mountedRef.current = false;
+      window.removeEventListener('click', start);
+      window.removeEventListener('keydown', start);
+      window.removeEventListener('touchstart', start);
       // Flush remaining points and clean up all timers/watchers
       cleanupTracking(true);
     };
@@ -809,56 +837,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     };
   }, [isTracking, startTracking]);
 
-  // Request WakeLock to prevent device sleep from interrupting GPS tracking
-  // (supported on Chrome Android, Chrome Desktop, Edge, etc.)
-  useEffect(() => {
-    let wakeLock: any = null;
-    const handleWakeLockRelease = () => {
-      // Wake lock released (e.g., user switched tabs) — will re-acquire via visibilitychange
-      wakeLock = null;
-    };
-    const requestWakeLock = async () => {
-      // WakeLock requires user-activation context + visible page; otherwise the
-      // browser throws NotAllowedError. Skip silently in those cases instead of
-      // spamming the console — GPS still works without WakeLock.
-      if (!('wakeLock' in navigator)) return;
-      if (document.visibilityState !== 'visible') return;
-      try {
-        wakeLock = await (navigator as any).wakeLock.request('screen');
-        wakeLock.addEventListener('release', handleWakeLockRelease);
-      } catch (err: any) {
-        // NotAllowedError = no user gesture yet; will retry on first user click below.
-        if (err?.name !== 'NotAllowedError') {
-          console.warn('[useGpsTracking] WakeLock request failed:', err);
-        }
-      }
-    };
-
-    requestWakeLock();
-
-    // Re-acquire wake lock when page becomes visible again, or on first user click.
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') requestWakeLock();
-    };
-    const handleFirstClick = () => {
-      requestWakeLock();
-      window.removeEventListener('click', handleFirstClick);
-      window.removeEventListener('keydown', handleFirstClick);
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-    window.addEventListener('click', handleFirstClick, { once: true });
-    window.addEventListener('keydown', handleFirstClick, { once: true });
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      window.removeEventListener('click', handleFirstClick);
-      window.removeEventListener('keydown', handleFirstClick);
-      if (wakeLock) {
-        wakeLock.removeEventListener('release', handleWakeLockRelease);
-        wakeLock.release().catch(() => { /* benign */ });
-      }
-    };
-  }, []);
+  // Screen Wake Lock used to be requested here unconditionally. It moved to
+  // a separate `useScreenWakeLock(active)` hook called from screens that
+  // genuinely need to keep the display awake (MapPage, dispatch with an
+  // active call). Holding wake lock app-wide drains battery overnight and
+  // throws NotAllowedError on initial mount before a user gesture.
 
   return {
     ...state,

@@ -69,6 +69,7 @@ import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
+import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
@@ -539,6 +540,10 @@ export default function MapPage() {
 
   // GPS own-position
   const gps = useGpsTracking();
+  // Keep the screen awake while the map is foregrounded — officers can't be
+  // glancing down to wake the device mid-pursuit. Released automatically
+  // when this page unmounts or visibility changes.
+  useScreenWakeLock(true);
   const selfMarkerRef = useRef<any>(null);
 
   // WebSocket
