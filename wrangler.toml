@@ -21,7 +21,7 @@ database_id = "785de7ae-3e7a-4e01-93bb-d24ddd813f6b"
 # ─── KV Namespace (sessions, rate limits, WS state) ─────
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "9d14f2f3e8f0447c9a7dce9f6f47db32"
+id = "18dcb50f5f8f494596b02a50885ed379"
 
 [[kv_namespaces]]
 binding = "RATE_LIMITS"
