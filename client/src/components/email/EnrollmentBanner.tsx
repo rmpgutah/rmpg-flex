@@ -9,6 +9,16 @@ export default function EnrollmentBanner() {
     setBusy(true); setError('');
     try {
       const r = await apiFetch<{ authorizationUrl: string }>('/api/email/oauth/authorize');
+      // Security: validate redirect URL against known OAuth provider hosts
+      try {
+        const u = new URL(r.authorizationUrl);
+        const allowed = ['login.microsoftonline.com', 'accounts.google.com', 'login.live.com'];
+        if (!allowed.includes(u.hostname)) {
+          setError('Unexpected OAuth provider URL'); setBusy(false); return;
+        }
+      } catch {
+        setError('Invalid authorization URL'); setBusy(false); return;
+      }
       window.location.href = r.authorizationUrl;
     } catch (err: any) {
       setError(err?.message || 'Failed to start OAuth');

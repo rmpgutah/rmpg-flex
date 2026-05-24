@@ -6,14 +6,15 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Search, Loader2, Plus, ChevronLeft, ChevronRight,
-  X, AlertTriangle, Shield, ShieldAlert, ShieldCheck, ShieldOff,
-  MapPin, Briefcase, GraduationCap, Car, FileText, Clock,
-  User, CheckCircle, XCircle, Eye, Edit2, Link2, Save,
-  Upload, Download, UserX, Calendar, Hash, Fingerprint,
+  Search, Loader2, Plus, ChevronLeft, ChevronRight, X, ShieldAlert, ShieldCheck,
+  ShieldOff, MapPin, Briefcase, Car, FileText, Clock, User, CheckCircle, XCircle,
+  Edit2, Link2, Save, Upload, UserX, Hash, Fingerprint,
 } from 'lucide-react';
-import type { SexOffenderRecord, SORAddress, SOROffense, SORVehicle, SORTier, SORStatus } from '../types';
+import type {
+  SexOffenderRecord, SORAddress, SOROffense, SORVehicle, SORTier, SORStatus,
+} from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import SplitPanel from '../components/SplitPanel';
@@ -87,20 +88,6 @@ function calcAge(dob?: string | null): string {
 }
 
 // ============================================================
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 // MAIN COMPONENT
 // ============================================================
 
@@ -1122,7 +1109,7 @@ function FormField({
     <div>
       <label className="block text-[10px] text-rmpg-500 mb-0.5 uppercase">{label}</label>
       {multiline ? (
-        <textarea value={value} onChange={e => onChange(e.target.value)} rows={2}
+        <RichTextArea value={value} onChange={e => onChange(e.target.value)} rows={2}
           className={cls} placeholder={placeholder} />
       ) : (
         <input type={type} value={value} onChange={e => onChange(e.target.value)}
@@ -1179,7 +1166,7 @@ function ImportModal({
           <p className="text-[11px] text-rmpg-400">
             Paste a JSON array of records. Each record must have at least <code className="text-brand-400">first_name</code> and <code className="text-brand-400">last_name</code> fields.
           </p>
-          <textarea
+          <RichTextArea
             value={jsonText}
             onChange={e => { setJsonText(e.target.value); setParsed(null); }}
             rows={8}

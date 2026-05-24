@@ -9,9 +9,9 @@
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import {
-  Search, Loader2, Network, X, User, Car, Building2,
-  Briefcase, FileText, Package, ChevronDown, ChevronRight,
-  ZoomIn, ZoomOut, RotateCcw, Maximize2, Minus, Plus, Eye, EyeOff,
+  Search, Loader2, Network, X, User, Car, Building2, Briefcase, FileText,
+  Package, ChevronDown, ChevronRight, RotateCcw, Maximize2, Minus, Plus, Eye,
+  EyeOff,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useIsMobile } from '../hooks/useIsMobile';

@@ -7,13 +7,11 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import {
-  Camera, Edit2, Flame, Download, Maximize2, Minimize2,
-  Loader2, AlertTriangle, ChevronLeft, ChevronRight,
-  ChevronDown, ChevronUp, Info, SkipBack, SkipForward,
-  Play, Pause, Volume2, VolumeX, Map, Shield, FileText,
-  Link2, Car, User, Gauge, Copy, Check,
+  Edit2, Flame, Download, Maximize2, Minimize2, Loader2, AlertTriangle,
+  ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Info, SkipBack, SkipForward,
+  Play, Pause, Volume2, VolumeX, Map, Shield, FileText, Link2, Car, User, Gauge,
+  Copy, Check,
 } from 'lucide-react';
-import type { DashCamVideo } from '../types';
 import DashCamVideoEditModal, { type DashCamVideoEditData } from '../components/DashCamVideoEditModal';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';

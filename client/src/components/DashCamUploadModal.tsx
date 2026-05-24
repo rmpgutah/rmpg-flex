@@ -6,6 +6,7 @@ import React, { useState, useRef } from 'react';
 import { Upload, X, Car, Loader2, MapPin, Gauge } from 'lucide-react';
 import AddressAutocomplete from './AddressAutocomplete';
 
+import RichTextArea from './RichTextArea';
 interface FleetVehicle {
   id: number;
   vehicle_number: string;
@@ -302,7 +303,7 @@ export default function DashCamUploadModal({
             </div>
             <div>
               <label className="field-label">Notes</label>
-              <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Additional notes..." className="textarea-dark" />
+              <RichTextArea value={notes} onChange={e => setNotes(e.target.value)} rows={2} placeholder="Additional notes..." className="textarea-dark" />
             </div>
           </div>
 

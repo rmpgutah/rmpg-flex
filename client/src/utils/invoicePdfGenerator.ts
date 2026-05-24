@@ -6,34 +6,22 @@
 
 import jsPDF from 'jspdf';
 import {
-  hexToRgb,
-  addReportHeader,
-  openAutoSection,
-  closeAutoSection,
-  addFieldPair,
-  addPageFooter,
-  addConfidentialWatermark,
-  addWrappedText,
-  addTableWithShading,
-  checkPageBreak,
-  setGenerationTimestamp,
-  fetchPdfBranding,
-  setActiveBranding,
-  setActiveFormKey,
-  setActiveCaseNumber,
-  getActiveBranding,
-  loadPdfAssets,
-  formSectionPageBreak,
-  sanitizePdfText,
-  addSignatureBlock,
-  wordWrapText,
+  hexToRgb, openAutoSection, closeAutoSection, addFieldPair, addPageFooter,
+  addConfidentialWatermark, addWrappedText, addTableWithShading, checkPageBreak,
+  setGenerationTimestamp, fetchPdfBranding, setActiveBranding, setActiveFormKey,
+  setActiveCaseNumber, getActiveBranding, loadPdfAssets, sanitizePdfText,
+  addSignatureBlock, wordWrapText,
 } from './pdfGenerator';
 import {
-  LAYOUT, SPACING, FONT, COLOR, BORDER,
-  getContentWidth, getHalfWidth, getFullFieldWidth,
-  getLeftX, getRightColumnX, getHalfFieldWidth, getQuarterWidth,
+  LAYOUT, SPACING, FONT, COLOR, BORDER, getContentWidth, getFullFieldWidth,
+  getLeftX, getRightColumnX, getHalfFieldWidth,
+  applyPrintTarget, type PrintTarget,
 } from './pdfTokens';
 import { drawNibrsHeader } from './pdfFormHelpers';
+
+export interface InvoicePdfOptions {
+  printTarget?: PrintTarget;
+}
 import { FORM_NUMBERS } from './pdfAssets';
 
 // ── Data interface ────────────────────────────────────────
@@ -87,7 +75,7 @@ function fmt(n: number | null | undefined): string {
 
 // ── PDF Generation ────────────────────────────────────────
 
-export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
+export async function generateInvoicePdf(data: InvoicePdfData, options: InvoicePdfOptions = {}): Promise<jsPDF> {
   const branding = await fetchPdfBranding();
   setActiveBranding(branding);
   await loadPdfAssets();
@@ -99,6 +87,7 @@ export async function generateInvoicePdf(data: InvoicePdfData): Promise<jsPDF> {
   }));
 
   const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'letter' });
+  applyPrintTarget(doc, options.printTarget ?? 'office');
   const pageWidth = doc.internal.pageSize.getWidth();
   const cw = getContentWidth(doc);
   const lx = getLeftX();
@@ -512,9 +501,9 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 }
 
 /** Generate invoice PDF and return a blob URL for in-app preview */
-export async function generateInvoicePdfBlobUrl(data: InvoicePdfData): Promise<string> {
+export async function generateInvoicePdfBlobUrl(data: InvoicePdfData, options: InvoicePdfOptions = {}): Promise<string> {
   try {
-    const doc = await generateInvoicePdf(data);
+    const doc = await generateInvoicePdf(data, options);
     const blob = doc.output('blob');
     return URL.createObjectURL(blob);
   } catch (err) {

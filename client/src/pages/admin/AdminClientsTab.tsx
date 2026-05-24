@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
   Plus,
   Edit,
@@ -12,7 +13,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { toDisplayLabel } from '../../utils/formatters';
+import { toDisplayLabel, formatPhoneInput } from '../../utils/formatters';
 import type { Client } from '../../types';
 import AdminInvoiceTab from './AdminInvoiceTab';
 import { ClientPersonLinks } from '../../components/ClientPersonLinksSection';
@@ -55,20 +56,6 @@ interface AdminClientsTabProps {
 // ============================================================
 // Component
 // ============================================================
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function AdminClientsTab({
   clients,
@@ -412,7 +399,7 @@ export default function AdminClientsTab({
                     </div>
                     <div>
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Phone</label>
-                      <input className="input-dark text-xs w-full min-h-[36px]" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', e.target.value)} placeholder="Phone" />
+                      <input className="input-dark text-xs w-full min-h-[36px]" type="tel" value={clientEdit.contact_phone || ''} onChange={(e) => setClientField('contact_phone', formatPhoneInput(e.target.value))} placeholder="(801) 555-1234" />
                     </div>
                     <div className="col-span-3">
                       <label className="block text-[9px] text-rmpg-500 uppercase mb-0.5">Address</label>
@@ -689,7 +676,7 @@ export default function AdminClientsTab({
                   <h3 className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider">Notes</h3>
                   {clientSaving && <div className="text-[9px] text-brand-400 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Saving...</div>}
                 </div>
-                <textarea
+                <RichTextArea
                   className="input-dark text-xs w-full leading-relaxed resize-y min-h-[36px]"
                   style={{ minHeight: '180px' }}
                   value={clientEdit.notes || ''}

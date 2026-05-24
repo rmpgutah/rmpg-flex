@@ -33,6 +33,14 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- Foreground service that anchors the GPS subsystem while the app is
+             backgrounded. Required by Android 14+ for ACCESS_BACKGROUND_LOCATION
+             to actually deliver updates. See LocationForegroundService.java. -->
+        <service
+            android:name=".LocationForegroundService"
+            android:foregroundServiceType="location"
+            android:exported="false" />
     </application>
 
     <!-- Package visibility for Organic Maps (Android 11+ requires explicit <queries>

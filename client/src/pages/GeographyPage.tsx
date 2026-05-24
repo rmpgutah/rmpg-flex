@@ -561,7 +561,7 @@ export default function GeographyPage() {
           disabled={state.selectedZoneId == null}
           renderItem={(b) => ({
             primary: b.beat_name,
-            secondary: b.dispatch_code || '',
+            secondary: b.dispatch_code || b.beat_code,
             code: b.beat_code,
           })}
           width={240}

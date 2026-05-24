@@ -1,4 +1,4 @@
-import '@testing-library/jest-dom';
+import '@testing-library/jest-dom/vitest';
 import { beforeEach } from 'vitest';
 
 // Node 25 injects an experimental bare `localStorage` global that shadows

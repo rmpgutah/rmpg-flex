@@ -2,7 +2,7 @@
 // RMPG Flex — Personnel: Training & Qualifications Tab
 // ============================================================
 
-import React, {useState, useMemo, useEffect} from 'react';
+import {useState, useMemo, useEffect} from 'react';
 import {
   GraduationCap, Plus, CheckCircle, AlertTriangle, Clock, BookOpen,
   Loader2,

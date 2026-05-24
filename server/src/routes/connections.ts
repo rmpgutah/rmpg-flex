@@ -191,7 +191,17 @@ function findConnections(db: any, type: string, id: number): Connection[] {
         sourceTable: 'record_links',
       });
     }
-  } catch (err: any) { /* record_links table may not exist */ console.error('[Connections] record_links query error:', err?.message); }
+  } catch (err: any) {
+    // Distinguish the "table doesn't exist" expected-on-fresh-DB case from
+    // genuine DB errors. Swallowing all errors silently lets real bugs
+    // (e.g. column drift) hide as "this user just sees no connections."
+    const msg = err?.message || '';
+    if (/no such table/i.test(msg)) {
+      // Expected on fresh installs before record_links migration runs.
+    } else {
+      console.error('[Connections] record_links query error:', msg);
+    }
+  }
 
   // 2. Type-specific junction tables
   try {

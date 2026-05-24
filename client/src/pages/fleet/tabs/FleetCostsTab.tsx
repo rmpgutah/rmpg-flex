@@ -15,11 +15,12 @@
 
 import React from 'react';
 import {
-  CreditCard, Shield, Wrench, Zap, DollarSign, Calendar,
-  Plus, Pencil, Trash2, AlertTriangle, TrendingUp, Gauge,
+  CreditCard, Shield, Wrench, Zap, DollarSign, Calendar, Plus, Pencil, Trash2,
+  AlertTriangle, Gauge,
 } from 'lucide-react';
 import type {
-  FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost, FleetCostSummary,
+  FleetLoan, FleetInsurancePolicy, FleetAccessory, FleetUtilityCost,
+  FleetCostSummary,
 } from '../../../types';
 import type { CostCategory } from '../modals/FleetCostFormModal';
 

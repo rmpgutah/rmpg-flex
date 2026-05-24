@@ -1,4 +1,3 @@
-import React from 'react';
 import { Radio, Clock, User, ArrowRight } from 'lucide-react';
 import type { FleetAssignment } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';

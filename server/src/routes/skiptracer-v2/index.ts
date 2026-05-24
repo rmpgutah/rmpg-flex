@@ -158,9 +158,16 @@ router.get('/search', async (req: Request, res: Response) => {
     const profiles = resolveResults(successfulResults);
     const durationMs = Date.now() - startTime;
 
-    // Background-save resolved profiles to people_index
+    // Background-save resolved profiles to people_index. Swallowing ALL
+    // errors hid real persistence bugs (e.g. constraint violations meaning
+    // the index is silently incomplete). Log them as warn so they surface
+    // in journalctl without failing the user-facing search response.
     for (const profile of profiles) {
-      try { saveToPeopleIndex(profile); } catch (e) { /* non-critical */ }
+      try {
+        saveToPeopleIndex(profile);
+      } catch (e: any) {
+        console.warn('[Skiptracer] people_index save failed (non-blocking):', e?.message || e);
+      }
     }
 
     const result: UnifiedSearchResult = {

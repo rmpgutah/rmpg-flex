@@ -14,18 +14,41 @@ set -e
 RAW_ENV="${1:-production}"
 DRY_RUN=false
 
-if [ "$RAW_ENV" = "--dry-run" ]; then
-  DRY_RUN=true
-  ENVIRONMENT="production"
-elif [ "$RAW_ENV" = "--staging" ]; then
-  ENVIRONMENT="staging"
-elif [ "$RAW_ENV" = "--production" ]; then
-  ENVIRONMENT="production"
-else
-  ENVIRONMENT="$RAW_ENV"
-fi
-# Strip leading dashes from environment for wrangler compat
-ENVIRONMENT="${ENVIRONMENT#--}"
+# Deploy-lock acquisition lives further down (see "Acquiring deploy lock..." block)
+# and uses an ownership-checked EXIT trap. The earlier duplicate implementation
+# was removed 2026-04-24 — its unconditional `rm -f` on EXIT clobbered sibling
+# locks, turning concurrent deploys into a lock-churn storm where every attempt
+# failed with BUSY while no code actually shipped. See memory:
+# project_deploy_sh_lock_race_bug.md.
+
+# Get the project root (parent of deploy/)
+PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+
+UPLOAD_CODE=true
+UPLOAD_DOWNLOADS=false
+FULL_SETUP=false
+SSL_SETUP=false
+
+case "${1:-}" in
+  --all)
+    UPLOAD_CODE=true
+    UPLOAD_DOWNLOADS=true
+    ;;
+  --setup)
+    UPLOAD_CODE=true
+    UPLOAD_DOWNLOADS=true
+    FULL_SETUP=true
+    SSL_SETUP=true
+    ;;
+  --downloads)
+    UPLOAD_CODE=false
+    UPLOAD_DOWNLOADS=true
+    ;;
+  --ssl)
+    UPLOAD_CODE=false
+    SSL_SETUP=true
+    ;;
+esac
 
 echo ""
 echo "╔══════════════════════════════════════════════════╗"
@@ -35,6 +58,45 @@ echo "║  Environment: $ENVIRONMENT                       ║"
 echo "║  Platform:    Cloudflare Workers + D1           ║"
 echo "╚══════════════════════════════════════════════════╝"
 echo ""
+
+# ─── Deploy Lock (Gotcha #43 — prevent parallel worktree clobbers) ──
+# Holds /tmp/rmpg-deploy.lock on the VPS for the duration of this deploy.
+# A stale lock older than 15 min is auto-cleared. Other deploys running
+# concurrently fail fast instead of racing.
+LOCK_FILE="/tmp/rmpg-deploy.lock"
+LOCK_ID="$(hostname)-$$-$(date +%s)"
+LOCK_MAX_AGE_SEC=900
+
+echo ">>> Acquiring deploy lock..."
+LOCK_RESULT=$(ssh "$VPS_USER@$VPS_IP" "bash -s" <<LOCKEOF
+  set -e
+  if [ -f "$LOCK_FILE" ]; then
+    AGE=\$(( \$(date +%s) - \$(stat -c %Y "$LOCK_FILE" 2>/dev/null || echo 0) ))
+    if [ "\$AGE" -lt "$LOCK_MAX_AGE_SEC" ]; then
+      HOLDER=\$(cat "$LOCK_FILE" 2>/dev/null || echo unknown)
+      echo "BUSY: held by \$HOLDER (age \${AGE}s)"
+      exit 1
+    else
+      echo "STALE: clearing lock (age \${AGE}s > ${LOCK_MAX_AGE_SEC}s)"
+    fi
+  fi
+  echo "$LOCK_ID" > "$LOCK_FILE"
+  echo "OK"
+LOCKEOF
+) || {
+  echo ""
+  echo "ERROR: Another deploy is in progress on the VPS."
+  echo "       $LOCK_RESULT"
+  echo ""
+  echo "If you're sure no other deploy is running, clear the stale lock:"
+  echo "  ssh $VPS_USER@$VPS_IP 'rm $LOCK_FILE'"
+  echo ""
+  exit 1
+}
+echo "    Lock acquired: $LOCK_ID"
+
+# Release lock on exit regardless of success/failure
+trap 'ssh "$VPS_USER@$VPS_IP" "[ \"\$(cat $LOCK_FILE 2>/dev/null)\" = \"$LOCK_ID\" ] && rm -f $LOCK_FILE" >/dev/null 2>&1 || true' EXIT
 
 # ─── Pre-deploy Quality Gates ────────────────────────────
 echo ">>> Running pre-deploy quality gates..."

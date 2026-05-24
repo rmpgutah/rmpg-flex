@@ -7,7 +7,7 @@
 // controls, frame capture, download, and quick-classify.
 // ============================================================
 
-import React, { useRef, useState, useEffect } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { X, Video, Shield, Maximize2, Minimize2, Edit2 } from 'lucide-react';
 import type { BodyCamVideo, VideoClassification } from '../types';
 import { VIDEO_CLASSIFICATION_COLORS } from '../pages/personnel/utils/personnelConstants';

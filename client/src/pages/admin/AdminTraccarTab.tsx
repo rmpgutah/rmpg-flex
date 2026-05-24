@@ -5,6 +5,7 @@ import {
   Radio, Clock, Truck, Camera, History, RefreshCw, Globe,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import AdminTraccarHistoricalSection from './AdminTraccarHistoricalSection';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -75,7 +76,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
   const [loading, setLoading] = useState(true);
 
   // Credentials
-  const [url, setUrl] = useState('http://localhost:8082');
+  const [url, setUrl] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -343,7 +344,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
               type="url"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="http://localhost:8082"
+              placeholder="https://traccar.example.com:8082"
               className="flex-1 bg-surface-sunken border border-rmpg-600 text-rmpg-200 text-xs px-2.5 py-1.5 rounded-sm focus:border-brand-500 focus:outline-none font-mono"
             />
           </div>
@@ -385,7 +386,7 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
         <div className="flex items-center gap-2">
           <button
             onClick={handleSaveCredentials}
-            disabled={saving || !url.trim() || !email.trim() || !password.trim()}
+            disabled={saving || !url.trim() || !/^https?:\/\//i.test(url.trim()) || !email.trim() || !password.trim()}
             className="toolbar-btn text-[10px] flex items-center gap-1 px-3 py-1.5 bg-brand-600 hover:bg-brand-500 text-white disabled:opacity-50"
           >
             {saving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle2 className="w-3 h-3" />}
@@ -694,6 +695,9 @@ export default function AdminTraccarTab({ LoadingSpinner, error, setError }: Pro
           )}
         </div>
       )}
+
+      {/* Historical bulk import — preserves all Traccar columns */}
+      {status?.configured && <AdminTraccarHistoricalSection />}
 
       {/* Not configured hint */}
       {!status?.configured && (

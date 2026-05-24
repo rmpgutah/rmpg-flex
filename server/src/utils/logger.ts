@@ -25,9 +25,31 @@ import pinoHttp from 'pino-http';
 import { randomUUID } from 'crypto';
 
 const isProd = process.env.NODE_ENV === 'production';
+// Vitest sets NODE_ENV='test' by default. Several tests deliberately
+// exercise rejection / fallback paths that emit warn-level logs (e.g.
+// the dashcam ingest signature-mismatch tests) — useful in production
+// for ops, just stderr noise during `npx vitest run`. Default level
+// 'error' under test keeps real errors visible while silencing the
+// expected warn spam. Override with LOG_LEVEL=info if a test author
+// needs to see info/warn while debugging.
+const isTest = process.env.NODE_ENV === 'test' || !!process.env.VITEST;
+
+/**
+ * Pure helper exported for tests: decides the logger level from env
+ * without constructing a pino instance. LOG_LEVEL always wins; then
+ * test → 'error', prod → 'info', else → 'debug'.
+ */
+export function decideLogLevel(env: NodeJS.ProcessEnv = process.env): string {
+  if (env.LOG_LEVEL) return env.LOG_LEVEL;
+  if (env.NODE_ENV === 'test' || env.VITEST) return 'error';
+  if (env.NODE_ENV === 'production') return 'info';
+  return 'debug';
+}
 
 // Pretty-printed dev logs; JSON lines in production for structured search.
-const transport = isProd
+// Tests use the default destination (stderr) without pino-pretty so the
+// vitest reporter stays clean.
+const transport = isProd || isTest
   ? undefined
   : {
       target: 'pino-pretty',
@@ -39,7 +61,7 @@ const transport = isProd
     };
 
 export const logger = pino({
-  level: process.env.LOG_LEVEL || (isProd ? 'info' : 'debug'),
+  level: decideLogLevel(),
   base: { service: 'rmpg-flex' },
   timestamp: pino.stdTimeFunctions.isoTime,
   transport,

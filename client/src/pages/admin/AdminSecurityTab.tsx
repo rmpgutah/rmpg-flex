@@ -5,25 +5,10 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
-  ShieldAlert,
-  ShieldCheck,
-  Lock,
-  Key,
-  Clock,
-  Users,
-  ToggleLeft,
-  ToggleRight,
-  Save,
-  RefreshCw,
-  AlertTriangle,
-  CheckCircle,
-  Shield,
-  Eye,
-  Ban,
-  Loader2,
-  Fingerprint,
-  MapPin,
+  ShieldAlert, ShieldCheck, Lock, Key, Clock, ToggleLeft, ToggleRight, Save,
+  AlertTriangle, CheckCircle, Shield, Eye, Ban, Loader2, Fingerprint, MapPin,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -374,7 +359,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">IP Allowlist</label>
-            <textarea
+            <RichTextArea
               className="input-dark text-xs w-full h-20 font-mono min-h-[36px]"
               value={config.ip_allowlist}
               onChange={(e) => update('ip_allowlist', e.target.value)}
@@ -384,7 +369,7 @@ export default function AdminSecurityTab({ LoadingSpinner, error, setError }: Ad
           </div>
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase block mb-1">IP Blocklist</label>
-            <textarea
+            <RichTextArea
               className="input-dark text-xs w-full h-20 font-mono min-h-[36px]"
               value={config.ip_blocklist}
               onChange={(e) => update('ip_blocklist', e.target.value)}

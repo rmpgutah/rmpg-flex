@@ -3,7 +3,7 @@
 // ============================================================
 
 import React, { useState } from 'react';
-import { Video, Plus, Edit2, Trash2, Loader2, Camera, Play, Upload, Download, Eye } from 'lucide-react';
+import { Video, Plus, Edit2, Trash2, Loader2, Camera, Play, Upload } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo } from '../../../types';
 import { CAMERA_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS, VIDEO_CLASSIFICATION_COLORS } from '../utils/personnelConstants';
 

@@ -8,7 +8,7 @@
 // all telemetry updates second-by-second during playback.
 // ============================================================
 
-import React, { useRef, useState, useEffect, useMemo, useCallback } from 'react';
+import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Maximize2, Minimize2, Edit2 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import { mapboxgl } from '../utils/mapboxLoader';

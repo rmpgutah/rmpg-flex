@@ -4,6 +4,7 @@ import FormModal from '../../../components/FormModal';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { EquipmentType, EquipmentCondition, EquipmentStatus } from '../../../types';
 
+import RichTextArea from '../../../components/RichTextArea';
 export interface EquipmentFormData {
   officer_id: string;
   equipment_type: EquipmentType;
@@ -218,7 +219,7 @@ export default function EquipmentFormModal({
         <div className="flex-1 h-px bg-rmpg-700" />
       </div>
       <div className="panel-inset p-3">
-        <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." className="textarea-dark" maxLength={3000} />
+        <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={3} placeholder="Additional notes..." className="textarea-dark" maxLength={3000} />
         <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
       </div>
     </FormModal>

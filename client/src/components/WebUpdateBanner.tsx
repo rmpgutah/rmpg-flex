@@ -6,26 +6,38 @@ import { devLog } from '../utils/devLog';
  * Silent PWA update applier.
  * When a new service worker is detected, automatically applies the update
  * in the background with no visible UI. The page reloads seamlessly.
- * Only active in web browsers (not Electron desktop app).
+ *
+ * Web browsers: SW skipWaiting + window.location.reload().
+ * Electron desktop: forceRefresh IPC (clears Chromium HTTP cache, service
+ * workers, cachestorage, then reloads). Falls back to applyUpdate() if the
+ * forceRefresh bridge isn't available (older EXE without the new preload).
  */
 export default function WebUpdateBanner() {
   const { updateAvailable, applyUpdate } = useServiceWorker();
   const autoApplyTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const isElectron = !!(window as any).electron?.isElectron;
+  const electron = (window as any).electron;
+  const isElectron = !!electron?.isElectron;
 
   // Auto-apply update silently after a brief delay
   useEffect(() => {
-    if (!updateAvailable || isElectron) return;
+    if (!updateAvailable) return;
 
     if (autoApplyTimerRef.current) {
       clearTimeout(autoApplyTimerRef.current);
     }
 
-    // Apply after 2 seconds — enough for the new SW to settle
     autoApplyTimerRef.current = setTimeout(() => {
-      devLog('[WEB-UPDATE] Applying service worker update silently');
-      applyUpdate();
+      if (isElectron && typeof electron?.forceRefresh === 'function') {
+        devLog('[WEB-UPDATE] Electron — invoking forceRefresh IPC');
+        electron.forceRefresh().catch((err: any) => {
+          devLog('[WEB-UPDATE] forceRefresh failed, falling back to applyUpdate', err);
+          applyUpdate();
+        });
+      } else {
+        devLog('[WEB-UPDATE] Applying service worker update silently');
+        applyUpdate();
+      }
     }, 2000);
 
     return () => {
@@ -33,7 +45,7 @@ export default function WebUpdateBanner() {
         clearTimeout(autoApplyTimerRef.current);
       }
     };
-  }, [updateAvailable, applyUpdate, isElectron]);
+  }, [updateAvailable, applyUpdate, isElectron, electron]);
 
   // Render nothing — completely invisible
   return null;

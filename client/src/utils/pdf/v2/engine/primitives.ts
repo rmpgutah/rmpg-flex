@@ -3,6 +3,7 @@ import type { LayoutEngine } from './layout';
 import type {
   LabeledField, CheckboxField, NarrativeField, TableField, SignatureField, Width,
 } from './types';
+import { TYPOGRAPHY, RULE_WEIGHTS, SPACING } from './style';
 
 // Font sizes are always in points regardless of doc unit.
 const LABEL_FONT_SIZE = 7;
@@ -47,30 +48,33 @@ export class Primitives {
    */
   labeledField<T>(spec: LabeledField<T>, data: T, xOverride?: number, widthOverride?: number): void {
     const positioned = xOverride !== undefined;
-    if (!positioned) this.layout.pageBreakIfNeeded(ROW_HEIGHT);
+    if (!positioned) this.layout.pageBreakIfNeeded(SPACING.fieldRowHeight);
     const x = xOverride ?? this.layout.leftX;
     const width = widthOverride ?? (this.layout.rightX - this.layout.leftX);
     const y = this.layout.cursorY;
     const value = formatValue(spec.accessor(data));
 
-    this.doc.setFont('helvetica', 'normal');
-    this.doc.setFontSize(LABEL_FONT_SIZE);
-    this.doc.setTextColor(100, 100, 100);
-    const labelMax = this.doc.splitTextToSize(spec.label.toUpperCase(), width - 1)[0] ?? spec.label.toUpperCase();
+    // Label — UPPERCASE BOLD on its own line (Spillman/Motorola convention).
+    this.doc.setFont('helvetica', TYPOGRAPHY.fieldLabel.weight);
+    this.doc.setFontSize(TYPOGRAPHY.fieldLabel.size);
+    this.doc.setTextColor(0, 0, 0);
+    const labelText = spec.label.toUpperCase();
+    const labelMax = this.doc.splitTextToSize(labelText, width - 1)[0] ?? labelText;
     this.doc.text(labelMax, x, y);
 
-    this.doc.setFontSize(VALUE_FONT_SIZE);
+    // Value — 9pt regular, 3.5mm below the label baseline.
+    this.doc.setFont('helvetica', TYPOGRAPHY.fieldValue.weight);
+    this.doc.setFontSize(TYPOGRAPHY.fieldValue.size);
     this.doc.setTextColor(0, 0, 0);
-    // Truncate value to fit the available width
     const maxLine = this.doc.splitTextToSize(value, width - 1)[0] ?? value;
     this.doc.text(maxLine, x, y + 4);
 
-    // Thin rule under the value so the boxed field reads as a form cell
-    this.doc.setDrawColor(180, 180, 180);
-    this.doc.setLineWidth(0.1);
-    this.doc.line(x, y + 5, x + width - 1, y + 5);
+    // Form-fill underline beneath the value spanning the field width.
+    this.doc.setDrawColor(0, 0, 0);
+    this.doc.setLineWidth(RULE_WEIGHTS.fieldUnderline);
+    this.doc.line(x, y + 5, x + width, y + 5);
 
-    if (!positioned) this.layout.advance(ROW_HEIGHT);
+    if (!positioned) this.layout.advance(SPACING.fieldRowHeight);
   }
 
   checkboxRow<T>(specs: CheckboxField<T>[], data: T): void {
@@ -136,15 +140,13 @@ export class Primitives {
   }
 
   table<T>(spec: TableField<T>, data: T): void {
-    const rowHeight = TABLE_ROW_H;
-    const headerHeight = TABLE_HDR_H;
     const rows = spec.accessor(data) ?? [];
-    const totalHeight = headerHeight + (rows.length || 1) * rowHeight;
-    this.layout.pageBreakIfNeeded(totalHeight + 4);
 
+    // Section label (above table)
+    this.layout.pageBreakIfNeeded(4 + 6 + 6);
     this.doc.setFont('helvetica', 'bold');
     this.doc.setFontSize(LABEL_FONT_SIZE);
-    this.doc.setTextColor(100, 100, 100);
+    this.doc.setTextColor(0, 0, 0);
     this.doc.text(spec.label.toUpperCase(), this.layout.leftX, this.layout.cursorY);
     this.layout.advance(4);
 
@@ -160,35 +162,85 @@ export class Primitives {
       x += w;
     }
 
-    this.doc.setFont('helvetica', 'bold');
-    this.doc.setFontSize(8);
-    this.doc.setTextColor(0, 0, 0);
-    this.doc.setFillColor(230, 230, 230);
-    this.doc.rect(this.layout.leftX, this.layout.cursorY, tableWidth, headerHeight, 'F');
-    spec.columns.forEach((c, i) => {
-      this.doc.text(c.header, colStarts[i] + 1, this.layout.cursorY + 3.5);
-    });
-    this.layout.advance(headerHeight);
+    // Header band height & body row height (in doc units — doc is in mm in
+    // renderer, pt in some tests; use ~5-6 unit baseline that works for both).
+    const headerH = TABLE_HDR_H;
+    const rowH = TABLE_ROW_H;
+    const left = this.layout.leftX;
 
-    this.doc.setFont('helvetica', 'normal');
-    this.doc.setFontSize(VALUE_FONT_SIZE);
+    // ── Header band: solid black fill, white UPPERCASE text ──
+    const tableTop = this.layout.cursorY;
+    this.doc.setFillColor(0, 0, 0);
+    this.doc.rect(left, tableTop, tableWidth, headerH, 'F');
+
+    this.doc.setFont('helvetica', TYPOGRAPHY.tableHeader.weight);
+    this.doc.setFontSize(TYPOGRAPHY.tableHeader.size);
+    this.doc.setTextColor(255, 255, 255);
+    spec.columns.forEach((c, i) => {
+      const headerText = (c.header || c.key).toUpperCase();
+      this.doc.text(headerText, colStarts[i] + 1, tableTop + headerH - 1.5);
+    });
+    this.layout.advance(headerH);
+
+    // ── Body rows: zebra-striped, black text ──
+    this.doc.setFont('helvetica', TYPOGRAPHY.tableBody.weight);
+    this.doc.setFontSize(TYPOGRAPHY.tableBody.size);
+    this.doc.setTextColor(0, 0, 0);
+
+    const bodyTop = this.layout.cursorY;
     if (rows.length === 0) {
       this.doc.setTextColor(150, 150, 150);
-      this.doc.text('No records', this.layout.leftX + 1, this.layout.cursorY + 3.5);
-      this.layout.advance(rowHeight);
-    } else {
+      this.doc.text('No records', left + 1, this.layout.cursorY + rowH - 1.5);
+      this.layout.advance(rowH);
       this.doc.setTextColor(0, 0, 0);
-      for (const row of rows) {
-        this.layout.pageBreakIfNeeded(rowHeight);
+    } else {
+      for (let r = 0; r < rows.length; r++) {
+        this.layout.pageBreakIfNeeded(rowH);
+        const row = rows[r];
+        const yRow = this.layout.cursorY;
+        if (r % 2 === 1) {
+          // 5% gray zebra (TONES.zebraRow #F5F5F5)
+          this.doc.setFillColor(245, 245, 245);
+          this.doc.rect(left, yRow, tableWidth, rowH, 'F');
+        }
         spec.columns.forEach((c, i) => {
           const raw = (row as Record<string, unknown>)[c.key];
           const text = raw === null || raw === undefined ? '' : String(raw);
           const maxLine = this.doc.splitTextToSize(text, colWidths[i] - 2)[0] ?? '';
-          this.doc.text(maxLine, colStarts[i] + 1, this.layout.cursorY + 3.5);
+          this.doc.text(maxLine, colStarts[i] + 1, yRow + rowH - 1.5);
         });
-        this.layout.advance(rowHeight);
+        this.layout.advance(rowH);
       }
     }
+
+    // ── Borders: 0.5pt black outer rect + column dividers + below-header line ──
+    // Skip the border pass when a page-break occurred mid-body — totalH would
+    // span the page break and produce an invalid rect that bleeds off-page.
+    // Detection: cursorY less than tableTop means the layout reset to a new
+    // page during the row loop. The header band on the new page is implicit
+    // (drawn by the renderer's page handler); body rows still got their zebra
+    // fills row-by-row; we just skip the broken outer-rect pass in this case.
+    const bodyBottom = this.layout.cursorY;
+    if (bodyBottom >= tableTop) {
+      const totalH = bodyBottom - tableTop;
+      this.doc.setLineWidth(RULE_WEIGHTS.tableBorder);
+      this.doc.setDrawColor(0, 0, 0);
+      this.doc.rect(left, tableTop, tableWidth, totalH);
+      // Below-header separator
+      this.doc.line(left, bodyTop, left + tableWidth, bodyTop);
+      // Column dividers (skip first edge)
+      for (let i = 1; i < spec.columns.length; i++) {
+        this.doc.line(colStarts[i], tableTop, colStarts[i], tableTop + totalH);
+      }
+    }
+
+    // Reset text + fill color for downstream callers — the body loop
+    // leaves fillColor at whatever the last row used (black for header,
+    // 5% gray for the last odd row, etc.). Stale fill would leak into a
+    // subsequent setFillColor-less rect(_, 'F') call from any other
+    // primitive (signature block, future filled element).
+    this.doc.setTextColor(0, 0, 0);
+    this.doc.setFillColor(255, 255, 255);
   }
 
   signature<T>(spec: SignatureField<T>, data: T): void {

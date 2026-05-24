@@ -20,20 +20,74 @@ export default defineConfig({
     },
   },
   build: {
+    // Disable Vite's automatic <link rel="modulepreload"> emission for
+    // every dynamic import. By default Vite eagerly preloads EVERY
+    // chunk reachable from the entry point, which on this app means
+    // ~3MB of JS (vendor-pdf, vendor-barcode, vendor-charts, etc.)
+    // gets downloaded on every page load even when the user isn't
+    // generating PDFs or viewing charts. Caught 2026-05-05 on a slow
+    // Electron desktop session — disabling the auto-preload cuts the
+    // initial network payload to the critical-path bundle (index +
+    // vendor-react + a few small chunks); heavy chunks load on demand
+    // when their first dynamic import fires (e.g. PDF generation).
+    modulePreload: { polyfill: true, resolveDependencies: () => [] },
     rollupOptions: {
       output: {
+        // Vendor chunking: libraries that don't change between deploys are
+        // split into their own long-lived cache-friendly chunks. Each group
+        // has its own browser-cache lifetime, so a fix that doesn't touch
+        // these vendors only invalidates the (much smaller) app code.
+        // Goal: shrink the main index chunk so initial page-paint isn't
+        // blocked behind 1.7 MB of unrelated framework code.
         manualChunks(id: string) {
-          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router-dom')) {
+          if (!id.includes('node_modules')) return;
+          // Core React runtime — loaded on every page
+          if (id.includes('node_modules/react-dom') || id.includes('node_modules/react/') || id.includes('node_modules/react-router')) {
             return 'vendor-react';
           }
-          if (id.includes('node_modules/jspdf')) {
+          // PDF generators (jsPDF + pdf-lib) — used by every record-PDF action
+          if (id.includes('node_modules/jspdf') || id.includes('node_modules/pdf-lib')) {
             return 'vendor-pdf';
           }
+          // PDF.js renderer — only loaded by PDF editor / viewer, but big
+          if (id.includes('node_modules/pdfjs-dist')) {
+            return 'vendor-pdfjs';
+          }
+          // Lucide icon set — large but commonly tree-shakable across pages
           if (id.includes('node_modules/lucide-react')) {
             return 'vendor-icons';
           }
-          if (id.includes('node_modules/pdfjs-dist')) {
-            return 'vendor-pdfjs';
+          // Charts (recharts + d3) — admin/analytics pages
+          if (id.includes('node_modules/recharts') || /node_modules\/d3-[a-z]+\//.test(id)) {
+            return 'vendor-charts';
+          }
+          // Graph viz — connections analyst tool
+          if (id.includes('node_modules/force-graph') || id.includes('node_modules/react-force-graph')) {
+            return 'vendor-graph';
+          }
+          // Barcode + QR — citation/warrant printouts only
+          if (id.includes('node_modules/bwip-js') || id.includes('node_modules/jsbarcode') || id.includes('node_modules/qrcode')) {
+            return 'vendor-barcode';
+          }
+          // html2canvas — screenshot/PDF rendering only
+          if (id.includes('node_modules/html2canvas')) {
+            return 'vendor-canvas';
+          }
+          // Terminal — recon-connect workspace only
+          if (id.includes('node_modules/@xterm')) {
+            return 'vendor-terminal';
+          }
+          // Map fallback — only when Google Maps is unavailable
+          if (id.includes('node_modules/leaflet')) {
+            return 'vendor-leaflet';
+          }
+          // HTML sanitizer — used by RichTextArea
+          if (id.includes('node_modules/sanitize-html')) {
+            return 'vendor-sanitize';
+          }
+          // IndexedDB wrapper + general utility
+          if (id.includes('node_modules/idb')) {
+            return 'vendor-idb';
           }
         },
       },

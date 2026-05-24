@@ -14,6 +14,8 @@ import { sendCsv } from '../../utils/csvExport';
 import { isLegalTransition, LEGAL_TRANSITIONS } from './callLifecycle';
 import { startWelfareWatch, clearWelfareWatch } from '../../utils/officerWelfare';
 import { paramStr } from '../../utils/reqHelpers';
+import { findNearestUnits } from '../../utils/proximityAlerts';
+import { getPremiseAlertsNear, pushPremiseAlertsToUnit } from '../../utils/premiseAlertsForCall';
 
 const router = Router();
 
@@ -206,6 +208,25 @@ router.post('/calls/:id/dispatch', validateParamIdMiddleware, requireRole('admin
       console.error('[Dispatch] Officer notification failed (non-fatal):', notifErr.message);
     }
 
+    // DI-3: Push premise alerts within 50m to each dispatched unit's MDT.
+    try {
+      if (call.latitude != null && call.longitude != null) {
+        const alerts = getPremiseAlertsNear(call.latitude, call.longitude);
+        if (alerts.length > 0) {
+          for (const unitId of unit_ids) {
+            pushPremiseAlertsToUnit({
+              unitId,
+              callId: call.id,
+              callNumber: call.call_number,
+              alerts,
+            });
+          }
+        }
+      }
+    } catch (paErr) {
+      console.error('[CallActions] premise alert push (dispatch):', paErr instanceof Error ? paErr.message : paErr);
+    }
+
     res.json(updated);
   } catch (error: any) {
     console.error('Dispatch error:', error?.message || 'Unknown error');
@@ -314,6 +335,24 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
     const updated = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
     if (updated) {
       broadcastDispatchUpdate({ action: 'unit_assigned', call: updated, unit_id });
+    }
+
+    // DI-3: Push premise alerts (within 50m of call) to the assigned officer's MDT.
+    // Best-effort — never throw out of dispatch.
+    try {
+      if (call.latitude != null && call.longitude != null) {
+        const alerts = getPremiseAlertsNear(call.latitude, call.longitude);
+        if (alerts.length > 0) {
+          pushPremiseAlertsToUnit({
+            unitId: unit_id,
+            callId: call.id,
+            callNumber: call.call_number,
+            alerts,
+          });
+        }
+      }
+    } catch (paErr) {
+      console.error('[CallActions] premise alert push (assign-unit):', paErr instanceof Error ? paErr.message : paErr);
     }
     const unitData = db.prepare(`
       SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
@@ -1257,6 +1296,95 @@ router.delete('/calls/:id/persons/:linkId', validateParamIdMiddleware, requireRo
 });
 
 // ═══════════════════════════════════════════════════════════
+// CALL BUSINESSES — Link/unlink business records to dispatch calls (Task 1.11)
+// Mirrors call_persons pattern. Schema has no role CHECK — accept arbitrary
+// role strings; schema DEFAULT 'involved' applies if omitted.
+// ═══════════════════════════════════════════════════════════
+
+router.post('/calls/:id/businesses',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  (req: Request, res: Response) => {
+    try {
+      const callId = parseInt(paramStr(req.params.id as any), 10);
+      const { business_id, role, notes } = req.body;
+      const db = getDb();
+      const call = db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(callId);
+      if (!call) { res.status(404).json({ error: 'Call not found' }); return; }
+      const business = db.prepare('SELECT id FROM businesses WHERE id = ?').get(business_id);
+      if (!business) { res.status(404).json({ error: 'Business not found' }); return; }
+
+      try {
+        const result = db.prepare(`
+          INSERT INTO call_businesses (call_id, business_id, role, notes, added_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(callId, business_id, role ?? 'involved', notes || null, req.user?.userId ?? null);
+        const row = db.prepare('SELECT * FROM call_businesses WHERE id = ?').get(result.lastInsertRowid);
+        auditLog(req, 'CREATE', 'call_business_link', Number(result.lastInsertRowid), null, row);
+        broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+        res.status(201).json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Business already linked to this call' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create call-business link: ' + err.message });
+    }
+  }
+);
+
+router.put('/calls/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  (req: Request, res: Response) => {
+    try {
+      const callId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM call_businesses WHERE id = ? AND call_id = ?').get(linkId, callId) as any;
+      if (!existing) { res.status(404).json({ error: 'Call-business link not found' }); return; }
+
+      const { role, notes } = req.body;
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role !== undefined)  { updates.push('role = ?');  values.push(role); }
+      if (notes !== undefined) { updates.push('notes = ?'); values.push(notes || null); }
+      if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      values.push(linkId);
+
+      db.prepare(`UPDATE call_businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      const row = db.prepare('SELECT * FROM call_businesses WHERE id = ?').get(linkId);
+      auditLog(req, 'UPDATE', 'call_business_link', linkId, existing, row);
+      broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update call-business link: ' + err.message });
+    }
+  }
+);
+
+router.delete('/calls/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'),
+  (req: Request, res: Response) => {
+    try {
+      const callId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM call_businesses WHERE id = ? AND call_id = ?').get(linkId, callId);
+      if (!existing) { res.status(404).json({ error: 'Call-business link not found' }); return; }
+
+      db.prepare('DELETE FROM call_businesses WHERE id = ?').run(linkId);
+      auditLog(req, 'DELETE', 'call_business_link', linkId, existing, null);
+      broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete call-business link: ' + err.message });
+    }
+  }
+);
+
+// ═══════════════════════════════════════════════════════════
 // CALL VEHICLES — Link/unlink vehicle records to dispatch calls
 // ═══════════════════════════════════════════════════════════
 
@@ -1545,9 +1673,10 @@ router.get('/calls/actions/export/csv', requireRole('admin', 'manager', 'supervi
   }
 });
 
-// ── Feature 1: Call Priority Escalation Timer ────────────────────
-// POST /api/dispatch/calls/:id/escalate - Auto-escalate call priority
-router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+// ── Manual priority escalation (auto-escalate timer was removed 2026-05-04) ────
+// POST /api/dispatch/calls/:id/escalate - Bump priority by one level (P4→P3→P2→P1).
+// Triggered only by an explicit click in the dispatch console; never by a timer.
+router.post('/calls/:id/escalate', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -2142,5 +2271,180 @@ router.post('/calls/:id/pursuit', validateParamIdMiddleware, requireRole('admin'
     res.status(500).json({ error: 'Failed to initiate pursuit', code: 'PURSUIT_ERROR' });
   }
 });
+
+// ─────────────────────────────────────────────────────────────────────
+// Dispatch advanced UX endpoints (audit trail, closest unit, pin)
+// ─────────────────────────────────────────────────────────────────────
+
+// GET /api/dispatch/calls/:id/audit-trail — chronological status events for a call
+router.get('/calls/:id/audit-trail', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = paramStr(req.params.id);
+    const call = db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+
+    const rows = db.prepare(`
+      SELECT al.id, al.action, al.entity_type, al.entity_id, al.details,
+             al.created_at, al.user_id, u.full_name AS user_name, u.username
+      FROM activity_log al
+      LEFT JOIN users u ON al.user_id = u.id
+      WHERE (al.entity_type = 'call' AND al.entity_id = ?)
+         OR (al.entity_type = 'call' AND al.entity_id = ?)
+      ORDER BY al.created_at ASC
+      LIMIT 500
+    `).all(String(id), String(call.call_number || ''));
+
+    res.json({ call_id: call.id, call_number: call.call_number, events: rows });
+  } catch (error: any) {
+    console.error('[CallActions] audit-trail error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to load audit trail', code: 'AUDIT_TRAIL_ERROR' });
+  }
+});
+
+// GET /api/dispatch/calls/:id/closest-unit — suggest nearest AVAILABLE unit
+router.get('/calls/:id/closest-unit', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = paramStr(req.params.id);
+    const call = db.prepare('SELECT id, call_number, latitude, longitude FROM calls_for_service WHERE id = ?').get(id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+    if (call.latitude == null || call.longitude == null) {
+      return res.status(400).json({ error: 'Call has no GPS coordinates', code: 'NO_CALL_COORDS' });
+    }
+
+    const units = db.prepare(`
+      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude,
+             usr.full_name AS officer_name, usr.id AS officer_id
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status = 'available'
+        AND u.latitude IS NOT NULL
+        AND u.longitude IS NOT NULL
+    `).all() as any[];
+
+    if (units.length === 0) {
+      return res.json({ call_id: call.id, suggestion: null, reason: 'No available units with GPS' });
+    }
+
+    // Haversine distance in miles
+    const toRad = (d: number) => (d * Math.PI) / 180;
+    const haversineMiles = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+      const R = 3958.7613;
+      const dLat = toRad(lat2 - lat1);
+      const dLon = toRad(lon2 - lon1);
+      const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(a));
+    };
+
+    const ranked = units.map(u => ({
+      ...u,
+      distance_miles: haversineMiles(call.latitude, call.longitude, u.latitude, u.longitude),
+    })).sort((a, b) => a.distance_miles - b.distance_miles);
+
+    res.json({
+      call_id: call.id,
+      call_number: call.call_number,
+      suggestion: ranked[0],
+      alternatives: ranked.slice(1, 3),
+    });
+  } catch (error: any) {
+    console.error('[CallActions] closest-unit error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to compute closest unit', code: 'CLOSEST_UNIT_ERROR' });
+  }
+});
+
+// PATCH /api/dispatch/calls/:id/pin — toggle pinned flag
+router.patch('/calls/:id/pin', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = paramStr(req.params.id);
+    const call = db.prepare('SELECT id, call_number, pinned FROM calls_for_service WHERE id = ?').get(id) as any;
+    if (!call) return res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+
+    const desired = typeof req.body?.pinned === 'boolean' ? req.body.pinned : !call.pinned;
+    const next = desired ? 1 : 0;
+    db.prepare('UPDATE calls_for_service SET pinned = ? WHERE id = ?').run(next, id);
+
+    auditLog(req, 'call_updated', 'call', call.id, { pinned: !!call.pinned }, { pinned: !!next });
+    broadcastDispatchUpdate({ action: 'call_pinned', call_id: call.id, call_number: call.call_number, pinned: !!next });
+
+    res.json({ success: true, id: call.id, pinned: !!next });
+  } catch (error: any) {
+    console.error('[CallActions] pin error:', error?.message || 'Unknown error');
+    res.status(500).json({ error: 'Failed to toggle pin', code: 'PIN_ERROR' });
+  }
+});
+
+// ── Closest-unit recommendation (Spillman parity) ─────────────────
+// Up to N available units ranked by Haversine distance, with ETA estimates
+// and assigned officer info. Reuses findNearestUnits which already powers
+// panic auto-dispatch — same code path, exposed for normal calls.
+router.get(
+  '/calls/:id/recommended-units',
+  validateParamIdMiddleware,
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const db = getDb();
+      const id = parseInt(paramStr(req.params.id), 10);
+      if (!Number.isFinite(id) || id <= 0) {
+        res.status(400).json({ error: 'Invalid call id', code: 'INVALID_ID' });
+        return;
+      }
+      const call = db.prepare('SELECT id, call_number, latitude, longitude, priority, incident_type FROM calls_for_service WHERE id = ?').get(id) as
+        | { id: number; call_number: string; latitude: number | null; longitude: number | null; priority: string; incident_type: string }
+        | undefined;
+      if (!call) {
+        res.status(404).json({ error: 'Call not found', code: 'CALL_NOT_FOUND' });
+        return;
+      }
+      if (call.latitude == null || call.longitude == null) {
+        res.json({ callId: id, callNumber: call.call_number, recommended: [], reason: 'NO_CALL_GPS' });
+        return;
+      }
+
+      const limitRaw = parseInt(String(req.query.limit ?? '5'), 10);
+      const limit = Number.isFinite(limitRaw) && limitRaw > 0 && limitRaw <= 25 ? limitRaw : 5;
+
+      const nearest = findNearestUnits(call.latitude, call.longitude, limit);
+
+      const enriched = nearest.map((u) => {
+        // FIX (QA C2): the canonical table is `units`, not `dispatch_units`.
+        // The previous join returned nothing → blank officer/badge for every row.
+        const unit = db.prepare(`
+          SELECT u.call_sign, u.status, u.officer_id, u.current_call_id, u.unit_type,
+                 us.first_name, us.last_name, us.badge_number
+          FROM units u
+          LEFT JOIN users us ON us.id = u.officer_id
+          WHERE u.call_sign = ?
+        `).get(u.callSign) as any;
+        return {
+          callSign: u.callSign,
+          distanceMeters: u.distance,
+          distanceMiles: Math.round((u.distance / 1609.34) * 10) / 10,
+          etaMinutes: u.etaMinutes,
+          status: u.status,
+          unitType: unit?.unit_type ?? null,
+          officerName: unit ? [unit.first_name, unit.last_name].filter(Boolean).join(' ') || null : null,
+          badgeNumber: unit?.badge_number ?? null,
+          currentCallId: unit?.current_call_id ?? null,
+        };
+      });
+
+      res.json({
+        callId: id,
+        callNumber: call.call_number,
+        callPriority: call.priority,
+        callLat: call.latitude,
+        callLng: call.longitude,
+        recommended: enriched,
+      });
+    } catch (err) {
+      console.error('[callActions] recommended-units error', err);
+      res.status(500).json({ error: 'Failed to compute recommended units', code: 'RECOMMEND_ERROR' });
+    }
+  },
+);
 
 export default router;

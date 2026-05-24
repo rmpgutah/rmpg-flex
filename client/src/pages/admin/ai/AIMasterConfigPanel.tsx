@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { Save, Loader2, Brain, RotateCcw } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface MasterConfig {
   masterPrompt: string;
   chainMode: boolean;
@@ -96,7 +97,7 @@ export default function AIMasterConfigPanel({ setError }: Props) {
           <Brain className="w-3.5 h-3.5 text-brand-400" />
           System Prompt
         </h3>
-        <textarea
+        <RichTextArea
           value={masterPrompt}
           onChange={e => { setMasterPrompt(e.target.value); setDirty(true); }}
           rows={6}

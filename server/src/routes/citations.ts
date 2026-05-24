@@ -835,7 +835,7 @@ router.get('/:id/violations', requireRole('admin', 'manager', 'supervisor', 'off
   try {
     const db = getDb();
     const violations = db.prepare(`
-      SELECT cv.*, s.statute_number, s.title as statute_title, s.category as statute_category
+      SELECT cv.*, s.citation AS statute_number, s.title as statute_title, s.category as statute_category
       FROM citation_violations cv
       LEFT JOIN utah_statutes s ON s.id = cv.statute_id
       WHERE cv.citation_id = ?
@@ -957,7 +957,7 @@ router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer',
     let payments: any[] = [];
     try {
       violations = db.prepare(`
-        SELECT cv.*, s.statute_number, s.title as statute_title
+        SELECT cv.*, s.citation AS statute_number, s.title as statute_title
         FROM citation_violations cv LEFT JOIN utah_statutes s ON s.id = cv.statute_id
         WHERE cv.citation_id = ? ORDER BY cv.violation_number
       `).all(req.params.id);

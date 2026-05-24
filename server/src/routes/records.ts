@@ -3,12 +3,13 @@ import crypto from 'crypto';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastRecordUpdate } from '../utils/websocket';
+import { broadcastRecordUpdate, broadcastDispatchUpdate } from '../utils/websocket';
 import { sendCsv } from '../utils/csvExport';
 import { localNow, localToday } from '../utils/timeUtils';
 import { searchOfacLocal } from '../utils/ofacScraper';
 import { config } from '../config';
 import { paramStr } from '../utils/reqHelpers';
+import { encryptAlarmField } from '../utils/businessEncryption';
 
 const router = Router();
 
@@ -427,6 +428,8 @@ router.post('/persons', (req: Request, res: Response) => {
       piercing_description, distinguishing_features,
       email_secondary, date_last_seen, location_last_seen, alias_dob,
       home_phone, work_phone,
+      // F3 advanced detail (jail intake + descriptor)
+      voice_description, religion, dietary_restrictions,
     } = req.body;
 
     if (!first_name || !last_name) {
@@ -455,7 +458,8 @@ router.post('/persons', (req: Request, res: Response) => {
         identifying_marks_location, tattoo_description, scar_description,
         piercing_description, distinguishing_features,
         email_secondary, date_last_seen, location_last_seen, alias_dob,
-        home_phone, work_phone)
+        home_phone, work_phone,
+        voice_description, religion, dietary_restrictions)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?,
@@ -464,7 +468,8 @@ router.post('/persons', (req: Request, res: Response) => {
         ?, ?, ?,
         ?, ?,
         ?, ?, ?, ?,
-        ?, ?)
+        ?, ?,
+        ?, ?, ?)
     `).run(
       first_name, last_name, middle_name || null, alias_nickname || null,
       dob || null, gender || null, race || null,
@@ -491,6 +496,7 @@ router.post('/persons', (req: Request, res: Response) => {
       piercing_description || null, distinguishing_features || null,
       email_secondary || null, date_last_seen || null, location_last_seen || null, alias_dob || null,
       home_phone || null, work_phone || null,
+      voice_description || null, religion || null, dietary_restrictions || null,
     );
 
     db.prepare(`
@@ -602,6 +608,10 @@ router.put('/persons/:id', (req: Request, res: Response) => {
       alias_dob: v => v ?? null,
       home_phone: v => v ?? null,
       work_phone: v => v ?? null,
+      // F3 advanced detail (jail intake + descriptor)
+      voice_description: v => v ?? null,
+      religion: v => v ?? null,
+      dietary_restrictions: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(fieldMap)) {
@@ -646,7 +656,7 @@ router.put('/persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id - Delete person
-router.delete('/persons/:id', (req: Request, res: Response) => {
+router.delete('/persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const person = db.prepare('SELECT * FROM persons WHERE id = ?').get(req.params.id) as any;
@@ -1035,7 +1045,7 @@ router.put('/vehicles/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/vehicles/:id - Delete vehicle
-router.delete('/vehicles/:id', (req: Request, res: Response) => {
+router.delete('/vehicles/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const vehicle = db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(req.params.id) as any;
@@ -1224,6 +1234,8 @@ const PROPERTY_FIELD_MAP: Record<string, (v: any) => any> = {
   security_features: v => v ?? null,
   alarm_company: v => v ?? null,
   alarm_account: v => v ?? null,
+  // F5: alarm system architecture (None / Self-Monitored / Pro-Monitored / Smart-Home / Wireless / Wired / Hybrid)
+  alarm_system: v => v ?? null,
   camera_system: v => v ?? null,
   // Key holder
   key_holder_name: v => v ?? null,
@@ -1365,6 +1377,343 @@ router.get('/vehicles/:id/incidents', (req: Request, res: Response) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// BUSINESSES CRUD
+// ═══════════════════════════════════════════════════════════════
+
+router.get('/businesses', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const archived = req.query.archived === 'true';
+    const sql = archived
+      ? `SELECT * FROM businesses WHERE archived_at IS NOT NULL ORDER BY name`
+      : `SELECT * FROM businesses WHERE archived_at IS NULL AND is_active = 1 ORDER BY name`;
+    const rows = db.prepare(sql).all();
+    res.json(rows);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load businesses' });
+  }
+});
+
+// Subject picker / dispatcher search — name prefix, exact phone/EIN, address substring.
+// Open to all authenticated roles. MUST be registered above /businesses/:id so the :id
+// param doesn't shadow /search.
+router.get('/businesses/search',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer', 'client_viewer', 'human_resources', 'contract_manager'),
+  (req: Request, res: Response) => {
+    try {
+      const q = paramStr(req.query.q as string | string[] | undefined, '').trim();
+      const limit = Math.min(parseInt(paramStr(req.query.limit as string | string[] | undefined, '20'), 10) || 20, 100);
+      if (q.length < 2) { res.json([]); return; }
+
+      const db = getDb();
+      const like = `%${q}%`;
+      const exact = q;
+      const prefix = `${q}%`;
+      const rows = db.prepare(`
+        SELECT * FROM businesses
+        WHERE archived_at IS NULL
+          AND (name LIKE ? OR dba_name LIKE ? OR phone = ? OR ein = ? OR address LIKE ?)
+        ORDER BY
+          CASE WHEN name LIKE ? THEN 0 ELSE 1 END,
+          name
+        LIMIT ?
+      `).all(like, like, exact, exact, like, prefix, limit);
+      res.json(rows);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) { res.json([]); return; }
+      res.status(500).json({ error: 'Failed to search businesses' });
+    }
+  }
+);
+
+// Person dossier — risk-first aggregation across warrants, trespasses,
+// arrests, incidents, calls, citations, and field interviews. Powers the
+// court-packet appendix rendered into person PDFs. MUST be registered
+// before /persons/:id so the :id route does not shadow it.
+router.get('/persons/:id/dossier', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(paramStr(req.params.id as any), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+    const db = getDb();
+    const { buildPersonDossier } = await import('../utils/personDossier');
+    const dossier = buildPersonDossier(db, id);
+    if (!dossier) { res.status(404).json({ error: 'Person not found' }); return; }
+    auditLog(req, 'VIEW', 'person_dossier', id, null, {
+      riskLevel: dossier.summary.riskLevel,
+      sectionCounts: {
+        warrants: dossier.warrants.count,
+        arrests: dossier.arrests.count,
+        incidents: dossier.incidents.count,
+        calls: dossier.calls.count,
+        citations: dossier.citations.count,
+      },
+    });
+    res.json(dossier);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to build person dossier', detail: err?.message });
+  }
+});
+
+// Vehicle dossier — incidents, calls, citations, FIs aggregated for the
+// vehicle PDF appendix. Mirrors person dossier shape.
+router.get('/vehicles/:id/dossier', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(paramStr(req.params.id as any), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+    const db = getDb();
+    const { buildVehicleDossier } = await import('../utils/vehicleDossier');
+    const dossier = buildVehicleDossier(db, id);
+    if (!dossier) { res.status(404).json({ error: 'Vehicle not found' }); return; }
+    auditLog(req, 'VIEW', 'vehicle_dossier', id, null, {
+      riskLevel: dossier.summary.riskLevel,
+      sectionCounts: {
+        incidents: dossier.incidents.count,
+        calls: dossier.calls.count,
+        citations: dossier.citations.count,
+      },
+    });
+    res.json(dossier);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to build vehicle dossier', detail: err?.message });
+  }
+});
+
+// Business dossier — multi-panel aggregated payload (Task 1.18). MUST be
+// registered before /businesses/:id so the :id route does not shadow it.
+router.get('/businesses/:id/dossier', async (req: Request, res: Response) => {
+  try {
+    const id = parseInt(paramStr(req.params.id as any), 10);
+    if (!id || isNaN(id)) { res.status(400).json({ error: 'Invalid id' }); return; }
+    const db = getDb();
+    const { buildBusinessDossier } = await import('../utils/businessAggregation');
+    const userRole = (req as any).user?.role;
+    const dossier = buildBusinessDossier(db, id, userRole);
+    if (!dossier) { res.status(404).json({ error: 'Business not found' }); return; }
+    auditLog(req, 'VIEW', 'business_dossier', id, null, { sections: Object.keys(dossier) });
+    res.json(dossier);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to build dossier', detail: err?.message });
+  }
+});
+
+router.get('/businesses/:id', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT * FROM businesses WHERE id = ?').get(req.params.id);
+    if (!row) { res.status(404).json({ error: 'Business not found' }); return; }
+    res.json(row);
+  } catch { res.status(500).json({ error: 'Failed to get business' }); }
+});
+
+router.post('/businesses', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const { name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes, alarm_panel_code, alarm_passphrase } = req.body;
+    if (!name) { res.status(400).json({ error: 'Business name required' }); return; }
+    const now = localNow();
+    // Alarm fields are AES-256-GCM encrypted at rest. encryptAlarmField returns
+    // null for null/empty input — safe to call directly.
+    const encPanel = encryptAlarmField(alarm_panel_code ?? null);
+    const encPass  = encryptAlarmField(alarm_passphrase ?? null);
+    const result = db.prepare(`INSERT INTO businesses (name, dba_name, business_type, ein, license_number, address, city, state, zip, phone, email, website, owner_name, owner_phone, contact_name, contact_phone, contact_email, industry, employee_count, annual_revenue, notes, alarm_panel_code, alarm_passphrase, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      name, dba_name || null, business_type || null, ein || null, license_number || null,
+      address || null, city || null, state || null, zip || null,
+      phone || null, email || null, website || null,
+      owner_name || null, owner_phone || null, contact_name || null, contact_phone || null, contact_email || null,
+      industry || null, employee_count || null, annual_revenue || null, notes || null,
+      encPanel, encPass, now, now);
+    res.json({ success: true, id: result.lastInsertRowid });
+  } catch (err: any) { res.status(500).json({ error: 'Failed to create business: ' + err.message }); }
+});
+
+router.put('/businesses/:id', requireRole('admin', 'manager', 'supervisor', 'officer'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = parseInt(req.params.id as string, 10);
+    const fields = ['name', 'dba_name', 'business_type', 'ein', 'license_number', 'address', 'city', 'state', 'zip', 'phone', 'email', 'website', 'owner_name', 'owner_phone', 'contact_name', 'contact_phone', 'contact_email', 'industry', 'employee_count', 'annual_revenue', 'notes', 'status'];
+    const updates: string[] = [];
+    const values: any[] = [];
+    for (const f of fields) {
+      if (req.body[f] !== undefined) { updates.push(`${f} = ?`); values.push(req.body[f]); }
+    }
+    // Alarm fields go through AES-256-GCM encryption. Use `in` rather than
+    // `!== undefined` so an explicit null in the body clears the column.
+    if ('alarm_panel_code' in req.body) {
+      updates.push('alarm_panel_code = ?');
+      values.push(encryptAlarmField(req.body.alarm_panel_code ?? null));
+    }
+    if ('alarm_passphrase' in req.body) {
+      updates.push('alarm_passphrase = ?');
+      values.push(encryptAlarmField(req.body.alarm_passphrase ?? null));
+    }
+    if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+    updates.push('updated_at = ?'); values.push(localNow()); values.push(id);
+    db.prepare(`UPDATE businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: 'Failed to update business: ' + err.message }); }
+});
+
+router.delete('/businesses/:id', requireRole('admin', 'manager'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM businesses WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch { res.status(500).json({ error: 'Failed to delete business' }); }
+});
+
+// ── Business archive/unarchive (Task 1.12) ──
+// Soft-archive a business. Archived businesses are excluded from
+// /businesses/search but the record (and all linked junction rows) is
+// preserved for historical reporting.
+router.post('/businesses/:id/archive',
+  requireRole('admin', 'manager', 'supervisor'),
+  (req: Request, res: Response) => {
+    try {
+      const id = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const db = getDb();
+      const before = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id) as any;
+      if (!before) { res.status(404).json({ error: 'Business not found' }); return; }
+      db.prepare(`UPDATE businesses SET archived_at = datetime('now','localtime') WHERE id = ?`).run(id);
+      const after = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id);
+      auditLog(req, 'ARCHIVE', 'business', id, before, after);
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to archive business: ' + err.message });
+    }
+  }
+);
+
+router.post('/businesses/:id/unarchive',
+  requireRole('admin', 'manager', 'supervisor'),
+  (req: Request, res: Response) => {
+    try {
+      const id = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const db = getDb();
+      const before = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id) as any;
+      if (!before) { res.status(404).json({ error: 'Business not found' }); return; }
+      db.prepare('UPDATE businesses SET archived_at = NULL WHERE id = ?').run(id);
+      const after = db.prepare('SELECT * FROM businesses WHERE id = ?').get(id);
+      auditLog(req, 'UNARCHIVE', 'business', id, before, after);
+      res.json({ success: true, id });
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to unarchive business: ' + err.message });
+    }
+  }
+);
+
+// ── Business ↔ Person linking endpoints (Task 1.9) ──
+// Manage business_persons table: create / update / delete person-to-business
+// associations with a role + optional dates + notes. Used by the Subject
+// picker and Business detail page.
+const VALID_BIZ_PERSON_ROLES = [
+  'owner', 'officer_director', 'manager', 'key_holder',
+  'security_contact', 'employee', 'vendor', 'other'
+] as const;
+
+router.post('/businesses/:id/persons',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const businessId = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const { person_id, role, start_date, end_date, notes } = req.body;
+      if (!VALID_BIZ_PERSON_ROLES.includes(role)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_BIZ_PERSON_ROLES] });
+        return;
+      }
+      const db = getDb();
+      const biz = db.prepare('SELECT id FROM businesses WHERE id = ?').get(businessId);
+      if (!biz) { res.status(404).json({ error: 'Business not found' }); return; }
+      const person = db.prepare('SELECT id FROM persons WHERE id = ?').get(person_id);
+      if (!person) { res.status(404).json({ error: 'Person not found' }); return; }
+
+      try {
+        const result = db.prepare(`
+          INSERT INTO business_persons (business_id, person_id, role, start_date, end_date, notes, added_by)
+          VALUES (?, ?, ?, ?, ?, ?, ?)
+        `).run(businessId, person_id, role, start_date || null, end_date || null, notes || null, req.user?.userId ?? null);
+        const row = db.prepare('SELECT * FROM business_persons WHERE id = ?').get(result.lastInsertRowid);
+        auditLog(req, 'CREATE', 'business_person_link', Number(result.lastInsertRowid), null, row);
+        broadcastDispatchUpdate({ action: 'business_persons_updated', business_id: businessId });
+        res.status(201).json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Person already linked to this business with this role' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create business-person link: ' + err.message });
+    }
+  }
+);
+
+router.put('/businesses/:id/persons/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const businessId = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as string | string[] | undefined), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM business_persons WHERE id = ? AND business_id = ?').get(linkId, businessId) as any;
+      if (!existing) { res.status(404).json({ error: 'Business-person link not found' }); return; }
+
+      const { role, start_date, end_date, notes } = req.body;
+      if (role !== undefined && !VALID_BIZ_PERSON_ROLES.includes(role)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_BIZ_PERSON_ROLES] });
+        return;
+      }
+
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role !== undefined)       { updates.push('role = ?');       values.push(role); }
+      if (start_date !== undefined) { updates.push('start_date = ?'); values.push(start_date || null); }
+      if (end_date !== undefined)   { updates.push('end_date = ?');   values.push(end_date || null); }
+      if (notes !== undefined)      { updates.push('notes = ?');      values.push(notes || null); }
+      if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      values.push(linkId);
+
+      try {
+        db.prepare(`UPDATE business_persons SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+        const row = db.prepare('SELECT * FROM business_persons WHERE id = ?').get(linkId);
+        auditLog(req, 'UPDATE', 'business_person_link', linkId, existing, row);
+        broadcastDispatchUpdate({ action: 'business_persons_updated', business_id: businessId });
+        res.json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Person already linked to this business with this role' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update business-person link: ' + err.message });
+    }
+  }
+);
+
+router.delete('/businesses/:id/persons/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const businessId = parseInt(paramStr(req.params.id as string | string[] | undefined), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as string | string[] | undefined), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM business_persons WHERE id = ? AND business_id = ?').get(linkId, businessId);
+      if (!existing) { res.status(404).json({ error: 'Business-person link not found' }); return; }
+
+      db.prepare('DELETE FROM business_persons WHERE id = ?').run(linkId);
+      auditLog(req, 'DELETE', 'business_person_link', linkId, existing, null);
+      broadcastDispatchUpdate({ action: 'business_persons_updated', business_id: businessId });
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete business-person link: ' + err.message });
+    }
+  }
+);
+
 // GET /api/records/evidence - List all evidence with incident info
 router.get('/evidence', (req: Request, res: Response) => {
   try {
@@ -1444,6 +1793,9 @@ const EVIDENCE_FIELD_MAP: Record<string, (v: any) => any> = {
   is_biological: v => v ? 1 : 0,
   narcotics_flag: v => v ? 1 : 0,
   temperature_sensitive: v => v ? 1 : 0,
+  // F6 advanced detail (chain-of-custody-context fields)
+  collection_context: v => v ?? null,
+  court_hold_reference: v => v ?? null,
 };
 
 router.put('/evidence/:id', (req: Request, res: Response) => {
@@ -1496,7 +1848,7 @@ router.put('/evidence/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/evidence/:id - Delete evidence
-router.delete('/evidence/:id', (req: Request, res: Response) => {
+router.delete('/evidence/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const evidence = db.prepare('SELECT * FROM evidence WHERE id = ?').get(req.params.id) as any;
@@ -2237,7 +2589,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/properties/:id - Delete property
-router.delete('/properties/:id', (req: Request, res: Response) => {
+router.delete('/properties/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const property = db.prepare('SELECT * FROM properties WHERE id = ?').get(req.params.id) as any;
@@ -2312,7 +2664,8 @@ router.post('/evidence', (req: Request, res: Response) => {
       disposal_method, disposal_date, disposal_authorized_by,
       serial_number, brand, model, estimated_value, category, notes,
       location_found, condition, quantity, is_biological,
-      narcotics_flag, temperature_sensitive,
+      // F6 advanced detail (collection-context + court hold binding)
+      collection_context, court_hold_reference,
     } = req.body;
 
     if (!req.body.description || !req.body.evidence_type) {
@@ -2341,7 +2694,7 @@ router.post('/evidence', (req: Request, res: Response) => {
         disposal_method, disposal_date, disposal_authorized_by,
         serial_number, brand, model, estimated_value, category, notes,
         location_found, condition, quantity, is_biological,
-        narcotics_flag, temperature_sensitive
+        collection_context, court_hold_reference
       )
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
@@ -2353,7 +2706,7 @@ router.post('/evidence', (req: Request, res: Response) => {
       serial_number || null, brand || null, model || null, estimated_value || null, category || null,
       notes || null,
       location_found || null, condition || null, quantity ?? 1, is_biological ? 1 : 0,
-      narcotics_flag ? 1 : 0, temperature_sensitive ? 1 : 0
+      collection_context || null, court_hold_reference || null
     );
 
     db.prepare(`
@@ -2495,7 +2848,7 @@ router.post('/links', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/links/:id - Remove a record link
-router.delete('/links/:id', (req: Request, res: Response) => {
+router.delete('/links/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare('SELECT * FROM record_links WHERE id = ?').get(req.params.id) as any;
@@ -2723,7 +3076,7 @@ router.put('/criminal-history/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/criminal-history/:id
-router.delete('/criminal-history/:id', (req: Request, res: Response) => {
+router.delete('/criminal-history/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     db.prepare('DELETE FROM criminal_history WHERE id = ?').run(req.params.id);
@@ -2880,7 +3233,7 @@ router.put('/client-persons/:id', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/client-persons/:id - Remove link
-router.delete('/client-persons/:id', (req: Request, res: Response) => {
+router.delete('/client-persons/:id', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     const link = db.prepare(`
@@ -4020,10 +4373,13 @@ router.post('/persons/:id/associates', (req: Request, res: Response) => {
 });
 
 // DELETE /api/records/persons/:id/associates/:linkId - Remove associate link
-router.delete('/persons/:id/associates/:linkId', (req: Request, res: Response) => {
+router.delete('/persons/:id/associates/:linkId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
+    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.linkId, req.params.id) as any;
+    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
     db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.linkId);
+    auditLog(req, 'DELETE', 'person_associate', parseInt(paramStr(req.params.linkId)), `Removed associate from person #${paramStr(req.params.id)}`);
     res.json({ success: true });
   } catch (error: any) {
     console.error('Remove associate error:', error);
@@ -4155,7 +4511,7 @@ router.post('/persons/:id/aliases', (req: Request, res: Response) => {
   } catch (error: any) { console.error('Create alias error:', error); res.status(500).json({ error: 'Failed to create alias', code: 'CREATE_ALIAS_ERROR' }); }
 });
 
-router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => {
+router.delete('/persons/:id/aliases/:aliasId', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
   try {
     const db = getDb();
     ensurePersonAliasesTable(db);
@@ -4177,17 +4533,6 @@ router.delete('/persons/:id/aliases/:aliasId', (req: Request, res: Response) => 
 // silent error in the try/catch at module load. The real schema lives in
 // database.ts and is used by the handlers above.
 
-
-router.delete('/persons/:id/associates/:assocId', (req: Request, res: Response) => {
-  try {
-    const db = getDb();
-    const assoc = db.prepare('SELECT * FROM person_associates WHERE id = ? AND person_id = ?').get(req.params.assocId, req.params.id) as any;
-    if (!assoc) { res.status(404).json({ error: 'Associate not found', code: 'ASSOCIATE_NOT_FOUND' }); return; }
-    db.prepare('DELETE FROM person_associates WHERE id = ?').run(req.params.assocId);
-    auditLog(req, 'DELETE', 'person_associate', parseInt(paramStr(req.params.assocId)), `Removed associate from person #${paramStr(req.params.id)}`);
-    res.json({ success: true });
-  } catch (error: any) { console.error('Delete associate error:', error); res.status(500).json({ error: 'Failed to delete associate', code: 'DELETE_ASSOCIATE_ERROR' }); }
-});
 
 // ════════════════════════════════════════════════════════════
 // UPGRADE 3: Last Known Address Tracking

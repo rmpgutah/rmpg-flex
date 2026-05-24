@@ -3,6 +3,7 @@ import { Award } from 'lucide-react';
 import FormModal from './FormModal';
 import { useFormDraft } from '../hooks/useFormDraft';
 
+import RichTextArea from './RichTextArea';
 export interface CredentialFormData {
   officer_id: string;
   credential_type: string;
@@ -218,7 +219,7 @@ export default function CredentialFormModal({
         <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
           Notes
         </label>
-        <textarea
+        <RichTextArea
           value={form.notes}
           onChange={(e) => setForm((prev) => ({ ...prev, notes: e.target.value }))}
           rows={3}

@@ -1,10 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
-  Fingerprint, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
-  Trash2, Zap, AlertTriangle, ToggleLeft, ToggleRight,
-  RefreshCw, MapPin, Clock, Database, Link2, Plus, Upload,
-  User, FileText, ChevronDown, ChevronRight, Search, Edit2, X,
-  Globe, Shield, Activity, RotateCcw,
+  Fingerprint, Key, Eye, EyeOff, Loader2, CheckCircle2, XCircle, Trash2, Zap,
+  AlertTriangle, ToggleLeft, ToggleRight, RefreshCw, Clock, Database, Plus, Upload,
+  User, FileText, ChevronDown, ChevronRight, Search, Edit2, X, Globe, Shield,
+  Activity, RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 
@@ -64,20 +64,6 @@ const UTAH_COUNTIES = [
   'Beaver', 'Duchesne', 'Carbon', 'Emery', 'Juab', 'Millard', 'Morgan',
   'Rich', 'San Juan', 'Wasatch', 'Wayne', 'Garfield', 'Kane', 'Piute', 'Daggett',
 ];
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Props) {
   const [status, setStatus] = useState<ArrestStatus | null>(null);
@@ -451,7 +437,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
           <div>
             <label className="text-[9px] text-rmpg-400 uppercase">Charges (one per line)</label>
-            <textarea
+            <RichTextArea
               value={form.charges}
               onChange={e => setForm(p => ({ ...p, charges: e.target.value }))}
               placeholder="Theft — Misdemeanor B&#10;DUI — Class A"
@@ -462,7 +448,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
 
           <div>
             <label className="text-[9px] text-rmpg-400 uppercase">Notes</label>
-            <textarea
+            <RichTextArea
               value={form.notes}
               onChange={e => setForm(p => ({ ...p, notes: e.target.value }))}
               placeholder="Additional details..."
@@ -523,7 +509,7 @@ export default function AdminArrestsTab({ LoadingSpinner, error, setError }: Pro
             </div>
           </div>
 
-          <textarea
+          <RichTextArea
             value={csvData}
             onChange={e => setCsvData(e.target.value)}
             placeholder={'full_name,booking_date,charges,agency\n"SMITH, JOHN",2026-03-05,"Theft - Misdemeanor B","SLCPD"\n"DOE, JANE",2026-03-04,"DUI","UHP"'}

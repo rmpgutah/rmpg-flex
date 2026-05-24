@@ -5,7 +5,7 @@
 // results list, and detailed DL record view.
 // ============================================================
 
-import React, {useState, useCallback, useEffect, useRef} from 'react';
+import {useState, useCallback, useEffect, useRef} from 'react';
 import { Search, CreditCard, User, MapPin, ChevronRight, Shield, ShieldCheck, Calendar, Database, Wifi, Plus, AlertTriangle, Camera, Loader2, X } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -55,20 +55,6 @@ interface DlSearchResponse {
   searchId: number;
   resultCount: number;
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function DlSearchPage() {
   const isMobile = useIsMobile();

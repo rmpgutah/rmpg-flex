@@ -1,5 +1,5 @@
 import React from 'react';
-import { ChevronUp, ChevronDown, Loader2, Inbox } from 'lucide-react';
+import { ChevronUp, ChevronDown, Inbox } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 import EmptyState from './EmptyState';
 

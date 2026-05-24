@@ -7,10 +7,9 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  HardDrive, Search, Plus, Loader2, X, RefreshCw,
-  Play, Square, CheckCircle, AlertTriangle, Clock, Hash,
-  Database, Trash2, Upload, Download, FileText, Eye,
-  ChevronDown, Activity, Server, Shield,
+  HardDrive, Search, Plus, Loader2, X, RefreshCw, Play, Square, CheckCircle,
+  AlertTriangle, Clock, Hash, Database, Trash2, Upload, FileText, Eye, Activity,
+  Server, Shield,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
@@ -112,20 +111,6 @@ function formatDate(d: string | null): string {
 }
 
 // ── Component ───────────────────────────────────────────────
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function IpedPage() {
   const { addToast } = useToast();

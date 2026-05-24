@@ -5,8 +5,8 @@
 // when position is being obtained via WiFi instead of GPS.
 // ============================================================
 
-import React, { useState } from 'react';
-import { AlertTriangle, X, Wifi, WifiOff } from 'lucide-react';
+import { useState } from 'react';
+import { AlertTriangle, X, Wifi } from 'lucide-react';
 import type { ConnectionType, PositionSource } from '../hooks/useGpsTracking';
 
 interface LocationGateProps {

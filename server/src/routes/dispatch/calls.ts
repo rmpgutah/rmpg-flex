@@ -15,6 +15,7 @@ import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { analyzeCall, isAIAvailable } from '../../utils/groqAI';
 import { buildThreatContext } from '../../utils/threatContext';
 import { findNearestUnits } from '../../utils/proximityAlerts';
+import { applyRunCard } from './runCards';
 
 // ── Upgrade 1: Priority score calculation ──
 // Higher scores = more urgent. Used for sorting the dispatch queue.
@@ -342,6 +343,19 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     // Fix 51: Normalize incident_type for consistent heatmap grouping (trim, lowercase)
     const normalizedIncidentType = String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_');
 
+    // ── Run Card application (Spillman parity) ──
+    // Look up an active run card matching the normalized incident_type. The card
+    // fills only the flags the dispatcher didn't explicitly provide; caller-provided
+    // values always win. Card metadata (id, applied_at) is recorded for audit.
+    const rcResult = applyRunCard(db, normalizedIncidentType, normalizedPriority, {
+      weapons_involved, injuries_reported, domestic_violence,
+      alcohol_involved, mental_health_crisis, officer_safety_caution,
+      felony_in_progress, vehicle_pursuit, foot_pursuit, hazmat,
+      ems_requested, fire_requested,
+    });
+    const rcFlags = rcResult.appliedFlags;
+    const rcCard = rcResult.card;
+
     // Generate call number: YY-CFS#####
     const callNumber = generateCallNumber(db);
 
@@ -432,10 +446,26 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
             autoBeatName = district.beat_name;
             autoBeatDescriptor = district.beat_descriptor;
           } else {
-            // Fallback to raw geofence data
-            if (!autoBeatId) autoBeatId = beat.beat_code;
-            if (!autoZoneId) autoZoneId = beat.city_code;
-            if (!autoSectionId) autoSectionId = beat.district_letter;
+            // Geofence found a polygon but no exact dispatch_beats row
+            // (typically unincorporated, or beat_code drift). Fall back to
+            // looking up the zone by city_code suffix (e.g. geofence
+            // city_code="MUR" → zone_code "SL1-MUR"). Writes canonical
+            // sector + zone; leaves beat null for dispatcher to pick.
+            try {
+              const zoneMatch = db.prepare(`
+                SELECT dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
+                FROM dispatch_zones dz
+                JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+                WHERE dz.zone_code LIKE ? ESCAPE '\\' LIMIT 1
+              `).get(`%-${beat.city_code}`) as any;
+              if (zoneMatch) {
+                if (!autoSectionId) autoSectionId = zoneMatch.sector_code;
+                if (!autoZoneId) autoZoneId = zoneMatch.zone_code;
+                autoSectionName = zoneMatch.sector_name;
+                autoZoneName = zoneMatch.zone_name;
+              }
+            } catch { /* skip */ }
+            if (!autoZoneBeat) autoZoneBeat = beat.beat_code;
           }
         }
       } catch (geoErr) { console.error('[Calls] Geofence lookup error (non-critical):', geoErr instanceof Error ? geoErr.message : geoErr); }
@@ -445,14 +475,15 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     if (autoSectionId && autoZoneId && autoBeatId && !autoDispatchCode) {
       try {
         const districtMatch = db.prepare(`
-          SELECT db2.beat_code, db2.name as beat_name, db2.descriptor as beat_descriptor,
-                 dz.zone_code, dz.name as zone_name, ds.sector_code, ds.name as sector_name
+          SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                 dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
           FROM dispatch_beats db2
           JOIN dispatch_zones dz ON dz.id = db2.zone_id
           JOIN dispatch_sectors ds ON ds.id = dz.sector_id
           WHERE ds.sector_code = ? AND dz.zone_code = ? AND db2.beat_code = ? LIMIT 1
         `).get(autoSectionId, autoZoneId, autoBeatId) as any;
         if (districtMatch) {
+          // beat_code is already in chart format ("SL1-SLC/A").
           autoDispatchCode = districtMatch.beat_code;
           if (!autoSectionName) autoSectionName = districtMatch.sector_name;
           if (!autoZoneName) autoZoneName = districtMatch.zone_name;
@@ -461,7 +492,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         } else {
           autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
         }
-      } catch { autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`; }
+      } catch {
+        autoDispatchCode = `${autoSectionId}-${autoZoneId}/${autoBeatId}`;
+      }
     }
 
     // Auto-generate dispatch code if not provided and section/zone/beat are available
@@ -534,8 +567,10 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         zone_name: autoZoneName,
         beat_name: autoBeatName,
         beat_descriptor: autoBeatDescriptor,
-        weapons_involved: (weapons_involved && weapons_involved !== 'None') ? weapons_involved : null,
-        injuries_reported: toBoolInt(injuries_reported),
+        weapons_involved: (weapons_involved && weapons_involved !== 'None')
+          ? weapons_involved
+          : (typeof rcFlags.weapons_involved === 'string' && rcFlags.weapons_involved !== 'None' ? rcFlags.weapons_involved : null),
+        injuries_reported: toBoolInt(injuries_reported ?? rcFlags.injuries_reported),
         num_subjects: num_subjects ?? null,
         num_victims: num_victims ?? null,
         subject_description: subject_description || null,
@@ -544,9 +579,9 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         scene_safety: scene_safety || null,
         weather_conditions: weather_conditions || null,
         lighting_conditions: lighting_conditions || null,
-        alcohol_involved: toBoolInt(alcohol_involved),
+        alcohol_involved: toBoolInt(alcohol_involved ?? rcFlags.alcohol_involved),
         drugs_involved: toBoolInt(drugs_involved),
-        domestic_violence: toBoolInt(domestic_violence),
+        domestic_violence: toBoolInt(domestic_violence ?? rcFlags.domestic_violence),
         supervisor_notified: toBoolInt(supervisor_notified),
         le_notified: toBoolInt(le_notified),
         le_agency: (le_agency && le_agency !== 'None') ? le_agency : null,
@@ -555,14 +590,14 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         damage_description: damage_description || null,
         responding_officer: responding_officer || null,
         action_taken: action_taken || null,
-        mental_health_crisis: toBoolInt(mental_health_crisis),
+        mental_health_crisis: toBoolInt(mental_health_crisis ?? rcFlags.mental_health_crisis),
         juvenile_involved: toBoolInt(juvenile_involved),
-        felony_in_progress: toBoolInt(felony_in_progress),
-        officer_safety_caution: toBoolInt(officer_safety_caution),
+        felony_in_progress: toBoolInt(felony_in_progress ?? rcFlags.felony_in_progress),
+        officer_safety_caution: toBoolInt(officer_safety_caution ?? rcFlags.officer_safety_caution),
         k9_requested: toBoolInt(k9_requested),
-        ems_requested: toBoolInt(ems_requested),
-        fire_requested: toBoolInt(fire_requested),
-        hazmat: toBoolInt(hazmat),
+        ems_requested: toBoolInt(ems_requested ?? rcFlags.ems_requested ?? (rcCard?.ems_requested ? 1 : 0)),
+        fire_requested: toBoolInt(fire_requested ?? rcFlags.fire_requested ?? (rcCard?.fire_requested ? 1 : 0)),
+        hazmat: toBoolInt(hazmat ?? rcFlags.hazmat),
         gang_related: toBoolInt(gang_related),
         evidence_collected: toBoolInt(evidence_collected),
         body_camera_active: toBoolInt(body_camera_active),
@@ -570,8 +605,8 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         secondary_type: secondary_type || null,
         contact_method: contact_method || null,
         trespass_issued: toBoolInt(trespass_issued),
-        vehicle_pursuit: toBoolInt(vehicle_pursuit),
-        foot_pursuit: toBoolInt(foot_pursuit),
+        vehicle_pursuit: toBoolInt(vehicle_pursuit ?? rcFlags.vehicle_pursuit),
+        foot_pursuit: toBoolInt(foot_pursuit ?? rcFlags.foot_pursuit),
         pso_service_type: pso_service_type || null,
         pso_authorization: pso_authorization || null,
         pso_requestor_name: pso_requestor_name || null,
@@ -597,6 +632,8 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         closed_at: closed_at || null,
         archived_at: archived_at || null,
         disposition: customDisposition || null,
+        run_card_id: rcCard?.id ?? null,
+        run_card_applied_at: rcCard ? localNow() : null,
       };
       const cols = Object.keys(callData);
       const placeholders = cols.map(c => '@' + c).join(', ');
@@ -632,6 +669,17 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
         VALUES (?, 'call_created', 'call', ?, ?, ?)
       `).run(req.user!.userId, call.id, `${isHistorical ? 'Historical entry: ' : 'Created '}${callNumber} (Case ${caseNumber}): ${normalizedIncidentType}`, req.ip || 'unknown');
 
+      if (rcCard) {
+        db.prepare(`
+          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+          VALUES (?, 'run_card_applied', 'call', ?, ?, ?)
+        `).run(
+          req.user!.userId, call.id,
+          `Run Card "${rcCard.display_name}" applied: ${rcCard.required_units}u, ${rcCard.backup_units} backup, priority ${rcCard.default_priority}${rcCard.silent_response_default ? ', SILENT' : ''}`,
+          req.ip || 'unknown',
+        );
+      }
+
       return call;
     });
     const call = createCallTx();
@@ -648,7 +696,7 @@ router.post('/calls', requireRole('admin', 'manager', 'supervisor', 'dispatcher'
     } catch { /* non-critical */ }
 
     // Broadcast to dispatch channel (immediate, threat context added async below)
-    broadcastDispatchUpdate({ action: 'call_created', call, nearestUnits });
+    broadcastDispatchUpdate({ action: 'call_created', call, nearestUnits, runCard: rcCard });
 
     // Build threat context asynchronously and broadcast enrichment if available
     buildThreatContext({
@@ -891,6 +939,30 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       return;
     }
 
+    // Fill geography parents from beat_id when the call was saved with only a
+    // beat selected (auto-lookup skipped because lat/lng wasn't used).
+    if (call.beat_id && (!call.sector_name || !call.zone_name || !call.beat_descriptor)) {
+      try {
+        const parents = db.prepare(`
+          SELECT db.beat_descriptor, dz.zone_name, ds.sector_name, da.area_name
+          FROM dispatch_beats db
+          LEFT JOIN dispatch_zones dz ON db.zone_id = dz.id
+          LEFT JOIN dispatch_sectors ds ON dz.sector_id = ds.id
+          LEFT JOIN dispatch_areas da ON ds.area_id = da.id
+          WHERE db.beat_code = ?
+          LIMIT 1
+        `).get(call.beat_id) as any;
+        if (parents) {
+          if (!call.sector_name) call.sector_name = parents.sector_name || '';
+          if (!call.zone_name) call.zone_name = parents.zone_name || '';
+          if (!call.beat_descriptor) call.beat_descriptor = parents.beat_descriptor || '';
+          if (!call.area_name) call.area_name = parents.area_name || '';
+        }
+      } catch (joinErr) {
+        (req as any).log?.warn?.({ err: joinErr }, 'geography parent lookup failed');
+      }
+    }
+
     // Get assigned units with officer info
     let assignedUnits: any[] = [];
     try {
@@ -1025,19 +1097,25 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
             if (autoZoneId === undefined && !call.zone_id) autoZoneId = district.zone_code;
             if (autoSectionId === undefined && !call.sector_id) autoSectionId = district.sector_code;
           } else {
-            if (autoBeatId === undefined && !call.beat_id) autoBeatId = beat.beat_code;
-            if (autoZoneId === undefined && !call.zone_id) autoZoneId = beat.city_code;
-            if (autoSectionId === undefined && !call.sector_id) autoSectionId = beat.district_letter;
+            // Fallback: look up zone by city_code suffix (see POST path).
+            try {
+              const zoneMatch = db.prepare(`
+                SELECT dz.zone_code, ds.sector_code
+                FROM dispatch_zones dz
+                JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+                WHERE dz.zone_code LIKE ? ESCAPE '\\' LIMIT 1
+              `).get(`%-${beat.city_code}`) as any;
+              if (zoneMatch) {
+                if (autoZoneId === undefined && !call.zone_id) autoZoneId = zoneMatch.zone_code;
+                if (autoSectionId === undefined && !call.sector_id) autoSectionId = zoneMatch.sector_code;
+              }
+            } catch { /* skip */ }
           }
 
           // If coords explicitly changed, always update beat data
           if (latitude !== undefined) {
             if (autoZoneBeat === undefined) autoZoneBeat = beat.beat_code;
-            if (!district) {
-              autoBeatId = autoBeatId !== undefined ? autoBeatId : beat.beat_code;
-              autoZoneId = autoZoneId !== undefined ? autoZoneId : beat.city_code;
-              autoSectionId = autoSectionId !== undefined ? autoSectionId : beat.district_letter;
-            } else {
+            if (district) {
               autoBeatId = autoBeatId !== undefined ? autoBeatId : district.beat_code;
               autoZoneId = autoZoneId !== undefined ? autoZoneId : district.zone_code;
               autoSectionId = autoSectionId !== undefined ? autoSectionId : district.sector_code;
@@ -1149,14 +1227,15 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     if (finalSectionId && finalZoneId && finalBeatId) {
       try {
         const districtMatch = db.prepare(`
-          SELECT db2.beat_code, db2.name as beat_name, db2.descriptor as beat_descriptor,
-                 dz.zone_code, dz.name as zone_name, ds.sector_code, ds.name as sector_name
+          SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
+                 dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
           FROM dispatch_beats db2
           JOIN dispatch_zones dz ON dz.id = db2.zone_id
           JOIN dispatch_sectors ds ON ds.id = dz.sector_id
           WHERE ds.sector_code = ? AND dz.zone_code = ? AND db2.beat_code = ? LIMIT 1
         `).get(finalSectionId, finalZoneId, finalBeatId) as any;
         if (districtMatch) {
+          // beat_code is already in chart format ("SL1-SLC/A").
           addField('dispatch_code', districtMatch.beat_code);
           addField('sector_name', districtMatch.sector_name);
           addField('zone_name', districtMatch.zone_name);

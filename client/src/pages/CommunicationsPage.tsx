@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   MessageSquare,
   AlertTriangle,
@@ -233,20 +234,6 @@ function groupMessagesIntoThreads(messages: Message[]): MessageThread[] {
 // ============================================================
 
 type Panel = 'messages' | 'bolos' | 'activity';
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function CommunicationsPage() {
   const isMobile = useIsMobile();
@@ -1045,7 +1032,7 @@ export default function CommunicationsPage() {
                         </span>
                       </div>
                       <div className="flex gap-2">
-                        <textarea
+                        <RichTextArea
                           className="textarea-dark flex-1"
                           rows={2}
                           placeholder="Write your reply..."
@@ -1129,7 +1116,7 @@ export default function CommunicationsPage() {
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Description:</label>
-                    <textarea className="textarea-dark" rows={3} placeholder="Detailed description..." value={boloDescription} onChange={(e) => setBoloDescription(e.target.value)} />
+                    <RichTextArea className="textarea-dark" rows={3} placeholder="Detailed description..." value={boloDescription} onChange={(e) => setBoloDescription(e.target.value)} />
                   </div>
                   <div className="col-span-2">
                     <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Photo (optional):</label>
@@ -1373,7 +1360,7 @@ export default function CommunicationsPage() {
         </div>
         <div>
           <label className="text-[10px] text-rmpg-300 uppercase font-semibold mb-1 block">Message:</label>
-          <textarea className="textarea-dark" rows={5} placeholder="Type your message..." value={composeContent} onChange={(e) => setComposeContent(e.target.value)} required />
+          <RichTextArea className="textarea-dark" rows={5} placeholder="Type your message..." value={composeContent} onChange={(e) => setComposeContent(e.target.value)} required />
         </div>
         {/* Feature 26: Save as Draft button */}
         <button

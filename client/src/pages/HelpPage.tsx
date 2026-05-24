@@ -5,12 +5,10 @@
 
 import React, { useState, useEffect } from 'react';
 import {
-  HelpCircle, Keyboard, BookOpen, Monitor, Radio, Map, Database,
-  FileText, Users, MessageSquare, BarChart3, Search, Terminal,
-  AlertTriangle, Shield, Settings, ChevronRight, ExternalLink,
-  Zap, Phone, Send, Car, Gavel, ClipboardList, Briefcase,
-  Mail, Globe, FlaskConical, Camera, Video, Package, UserCog,
-  Layers, ShieldAlert, Fingerprint, GraduationCap, CalendarDays,
+  HelpCircle, Keyboard, BookOpen, Monitor, Radio, Map, Database, FileText, Users,
+  MessageSquare, BarChart3, Search, AlertTriangle, Shield, Settings, ChevronRight,
+  Zap, Send, Car, Gavel, Briefcase, Mail, Globe, FlaskConical, UserCog,
+  GraduationCap,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';

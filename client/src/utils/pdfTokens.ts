@@ -19,21 +19,37 @@ export const COLOR = {
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
 
   // Borders — clean, professional lines
-  BORDER_FIELD:    [113, 128, 150]  as const,  // Field box borders (#718096)
-  BORDER_TABLE:    [180, 180, 185]  as const,  // Row separator lines
-  BORDER_COLUMN:   [170, 170, 175]  as const,  // Vertical column separators
-  BORDER_OUTER:    [80, 80, 85]     as const,  // Table outer border
-  BORDER_SECTION:  [100, 100, 105]  as const,  // Section outline
+  // Border palette — darkened 2026-05-05 design-definition pass.
+  // The previous values produced a soft, government-form-faded look;
+  // sharper, darker rule colors give the report the crisp visual
+  // structure of a real PD form where every cell is bounded by a
+  // visible line. Field bodies stay white; only the rule colors
+  // change.
+  BORDER_FIELD:    [80, 92, 110]    as const,  // Field box borders (was 113/128/150)
+  BORDER_TABLE:    [120, 122, 130]  as const,  // Row separator lines (was 180/180/185)
+  BORDER_COLUMN:   [110, 112, 122]  as const,  // Vertical column separators (was 170/170/175)
+  BORDER_OUTER:    [40, 44, 55]     as const,  // Table outer border (was 80/80/85)
+  BORDER_SECTION:  [50, 55, 68]     as const,  // Section outline (was 100/100/105)
+  BORDER_FIELD_RULE: [140, 148, 162] as const, // Field underline rule (was 200/200/208 — soft)
 
-  // Backgrounds — lighter, modern government-form style
+  // Backgrounds — page stays white; structural elements (headers,
+  // banners) deepen to true charcoal for strong contrast against
+  // white field bodies (2026-05-05 darker-shading pass).
   BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [45, 55, 72]     as const,  // Section header bar (#2D3748 dark slate)
-  BG_TABLE_HDR:    [70, 75, 88]     as const,  // Dark slate (standalone tables)
-  // Nested table header — light slate for tables INSIDE a dark section
-  // header bar. Added 2026-04-17 so subsection tables visually separate
-  // from the section title bar above them. Uses dark text for contrast.
-  BG_TABLE_HDR_LIGHT: [220, 225, 234] as const,
+  BG_SECTION_HDR:  [44, 50, 64]     as const,  // Subheader bar (was 22/26/34 — lightened 2026-05-05 per user)
+  BG_TABLE_HDR:    [54, 60, 76]     as const,  // Table column header (proportionally lightened)
+  BG_SECTION_TINT: [248, 248, 252]  as const,  // Field-body tint (kept near-white for readability)
+  BG_TABLE_HDR_LIGHT: [220, 225, 234] as const, // Nested table header (light slate)
   TEXT_TABLE_HDR_LIGHT: [45, 55, 72]  as const,  // Dark slate text on light hdr
+
+  // Brand accent — pivoted to grayscale 2026-05-04 (user request).
+  // Token name retained for backwards compatibility with existing call
+  // sites; the underlying value is now a dark charcoal so every site
+  // that previously rendered a gold accent (agency header strip,
+  // quick-reference banner left rule, district bar accent, notes entry
+  // left rule, horizontal section dividers) automatically becomes
+  // grayscale via this single point of change.
+  ACCENT_GOLD:     [60, 60, 60]     as const,  // dark charcoal accent
 
   // Financial
   AMOUNT_CREDIT:   [0, 120, 60]     as const,
@@ -59,7 +75,7 @@ export const COLOR = {
   BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
 
   // Police-form furniture (added 2026-04-17 for enhanced LE styling)
-  RULE_GOLD:           [212, 160, 23]   as const,  // Brand gold accent rule
+  RULE_GOLD:           [80, 80, 80]     as const,  // Dark gray accent rule (was gold; grayscale 2026-05-04)
   RULE_STRONG:         [30, 30, 30]     as const,  // Heavy black rule for top/bottom
   BATES_STAMP:         [90, 50, 50]     as const,  // Muted burgundy for Bates sequence
   BARCODE_BAR:         [0, 0, 0]        as const,  // Code 39 black bars
@@ -174,16 +190,23 @@ export const FONT = {
 // ── Border / Line Width Tokens ───────────────────────────────
 
 export const BORDER = {
-  SECTION_OUTER:    0.5,   // Border around sections (clean)
-  FIELD:            0.3,   // Field box borders (0.3pt, clean grid)
-  TABLE_OUTER:      0.5,   // Outer border of tables
-  TABLE_ROW:        0.15,  // Row separators (subtle)
-  TABLE_COLUMN:     0.15,  // Column separators (subtle)
-  CHECKBOX:         0.3,   // Checkbox square border
+  // Line widths — bumped 2026-05-05 design-definition pass.
+  // Each rule that bounds a structural element gets ~50-60% thicker
+  // so the report grid feels like a deliberate police-form layout
+  // rather than a faint outline. Decorative grid lines (DIAGRAM_GRID,
+  // SIDEBAR_TAB) are unchanged.
+  SECTION_OUTER:    0.7,   // Border around sections (was 0.5)
+  FIELD:            0.4,   // Field box borders (was 0.3)
+  TABLE_OUTER:      0.7,   // Outer border of tables (was 0.5)
+  TABLE_ROW:        0.25,  // Row separators (was 0.15)
+  TABLE_COLUMN:     0.25,  // Column separators (was 0.15)
+  CHECKBOX:         0.4,   // Checkbox square border (was 0.3)
   CHECK_MARK:       0.6,   // Check mark stroke
-  SIGNATURE_LINE:   0.4,   // Signature line
-  ACCENT_HEADER:    0.8,   // Accent line below header
-  ACCENT_FOOTER:    0.4,   // Accent line above footer
+  SIGNATURE_LINE:   0.5,   // Signature line (was 0.4)
+  ACCENT_HEADER:    1.0,   // Accent line below header (was 0.8)
+  ACCENT_FOOTER:    0.6,   // Accent line above footer (was 0.5)
+  ACCENT_SECTION:   2.0,   // Section header left-accent strip (was 1.5 — bolder anchor)
+  FIELD_UNDERLINE:  0.3,   // Field underline rule (was 0.15 — visibly defined)
   CASE_BOX:         1.0,   // White border inside case number box
   BANNER:           0.8,   // Banner borders
   DIAGRAM_GRID:     0.1,   // Accident diagram grid lines
@@ -214,7 +237,7 @@ export const SPACING = {
   XL:                 2.5,   // Generous gap
 
   CONTENT_INSET:      1,     // Left/right padding inside sections
-  SECTION_HEADER_H:   3.5,   // Section header bar height (compact)
+  SECTION_HEADER_H:   4.5,   // Section header bar height (readable with accent strip)
   SECTION_GAP:        1.0,   // Gap between sections (compact but visible)
   // Breathing room between section header bar and first content row.
   // 2mm gives the first label space to sit below the bar without hugging —
@@ -265,7 +288,46 @@ export const LAYOUT = {
   LINE_HEIGHT:       2.8,    // Base line height for wrapped text (compact)
   DIAGRAM_GRID_STEP: 10,     // Grid spacing in accident diagram
   SIDEBAR_TAB_W:     18,     // Sidebar tab width
+  // Brother PJ-700/800 mobile thermal printers have a hardware ~6mm
+  // leading-edge dead zone — anything within 6mm of the top of a sheet
+  // gets clipped. When a doc is tagged for 'mobile' print target, the
+  // top y-edge gets pushed down by this amount so the dead zone
+  // becomes safe whitespace instead of clipped content.
+  MOBILE_PRINTER_TOP_OFFSET: 6,
 } as const;
+
+// ── Print Target ─────────────────────────────────────────────
+// 'office' = laser/letter — standard 10mm top margin
+// 'mobile' = Brother PJ-700/800 thermal — 10mm + 6mm dead-zone offset
+export type PrintTarget = 'office' | 'mobile';
+
+/** Tag a jsPDF instance with its print target. The tag is read by
+ *  topMarginY(doc) to apply the mobile-printer offset. */
+export function applyPrintTarget(doc: jsPDF, target: PrintTarget): void {
+  (doc as any).__printTarget = target;
+}
+
+/** Read the print target previously applied to a doc. Defaults to
+ *  'office' for untagged documents — this means existing call sites
+ *  that don't yet thread the target keep their current behavior. */
+export function getPrintTarget(doc: jsPDF): PrintTarget {
+  return ((doc as any).__printTarget as PrintTarget | undefined) ?? 'office';
+}
+
+/** Top y-edge for content on the current page. Use this anywhere
+ *  LAYOUT.PAGE_MARGIN was used as a vertical TOP margin — NOT for
+ *  left/right/bottom margins. Returns 10mm for office, 16mm for mobile. */
+export function topMarginY(doc: jsPDF): number {
+  return LAYOUT.PAGE_MARGIN + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
+}
+
+/** Top y-edge for the agency/page header chrome — which sits ABOVE
+ *  the content margin at LAYOUT.HEADER_TOP=5mm in office mode. On
+ *  mobile mode it shifts down by MOBILE_PRINTER_TOP_OFFSET so the
+ *  banner doesn't hit the PJ-700 leading-edge dead zone. */
+export function topHeaderY(doc: jsPDF): number {
+  return LAYOUT.HEADER_TOP + (getPrintTarget(doc) === 'mobile' ? LAYOUT.MOBILE_PRINTER_TOP_OFFSET : 0);
+}
 
 // ── Computed Layout Helpers ──────────────────────────────────
 
@@ -329,6 +391,31 @@ export function getLineHeight(fontSizePt: number): number {
  *  Cap height is typically ~70% of font size in points, converted to mm. */
 export function getCapHeight(fontSizePt: number): number {
   return fontSizePt * 0.3528 * 0.7;
+}
+
+/**
+ * Normalize an enum-like value for display.
+ *
+ * Database stores enum values as snake_case lowercase tokens
+ * (`pso_client_request`, `in_progress`, `not_filed`). The PDF/UI
+ * surface expects them rendered as "PSO CLIENT REQUEST", "IN PROGRESS",
+ * etc. — readable, professional, and consistent across the system.
+ *
+ * Free-form text (names, addresses, narratives) passes through
+ * untouched so we don't accidentally uppercase user-entered names
+ * like "Christopher Zamora" into "CHRISTOPHER ZAMORA". The heuristic:
+ * a value is enum-like if it's a single token of lowercase letters /
+ * digits / underscores, OR if it contains an underscore at all.
+ *
+ * Returns '' for null/undefined/empty so callers can chain it with
+ * `|| ''` fallbacks.
+ */
+export function formatEnumValue(s: string | null | undefined): string {
+  if (s == null) return '';
+  const trimmed = String(s).trim();
+  if (!trimmed) return '';
+  const isEnumLike = /^[a-z][a-z0-9_]*$/.test(trimmed) || /_/.test(trimmed);
+  return isEnumLike ? trimmed.replace(/_/g, ' ').toUpperCase() : trimmed;
 }
 
 /** Generate proportional column X positions from ratio array */

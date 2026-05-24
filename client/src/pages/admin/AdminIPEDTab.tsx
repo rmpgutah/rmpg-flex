@@ -1,9 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Microscope, FolderOpen, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
-  Trash2, Zap, AlertTriangle, ExternalLink, ToggleLeft, ToggleRight,
-  Shield, Download, HardDrive, Hash, Database, Clock, Activity,
-  FileSearch, Upload, RefreshCw, Server,
+  Microscope, FolderOpen, Loader2, CheckCircle2, XCircle, Trash2, AlertTriangle,
+  ExternalLink, ToggleLeft, ToggleRight, Shield, Download, HardDrive, Hash,
+  Database, Activity, FileSearch, RefreshCw, Server,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 

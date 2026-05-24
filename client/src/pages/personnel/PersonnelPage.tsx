@@ -1,8 +1,10 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import {
-  Users, Search, X, Clock, AlertTriangle, BarChart3, Loader2, Plus, Archive, RotateCcw,
-} from 'lucide-react';
-import type { Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement, Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera, BodyCamVideo, DashcamEvent, CpgDeviceMapping } from '../../types';
+import { useState, useEffect, useCallback } from 'react';
+import { Users, Search, X, Clock, AlertTriangle, Loader2, Plus, Archive } from 'lucide-react';
+import type {
+  Schedule, TimeEntry, Credential, TrainingRecord, TrainingRequirement,
+  Deployment, CoverageGap, PersonnelAnalytics, OfficerEquipment, BodyCamera,
+  BodyCamVideo, DashcamEvent, CpgDeviceMapping,
+} from '../../types';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -16,9 +18,14 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useToast } from '../../components/ToastProvider';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment, mapBodyCamera, mapBodyCamVideo } from './utils/personnelMappers';
+import {
+  mapUser, mapSchedule, mapTimeEntry, mapCredential, mapTraining, mapDeployment,
+  mapBodyCamera, mapBodyCamVideo,
+} from './utils/personnelMappers';
 import type { OfficerWithStatus } from './utils/personnelMappers';
-import { MAIN_TABS, type MainTab, type DetailTab, type ModalMode } from './utils/personnelConstants';
+import {
+  MAIN_TABS, type MainTab, type DetailTab, type ModalMode,
+} from './utils/personnelConstants';
 import { getWeekMonday } from './utils/personnelFormatters';
 import OfficerAvatar from './components/OfficerAvatar';
 import CredentialProgressBar from './components/CredentialProgressBar';

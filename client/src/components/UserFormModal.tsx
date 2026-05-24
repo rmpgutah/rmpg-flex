@@ -6,6 +6,7 @@ import type { UserRole } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
+import RichTextArea from './RichTextArea';
 export interface UserFormData {
   // Account
   username: string;
@@ -528,7 +529,7 @@ export default function UserFormModal({
           </div>
           <div>
             <label className={labelCls}>Notes</label>
-            <textarea value={form.notes} onChange={e => set('notes', e.target.value)} rows={4} placeholder="Additional notes..." maxLength={5000} className={`${inputCls} resize-none`} />
+            <RichTextArea value={form.notes} onChange={e => set('notes', e.target.value)} rows={4} placeholder="Additional notes..." maxLength={5000} className={`${inputCls} resize-none`} />
             <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </div>

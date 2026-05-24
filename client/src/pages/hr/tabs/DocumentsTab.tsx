@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { FileText, Plus, Trash2, CheckCircle, AlertTriangle, Loader2, Search } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { FileText, Plus, Trash2, CheckCircle, Loader2, Search } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface HRDocument {
   id: number;
   title: string;
@@ -113,7 +114,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
           </div>
           <div>
             <label className="field-label">Description</label>
-            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={3} placeholder="Brief description of the document..." maxLength={1000} />
+            <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={3} placeholder="Brief description of the document..." maxLength={1000} />
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={handleCreate} disabled={submitting || !form.title.trim()} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Creating...</> : 'Create'}</button>

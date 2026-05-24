@@ -1,33 +1,10 @@
 import React, { useState, useEffect, useCallback, useRef, useId } from 'react';
+import { formatEnumValue } from '../utils/formatters';
+import RichTextArea from '../components/RichTextArea';
 import {
-  AlertTriangle,
-  Plus,
-  Search,
-  Edit,
-  Trash2,
-  CheckCircle,
-  XCircle,
-  Clock,
-  Loader2,
-  Archive,
-  RotateCcw,
-  MapPin,
-  User,
-  Gavel,
-  ChevronDown,
-  X,
-  Scale,
-  Radar,
-  PlayCircle,
-  History,
-  Globe,
-  Shield,
-  FileText,
-  Activity,
-  ChevronRight,
-  Zap,
-  Printer,
-  Download,
+  AlertTriangle, Plus, Search, Edit, Trash2, CheckCircle, XCircle, Clock,
+  Loader2, Archive, RotateCcw, MapPin, User, Gavel, ChevronDown, X, Scale, Radar,
+  PlayCircle, History, Globe, Shield, FileText, Activity, Zap, Printer, Download,
   UserCheck,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -50,8 +27,16 @@ import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
-import { downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf } from '../utils/recordPdfGenerator';
+import {
+  downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf,
+} from '../utils/recordPdfGenerator';
 import type { WarrantPdfData, BoloSubject, WarrantSummaryData } from '../utils/recordPdfGenerator';
+import CollapsibleSection from '../components/CollapsibleSection';
+import {
+  priorityBucket, priorityChipClass, formatAge, freshnessClass, freshnessIcon,
+  stateFromSource,
+} from '../utils/warrantListHelpers';
+import { buildWarrantPacketPdf } from '../utils/warrantPacket';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import ScrapersTab from './warrants/ScrapersTab';
 
@@ -96,6 +81,18 @@ interface Warrant {
   created_at: string;
   updated_at: string;
   activity?: ActivityEntry[];
+  // Phase 1 list extensions
+  priority_score?: number | null;
+  age_days?: number | null;
+  freshness_days?: number | null;
+  matches_person?: number | boolean | null;
+  source_scraper_name?: string | null;
+  source_state?: string | null;
+  source_url?: string | null;
+  last_scraped_at?: string | null;
+  rmpg_encounters?: any[];
+  known_associates?: any[];
+  known_vehicles?: any[];
 }
 
 interface ActivityEntry {
@@ -438,19 +435,18 @@ function CoverageSourceCard({ source }: { source: ScraperSource }) {
 // Component
 // ============================================================
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
+// Filter chip used in the Warrants tab list filter bar
+function FilterChip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-2.5 py-1 text-[10px] uppercase font-bold tracking-wider border ${active ? 'bg-[#d4a017] text-black border-[#d4a017]' : 'bg-transparent text-rmpg-300 border-rmpg-600 hover:border-rmpg-400'}`}
+    >
+      {children}
+    </button>
+  );
+}
 
 export default function WarrantsPage() {
   const isMobile = useIsMobile();
@@ -511,6 +507,36 @@ export default function WarrantsPage() {
   const [batchStatus, setBatchStatus] = useState('');
   const [batchSubmitting, setBatchSubmitting] = useState(false);
 
+  // Phase 1 sort + filter chips state
+  const [sortKey, setSortKey] = useState<'priority' | 'age' | 'freshness' | 'alpha'>('priority');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+  const [filterPriority, setFilterPriority] = useState(false);
+  const [filterSinceWeek, setFilterSinceWeek] = useState(false);
+  const [filterMatches, setFilterMatches] = useState(false);
+  const [filterStateChip, setFilterStateChip] = useState<string>('');
+  const [filterFederal, setFilterFederal] = useState(false);
+  const [filterArchivedChip, setFilterArchivedChip] = useState(false);
+
+  const anyFilterActive = filterPriority || filterSinceWeek || filterMatches || !!filterStateChip || filterFederal || filterArchivedChip;
+
+  function toggleSort(key: 'priority' | 'age' | 'freshness' | 'alpha') {
+    if (sortKey === key) {
+      setSortOrder(sortOrder === 'desc' ? 'asc' : 'desc');
+    } else {
+      setSortKey(key);
+      setSortOrder(key === 'priority' ? 'desc' : 'asc');
+    }
+  }
+
+  function clearAllFilters() {
+    setFilterPriority(false);
+    setFilterSinceWeek(false);
+    setFilterMatches(false);
+    setFilterStateChip('');
+    setFilterFederal(false);
+    setFilterArchivedChip(false);
+  }
+
   const toggleBatchSelect = (id: number) => {
     setBatchSelected(prev => {
       const next = new Set(prev);
@@ -539,6 +565,73 @@ export default function WarrantsPage() {
       fetchWarrants({ silent: true });
     } catch (err: any) { alert(err?.message || 'Batch update failed'); }
     finally { setBatchSubmitting(false); }
+  };
+
+  // Phase 1 bulk handlers — Archive / Mark Reviewed / Print Packet
+  const handleBulkArchive = async () => {
+    if (!batchSelected.size) return;
+    if (!window.confirm(`Archive ${batchSelected.size} warrant(s)?`)) return;
+    try {
+      const res = await apiFetch<{ archived: number; skipped: number }>('/warrants/bulk-archive', {
+        method: 'POST',
+        body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
+      });
+      alert(`Archived ${res.archived} warrant(s)${res.skipped ? `, skipped ${res.skipped} already-archived` : ''}`);
+      setBatchSelected(new Set());
+      fetchWarrants({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || 'Bulk archive failed');
+    }
+  };
+
+  const handleBulkReview = async () => {
+    if (!batchSelected.size) return;
+    try {
+      const res = await apiFetch<{ reviewed: number }>('/warrants/bulk-review', {
+        method: 'POST',
+        body: JSON.stringify({ warrant_ids: Array.from(batchSelected) }),
+      });
+      alert(`Marked ${res.reviewed} warrant(s) reviewed`);
+      setBatchSelected(new Set());
+      fetchWarrants({ silent: true });
+    } catch (err: any) {
+      alert(err?.message || 'Bulk review failed');
+    }
+  };
+
+  const handleBulkPrintPacket = async () => {
+    if (!batchSelected.size) return;
+    if (batchSelected.size > 200) { alert('Packet print limited to 200 warrants'); return; }
+    if (batchSelected.size > 50 && !window.confirm(`Print ${batchSelected.size} warrants as a single packet? This may take 30+ seconds.`)) return;
+    const ids = Array.from(batchSelected);
+    try {
+      await buildWarrantPacketPdf(ids, {
+        full_name: user?.full_name,
+        badge_number: user?.badge_number,
+      });
+    } catch (err: any) {
+      alert(err?.message || 'Packet generation failed');
+    }
+  };
+
+  // Phase 1: download a single-warrant PDF for the currently selected warrant
+  const handlePrintWarrantPdf = async (id: number) => {
+    try {
+      const res = await apiFetch<any>(`/warrants/${id}`);
+      const raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
+      const data: any = {
+        ...raw,
+        subject_aliases: raw.subject_aliases
+          ? (Array.isArray(raw.subject_aliases) ? raw.subject_aliases : [raw.subject_aliases])
+          : undefined,
+        printed_by_name: user?.full_name,
+        printed_by_badge: user?.badge_number,
+        printed_at: new Date().toISOString(),
+      };
+      await downloadRecordPdf('warrant', data, `warrant-${data.warrant_number}.pdf`);
+    } catch (err: any) {
+      alert(err?.message || 'Failed to print warrant PDF');
+    }
   };
 
   // Form modal
@@ -711,6 +804,15 @@ export default function WarrantsPage() {
       params.set('archived', showArchived ? 'true' : 'false');
       params.set('page', String(page));
       params.set('per_page', '50');
+      // Phase 1 sort + filter chips
+      if (sortKey) params.set('sort', sortKey);
+      if (sortOrder) params.set('order', sortOrder);
+      if (filterPriority) params.set('priority_min', '70');
+      if (filterSinceWeek) params.set('since_days', '7');
+      if (filterMatches) params.set('matches_person', '1');
+      if (filterStateChip) params.set('state', filterStateChip);
+      if (filterFederal) params.set('state_prefix', 'fed_');
+      if (filterArchivedChip) params.set('include_archived', '1');
 
       const res = await apiFetch<{ data: Warrant[]; pagination: { total: number; totalPages: number } }>(
         `/warrants?${params.toString()}`
@@ -723,11 +825,36 @@ export default function WarrantsPage() {
     } finally {
       if (!options?.silent) setLoading(false);
     }
-  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page]);
+  }, [filterStatus, filterType, filterSource, filterCourt, filterSeverity, filterPersonId, searchQuery, showArchived, page, sortKey, sortOrder, filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
 
   useEffect(() => {
     if (activeTab === 'warrants') fetchWarrants();
   }, [activeTab, fetchWarrants]);
+
+  // Phase 1: hydrate filter chips from URL on mount
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    setFilterPriority(p.get('priority_min') === '70');
+    setFilterSinceWeek(p.get('since_days') === '7');
+    setFilterMatches(p.get('matches_person') === '1');
+    setFilterStateChip(p.get('state') || '');
+    setFilterFederal(p.get('state_prefix') === 'fed_');
+    setFilterArchivedChip(p.get('include_archived') === '1');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Phase 1: persist filter chips to URL when they change
+  useEffect(() => {
+    const p = new URLSearchParams();
+    if (filterPriority) p.set('priority_min', '70');
+    if (filterSinceWeek) p.set('since_days', '7');
+    if (filterMatches) p.set('matches_person', '1');
+    if (filterStateChip) p.set('state', filterStateChip);
+    if (filterFederal) p.set('state_prefix', 'fed_');
+    if (filterArchivedChip) p.set('include_archived', '1');
+    const qs = p.toString();
+    window.history.replaceState({}, '', qs ? `?${qs}` : window.location.pathname);
+  }, [filterPriority, filterSinceWeek, filterMatches, filterStateChip, filterFederal, filterArchivedChip]);
 
   // Live sync — skip while form modal is open to prevent UI freezes during person search
   const silentRefreshWarrants = useCallback(() => {
@@ -1427,7 +1554,18 @@ export default function WarrantsPage() {
                 </div>
                 <div className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mt-1">Sources Online</div>
               </div>
-              <div className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors" onClick={() => { setActiveTab('warrants'); }}>
+              <div
+                role="button"
+                tabIndex={0}
+                className="panel-inset bg-surface-sunken p-3 rounded-sm text-center cursor-pointer hover:bg-surface-raised/50 transition-colors"
+                onClick={() => { setActiveTab('warrants'); }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setActiveTab('warrants');
+                  }
+                }}
+              >
                 <div className="text-2xl font-bold font-mono tabular-nums text-amber-400">
                   {expiringCount ?? '\u2014'}
                 </div>
@@ -1658,6 +1796,33 @@ export default function WarrantsPage() {
               </div>
             </div>
 
+            {/* Filter chips bar (Phase 1) */}
+            <div className="flex flex-wrap gap-1.5 px-3 py-2 border-b border-[#222222] bg-surface-sunken">
+              <FilterChip active={!anyFilterActive} onClick={clearAllFilters}>All</FilterChip>
+              <FilterChip active={filterPriority} onClick={() => { setFilterPriority(v => !v); setPage(1); }}>High priority</FilterChip>
+              <FilterChip active={filterSinceWeek} onClick={() => { setFilterSinceWeek(v => !v); setPage(1); }}>New this week</FilterChip>
+              <FilterChip active={filterMatches} onClick={() => { setFilterMatches(v => !v); setPage(1); }}>Matches our person</FilterChip>
+              <select
+                value={filterStateChip}
+                onChange={(e) => { setFilterStateChip(e.target.value); setPage(1); }}
+                className="select-dark text-xs"
+                style={{ minHeight: 26 }}
+              >
+                <option value="">By state</option>
+                <option value="UT">UT</option>
+                <option value="NV">NV</option>
+                <option value="WY">WY</option>
+                <option value="CO">CO</option>
+                <option value="CA">CA</option>
+                <option value="TX">TX</option>
+                <option value="AZ">AZ</option>
+                <option value="NM">NM</option>
+                <option value="ID">ID</option>
+              </select>
+              <FilterChip active={filterFederal} onClick={() => { setFilterFederal(v => !v); setPage(1); }}>Federal only</FilterChip>
+              <FilterChip active={filterArchivedChip} onClick={() => { setFilterArchivedChip(v => !v); setPage(1); }}>Show archived</FilterChip>
+            </div>
+
             {/* Person filter indicator */}
             {filterPersonId && (
               <div className="px-3 py-1.5 bg-brand-900/30 border-b border-brand-700/50 text-brand-300 text-xs flex items-center gap-2">
@@ -1677,7 +1842,7 @@ export default function WarrantsPage() {
 
             {/* Batch Actions Bar */}
             {batchSelected.size > 0 && (isGodMode || isAdminOrManager) && (
-              <div className="flex items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
+              <div className="flex flex-wrap items-center gap-2 px-3 py-1.5 bg-brand-900/20 border-b border-brand-700/50">
                 <span className="text-[10px] font-bold text-brand-300">{batchSelected.size} selected</span>
                 <select value={batchStatus} onChange={e => setBatchStatus(e.target.value)} className="text-[10px] bg-surface-sunken border border-rmpg-700 text-rmpg-300 px-2 py-0.5 outline-none">
                   <option value="">Set Status...</option>
@@ -1689,6 +1854,10 @@ export default function WarrantsPage() {
                 <button type="button" onClick={handleBatchUpdate} disabled={!batchStatus || batchSubmitting} className="toolbar-btn-primary text-[10px] px-2 py-0.5 disabled:opacity-40">
                   {batchSubmitting ? 'Updating...' : 'Apply'}
                 </button>
+                <span className="mx-1 text-rmpg-600">|</span>
+                <button type="button" onClick={handleBulkPrintPacket} className="toolbar-btn text-[10px] px-2 py-0.5">Print packet PDF</button>
+                <button type="button" onClick={handleBulkReview} className="toolbar-btn text-[10px] px-2 py-0.5">Mark reviewed</button>
+                <button type="button" onClick={handleBulkArchive} className="toolbar-btn text-[10px] px-2 py-0.5">Archive</button>
                 <button type="button" onClick={() => setBatchSelected(new Set())} className="toolbar-btn text-[10px] px-2 py-0.5">Clear</button>
               </div>
             )}
@@ -1722,7 +1891,7 @@ export default function WarrantsPage() {
                             {w.type.toUpperCase()}
                           </span>
                           <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
-                            {w.status.toUpperCase()}
+                            {formatEnumValue(w.status)}
                           </span>
                         </div>
                       </div>
@@ -1751,6 +1920,17 @@ export default function WarrantsPage() {
                           <input type="checkbox" checked={batchSelected.size === warrants.length && warrants.length > 0} onChange={toggleSelectAll} className="accent-brand-500" />
                         </th>
                       )}
+                      <th style={{ width: 28 }} className="text-center" title="Matches our person">★</th>
+                      <th style={{ width: 80 }} className="cursor-pointer select-none" onClick={() => toggleSort('priority')}>
+                        Priority {sortKey === 'priority' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
+                      <th style={{ width: 60 }} className="cursor-pointer select-none" onClick={() => toggleSort('age')}>
+                        Age {sortKey === 'age' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
+                      <th style={{ width: 90 }} className="cursor-pointer select-none" onClick={() => toggleSort('freshness')}>
+                        Freshness {sortKey === 'freshness' && (sortOrder === 'desc' ? '↓' : '↑')}
+                      </th>
+                      <th style={{ width: 50 }}>Source</th>
                       <th style={{ width: 80 }}>Status</th>
                       <th style={{ width: 120 }}>Warrant #</th>
                       <th>Subject</th>
@@ -1775,9 +1955,23 @@ export default function WarrantsPage() {
                             <input type="checkbox" checked={batchSelected.has(w.id)} onChange={() => toggleBatchSelect(w.id)} className="accent-brand-500" />
                           </td>
                         )}
+                        <td className="text-center">
+                          {w.matches_person ? <span className="text-amber-400" title="Matches our person">★</span> : null}
+                        </td>
+                        <td>
+                          <span className={`inline-block px-1.5 py-0.5 text-[9px] uppercase font-bold border ${priorityChipClass(priorityBucket(w.priority_score))}`}>
+                            {priorityBucket(w.priority_score)}
+                          </span>
+                        </td>
+                        <td className="text-xs text-rmpg-300 font-mono">{formatAge(w.age_days)}</td>
+                        <td className="text-xs">
+                          <span className="mr-1">{freshnessIcon(freshnessClass(w.freshness_days))}</span>
+                          <span className="text-rmpg-400 font-mono">{formatAge(w.freshness_days)}</span>
+                        </td>
+                        <td className="text-xs font-mono text-rmpg-300">{stateFromSource(w.source)}</td>
                         <td>
                           <span className={`inline-flex px-1.5 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
-                            {w.status.toUpperCase()}
+                            {formatEnumValue(w.status)}
                           </span>
                           {w.expires_at && w.status === 'active' && (() => {
                             const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
@@ -1904,7 +2098,7 @@ export default function WarrantsPage() {
                           {selectedWarrant.type.toUpperCase()} WARRANT
                         </span>
                         <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${STATUS_COLORS[selectedWarrant.status] || ''}`}>
-                          {selectedWarrant.status.toUpperCase()}
+                          {formatEnumValue(selectedWarrant.status)}
                         </span>
                         {selectedWarrant.offense_level && (
                           <span className={`inline-flex px-2 py-0.5 text-[10px] font-bold rounded-sm border ${SEVERITY_COLORS[selectedWarrant.offense_level] || 'bg-rmpg-700/40 text-rmpg-200 border-rmpg-600/50'}`}>
@@ -2092,6 +2286,63 @@ export default function WarrantsPage() {
                     </div>
                   </div>
                 )}
+
+                {/* Phase 1: Source / Provenance */}
+                {(selectedWarrant as any).source_scraper_name && (
+                  <CollapsibleSection title="Source / Provenance" defaultOpen={false}>
+                    <div className="text-xs space-y-1 p-2">
+                      <div>Scraper: <span className="text-rmpg-200">{(selectedWarrant as any).source_scraper_name}</span></div>
+                      <div>State: <span className="text-rmpg-200">{(selectedWarrant as any).source_state || stateFromSource(selectedWarrant.source)}</span></div>
+                      {(selectedWarrant as any).source_url && (
+                        <div>URL: <a href={(selectedWarrant as any).source_url} target="_blank" rel="noreferrer" className="text-amber-400 underline">link</a></div>
+                      )}
+                      <div>Last refreshed: {(selectedWarrant as any).last_scraped_at ? formatDateTime((selectedWarrant as any).last_scraped_at) : '—'}</div>
+                    </div>
+                  </CollapsibleSection>
+                )}
+
+                {/* Phase 1: RMPG Encounters */}
+                {Array.isArray((selectedWarrant as any).rmpg_encounters) && (selectedWarrant as any).rmpg_encounters.length > 0 && (
+                  <CollapsibleSection
+                    title="RMPG Encounters"
+                    count={(selectedWarrant as any).rmpg_encounters.length}
+                    defaultOpen={false}
+                  >
+                    <div className="p-2">
+                      {(selectedWarrant as any).rmpg_encounters.slice(0, 20).map((e: any, i: number) => (
+                        <div key={i} className="text-xs py-1 border-b border-rmpg-700">
+                          <span className="text-rmpg-400">{e.date ? formatDate(e.date) : '—'}</span>
+                          <span className="text-rmpg-200 ml-2">{e.context}</span>
+                          {e.property && <span className="text-rmpg-500 ml-2">— {e.property}</span>}
+                        </div>
+                      ))}
+                    </div>
+                  </CollapsibleSection>
+                )}
+
+                {/* Phase 1: Known Associates & Vehicles */}
+                {((Array.isArray((selectedWarrant as any).known_associates) && (selectedWarrant as any).known_associates.length > 0) ||
+                  (Array.isArray((selectedWarrant as any).known_vehicles) && (selectedWarrant as any).known_vehicles.length > 0)) && (
+                  <CollapsibleSection title="Known Associates & Vehicles" defaultOpen={false}>
+                    <div className="p-2 space-y-1">
+                      {(selectedWarrant as any).known_associates?.map((a: any, i: number) => (
+                        <div key={`a${i}`} className="text-xs text-rmpg-200">{a.name} <span className="text-rmpg-500">({a.relationship || '—'})</span></div>
+                      ))}
+                      {(selectedWarrant as any).known_vehicles?.map((v: any, i: number) => (
+                        <div key={`v${i}`} className="text-xs text-rmpg-200 font-mono">{v.plate} <span className="text-rmpg-500">{v.description}</span></div>
+                      ))}
+                    </div>
+                  </CollapsibleSection>
+                )}
+
+                {/* Phase 1: Print PDF action */}
+                <button
+                  type="button"
+                  onClick={() => handlePrintWarrantPdf(selectedWarrant.id)}
+                  className="toolbar-btn-primary w-full mt-3 flex items-center justify-center gap-2"
+                >
+                  <Printer className="w-3 h-3" /> Print PDF
+                </button>
               </div>
             ) : (
               <div className="flex-1 flex items-center justify-center text-rmpg-400">
@@ -3102,7 +3353,7 @@ export default function WarrantsPage() {
                           <span className={`led-dot ${
                             run.status === 'completed' ? 'led-green' : run.status === 'running' ? 'led-gray animate-led-pulse' : 'led-red'
                           }`} />
-                          {run.status.toUpperCase()}
+                          {formatEnumValue(run.status)}
                         </span>
                         <span className="ml-auto text-[10px] text-rmpg-500 font-mono">
                           {computeDuration(run.started_at, run.completed_at)}
@@ -3261,7 +3512,7 @@ export default function WarrantsPage() {
                           <div className="flex items-center gap-2 mb-1">
                             <span className="font-mono text-xs text-white font-bold">{w.warrant_number}</span>
                             <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${STATUS_COLORS[w.status] || ''}`}>
-                              {w.status.toUpperCase()}
+                              {formatEnumValue(w.status)}
                             </span>
                             <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-bold rounded-sm border ${TYPE_COLORS[w.type] || TYPE_COLORS.other}`}>
                               {w.type.toUpperCase()}
@@ -3436,7 +3687,7 @@ export default function WarrantsPage() {
               {/* Charge Description */}
               <div>
                 <label className="field-label">Charge Description *</label>
-                <textarea
+                <RichTextArea
                   className="input-dark text-xs w-full min-h-[36px]"
                   rows={3}
                   value={formData.charge_description}
@@ -3477,7 +3728,7 @@ export default function WarrantsPage() {
               {/* Notes */}
               <div>
                 <label className="field-label">Notes</label>
-                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
+                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={(e) => setFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder="Additional notes..." />
               </div>
 
               {/* Actions */}

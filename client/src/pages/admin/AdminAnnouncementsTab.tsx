@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
-  Megaphone, Plus, Edit2, Trash2, Eye, EyeOff, AlertTriangle,
-  Info, Wrench, ArrowUpCircle, FileText, Clock, Loader2, X,
-  CheckCircle2, Search,
+  Megaphone, Plus, Edit2, Trash2, Eye, EyeOff, AlertTriangle, Info, Wrench,
+  ArrowUpCircle, FileText, Clock, Loader2, X, Search,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { formatDateTime } from '../../utils/dateUtils';
@@ -300,7 +300,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-1 block">Body</label>
-                <textarea
+                <RichTextArea
                   value={form.body}
                   onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
                   className="input-dark w-full text-xs min-h-[80px] resize-y"

@@ -952,6 +952,85 @@ router.get('/user-activity-heatmap', (req: Request, res: Response) => {
 // ═══════════════════════════════════════════════════════════
 // Feature 23: Audit log export
 // ═══════════════════════════════════════════════════════════
+// ── Admin Dashboard: record counts ──
+router.get('/record-counts', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const count = (table: string) => { try { return (db.prepare(`SELECT COUNT(*) as c FROM ${table} WHERE is_active = 1`).get() as any)?.c || 0; } catch { try { return (db.prepare(`SELECT COUNT(*) as c FROM ${table}`).get() as any)?.c || 0; } catch { return 0; } } };
+    const today = new Date().toISOString().slice(0, 10);
+    let activeCalls = 0, callsToday = 0, pendingServe = 0;
+    try { activeCalls = (db.prepare("SELECT COUNT(*) as c FROM calls_for_service WHERE status IN ('pending','dispatched','enroute','onscene','on_hold')").get() as any)?.c || 0; } catch {}
+    try { callsToday = (db.prepare("SELECT COUNT(*) as c FROM calls_for_service WHERE created_at >= ?").get(today) as any)?.c || 0; } catch {}
+    try { pendingServe = (db.prepare("SELECT COUNT(*) as c FROM serve_queue WHERE status = 'pending'").get() as any)?.c || 0; } catch {}
+    res.json({
+      persons: count('persons'),
+      vehicles: count('vehicles_records'),
+      properties: count('properties'),
+      businesses: count('businesses'),
+      evidence: count('evidence'),
+      warrants: count('warrants'),
+      citations: count('citations'),
+      incidents: count('incidents'),
+      activeCalls,
+      callsToday,
+      pendingServe,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to get record counts: ' + err.message });
+  }
+});
+
+// ── Admin Dashboard: health info ──
+router.get('/health', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    let dbSizeMB = 0;
+    try {
+      const pageCount = (db.prepare('PRAGMA page_count').get() as any)?.page_count || 0;
+      const pageSize = (db.prepare('PRAGMA page_size').get() as any)?.page_size || 4096;
+      dbSizeMB = Math.round((pageCount * pageSize) / 1048576 * 10) / 10;
+    } catch {}
+    const uptime = process.uptime();
+    const hours = Math.floor(uptime / 3600);
+    const mins = Math.floor((uptime % 3600) / 60);
+    let activeSessions = 0;
+    // Table is `sessions` (not `user_sessions`); previously the wrong name
+    // was caught by the silent try/catch and the value was always 0 in
+    // production. Fixed 2026-05-05 — admin dashboard now shows the real
+    // active-session count.
+    try { activeSessions = (db.prepare("SELECT COUNT(*) as c FROM sessions WHERE expires_at > datetime('now')").get() as any)?.c || 0; } catch {}
+    const pkg = require('../../package.json');
+    res.json({
+      version: pkg.version || '0.0.0',
+      uptime: `${hours}h ${mins}m`,
+      dbSizeMB,
+      activeSessions,
+      nodeVersion: process.version,
+      platform: process.platform,
+      memoryMB: Math.round(process.memoryUsage().heapUsed / 1048576),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin Dashboard: recent audit log ──
+router.get('/audit-log', requireRole('admin', 'manager', 'supervisor'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const limit = parseInt(req.query.limit as string, 10) || 20;
+    const rows = db.prepare(`
+      SELECT al.*, u.username as user_name
+      FROM activity_log al
+      LEFT JOIN users u ON u.id = al.user_id
+      ORDER BY al.created_at DESC LIMIT ?
+    `).all(limit);
+    res.json(rows);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.get('/audit/export', (req: Request, res: Response) => {
   try {
     const db = getDb();
@@ -1824,8 +1903,15 @@ const ALLOWED_THIRD_PARTY_KEYS = [
   'plaid_api_key', 'clearbit_api_key', 'pipl_api_key', 'towerdata_api_key',
   // RapidAPI & Third-Party
   'plate_recognizer_api_key', 'roboflow_api_key', 'carjam_api_key', 'spokeo_api_key',
-  // GPS Webhooks
-  'owntracks_webhook_token', 'traccar_webhook_token',
+  // GPS Webhooks (Traccar replaced OwnTracks 2026-04-29)
+  'traccar_webhook_token',
+  // Traccar Server REST API pull mode (optional). All four are accepted
+  // through this endpoint so the admin UI's per-field Save buttons work
+  // uniformly. URL/enabled/poll_interval are not secrets but are still
+  // routed through encryptValue() — that's harmless for short non-secret
+  // strings and keeps the storage path single.
+  'traccar_url', 'traccar_email', 'traccar_password',
+  'traccar_enabled', 'traccar_poll_interval',
 ];
 
 function encryptValue(plaintext: string): string {
@@ -1884,16 +1970,24 @@ router.put('/third-party-keys', requireRole('admin'), (req: Request, res: Respon
     }
 
     const db = getDb();
-    const encrypted = encryptValue(value.trim());
+    // Non-secret config keys are stored plain — they're consumed by code
+    // paths (e.g. the Traccar poller) that read raw values without
+    // decryption. Encrypting them would break those readers.
+    const NON_SECRET_KEYS = new Set([
+      'traccar_url',
+      'traccar_enabled',
+      'traccar_poll_interval',
+    ]);
+    const stored = NON_SECRET_KEYS.has(key) ? value.trim() : encryptValue(value.trim());
     const now = localNow();
 
     const existing = db.prepare("SELECT id FROM system_config WHERE config_key = ? LIMIT 1").get(key) as { id: number } | undefined;
     if (existing) {
-      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(encrypted, now, key);
+      db.prepare("UPDATE system_config SET config_value = ?, is_active = 1, updated_at = ? WHERE config_key = ?").run(stored, now, key);
     } else {
       db.prepare(
         "INSERT INTO system_config (config_key, config_value, category, is_active, created_at, updated_at) VALUES (?, ?, 'integrations', 1, ?, ?)"
-      ).run(key, encrypted, now, now);
+      ).run(key, stored, now, now);
     }
 
     res.json({ success: true, message: `${key} saved` });
@@ -2145,7 +2239,8 @@ router.get('/database/backups', requireRole('admin'), (req: Request, res: Respon
 router.delete('/database/backups/:filename', requireRole('admin'), (req: Request, res: Response) => {
   try {
     const dataDir = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
-    const filename = paramStr(req.params.filename);
+    // Security: strip path components to prevent directory traversal
+    const filename = path.basename(paramStr(req.params.filename));
 
     // Security: only allow deleting backup files
     if (!filename.startsWith('rmpg-flex-backup-') || !filename.endsWith('.db')) {
@@ -2597,8 +2692,12 @@ router.get('/users/presence', requireRole('admin'), (req: Request, res: Response
     const fifteenMinAgo = new Date(Date.now() - 15 * 60 * 1000).toISOString();
     const oneHourAgo = new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+    // u.call_sign was referenced here previously but lives on the `units`
+    // table (per-unit assignment), not `users`. Removed 2026-05-05 after
+    // surfacing as `SqliteError: no such column: u.call_sign` in prod.
+    // badge_number is the correct per-user identifier for the admin view.
     const users = db.prepare(`
-      SELECT u.id, u.username, u.full_name, u.role, u.call_sign, u.badge_number,
+      SELECT u.id, u.username, u.full_name, u.role, u.badge_number,
         (SELECT MAX(al.created_at) FROM activity_log al WHERE al.user_id = u.id) as last_activity,
         (SELECT COUNT(*) FROM sessions rt WHERE rt.user_id = u.id AND rt.expires_at > datetime('now')) as active_sessions,
         CASE
@@ -2672,8 +2771,9 @@ router.get('/activity-feed', requireRole('admin'), (req: Request, res: Response)
     const limit = Math.min(100000, Math.max(1, (parseInt(String(req.query.limit || '50'), 10)) || 100000));
     const since = req.query.since as string || new Date(Date.now() - 60 * 60 * 1000).toISOString();
 
+    // u.call_sign removed 2026-05-05 — see /api/admin/users/presence note above.
     const rows = db.prepare(`
-      SELECT al.*, u.username, u.full_name, u.role, u.call_sign
+      SELECT al.*, u.username, u.full_name, u.role, u.badge_number
       FROM activity_log al
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.created_at > ?
@@ -3444,6 +3544,28 @@ router.get('/config/all', requireRole('admin'), (req: Request, res: Response) =>
     const rows = db.prepare('SELECT * FROM system_config ORDER BY category, config_key').all();
     res.json({ configs: rows, count: rows.length });
   } catch (e: any) { res.status(500).json({ error: e.message }); }
+});
+
+// Slice: GET /admin/traccar-pull-status — surface the poller heartbeat
+// for the admin UI without exposing the full system_config table.
+router.get('/traccar-pull-status', requireRole('admin'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const row = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'traccar_pull_status' AND is_active = 1 LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    const urlRow = db.prepare(
+      "SELECT config_value FROM system_config WHERE config_key = 'traccar_url' AND is_active = 1 LIMIT 1",
+    ).get() as { config_value?: string } | undefined;
+    const value = row?.config_value ?? '';
+    let kind: 'ok' | 'error' | 'disabled' | 'unknown' = 'unknown';
+    if (value.startsWith('ok:')) kind = 'ok';
+    else if (value.startsWith('error:')) kind = 'error';
+    else if (value.startsWith('disabled:')) kind = 'disabled';
+    res.json({ status: value, kind, serverUrl: urlRow?.config_value ?? null });
+  } catch (e: any) {
+    res.status(500).json({ error: e?.message || 'pull_status_failed' });
+  }
 });
 
 // 33. DELETE /admin/config/:key — Delete a config entry

@@ -7,9 +7,10 @@
 // Includes "Sign & Export" flow for in-app digital signing
 // ============================================================
 
-import React, { useCallback, useState, useEffect } from 'react';
-import { Printer, Eye, PenLine } from 'lucide-react';
+import { useCallback, useState, useEffect } from 'react';
+import { Printer, Eye, PenLine, Smartphone } from 'lucide-react';
 import { downloadRecordPdf, generateRecordPdfBlobUrl, type RecordPdfType } from '../utils/recordPdfGenerator';
+import { tryV2Dispatch, tryV2DispatchBlobUrl } from '../utils/pdf/v2DispatchAdapter';
 import { fetchEntityImages, fetchImageFromUrl } from '../utils/pdfImageHelpers';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
@@ -136,6 +137,69 @@ export default function PrintRecordButton({
       }
     }
 
+    // For person records, fetch linked vehicles and properties
+    if (recordType === 'person' && data.id) {
+      try {
+        const links = await apiFetch<any[]>(`/records/links?source_type=person&source_id=${data.id}`);
+        if (links && links.length > 0) {
+          enriched.linked_vehicles = links.filter((l: any) => l.target_type === 'vehicle').map((l: any) => ({
+            license_plate: l.target_label || l.target_name || '',
+            year: l.target_meta?.year || '',
+            make: l.target_meta?.make || '',
+            model: l.target_meta?.model || '',
+            color: l.target_meta?.color || '',
+            relationship: l.relationship || 'linked',
+          }));
+          enriched.linked_properties = links.filter((l: any) => l.target_type === 'property').map((l: any) => ({
+            name: l.target_label || l.target_name || '',
+            address: l.target_meta?.address || '',
+            relationship: l.relationship || 'linked',
+          }));
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // For vehicle records, fetch incident/call/citation history
+    if (recordType === 'vehicle' && data.id) {
+      try {
+        const history = await apiFetch<any>(`/records/vehicles/${data.id}/history`);
+        if (history) {
+          enriched.incidents = (history.incidents || []).map((i: any) => ({
+            incident_number: i.incident_number, incident_type: i.incident_type,
+            status: i.status, created_at: i.occurred_at || i.created_at,
+          }));
+          enriched.citations = (history.citations || []).map((c: any) => ({
+            citation_number: c.citation_number, type: c.type || 'traffic',
+            status: c.status, violation_date: c.violation_date,
+          }));
+        }
+      } catch { /* non-fatal */ }
+    }
+
+    // For property records, fetch incident/call history + trespass orders
+    if (recordType === 'property' && data.id) {
+      try {
+        const calls = await apiFetch<any[]>(`/dispatch/calls?property_id=${data.id}&limit=50`);
+        if (calls && calls.length > 0) {
+          enriched.calls = calls.map((c: any) => ({
+            call_number: c.call_number, incident_type: c.incident_type,
+            status: c.status, created_at: c.created_at,
+          }));
+        }
+      } catch { /* non-fatal */ }
+      try {
+        const trespass = await apiFetch<any[]>(`/trespass-orders?property_id=${data.id}&limit=50`);
+        if (trespass && trespass.length > 0) {
+          enriched.trespass_orders = trespass.map((t: any) => ({
+            order_number: t.order_number || `TO-${t.id}`,
+            subject_name: t.subject_name || '',
+            status: t.status, issued_date: t.issued_date || t.created_at,
+            expires_date: t.expires_date || '',
+          }));
+        }
+      } catch { /* non-fatal */ }
+    }
+
     // For call records, fetch GPS breadcrumb trail
     if (recordType === 'call' && data.id) {
       try {
@@ -174,18 +238,63 @@ export default function PrintRecordButton({
     return enriched;
   }, [entityType, entityId, recordType, user]);
 
+  // Office Print opens the in-app PDF viewer where the user clicks the
+  // Print toolbar button to drive the system print dialog. This matches
+  // standard "preview, then print" flow and avoids leaving an extra
+  // download on disk every time an officer prints to a desk laser.
+  // Mobile Print stays a direct download — thermal PJ-700 prints are
+  // typically queued by the OS print system and previewing them adds
+  // friction in the vehicle.
   const handlePrint = useCallback(async () => {
     if (!recordData) return;
     try {
       setLoading(true);
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
       const enrichedData = await enrichWithImages(recordData);
-      await downloadRecordPdf(recordType, enrichedData, identifier);
+      const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
+      const blobUrl = v2BlobUrl ?? await generateRecordPdfBlobUrl(recordType, enrichedData);
+      setPdfBlobUrl(blobUrl);
+      setViewerOpen(true);
     } catch (err) {
-      console.error('[PrintRecordButton] PDF generation failed:', err);
+      console.error('[PrintRecordButton] PDF print preview failed:', err);
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, identifier, enrichWithImages]);
+  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl]);
+
+  /** Mobile Print: Brother PJ-700/800 in-vehicle thermal printer.
+   *  Adds +6mm top offset so leading-edge content doesn't get clipped
+   *  by the printer's hardware dead zone. Bypasses the v2 dispatch
+   *  path because the v2 multi-copy citation engine doesn't yet honor
+   *  printTarget — TODO: thread printTarget through v2DispatchAdapter
+   *  → multiCopyPdfV2 → form schema. Until then, mobile prints fall
+   *  through to the legacy generator which already supports the
+   *  offset. (Affects citations only; every other record type uses
+   *  the legacy path either way.)
+   *
+   *  Mobile Print opens the same in-app PDF viewer as Office Print so
+   *  the officer sees the +6mm-shifted layout before sending it to
+   *  the in-vehicle Brother PJ thermal printer. They print from the
+   *  viewer's print toolbar exactly the same way as office prints. */
+  const handleMobilePrint = useCallback(async () => {
+    if (!recordData) return;
+    try {
+      setLoading(true);
+      if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+      const enrichedData = await enrichWithImages(recordData);
+      // v2 dispatch path doesn't yet honor printTarget — fall through
+      // directly to the legacy generator (which IS mobile-aware) for
+      // the blob URL. Citations lose v2 sidecar attestation under
+      // mobile-print today; tracked as the v2-printTarget follow-up.
+      const blobUrl = await generateRecordPdfBlobUrl(recordType, enrichedData, { printTarget: 'mobile' });
+      setPdfBlobUrl(blobUrl);
+      setViewerOpen(true);
+    } catch (err) {
+      console.error('[PrintRecordButton] Mobile PDF preview failed:', err);
+    } finally {
+      setLoading(false);
+    }
+  }, [recordType, recordData, identifier, enrichWithImages, pdfBlobUrl]);
 
   const handlePreview = useCallback(async () => {
     if (!recordData) return;
@@ -194,7 +303,10 @@ export default function PrintRecordButton({
       // Revoke previous blob URL if one exists
       if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
       const enrichedData = await enrichWithImages(recordData);
-      const blobUrl = await generateRecordPdfBlobUrl(recordType, enrichedData);
+      // v2 sidecar engine handles migrated types (citation today); falls
+      // back to the legacy generator for everything else.
+      const v2BlobUrl = await tryV2DispatchBlobUrl({ recordType, recordData: enrichedData, identifier });
+      const blobUrl = v2BlobUrl ?? await generateRecordPdfBlobUrl(recordType, enrichedData);
       setPdfBlobUrl(blobUrl);
       setViewerOpen(true);
     } catch (err) {
@@ -202,7 +314,7 @@ export default function PrintRecordButton({
     } finally {
       setLoading(false);
     }
-  }, [recordType, recordData, pdfBlobUrl, enrichWithImages]);
+  }, [recordType, recordData, identifier, pdfBlobUrl, enrichWithImages]);
 
   /** Sign & Export: if user has no saved signature, show the sign pad; otherwise generate with saved sig */
   const handleSignAndExport = useCallback(async () => {
@@ -212,7 +324,8 @@ export default function PrintRecordButton({
       try {
         setLoading(true);
         const enrichedData = await enrichWithImages(recordData, savedSignature);
-        await downloadRecordPdf(recordType, enrichedData, identifier);
+        const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
+        if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
       } catch (err) {
         console.error('[PrintRecordButton] Signed PDF generation failed:', err);
       } finally {
@@ -242,7 +355,8 @@ export default function PrintRecordButton({
     try {
       setLoading(true);
       const enrichedData = await enrichWithImages(recordData, dataUrl);
-      await downloadRecordPdf(recordType, enrichedData, identifier);
+      const handled = await tryV2Dispatch({ recordType, recordData: enrichedData, identifier });
+      if (!handled) await downloadRecordPdf(recordType, enrichedData, identifier);
     } catch (err) {
       console.error('[PrintRecordButton] Signed PDF generation failed:', err);
     } finally {
@@ -282,6 +396,16 @@ export default function PrintRecordButton({
       >
         <Printer style={{ width: 12, height: 12 }} />
         {!iconOnly && <span>{loading ? 'Loading…' : label}</span>}
+      </button>
+      <button
+        type="button"
+        className={`toolbar-btn ${className}`}
+        onClick={handleMobilePrint}
+        title="Print on in-vehicle Brother PJ thermal printer (+6mm top offset)"
+        disabled={loading}
+      >
+        <Smartphone style={{ width: 12, height: 12 }} />
+        {!iconOnly && <span>{loading ? 'Loading…' : 'Mobile'}</span>}
       </button>
       <button
         type="button"

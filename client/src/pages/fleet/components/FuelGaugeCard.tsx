@@ -13,7 +13,6 @@
 //   unknown  — gray    (no data yet — vehicle has never been fueled)
 // ═══════════════════════════════════════════════════════════════
 
-import React from 'react';
 import { Fuel, AlertTriangle } from 'lucide-react';
 
 export interface FuelGaugeData {

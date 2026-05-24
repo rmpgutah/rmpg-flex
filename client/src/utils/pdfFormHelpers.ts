@@ -7,12 +7,13 @@
 
 import jsPDF from 'jspdf';
 import bwipjs from 'bwip-js/browser';
-import { sanitizePdfText, wordWrapText } from './pdfGenerator';
+import { sanitizePdfText, wordWrapText, getActiveSectionStyle } from './pdfGenerator';
 import {
   COLOR, FONT, BORDER, SPACING, LAYOUT,
   PDF_VALUE_FONT,
   getGridStartX, getGridContentWidth,
   CLASSIFICATION,
+  topHeaderY,
   type RGBColor,
   type ClassificationLevel,
 } from './pdfTokens';
@@ -508,100 +509,174 @@ export function drawNibrsHeader(
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - 2 * margin;
-  let y = LAYOUT.HEADER_TOP;
+  let y = topHeaderY(doc);
 
-  // ── Top accent bar ───────────────────
+  // Header style follows the active section style (set per-generator).
+  // Default 'dark' = charcoal bar + white text (legacy NIBRS look).
+  // 'light' = cream tint + gold left strip + dark text (Person PDF
+  // 2026-05-04). Both keep the same layout — just colors flip — so
+  // the case-number box, seal slot, and form-meta sub-row are
+  // pixel-identical between modes.
+  const isLight = getActiveSectionStyle() === 'light';
+  const accentW = BORDER.ACCENT_SECTION;
+
+  // ── Top header bar ───────────────────
+  // Dark slate fill in BOTH modes (2026-05-05 darker-shading pass).
+  // The light-mode cream tint was making the agency name read faint;
+  // unifying to a deep charcoal with a left accent strip gives the
+  // agency identity the visual weight of a real PD letterhead.
+  doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
+  doc.rect(margin, y, accentW, LAYOUT.HEADER_HEIGHT, 'F');
   doc.setFillColor(...COLOR.BG_SECTION_HDR);
-  doc.rect(margin, y, contentW, LAYOUT.HEADER_HEIGHT, 'F');
+  doc.rect(margin + accentW, y, contentW - accentW, LAYOUT.HEADER_HEIGHT, 'F');
 
-  // Seal image (left side)
+  // Header text is white in both modes now that the fill is unified
+  // dark. Sub-text (state identifier / address line) renders as a
+  // muted light-gray so it sits a tier below the agency name.
+  const headTextColor: [number, number, number] = [
+    COLOR.TEXT_INVERTED[0], COLOR.TEXT_INVERTED[1], COLOR.TEXT_INVERTED[2],
+  ];
+  const headSubColor: [number, number, number] = [200, 200, 200];
+
+  // Seal image — left side on dark mode (legacy), small left-of-center
+  // on light mode so the centered title can breathe.
   const sealSize = LAYOUT.SEAL_SIZE;
+  const sealX = margin + (isLight ? accentW + 4 : 3);
   if (config.sealBase64) {
     try {
-      doc.addImage(config.sealBase64, 'PNG', margin + 3, y + 3, sealSize, sealSize);
+      doc.addImage(config.sealBase64, 'PNG', sealX, y + 3, sealSize, sealSize);
     } catch { /* skip if image fails */ }
   }
 
-  // Left-aligned text block (after seal)
-  const textX = margin + (config.sealBase64 ? sealSize + 6 : 4);
   const headerH = LAYOUT.HEADER_HEIGHT;
   const midY = y + headerH / 2; // vertical center of header bar
 
-  // State identifier (small, above center)
-  if (config.stateIdentifier) {
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_SUBHEADER);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
-  }
+  if (isLight) {
+    // ── Light mode — POLICE-DEPARTMENT CENTERED LAYOUT ──
+    // Agency name centered like a real PD letterhead, with state
+    // identifier above and form title below. The case-number /
+    // subject-name box is INTENTIONALLY OMITTED on light mode because
+    // the quick-reference banner directly below already shows the
+    // identifier in larger type — repeating it in the upper-right made
+    // every Person/Call report show the subject name twice (visible in
+    // 2026-05-04 user feedback).
+    //
+    // Formal letterhead detail (agency address, ORI, classification)
+    // lives in the meta sub-row below the gold accent strip rather
+    // than inside the header bar — the bar's 16mm vertical budget can
+    // only carry 3 stacked text elements before glyph ascenders punch
+    // above the top edge.
+    const centerX = margin + contentW / 2;
 
-  // Agency name (main title, centered vertically)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_HEADER_TITLE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
-
-  // Form title (below center)
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(FONT.SIZE_REPORT_TYPE);
-  doc.setTextColor(...COLOR.TEXT_INVERTED);
-  doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
-
-  // Case number (right side — thin white border frame, white text)
-  if (config.caseNumber) {
-    const caseBoxW = LAYOUT.CASE_BOX_W;
-    const caseBoxH = headerH - 6;
-    const caseBoxX = margin + contentW - caseBoxW - 2;
-    const caseBoxY = y + 3;
-
-    // Subtle white border frame (no fill)
-    doc.setDrawColor(...COLOR.TEXT_INVERTED);
-    doc.setLineWidth(0.5);
-    doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
-
-    // Case number label — configurable per report type
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
-
-    // Case number value — auto-scale font down if the text is wider than
-    // the box (e.g. "DONNA MANOR APARTMENTS" overflowing the 42mm box on a
-    // property record). Keeps text inside box edges on every report type.
-    doc.setFont(PDF_VALUE_FONT, 'bold');
-    const caseNumberText = sanitizePdfText(config.caseNumber);
-    const availW = caseBoxW - 3;  // 1.5mm padding each side
-    let caseFontSize: number = FONT.SIZE_CASE_NUMBER;
-    doc.setFontSize(caseFontSize);
-    let measuredW = doc.getTextWidth(caseNumberText);
-    if (measuredW > availW && measuredW > 0) {
-      caseFontSize = Math.max(5, caseFontSize * (availW / measuredW));
-      doc.setFontSize(caseFontSize);
+    if (config.stateIdentifier) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT.SIZE_SUBHEADER);
+      doc.setTextColor(...headSubColor);
+      doc.text(config.stateIdentifier.toUpperCase(), centerX, midY - 5, { align: 'center' });
     }
-    doc.setTextColor(...COLOR.TEXT_INVERTED);
-    doc.text(caseNumberText, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_HEADER_TITLE);
+    doc.setTextColor(...headTextColor);
+    doc.text((config.agencyName || '').toUpperCase(), centerX, midY + 0.5, { align: 'center' });
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_REPORT_TYPE);
+    doc.setTextColor(...headTextColor);
+    doc.text((config.formTitle || '').toUpperCase(), centerX, midY + 5.5, { align: 'center' });
+  } else {
+    // ── Dark mode (legacy) — left-aligned text + case-number box right ──
+    const textX = config.sealBase64 ? sealX + sealSize + 4 : margin + 4;
+
+    if (config.stateIdentifier) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT.SIZE_SUBHEADER);
+      doc.setTextColor(...headSubColor);
+      doc.text(config.stateIdentifier.toUpperCase(), textX, midY - 5);
+    }
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_HEADER_TITLE);
+    doc.setTextColor(...headTextColor);
+    doc.text((config.agencyName || '').toUpperCase(), textX, midY + 0.5);
+
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(FONT.SIZE_REPORT_TYPE);
+    doc.setTextColor(...headTextColor);
+    doc.text((config.formTitle || '').toUpperCase(), textX, midY + 5.5);
+
+    // Case-number box — only on dark mode; light mode banner below
+    // shows the identifier already.
+    if (config.caseNumber) {
+      const caseBoxW = LAYOUT.CASE_BOX_W;
+      const caseBoxH = headerH - 6;
+      const caseBoxX = margin + contentW - caseBoxW - 2;
+      const caseBoxY = y + 3;
+
+      doc.setDrawColor(...headTextColor);
+      doc.setLineWidth(0.5);
+      doc.rect(caseBoxX, caseBoxY, caseBoxW, caseBoxH);
+
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(FONT.SIZE_FORM_CELL_LABEL);
+      doc.setTextColor(...headSubColor);
+      doc.text(config.caseNumberLabel || 'CASE NUMBER', caseBoxX + caseBoxW / 2, caseBoxY + 3.5, { align: 'center' });
+
+      doc.setFont(PDF_VALUE_FONT, 'bold');
+      const caseNumberText = sanitizePdfText(config.caseNumber);
+      const availW = caseBoxW - 3;
+      let caseFontSize: number = FONT.SIZE_CASE_NUMBER;
+      doc.setFontSize(caseFontSize);
+      let measuredW = doc.getTextWidth(caseNumberText);
+      if (measuredW > availW && measuredW > 0) {
+        caseFontSize = Math.max(5, caseFontSize * (availW / measuredW));
+        doc.setFontSize(caseFontSize);
+      }
+      doc.setTextColor(...headTextColor);
+      doc.text(caseNumberText, caseBoxX + caseBoxW / 2, caseBoxY + caseBoxH - 2, { align: 'center' });
+    }
   }
 
   y += LAYOUT.HEADER_HEIGHT;
 
-  // Accent strip below header
-  doc.setFillColor(...COLOR.BG_TABLE_HDR);
+  // Accent strip below header — gray (matches the agency-header
+  // gray-charcoal accent strip token). Was gold/slate previously.
+  doc.setFillColor(COLOR.ACCENT_GOLD[0], COLOR.ACCENT_GOLD[1], COLOR.ACCENT_GOLD[2]);
   doc.rect(margin, y, contentW, LAYOUT.ACCENT_STRIP_H, 'F');
   y += LAYOUT.ACCENT_STRIP_H;
 
-  // Sub-header row: Form number (left) + Report date (right)
-  y += 1;
-  if (config.formNumber || config.reportDate) {
+  // Sub-header row: Form number (left) + Agency letterhead meta
+  // (centered) + Report date (right). Now a DARK-FILLED sub-bar
+  // with white text in both modes (2026-05-05 darker-shading pass)
+  // so the agency letterhead reads as a continuous strong banner
+  // beneath the agency name rather than a faint gray meta row.
+  const hasMeta = !!(config.formNumber || config.reportDate || isLight);
+  if (hasMeta) {
+    const metaH = 6;  // mm — slightly taller than original 5mm so the bar reads as a deliberate banner
+    doc.setFillColor(...COLOR.BG_SECTION_HDR);
+    doc.rect(margin, y, contentW, metaH, 'F');
     doc.setFont(PDF_VALUE_FONT, 'bold');
     doc.setFontSize(FONT.SIZE_SMALL_META);
-    doc.setTextColor(...COLOR.TEXT_SECONDARY);
+    doc.setTextColor(...COLOR.TEXT_INVERTED);
     if (config.formNumber) {
-      doc.text(config.formNumber, margin + 2, y + 3);
+      doc.text(config.formNumber, margin + 2, y + 4);
+    }
+    if (isLight) {
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(220, 220, 220);
+      doc.text(
+        'OFFICIAL DOCUMENT OF ROCKY MOUNTAIN PROTECTIVE GROUP  ·  SALT LAKE CITY, UTAH  ·  UT0180100',
+        margin + contentW / 2,
+        y + 4,
+        { align: 'center' },
+      );
+      doc.setFont(PDF_VALUE_FONT, 'bold');
+      doc.setTextColor(...COLOR.TEXT_INVERTED);
     }
     if (config.reportDate) {
-      doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 3, { align: 'right' });
+      doc.text(`REPORT DATE: ${sanitizePdfText(config.reportDate)}`, margin + contentW - 2, y + 4, { align: 'right' });
     }
-    y += 5;
+    y += metaH;
   }
 
   return y;
@@ -630,22 +705,31 @@ export function drawGeographyStrip(
   const cellW = contentW / 5;
   const stripH = 6.5;
 
-  // Cell background (light gray)
-  doc.setFillColor(245, 245, 248);
-  doc.rect(margin, y, contentW, stripH, 'F');
+  // Gold top border (ties to section header accent)
+  doc.setFillColor(...COLOR.ACCENT_GOLD);
+  doc.rect(margin, y, contentW, 0.5, 'F');
 
-  // Top and bottom borders
+  // Cell background (light tint)
+  doc.setFillColor(...COLOR.BG_SECTION_TINT);
+  doc.rect(margin, y + 0.5, contentW, stripH - 0.5, 'F');
+
+  // Bottom border
   doc.setDrawColor(...COLOR.BORDER_SECTION);
-  doc.setLineWidth(0.3);
-  doc.line(margin, y, margin + contentW, y);
+  doc.setLineWidth(0.2);
   doc.line(margin, y + stripH, margin + contentW, y + stripH);
 
-  const labels = ['AREA', 'SECTOR', 'ZONE', 'BEAT', 'CONTRACT ID'];
+  // Strip parent context from each tier — Section/Zone/Beat each get
+  // their own column, so repeating the parent inside the child is noise.
+  // (zoneLeaf("SL1-HER") → "HER"; beatLeaf("SL1-HER/C") → "C")
+  const sectorVal = data.sector || '—';
+  const zoneVal = data.zone ? (data.zone.indexOf('-') >= 0 ? data.zone.slice(data.zone.indexOf('-') + 1) : data.zone) : '—';
+  const beatVal = data.beat ? (data.beat.lastIndexOf('/') >= 0 ? data.beat.slice(data.beat.lastIndexOf('/') + 1) : data.beat) : '—';
+  const labels = ['AREA', 'SECTION', 'ZONE', 'BEAT', 'CONTRACT ID'];
   const values = [
     data.area || '—',
-    data.sector || '—',
-    data.zone || '—',
-    data.beat || '—',
+    sectorVal,
+    zoneVal,
+    beatVal,
     data.contract_id || '—',
   ];
 
@@ -1832,7 +1916,7 @@ export function drawEnhancedNibrsHeader(
   const pageW = doc.internal.pageSize.getWidth();
   const margin = LAYOUT.PAGE_MARGIN;
   const contentW = pageW - 2 * margin;
-  let y = LAYOUT.HEADER_TOP;
+  let y = topHeaderY(doc);
 
   const headerH = LAYOUT.HEADER_HEIGHT + 4; // taller to fit tri-line + officer block
 

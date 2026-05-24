@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../../components/RichTextArea';
 import {
-  Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle,
-  Calendar, Shield, Tag, Radio, BarChart3, Archive, RotateCcw, Trash2, DollarSign, Fuel,
+  Car, Plus, Wrench, Search, Gauge, AlertTriangle, CheckCircle, Calendar, Shield,
+  Tag, Radio, Archive, DollarSign, Fuel,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
@@ -27,8 +28,8 @@ import ConfirmDialog from '../../components/ConfirmDialog';
 import ExportButton from '../../components/ExportButton';
 import MaintenanceMonitor from './components/MaintenanceMonitor';
 import type {
-  FleetVehicle, FleetMaintenance, FleetVehicleStatus,
-  FleetFuelLog, FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
+  FleetVehicle, FleetMaintenance, FleetVehicleStatus, FleetFuelLog,
+  FleetFuelSummary, FleetInspection, FleetAssignment, FleetAnalytics,
   FleetPersonnelData,
 } from '../../types';
 
@@ -71,20 +72,6 @@ function parseEquipment(eq: unknown): string[] {
   if (typeof eq === 'string') { try { return JSON.parse(eq); } catch { return []; } }
   return [];
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function FleetPage() {
   const isMobile = useIsMobile();
@@ -1259,7 +1246,7 @@ export default function FleetPage() {
                   <span className="ml-auto text-[10px] font-mono">{(pretripForm as any)[item.key] ? 'PASS' : 'FAIL'}</span>
                 </label>
               ))}
-              <textarea
+              <RichTextArea
                 value={pretripForm.notes}
                 onChange={e => setPretripForm(prev => ({ ...prev, notes: e.target.value }))}
                 className="input-dark w-full h-16 text-sm mt-2 min-h-[36px]"

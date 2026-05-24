@@ -12,7 +12,7 @@
 // for live run lifecycle updates.
 // ============================================================
 
-import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import {
   RefreshCw,
   Search,

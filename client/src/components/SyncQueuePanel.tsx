@@ -3,7 +3,7 @@
 // Popover showing offline sync queue details above status bar
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 
 const electron = typeof window !== 'undefined' ? (window as any).electron : null;
 

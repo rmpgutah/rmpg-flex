@@ -6,12 +6,14 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import {
-  Shield, Star, Plus, Pencil, Trash2, List, Clock, Loader2,
-  ChevronDown, ChevronUp, AlertTriangle, CheckCircle, Scale,
+  Shield, Star, Plus, Pencil, Trash2, List, Clock, Loader2, ChevronDown,
+  ChevronUp, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
-import type { DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity, DisciplinaryStatus } from '../../../types';
+import type {
+  DisciplinaryRecord, DisciplinaryType, DisciplinarySeverity, DisciplinaryStatus,
+} from '../../../types';
 import { SEVERITY_COLORS, DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import DisciplinaryFormModal from '../modals/DisciplinaryFormModal';
 import ExportButton from '../../../components/ExportButton';
@@ -74,20 +76,6 @@ function followUpStatus(date: string | null): 'none' | 'upcoming' | 'overdue' | 
 }
 
 // ─── Main component ─────────────────────────────────────────
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function DisciplinaryTab({ userRole, userId }: DisciplinaryTabProps) {
   const toast = useToast();
   const manager = isManagerPlus(userRole);

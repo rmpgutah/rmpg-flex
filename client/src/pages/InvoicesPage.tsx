@@ -6,6 +6,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   DollarSign,
   Plus,
@@ -178,20 +179,6 @@ function toDisplayLabel(s: string): string {
 }
 
 // ── Helpers ───────────────────────────────────────────────
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 // ── Component ──────────────────────────────────────────────
 
@@ -590,7 +577,7 @@ export default function InvoicesPage() {
         {/* Notes */}
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Notes</label>
-          <textarea
+          <RichTextArea
             value={createForm.notes}
             onChange={e => setCreateForm(f => ({ ...f, notes: e.target.value }))}
             rows={2}
@@ -601,7 +588,7 @@ export default function InvoicesPage() {
         {/* Internal notes */}
         <div>
           <label className="block text-[10px] uppercase tracking-wider text-rmpg-400 mb-1">Internal Notes</label>
-          <textarea
+          <RichTextArea
             value={createForm.internal_notes}
             onChange={e => setCreateForm(f => ({ ...f, internal_notes: e.target.value }))}
             rows={2}

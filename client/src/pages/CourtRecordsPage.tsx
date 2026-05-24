@@ -1,23 +1,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Gavel,
-  Plus,
-  Search,
-  Loader2,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Calendar,
-  User,
-  MapPin,
-  FileText,
-  Scale,
-  X,
-  AlertTriangle,
-  CheckCircle,
-  Clock,
-  XCircle,
-  Briefcase,
+  Gavel, Plus, Search, Loader2, ChevronDown, ChevronLeft, ChevronRight, Calendar,
+  User, FileText, Scale, X, AlertTriangle, CheckCircle, Clock, XCircle,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import EmptyState from '../components/EmptyState';
@@ -121,20 +106,6 @@ function eventTypeLabel(val: string): string {
 }
 
 // ============================================================
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 // Component
 // ============================================================
 
@@ -702,7 +673,7 @@ export default function CourtRecordsPage() {
               {/* Notes */}
               <div>
                 <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Notes</label>
-                <textarea
+                <RichTextArea
                   value={formData.notes}
                   onChange={e => setFormData(p => ({ ...p, notes: e.target.value }))}
                   rows={3}
@@ -781,7 +752,7 @@ export default function CourtRecordsPage() {
 
               <div>
                 <label className="block text-[9px] text-rmpg-400 font-bold uppercase mb-0.5">Notes</label>
-                <textarea
+                <RichTextArea
                   value={outcomeData.notes}
                   onChange={e => setOutcomeData(p => ({ ...p, notes: e.target.value }))}
                   rows={3}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useId } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   QrCode,
   MapPin,
@@ -1303,7 +1304,7 @@ const PatrolPage: React.FC = () => {
                 <label className="block text-sm font-medium text-rmpg-200 mb-1">
                   Description:
                 </label>
-                <textarea
+                <RichTextArea
                   value={formData.description}
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   className="textarea-dark"

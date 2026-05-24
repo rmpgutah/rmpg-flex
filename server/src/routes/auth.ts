@@ -1786,6 +1786,17 @@ router.put('/profile-image', authenticateToken, (req: Request, res: Response) =>
   try {
     const db = getDb();
     const { url } = req.body;
+    // Security: validate URL scheme to prevent javascript: or data: URLs
+    if (url) {
+      try {
+        const parsed = new URL(url);
+        if (!['http:', 'https:'].includes(parsed.protocol)) {
+          res.status(400).json({ error: 'Invalid URL scheme — must be http or https' }); return;
+        }
+      } catch {
+        res.status(400).json({ error: 'Invalid URL format' }); return;
+      }
+    }
     db.prepare('UPDATE users SET avatar_url = ?, updated_at = ? WHERE id = ?')
       .run(url || null, localNow(), req.user!.userId);
     res.json({ success: true, url: url || null });

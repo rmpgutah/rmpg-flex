@@ -5,18 +5,20 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  GraduationCap, Plus, Search, CheckCircle, AlertTriangle, Clock,
-  BookOpen, Loader2, X, Edit2, Trash2, Archive, Users, Shield,
-  Calendar, BarChart3, Target, Award, FileText, ChevronDown,
-  ChevronRight, RefreshCw, Filter,
+  GraduationCap, Plus, Search, CheckCircle, AlertTriangle, Clock, BookOpen,
+  Loader2, X, Edit2, Trash2, Archive, Users, Shield, Calendar, BarChart3, Target,
+  FileText, ChevronRight, RefreshCw,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import IconButton from '../components/IconButton';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
-import { formatDateTime, formatDate, parseTimestamp } from '../utils/dateUtils';
-import type { TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus } from '../types';
+import { formatDate, parseTimestamp } from '../utils/dateUtils';
+import type {
+  TrainingRecord, TrainingRequirement, TrainingCategory, TrainingStatus,
+} from '../types';
 
 // ── Constants ──────────────────────────────────────────────
 const CATEGORIES: TrainingCategory[] = [
@@ -58,20 +60,6 @@ interface Officer {
 }
 
 // ── Main Component ─────────────────────────────────────────
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function TrainingPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin' || user?.role === 'manager' || user?.role === 'supervisor';
@@ -1461,7 +1449,7 @@ function RecordModal({ record, officers, requirements, onSave, onClose }: {
           {/* Notes */}
           <div>
             <label className="field-label mb-1 block">Notes</label>
-            <textarea
+            <RichTextArea
               value={form.notes}
               onChange={e => update('notes', e.target.value)}
               className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"
@@ -1622,7 +1610,7 @@ function RequirementModal({ requirement, onSave, onClose }: {
           {/* Description */}
           <div>
             <label className="field-label mb-1 block">Description</label>
-            <textarea
+            <RichTextArea
               value={form.description}
               onChange={e => update('description', e.target.value)}
               className="input-dark w-full text-[11px] px-2 py-1.5 h-16 resize-none min-h-[36px]"

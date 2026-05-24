@@ -5,13 +5,12 @@
 // storage tracking, disposition pipeline, and BWC footage view.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Package, Search, Plus, ChevronDown, MapPin, Clock, User,
-  ArrowRightLeft, CheckCircle, AlertTriangle, X, Save, Loader2,
-  Box, Warehouse, Tag, FileText, Archive, Video,
-  PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2,
-  Play, Shield, Camera,
+  Package, Search, Plus, MapPin, Clock, User, ArrowRightLeft, CheckCircle,
+  AlertTriangle, X, Save, Loader2, Box, Warehouse, Tag, FileText, Video,
+  PackageOpen, PackagePlus, RefreshCw, FlaskConical, Trash2, Play, Shield, Camera,
 } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
@@ -63,20 +62,6 @@ const STATUS_OPTIONS = [
 ];
 
 type DetailTab = 'info' | 'chain' | 'bwc' | 'checkout' | 'custody_audit' | 'links';
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 // ─── Component ─────────────────────────────────────────
 export default function EvidencePropertyPage() {
@@ -784,7 +769,7 @@ export default function EvidencePropertyPage() {
                           <div className="space-y-2">
                             <input value={releaseTo} onChange={e => setReleaseTo(e.target.value)} placeholder="Release to (name/entity)..."
                               className="input-dark w-full min-h-[36px]" />
-                            <textarea value={releaseReason} onChange={e => setReleaseReason(e.target.value)} placeholder="Reason for release..."
+                            <RichTextArea value={releaseReason} onChange={e => setReleaseReason(e.target.value)} placeholder="Reason for release..."
                               rows={2} className="textarea-dark w-full" />
                             <div className="flex gap-1">
                               <button type="button" onClick={handleRequestRelease} disabled={releaseSubmitting || !releaseReason.trim()} className="toolbar-btn toolbar-btn-primary print:hidden">
@@ -927,7 +912,7 @@ export default function EvidencePropertyPage() {
                         </select>
                         <input type="text" value={dispositionMethod} onChange={e => setDispositionMethod(e.target.value)}
                           className="input-standard w-full text-xs" placeholder="Method details..." />
-                        <textarea value={dispositionNotes} onChange={e => setDispositionNotes(e.target.value)}
+                        <RichTextArea value={dispositionNotes} onChange={e => setDispositionNotes(e.target.value)}
                           className="input-standard w-full text-xs h-16 resize-none" placeholder="Disposition notes..." />
                         <button type="button" onClick={handleDisposition} disabled={dispositionSubmitting}
                           className="btn-warning w-full flex items-center justify-center gap-2 text-xs">
@@ -1144,7 +1129,7 @@ export default function EvidencePropertyPage() {
 
               <div>
                 <label className="field-label">Notes</label>
-                <textarea
+                <RichTextArea
                   value={chainNotes}
                   onChange={e => setChainNotes(e.target.value)}
                   rows={3}
@@ -1292,7 +1277,7 @@ export default function EvidencePropertyPage() {
 
               <div>
                 <label className="field-label">Notes</label>
-                <textarea
+                <RichTextArea
                   value={newEvidence.notes}
                   onChange={e => setNewEvidence(p => ({ ...p, notes: e.target.value }))}
                   rows={3}

@@ -1,8 +1,10 @@
 // ============================================================
 // RMPG Flex — Process Service Intake
-// Parses uploaded PDF documents (Court Filing, Field Sheet,
-// Information Page) and auto-creates Person, Property, and
-// CFS dispatch call records with linkage.
+// Parses uploaded PDF documents (Court Docket, Field Sheet,
+// Information Sheet) and fans out into persons, properties,
+// cases, calls_for_service, call_persons, record_links,
+// serve_queue, and serve_attempts.
+// All extraction lives in utils/serveIntakeHelpers.ts.
 // ============================================================
 
 import { Router, Request, Response } from 'express';
@@ -13,6 +15,26 @@ import { localNow } from '../utils/timeUtils';
 import { broadcastDispatchUpdate } from '../utils/websocket';
 import { geocodeAddress } from '../utils/geocode';
 import { identifyBeat } from '../utils/geofence';
+import {
+  parseAllDocuments,
+  parseAddressParts,
+  buildNotesNarrative,
+  computeDiligenceSchedule,
+  classifyEntityType,
+  type ParseOutput,
+} from '../utils/serveIntakeHelpers';
+import { buildEnrichment } from '../utils/serveIntakeEnrichment';
+import { synthesizeCaseSynopsis } from '../utils/caseSynopsis';
+import { synthesizeCaseNarrative } from '../utils/caseNarrative';
+import { detectCourtForm } from '../utils/courtFormDetector';
+import { boundForRegex } from '../utils/regexSafe';
+import {
+  isOcrmypdfAvailable,
+  isTesseractAvailable,
+  getPageCount,
+  shouldRunOcr,
+  runOcrFallback,
+} from '../utils/serveIntakeOcr';
 import { execFile } from 'child_process';
 import { writeFileSync, unlinkSync, mkdtempSync } from 'fs';
 import { join } from 'path';
@@ -23,389 +45,582 @@ const execFileAsync = promisify(execFile);
 const router = Router();
 router.use(authenticateToken);
 
-// ── Auto-Detect Document Type by Content ─────────────────────
-
-function detectDocType(text: string): 'court_docket' | 'field_sheet' | 'info_page' | 'unknown' {
-  // Court Docket: contains SUMMONS, Plaintiff/Defendant, Attorney for Plaintiff
-  if (/SUMMONS|COMPLAINT|Attorney for Plaintiff|JUDICIAL DISTRICT COURT/i.test(text)) return 'court_docket';
-  // Field Sheet: contains Party to Serve, Instructions, Address + city/state/zip on separate line
-  if (/Party to Serve|Instructions\s*\n.*Sub-serve|Date & Time.*Description of Service/i.test(text)) return 'field_sheet';
-  // Info Page: contains JOB number header, CLIENT/SERVER columns, Service Attempts, Recipient
-  if (/^JOB\b/im.test(text) || /Service Attempts|Recipient:|Job Activity|Af\s*fi\s*davits/i.test(text)) return 'info_page';
+// ── Auto-detect document kind by content ─────────────────────
+function detectDocType(text: string): 'court_docket' | 'field_sheet' | 'info_sheet' | 'unknown' {
+  text = boundForRegex(text);
+  // Field sheet / info sheet markers stay first — they are very specific to
+  // the upstream vendor formats (ICU, ServeManager, etc.) and we want them to
+  // win before the broader court-form detector sees a court-style document.
+  if (/Party to Serve|Instructions\s*\n[\s\S]*?Sub-serve|Date & Time.*Description of Service/i.test(text)) return 'field_sheet';
+  if (/^JOB\b/im.test(text) || /Service Attempts|Recipient:|Job Activity|Af\s*fi\s*davits/i.test(text)) return 'info_sheet';
+  // Robust court-form detection across all 50 states + federal.
+  const detection = detectCourtForm(text);
+  if (detection.isCourtDocument) return 'court_docket';
   return 'unknown';
 }
 
-// ── Text Extraction Helpers ──────────────────────────────────
-
-function extractBetween(text: string, before: string, after: string): string {
-  const startIdx = text.indexOf(before);
-  if (startIdx === -1) return '';
-  const start = startIdx + before.length;
-  const endIdx = after ? text.indexOf(after, start) : text.length;
-  return (endIdx === -1 ? text.substring(start) : text.substring(start, endIdx)).trim();
+function getLogger(req: Request): { warn: (...a: any[]) => void; error: (...a: any[]) => void; info: (...a: any[]) => void } {
+  return (req as any).log || { warn: console.warn.bind(console), error: console.error.bind(console), info: console.info.bind(console) };
 }
 
-function extractField(text: string, label: string): string {
-  const patterns = [
-    new RegExp(`${label}[:\\s]+([^\\n]+)`, 'i'),
-    new RegExp(`${label}\\s*\\n\\s*([^\\n]+)`, 'i'),
-  ];
-  for (const p of patterns) {
-    const m = text.match(p);
-    if (m) return m[1].trim();
-  }
-  return '';
+function utcOffsetHoursForZone(date: Date, timeZone: string): number {
+  const part = new Intl.DateTimeFormat('en-US', {
+    timeZone,
+    timeZoneName: 'shortOffset',
+  }).formatToParts(date).find(p => p.type === 'timeZoneName')?.value ?? '';
+  const m = part.match(/^GMT([+-])(\d{1,2})(?::?(\d{2}))?$/);
+  if (!m) return 0;
+  const sign = m[1] === '-' ? -1 : 1;
+  const hours = parseInt(m[2], 10);
+  const minutes = parseInt(m[3] || '0', 10);
+  return sign * (hours + minutes / 60);
 }
 
-function extractName(text: string): { first: string; middle: string; last: string } {
-  // Try "Party to Serve: Muhammad A Nawaz" or "Recipient: Muhammad A Nawaz"
-  const nameStr = extractField(text, 'Party to Serve') || extractField(text, 'Recipient') || extractField(text, 'Defendant');
-  if (!nameStr) return { first: '', middle: '', last: '' };
-  // Strip trailing field labels when PDF text extraction has no newlines between fields
-  const cleaned = nameStr.replace(/\s+(?:Server|Fee|Case|Plaintiff|DOB|Phone|Email|Attorney):.*$/i, '').replace(/,.*$/, '').replace(/an individual/i, '').trim();
-  const parts = cleaned.split(/\s+/);
-  if (parts.length >= 3) return { first: parts[0], middle: parts.slice(1, -1).join(' '), last: parts[parts.length - 1] };
-  if (parts.length === 2) return { first: parts[0], middle: '', last: parts[1] };
-  return { first: nameStr, middle: '', last: '' };
+// ── PDF binary → text (pdftotext, with ocrmypdf fallback) ───
+async function extractTextFromPdf(pdfPath: string): Promise<string> {
+  let layoutText = '';
+  let rawText = '';
+  try {
+    const r1 = await execFileAsync('/usr/bin/pdftotext', ['-layout', pdfPath, '-']);
+    layoutText = r1.stdout || '';
+  } catch { /* layout mode failed */ }
+  try {
+    const r2 = await execFileAsync('/usr/bin/pdftotext', [pdfPath, '-']);
+    rawText = r2.stdout || '';
+  } catch { /* raw mode failed */ }
+  const hasStructuredLabels = /Party to Serve|Instructions|Documents|Plaintiff|Defendant/i.test(layoutText);
+  return hasStructuredLabels ? layoutText : (layoutText.length >= rawText.length ? layoutText : rawText);
 }
-
-function extractDOB(text: string): string {
-  const m = text.match(/DOB[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i) || text.match(/DOB[:\s]*(\d{4}-\d{2}-\d{2})/i);
-  if (!m) return '';
-  const d = m[1];
-  if (d.includes('/')) {
-    const [mm, dd, yyyy] = d.split('/');
-    return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')}`;
-  }
-  return d;
-}
-
-function extractAddress(text: string): string {
-  // Field Sheet format: "Address" on one line, actual address on next line
-  const m = text.match(/^Address\s*\n\s*(.+(?:,\s*[A-Z]{2}\s*\d{5}).*)$/im);
-  if (m) return m[1].trim();
-  // Also try: line containing street number + city + state + zip
-  const addrLine = text.match(/(\d+\s+[A-Za-z].*?,\s*[A-Za-z ]+,\s*[A-Z]{2}\s*\d{5}[^)\n]*)/);
-  if (addrLine) return addrLine[1].trim();
-  return extractField(text, 'Address') || '';
-}
-
-function extractPlaintiff(text: string): string {
-  return extractBetween(text, 'Plaintiff', 'Defendant') || extractField(text, 'Plaintiff') || '';
-}
-
-function extractCourt(text: string): string {
-  const m = text.match(/(THIRD|FIRST|SECOND|FOURTH|FIFTH|SIXTH|SEVENTH|EIGHTH)\s+JUDICIAL\s+DISTRICT\s+COURT[^,\n]*/i);
-  return m ? m[0].trim() : '';
-}
-
-function extractDocuments(text: string): string {
-  const raw = extractField(text, 'Documents') || '';
-  if (!raw) return '';
-  // Stop at instruction keywords to avoid capturing serve instructions on same line
-  const stopAt = raw.search(/Sub-serve|Personal only|Diligence:|Never serve|If subject provides|Call phone|Any occupant|1 attempt/i);
-  if (stopAt !== -1) return raw.substring(0, stopAt).trim();
-  return raw.length > 200 ? raw.substring(0, 200).trim() + '...' : raw;
-}
-
-function extractInstructions(text: string): string {
-  const m = text.match(/Instructions\s*\n([\s\S]*?)(?:\n\n|\nMuhammad|\nAddress|\n[A-Z][a-z]+ [A-Z])/i);
-  if (m) return m[1].replace(/\n/g, ' ').trim();
-  // Fallback: flat text — capture from "Instructions" to "Address \d+" or end
-  const flat = text.match(/Instructions\s+([\s\S]*?)(?:\sAddress\s+\d+|$)/i);
-  if (flat) return flat[1].replace(/\s+/g, ' ').trim();
-  return '';
-}
-
-function extractJobNumber(text: string): string {
-  const m = text.match(/(?:Job|JOB)[:\s#]*(\d+)/);
-  return m ? m[1] : '';
-}
-
-function extractCaseNumber(text: string): string {
-  const m = text.match(/\((\d{5,})\)/);
-  return m ? m[1] : '';
-}
-
-function extractDueDate(text: string): string {
-  const m = text.match(/Due[:\s]*(\d{1,2}\/\d{1,2}\/\d{4})/i) || text.match(/Due[:\s]*([A-Z][a-z]+ \d{1,2}, \d{4})/i);
-  return m ? m[1] : '';
-}
-
-function extractAttorney(text: string): { name: string; phone: string; email: string; bar: string } {
-  // Attorney name is usually BEFORE "Attorney for Plaintiff" label (previous line)
-  let name = '';
-  const beforeLabel = text.match(/([A-Za-z\s.,]+?)(?:\s+#?\d+)?\s*\n\s*Attorney for Plaintiff/i);
-  if (beforeLabel) name = beforeLabel[1].replace(/[,.]?\s*$/, '').trim();
-  // Try "Attorney for Plaintiff: Name" format (use only first pattern to avoid catching court name on next line)
-  if (!name) {
-    const m = text.match(/Attorney for Plaintiff[:]\s*([^\n]+)/i);
-    if (m) name = m[1].trim();
-  }
-  // Utah summons format: "By: /s/ Heather Valerga"
-  if (!name) {
-    const byMatch = text.match(/By:\s*\/?s?\s*\/?\s*([A-Za-z]+\s+[A-Za-z]+)/i);
-    if (byMatch) name = byMatch[1].trim();
-  }
-  const phone = (text.match(/Tel[:\s]*([\(\d\)\-\s]+)/i) || [])[1]?.trim() || '';
-  const email = (text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i) || [])[1] || '';
-  const bar = (text.match(/Bar#?\s*(\d+)/i) || [])[1] || '';
-  // Utah bar number format: *S\d+*
-  const utahBar = (text.match(/\*S(\d+)\*/) || [])[1] || '';
-  return { name, phone, email, bar: bar || utahBar };
-}
-
-function extractFee(text: string): string {
-  const raw = extractField(text, 'Fee') || '';
-  if (!raw) return '';
-  return raw.replace(/\s+(?:Case|Plaintiff|DOB|Phone|Email|Attorney|Server):.*$/i, '').trim();
-}
-
-function extractServer(text: string): string {
-  const raw = extractField(text, 'Server') || '';
-  if (!raw) return '';
-  // Strip trailing labels if on same line (same issue as extractName)
-  return raw.replace(/\s+(?:Fee|Case|Plaintiff|DOB|Phone|Email|Attorney):.*$/i, '').trim();
-}
-
-function extractServiceWindows(text: string): string {
-  const windows: string[] = [];
-  if (/6AM-9AM|6am.*9am/i.test(text)) windows.push('6AM-9AM');
-  if (/9AM-6PM|9am.*6pm/i.test(text)) windows.push('9AM-6PM');
-  if (/6PM-9PM|6pm.*9pm/i.test(text)) windows.push('6PM-9PM');
-  if (/weekend/i.test(text)) windows.push('Weekend required');
-  return windows.join(', ');
-}
-
-function extractServeInstructions(text: string): string {
-  // Get ONLY the serve instructions — not the case details
-  const m = text.match(/Instructions\s*\n([\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n)/i);
-  if (m) return m[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-  const sub = text.match(/(Sub-serve[\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n)/i);
-  if (sub) return sub[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-  // Fallback: flat text with no newlines — capture from "Sub-serve" to "Address \d+" or end
-  const flat = text.match(/(Sub-serve[\s\S]*?)(?:\sAddress\s+\d+|$)/i);
-  if (flat) return flat[1].replace(/\s+/g, ' ').trim();
-  return '';
-}
-
-function extractCaseNotes(text: string): string {
-  const parts: string[] = [];
-  const plaintiff = extractPlaintiff(text);
-  if (plaintiff) parts.push(`Plaintiff: ${plaintiff.replace(/\n/g, ' ').trim()}`);
-  const court = extractCourt(text);
-  if (court) parts.push(`Court: ${court}`);
-  const docs = extractDocuments(text);
-  if (docs) parts.push(`Documents: ${docs}`);
-  const caseNum = extractCaseNumber(text);
-  if (caseNum) parts.push(`Case #${caseNum}`);
-  const attorney = extractAttorney(text);
-  if (attorney.name) parts.push(`Attorney: ${attorney.name}${attorney.bar ? ` Bar#${attorney.bar}` : ''}`);
-  if (attorney.phone) parts.push(`Attorney Tel: ${attorney.phone}`);
-  if (attorney.email) parts.push(`Attorney Email: ${attorney.email}`);
-  // Court clerk info
-  const clerk = text.match(/call the clerk.*?at\s*\((\d{3})\)\s*(\d{3}[-.]?\d{4})/i);
-  if (clerk) parts.push(`Court Clerk: (${clerk[1]}) ${clerk[2]}`);
-  // Court address
-  const courtAddr = text.match(/(\d+ South State St.*?\d{5})/i);
-  if (courtAddr) parts.push(`Court Address: ${courtAddr[1]}`);
-  return parts.join('. ');
-}
-
-function extractClientAddress(text: string): string {
-  // ICU Investigations address from Field Sheet header
-  const m = text.match(/ICU Investigations.*?\n([\d]+ .*?\n.*?\d{5})/i);
-  if (m) return m[1].replace(/\n/g, ', ').trim();
-  return '';
-}
-
-// ── PDF Text Extraction ──────────────────────────────────────
 
 router.post('/extract-text', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
-  // Collect raw body (PDF binary from multipart/form-data or raw)
   const chunks: Buffer[] = [];
   req.on('data', (chunk: Buffer) => chunks.push(chunk));
   req.on('end', async () => {
+    const log = getLogger(req);
     try {
       const body = Buffer.concat(chunks);
-      if (body.length < 100) { res.json({ text: '', length: 0 }); return; }
+      if (body.length < 100) { res.json({ text: '', length: 0, ocrApplied: false, pageCount: 0 }); return; }
 
-      // Save to temp file and run pdftotext
       const tmpDir = mkdtempSync(join(tmpdir(), 'serve-intake-'));
       const tmpPdf = join(tmpDir, 'input.pdf');
+      const ocrPdf = join(tmpDir, 'input.ocr.pdf');
       writeFileSync(tmpPdf, body);
 
-      try {
-        const { stdout } = await execFileAsync('/usr/bin/pdftotext', ['-layout', tmpPdf, '-']);
-        res.json({ text: stdout, length: stdout.length });
-      } catch {
-        // Fallback: try without -layout
+      // Phase 1: fast path — pdftotext on the original PDF.
+      let text = await extractTextFromPdf(tmpPdf);
+      const pageCount = await getPageCount(tmpPdf);
+      let ocrApplied = false;
+      let ocrError: string | null = null;
+
+      // Phase 2: OCR fallback when the user-defined heuristic
+      // says the text yield isn't credible for this page count.
+      if (shouldRunOcr(text, pageCount)) {
         try {
-          const { stdout } = await execFileAsync('/usr/bin/pdftotext', [tmpPdf, '-']);
-          res.json({ text: stdout, length: stdout.length });
-        } catch {
-          res.json({ text: '', length: 0 });
+          const ocrBuf = await runOcrFallback(body);
+          writeFileSync(ocrPdf, ocrBuf);
+          const ocrText = await extractTextFromPdf(ocrPdf);
+          // Only adopt OCR output if it actually produced more
+          // text than the original — otherwise the original
+          // (possibly sparse but accurate) wins.
+          if (ocrText.length > text.length) {
+            text = ocrText;
+            ocrApplied = true;
+          }
+        } catch (err: any) {
+          ocrError = err?.code === 'OCRMYPDF_MISSING' ? 'ocrmypdf-missing' : 'ocr-failed';
+          log.warn({ err, pageCount, originalLength: text.length }, 'serve-intake OCR fallback failed');
         }
-      } finally {
-        try { unlinkSync(tmpPdf); } catch {}
-        try { unlinkSync(tmpDir); } catch {}
       }
-    } catch (err: any) {
+
+      try { unlinkSync(tmpPdf); } catch { /* ignore */ }
+      try { unlinkSync(ocrPdf); } catch { /* ignore */ }
+      try { require('fs').rmdirSync(tmpDir); } catch { /* ignore */ }
+      res.json({ text, length: text.length, ocrApplied, pageCount, ocrError });
+    } catch (err) {
+      log.error({ err }, 'serve-intake text extraction failed');
       res.status(500).json({ error: 'Text extraction failed', text: '' });
     }
   });
 });
 
-// ── Main Intake Endpoint ─────────────────────────────────────
+// ── Health probe: does this server have the OCR toolchain? ──
+// Same pattern as the qpdf health probe. Lets the client surface
+// a setup-help UI when the VPS hasn't had `apt install ocrmypdf
+// tesseract-ocr` run on it yet.
+router.get('/health', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (_req: Request, res: Response) => {
+  const [ocrmypdf, tesseract] = await Promise.all([isOcrmypdfAvailable(), isTesseractAvailable()]);
+  res.json({
+    pdftotext: true, // pdftotext is a base-image dep; we assume it
+    ocrmypdf,
+    tesseract,
+    ocrReady: ocrmypdf && tesseract,
+  });
+});
 
+// ── Helpers shared by the intake route ──────────────────────
+function upsertPerson(
+  db: ReturnType<typeof getDb>,
+  userId: number,
+  now: string,
+  info: { first: string; middle: string; last: string; dob?: string; address?: string; phone?: string; email?: string; role: string; entityType: 'individual' | 'organization'; bar?: string; firm?: string },
+): number {
+  const existing = db.prepare(
+    'SELECT id FROM persons WHERE first_name = ? AND last_name = ? AND (dob IS NULL OR dob = \'\' OR ? = \'\' OR dob = ?) LIMIT 1'
+  ).get(info.first, info.last, info.dob || '', info.dob || '') as any;
+  if (existing) {
+    if (info.dob) db.prepare("UPDATE persons SET dob = COALESCE(NULLIF(dob,''), ?) WHERE id = ?").run(info.dob, existing.id);
+    if (info.address) db.prepare("UPDATE persons SET address = COALESCE(NULLIF(address,''), ?) WHERE id = ?").run(info.address, existing.id);
+    if (info.phone) db.prepare("UPDATE persons SET phone = COALESCE(NULLIF(phone,''), ?) WHERE id = ?").run(info.phone, existing.id);
+    if (info.email) db.prepare("UPDATE persons SET email = COALESCE(NULLIF(email,''), ?) WHERE id = ?").run(info.email, existing.id);
+    if (info.role) db.prepare("UPDATE persons SET role_tag = COALESCE(NULLIF(role_tag,''), ?), entity_type = COALESCE(NULLIF(entity_type,''), ?) WHERE id = ?")
+      .run(info.role, info.entityType, existing.id);
+    return existing.id;
+  }
+  const result = db.prepare(`
+    INSERT INTO persons (
+      first_name, middle_name, last_name, dob, address,
+      phone, email, role_tag, entity_type, bar_number, firm_name,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    info.first, info.middle || null, info.last, info.dob || null, info.address || null,
+    info.phone || null, info.email || null, info.role, info.entityType, info.bar || null, info.firm || null,
+    now, now,
+  );
+  return Number(result.lastInsertRowid);
+}
+
+function nextCallNumber(db: ReturnType<typeof getDb>): string {
+  const year = new Date().getFullYear().toString().slice(-2);
+  const last = db.prepare("SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1")
+    .get(`${year}-CFS%`) as any;
+  let seq = 1;
+  if (last) {
+    const m = String(last.call_number).match(/CFS(\d+)/);
+    if (m) seq = parseInt(m[1], 10) + 1;
+  }
+  return `${year}-CFS${String(seq).padStart(5, '0')}`;
+}
+
+function nextCaseNumber(db: ReturnType<typeof getDb>): string {
+  const year = new Date().getFullYear().toString().slice(-2);
+  const last = db.prepare("SELECT case_number FROM cases WHERE case_number LIKE ? ORDER BY id DESC LIMIT 1")
+    .get(`CV-${year}-%`) as any;
+  let seq = 1;
+  if (last) {
+    const m = String(last.case_number).match(/CV-\d{2}-(\d+)/);
+    if (m) seq = parseInt(m[1], 10) + 1;
+  }
+  return `CV-${year}-${String(seq).padStart(5, '0')}`;
+}
+
+// ── Parse-only preview (no record creation) ─────────────────
+// Returns extracted data for review/editing before committing to DB.
+// Client calls this first, lets user correct mistakes, then POSTs /intake with overrides.
+router.post('/parse', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
+  try {
+    const { documents } = req.body;
+    if (!documents || !Array.isArray(documents) || documents.length === 0) {
+      res.status(400).json({ error: 'documents array required' });
+      return;
+    }
+
+    // Multiple court dockets are common (Summons + Complaint + Exhibits).
+    // Concatenate all court_docket texts so the parser sees the full packet.
+    let fieldSheet = '';
+    const courtDocketParts: string[] = [];
+    const courtFormDetections: Array<{
+      category: string;
+      state: string | null;
+      stateName: string | null;
+      courtSystem: string;
+      courtName: string | null;
+      formNumber: string | null;
+      confidence: number;
+    }> = [];
+    let infoSheet = '';
+    for (const d of documents) {
+      const txt = (d?.text || '') as string;
+      if (!txt) continue;
+      let kind = d.type as string | undefined;
+      if (!kind || kind === 'unknown') kind = detectDocType(txt);
+      if (kind === 'court_filing') kind = 'court_docket';
+      if (kind === 'info_page') kind = 'info_sheet';
+      if (kind === 'field_sheet') { if (!fieldSheet) fieldSheet = txt; }
+      else if (kind === 'court_docket') { courtDocketParts.push(txt); }
+      else if (kind === 'info_sheet') { if (!infoSheet) infoSheet = txt; }
+      else {
+        if (!fieldSheet) fieldSheet = txt;
+        else if (courtDocketParts.length === 0) courtDocketParts.push(txt);
+        else if (!infoSheet) infoSheet = txt;
+        else courtDocketParts.push(txt); // additional unknown docs → treat as court material
+      }
+      // Run the comprehensive detector on every court_docket-classified doc
+      // so the UI can show form-type / state / form-number per file.
+      if (kind === 'court_docket') {
+        const det = detectCourtForm(txt);
+        courtFormDetections.push({
+          category: det.category,
+          state: det.state,
+          stateName: det.stateName,
+          courtSystem: det.courtSystem,
+          courtName: det.courtName,
+          formNumber: det.formNumber,
+          confidence: det.confidence,
+        });
+      }
+    }
+    const courtDocket = courtDocketParts.join('\n\n--- DOCUMENT SEPARATOR ---\n\n');
+
+    const parsed = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
+
+    // Check for duplicate defendant
+    const db = getDb();
+    let duplicateWarning: string | null = null;
+    if (parsed.defendant.last) {
+      const existing = db.prepare(
+        "SELECT id, first_name, last_name FROM persons WHERE first_name = ? AND last_name = ? LIMIT 1"
+      ).get(parsed.defendant.first, parsed.defendant.last) as any;
+      if (existing) {
+        duplicateWarning = `Person "${existing.first_name} ${existing.last_name}" already exists (ID: ${existing.id}). Record will be updated, not duplicated.`;
+      }
+    }
+
+    // Check for active serve on same address
+    let activeServeWarning: string | null = null;
+    if (parsed.address) {
+      const activeSQ = db.prepare(
+        "SELECT id, recipient_name FROM serve_queue WHERE recipient_address = ? AND status IN ('pending', 'in_progress') LIMIT 1"
+      ).get(parsed.address) as any;
+      if (activeSQ) {
+        activeServeWarning = `Active serve already exists at this address for "${activeSQ.recipient_name}" (Queue #${activeSQ.id}).`;
+      }
+    }
+
+    // Geocode during parse so the review step can show/fix coordinates
+    let geocodeResult: { latitude: number; longitude: number } | null = null;
+    let geocodeWarning: string | null = null;
+    if (parsed.address) {
+      try {
+        const geo = await geocodeAddress(parsed.address);
+        if (geo) {
+          geocodeResult = { latitude: geo.latitude, longitude: geo.longitude };
+        } else {
+          geocodeWarning = `Geocoding returned no result for "${parsed.address}" — please verify the address or enter coordinates manually.`;
+        }
+      } catch {
+        geocodeWarning = `Geocoding failed for "${parsed.address}" — enter coordinates manually if map placement is needed.`;
+      }
+    }
+
+    // ── Confidence scoring — rate extraction quality per field ──
+    const confidence: Record<string, { score: number; source: string }> = {};
+    const rate = (field: string, value: string | undefined | null, preferredSource: string, fallbackSource?: string) => {
+      if (!value) { confidence[field] = { score: 0, source: 'not found' }; return; }
+      // Higher score = more likely correct
+      if (preferredSource === 'field_sheet') confidence[field] = { score: 95, source: 'Field Sheet (structured)' };
+      else if (preferredSource === 'info_sheet') confidence[field] = { score: 85, source: 'Info Sheet (labeled)' };
+      else if (preferredSource === 'court_docket') confidence[field] = { score: 80, source: 'Court Docket (pattern)' };
+      else if (preferredSource === 'scanner') confidence[field] = { score: 60, source: 'Universal Scanner (fallback)' };
+      else confidence[field] = { score: 70, source: fallbackSource || 'extracted' };
+    };
+
+    rate('defendant', parsed.defendant.first || parsed.defendant.last, fieldSheet && /Party to Serve/i.test(fieldSheet) ? 'field_sheet' : infoSheet && /Recipient/i.test(infoSheet) ? 'info_sheet' : 'court_docket');
+    rate('address', parsed.address, fieldSheet && parsed.address && fieldSheet.includes(parsed.address.split(',')[0]) ? 'field_sheet' : 'scanner');
+    rate('plaintiff', parsed.plaintiff, fieldSheet && /Plaintiff/i.test(fieldSheet) && parsed.plaintiff ? 'field_sheet' : infoSheet && /Plaintiff/i.test(infoSheet) ? 'info_sheet' : 'court_docket');
+    rate('court', parsed.court, fieldSheet && /Court/i.test(fieldSheet) && parsed.court ? 'field_sheet' : 'court_docket');
+    rate('courtCaseNumber', parsed.courtCaseNumber, fieldSheet && /Case/i.test(fieldSheet) ? 'field_sheet' : 'court_docket');
+    rate('attorney', parsed.attorney.name, parsed.attorney.barNumber ? 'court_docket' : parsed.attorney.name ? 'scanner' : '');
+    rate('dueDate', parsed.dueDate, fieldSheet && /Due/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
+    rate('instructions', parsed.instructions, fieldSheet && /Instructions/i.test(fieldSheet) ? 'field_sheet' : 'scanner');
+    rate('documents', parsed.documents, fieldSheet && /Documents/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
+    rate('jobNumber', parsed.jobNumber, fieldSheet && /Job/i.test(fieldSheet) ? 'field_sheet' : 'info_sheet');
+
+    // Overall confidence = average of all non-zero scores
+    const scores = Object.values(confidence).filter(c => c.score > 0).map(c => c.score);
+    const overallConfidence = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
+
+    res.json({
+      parsed,
+      confidence,
+      overallConfidence,
+      detectedTypes: {
+        fieldSheet: !!fieldSheet,
+        courtDocket: courtDocketParts.length > 0,
+        courtDocketCount: courtDocketParts.length,
+        infoSheet: !!infoSheet,
+        // Per-court-docket form classifications (50-state aware).
+        courtForms: courtFormDetections,
+      },
+      geocode: geocodeResult,
+      warnings: [duplicateWarning, activeServeWarning, geocodeWarning].filter(Boolean),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Parse failed: ' + (err?.message || 'Unknown error') });
+  }
+});
+
+// ── Main intake ──────────────────────────────────────────────
 router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
+  const log = getLogger(req);
+  const warnings: string[] = [];
   try {
     const db = getDb();
-    const userId = req.user!.userId;
+    const userId = req.user!.userId as number;
     const now = localNow();
 
-    // Expect { documents: [{ type: 'court_filing'|'field_sheet'|'info_page', text: string }] }
-    const { documents, client_id } = req.body;
+    const { documents, overrides } = req.body;
     if (!documents || !Array.isArray(documents) || documents.length === 0) {
       res.status(400).json({ error: 'documents array required with at least one document' });
       return;
     }
+    // overrides: optional user corrections from the review step
+    // { defendant?: {first,middle,last,dob}, address?, plaintiff?, dueDate?, instructions? }
 
-    // Auto-detect document types by scanning content
-    let fieldSheetText = '';
-    let courtDocketText = '';
-    let infoPageText = '';
+    // Bin documents by type — multiple court dockets are concatenated
+    let fieldSheet = '';
+    const courtDocketParts: string[] = [];
+    let infoSheet = '';
     for (const d of documents) {
-      const txt = d.text || '';
-      const detected = d.type !== 'unknown' ? d.type : detectDocType(txt);
-      if (detected === 'field_sheet' || (!fieldSheetText && detectDocType(txt) === 'field_sheet')) fieldSheetText = txt;
-      else if (detected === 'court_docket' || (!courtDocketText && detectDocType(txt) === 'court_docket')) courtDocketText = txt;
-      else if (detected === 'info_page' || (!infoPageText && detectDocType(txt) === 'info_page')) infoPageText = txt;
+      const txt = (d?.text || '') as string;
+      if (!txt) continue;
+      let kind = d.type as string | undefined;
+      if (!kind || kind === 'unknown') kind = detectDocType(txt);
+      if (kind === 'court_filing') kind = 'court_docket';
+      if (kind === 'info_page') kind = 'info_sheet';
+      if (kind === 'field_sheet') { if (!fieldSheet) fieldSheet = txt; }
+      else if (kind === 'court_docket') { courtDocketParts.push(txt); }
+      else if (kind === 'info_sheet') { if (!infoSheet) infoSheet = txt; }
       else {
-        // Unknown doc — merge into whichever is empty
-        if (!fieldSheetText) fieldSheetText = txt;
-        else if (!courtDocketText) courtDocketText = txt;
-        else if (!infoPageText) infoPageText = txt;
+        if (!fieldSheet) fieldSheet = txt;
+        else if (courtDocketParts.length === 0) courtDocketParts.push(txt);
+        else if (!infoSheet) infoSheet = txt;
+        else courtDocketParts.push(txt);
       }
     }
-    const allText = [fieldSheetText, courtDocketText, infoPageText].filter(Boolean).join('\n\n');
+    const courtDocket = courtDocketParts.join('\n\n--- DOCUMENT SEPARATOR ---\n\n');
 
-    // Extract from specific document sources with fallback to allText
-    // Name: Field Sheet (Party to Serve) > Info Page (Recipient) > Court Docket (Defendant)
-    const name = extractName(fieldSheetText) || extractName(infoPageText) || extractName(courtDocketText) || extractName(allText);
-    // DOB: Field Sheet (Other: DOB) > Info Page (DOB:)
-    const dob = extractDOB(fieldSheetText) || extractDOB(infoPageText) || extractDOB(allText);
-    // Address: Field Sheet (Address line below label) — primary source
-    const address = extractAddress(fieldSheetText) || extractAddress(infoPageText) || extractAddress(allText);
-    // Plaintiff: Court Docket (before "Plaintiff,") > Field Sheet (Plaintiff field)
-    const plaintiff = extractPlaintiff(courtDocketText) || extractPlaintiff(fieldSheetText) || extractPlaintiff(allText);
-    // Court: Court Docket (JUDICIAL DISTRICT COURT) > Field Sheet (Court field)
-    const court = extractCourt(courtDocketText) || extractCourt(fieldSheetText) || extractCourt(allText);
-    // Documents: Field Sheet (Documents field) > Info Page
-    const docs = extractDocuments(fieldSheetText) || extractDocuments(infoPageText) || extractDocuments(allText);
-    // Instructions: Field Sheet (Instructions section)
-    const instructions = extractServeInstructions(fieldSheetText) || extractInstructions(fieldSheetText) || extractServeInstructions(allText);
-    // Job#: Field Sheet header > Info Page JOB
-    const jobNumber = extractJobNumber(fieldSheetText) || extractJobNumber(infoPageText) || extractJobNumber(allText);
-    // Case#: Court Docket (parenthetical) > Info Page
-    const caseNumber = extractCaseNumber(courtDocketText) || extractCaseNumber(infoPageText) || extractCaseNumber(allText);
-    // Due date: Field Sheet (Due:) > Info Page
-    const dueDate = extractDueDate(fieldSheetText) || extractDueDate(infoPageText) || extractDueDate(allText);
-    // Attorney: Court Docket header (name, phone, email, bar#)
-    const attorney = extractAttorney(courtDocketText) || extractAttorney(allText);
-    // Fee: Field Sheet
-    const fee = extractFee(fieldSheetText) || extractFee(infoPageText) || extractFee(allText);
-    // Server (process server): Info Page
-    const serverName = extractServer(infoPageText) || extractServer(fieldSheetText) || '';
+    const parsed: ParseOutput = parseAllDocuments({ fieldSheet, infoSheet, courtDocket });
 
-    if (!name.last) {
+    // Apply ALL user overrides from review step
+    if (overrides) {
+      if (overrides.defendant) {
+        if (overrides.defendant.first) parsed.defendant.first = overrides.defendant.first;
+        if (overrides.defendant.middle !== undefined) parsed.defendant.middle = overrides.defendant.middle;
+        if (overrides.defendant.last) parsed.defendant.last = overrides.defendant.last;
+        if (overrides.defendant.dob) parsed.defendant.dob = overrides.defendant.dob;
+      }
+      if (overrides.address) {
+        (parsed as any).address = overrides.address;
+        (parsed as any).addressParts = parseAddressParts(overrides.address);
+      }
+      if (overrides.plaintiff !== undefined) parsed.plaintiff = overrides.plaintiff;
+      if (overrides.dueDate !== undefined) (parsed as any).dueDate = overrides.dueDate;
+      if (overrides.instructions !== undefined) parsed.instructions = overrides.instructions;
+      if (overrides.court !== undefined) parsed.court = overrides.court;
+      if (overrides.courtAddress !== undefined) parsed.courtAddress = overrides.courtAddress;
+      if (overrides.county !== undefined) (parsed as any).county = overrides.county;
+      if (overrides.courtCaseNumber !== undefined) parsed.courtCaseNumber = overrides.courtCaseNumber;
+      if (overrides.jobNumber !== undefined) parsed.jobNumber = overrides.jobNumber;
+      if (overrides.clientJobNumber !== undefined) parsed.clientJobNumber = overrides.clientJobNumber;
+      if (overrides.documents !== undefined) (parsed as any).documents = overrides.documents;
+      if (overrides.serviceType !== undefined) (parsed as any).serviceType = overrides.serviceType;
+      if (overrides.serviceWindows !== undefined) (parsed as any).serviceWindows = overrides.serviceWindows;
+      if (overrides.signedDate !== undefined) parsed.signedDate = overrides.signedDate;
+      if (overrides.responseDeadlineDays !== undefined) parsed.responseDeadlineDays = parseInt(overrides.responseDeadlineDays, 10) || 21;
+      if (overrides.clerkPhone !== undefined) parsed.clerkPhone = overrides.clerkPhone;
+      if (overrides.documentPages !== undefined) parsed.documentPages = parseInt(overrides.documentPages, 10) || 0;
+      if (overrides.bilingual !== undefined) parsed.bilingual = !!overrides.bilingual;
+      if (overrides.attorney) {
+        if (overrides.attorney.name !== undefined) parsed.attorney.name = overrides.attorney.name;
+        if (overrides.attorney.firm !== undefined) parsed.attorney.firm = overrides.attorney.firm;
+        if (overrides.attorney.barNumber !== undefined) parsed.attorney.barNumber = overrides.attorney.barNumber;
+        if (overrides.attorney.tel !== undefined) parsed.attorney.tel = overrides.attorney.tel;
+        if (overrides.attorney.email !== undefined) parsed.attorney.email = overrides.attorney.email;
+        if (overrides.attorney.fax !== undefined) parsed.attorney.fax = overrides.attorney.fax;
+      }
+    }
+
+    if (!parsed.defendant.last) {
       res.status(400).json({ error: 'Could not extract defendant/recipient name from documents' });
       return;
     }
 
-    // 1. Create or find Person
-    let personId: number;
-    const existing = db.prepare('SELECT id FROM persons WHERE first_name = ? AND last_name = ? LIMIT 1').get(name.first, name.last) as any;
-    if (existing) {
-      personId = existing.id;
-      // Update with any new info
-      if (dob) db.prepare('UPDATE persons SET dob = COALESCE(NULLIF(dob, \'\'), ?) WHERE id = ?').run(dob, personId);
-      if (address) db.prepare('UPDATE persons SET address = COALESCE(NULLIF(address, \'\'), ?) WHERE id = ?').run(address, personId);
-    } else {
-      const result = db.prepare('INSERT INTO persons (first_name, last_name, middle_name, dob, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(name.first, name.last, name.middle, dob || null, address || null, now, now);
-      personId = result.lastInsertRowid as number;
+    // ── Client lookup (user-selected > vendor fingerprint > name match > fallback)
+    let vendorClient: any = null;
+    // If user explicitly selected a client in the review step, use that
+    if (overrides?.client_id) {
+      vendorClient = db.prepare(
+        "SELECT id, name, billing_code, requestor_email, caller_phone, address FROM clients WHERE id = ? LIMIT 1"
+      ).get(overrides.client_id);
+    }
+    // Otherwise auto-detect from document fingerprint
+    if (!vendorClient && parsed.vendorFingerprint) {
+      vendorClient = db.prepare(
+        "SELECT id, name, billing_code, requestor_email, caller_phone, address FROM clients WHERE vendor_fingerprint = ? LIMIT 1"
+      ).get(parsed.vendorFingerprint);
+    }
+    if (!vendorClient) {
+      vendorClient = db.prepare(
+        "SELECT id, name, billing_code, requestor_email, caller_phone, address FROM clients WHERE LOWER(name) LIKE LOWER(?) LIMIT 1"
+      ).get('%ICU Investigations%');
+    }
+    if (!vendorClient) {
+      warnings.push(`No client matched — using fallback (client_id=1)`);
+    }
+    const clientId: number = vendorClient?.id ?? 1;
+    const callerName: string = vendorClient?.name || 'Process Service Client';
+    const callerPhone: string = vendorClient?.caller_phone || '';
+    const billingCode: string | null = vendorClient?.billing_code || null;
+    const requestorEmail: string | null = vendorClient?.requestor_email || null;
+    const callerAddress: string = vendorClient?.address || '';
+
+    // ── Persons: defendant (subject), plaintiff (complainant), attorney (reporting_party)
+    const defendantId = upsertPerson(db, userId, now, {
+      first: parsed.defendant.first,
+      middle: parsed.defendant.middle,
+      last: parsed.defendant.last,
+      dob: parsed.defendant.dob,
+      address: parsed.address,
+      role: 'defendant',
+      entityType: classifyEntityType(`${parsed.defendant.first} ${parsed.defendant.last}`),
+    });
+
+    let plaintiffId: number | null = null;
+    if (parsed.plaintiff) {
+      const pEntity = classifyEntityType(parsed.plaintiff);
+      if (pEntity === 'organization') {
+        plaintiffId = upsertPerson(db, userId, now, {
+          first: parsed.plaintiff.slice(0, 120),
+          middle: '',
+          last: '(Organization)',
+          role: 'plaintiff',
+          entityType: 'organization',
+        });
+      } else {
+        const parts = parsed.plaintiff.trim().split(/\s+/);
+        plaintiffId = upsertPerson(db, userId, now, {
+          first: parts[0] || parsed.plaintiff,
+          middle: parts.length >= 3 ? parts.slice(1, -1).join(' ') : '',
+          last: parts.length >= 2 ? parts[parts.length - 1] : '',
+          role: 'plaintiff',
+          entityType: 'individual',
+        });
+      }
     }
 
-    // 2. Create Property if address provided
+    let attorneyId: number | null = null;
+    if (parsed.attorney.name) {
+      const aParts = parsed.attorney.name.trim().split(/\s+/);
+      attorneyId = upsertPerson(db, userId, now, {
+        first: aParts[0] || parsed.attorney.name,
+        middle: aParts.length >= 3 ? aParts.slice(1, -1).join(' ') : '',
+        last: aParts.length >= 2 ? aParts[aParts.length - 1] : '',
+        phone: parsed.attorney.tel,
+        email: parsed.attorney.email,
+        role: 'attorney',
+        entityType: 'individual',
+        bar: parsed.attorney.barNumber,
+        firm: parsed.attorney.firm,
+      });
+    }
+
+    // ── Property (named by street address, not defendant name) ──
     let propertyId: number | null = null;
-    if (address) {
-      const existingProp = db.prepare('SELECT id FROM properties WHERE address = ? LIMIT 1').get(address) as any;
+    if (parsed.address) {
+      const ap = parsed.addressParts;
+      // Use the street address as property name (e.g. "5245 SOUTH COLLEGE DRIVE")
+      // NOT "Lastname Residence — Building#" which is meaningless for dispatch
+      const streetPart = (parsed.address.split(',')[0] || '').trim().toUpperCase();
+      const propName = streetPart || `${ap.building} ${ap.street}`.trim() || parsed.address;
+      const existingProp = db.prepare('SELECT id FROM properties WHERE address = ? LIMIT 1').get(parsed.address) as any;
       if (existingProp) {
         propertyId = existingProp.id;
       } else {
-        // Parse city/state/zip from address
-        const addrMatch = address.match(/,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})/);
-        const city = addrMatch ? addrMatch[1].trim() : '';
-        const state = addrMatch ? addrMatch[2] : 'UT';
-        const zip = addrMatch ? addrMatch[3] : '';
-        const result = db.prepare('INSERT INTO properties (client_id, name, address, city, state, zip, property_type, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
-          client_id || 1, `${address.split(',')[0]} — ${name.last} Residence`, address, city, state, zip, 'residential', now, now
+        const pr = db.prepare(`
+          INSERT INTO properties (
+            client_id, name, address, city, state, zip, property_type, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          clientId, propName, parsed.address,
+          ap.city || null, ap.state || 'UT', ap.zip || null,
+          'residential', now, now,
         );
-        propertyId = result.lastInsertRowid as number;
+        propertyId = Number(pr.lastInsertRowid);
       }
-
-      // Link person to property
+      // Link defendant → property (resident)
       try {
-        db.prepare('INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES (?, ?, ?, ?, ?, ?)').run('person', personId, 'property', propertyId, 'resident', userId);
-      } catch { /* already linked */ }
+        db.prepare(`
+          INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by)
+          VALUES (?, ?, ?, ?, ?, ?)
+        `).run('person', defendantId, 'property', propertyId, 'resident', userId);
+      } catch (err) {
+        log.warn({ err }, 'record_links person→property failed');
+      }
     }
 
-    // 3. Geocode the address for map display
-    let latitude: number | null = null;
-    let longitude: number | null = null;
-    if (address) {
+    // ── Geocode + beat lookup (user override takes priority) ──
+    let latitude: number | null = overrides?.latitude != null ? parseFloat(overrides.latitude) || null : null;
+    let longitude: number | null = overrides?.longitude != null ? parseFloat(overrides.longitude) || null : null;
+    // Only geocode if user didn't manually provide coordinates
+    if (!latitude && !longitude && parsed.address) {
       try {
-        const geo = await geocodeAddress(address);
+        const geo = await geocodeAddress(parsed.address);
         if (geo) { latitude = geo.latitude; longitude = geo.longitude; }
-      } catch { /* geocode failed — continue without coords */ }
+        else {
+          warnings.push('Geocoding returned no result — map placement may be inaccurate');
+          log.warn({ address: parsed.address }, 'geocodeAddress returned null');
+        }
+      } catch (err) {
+        warnings.push('Geocoding failed');
+        log.warn({ err, address: parsed.address }, 'geocodeAddress threw');
+      }
     }
 
-    // Update property with coordinates
     if (propertyId && latitude && longitude) {
-      db.prepare('UPDATE properties SET latitude = ?, longitude = ? WHERE id = ? AND latitude IS NULL').run(latitude, longitude, propertyId);
+      db.prepare('UPDATE properties SET latitude = ?, longitude = ? WHERE id = ? AND latitude IS NULL')
+        .run(latitude, longitude, propertyId);
     }
 
-    // 3b. Auto-resolve Section/Zone/Beat from coordinates
-    let sectionId = '', zoneId = '', beatId = '', zoneBeat = '', dispatchCode = '';
+    let sectorCode = '', zoneCode = '', beatCode = '', dispatchCode = '';
+    let sectorName = '', zoneName = '', beatName = '';
     if (latitude && longitude) {
       try {
         const beat = identifyBeat(latitude, longitude);
         if (beat) {
-          beatId = beat.beat_id || beat.district_letter || '';
-          zoneId = beat.city_code || '';
-          sectionId = beat.district_letter || '';
-          zoneBeat = beat.beat_code || '';
-          // Lookup geography tables for full names
+          beatCode = (beat as any).beat_code || '';
           try {
             const district = db.prepare(`
-              SELECT db2.beat_code, dz.zone_code, ds.sector_code
+              SELECT db2.beat_code, db2.beat_name,
+                     dz.zone_code, dz.zone_name,
+                     ds.sector_code, ds.sector_name
               FROM dispatch_beats db2
               JOIN dispatch_zones dz ON dz.id = db2.zone_id
               JOIN dispatch_sectors ds ON ds.id = dz.sector_id
               WHERE db2.beat_code = ? LIMIT 1
-            `).get(beat.beat_code) as any;
+            `).get(beatCode) as any;
             if (district) {
-              sectionId = district.sector_code || sectionId;
-              zoneId = district.zone_code || zoneId;
-              beatId = district.beat_code || beatId;
+              sectorCode = district.sector_code || '';
+              zoneCode = district.zone_code || '';
+              beatCode = district.beat_code || beatCode;
+              sectorName = district.sector_name || '';
+              zoneName = district.zone_name || '';
+              beatName = district.beat_name || '';
               dispatchCode = district.beat_code || '';
             }
-          } catch { /* geography tables not populated */ }
+          } catch (err) {
+            log.warn({ err, beatCode }, 'dispatch geography join failed');
+          }
+        } else {
+          warnings.push('No beat match for coordinates');
         }
-      } catch { /* geofence not configured */ }
+      } catch (err) {
+        warnings.push('Beat identification failed');
+        log.warn({ err, latitude, longitude }, 'identifyBeat threw');
+      }
     }
 
-    // 4. Fetch current weather for service location
+    // ── Weather + lighting ──────────────────────────────────
     let weatherConditions = '';
     let lightingConditions = '';
     if (latitude && longitude) {
@@ -413,7 +628,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         const wxUrl = `https://api.open-meteo.com/v1/forecast?latitude=${latitude}&longitude=${longitude}&current=temperature_2m,weather_code,relative_humidity_2m,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America/Denver`;
         const wxResp = await fetch(wxUrl);
         if (wxResp.ok) {
-          const wx = await wxResp.json();
+          const wx: any = await wxResp.json();
           const c = wx.current || {};
           const wxCodes: Record<number, string> = {
             0: 'Clear sky', 1: 'Mainly clear', 2: 'Partly cloudy', 3: 'Overcast',
@@ -428,10 +643,13 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
           const wind = c.wind_speed_10m ? `${Math.round(c.wind_speed_10m)} mph` : '';
           const humidity = c.relative_humidity_2m ? `${c.relative_humidity_2m}%` : '';
           weatherConditions = [desc, temp, wind ? `Wind ${wind}` : '', humidity ? `Humidity ${humidity}` : ''].filter(Boolean).join(', ');
+        } else {
+          warnings.push('Weather API returned non-OK');
         }
-      } catch { /* weather fetch failed */ }
-
-      // Determine lighting based on time of day
+      } catch (err) {
+        warnings.push('Weather fetch failed');
+        log.warn({ err }, 'open-meteo fetch failed');
+      }
       const hour = new Date().getHours();
       if (hour >= 6 && hour < 8) lightingConditions = 'Dawn';
       else if (hour >= 8 && hour < 17) lightingConditions = 'Daylight';
@@ -439,171 +657,679 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
       else lightingConditions = 'Dark';
     }
 
-    // 5. Build separated description (instructions only) and notes (case details)
-    const serviceWindows = extractServiceWindows(allText);
-    const caseNotes = extractCaseNotes(courtDocketText || allText);
-    const clientAddress = extractClientAddress(fieldSheetText || allText);
-    const fullName = `${name.first}${name.middle ? ' ' + name.middle : ''} ${name.last}`;
-    const subjectDesc = `${fullName}${dob ? ', DOB ' + dob : ''}`;
+    // ── Diligence schedule (3 attempts) ─────────────────────
+    let dueDateObj: Date | null = null;
+    if (parsed.dueDate) {
+      const m = parsed.dueDate.match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) dueDateObj = new Date(parseInt(m[3], 10), parseInt(m[1], 10) - 1, parseInt(m[2], 10), 23, 59, 59);
+    }
+    const utahOffsetHours = utcOffsetHoursForZone(new Date(), 'America/Denver');
+    const schedule = dueDateObj ? computeDiligenceSchedule(dueDateObj, new Date(), utahOffsetHours) : [];
+    if (parsed.dueDate && schedule.length === 0) warnings.push('Diligence schedule empty (due date may be in the past)');
 
-    // ── Build structured description for dispatch display ──
-    const docType = docs ? docs.toUpperCase() : 'DOCUMENTS';
-    const processType = /complaint/i.test(docs) ? 'complaint'
-      : /subpoena/i.test(docs) ? 'subpoena'
-      : /eviction|unlawful detainer/i.test(docs) ? 'eviction'
-      : /restraining|protective/i.test(docs) ? 'restraining_order'
-      : 'summons';
-    const deadlineStr = dueDate || '';
+    const daysRemaining = dueDateObj ? Math.max(0, Math.ceil((dueDateObj.getTime() - Date.now()) / 86_400_000)) : 0;
 
-    // Description: structured dispatch summary
+    // ── Civil case ───────────────────────────────────────────
+    const caseNumber = nextCaseNumber(db);
+    const linkedPersonsArr = [defendantId, plaintiffId, attorneyId].filter((x): x is number => x != null);
+    const caseTitle = `${parsed.plaintiff || 'Plaintiff'} v. ${parsed.defendant.first} ${parsed.defendant.last}`.slice(0, 200);
+    const caseResult = db.prepare(`
+      INSERT INTO cases (
+        case_number, title, case_type, status, priority,
+        plaintiff_person_id, defendant_person_id, attorney_person_id,
+        court_case_number, linked_persons,
+        signed_filed_date, response_deadline_days,
+        due_date, summary, narrative,
+        created_by, created_at, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(
+      caseNumber, caseTitle, 'civil_process', 'open', 'normal',
+      plaintiffId, defendantId, attorneyId,
+      parsed.courtCaseNumber || parsed.clientJobNumber || null,
+      JSON.stringify(linkedPersonsArr),
+      parsed.signedDate || null, parsed.responseDeadlineDays || null,
+      parsed.dueDate || null,
+      `${parsed.serviceType}: ${parsed.documents}`.slice(0, 500),
+      parsed.instructions || '',
+      userId, now, now,
+    );
+    const caseId = Number(caseResult.lastInsertRowid);
+
+    // ── Intake enrichment — adds prior-contact intelligence, risk flags,
+    // address history, adjacent serves, structured diligence tracker, and
+    // closest-unit suggestion to the dispatch record. Best-effort: each
+    // sub-query catches its own errors and degrades gracefully.
+    const enrichment = buildEnrichment({
+      db,
+      defendant: { first: parsed.defendant.first, middle: parsed.defendant.middle, last: parsed.defendant.last, dob: parsed.defendant.dob },
+      address: parsed.address,
+      latitude,
+      longitude,
+      defendantPersonId: defendantId,
+      dueDate: parsed.dueDate || null,
+      serviceWindowsLabel: parsed.serviceWindows || '',
+    });
+
+    // ── Auto-synopsis: plain-English brief of what the case is, so the
+    // PSO understands the document at a glance without reading the PDF.
+    const synopsis = synthesizeCaseSynopsis({
+      courtDocket,
+      plaintiff: parsed.plaintiff,
+      defendantFirst: parsed.defendant.first,
+      defendantLast: parsed.defendant.last,
+      primaryDoc: parsed.primaryDoc,
+      documents: parsed.documents,
+      responseDeadlineDays: parsed.responseDeadlineDays,
+      court: parsed.court,
+    });
+
+    // ── Detailed Who / What / Where / When / Why narrative — separate
+    // note that does a deep review of the Complaint document. Inherits
+    // category + money-at-stake from the synopsis so it stays consistent.
+    const defendantEntityType = classifyEntityType(`${parsed.defendant.first} ${parsed.defendant.last}`.trim());
+    const narrativeBlock = synthesizeCaseNarrative({
+      courtDocket,
+      plaintiff: parsed.plaintiff,
+      defendantFirst: parsed.defendant.first,
+      defendantMiddle: parsed.defendant.middle,
+      defendantLast: parsed.defendant.last,
+      defendantEntityType,
+      attorney: parsed.attorney,
+      court: parsed.court,
+      courtAddress: parsed.courtAddress,
+      county: parsed.county,
+      courtCaseNumber: parsed.courtCaseNumber,
+      signedDate: parsed.signedDate,
+      responseDeadlineDays: parsed.responseDeadlineDays,
+      documents: parsed.documents,
+      category: synopsis.category,
+      moneyAtStake: synopsis.moneyAtStake,
+    });
+
+    // ── Notes narrative — 3 consolidated notes:
+    //   1. 🚨 OFFICER BRIEFING (alert + 3-day diligence plan + door approach)
+    //   2. 📂 CASE PACKET (case + court + attorney + auto-synopsis)
+    //   3. 👤 SUBJECT & ADDRESS DOSSIER (enrichment + verbatim instructions + activity)
+    const narrative = buildNotesNarrative({
+      plaintiff: parsed.plaintiff,
+      orderingClientRule: parsed.orderingClientRule,
+      clientJobNumber: parsed.clientJobNumber,
+      documents: parsed.documents,
+      documentPages: parsed.documentPages,
+      bilingual: parsed.bilingual,
+      signedDate: parsed.signedDate,
+      responseDeadlineDays: parsed.responseDeadlineDays,
+      court: parsed.court,
+      courtAddress: parsed.courtAddress,
+      clerkPhone: parsed.clerkPhone,
+      attorney: parsed.attorney,
+      serviceRulesSummary: parsed.serviceRulesSummary,
+      serviceWindows: parsed.serviceWindows,
+      dueDate: parsed.dueDate,
+      daysRemaining,
+      recommendedAttempts: schedule.map((s) => ({
+        label: `${s.date.toLocaleString('en-US', { timeZone: 'America/Denver', weekday: 'short', month: 'short', day: 'numeric' })} ${s.window}`,
+        weekend: s.weekend,
+      })),
+      jobActivity: parsed.jobActivity,
+      instructionsVerbatim: parsed.instructions,
+      timestamp: now,
+      caseSynopsisText: synopsis.fullText,
+      enrichmentText: enrichment.narrativeSection,
+      caseNarrativeText: narrativeBlock.fullText,
+    });
+    const tsBase = Date.now();
+    const notesWrapped = narrative.map((n, i) => ({
+      id: String(tsBase + i),
+      author: 'Serve Intake',
+      text: n.text,
+      timestamp: now,
+    }));
+    // Append additional dispatcher notes if provided
+    if (overrides?.additionalNotes) {
+      notesWrapped.push({
+        id: String(tsBase + notesWrapped.length),
+        author: 'Dispatcher',
+        text: `DISPATCHER NOTE -- ${overrides.additionalNotes}`,
+        timestamp: now,
+      });
+    }
+    const notesJson = JSON.stringify(notesWrapped);
+
+    // ── CFS call ─────────────────────────────────────────────
+    const callNumber = nextCallNumber(db);
+    const fullName = `${parsed.defendant.first}${parsed.defendant.middle ? ' ' + parsed.defendant.middle : ''} ${parsed.defendant.last}`.trim();
+    const subjectDesc = [
+      fullName,
+      parsed.defendant.dob ? `DOB ${parsed.defendant.dob}` : null,
+      parsed.address ? `AT ${parsed.address}` : null,
+    ].filter(Boolean).join(', ');
+    // ── Structured description (consistent format regardless of source docs) ──
     const descLines: string[] = [];
-    descLines.push(`SERVE ${docType} TO ${fullName.toUpperCase()}`);
-    if (address) descLines.push(`AT ${address.toUpperCase()}`);
-    if (deadlineStr) descLines.push(`DUE: ${deadlineStr}`);
-    if (instructions) {
-      const cleaned = instructions.replace(/\r\n/g, ' ').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
-      descLines.push(`INSTRUCTIONS: ${cleaned.length > 400 ? cleaned.slice(0, 400) + '...' : cleaned}`);
+    descLines.push(`SERVE ${parsed.primaryDoc || 'DOCUMENTS'} TO ${fullName.toUpperCase()}`);
+    descLines.push(`AT ${(parsed.address || 'ADDRESS UNKNOWN').toUpperCase()}`);
+    descLines.push(`CASE: ${parsed.courtCaseNumber || parsed.clientJobNumber || 'N/A'} | PLAINTIFF: ${(parsed.plaintiff || 'N/A').toUpperCase()}`);
+    descLines.push(`DUE: ${parsed.dueDate || 'NO DEADLINE'} | TYPE: ${parsed.serviceType || 'PROCESS SERVICE'}`);
+    if (parsed.instructions) {
+      const trimmed = parsed.instructions.length > 300 ? parsed.instructions.slice(0, 300) + '...' : parsed.instructions;
+      descLines.push(`INSTRUCTIONS: ${trimmed}`);
     }
-    if (serviceWindows) descLines.push(`SERVICE WINDOWS: ${serviceWindows}`);
-    const descParts = descLines.join('\n');
+    if (parsed.serviceWindows) descLines.push(`WINDOWS: ${parsed.serviceWindows}`);
+    if (parsed.attorney.name) descLines.push(`ATTORNEY: ${parsed.attorney.name.toUpperCase()}${parsed.attorney.tel ? ' | ' + parsed.attorney.tel : ''}`);
+    // Surface high-impact enrichment flags at the top of the description so they appear
+    // on the call list row preview without expanding the notes.
+    const descFlags: string[] = [];
+    if (enrichment.flags.activeTrespassOrder) descFlags.push('TRESPASS ORDER');
+    if (enrichment.flags.premiseAlertActive) descFlags.push('PREMISE ALERT');
+    if (enrichment.flags.officerSafetyCaution) descFlags.push('OFFICER SAFETY');
+    if (enrichment.knownVehicles.length > 0) descFlags.push(`${enrichment.knownVehicles.length} KNOWN VEH`);
+    if (enrichment.existingOpenCase) descFlags.push(`OPEN CASE ${enrichment.existingOpenCase.case_number}`);
+    if (descFlags.length > 0) descLines.push(`FLAGS: ${descFlags.join(' / ')}`);
+    const description = descLines.join('\n');
 
-    // Notes: structured JSON array (matches dispatch call note format)
-    const noteEntries: Array<{ id: string; author: string; text: string; timestamp: string }> = [];
-    // Case details note (caseNotes already extracted above)
-    if (caseNotes) {
-      noteEntries.push({ id: String(Date.now()), author: 'Serve Intake', text: caseNotes, timestamp: now });
-    }
-    // Instructions note (full, untruncated)
-    if (instructions && instructions.length > 50) {
-      noteEntries.push({ id: String(Date.now() + 1), author: 'Serve Intake', text: `Service Instructions: ${instructions}`, timestamp: now });
-    }
-    // Plaintiff/client info
-    if (plaintiff) {
-      noteEntries.push({ id: String(Date.now() + 2), author: 'Serve Intake', text: `Plaintiff: ${plaintiff.replace(/\n/g, ' ').trim()}`, timestamp: now });
-    }
-    const notesParts = noteEntries.length > 0 ? JSON.stringify(noteEntries) : null;
+    const tagSet: string[] = ['civil_process', 'process_service'];
+    if (parsed.bilingual) tagSet.push('bilingual');
+    if (parsed.primaryDoc) tagSet.push(parsed.primaryDoc.toLowerCase());
+    const tagsJson = JSON.stringify(tagSet);
 
-    // Auto-generate call number
-    const year = new Date().getFullYear().toString().slice(-2);
-    const lastCall = db.prepare("SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1").get(`${year}-CFS%`) as any;
-    let seq = 1;
-    if (lastCall) {
-      const m = lastCall.call_number.match(/CFS(\d+)/);
-      if (m) seq = parseInt(m[1], 10) + 1;
-    }
-    const callNumber = `${year}-CFS${String(seq).padStart(5, '0')}`;
-
-    // Determine caller info from document (attorney or client)
-    const callerName = attorney.name || plaintiff.replace(/\n/g, ' ').trim() || 'Process Service Client';
-    const callerPhone = attorney.phone || '';
+    const pso72hrDeadline = parsed.dueDate
+      ? (() => { const [mm, dd, yyyy] = parsed.dueDate.split('/'); return `${yyyy}-${mm.padStart(2, '0')}-${dd.padStart(2, '0')} 23:59:59`; })()
+      : null;
 
     const callResult = db.prepare(`
       INSERT INTO calls_for_service (
-        call_number, case_number, incident_type, priority, status,
+        call_number, case_number, incident_type, priority, priority_score, status,
         caller_name, caller_phone, caller_relationship, caller_address,
-        location_address, property_id, latitude, longitude,
-        weather_conditions, lighting_conditions,
+        location_address, location_building, location_floor, location_room, cross_street,
+        property_id, latitude, longitude,
+        weather_conditions, lighting_conditions, scene_safety,
         sector_id, zone_id, beat_id, zone_beat, dispatch_code,
-        description, notes, source, dispatcher_id,
-        subject_description,
+        sector_name, zone_name, beat_name,
+        description, notes, source, dispatcher_id, received_at,
+        subject_description, vehicle_description,
+        num_subjects, num_victims, direction_of_travel,
         pso_requestor_name, pso_requestor_phone, pso_requestor_email,
         pso_service_type, pso_billing_code, pso_authorization,
-        pso_attempt_number, pso_service_windows,
+        pso_attempt_number, pso_service_windows, pso_72hr_deadline,
         process_service_type, process_served_to, process_served_address,
-        process_attempts, client_id, contract_id,
-        secondary_type, contact_method,
+        process_attempts, client_id, contract_id, case_id,
+        secondary_type, contact_method, tags,
         created_at, updated_at
       ) VALUES (
+        ?, ?, ?, ?, ?, ?,
+        ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?, ?, ?,
-        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
         ?, ?, ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?, ?, ?,
+        ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
+        ?, ?, ?,
         ?, ?, ?, ?,
-        ?,
         ?, ?, ?,
-        ?, ?, ?,
-        ?, ?,
-        ?, ?, ?,
-        ?, ?, ?,
-        ?, ?,
         ?, ?
       )
     `).run(
-      callNumber, caseNumber || null, 'pso_client_request', 'P4', 'pending',
-      callerName, callerPhone, 'client', clientAddress || null,
-      address || 'Unknown', propertyId, latitude, longitude,
-      weatherConditions || null, lightingConditions || null,
-      sectionId || null, zoneId || null, beatId || null, zoneBeat || null, dispatchCode || null,
-      descParts, notesParts, 'intake', userId,
-      subjectDesc,
-      attorney.name || callerName, attorney.phone || null, attorney.email || null,
-      'process_service', fee || null, jobNumber || null,
-      1, serviceWindows || null,
-      processType, fullName, address || null,
-      0, client_id || 1, jobNumber || null,
-      docType, 'email',
-      now, now
+      callNumber, parsed.courtCaseNumber || parsed.clientJobNumber || null, 'pso_client_request',
+      overrides?.priority || 'P4', ({'P1':1,'P2':2,'P3':3,'P4':4} as any)[overrides?.priority || 'P4'] || 4, 'pending',
+      callerName, callerPhone || null, 'client', callerAddress || null,
+      parsed.address || 'Unknown', parsed.addressParts.building || null, parsed.addressParts.floor || null, parsed.addressParts.suite || enrichment.unitNumber || null, null,
+      propertyId, latitude, longitude,
+      weatherConditions || null, lightingConditions || null, 'STANDARD',
+      sectorCode || null, zoneCode || null, beatCode || null, beatCode || null, dispatchCode || null,
+      sectorName || null, zoneName || null, beatName || null,
+      description, notesJson, 'intake', userId, now,
+      subjectDesc, 'N/A',
+      1, 1, 'STATIONARY',
+      callerName, callerPhone || null, requestorEmail,
+      parsed.serviceType, billingCode, parsed.jobNumber || null,
+      0, JSON.stringify(enrichment.serviceWindows), pso72hrDeadline,
+      parsed.primaryDoc || null, fullName, parsed.address || null,
+      0, clientId, parsed.jobNumber || null, caseId,
+      parsed.primaryDoc || 'DOCUMENTS', 'email', tagsJson,
+      now, now,
     );
-    const callId = callResult.lastInsertRowid as number;
+    const callId = Number(callResult.lastInsertRowid);
 
-    // Link person to call
+    // ── Apply enrichment-derived safety flags + repeat-location marker.
+    // Done as a follow-up UPDATE rather than expanding the giant INSERT
+    // signature (74-column INSERT, gotcha #24 in CLAUDE.md).
     try {
-      db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)').run(callId, personId, 'involved', userId, now);
-    } catch { /* already linked */ }
+      const sets: string[] = [];
+      const vals: unknown[] = [];
+      if (enrichment.flags.officerSafetyCaution) { sets.push('officer_safety_caution = ?'); vals.push(1); }
+      if (enrichment.flags.weaponsInvolved) { sets.push('weapons_involved = ?'); vals.push('FLAGGED'); }
+      if (enrichment.flags.secondaryType) { sets.push('secondary_type = ?'); vals.push(enrichment.flags.secondaryType); }
+      if (sets.length > 0) {
+        vals.push(callId);
+        db.prepare(`UPDATE calls_for_service SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+      }
+    } catch (err) {
+      log.warn({ err }, 'enrichment flags update failed');
+    }
 
-    // 6. Auto-create serve queue entry for the process server
+    // ── call_persons links ──────────────────────────────────
+    try {
+      db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)')
+        .run(callId, defendantId, 'subject', userId, now);
+      if (plaintiffId) {
+        db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)')
+          .run(callId, plaintiffId, 'complainant', userId, now);
+      }
+      if (attorneyId) {
+        db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)')
+          .run(callId, attorneyId, 'reporting_party', userId, now);
+      }
+    } catch (err) {
+      log.warn({ err }, 'call_persons insert failed');
+    }
+
+    // ── serve_queue ─────────────────────────────────────────
     let serveQueueId: number | null = null;
     try {
-      // Cap address length before applying the comma-separated city/state/zip
-      // regex — `[^,]+` against an unbounded user-supplied string is a
-      // polynomial-ReDoS vector (CodeQL js/polynomial-redos #2747).
-      // 1000 chars is far longer than any real US address.
-      const addrCapped = address ? String(address).slice(0, 1000) : null;
-      const addrMatch = addrCapped ? addrCapped.match(/,\s*([^,]+),\s*([A-Z]{2})\s*(\d{5})/) : null;
       const sqResult = db.prepare(`
         INSERT INTO serve_queue (
-          call_id, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
-          recipient_lat, recipient_lng, document_type, case_number, court_name,
-          client_name, attorney_name, priority, deadline, service_instructions, notes,
+          call_id, recipient_name, recipient_person_id,
+          recipient_address, recipient_city, recipient_state, recipient_zip,
+          recipient_lat, recipient_lng,
+          property_id,
+          document_type, case_number, court_name, jurisdiction,
+          client_name, attorney_name, priority, deadline,
+          max_attempts, service_instructions, notes,
           sm_job_id, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        callId, fullName, address || null,
-        addrMatch ? addrMatch[1].trim() : null, addrMatch ? addrMatch[2] : 'UT', addrMatch ? addrMatch[3] : null,
+        callId, fullName, defendantId,
+        parsed.address || null, parsed.addressParts.city || null, parsed.addressParts.state || 'UT', parsed.addressParts.zip || null,
         latitude, longitude,
-        processType, caseNumber || null, court || null,
-        plaintiff.replace(/\n/g, ' ').trim() || null, attorney.name || null,
-        'normal', deadlineStr || null, instructions || null, caseNotes || null,
-        jobNumber || null, 'pending', now, now
+        propertyId,
+        parsed.primaryDoc || 'DOCUMENTS', parsed.courtCaseNumber || parsed.clientJobNumber || null,
+        parsed.court || null, parsed.county || null,
+        callerName, parsed.attorney.name || null, 'normal', parsed.dueDate || null,
+        3, parsed.instructions || null, parsed.serviceRulesSummary || null,
+        parsed.jobNumber ? parseInt(parsed.jobNumber, 10) || null : null, 'pending', now, now,
       );
-      serveQueueId = sqResult.lastInsertRowid as number;
-    } catch (sqErr) { console.error('[ServeIntake] Serve queue creation error (non-fatal):', sqErr instanceof Error ? sqErr.message : sqErr); }
+      serveQueueId = Number(sqResult.lastInsertRowid);
+    } catch (err) {
+      log.warn({ err }, 'serve_queue insert failed');
+      warnings.push('serve_queue insert failed');
+    }
 
-    auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, JSON.stringify({ person_id: personId, property_id: propertyId, serve_queue_id: serveQueueId, job_number: jobNumber }));
+    // ── serve_attempts (pre-planned) ────────────────────────
+    const attemptIds: number[] = [];
+    if (serveQueueId) {
+      for (let i = 0; i < schedule.length; i++) {
+        const slot = schedule[i];
+        try {
+          const plannedAt = slot.date.toISOString().replace('T', ' ').replace(/\..+$/, '');
+          const r = db.prepare(`
+            INSERT INTO serve_attempts (
+              serve_queue_id, attempt_number, attempt_at, planned_at, window, status, result,
+              created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          `).run(
+            serveQueueId, i + 1, plannedAt, plannedAt, slot.window, 'planned', null,
+            now,
+          );
+          attemptIds.push(Number(r.lastInsertRowid));
+        } catch (err) {
+          log.warn({ err, slotIdx: i }, 'serve_attempts insert failed');
+        }
+      }
+    }
 
+    // ── Audit + broadcast ───────────────────────────────────
+    auditLog(req, 'SERVE_INTAKE', 'calls_for_service', callId, JSON.stringify({
+      defendant_id: defendantId, plaintiff_id: plaintiffId, attorney_id: attorneyId,
+      property_id: propertyId, case_id: caseId, serve_queue_id: serveQueueId,
+      serve_attempt_ids: attemptIds, job_number: parsed.jobNumber,
+    }));
     broadcastDispatchUpdate({ action: 'call_created', call: { id: callId, call_number: callNumber, incident_type: 'pso_client_request' } });
+
+    // ── Auto-create document folder: Year > Month > "JobNumber - DefendantLast" ──
+    let documentFolderId: number | null = null;
+    try {
+      const { ensureIntakeFolderPath } = await import('./documentFolders');
+      documentFolderId = ensureIntakeFolderPath(db, userId, parsed.jobNumber, parsed.defendant.last, now);
+      // Link any files already attached to this call into the folder
+      if (documentFolderId) {
+        db.prepare('UPDATE attachments SET folder_id = ? WHERE entity_type = ? AND entity_id = ? AND folder_id IS NULL')
+          .run(documentFolderId, 'call', callId);
+        db.prepare('UPDATE attachments SET folder_id = ? WHERE entity_type = ? AND entity_id = ? AND folder_id IS NULL')
+          .run(documentFolderId, 'case', caseId);
+      }
+    } catch (err) {
+      log.warn({ err }, 'document folder creation failed (non-fatal)');
+    }
 
     res.json({
       success: true,
-      person_id: personId,
-      property_id: propertyId,
       call_id: callId,
       call_number: callNumber,
+      case_id: caseId,
+      case_number: caseNumber,
+      defendant_person_id: defendantId,
+      plaintiff_person_id: plaintiffId,
+      attorney_person_id: attorneyId,
+      property_id: propertyId,
       serve_queue_id: serveQueueId,
+      serve_attempt_ids: attemptIds,
+      document_folder_id: documentFolderId,
+      client_id: clientId,
       latitude, longitude,
+      sector_code: sectorCode || null,
+      zone_code: zoneCode || null,
+      beat_code: beatCode || null,
       weather: weatherConditions || null,
       lighting: lightingConditions || null,
+      warnings,
       extracted: {
-        name, dob, address, plaintiff, court, docs, instructions,
-        jobNumber, caseNumber, dueDate, attorney, fee,
-        processType, serviceWindows, deadlineStr,
-        serverName,
+        defendant: parsed.defendant,
+        address: parsed.address,
+        plaintiff: parsed.plaintiff,
+        court: parsed.court,
+        documents: parsed.documents,
+        primaryDoc: parsed.primaryDoc,
+        serviceType: parsed.serviceType,
+        jobNumber: parsed.jobNumber,
+        clientJobNumber: parsed.clientJobNumber,
+        dueDate: parsed.dueDate,
+        attorney: {
+          name: parsed.attorney.name,
+          firm: parsed.attorney.firm,
+          barNumber: parsed.attorney.barNumber,
+          tel: parsed.attorney.tel,
+          email: parsed.attorney.email,
+        },
       },
     });
   } catch (err: any) {
-    console.error('[ServeIntake] Error:', err?.message);
+    const log = getLogger(req);
+    log.error({ err }, 'serve intake failed');
     res.status(500).json({ error: 'Intake processing failed: ' + (err?.message || 'Unknown error') });
+  }
+});
+
+// ── Bulk-defendant intake ────────────────────────────────────────────
+// Accepts an array of defendant rows (one row = one CFS / one job) and
+// creates the persons / property / case / CFS records for each row in a
+// single transaction. Used by the bulk-table UI for cases where the
+// dispatcher already has the defendant list (e.g., from a spreadsheet)
+// and wants to batch-create jobs without parsing PDFs first.
+//
+// PDFs can be attached to the resulting CFS records later via the
+// existing /api/uploads endpoint.
+router.post('/bulk', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (req: Request, res: Response) => {
+  const log = getLogger(req);
+  try {
+    const userId = (req as any).user?.userId;
+    if (!userId) { res.status(401).json({ error: 'Unauthorized' }); return; }
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (rows.length === 0) { res.status(400).json({ error: 'No rows provided' }); return; }
+    if (rows.length > 200) { res.status(400).json({ error: 'Max 200 rows per bulk submit' }); return; }
+
+    const db = getDb();
+    const now = localNow();
+    const created: Array<{ rowIndex: number; call_id: number; call_number: string }> = [];
+    const errors: Array<{ rowIndex: number; message: string }> = [];
+    /** Rows that matched an existing person+CFS and were merged instead of duplicated. */
+    const merged: Array<{ rowIndex: number; call_id: number; call_number: string; reason: string }> = [];
+
+    /** Dedup signature for a row — used to collapse duplicates within the same batch. */
+    const sigForRow = (r: any): string => {
+      const kind = (r.kind === 'business' || r.businessName) ? 'business' : 'individual';
+      const addr = String(r.address || '').trim().toLowerCase();
+      if (kind === 'business') return `b|${String(r.businessName || '').trim().toLowerCase()}|${addr}`;
+      const f = String(r.firstName || '').trim().toLowerCase();
+      const l = String(r.lastName || '').trim().toLowerCase();
+      const dob = String(r.dob || '').trim();
+      return `i|${f}|${l}|${dob}|${addr}`;
+    };
+    const seenSigs = new Map<string, { rowIndex: number; call_id: number; call_number: string }>();
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i] || {};
+      try {
+        // ── 1. Within-batch dedup: identical row already processed → skip + report.
+        const sig = sigForRow(row);
+        const seen = seenSigs.get(sig);
+        if (seen) {
+          merged.push({ rowIndex: i, call_id: seen.call_id, call_number: seen.call_number, reason: `duplicate of row ${seen.rowIndex + 1} in this batch` });
+          continue;
+        }
+
+        const kind = (row.kind === 'business' || row.businessName) ? 'business' : 'individual';
+        const address = String(row.address || '').trim();
+        if (!address) { errors.push({ rowIndex: i, message: 'address required' }); continue; }
+
+        let firstName = '', middleName = '', lastName = '', businessName = '';
+        if (kind === 'business') {
+          businessName = String(row.businessName || '').trim();
+          if (!businessName) { errors.push({ rowIndex: i, message: 'businessName required' }); continue; }
+          // Store organisation in persons table with last_name = businessName so existing
+          // call_persons join machinery works with no schema change.
+          lastName = businessName;
+        } else {
+          firstName = String(row.firstName || '').trim();
+          middleName = String(row.middleName || '').trim();
+          lastName = String(row.lastName || '').trim();
+          if (!firstName && !lastName) { errors.push({ rowIndex: i, message: 'firstName or lastName required' }); continue; }
+        }
+
+        const dob = String(row.dob || '').trim() || null;
+        const sex = String(row.sex || '').trim() || null;
+        const contractId = String(row.contractId || '').trim() || null;
+
+        // Geocode + beat lookup (best-effort, never blocks intake).
+        let latitude: number | null = null;
+        let longitude: number | null = null;
+        try {
+          const geo = await geocodeAddress(address);
+          if (geo) { latitude = geo.latitude; longitude = geo.longitude; }
+        } catch { /* non-fatal */ }
+        let beatCode: string | null = null;
+        let sectorCode: string | null = null;
+        let zoneCode: string | null = null;
+        let sectorName: string | null = null;
+        let zoneName: string | null = null;
+        let beatName: string | null = null;
+        if (latitude != null && longitude != null) {
+          try {
+            const beat = identifyBeat(latitude, longitude);
+            if (beat) {
+              beatCode = (beat as any).beat_code || null;
+              if (beatCode) {
+                const district = db.prepare(`
+                  SELECT db2.beat_code, db2.beat_name,
+                         dz.zone_code, dz.zone_name,
+                         ds.sector_code, ds.sector_name
+                  FROM dispatch_beats db2
+                  JOIN dispatch_zones dz ON dz.id = db2.zone_id
+                  JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+                  WHERE db2.beat_code = ? LIMIT 1
+                `).get(beatCode) as any;
+                if (district) {
+                  sectorCode = district.sector_code || null;
+                  zoneCode = district.zone_code || null;
+                  beatCode = district.beat_code || beatCode;
+                  sectorName = district.sector_name || null;
+                  zoneName = district.zone_name || null;
+                  beatName = district.beat_name || null;
+                }
+              }
+            }
+          } catch { /* non-fatal */ }
+        }
+
+        // Address parts (suite/apt) for location_room
+        const addrParts = parseAddressParts(address);
+
+        // Upsert defendant person (individual or organisation). upsertPerson
+        // already de-duplicates persons by (first_name, last_name, dob), so a
+        // matching person in the database is reused — no duplicate person is
+        // ever created for the same name+DOB combination.
+        const entityType = kind === 'business' ? 'organization' : 'individual';
+        const defendantId = upsertPerson(db, userId, now, {
+          first: firstName,
+          middle: middleName,
+          last: lastName,
+          dob: dob || undefined,
+          address,
+          role: 'subject',
+          entityType,
+        });
+
+        // ── 2. Cross-database dedup: if this defendant already has an open CFS
+        // at the same address, MERGE this row into the existing CFS rather than
+        // creating a duplicate dispatch job. Append a note recording the merge.
+        const existingCfs = db.prepare(`
+          SELECT cfs.id, cfs.call_number, cfs.notes
+          FROM calls_for_service cfs
+          JOIN call_persons cp ON cp.call_id = cfs.id
+          WHERE cp.person_id = ?
+            AND LOWER(cfs.location_address) = LOWER(?)
+            AND cfs.status IN ('pending','dispatched','enroute','onscene','on_hold')
+          ORDER BY cfs.created_at DESC
+          LIMIT 1
+        `).get(defendantId, address) as any;
+        if (existingCfs) {
+          // Append a merge note to the existing CFS so the dispatcher sees the duplicate attempt.
+          try {
+            const existingNotes = existingCfs.notes ? (() => { try { return JSON.parse(existingCfs.notes); } catch { return []; } })() : [];
+            existingNotes.push({
+              id: String(Date.now() + i),
+              author: 'Bulk Intake',
+              text: `MERGED ROW: bulk intake submitted a duplicate defendant+address row (row ${i + 1} of ${rows.length}). No new CFS created — this existing call already covers it.${row.contractId ? ` Submitted Contract ID: ${String(row.contractId).trim()}.` : ''}`,
+              timestamp: now,
+            });
+            db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?')
+              .run(JSON.stringify(existingNotes), now, existingCfs.id);
+          } catch (err) { log.warn({ err, callId: existingCfs.id }, 'bulk: merge-note append failed'); }
+
+          const mergedEntry = { rowIndex: i, call_id: Number(existingCfs.id), call_number: String(existingCfs.call_number), reason: 'matched existing active CFS for same defendant + address' };
+          merged.push(mergedEntry);
+          seenSigs.set(sig, { rowIndex: i, call_id: mergedEntry.call_id, call_number: mergedEntry.call_number });
+          auditLog(req, 'UPDATE', 'call', existingCfs.id, null, { source: 'bulk_intake', action: 'merge_duplicate' });
+          continue;
+        }
+
+        // Upsert property at the address (no client linkage in bulk mode)
+        let propertyId: number | null = null;
+        try {
+          const existingProp = db.prepare('SELECT id FROM properties WHERE address = ? LIMIT 1').get(address) as any;
+          if (existingProp) {
+            propertyId = existingProp.id;
+          } else {
+            const pr = db.prepare(`
+              INSERT INTO properties (
+                client_id, name, address, city, state, zip, property_type, latitude, longitude, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).run(
+              null, address.split(',')[0].trim(), address,
+              addrParts.city || null, addrParts.state || 'UT', addrParts.zip || null,
+              kind === 'business' ? 'commercial' : 'residential',
+              latitude, longitude, now, now,
+            );
+            propertyId = Number(pr.lastInsertRowid);
+          }
+        } catch (err) { log.warn({ err }, 'bulk: property upsert failed'); }
+
+        // Sex column on persons table (best-effort; columns vary by deployment).
+        if (sex) {
+          try { db.prepare("UPDATE persons SET gender = COALESCE(NULLIF(gender,''), ?) WHERE id = ?").run(sex, defendantId); } catch { /* column may not exist */ }
+        }
+
+        // Build CFS
+        const callNumber = nextCallNumber(db);
+        const subjectName = kind === 'business' ? businessName : `${firstName}${middleName ? ' ' + middleName : ''} ${lastName}`.trim();
+        const subjectDesc = [
+          subjectName,
+          dob ? `DOB ${dob}` : null,
+          `AT ${address}`,
+        ].filter(Boolean).join(', ');
+        const descLines: string[] = [];
+        descLines.push(`SERVE TO ${subjectName.toUpperCase()}`);
+        descLines.push(`AT ${address.toUpperCase()}`);
+        descLines.push(`TYPE: ${kind === 'business' ? 'BUSINESS ENTITY' : 'INDIVIDUAL'}${contractId ? ` | CONTRACT: ${contractId}` : ''}`);
+        descLines.push(`SOURCE: BULK INTAKE (${rows.length} jobs in batch)`);
+        const description = descLines.join('\n');
+
+        const tagSet: string[] = ['civil_process', 'process_service', 'bulk_intake'];
+        if (kind === 'business') tagSet.push('business_entity');
+        const tagsJson = JSON.stringify(tagSet);
+
+        // Minimal note — bulk rows don't have a Complaint to parse, so the
+        // briefing is minimal until PDFs are attached and re-parsed.
+        const noteText = [
+          'BULK INTAKE - Job created from defendant table.',
+          `SUBJECT: ${subjectName}${dob ? ` (DOB ${dob})` : ''}${sex ? ` (${sex})` : ''}`,
+          `ADDRESS: ${address}`,
+          contractId ? `CONTRACT ID: ${contractId}` : '',
+          '',
+          'NOTE: Court documents have not yet been attached. Run individual intake on this CFS later to populate Case Packet, Case Narrative, and full enrichment.',
+        ].filter(Boolean).join('\n');
+        const notesJson = JSON.stringify([{
+          id: String(Date.now() + i),
+          author: 'Bulk Intake',
+          text: noteText,
+          timestamp: now,
+        }]);
+
+        const callResult = db.prepare(`
+          INSERT INTO calls_for_service (
+            call_number, incident_type, priority, priority_score, status,
+            location_address, location_building, location_floor, location_room,
+            property_id, latitude, longitude,
+            sector_id, zone_id, beat_id, zone_beat,
+            sector_name, zone_name, beat_name,
+            description, notes, source, dispatcher_id, received_at,
+            subject_description, contract_id, tags,
+            created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          callNumber, 'pso_client_request', 'P4', 4, 'pending',
+          address, addrParts.building || null, addrParts.floor || null, addrParts.suite || null,
+          propertyId, latitude, longitude,
+          sectorCode, zoneCode, beatCode, beatCode,
+          sectorName, zoneName, beatName,
+          description, notesJson, 'intake', userId, now,
+          subjectDesc, contractId, tagsJson,
+          now, now,
+        );
+        const callId = Number(callResult.lastInsertRowid);
+
+        // Link defendant to call
+        try {
+          db.prepare('INSERT OR IGNORE INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)')
+            .run(callId, defendantId, 'subject', userId, now);
+        } catch (err) { log.warn({ err, callId }, 'bulk: call_persons insert failed'); }
+
+        auditLog(req, 'CREATE', 'call', callId, null, { source: 'bulk_intake', subject: subjectName });
+        broadcastDispatchUpdate({ action: 'call_created', call_id: callId, call_number: callNumber });
+
+        created.push({ rowIndex: i, call_id: callId, call_number: callNumber });
+        seenSigs.set(sig, { rowIndex: i, call_id: callId, call_number: callNumber });
+      } catch (rowErr: any) {
+        log.warn({ err: rowErr, rowIndex: i }, 'bulk: row failed');
+        errors.push({ rowIndex: i, message: rowErr?.message || 'Row processing failed' });
+      }
+    }
+
+    res.json({
+      success: true,
+      created,
+      merged,
+      errors,
+      summary: { total: rows.length, created: created.length, merged: merged.length, failed: errors.length },
+    });
+  } catch (err: any) {
+    log.error({ err }, 'bulk serve intake failed');
+    res.status(500).json({ error: 'Bulk intake failed: ' + (err?.message || 'Unknown error') });
   }
 });
 

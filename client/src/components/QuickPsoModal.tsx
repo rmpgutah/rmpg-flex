@@ -5,6 +5,8 @@ import { PRIORITY_OPTIONS, PSO_SERVICE_TYPES, PROCESS_SERVICE_DOC_TYPES } from '
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { useDistrictIdentify } from '../hooks/useDistrictLookup';
 
+import RichTextArea from './RichTextArea';
+import { formatPhoneInput } from '../utils/formatters';
 interface QuickPsoModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -281,7 +283,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
                 className="input-dark"
                 placeholder="(801) 555-0100"
                 value={formData.pso_requestor_phone}
-                onChange={(e) => update('pso_requestor_phone', e.target.value)}
+                onChange={(e) => update('pso_requestor_phone', formatPhoneInput(e.target.value))}
                 style={{ borderColor: '#6b21a8' }}
               />
             </div>
@@ -303,7 +305,7 @@ export default function QuickPsoModal({ isOpen, onClose, onSubmit, onExpandToFul
           {/* Description */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
-            <textarea
+            <RichTextArea
               className="input-dark w-full"
               rows={2}
               placeholder="Brief description of request..."

@@ -42,6 +42,7 @@ function toCallSlots(call: {
   apartment?: string;
   zone_code?: string;
   beat_code?: string;
+  dispatch_code?: string;
   suspect_description?: string;
   vehicle_description?: string;
   assigned_units?: string[];
@@ -54,6 +55,7 @@ function toCallSlots(call: {
     apartment: call.apartment,
     zone_code: call.zone_code,
     beat_code: call.beat_code,
+    dispatch_code: call.dispatch_code,
     suspect_description: call.suspect_description,
     vehicle_description: call.vehicle_description,
     assigned_units: call.assigned_units,

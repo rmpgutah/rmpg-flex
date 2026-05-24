@@ -6,10 +6,12 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { formatEnumValue } from '../utils/formatters';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Briefcase, Search, Plus, ChevronDown, User, Clock, FileText,
-  X, Save, Loader2, AlertTriangle, Target, MessageSquare,
-  ArrowRight, CheckCircle, Pause, Hash, FolderOpen, ShieldCheck, RotateCcw, Send, Link,
+  Briefcase, Search, Plus, User, X, Save, Loader2, AlertTriangle, Target,
+  MessageSquare, ArrowRight, CheckCircle, FolderOpen, ShieldCheck, RotateCcw, Send,
+  Link,
 } from 'lucide-react';
 import type { Case, CaseNote, CaseFull, CaseStatus, CaseType, CasePriority } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -230,11 +232,13 @@ function SolvabilityScoreCard({ caseId }: { caseId: string | number }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     setLoading(true);
     apiFetch<any>(`/records/cases/${caseId}/solvability`)
-      .then(d => setData(d))
-      .catch(() => setData(null))
-      .finally(() => setLoading(false));
+      .then(d => { if (!cancelled) setData(d); })
+      .catch(() => { if (!cancelled) setData(null); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, [caseId]);
 
   if (loading) return <div className="flex items-center gap-2 text-[10px] text-rmpg-500 p-3"><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Analyzing solvability...</div>;
@@ -350,20 +354,6 @@ function LinkedIncidentsGraph({ caseId }: { caseId: string | number }) {
   );
 }
 
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
-
 export default function CaseManagementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -375,6 +365,7 @@ export default function CaseManagementPage() {
   const [notes, setNotes] = useState<CaseNote[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
+  const [personnelLoading, setPersonnelLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [fetchError, setFetchError] = useState('');
 
@@ -456,7 +447,10 @@ export default function CaseManagementPage() {
   useEffect(() => { fetchStats(); }, [fetchStats]);
   useEffect(() => {
     let cancelled = false;
-    apiFetch<any>('/personnel').then(r => { if (!cancelled) setUsers(Array.isArray(r) ? r : (r?.data || [])); }).catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); });
+    apiFetch<any>('/personnel')
+      .then(r => { if (!cancelled) setUsers(Array.isArray(r) ? r : (r?.data || [])); })
+      .catch((err) => { console.warn('[CaseManagementPage] fetch personnel failed:', err); })
+      .finally(() => { if (!cancelled) setPersonnelLoading(false); });
     return () => { cancelled = true; };
   }, []);
   useLiveSync('records', () => { fetchCases({ silent: true }); fetchStats(); });
@@ -707,7 +701,7 @@ export default function CaseManagementPage() {
                 </div>
                 <div className="text-[10px] text-rmpg-300 truncate mt-0.5">{c.title}</div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
-                  <span className={`font-bold ${getPriorityColor(c.priority)}`}>{c.priority.toUpperCase()}</span>
+                  <span className={`font-bold ${getPriorityColor(c.priority)}`}>{formatEnumValue(c.priority)}</span>
                   <span>{humanizeCaseType(c.case_type)}</span>
                   {c.solvability_score != null && (
                     <span className="flex items-center gap-0.5">
@@ -767,7 +761,7 @@ export default function CaseManagementPage() {
                       {selected.status.replace(/_/g, ' ').toUpperCase()}
                     </span>
                     <span className={`text-[10px] px-2 py-1 border bg-rmpg-700/30 border-rmpg-600/50 font-bold ${getPriorityColor(selected.priority)}`}>
-                      {selected.priority.toUpperCase()}
+                      {formatEnumValue(selected.priority)}
                     </span>
                     {selected.solvability_score != null && (
                       <span className="text-[10px] px-2 py-1 border bg-amber-900/30 text-amber-400 border-amber-700/50 font-bold">
@@ -1099,7 +1093,7 @@ export default function CaseManagementPage() {
                 <div className="space-y-3">
                   {/* Add note */}
                   <div className="panel-beveled p-3">
-                    <textarea
+                    <RichTextArea
                       value={newNote}
                       onChange={e => setNewNote(e.target.value)}
                       placeholder="Add a case note..."
@@ -1195,7 +1189,7 @@ export default function CaseManagementPage() {
             <div className="p-4 space-y-3">
               <div>
                 <label className="field-label">Return Reason *</label>
-                <textarea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
+                <RichTextArea value={returnReason} onChange={e => setReturnReason(e.target.value)} rows={3}
                   placeholder="Explain why this case needs additional work..."
                   className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
@@ -1276,15 +1270,21 @@ export default function CaseManagementPage() {
                 </div>
                 <div>
                   <label className="field-label">Lead Investigator</label>
-                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none">
-                    <option value="">Unassigned</option>
-                    {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                  <select value={formData.lead_investigator_id} onChange={e => setFormData(p => ({ ...p, lead_investigator_id: e.target.value }))} disabled={personnelLoading} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none disabled:opacity-60">
+                    {personnelLoading ? (
+                      <option value="">Loading…</option>
+                    ) : (
+                      <>
+                        <option value="">Unassigned</option>
+                        {users.map(u => <option key={u.id} value={u.id}>{u.full_name}</option>)}
+                      </>
+                    )}
                   </select>
                 </div>
               </div>
               <div>
                 <label className="field-label">Summary</label>
-                <textarea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
+                <RichTextArea value={formData.summary} onChange={e => setFormData(p => ({ ...p, summary: e.target.value }))} rows={3} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none resize-none" />
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
                 <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>

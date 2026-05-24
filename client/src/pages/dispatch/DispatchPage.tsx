@@ -1,48 +1,15 @@
 import React, { useState, useEffect, useCallback, useRef, useId, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Plus,
-  Filter,
-  Send,
-  Navigation,
-  MapPin,
-  Clock,
-  Phone,
-  User,
-  MessageSquare,
-  Radio,
-  ArrowRight,
-  Eye,
-  CheckCircle,
-  XCircle,
-  AlertTriangle,
-  Loader2,
-  FileText,
-  ChevronDown,
-  Link,
-  Archive,
-  RotateCcw,
-  Edit3,
-  Trash2,
-  Save,
-  X,
-  PlusCircle,
-  Shield,
-  Thermometer,
-  Undo2,
-  Edit,
-  Pencil,
-  Search,
-  Building2,
-  Terminal,
-  Briefcase,
-  Copy,
+  Plus, Send, Navigation, MapPin, Clock, Phone, User, MessageSquare, Radio, Eye,
+  CheckCircle, XCircle, AlertTriangle, Loader2, FileText, ChevronDown, Link,
+  Archive, RotateCcw, Edit3, Trash2, Save, X, PlusCircle, Shield, Thermometer,
+  Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
-import MileagePromptModal from '../../components/MileagePromptModal';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -56,7 +23,7 @@ import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
 import { formatIncidentType, INCIDENT_TYPE_CATEGORIES } from '../../utils/caseNumbers';
-import { toDisplayLabel, formatPhoneInput } from '../../utils/formatters';
+import { formatPhoneInput } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
@@ -70,34 +37,49 @@ import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
+import RecommendedUnitsInline from '../../components/RecommendedUnitsInline';
 import type { CommandAction } from '../../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
+import { announceTarget } from '../../utils/voiceChannel';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
-import { formatTime, formatElapsed, formatActivityDetails, type FilterTab } from './utils/dispatchFormatters';
-import { announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent, announceStatusCheck, announceEscalation, announceCallUpdate, announceUnitAssignment, announceCallArchived, announceTime, announceAllClear, announceAcknowledgment, announceStatusChange, announceReturnVisit, announceServeComplete, announceCallStack, announceShiftSummary, announceCourtDeadline, announceDirectedNote, announceLocalAction, announceSpeedAdvisory } from '../../utils/voiceAlerts';
+import { applyCallPdfAutofill } from './utils/callPdfAutofill';
+import {
+  formatTime, formatElapsed, formatActivityDetails, type FilterTab,
+} from './utils/dispatchFormatters';
+import { useDispatchUnitActions } from './hooks/useDispatchUnitActions';
+import { useDispatchCallActions } from './hooks/useDispatchCallActions';
+import { useDispatchNotesActions } from './hooks/useDispatchNotesActions';
+import { useDispatchMultiUnitActions } from './hooks/useDispatchMultiUnitActions';
+import {
+  announceCallAlerts, announcePanicAlert, announceNewCall, announceDispatchEvent,
+  announceEscalation, announceCallUpdate, announceUnitAssignment,
+  announceCallArchived, announceTime, announceAllClear, announceAcknowledgment,
+  announceStatusChange, announceReturnVisit, announceServeComplete,
+  announceCallStack, announceShiftSummary, announceCourtDeadline,
+  announceDirectedNote, announceLocalAction, announceSpeedAdvisory,
+} from '../../utils/voiceAlerts';
 import { useAuth } from '../../context/AuthContext';
 import { useDistrictOptions } from '../../hooks/useDistrictLookup';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import QuickPsoModal from '../../components/QuickPsoModal';
 import {
-  WEATHER_OPTIONS,
-  LIGHTING_OPTIONS,
-  WEAPONS_OPTIONS,
-  LE_AGENCY_OPTIONS,
-  SCENE_SAFETY_OPTIONS,
-  DIRECTION_OPTIONS,
+  WEATHER_OPTIONS, LIGHTING_OPTIONS, WEAPONS_OPTIONS, LE_AGENCY_OPTIONS,
+  SCENE_SAFETY_OPTIONS, DIRECTION_OPTIONS,
 } from '../../utils/callOptions';
 import PersonFormModal, { type PersonFormData } from '../../components/PersonFormModal';
 import VehicleFormModal, { type VehicleFormData } from '../../components/VehicleFormModal';
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
-import { humanizeStatus, humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay, formatAddressDisplay, timeAgo } from '../../utils/statusLabels';
+import {
+  humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
+  formatAddressDisplay, timeAgo,
+} from '../../utils/statusLabels';
 
 // Label maps for human-readable display of stored values
 const SERVICE_TYPE_LABELS: Record<string, string> = {
@@ -243,6 +225,18 @@ function formatServiceType(val: string | undefined | null): string {
   return SERVICE_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
 }
 
+function formatCallDuration(ms: number): string {
+  if (!isFinite(ms) || ms <= 0) return '00:00 (0.00h)';
+  const totalSec = Math.floor(ms / 1000);
+  const hrs = Math.floor(totalSec / 3600);
+  const mins = Math.floor((totalSec % 3600) / 60);
+  const secs = totalSec % 60;
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const clock = hrs > 0 ? `${pad(hrs)}:${pad(mins)}:${pad(secs)}` : `${pad(mins)}:${pad(secs)}`;
+  const decimalHours = (ms / 3600000).toFixed(2);
+  return `${clock} (${decimalHours}h)`;
+}
+
 function formatDocumentType(val: string | undefined | null): string {
   if (!val) return '';
   return DOCUMENT_TYPE_LABELS[val] || val.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
@@ -257,31 +251,19 @@ export default function DispatchPage() {
   const { addToast } = useToast();
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
-  const { prefs: userPrefs } = useUserPreferences();
+  const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
   const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
-
-  // Hold the screen wake lock while a non-terminal call is selected.
-  // Released automatically when the call closes or the dispatcher navigates
-  // away. Battery-friendly compared to the old always-on wake lock that
-  // useGpsTracking used to hold app-wide.
-  useScreenWakeLock(
-    !!selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)
-  );
-  const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve'] as const);
+  const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [newNote, setNewNote] = useState('');
-  const [editingNoteId, setEditingNoteId] = useState<string | null>(null);
-  const [editingNoteText, setEditingNoteText] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
   const [isLoading, setIsLoading] = useState(true);
-  const [isGenerating, setIsGenerating] = useState(false);
   // Quick Dispatch templates
   const [templates, setTemplates] = useState<any[]>([]);
   const [showTemplateDropdown, setShowTemplateDropdown] = useState(false);
@@ -298,7 +280,9 @@ export default function DispatchPage() {
   const [callWarnings, setCallWarnings] = useState<WarningTag[]>([]);
   // NCIC Query Panel
   const [showNcicPanel, setShowNcicPanel] = useState(false);
-  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'flags' | 'attachments'>('info');
+  const [detailTab, setDetailTab] = useState<'info' | 'persons' | 'timeline' | 'notes' | 'flags' | 'attachments' | 'audit'>('info');
+  const [auditTrail, setAuditTrail] = useState<any[]>([]);
+  const [auditTrailLoading, setAuditTrailLoading] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; call: CallForService } | null>(null);
   const [ncicInitialQuery, setNcicInitialQuery] = useState<{ type: 'person' | 'vehicle' | 'warrant'; query: string } | null>(null);
   // Timeline / activity log entries for selected call
@@ -524,10 +508,6 @@ export default function DispatchPage() {
     }
   }, [selectedCall, linkVehicleToCall, linkVehicleRole, addToast]);
 
-  // Timeline editing
-  const [editingTimelineId, setEditingTimelineId] = useState<string | null>(null);
-  const [editTimelineText, setEditTimelineText] = useState('');
-
   // Navigation guard — warn when editing unsaved changes
   useUnsavedChanges(isEditing);
 
@@ -627,32 +607,33 @@ export default function DispatchPage() {
     };
   }, []);
 
-  const [newTimelineText, setNewTimelineText] = useState('');
-  const [showAddTimeline, setShowAddTimeline] = useState(false);
   const templateDropdownRef = useRef<HTMLDivElement>(null);
   // Unit attach dropdown
   const [showAttachUnitDropdown, setShowAttachUnitDropdown] = useState(false);
   const attachUnitDropdownRef = useRef<HTMLDivElement>(null);
-  // Create Unit modal
-  const [showCreateUnitModal, setShowCreateUnitModal] = useState(false);
-  const [newUnitCallSign, setNewUnitCallSign] = useState('');
-  const [newUnitOfficerId, setNewUnitOfficerId] = useState('');
-  const [newUnitStatus, setNewUnitStatus] = useState<string>('available');
-  const [unitCreating, setUnitCreating] = useState(false);
-  const [editingUnit, setEditingUnit] = useState<Unit | null>(null);
+  // Unit-management state + handlers (extracted to keep this component below the
+  // 6,000-line ceiling). The hook owns: create/edit/delete-unit modal state and
+  // the 5 unit API handlers (save, delete, assign, drag-assign, unassign).
+  const {
+    showCreateUnitModal, setShowCreateUnitModal,
+    editingUnit, setEditingUnit,
+    newUnitCallSign, setNewUnitCallSign,
+    newUnitOfficerId, setNewUnitOfficerId,
+    newUnitStatus, setNewUnitStatus,
+    unitCreating,
+    deletingUnit, setDeletingUnit,
+    unitDeleting,
+    openEditUnit,
+    handleSaveUnit, handleDeleteUnit,
+    handleAssignUnit, handleDragAssignUnit, handleUnassignUnit,
+  } = useDispatchUnitActions({
+    selectedCall, setSelectedCall,
+    units, setCalls, setUnits,
+    onAssignSuccess: () => setShowAttachUnitDropdown(false),
+  });
   const [officers, setOfficers] = useState<{ id: string; full_name: string; badge_number?: string }[]>([]);
-  // Delete call confirmation (non-archived)
-  const [deleteCallTarget, setDeleteCallTarget] = useState<CallForService | null>(null);
-  const [isDeletingCall, setIsDeletingCall] = useState(false);
   // Disposition codes from admin config
   const [dispositionCodes, setDispositionCodes] = useState<{code: string; description: string; color?: string}[]>([]);
-  // Disposition prompt — ID of call awaiting disposition before clear
-  const [dispositionPromptCallId, setDispositionPromptCallId] = useState<string | null>(null);
-  // Mileage prompt — shown on En Route / On Scene status transitions
-  const [mileagePrompt, setMileagePrompt] = useState<{
-    callId: string; callNumber: string; status: 'enroute' | 'onscene';
-    vehicleId: string; startingMileage?: number;
-  } | null>(null);
   // Mini-map visibility toggle
   const [showMiniMap, setShowMiniMap] = useState(true);
   // Route info from mini-map (for inline ETA display)
@@ -704,7 +685,16 @@ export default function DispatchPage() {
       // If we had a selected call, update its reference
       setSelectedCall((prev) => {
         if (!prev) return mappedCalls[0] || null;
-        return mappedCalls.find((c: CallForService) => c.id === prev.id) || mappedCalls[0] || null;
+        const found = mappedCalls.find((c: CallForService) => c.id === prev.id);
+        if (found) return found;
+        // Call disappeared from the active list (transient: e.g. WS race,
+        // backend filter hiccup, brief archive-and-unarchive). Don't auto-
+        // substitute a different call when the user is mid-edit — that
+        // change would flip selectedCall.id, fire the cleanup useEffect,
+        // and kill their edit form mid-keystroke. Keep current call until
+        // they explicitly navigate away.
+        if (isEditingRef.current) return prev;
+        return mappedCalls[0] || null;
       });
     } catch (err: any) {
       if (err?.name === 'AbortError') {
@@ -767,6 +757,59 @@ export default function DispatchPage() {
   // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI)
   const silentRefresh = useCallback(() => fetchData({ silent: true }), [fetchData]);
   useLiveSync('dispatch', silentRefresh);
+
+  // Call-lifecycle state + handlers (extracted to keep this component below the
+  // 6,500-line ceiling). The hook owns: 6 transient state items (delete/disposition/
+  // mileage prompts, isGenerating, isBulkArchiving) and the 14 call-mutation
+  // handlers (status transitions, hold/resume/revert, clear-with-disposition,
+  // archive/unarchive/bulk-archive, delete, priority, LE-notify, gen-incident).
+  const {
+    deleteCallTarget, setDeleteCallTarget,
+    isDeletingCall,
+    dispositionPromptCallId, setDispositionPromptCallId,
+    isGenerating,
+    isBulkArchiving,
+    handleStatusChange,
+    handleHoldCall, handleResumeCall, handleRevertStatus,
+    handleClearWithDisposition, handleConfirmClear,
+    handleArchive, handleUnarchive, handleBulkArchive,
+    handleDeleteAnyCall,
+    handlePriorityChange, handleLeNotify, handleGenerateIncident,
+  } = useDispatchCallActions({
+    selectedCall, setSelectedCall, setCalls, setArchivedCalls,
+    setUnits, setArchivedLoaded, refetchAll: silentRefresh,
+  });
+
+  // Notes + timeline state + handlers (extracted alongside the unit/call
+  // hooks). Owns 9 state items (note input + inline-edit, timeline input
+  // + inline-edit, broadcast composer) and 8 handlers.
+  const {
+    newNote, setNewNote,
+    editingNoteId, setEditingNoteId,
+    editingNoteText, setEditingNoteText,
+    newTimelineText, setNewTimelineText,
+    showAddTimeline, setShowAddTimeline,
+    editingTimelineId, setEditingTimelineId,
+    editTimelineText, setEditTimelineText,
+    broadcastNoteText, setBroadcastNoteText,
+    isBroadcasting,
+    handleAddNote, handleEditNote, handleDeleteNote,
+    handleQuickNote, handleBroadcastNote,
+    handleAddTimeline, handleEditTimeline, handleDeleteTimeline,
+  } = useDispatchNotesActions({
+    selectedCall, setSelectedCall, calls, setCalls, setActivityEntries,
+  });
+
+  // Multi-unit dispatch state + handlers (closest-unit lookup, auto-assign,
+  // multi-unit dispatch, call transfer). Cleanest cluster yet — every handler
+  // takes callId as an explicit param so the hook signature stays narrow.
+  const {
+    multiSelectUnits, setMultiSelectUnits,
+    handleSuggestClosestUnit,
+    handleAutoAssign,
+    handleMultiUnitDispatch,
+    handleTransferCall,
+  } = useDispatchMultiUnitActions({ setCalls, setSelectedCall, setUnits });
 
   // ── WebSocket: real-time dispatch updates & panic auto-dispatch ──
   useEffect(() => {
@@ -1004,118 +1047,21 @@ export default function DispatchPage() {
     return () => { cancelled = true; };
   }, []);
 
-  // Create Unit handler
-  // Create or Update Unit handler
-  const handleSaveUnit = async () => {
-    const cs = newUnitCallSign.trim();
-    if (!cs) { addToast('Call sign is required', 'error'); return; }
-    setUnitCreating(true);
-    try {
-      if (editingUnit) {
-        // Update existing unit
-        await apiFetch(`/dispatch/units/${editingUnit.id}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            call_sign: cs,
-            officer_id: newUnitOfficerId || null,
-            status: newUnitStatus,
-          }),
-        });
-      } else {
-        // Create new unit
-        await apiFetch('/dispatch/units', {
-          method: 'POST',
-          body: JSON.stringify({
-            call_sign: cs,
-            officer_id: newUnitOfficerId || null,
-            status: newUnitStatus || 'available',
-          }),
-        });
-      }
-      // Refresh units
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      // Reset form
-      setNewUnitCallSign('');
-      setNewUnitOfficerId('');
-      setNewUnitStatus('available');
-      setEditingUnit(null);
-      setShowCreateUnitModal(false);
-    } catch (err: any) {
-      addToast(err?.error || err?.message || `Failed to ${editingUnit ? 'update' : 'create'} unit`, 'error');
-    } finally {
-      setUnitCreating(false);
-    }
-  };
-
-  // Open unit modal for editing
-  const openEditUnit = (unit: Unit) => {
-    setEditingUnit(unit);
-    setNewUnitCallSign(unit.call_sign);
-    setNewUnitOfficerId(unit.officer_id || '');
-    setNewUnitStatus(unit.status);
-    setShowCreateUnitModal(true);
-  };
-
-  // Delete unit handler
-  const [deletingUnit, setDeletingUnit] = useState<Unit | null>(null);
-  const [unitDeleting, setUnitDeleting] = useState(false);
-
-  const handleDeleteUnit = async () => {
-    if (!deletingUnit) return;
-    setUnitDeleting(true);
-    try {
-      await apiFetch(`/dispatch/units/${deletingUnit.id}`, { method: 'DELETE' });
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      setDeletingUnit(null);
-    } catch (err: any) {
-      addToast(err?.error || err?.message || 'Failed to delete unit', 'error');
-    } finally {
-      setUnitDeleting(false);
-    }
-  };
-
-  // Revert call status to previous step
-  const handleRevertStatus = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/revert-status`, {
-        method: 'POST',
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      // Refresh units since reverting from cleared re-dispatches them
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-    } catch (err: any) {
-      console.error('Failed to revert status:', err);
-      addToast('Failed to revert call status', 'error');
-    }
-  };
-
-  // Delete any call (not just archived)
-  const handleDeleteAnyCall = async () => {
-    if (!deleteCallTarget) return;
-    const callNum = deleteCallTarget.call_number;
-    setIsDeletingCall(true);
-    try {
-      await apiFetch(`/dispatch/calls/${deleteCallTarget.id}`, { method: 'DELETE' });
-      setCalls((prev) => prev.filter((c) => c.id !== deleteCallTarget.id));
-      setArchivedCalls((prev) => prev.filter((c) => c.id !== deleteCallTarget.id));
-      setSelectedCall((prev) => prev?.id === deleteCallTarget.id ? null : prev);
-      setDeleteCallTarget(null);
-      addToast(`Call ${callNum} deleted`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || err?.error || 'Failed to delete call', 'error');
-    } finally {
-      setIsDeletingCall(false);
-    }
-  };
+  // Lazy-fetch audit trail only when the Audit tab opens for this call
+  useEffect(() => {
+    if (!selectedCall || detailTab !== 'audit') return;
+    let cancelled = false;
+    setAuditTrailLoading(true);
+    apiFetch<any>(`/dispatch/calls/${selectedCall.id}/audit-trail`)
+      .then(res => { if (!cancelled) setAuditTrail(Array.isArray(res?.events) ? res.events : []); })
+      .catch(() => { if (!cancelled) setAuditTrail([]); })
+      .finally(() => { if (!cancelled) setAuditTrailLoading(false); });
+    return () => { cancelled = true; };
+  }, [selectedCall?.id, detailTab]);
 
   // Fetch linked incidents and activity when a call is selected
   useEffect(() => {
-    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); return; }
+    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); setAuditTrail([]); return; }
     let cancelled = false;
     setIsEditing(false);
     setShowAttachUnitDropdown(false);
@@ -1162,6 +1108,11 @@ export default function DispatchPage() {
       case 'cleared': return ['cleared', 'closed', 'cancelled'].includes(call.status);
       case 'archived': return true; // archivedCalls already filtered
       case 'serve': return PSO_INCIDENT_TYPES.includes(call.incident_type); // Show ALL PSO calls (active + cleared/on_hold for return visits)
+      case 'mine': {
+        const myId = user?.id != null ? String(user.id) : null;
+        if (!myId) return false;
+        return String((call as any).dispatcher_id ?? (call as any).created_by ?? '') === myId;
+      }
       default: return true; // `calls` already excludes archived from backend
     }
   }).filter((call) => {
@@ -1184,6 +1135,10 @@ export default function DispatchPage() {
     if (filterTab === 'archived') {
       return (a.call_number || '').localeCompare(b.call_number || '', undefined, { numeric: true });
     }
+    // Pinned calls float to the top regardless of sort mode
+    const aPin = a.pinned ? 1 : 0;
+    const bPin = b.pinned ? 1 : 0;
+    if (aPin !== bPin) return bPin - aPin;
     // User-selectable sort for active tabs
     const sortMode = userPrefs?.dispatch_sort || 'priority';
     if (sortMode === 'time') {
@@ -1200,7 +1155,7 @@ export default function DispatchPage() {
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared]);
+  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
   useEffect(() => {
@@ -1242,6 +1197,12 @@ export default function DispatchPage() {
         return;
       }
       if (e.key === 'F7' && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleClearWithDisposition(selectedCall.id);
+        return;
+      }
+      // Shift+C — quick clear on selected call (mirrors F7, faster muscle memory)
+      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
         handleClearWithDisposition(selectedCall.id);
         return;
@@ -1480,124 +1441,6 @@ export default function DispatchPage() {
     }
   };
 
-  const handleStatusChange = async (callId: string, newStatus: CallStatus, extraBody?: Record<string, any>) => {
-    // Status changes go through immediately — no mileage prompt blocking
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/status`, {
-        method: 'POST',
-        body: JSON.stringify({ status: newStatus, ...extraBody }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      // Audible feedback for local status change
-      if (newStatus === 'cleared' || newStatus === 'closed') {
-        announceLocalAction('call_closed', `Call ${updatedCall.call_number} ${newStatus}.`);
-      }
-      // Refresh units since clearing/closing/cancelling a call frees assigned units
-      if (newStatus === 'cleared' || newStatus === 'closed' || newStatus === 'cancelled') {
-        const unitsRes = await apiFetch<any[]>('/dispatch/units');
-        setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      }
-      // Auto-archive when closed or cancelled to clear the "All" view
-      if (newStatus === 'closed' || newStatus === 'cancelled') {
-        await handleArchive(callId);
-      }
-    } catch (err) {
-      console.error('Failed to update status:', err);
-      addToast('Failed to update call status', 'error');
-    }
-  };
-
-  const handleMileageSubmit = (mileage: number, vehicleId: string) => {
-    if (!mileagePrompt) return;
-    const body: Record<string, any> = { responding_vehicle_id: vehicleId || undefined };
-    // Only include mileage if user entered a value (skip sends 0)
-    if (mileage > 0) {
-      if (mileagePrompt.status === 'enroute') {
-        body.starting_mileage = mileage;
-      } else {
-        body.ending_mileage = mileage;
-      }
-    }
-    setMileagePrompt(null);
-    handleStatusChange(mileagePrompt.callId, mileagePrompt.status, body);
-  };
-
-  // Clear with disposition — shows prompt first, then clears
-  const handleClearWithDisposition = (callId: string) => {
-    setDispositionPromptCallId(callId);
-  };
-
-  const handleConfirmClear = async (disposition: string, createIncident?: boolean) => {
-    if (!dispositionPromptCallId) return;
-    const callId = dispositionPromptCallId;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/status`, {
-        method: 'POST',
-        body: JSON.stringify({ status: 'cleared', disposition }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-
-      // Auto-create incident report if checkbox was checked
-      if (createIncident) {
-        try {
-          const token = localStorage.getItem('rmpg_token');
-          const incRes = await fetch(`/api/dispatch/calls/${callId}/generate-incident`, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'X-Requested-With': 'XMLHttpRequest',
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-          });
-          if (incRes.ok) {
-            navigate('/incidents');
-          } else {
-            const errData = await incRes.json().catch(() => ({}));
-            addToast(errData.error || 'Failed to create incident report', 'error');
-          }
-        } catch (err) {
-          console.error('Failed to promote call to incident:', err);
-          addToast('Failed to create incident report from call', 'error');
-        }
-      }
-    } catch (err: any) {
-      console.error('Failed to clear call:', err);
-      addToast('Failed to clear call', 'error');
-    }
-    setDispositionPromptCallId(null);
-  };
-
-  // Hold / Resume call
-  const handleHoldCall = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/hold`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
-      console.error('Failed to hold call:', err);
-      addToast('Failed to hold call', 'error');
-    }
-  };
-
-  const handleResumeCall = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/resume`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
-      console.error('Failed to resume call:', err);
-      addToast('Failed to resume call', 'error');
-    }
-  };
-
   // ── Admin timeline edit handler ──
   const handleTimelineEdit = useCallback(async (field: string, value: string | null) => {
     if (!selectedCall || !isAdminOrManager) return;
@@ -1674,334 +1517,87 @@ export default function DispatchPage() {
     }
   }, [newNote]);
 
-  const handleAddNote = async () => {
-    if (!selectedCall || !newNote.trim()) return;
-    const trimmedNote = newNote.trim();
-    if (trimmedNote.length > 2000) {
-      addToast('Note is too long (max 2000 characters)', 'error');
-      return;
-    }
-    if (trimmedNote.length < 2) {
-      addToast('Note must be at least 2 characters', 'error');
-      return;
-    }
-    try {
-      // Build notes array with the new note appended
-      const existingNotes = Array.isArray(selectedCall.notes) ? selectedCall.notes : [];
-      const note: CallNote = {
-        id: `n-${Date.now()}`,
-        author: 'Dispatch',
-        text: trimmedNote,
-        timestamp: new Date().toISOString(),
-      };
-      const allNotes = [...existingNotes, note];
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      setNewNote('');
-      // Audible feedback for local note action
-      announceLocalAction('note_added', `Note added to ${selectedCall.call_number}.`);
-    } catch (err) {
-      console.error('Failed to add note:', err);
-      addToast('Failed to save note', 'error');
-    }
-  };
-
-  const handleEditNote = async (noteId: string, text: string) => {
-    if (!selectedCall || !text.trim()) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ text: text.trim() }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      setEditingNoteId(null);
-      setEditingNoteText('');
-      addToast('Note updated', 'success');
-    } catch {
-      addToast('Failed to edit note', 'error');
-    }
-  };
-
-  const handleDeleteNote = async (noteId: string) => {
-    if (!selectedCall) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/notes/${noteId}`, {
-        method: 'DELETE',
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      addToast('Note deleted', 'success');
-    } catch {
-      addToast('Failed to delete note', 'error');
-    }
-  };
-
-  const handleGenerateIncident = async () => {
-    if (!selectedCall) return;
-    setIsGenerating(true);
-    try {
-      // Direct fetch to preserve full error response (apiFetch wraps errors in plain Error)
-      const token = localStorage.getItem('rmpg_token');
-      const res = await fetch(`/api/dispatch/calls/${selectedCall.id}/generate-incident`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Requested-With': 'XMLHttpRequest',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-      });
-
-      if (res.status === 409) {
-        // Incident already exists — navigate to it
-        addToast('An incident report already exists for this call', 'info');
-        navigate('/incidents');
-        return;
-      }
-
-      if (!res.ok) {
-        const errData = await res.json().catch(() => ({}));
-        throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
-      }
-
-      const incident = await res.json();
-      addToast(`Incident ${incident.incident_number || ''} created`, 'success');
-      navigate('/incidents');
-    } catch (err: any) {
-      console.error('Failed to generate incident:', err);
-      addToast(err?.message || 'Failed to generate incident report', 'error');
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  // ── LE Notification ─────────────────────────────────────────
-  const handleLeNotify = async (callId: string, agency?: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/le-notification`, {
-        method: 'POST',
-        body: JSON.stringify({ agency: agency || 'Local PD' }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      addToast('Law enforcement notified', 'success');
-    } catch (err) {
-      console.error('Failed to notify LE:', err);
-      addToast('Failed to notify LE', 'error');
-    }
-  };
-
-  // ── Priority Change ────────────────────────────────────────
-  const handlePriorityChange = async (callId: string, priority: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ priority }),
-      });
-      if (result) {
-        const updated = mapDbCall(result);
-        setCalls(prev => prev.map(c => c.id === callId ? updated : c));
-        setSelectedCall(prev => prev?.id === callId ? updated : prev);
-        addToast(`Priority changed to ${priority}`, 'success');
-      }
-    } catch (err) {
-      console.error('Failed to change priority:', err);
-      addToast('Failed to change priority', 'error');
-    }
-  };
-
-  // ── Archive / Unarchive ────────────────────────────────────
-  const handleArchive = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/archive`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      // Remove from active calls, add to archived calls
-      setCalls((prev) => prev.filter((c) => c.id !== callId));
-      setArchivedCalls((prev) => [updatedCall, ...prev]);
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
-      console.error('Failed to archive call:', err);
-      addToast('Failed to archive call', 'error');
-    }
-  };
-
-  const handleUnarchive = async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/unarchive`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      // Remove from archived calls, add back to active calls
-      setArchivedCalls((prev) => prev.filter((c) => c.id !== callId));
-      setCalls((prev) => [updatedCall, ...prev]);
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-    } catch (err) {
-      console.error('Failed to unarchive call:', err);
-      addToast('Failed to unarchive call', 'error');
-    }
-  };
-
-  // (old archived-only delete removed — superseded by handleDeleteAnyCall)
-
-  const [isBulkArchiving, setIsBulkArchiving] = useState(false);
-
-  const handleBulkArchive = async () => {
-    setIsBulkArchiving(true);
-    try {
-      const result = await apiFetch<any>('/dispatch/calls/archive-bulk', {
-        method: 'POST',
-        body: JSON.stringify({ statuses: ['cleared', 'closed', 'cancelled'] }),
-      });
-      if (result.archived_count > 0) {
-        // Refresh both active and archived calls
-        await fetchData({ silent: true });
-        // Reset archived loaded flag so they get re-fetched when Archive tab is visited
-        setArchivedLoaded(false);
-        setArchivedCalls([]);
-      }
-    } catch (err) {
-      console.error('Failed to bulk archive calls:', err);
-      addToast('Failed to bulk archive calls', 'error');
-    } finally {
-      setIsBulkArchiving(false);
-    }
-  };
-
-  // ── Assign / Unassign Unit ─────────────────────────────────
-  const handleAssignUnit = async (unitId: string) => {
-    if (!selectedCall) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/assign-unit`, {
-        method: 'POST',
-        body: JSON.stringify({ unit_id: unitId }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      setShowAttachUnitDropdown(false);
-      // Audible feedback for local unit dispatch
-      const assignedUnit = units.find(u => String(u.id) === String(unitId));
-      if (assignedUnit) {
-        announceLocalAction('unit_dispatched', `Unit ${assignedUnit.call_sign} dispatched to ${selectedCall.call_number}.`);
-      }
-      // Refresh units to reflect the status change
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-    } catch (err: any) {
-      console.error('Failed to assign unit:', err);
-      addToast(err?.message || 'Failed to assign unit', 'error');
-    }
-  };
-
-  // ── Drag-and-Drop Assign Unit (from UnitStatusBoard to CallCard) ──
-  const handleDragAssignUnit = async (callId: string, unitId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/assign-unit`, {
-        method: 'POST',
-        body: JSON.stringify({ unit_id: unitId }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
-      // Refresh units to reflect the status change
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      addToast(`Unit assigned to call`, 'success');
-    } catch (err: any) {
-      addToast(err?.error || err?.message || 'Failed to assign unit via drag', 'error');
-    }
-  };
-
-  const handleUnassignUnit = async (unitId: string) => {
-    if (!selectedCall) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/unassign-unit`, {
-        method: 'POST',
-        body: JSON.stringify({ unit_id: unitId }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      // Refresh units to reflect the status change
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-    } catch (err: any) {
-      console.error('Failed to unassign unit:', err);
-      addToast(err?.message || 'Failed to unassign unit', 'error');
-    }
-  };
-
   // ── Inline Editing ────────────────────────────────────────
-  const startEditing = () => {
+  // Refetch the full call fresh from /dispatch/calls/:id before populating
+  // the edit form. Guards against stale in-memory data from list-endpoint
+  // caching / older client bundles that silently dropped fields. The fetched
+  // row also replaces selectedCall so the non-edit view re-renders correctly.
+  const startEditing = async () => {
     if (!selectedCall) return;
+    let source: any = selectedCall;
+    try {
+      const fresh = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`);
+      if (fresh && (fresh.id != null || fresh.call_number)) {
+        const mapped = mapDbCall(fresh);
+        setSelectedCall(mapped);
+        setCalls((prev) => prev.map((c) => (c.id === mapped.id ? mapped : c)));
+        source = mapped;
+      }
+    } catch (err) {
+      console.warn('[DispatchPage] Failed to refetch call before edit; using cached copy', err);
+    }
+    const selectedCallForEdit: any = source;
     setEditData({
-      incident_type: selectedCall.incident_type,
-      priority: selectedCall.priority,
-      client_id: selectedCall.client_id || '',
-      caller_name: selectedCall.caller_name || '',
-      caller_phone: selectedCall.caller_phone || '',
-      caller_relationship: selectedCall.caller_relationship || '',
-      caller_address: selectedCall.caller_address || '',
-      location: selectedCall.location || '',
-      latitude: selectedCall.latitude ?? null,
-      longitude: selectedCall.longitude ?? null,
-      property_id: selectedCall.property_id ?? null,
-      description: selectedCall.description || '',
-      source: selectedCall.source || 'phone',
-      disposition: selectedCall.disposition || '',
-      cross_street: selectedCall.cross_street || '',
-      location_building: selectedCall.location_building || '',
-      location_floor: selectedCall.location_floor || '',
-      location_room: selectedCall.location_room || '',
-      zone_beat: selectedCall.zone_beat || '',
-      sector_id: selectedCall.sector_id || '',
-      zone_id: selectedCall.zone_id || '',
-      beat_id: selectedCall.beat_id || '',
-      weapons_involved: selectedCall.weapons_involved || '',
-      injuries_reported: !!selectedCall.injuries_reported,
-      num_subjects: selectedCall.num_subjects || '',
-      num_victims: selectedCall.num_victims || '',
-      subject_description: selectedCall.subject_description || '',
-      vehicle_description: selectedCall.vehicle_description || '',
-      direction_of_travel: selectedCall.direction_of_travel || '',
-      scene_safety: selectedCall.scene_safety || '',
-      weather_conditions: selectedCall.weather_conditions || '',
-      lighting_conditions: selectedCall.lighting_conditions || '',
-      alcohol_involved: !!selectedCall.alcohol_involved,
-      drugs_involved: !!selectedCall.drugs_involved,
-      domestic_violence: !!selectedCall.domestic_violence,
-      supervisor_notified: !!selectedCall.supervisor_notified,
-      le_notified: !!selectedCall.le_notified,
-      le_agency: selectedCall.le_agency || '',
-      le_case_number: selectedCall.le_case_number || '',
-      damage_estimate: selectedCall.damage_estimate ?? '',
-      damage_description: selectedCall.damage_description || '',
-      action_taken: selectedCall.action_taken || '',
-      responding_officer: selectedCall.responding_officer || '',
-      starting_mileage: selectedCall.starting_mileage || '',
-      ending_mileage: selectedCall.ending_mileage || '',
-      dispatch_code: selectedCall.dispatch_code || '',
-      pso_requestor_name: selectedCall.pso_requestor_name || '',
-      pso_requestor_phone: selectedCall.pso_requestor_phone || '',
-      pso_requestor_email: selectedCall.pso_requestor_email || '',
-      pso_service_type: selectedCall.pso_service_type || '',
-      pso_billing_code: selectedCall.pso_billing_code || '',
-      pso_authorization: selectedCall.pso_authorization || '',
-      contract_id: selectedCall.contract_id || '',
+      incident_type: selectedCallForEdit.incident_type,
+      priority: selectedCallForEdit.priority,
+      client_id: selectedCallForEdit.client_id || '',
+      caller_name: selectedCallForEdit.caller_name || '',
+      caller_phone: selectedCallForEdit.caller_phone || '',
+      caller_relationship: selectedCallForEdit.caller_relationship || '',
+      caller_address: selectedCallForEdit.caller_address || '',
+      location: selectedCallForEdit.location || '',
+      latitude: selectedCallForEdit.latitude ?? null,
+      longitude: selectedCallForEdit.longitude ?? null,
+      property_id: selectedCallForEdit.property_id ?? null,
+      description: selectedCallForEdit.description || '',
+      source: selectedCallForEdit.source || 'phone',
+      disposition: selectedCallForEdit.disposition || '',
+      cross_street: selectedCallForEdit.cross_street || '',
+      location_building: selectedCallForEdit.location_building || '',
+      location_floor: selectedCallForEdit.location_floor || '',
+      location_room: selectedCallForEdit.location_room || '',
+      zone_beat: selectedCallForEdit.zone_beat || '',
+      sector_id: selectedCallForEdit.sector_id || '',
+      zone_id: selectedCallForEdit.zone_id || '',
+      beat_id: selectedCallForEdit.beat_id || '',
+      weapons_involved: selectedCallForEdit.weapons_involved || '',
+      injuries_reported: !!selectedCallForEdit.injuries_reported,
+      num_subjects: selectedCallForEdit.num_subjects || '',
+      num_victims: selectedCallForEdit.num_victims || '',
+      subject_description: selectedCallForEdit.subject_description || '',
+      vehicle_description: selectedCallForEdit.vehicle_description || '',
+      direction_of_travel: selectedCallForEdit.direction_of_travel || '',
+      scene_safety: selectedCallForEdit.scene_safety || '',
+      weather_conditions: selectedCallForEdit.weather_conditions || '',
+      lighting_conditions: selectedCallForEdit.lighting_conditions || '',
+      alcohol_involved: !!selectedCallForEdit.alcohol_involved,
+      drugs_involved: !!selectedCallForEdit.drugs_involved,
+      domestic_violence: !!selectedCallForEdit.domestic_violence,
+      supervisor_notified: !!selectedCallForEdit.supervisor_notified,
+      le_notified: !!selectedCallForEdit.le_notified,
+      le_agency: selectedCallForEdit.le_agency || '',
+      le_case_number: selectedCallForEdit.le_case_number || '',
+      damage_estimate: selectedCallForEdit.damage_estimate ?? '',
+      damage_description: selectedCallForEdit.damage_description || '',
+      action_taken: selectedCallForEdit.action_taken || '',
+      responding_officer: selectedCallForEdit.responding_officer || '',
+      starting_mileage: selectedCallForEdit.starting_mileage || '',
+      ending_mileage: selectedCallForEdit.ending_mileage || '',
+      dispatch_code: selectedCallForEdit.dispatch_code || '',
+      pso_requestor_name: selectedCallForEdit.pso_requestor_name || '',
+      pso_requestor_phone: selectedCallForEdit.pso_requestor_phone || '',
+      pso_requestor_email: selectedCallForEdit.pso_requestor_email || '',
+      pso_service_type: selectedCallForEdit.pso_service_type || '',
+      pso_billing_code: selectedCallForEdit.pso_billing_code || '',
+      pso_authorization: selectedCallForEdit.pso_authorization || '',
+      contract_id: selectedCallForEdit.contract_id || '',
       // Process Service fields
-      process_service_type: selectedCall.process_service_type || '',
-      process_served_to: selectedCall.process_served_to || '',
-      process_served_address: selectedCall.process_served_address || '',
-      process_attempts: selectedCall.process_attempts ?? 0,
-      process_served_at: selectedCall.process_served_at || '',
-      process_service_result: selectedCall.process_service_result || '',
+      process_service_type: selectedCallForEdit.process_service_type || '',
+      process_served_to: selectedCallForEdit.process_served_to || '',
+      process_served_address: selectedCallForEdit.process_served_address || '',
+      process_attempts: selectedCallForEdit.process_attempts ?? 0,
+      process_served_at: selectedCallForEdit.process_served_at || '',
+      process_service_result: selectedCallForEdit.process_service_result || '',
     });
     setIsEditing(true);
   };
@@ -2104,42 +1700,19 @@ export default function DispatchPage() {
   // NEW DISPATCH FEATURES
   // ═══════════════════════════════════════════════════════════════
 
-  // Feature 1: Auto-escalation timer — check pending calls and auto-escalate
-  const escalatedRef = useRef<Set<string>>(new Set());
-  useEffect(() => {
-    const checkEscalation = () => {
-      const now = Date.now();
-      for (const c of calls) {
-        if (c.status !== 'pending' || escalatedRef.current.has(c.id)) continue;
-        const age = now - new Date(c.created_at).getTime();
-        const ageMins = age / 60000;
-        let shouldEscalate = false;
-        if (c.priority === 'P3' && ageMins >= 15) shouldEscalate = true;
-        if (c.priority === 'P2' && ageMins >= 30) shouldEscalate = true;
-        if (c.priority === 'P4' && ageMins >= 20) shouldEscalate = true;
-        if (shouldEscalate && c.assigned_units.length === 0) {
-          escalatedRef.current.add(c.id);
-          apiFetch(`/dispatch/calls/${c.id}/escalate`, { method: 'POST' })
-            .then((result: any) => {
-              if (result) {
-                const updated = mapDbCall(result);
-                setCalls(prev => prev.map(pc => pc.id === c.id ? updated : pc));
-                addToast(`Call ${c.call_number} auto-escalated from ${c.priority} to ${updated.priority}`, 'warning');
-              }
-            })
-            .catch(() => { escalatedRef.current.delete(c.id); });
-        }
-      }
-    };
-    const interval = setInterval(checkEscalation, 30000); // Check every 30s
-    return () => clearInterval(interval);
-  }, [calls, addToast, handleArchive]);
+  // Feature 1: Auto-escalation timer — REMOVED 2026-05-04.
+  // Priority is now stale until manually escalated by admin / supervisor /
+  // dispatcher / officer via the call detail panel. See server endpoint
+  // POST /api/dispatch/calls/:id/escalate (callActions.ts).
 
   // Feature 4: Unit availability counter
   const unitAvailability = useMemo(() => {
     const available = units.filter(u => u.status === 'available').length;
     const total = units.filter(u => u.status !== 'off_duty').length;
-    return { available, total };
+    const enroute = units.filter(u => u.status === 'enroute' || u.status === 'dispatched').length;
+    const onscene = units.filter(u => u.status === 'onscene').length;
+    const oos = units.filter(u => u.status === 'out_of_service' || u.status === 'busy').length;
+    return { available, total, enroute, onscene, oos };
   }, [units]);
 
   // Feature 5: Stacked calls count by address
@@ -2154,23 +1727,23 @@ export default function DispatchPage() {
     return counts;
   }, [calls]);
 
-  // Feature 6: Quick note add handler (from CallCard)
-  const handleQuickNote = useCallback(async (callId: string, noteText: string) => {
-    if (!noteText.trim()) return;
-    const call = calls.find(c => c.id === callId);
-    if (!call) return;
+  // Toggle pinned-to-top flag on a call
+  const handleTogglePin = useCallback(async (callId: string, currentlyPinned: boolean) => {
+    const next = !currentlyPinned;
+    // Optimistic local update
+    setCalls(prev => prev.map(c => c.id === callId ? ({ ...c, pinned: next ? 1 : 0 }) : c));
     try {
-      const existingNotes = Array.isArray(call.notes) ? call.notes : [];
-      const note = { id: `qn-${Date.now()}`, author: 'Dispatch', text: noteText, timestamp: new Date().toISOString() };
-      const allNotes = [...existingNotes, note];
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
-        method: 'PUT', body: JSON.stringify({ notes: JSON.stringify(allNotes) }),
+      await apiFetch(`/dispatch/calls/${callId}/pin`, {
+        method: 'PATCH',
+        body: JSON.stringify({ pinned: next }),
       });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
-      if (selectedCall?.id === callId) setSelectedCall(updatedCall);
-    } catch { addToast('Failed to add note', 'error'); }
-  }, [calls, selectedCall, addToast]);
+      addToast(next ? 'Call pinned to top' : 'Call unpinned', 'success');
+    } catch {
+      // Revert on failure
+      setCalls(prev => prev.map(c => c.id === callId ? ({ ...c, pinned: currentlyPinned ? 1 : 0 }) : c));
+      addToast('Failed to toggle pin', 'error');
+    }
+  }, [addToast]);
 
   // Feature 9: Call type statistics
   const callTypeStats = useMemo(() => {
@@ -2185,21 +1758,6 @@ export default function DispatchPage() {
       .slice(0, 6)
       .map(([type, count]) => ({ type, count }));
   }, [calls]);
-
-  // Feature 11: Auto-assign nearest unit handler
-  const handleAutoAssign = useCallback(async (callId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/auto-assign`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
-      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      addToast(`Auto-assigned ${result.auto_assigned_unit} (${result.distance_miles} mi)`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || err?.error || 'No available units', 'error');
-    }
-  }, [addToast]);
 
   // Feature 13: Unit workload — count active calls per unit
   const unitWorkload = useMemo(() => {
@@ -2239,65 +1797,6 @@ export default function DispatchPage() {
     return () => clearInterval(interval);
   }, [calls]);
 
-  // Feature 18: Multi-unit dispatch
-  const [multiSelectUnits, setMultiSelectUnits] = useState<string[]>([]);
-  const handleMultiUnitDispatch = useCallback(async (callId: string, unitIds: string[]) => {
-    if (unitIds.length === 0) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/dispatch`, {
-        method: 'POST', body: JSON.stringify({ unit_ids: unitIds.map(Number) }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
-      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      setMultiSelectUnits([]);
-      addToast(`${unitIds.length} units dispatched`, 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Failed to dispatch units', 'error');
-    }
-  }, [addToast]);
-
-  // Feature 19: Call transfer handler
-  const handleTransferCall = useCallback(async (callId: string, fromUnitId: string, toUnitId: string) => {
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${callId}/transfer`, {
-        method: 'POST', body: JSON.stringify({ from_unit_id: fromUnitId, to_unit_id: toUnitId }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === callId ? updatedCall : c));
-      setSelectedCall(prev => prev?.id === callId ? updatedCall : prev);
-      const unitsRes = await apiFetch<any[]>('/dispatch/units');
-      setUnits((Array.isArray(unitsRes) ? unitsRes : []).map(mapDbUnit));
-      addToast('Call transferred', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Transfer failed', 'error');
-    }
-  }, [addToast]);
-
-  // Feature 20: Broadcast note handler
-  const [broadcastNoteText, setBroadcastNoteText] = useState('');
-  const [isBroadcasting, setIsBroadcasting] = useState(false);
-  const handleBroadcastNote = useCallback(async () => {
-    if (!selectedCall || !broadcastNoteText.trim() || isBroadcasting) return;
-    setIsBroadcasting(true);
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/broadcast-note`, {
-        method: 'POST', body: JSON.stringify({ message: broadcastNoteText.trim() }),
-      });
-      const updatedCall = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
-      setBroadcastNoteText('');
-      addToast('Note broadcast to all units', 'success');
-    } catch (err: any) {
-      addToast(err?.message || 'Broadcast failed', 'error');
-    } finally {
-      setIsBroadcasting(false);
-    }
-  }, [selectedCall, broadcastNoteText, addToast, isBroadcasting]);
-
   // ── Dispatch alarm interval — check overdue calls every 5s ──
   const alarmPlayedRef = useRef<Set<string>>(new Set());
   useEffect(() => {
@@ -2322,49 +1821,6 @@ export default function DispatchPage() {
     return () => clearInterval(interval);
   }, [calls]);
 
-  // ── Timeline CRUD ─────────────────────────────────────────
-  const handleEditTimeline = async (entryId: string) => {
-    if (!selectedCall || !editTimelineText.trim()) return;
-    try {
-      await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/timeline/${entryId}`, {
-        method: 'PUT',
-        body: JSON.stringify({ details: editTimelineText.trim() }),
-      });
-      setActivityEntries((prev) => prev.map((e) => e.id === entryId ? { ...e, details: editTimelineText.trim() } : e));
-      setEditingTimelineId(null);
-      setEditTimelineText('');
-    } catch (err) {
-      console.error('Failed to edit timeline entry:', err);
-      addToast('Failed to edit timeline entry', 'error');
-    }
-  };
-
-  const handleDeleteTimeline = async (entryId: string) => {
-    if (!selectedCall) return;
-    try {
-      await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/timeline/${entryId}`, { method: 'DELETE' });
-      setActivityEntries((prev) => prev.filter((e) => String(e.id) !== String(entryId)));
-    } catch (err) {
-      console.error('Failed to delete timeline entry:', err);
-      addToast('Failed to delete timeline entry', 'error');
-    }
-  };
-
-  const handleAddTimeline = async () => {
-    if (!selectedCall || !newTimelineText.trim()) return;
-    try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/timeline`, {
-        method: 'POST',
-        body: JSON.stringify({ action: 'note_added', details: newTimelineText.trim() }),
-      });
-      setActivityEntries((prev) => [result, ...prev]);
-      setNewTimelineText('');
-      setShowAddTimeline(false);
-    } catch (err) {
-      console.error('Failed to add timeline entry:', err);
-      addToast('Failed to add timeline entry', 'error');
-    }
-  };
 
   const tabCounts = useMemo(() => {
     const pending = calls.filter((c) => c.status === 'pending').length;
@@ -2372,6 +1828,8 @@ export default function DispatchPage() {
     const cleared = calls.filter((c) => ['cleared', 'closed', 'cancelled'].includes(c.status)).length;
     // ALL count: if user hides cleared calls, exclude them from the count to match the visible list
     const allCount = userPrefs?.dispatch_show_cleared ? calls.length : calls.length - cleared;
+    const myId = user?.id != null ? String(user.id) : null;
+    const mine = myId ? calls.filter((c) => String((c as any).dispatcher_id ?? (c as any).created_by ?? '') === myId).length : 0;
     return {
       all: allCount,
       pending,
@@ -2379,8 +1837,9 @@ export default function DispatchPage() {
       cleared,
       archived: archivedCalls.length,
       serve: calls.filter((c) => PSO_INCIDENT_TYPES.includes(c.incident_type)).length,
+      mine,
     };
-  }, [calls, archivedCalls, userPrefs?.dispatch_show_cleared]);
+  }, [calls, archivedCalls, userPrefs?.dispatch_show_cleared, user?.id]);
 
   if (isLoading) {
     return (
@@ -2512,21 +1971,28 @@ export default function DispatchPage() {
                     {(() => {
                       const endTime = ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
                       const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
-                      if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
-                      const mins = Math.floor(elapsed / 60000);
-                      return `${mins}m`;
+                      return formatCallDuration(elapsed);
                     })()}
                   </span>
                 </div>
                 {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
                   const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
                   if (diff <= 0 || !isFinite(diff)) return null;
-                  const mins = Math.floor(diff / 60000);
-                  const secs = Math.floor((diff % 60000) / 1000);
                   return (
                     <div className="flex items-center gap-1">
                       <span className="text-rmpg-400">Response:</span>
-                      <span className="text-gray-400 font-bold">{mins}m {secs}s</span>
+                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                    </div>
+                  );
+                })()}
+                {selectedCall.onscene_at && (() => {
+                  const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
+                  const diff = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.onscene_at).getTime();
+                  if (diff <= 0 || !isFinite(diff)) return null;
+                  return (
+                    <div className="flex items-center gap-1">
+                      <span className="text-rmpg-400">On-Scene:</span>
+                      <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
                     </div>
                   );
                 })()}
@@ -3346,6 +2812,7 @@ export default function DispatchPage() {
         <TabBar
           tabs={[
             { id: 'all', label: 'All', count: tabCounts.all },
+            { id: 'mine', label: 'Mine', count: tabCounts.mine },
             { id: 'pending', label: 'Pending', count: tabCounts.pending },
             { id: 'active', label: 'Active', count: tabCounts.active },
             { id: 'serve', label: 'Serve', count: tabCounts.serve },
@@ -3393,13 +2860,66 @@ export default function DispatchPage() {
                   }
                   return null;
                 })()}
-                {/* Feature 4: Unit availability counter */}
-                <span className="flex items-center gap-1 text-[#6b7280]">
+                {/* Feature 4: Unit availability counter — extended breakdown */}
+                <span className="flex items-center gap-2 text-[#6b7280]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute/dispatched · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} out-of-service`}>
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? '#22c55e' : '#ef4444', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? '#22c55e80' : '#ef444480'}` }} />
-                  Units: <strong style={{ color: unitAvailability.available > 0 ? '#4ade80' : '#f87171' }}>
-                    {unitAvailability.available}/{unitAvailability.total}
-                  </strong> avail
+                  <span style={{ color: unitAvailability.available > 0 ? '#4ade80' : '#f87171' }}><strong>{unitAvailability.available}</strong> AVAIL</span>
+                  {unitAvailability.enroute > 0 && <span className="text-amber-400"><strong>{unitAvailability.enroute}</strong> ENR</span>}
+                  {unitAvailability.onscene > 0 && <span className="text-blue-300"><strong>{unitAvailability.onscene}</strong> OS</span>}
+                  {unitAvailability.oos > 0 && <span className="text-rmpg-500"><strong>{unitAvailability.oos}</strong> OOS</span>}
                 </span>
+                {/* Sort mode toggle — cycle priority → time → status */}
+                {(() => {
+                  const current = (userPrefs?.dispatch_sort || 'priority') as 'priority' | 'time' | 'status';
+                  const next: Record<string, 'priority' | 'time' | 'status'> = { priority: 'time', time: 'status', status: 'priority' };
+                  const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA' };
+                  return (
+                    <button
+                      type="button"
+                      title={`Sort: ${current.toUpperCase()} (click to cycle)`}
+                      onClick={async () => {
+                        try {
+                          await apiFetch('/user/preferences', {
+                            method: 'PUT',
+                            body: JSON.stringify({ dispatch_sort: next[current] }),
+                          });
+                          reloadPrefs();
+                        } catch { addToast('Failed to update sort', 'error'); }
+                      }}
+                      className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border border-rmpg-700/50 hover:brightness-125 transition-all"
+                      style={{ background: '#0d0d0d', color: '#d4a017' }}
+                    >
+                      SORT: {labels[current]}
+                    </button>
+                  );
+                })()}
+                {/* Activity sparkline — calls created per 5-min over last hour */}
+                {(() => {
+                  const buckets = new Array(12).fill(0);
+                  const now = Date.now();
+                  calls.forEach(c => {
+                    if (!c.created_at) return;
+                    const t = new Date(c.created_at).getTime();
+                    const ageMin = (now - t) / 60000;
+                    if (ageMin < 0 || ageMin > 60) return;
+                    const idx = Math.min(11, Math.floor(ageMin / 5));
+                    buckets[11 - idx]++;
+                  });
+                  const max = Math.max(1, ...buckets);
+                  const total = buckets.reduce((a, b) => a + b, 0);
+                  return (
+                    <span className="flex items-center gap-1 text-rmpg-500" title={`Calls created per 5-min bucket over last hour (total: ${total})`}>
+                      <span className="text-[8px] text-rmpg-600">1HR</span>
+                      <svg width="60" height="14" viewBox="0 0 60 14" style={{ display: 'block' }}>
+                        {buckets.map((v, i) => {
+                          const h = Math.max(1, Math.round((v / max) * 12));
+                          return <rect key={i} x={i * 5} y={14 - h} width={4} height={h} fill={v > 0 ? '#d4a017' : '#2b2b2b'} />;
+                        })}
+                      </svg>
+                      <strong className="text-rmpg-300">{total}</strong>
+                    </span>
+                  );
+                })()}
                 <span className="text-rmpg-500 ml-auto">
                   {filteredCalls.length} calls
                 </span>
@@ -3407,6 +2927,70 @@ export default function DispatchPage() {
             );
           })()}
         </div>
+
+        {/* Operational Intelligence Strip — response times + shift throughput + priority filter */}
+        {(() => {
+          const todayCalls = calls.filter(c => {
+            if (!c.created_at) return false;
+            const d = new Date(c.created_at);
+            const now = new Date();
+            return d.toDateString() === now.toDateString();
+          });
+          const clearedToday = todayCalls.filter(c => ['cleared', 'closed', 'archived'].includes(c.status)).length;
+          // Avg response time (created → onscene) for calls with onscene_at today
+          const responseTimes = todayCalls
+            .filter(c => c.onscene_at && c.created_at)
+            .map(c => (new Date(c.onscene_at!).getTime() - new Date(c.created_at!).getTime()) / 60000)
+            .filter(m => m > 0 && m < 480);
+          const avgResponse = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
+          // Oldest pending call age
+          const pendingCalls = calls.filter(c => c.status === 'pending');
+          const oldestPending = pendingCalls.length > 0
+            ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => new Date(c.created_at || 0).getTime()))) / 60000)
+            : null;
+
+          return (
+            <div className="px-3 py-1 border-b border-[#2b2b2b] flex items-center gap-3 flex-wrap text-[9px] font-mono flex-shrink-0" style={{ background: '#080808' }}>
+              {/* Shift throughput */}
+              <span className="text-rmpg-400 flex items-center gap-1">
+                <span className="text-[8px] text-rmpg-600">TODAY</span>
+                <strong className="text-white">{todayCalls.length}</strong> calls
+                <span className="text-rmpg-600">·</span>
+                <strong className="text-green-400">{clearedToday}</strong> cleared
+              </span>
+              {/* Avg response */}
+              {avgResponse !== null && (
+                <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${avgResponse <= 8 ? 'text-green-400 border-green-700/40 bg-green-900/20' : avgResponse <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/20' : 'text-red-400 border-red-700/40 bg-red-900/20'}`}>
+                  AVG RESPONSE: <strong>{avgResponse}m</strong>
+                </span>
+              )}
+              {/* Oldest pending */}
+              {oldestPending !== null && oldestPending > 0 && (
+                <span className={`flex items-center gap-1 px-1.5 py-0.5 border ${oldestPending <= 5 ? 'text-rmpg-400 border-rmpg-700/40' : oldestPending <= 15 ? 'text-amber-400 border-amber-700/40 bg-amber-900/10 animate-pulse' : 'text-red-400 border-red-700/40 bg-red-900/20 animate-pulse'}`}>
+                  OLDEST WAIT: <strong>{oldestPending}m</strong>
+                </span>
+              )}
+              {/* Priority quick filters */}
+              <div className="ml-auto flex items-center gap-0.5">
+                <span className="text-[8px] text-rmpg-600 mr-1">PRIORITY</span>
+                {(['P1', 'P2', 'P3', 'P4'] as const).map(p => {
+                  const count = calls.filter(c => c.priority === p && !['cleared', 'closed', 'archived', 'cancelled'].includes(c.status)).length;
+                  const colors: Record<string, string> = {
+                    P1: 'bg-red-900/40 text-red-400 border-red-700/50',
+                    P2: 'bg-amber-900/40 text-amber-400 border-amber-700/50',
+                    P3: 'bg-gray-900/40 text-gray-400 border-gray-700/50',
+                    P4: 'bg-green-900/40 text-green-400 border-green-700/50',
+                  };
+                  return (
+                    <span key={p} className={`px-1.5 py-0.5 text-[8px] font-bold border ${colors[p]} ${count > 0 ? '' : 'opacity-30'}`}>
+                      {p}:{count}
+                    </span>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Feature 9: Call Type Statistics Bar */}
         {callTypeStats.length > 0 && (
@@ -3479,6 +3063,7 @@ export default function DispatchPage() {
                 stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
                 onQuickNote={handleQuickNote}
                 hasActiveWarrant={!!(call as any).has_active_warrant}
+                onTogglePin={handleTogglePin}
               />
             ))
           )}
@@ -3614,13 +3199,44 @@ export default function DispatchPage() {
                       <Clock style={{ width: 9, height: 9 }} /> On scene: {onSceneElapsed}
                     </span>
                   )}
+                  {/* Total elapsed timer (since call creation) */}
+                  {selectedCall.created_at && !['cleared', 'closed', 'archived', 'cancelled'].includes(selectedCall.status) && (
+                    <span className={`${onSceneElapsed ? '' : 'ml-auto'} flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap tabular-nums ${
+                      (() => {
+                        const mins = Math.round((Date.now() - new Date(selectedCall.created_at).getTime()) / 60000);
+                        if (mins > 60) return 'text-red-400 bg-red-900/20 border border-red-700/30';
+                        if (mins > 30) return 'text-amber-400 bg-amber-900/20 border border-amber-700/30';
+                        return 'text-rmpg-400 bg-rmpg-900/20 border border-rmpg-700/30';
+                      })()
+                    }`} title="Total call duration">
+                      <Clock style={{ width: 9, height: 9 }} />
+                      {(() => {
+                        const mins = Math.round((Date.now() - new Date(selectedCall.created_at).getTime()) / 60000);
+                        return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
+                      })()}
+                    </span>
+                  )}
                 </div>
                 {/* Row 2: Action buttons — separate row to prevent cramping */}
                 <div className="flex items-center gap-1.5 px-2 py-1 border-b border-[#2b2b2b] overflow-x-auto whitespace-nowrap scrollbar-dark" style={{ background: '#050505' }}>
+                  {isEditing ? (
+                    // While editing, the in-form values aren't yet on selectedCall,
+                    // so a print right now would generate a PDF missing whatever
+                    // the dispatcher just typed. Block printing until SAVE so
+                    // operators get a clear cue rather than a silently-incomplete PDF.
+                    <button
+                      type="button"
+                      disabled
+                      className="toolbar-btn opacity-50 cursor-not-allowed"
+                      title="Save your edits before printing — the PDF reads from the saved record, not the in-progress form"
+                    >
+                      <Printer style={{ width: 10, height: 10 }} /> Print (save first)
+                    </button>
+                  ) : (
                     <PrintRecordButton
                       recordType="call"
                       recordData={{
-                        ...selectedCall,
+                        ...applyCallPdfAutofill(selectedCall),
                         // Enrich with unit detail table for PDF
                         assigned_units_detail: (selectedCall?.assigned_units || []).map((uid: string) => {
                           const u = units.find(unit => String(unit.id) === String(uid));
@@ -3672,6 +3288,7 @@ export default function DispatchPage() {
                       entityId={selectedCall?.id}
                       label="Print"
                     />
+                  )}
                     {/* Edit toggle */}
                     {!isEditing && (
                       <button type="button" onClick={startEditing} className="toolbar-btn" title="Edit call details">
@@ -3891,13 +3508,7 @@ export default function DispatchPage() {
                       {(() => {
                         const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || (selectedCall as any).closed_at) : ['cleared', 'closed', 'cancelled'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
                         const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
-                        if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
-                        const totalSec = Math.floor(elapsed / 1000);
-                        const hrs = Math.floor(totalSec / 3600);
-                        const mins = Math.floor((totalSec % 3600) / 60);
-                        const secs = totalSec % 60;
-                        if (hrs > 0) return `${hrs}h ${mins}m`;
-                        return `${mins}m ${secs}s`;
+                        return formatCallDuration(elapsed);
                       })()}
                     </span>
                   </div>
@@ -3905,13 +3516,24 @@ export default function DispatchPage() {
                   {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
                     const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
                     if (diff <= 0 || !isFinite(diff)) return null;
-                    const mins = Math.floor(diff / 60000);
-                    const secs = Math.floor((diff % 60000) / 1000);
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
                         <Navigation style={{ width: 10, height: 10 }} className="text-gray-500" />
                         <span className="text-rmpg-400">Response:</span>
-                        <span className="text-gray-400 font-bold">{mins}m {secs}s</span>
+                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
+                      </div>
+                    );
+                  })()}
+                  {/* On-scene time — onscene to cleared (or live if still on scene) */}
+                  {selectedCall.onscene_at && (() => {
+                    const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
+                    const diff = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.onscene_at).getTime();
+                    if (diff <= 0 || !isFinite(diff)) return null;
+                    return (
+                      <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
+                        <Clock style={{ width: 10, height: 10 }} className="text-gray-500" />
+                        <span className="text-rmpg-400">On-Scene:</span>
+                        <span className="text-gray-400 font-bold">{formatCallDuration(diff)}</span>
                       </div>
                     );
                   })()}
@@ -3943,8 +3565,8 @@ export default function DispatchPage() {
 
               {/* Detail Tabs */}
               <div className="flex border-b border-[#2b2b2b] flex-shrink-0" style={{ background: '#050505' }}>
-                {(['info', 'persons', 'timeline', 'notes', 'attachments', 'flags'] as const).map(tab => {
-                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags' };
+                {(['info', 'persons', 'timeline', 'notes', 'attachments', 'flags', 'audit'] as const).map(tab => {
+                  const labels: Record<string, string> = { info: 'Info', persons: 'Persons / Vehicles', timeline: 'Timeline', notes: 'Notes', attachments: 'Files', flags: 'Flags', audit: 'Audit' };
                   const icons: Record<string, React.ReactNode> = {
                     info: <FileText style={{ width: 9, height: 9 }} />,
                     persons: <User style={{ width: 9, height: 9 }} />,
@@ -3952,11 +3574,13 @@ export default function DispatchPage() {
                     notes: <MessageSquare style={{ width: 9, height: 9 }} />,
                     attachments: <FileText style={{ width: 9, height: 9 }} />,
                     flags: <Shield style={{ width: 9, height: 9 }} />,
+                    audit: <Shield style={{ width: 9, height: 9 }} />,
                   };
                   const counts: Record<string, number> = {
                     persons: callPersons.length + callVehicles.length,
                     timeline: activityEntries.length,
                     notes: (selectedCall?.notes || []).length,
+                    audit: auditTrail.length,
                   };
                   const count = counts[tab];
                   const isActive = detailTab === tab;
@@ -4281,7 +3905,7 @@ export default function DispatchPage() {
                                   callLat={selectedCall.latitude}
                                   callLng={selectedCall.longitude}
                                   assignedUnitIds={(selectedCall.assigned_units || []).map(String)}
-                                  onAssign={(unitId) => { handleAssignUnit(unitId); setShowAttachUnitDropdown(false); }}
+                                  onAssign={handleAssignUnit}
                                   onCreateUnit={() => { setShowAttachUnitDropdown(false); setShowCreateUnitModal(true); }}
                                   onClose={() => setShowAttachUnitDropdown(false)}
                                 />
@@ -4290,6 +3914,19 @@ export default function DispatchPage() {
                           </div>
                         )}
                       </div>
+                      {/* DI-2: Persistent closest-unit recommendation (server-authoritative GPS) */}
+                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                        <div className="mt-1 mb-1">
+                          <RecommendedUnitsInline
+                            callId={selectedCall.id}
+                            limit={3}
+                            onAssign={(callSign) => {
+                              const u = units.find((x) => x.call_sign === callSign);
+                              if (u) handleAssignUnit(u.id);
+                            }}
+                          />
+                        </div>
+                      )}
                       {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
                       {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
                         <div className="flex gap-1 mt-1 mb-1">
@@ -4300,6 +3937,14 @@ export default function DispatchPage() {
                             title="Auto-assign nearest available unit"
                           >
                             <Navigation style={{ width: 8, height: 8 }} /> Auto-assign
+                          </button>
+                          <button type="button"
+                            onClick={() => handleSuggestClosestUnit(selectedCall.id)}
+                            className="toolbar-btn text-[8px]"
+                            style={{ padding: '1px 4px' }}
+                            title="Show nearest available unit (without assigning)"
+                          >
+                            <Navigation style={{ width: 8, height: 8 }} /> Suggest
                           </button>
                           {/* Feature 19: Transfer button (only if a unit is assigned) */}
                           {(selectedCall.assigned_units || []).length > 0 && (
@@ -5577,6 +5222,28 @@ export default function DispatchPage() {
                     />
                   </div>
                 )}
+
+                {/* ── AUDIT TAB ─── chronological status changes from activity_log */}
+                {detailTab === 'audit' && selectedCall.id && (
+                  <div className="px-3 py-2">
+                    {auditTrailLoading ? (
+                      <div className="text-[11px] text-rmpg-500 font-mono">Loading audit trail…</div>
+                    ) : auditTrail.length === 0 ? (
+                      <div className="text-[11px] text-rmpg-500 font-mono">No audit entries for this call</div>
+                    ) : (
+                      <div className="space-y-1">
+                        {auditTrail.map((ev: any) => (
+                          <div key={ev.id} className="flex items-start gap-2 text-[10px] font-mono py-1 border-b border-[#1a1a1a]">
+                            <span className="text-rmpg-500 tabular-nums whitespace-nowrap">{(ev.created_at || '').slice(5, 16).replace('T', ' ')}</span>
+                            <span className="text-amber-300 font-bold uppercase whitespace-nowrap">{ev.action}</span>
+                            <span className="text-rmpg-300 truncate flex-1" title={ev.details || ''}>{ev.details || ''}</span>
+                            <span className="text-rmpg-400 whitespace-nowrap">{ev.user_name || ev.username || `#${ev.user_id ?? '?'}`}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Disposition Prompt — shown when Clear is clicked */}
@@ -5589,18 +5256,6 @@ export default function DispatchPage() {
                     onCancel={() => setDispositionPromptCallId(null)}
                   />
                 </div>
-              )}
-
-              {/* Mileage Prompt Modal — En Route / On Scene */}
-              {mileagePrompt && (
-                <MileagePromptModal
-                  mode={mileagePrompt.status === 'enroute' ? 'starting' : 'ending'}
-                  callNumber={mileagePrompt.callNumber}
-                  vehicleId={mileagePrompt.vehicleId}
-                  startingMileage={mileagePrompt.startingMileage}
-                  onSubmit={handleMileageSubmit}
-                  onCancel={() => setMileagePrompt(null)}
-                />
               )}
 
               {/* BOLO Alert Banner — matches active BOLOs */}
@@ -6104,14 +5759,17 @@ export default function DispatchPage() {
               case 'query_person':
                 setNcicInitialQuery({ type: 'person', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run name ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'query_vehicle':
                 setNcicInitialQuery({ type: 'vehicle', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run plate ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'query_warrant':
                 setNcicInitialQuery({ type: 'warrant', query: action.query });
                 setShowNcicPanel(true);
+                announceTarget(`run name ${action.query}`).catch(() => { /* announcer is best-effort */ });
                 break;
               case 'assign_unit':
               case 'set_status':
@@ -6125,19 +5783,30 @@ export default function DispatchPage() {
                 fetchData();
                 break;
               case 'unit_status_check':
-                // Info-only — output is shown in the command line
+                // Info-only — also speak it via the announcer
+                if (action.callSign) {
+                  announceTarget(`status of ${action.callSign}`).catch(() => { /* announcer best-effort */ });
+                } else {
+                  announceTarget('sitrep').catch(() => { /* announcer best-effort */ });
+                }
                 break;
               case 'query_bolo':
-                // Navigate to communications page (BOLO section)
                 navigate('/communications');
+                announceTarget(`BOLO ${action.query}`).catch(() => { /* announcer best-effort */ });
                 break;
               case 'new_fi':
                 // Navigate to field interviews page
                 navigate('/field-interviews');
                 break;
               case 'query_trespass':
-                // Navigate to trespass orders page
                 navigate('/trespass-orders');
+                announceTarget(`trespass ${action.query}`).catch(() => { /* announcer best-effort */ });
+                break;
+              case 'premise_history':
+                announceTarget(`area check ${action.address}`).catch(() => { /* announcer best-effort */ });
+                break;
+              case 'premise_alert':
+                announceTarget(`premise alert ${action.address}`).catch(() => { /* announcer best-effort */ });
                 break;
               case 'hold_call':
                 // Already executed via API in cadCommandParser. Refresh data.

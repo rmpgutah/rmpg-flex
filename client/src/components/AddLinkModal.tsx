@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { formatEnumValue } from '../utils/formatters';
 import { Link2, Search, X, Loader2, CheckCircle } from 'lucide-react';
 import FormModal from './FormModal';
 import { apiFetch } from '../hooks/useApi';
@@ -265,7 +266,7 @@ export default function AddLinkModal({ isOpen, onClose, incidentId, onLinked }: 
               <span className="text-xs font-mono text-white truncate block">{selected.label}</span>
               <span className="text-[9px] text-rmpg-400">
                 {TYPE_OPTIONS.find(t => t.value === linkedType)?.label} #{selected.id}
-                {selected.status && <> &middot; <span className={STATUS_COLORS[selected.status] || 'text-rmpg-400'}>{selected.status.toUpperCase()}</span></>}
+                {selected.status && <> &middot; <span className={STATUS_COLORS[selected.status] || 'text-rmpg-400'}>{formatEnumValue(selected.status)}</span></>}
               </span>
             </div>
             <button type="button" onClick={handleClearSelection} className="text-rmpg-500 hover:text-white p-0.5">

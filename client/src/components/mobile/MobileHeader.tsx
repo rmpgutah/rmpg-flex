@@ -4,7 +4,6 @@
 // Optimized for iPhone 17 Pro (393px width)
 // ============================================================
 
-import React from 'react';
 import { Menu } from 'lucide-react';
 import RmpgLogo from '../RmpgLogo';
 import PanicButton from '../PanicButton';
@@ -42,7 +41,7 @@ export default function MobileHeader({
 
   return (
     <div
-      className="flex items-center justify-between relative"
+      className="flex items-center justify-between relative safe-px"
       style={{
         height: 48,
         paddingLeft: 4,

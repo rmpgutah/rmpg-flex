@@ -14,6 +14,15 @@ server/dist/
 server/data/
 server/uploads/
 
+# ─── Intake Calibration Samples ──────────────────
+# Real client documents dropped for OCR calibration MUST NOT
+# enter the repo. The directory structure + README are tracked;
+# the PDFs/text/JSON inside are not.
+tmp/intake-samples/**/*.pdf
+tmp/intake-samples/**/*.txt
+tmp/intake-samples/**/*.json
+tmp/intake-samples/**/*.PDF
+
 # ─── Binary Installers (too large for git) ────────
 server/downloads/*.exe
 server/downloads/*.exe.blockmap
@@ -76,4 +85,4 @@ firebase-debug.log
 *.vcxproj.user
 RMPG Flare/
 
-.wrangler/
+client/RMPG-Dispatch-Guide-*.pdf

@@ -1,12 +1,12 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import { useEffect, useState, useCallback, useMemo } from 'react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area, ScatterChart, Scatter,
+  LineChart, Line, PieChart, Pie, Cell, AreaChart, Area,
 } from 'recharts';
 import {
-  BarChart3, Car, Fuel, Wrench, DollarSign, AlertTriangle, XCircle,
-  Gauge, CheckCircle, ShieldAlert, TrendingUp, Calendar, Activity,
-  Info, ChevronDown, ChevronUp, Search, X, Heart, Clock, User, Bell,
+  BarChart3, Car, Fuel, Wrench, DollarSign, AlertTriangle, XCircle, Gauge,
+  CheckCircle, ShieldAlert, TrendingUp, Calendar, Activity, Info, ChevronDown,
+  ChevronUp, Search, X, Heart, Clock, User, Bell,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';

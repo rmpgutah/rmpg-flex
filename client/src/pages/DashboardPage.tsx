@@ -1,38 +1,10 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Phone,
-  Users,
-  FileText,
-  Clock,
-  AlertTriangle,
-  Plus,
-  LogIn,
-  Activity,
-  Shield,
-  Loader2,
-  Radio,
-  MapPin,
-  Eye,
-  ArrowRight,
-  TrendingUp,
-  Gavel,
-  Briefcase,
-  Target,
-  CheckCircle,
-  XCircle,
-  Sun,
-  Cloud,
-  CloudRain,
-  CloudSnow,
-  CloudLightning,
-  CloudDrizzle,
-  CloudFog,
-  Snowflake,
-  Timer,
-  Navigation,
-  Mail,
-  Zap,
+  Phone, Users, FileText, Clock, AlertTriangle, Plus, Activity, Shield, Loader2,
+  Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
+  CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
+  CloudDrizzle, CloudFog, Snowflake, Timer, Navigation, Mail, Zap,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -324,20 +296,6 @@ function formatCountdown(totalSeconds: number): string {
 }
 
 // ─── Component ───────────────────────────────────────────
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStats>(DEFAULT_STATS);
@@ -653,6 +611,46 @@ export default function DashboardPage() {
           trend={stats.avg_response_time_minutes ? 'down' : 'flat'}
           onClick={() => navigate('/reports')}
         />
+      </div>
+
+      {/* Secondary Stats Row */}
+      <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2'}`} role="region" aria-label="Record statistics">
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/warrants')}>
+          <div className="flex items-center gap-2">
+            <Gavel className="w-4 h-4 text-red-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.active_warrants || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Active Warrants</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/serve')}>
+          <div className="flex items-center gap-2">
+            <Briefcase className="w-4 h-4 text-amber-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.pending_serve || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Pending Serve</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/cases')}>
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4 text-purple-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.open_cases || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Open Cases</div>
+            </div>
+          </div>
+        </div>
+        <div className="panel-beveled bg-surface-base p-2 cursor-pointer hover:bg-surface-raised transition-colors" onClick={() => navigate('/records')}>
+          <div className="flex items-center gap-2">
+            <Shield className="w-4 h-4 text-gray-400" />
+            <div>
+              <div className="text-lg font-bold font-mono tabular-nums text-white">{stats.total_persons || 0}</div>
+              <div className="text-[9px] text-rmpg-400 uppercase font-bold">Total Persons</div>
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Priority Breakdown — Clickable beveled panels with LED dots */}

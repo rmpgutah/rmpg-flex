@@ -1,7 +1,6 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
-import { logSafe } from '../utils/logSafe';
 import { auditLog } from '../utils/auditLogger';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { localNow } from '../utils/timeUtils';
@@ -9,6 +8,9 @@ import { universalWarrantCheck, runUniversalWarrantScan } from '../utils/univers
 import { getUtahWarrantSyncStatus, isUtahApiBlocked, runWarrantWatchScan, searchUtahWarrantsLive, searchUtahWarrantsCache } from '../utils/utahWarrantScraper';
 import { getSourceMetrics, getHealthSummary } from '../utils/scraperMetrics';
 import { paramStr } from '../utils/reqHelpers';
+import { logSafe } from '../utils/logSafe';
+import { ensureWarrantReviewColumns, ensureWarrantIndexes } from '../utils/warrantHelpers';
+import { pollMultiStateLive, type LivePollCriteria } from '../utils/liveWarrantPoller';
 
 const router = Router();
 
@@ -19,6 +21,8 @@ router.use(authenticateToken);
 router.get('/', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureWarrantReviewColumns(db);
+    ensureWarrantIndexes(db);
     const {
       status,
       type,
@@ -89,12 +93,59 @@ router.get('/', (req: Request, res: Response) => {
       params.push(person_id);
     }
 
+    // ── Phase 1 list UI filters (additive, AND-combined) ──
+    // priority_min: only warrants with priority_score >= N
+    if (req.query.priority_min != null && req.query.priority_min !== '') {
+      const pMin = parseInt(String(req.query.priority_min), 10);
+      if (!Number.isNaN(pMin)) {
+        whereClause += ' AND w.priority_score >= ?';
+        params.push(pMin);
+      }
+    }
+    // since_days: only warrants issued (or created) within last N days
+    if (req.query.since_days != null && req.query.since_days !== '') {
+      const sDays = parseInt(String(req.query.since_days), 10);
+      if (!Number.isNaN(sDays)) {
+        whereClause += " AND julianday('now') - julianday(COALESCE(w.issue_date, w.created_at)) <= ?";
+        params.push(sDays);
+      }
+    }
+    // matches_person=1: only warrants with a linked subject person
+    if (req.query.matches_person === '1') {
+      whereClause += ' AND w.subject_person_id IS NOT NULL';
+    }
+    // state=UT: match source prefix like 'ut_%' (e.g. ut_warrants)
+    if (typeof req.query.state === 'string' && req.query.state.length > 0) {
+      whereClause += ' AND lower(w.source) LIKE ?';
+      params.push(`${req.query.state.toLowerCase()}_%`);
+    }
+    // state_prefix: literal source prefix match
+    if (typeof req.query.state_prefix === 'string' && req.query.state_prefix.length > 0) {
+      whereClause += ' AND w.source LIKE ?';
+      params.push(`${req.query.state_prefix}%`);
+    }
+
     // Archive filter
-    if (archived === 'true') {
+    if (req.query.include_archived === '1') {
+      // no-op — include archived
+    } else if (archived === 'true') {
       whereClause += ' AND w.archived_at IS NOT NULL';
     } else if (archived !== 'all') {
       whereClause += ' AND w.archived_at IS NULL';
     }
+
+    // Sort: priority | age | freshness | alpha | (default: created_at DESC for back-compat)
+    const sortParam = typeof req.query.sort === 'string' ? req.query.sort : null;
+    const orderDir = req.query.order === 'asc' ? 'ASC' : 'DESC';
+    const sortMap: Record<string, string> = {
+      priority: 'w.priority_score',
+      age: "julianday('now') - julianday(COALESCE(w.issue_date, w.created_at))",
+      freshness: "julianday('now') - julianday(COALESCE(w.last_scraped_at, w.updated_at))",
+      alpha: 'w.warrant_number',
+    };
+    const orderBy = sortParam && sortMap[sortParam]
+      ? `${sortMap[sortParam]} ${orderDir}`
+      : 'w.created_at DESC';
 
     const pageNum = Math.max(1, parseInt(page as string, 10) || 1);
     const perPageNum = Math.min(100000, Math.max(1, (parseInt(per_page as string, 10)) || 100000));
@@ -113,12 +164,15 @@ router.get('/', (req: Request, res: Response) => {
         p.last_name as subject_last_name,
         (p.first_name || ' ' || p.last_name) as subject_name,
         u.full_name as entered_by_name,
-        (SELECT COUNT(*) FROM warrant_service_attempts WHERE warrant_id = w.id) as service_attempt_count
+        (SELECT COUNT(*) FROM warrant_service_attempts WHERE warrant_id = w.id) as service_attempt_count,
+        CAST(julianday('now') - julianday(COALESCE(w.issue_date, w.created_at)) AS INTEGER) AS age_days,
+        CAST(julianday('now') - julianday(COALESCE(w.last_scraped_at, w.updated_at)) AS INTEGER) AS freshness_days,
+        CASE WHEN w.subject_person_id IS NOT NULL THEN 1 ELSE 0 END AS matches_person
       FROM warrants w
       LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id
       ${whereClause}
-      ORDER BY w.created_at DESC
+      ORDER BY ${orderBy}
       LIMIT ? OFFSET ?
     `).all(...params, perPageNum, offset);
 
@@ -1165,10 +1219,75 @@ router.put('/scrapers/:source_key', requireRole('admin', 'manager'), (req: Reque
   }
 });
 
+// ── Phase 1 bulk endpoints ─────────────────────────────────
+// Placed BEFORE /:id so the literal paths don't collide with the
+// greedy parameterized route.
+
+// POST /api/warrants/bulk-archive — archive up to 500 warrants by id
+router.post('/bulk-archive', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    ensureWarrantReviewColumns(db);
+    const ids = (Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [])
+      .map((x: any) => Number(x))
+      .filter((n: number) => Number.isInteger(n) && n > 0);
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'warrant_ids must be a non-empty array of integers', code: 'WARRANT_IDS_REQUIRED' });
+      return;
+    }
+    if (ids.length > 500) {
+      res.status(400).json({ error: 'Bulk operations limited to 500 warrants per request', code: 'BULK_LIMIT_EXCEEDED' });
+      return;
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    const now = localNow();
+    const userId = req.user!.userId;
+    const result = db
+      .prepare(`UPDATE warrants SET archived_at = ?, archived_by = ? WHERE id IN (${placeholders}) AND archived_at IS NULL`)
+      .run(now, userId, ...ids);
+    auditLog(req, 'warrant_updated', 'warrant', 0, `Bulk archived ${result.changes} of ${ids.length} warrants`);
+    res.json({ archived: result.changes, skipped: ids.length - result.changes });
+  } catch (err: any) {
+    console.error('[warrants] bulk-archive error:', err?.message);
+    res.status(500).json({ error: 'Bulk archive failed', code: 'BULK_ARCHIVE_ERROR' });
+  }
+});
+
+// POST /api/warrants/bulk-review — mark up to 500 warrants reviewed by current user
+router.post('/bulk-review', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    ensureWarrantReviewColumns(db);
+    const ids = (Array.isArray(req.body?.warrant_ids) ? req.body.warrant_ids : [])
+      .map((x: any) => Number(x))
+      .filter((n: number) => Number.isInteger(n) && n > 0);
+    if (ids.length === 0) {
+      res.status(400).json({ error: 'warrant_ids must be a non-empty array of integers', code: 'WARRANT_IDS_REQUIRED' });
+      return;
+    }
+    if (ids.length > 500) {
+      res.status(400).json({ error: 'Bulk operations limited to 500 warrants per request', code: 'BULK_LIMIT_EXCEEDED' });
+      return;
+    }
+    const placeholders = ids.map(() => '?').join(',');
+    const now = localNow();
+    const userId = req.user!.userId;
+    const result = db
+      .prepare(`UPDATE warrants SET reviewed_at = ?, reviewed_by = ? WHERE id IN (${placeholders})`)
+      .run(now, userId, ...ids);
+    auditLog(req, 'warrant_updated', 'warrant', 0, `Bulk marked ${result.changes} warrants as reviewed`);
+    res.json({ reviewed: result.changes });
+  } catch (err: any) {
+    console.error('[warrants] bulk-review error:', err?.message);
+    res.status(500).json({ error: 'Bulk review failed', code: 'BULK_REVIEW_ERROR' });
+  }
+});
+
 // GET /api/warrants/:id - Get single warrant with details
 router.get('/:id', (req: Request, res: Response) => {
   try {
     const db = getDb();
+    ensureWarrantReviewColumns(db);
 
     const warrant = db.prepare(`
       SELECT w.*,
@@ -1183,11 +1302,16 @@ router.get('/:id', (req: Request, res: Response) => {
         p.eye_color as subject_eye_color,
         p.address as subject_address,
         p.photo_url as subject_photo_url,
+        p.alias_nickname as subject_aliases,
+        p.scars_marks_tattoos as subject_scars_marks_tattoos,
+        p.distinguishing_features as subject_distinguishing_features,
         (p.first_name || ' ' || p.last_name) as subject_name,
+        s.short_title as statute_text,
         u_entered.full_name as entered_by_name,
         u_served.full_name as served_by_name
       FROM warrants w
       LEFT JOIN persons p ON w.subject_person_id = p.id
+      LEFT JOIN utah_statutes s ON s.id = w.statute_id
       LEFT JOIN users u_entered ON w.entered_by = u_entered.id
       LEFT JOIN users u_served ON w.served_by = u_served.id
       WHERE w.id = ?
@@ -1205,13 +1329,107 @@ router.get('/:id', (req: Request, res: Response) => {
       LEFT JOIN users u ON al.user_id = u.id
       WHERE al.entity_type = 'warrant' AND al.entity_id = ?
       ORDER BY al.created_at DESC
-    
+
       LIMIT 1000
     `).all(warrant.id);
+
+    // Phase 1 detail joins: RMPG encounters, known associates, known vehicles.
+    // Each block is guarded — supplemental tables may not exist on fresh schemas.
+    const rmpg_encounters: any[] = [];
+    const known_associates: any[] = [];
+    const known_vehicles: any[] = [];
+
+    if (warrant.subject_person_id) {
+      // calls_for_service encounters via call_persons
+      try {
+        const callRows = db.prepare(`
+          SELECT c.created_at AS date, c.call_number AS context, pr.name AS property
+          FROM call_persons cp
+          JOIN calls_for_service c ON c.id = cp.call_id
+          LEFT JOIN properties pr ON pr.id = c.property_id
+          WHERE cp.person_id = ?
+          ORDER BY c.created_at DESC
+          LIMIT 20
+        `).all(warrant.subject_person_id);
+        rmpg_encounters.push(...callRows);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+      // incidents via incident_persons
+      try {
+        const incRows = db.prepare(`
+          SELECT i.created_at AS date, i.incident_number AS context, NULL AS property
+          FROM incident_persons ip
+          JOIN incidents i ON i.id = ip.incident_id
+          WHERE ip.person_id = ?
+          ORDER BY i.created_at DESC
+          LIMIT 20
+        `).all(warrant.subject_person_id);
+        rmpg_encounters.push(...incRows);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+      // field interviews
+      try {
+        const fiRows = db.prepare(`
+          SELECT created_at AS date, fi_number AS context, NULL AS property
+          FROM field_interviews
+          WHERE person_id = ?
+          ORDER BY created_at DESC
+          LIMIT 20
+        `).all(warrant.subject_person_id);
+        rmpg_encounters.push(...fiRows);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+      // Sort combined encounters by date DESC, cap at 20
+      rmpg_encounters.sort((a: any, b: any) => String(b.date || '').localeCompare(String(a.date || '')));
+      rmpg_encounters.splice(20);
+
+      try {
+        const a = db.prepare(`
+          SELECT p.first_name || ' ' || p.last_name AS name,
+                 pa.relationship_type AS relationship
+          FROM person_associates pa
+          JOIN persons p ON p.id = pa.associate_id
+          WHERE pa.person_id = ?
+          LIMIT 10
+        `).all(warrant.subject_person_id);
+        known_associates.push(...a);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+
+      try {
+        const v = db.prepare(`
+          SELECT plate_number AS plate,
+                 (COALESCE(year,'') || ' ' || COALESCE(make,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(color,'')) AS description
+          FROM vehicles_records
+          WHERE owner_person_id = ?
+          LIMIT 10
+        `).all(warrant.subject_person_id);
+        known_vehicles.push(...v);
+      } catch (e: any) {
+        if (!/no such (table|column)/i.test(e?.message || '')) {
+          console.warn('[warrants:detail]', e?.message);
+        }
+      }
+    }
 
     res.json({
       ...warrant,
       activity,
+      rmpg_encounters,
+      known_associates,
+      known_vehicles,
     });
   } catch (error: any) {
     console.error('Get warrant error:', error);
@@ -2094,13 +2312,18 @@ router.post('/search-all', (req: Request, res: Response) => {
 
       if (firstName) { scrapedWhere += ' AND LOWER(first_name) LIKE LOWER(?)'; scrapedParams.push(`%${firstName}%`); }
       if (lastName) { scrapedWhere += ' AND LOWER(last_name) LIKE LOWER(?)'; scrapedParams.push(`%${lastName}%`); }
-      if (chargeKeyword) { scrapedWhere += ' AND LOWER(charges) LIKE LOWER(?)'; scrapedParams.push(`%${chargeKeyword}%`); }
+      // Audit 2026-04-24: column is `charge_description`, not `charges`;
+      // `scraped_warrants` has no `scraped_at` — use `last_seen_at` (updated on
+      // every scraper refresh). Every POST /api/warrants/search-all threw
+      // SQLITE_ERROR: the `ORDER BY scraped_at` clause fired on every call;
+      // the `LOWER(charges)` clause fired whenever a charge keyword was passed.
+      if (chargeKeyword) { scrapedWhere += ' AND LOWER(charge_description) LIKE LOWER(?)'; scrapedParams.push(`%${chargeKeyword}%`); }
       if (offenseLevel) { scrapedWhere += ' AND LOWER(offense_level) = LOWER(?)'; scrapedParams.push(offenseLevel); }
 
       const scrapedWarrants = db.prepare(`
         SELECT * FROM scraped_warrants
         ${scrapedWhere}
-        ORDER BY scraped_at DESC
+        ORDER BY last_seen_at DESC
         LIMIT 500
       `).all(...scrapedParams) as any[];
       sources.push('scraped');
@@ -2473,7 +2696,15 @@ router.post('/national-search', async (req: Request, res: Response) => {
           WHERE ${manualConditions.join(' AND ')}
           LIMIT 100
         `).all(...manualParams) as any[];
-      } catch (e) { /* warrants table may not have these columns */ }
+      } catch (e: any) {
+        // The legacy comment said "warrants table may not have these columns"
+        // but swallowing all errors hid genuine query bugs. Distinguish:
+        // missing-column = expected pre-migration; everything else = log warn.
+        const msg = e?.message || '';
+        if (!/no such column/i.test(msg)) {
+          console.warn('[Warrants] manual-search query error (non-blocking):', msg);
+        }
+      }
     }
 
     // ── Combine all results ──
@@ -2509,6 +2740,54 @@ router.post('/national-search', async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('National search error:', error);
     res.status(500).json({ error: 'Failed to search national warrants', code: 'NATIONAL_SEARCH_ERROR' });
+  }
+});
+
+// ════════════════════════════════════════════════════════════
+// POST /api/warrants/live-poll
+// ────────────────────────────────────────────────────────────
+// Unified multi-state live poll — queries Utah API, FBI API, and the
+// local 7k+ scraped_warrants cache in parallel, then scores each result
+// by name + DOB + age + sex against the supplied criteria.
+//
+// Request body:
+//   { first_name, last_name, dob?, sex?, age? }
+//
+// Response:
+//   {
+//     results: [{ source, match_score, match_tier, match_details, … }],
+//     sources: [{ source, status, raw_count, matched_count, error? }],
+//     total_ms
+//   }
+//
+// Score < 30 ('weak') is dropped server-side so dispatchers never see
+// surname-only collisions.  Tiers: strong ≥90, likely ≥60, potential ≥30.
+// ════════════════════════════════════════════════════════════
+router.post('/live-poll', async (req: Request, res: Response) => {
+  try {
+    const { first_name, last_name, dob, sex, age } = req.body ?? {};
+    if (typeof first_name !== 'string' || !first_name.trim()) {
+      res.status(400).json({ error: 'first_name is required', code: 'FIRST_NAME_REQUIRED' });
+      return;
+    }
+    if (typeof last_name !== 'string' || !last_name.trim()) {
+      res.status(400).json({ error: 'last_name is required', code: 'LAST_NAME_REQUIRED' });
+      return;
+    }
+
+    const criteria: LivePollCriteria = {
+      first_name: first_name.trim(),
+      last_name: last_name.trim(),
+      dob: typeof dob === 'string' && dob.trim() ? dob.trim() : null,
+      sex: typeof sex === 'string' && sex.trim() ? sex.trim() : null,
+      age: typeof age === 'number' && Number.isFinite(age) ? age : null,
+    };
+
+    const summary = await pollMultiStateLive(criteria);
+    res.json(summary);
+  } catch (err: any) {
+    console.error('Live poll error:', err);
+    res.status(500).json({ error: 'Live poll failed', code: 'LIVE_POLL_ERROR' });
   }
 });
 

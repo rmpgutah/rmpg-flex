@@ -5,12 +5,11 @@
 // evidence review, classification, and case linking.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import {
-  Camera, Video, Upload, Search, Loader2, Trash2, Edit2, Link2,
-  Filter, MapPin, Gauge, Clock, FileText, AlertTriangle,
-  ChevronLeft, ChevronRight, Plus, Grid, List, Film,
-  HardDrive, Maximize2, X, Zap, Car, Play,
+  Camera, Video, Upload, Search, Loader2, Trash2, Edit2, Link2, Filter, MapPin,
+  FileText, ChevronLeft, ChevronRight, Plus, Grid, List, Film, HardDrive,
+  Maximize2, X, Zap, Car, Play,
 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -92,20 +91,6 @@ function formatSize(bytes: number): string {
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 // ── Component ───────────────────────────────────────────────
 

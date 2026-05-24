@@ -5,8 +5,8 @@
 // statutes across all supported states (UT, CO, WY, ID, NV, AZ, NM).
 // ============================================================
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Search, Scale, Car, X, ChevronDown, ChevronUp, BookOpen } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Search, Scale, Car, X, BookOpen } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 
 export interface StatuteResult {

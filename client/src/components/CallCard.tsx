@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Clock, MapPin, Users, AlertTriangle, Phone, Radio, UserCheck, Globe, Layers, MessageSquare, ShieldAlert } from 'lucide-react';
+import { Clock, MapPin, Users, AlertTriangle, Phone, Radio, UserCheck, Globe, Layers, MessageSquare, ShieldAlert, Star } from 'lucide-react';
 import type { CallForService } from '../types';
 import StatusBadge from './StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
 import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
-import { getTimerState, isActiveStatus, type TimerSeverity } from '../utils/dispatchTimers';
+import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
 
 // Feature 15: Call Source Icons
@@ -70,11 +70,13 @@ interface CallCardProps {
   onQuickNote?: (callId: string, note: string) => void;
   /** Warrant indicator: true if any linked person has an active warrant */
   hasActiveWarrant?: boolean;
+  /** Toggle pinned-to-top flag */
+  onTogglePin?: (callId: string, currentlyPinned: boolean) => void;
 }
 
 const NON_DROPPABLE_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
 
-export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasActiveWarrant }: CallCardProps) {
+export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasActiveWarrant, onTogglePin }: CallCardProps) {
   const isEmergency = call.priority === 'P1';
   const [isDragOver, setIsDragOver] = useState(false);
   const timerRef = useRef<HTMLSpanElement>(null);
@@ -244,6 +246,21 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         <div className="flex items-center gap-2">
           {isEmergency && (
             <AlertTriangle className="w-4 h-4 text-red-500 animate-emergency-blink" />
+          )}
+          {onTogglePin && (
+            <button
+              type="button"
+              aria-label={call.pinned ? `Unpin call ${call.call_number}` : `Pin call ${call.call_number}`}
+              title={call.pinned ? 'Unpin (currently floats to top)' : 'Pin to top of list'}
+              onClick={(e) => { e.stopPropagation(); onTogglePin(call.id, !!call.pinned); }}
+              className="p-0.5 hover:brightness-125 transition-all"
+              style={{ background: 'transparent', border: 'none', cursor: 'pointer' }}
+            >
+              <Star
+                style={{ width: 12, height: 12 }}
+                className={call.pinned ? 'fill-amber-400 text-amber-400' : 'text-rmpg-600'}
+              />
+            </button>
           )}
           {/* 39: Call number with letter-spacing for CAD readability */}
           <span className="text-sm font-bold text-green-400 font-mono tabular-nums" style={{ letterSpacing: '0.04em' }}>{call.call_number}</span>

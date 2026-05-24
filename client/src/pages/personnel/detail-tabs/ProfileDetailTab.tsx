@@ -4,12 +4,7 @@
 //   Left column: Photo + Identity | Center: Employment | Right: Contact
 // ============================================================
 
-import React from 'react';
-import {
-  User, Phone, Mail, MapPin, Briefcase, Hash, AlertTriangle,
-  Heart, Droplet, FileText, Award, Calendar, Paperclip, Radio, Shield,
-  Car,
-} from 'lucide-react';
+import { User, Phone, Briefcase, AlertTriangle, Heart, Award, Paperclip, Car } from 'lucide-react';
 import type { Credential } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { calcDaysUntilExpiry } from '../utils/personnelFormatters';

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  MapPin, Clock, Navigation2, Gauge, Zap, AlertTriangle,
-  Car, Radio, RefreshCw, Loader2,
+  Navigation2, Gauge, Zap, AlertTriangle, Car, Radio, RefreshCw, Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 

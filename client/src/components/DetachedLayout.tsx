@@ -3,7 +3,7 @@
 // Minimal wrapper for secondary browser windows (no sidebar)
 // ============================================================
 
-import React, { type ReactNode } from 'react';
+import { type ReactNode } from 'react';
 import { Printer, X } from 'lucide-react';
 
 interface DetachedLayoutProps {

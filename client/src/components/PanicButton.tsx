@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { AlertTriangle, X, MapPin, Mic, MicOff } from 'lucide-react';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useAuth } from '../context/AuthContext';
@@ -174,8 +174,14 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       }
     };
 
-    // Only register hardware listeners on Android or Electron
-    if (isAndroid || isElectron) {
+    // Hardware-button panic trigger is **Android-only**. On desktop
+    // (Electron / Windows / Mac) any `AudioVolumeUp` keydown event —
+    // from a laptop volume key, a USB headset volume control, a radio
+    // PTT keycode, an external keypad media key, or even a stuck key —
+    // would race the 3s long-press timer and fire a phantom panic.
+    // Phantom alarms desensitize officers and waste responder time, so
+    // on desktop the panic button MUST be triggered manually only.
+    if (isAndroid) {
       document.addEventListener('keydown', handleKeyDown);
       document.addEventListener('keyup', handleKeyUp);
     }

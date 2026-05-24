@@ -4,7 +4,7 @@
 // tables, and trends. Uses /api/reports/statute-analytics.
 // ============================================================
 
-import React, { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { BarChart3, PieChart, TrendingUp, Search, RefreshCw, Loader2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';

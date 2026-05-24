@@ -1,15 +1,13 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
-  Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2,
-  Search, Reply, ReplyAll, Forward, Paperclip, X, ChevronLeft,
-  AlertTriangle, Download, Eye, Flag, MailOpen, Plus,
-  Folder, FileText, WifiOff, FolderInput, Bold, Italic, Link,
-  Settings2, ChevronDown, ChevronRight as ChevronRightIcon,
-  MessageSquare, CheckSquare, Square, CheckCircle, EyeOff,
-  FolderPlus, Edit3, Trash, PanelLeftClose, PanelLeftOpen, Image,
-  Clock, FileStack, Users, Printer, Bell, BellOff,
-  Link2, Unlink, CalendarClock, Filter, SlidersHorizontal,
-  ExternalLink, Shield, Hash, Upload,
+  Mail, Inbox, Send, Trash2, Archive, RefreshCw, Loader2, Search, Reply,
+  ReplyAll, Forward, Paperclip, X, ChevronLeft, AlertTriangle, Download, Eye, Flag,
+  MailOpen, Plus, Folder, FileText, WifiOff, FolderInput, Bold, Italic, Link,
+  Settings2, ChevronDown, ChevronRight as ChevronRightIcon, MessageSquare,
+  CheckSquare, Square, CheckCircle, EyeOff, FolderPlus, Edit3, Trash,
+  PanelLeftClose, PanelLeftOpen, Image, Clock, FileStack, Users, Printer, Bell,
+  BellOff, Link2, CalendarClock, SlidersHorizontal, Shield, Hash, Upload,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useWebSocket } from '../context/WebSocketContext';
@@ -20,6 +18,24 @@ import IconButton from '../components/IconButton';
 import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
+
+// Shared sanitize-html options for email HTML content
+const EMAIL_SANITIZE_OPTIONS: sanitizeHtml.IOptions = {
+  allowedTags: sanitizeHtml.defaults.allowedTags.concat([
+    'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
+    'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
+  ]),
+  allowedAttributes: {
+    a: ['href', 'name', 'target', 'rel'],
+    img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
+    '*': ['style', 'class']
+  },
+  allowedSchemes: ['http', 'https', 'mailto', 'tel'],
+  allowedSchemesByTag: {
+    img: ['http', 'https']
+  },
+  disallowedTagsMode: 'discard'
+};
 
 // ─── Well-known folder config ───
 const WELL_KNOWN_FOLDERS = ['Inbox', 'Drafts', 'Sent Items', 'Deleted Items', 'Junk Email', 'Archive'];
@@ -94,7 +110,7 @@ function SignatureEditor({ onClose }: { onClose: () => void }) {
         <span className="text-[10px] text-rmpg-400 font-semibold uppercase tracking-wider" style={{ letterSpacing: '0.1em' }}>Email Signature</span>
         <IconButton onClick={onClose} className="text-rmpg-500 hover:text-white" aria-label="Close" title="Close"><X className="w-3 h-3" /></IconButton>
       </div>
-      <textarea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
+      <RichTextArea value={signature} onChange={e => setSignature(e.target.value)} rows={4}
         className="input-dark w-full text-xs font-mono resize-y min-h-[36px]" placeholder="Your Name&#10;Title | Organization&#10;Phone: (555) 123-4567" />
       <div className="flex justify-end gap-1.5">
         <button type="button" onClick={onClose} className="btn-secondary text-[10px] px-2 py-0.5">Cancel</button>
@@ -664,22 +680,7 @@ const EmailBodyFrame = React.forwardRef<HTMLIFrameElement, { bodyHtml: string; o
     React.useEffect(() => {
       // Use a vetted sanitizer instead of regex stripping to avoid incomplete
       // multi-character sanitization bypasses.
-      const sanitized = sanitizeHtml(bodyHtml, {
-        allowedTags: sanitizeHtml.defaults.allowedTags.concat([
-          'img', 'table', 'thead', 'tbody', 'tfoot', 'tr', 'td', 'th',
-          'span', 'div', 'hr', 'br', 'blockquote', 'pre', 'code'
-        ]),
-        allowedAttributes: {
-          a: ['href', 'name', 'target', 'rel'],
-          img: ['src', 'srcset', 'alt', 'title', 'width', 'height'],
-          '*': ['style', 'class']
-        },
-        allowedSchemes: ['http', 'https', 'mailto', 'tel'],
-        allowedSchemesByTag: {
-          img: ['http', 'https']
-        },
-        disallowedTagsMode: 'discard'
-      });
+      const sanitized = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
       // Proxy all external images through our server
       const proxied = proxyEmailImages(sanitized);
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><base target="_blank" rel="noopener noreferrer"><style>
@@ -755,11 +756,12 @@ function printEmail(message: EmailMessage, bodyHtml?: string) {
   bodyDiv.className = 'body-content';
   if (bodyHtml) {
     // Use a sandboxed iframe approach: render HTML body inside an iframe for print
-    // This is the same HTML we already render from the email server in a sandboxed iframe
+    // Sanitize the HTML the same way EmailBodyFrame does before injecting into srcdoc
+    const cleanHtml = sanitizeHtml(bodyHtml, EMAIL_SANITIZE_OPTIONS);
     const iframe = doc.createElement('iframe');
     iframe.style.cssText = 'width:100%;border:none;min-height:200px;';
     iframe.sandbox.value = 'allow-same-origin';
-    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${bodyHtml}</body></html>`;
+    iframe.srcdoc = `<html><head><style>body{font-family:Segoe UI,Arial,sans-serif;font-size:12pt;color:#1a1a1a;margin:0;line-height:1.6;}a{color:#888888;}img{max-width:100%;height:auto;}table{border-collapse:collapse;max-width:100%;}td,th{padding:4px 8px;}blockquote{border-left:3px solid #ccc;margin:8px 0;padding:4px 12px;color:#666;}</style></head><body>${cleanHtml}</body></html>`;
     bodyDiv.appendChild(iframe);
   } else {
     const pre = doc.createElement('pre');
@@ -1223,7 +1225,7 @@ function ComposeModal({ mode, replyMessage, onClose, onSent }: ComposeModalProps
 
         {/* Body */}
         <div className="flex-1 px-4 overflow-y-auto scrollbar-thin scrollbar-thumb-[#2b2b2b] scrollbar-track-transparent">
-          <textarea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
+          <RichTextArea ref={textareaRef} value={body} onChange={e => setBody(e.target.value)} rows={12}
             className="w-full bg-transparent text-xs text-rmpg-200 resize-none outline-none placeholder:text-rmpg-600 leading-relaxed"
             placeholder="Write your message here...
 
@@ -1461,7 +1463,17 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
   if (!expanded) {
     return (
       <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
-        <div onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => { setExpanded(true); setTimeout(() => inputRef.current?.focus(), 50); }}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              setExpanded(true);
+              setTimeout(() => inputRef.current?.focus(), 50);
+            }
+          }}
           className="mx-4 my-3 flex items-center gap-2 px-4 py-2.5 border border-[#2b2b2b] rounded-sm cursor-text text-xs text-rmpg-500 hover:border-brand-500/40 hover:text-rmpg-300 transition-all hover:shadow-lg hover:shadow-brand-500/5">
           <Reply className="w-3.5 h-3.5 text-rmpg-600 group-hover:text-brand-400 transition-colors" />
           <span>Click here to reply...</span>
@@ -1473,7 +1485,7 @@ function InlineReply({ messageId, onSent, onError }: { messageId: string; onSent
   return (
     <div className="border-t border-[#2b2b2b] bg-[#0c0c0c]">
       <div className="mx-4 my-3 border border-[#2b2b2b] rounded-sm bg-[#141414] overflow-hidden focus-within:border-brand-500/40 transition-colors">
-        <textarea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
+        <RichTextArea ref={inputRef} value={body} onChange={e => setBody(e.target.value)}
           onKeyDown={e => { if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') { e.preventDefault(); handleSend(); } if (e.key === 'Escape') { setExpanded(false); setBody(''); } }}
           rows={4} className="w-full bg-transparent text-xs text-rmpg-200 p-3 resize-none focus:outline-none placeholder:text-rmpg-600 leading-relaxed"
           placeholder="Type your reply..." autoFocus />
@@ -1514,20 +1526,6 @@ function groupByConversation(messages: EmailMessage[]): ThreadGroup[] {
 // ============================================================
 
 interface MessagesResponse { messages: EmailMessage[]; hasMore: boolean; }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function EmailPage() {
   const { subscribe } = useWebSocket();
@@ -2435,7 +2433,18 @@ export default function EmailPage() {
                             )}
                           </div>
 
-                          <div className="flex-1 min-w-0" onClick={() => handleSelectMessage(msg)}>
+                          <div
+                            role="button"
+                            tabIndex={0}
+                            className="flex-1 min-w-0"
+                            onClick={() => handleSelectMessage(msg)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' || e.key === ' ') {
+                                e.preventDefault();
+                                handleSelectMessage(msg);
+                              }
+                            }}
+                          >
                             <div className="flex items-center gap-1.5 mb-0.5">
                               <span className={`text-[11px] truncate flex-1 ${msg.isRead ? 'text-rmpg-300' : 'text-white font-semibold'}`}>
                                 {msg.fromName || msg.fromAddress}

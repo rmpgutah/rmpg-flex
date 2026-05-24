@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import RichTextArea from '../components/RichTextArea';
 import {
   Plus,
   Search,
@@ -48,7 +49,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 import { usePersistedState } from '../hooks/usePersistedState';
-import { formatIncidentType, type PdfReportType } from '../utils/caseNumbers';
+import { formatIncidentType } from '../utils/caseNumbers';
 import { openIncidentWindow } from '../utils/windowManager';
 import ReportTypeSelector from '../components/ReportTypeSelector';
 import { downloadPdfReport, generatePdfReportBlobUrl } from '../utils/pdfGenerator';
@@ -63,7 +64,7 @@ import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
-import { humanizeStatus, humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
+import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
 
 // ============================================================
 // Backend -> Frontend mapping
@@ -1010,7 +1011,19 @@ export default function IncidentsPage() {
                     selectedIncident?.id === inc.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : ''
                   }`}
                 >
-                  <td className="font-bold text-white text-xs font-mono">{inc.incident_number}</td>
+                  <td className="font-bold text-white text-xs font-mono">
+                    <span className="cursor-pointer hover:text-green-400 transition-colors" title="Click to copy"
+                      onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(inc.incident_number || ''); }}>
+                      {inc.incident_number}
+                    </span>
+                    {/* Age indicator */}
+                    {inc.occurred_at && (() => {
+                      const days = Math.floor((Date.now() - new Date(inc.occurred_at).getTime()) / 86400000);
+                      if (days > 30) return <span className="ml-1 text-[7px] text-red-400 font-normal">{days}d</span>;
+                      if (days > 7) return <span className="ml-1 text-[7px] text-amber-400 font-normal">{days}d</span>;
+                      return null;
+                    })()}
+                  </td>
                   <td className="text-xs text-brand-400">
                     <span className="inline-flex items-center gap-1">
                       {(() => { const Icon = INCIDENT_TYPE_ICONS[inc.type] || FileText; return <Icon className="w-3 h-3 flex-shrink-0" />; })()}
@@ -1275,6 +1288,18 @@ export default function IncidentsPage() {
               const pdfData = await buildIncidentPdfData();
               pdfData._officerSignature = signature;
               await downloadPdfReport(reportType, pdfData);
+            }}
+            onMobilePrint={async (reportType) => {
+              try {
+                if (pdfBlobUrl) URL.revokeObjectURL(pdfBlobUrl);
+                const pdfData = await buildIncidentPdfData();
+                const blobUrl = await generatePdfReportBlobUrl(reportType, pdfData, { printTarget: 'mobile' });
+                setPdfBlobUrl(blobUrl);
+                setPdfViewerTitle(`${selectedIncident.incident_number} — ${reportType.replace(/_/g, ' ').toUpperCase()} (MOBILE)`);
+                setPdfViewerOpen(true);
+              } catch (err) {
+                console.error('[IncidentsPage] Mobile PDF preview failed:', err);
+              }
             }}
           />
         <button type="button"
@@ -1581,7 +1606,7 @@ export default function IncidentsPage() {
         <CollapsibleSection title="Narrative" icon={FileText} defaultOpen>
           {isEditing ? (
             <>
-              <textarea
+              <RichTextArea
                 ref={narrativeRef}
                 className="textarea-dark mt-1"
                 rows={8}
@@ -2374,7 +2399,7 @@ export default function IncidentsPage() {
               </div>
               <div>
                 <label className="block text-[10px] font-bold text-rmpg-400 uppercase tracking-wider mb-1">Notes</label>
-                <textarea
+                <RichTextArea
                   value={custodyNotes}
                   onChange={(e) => setCustodyNotes(e.target.value)}
                   placeholder="Optional notes..."
@@ -2446,7 +2471,7 @@ export default function IncidentsPage() {
                 <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Counts</label><input name="counts" type="number" min="1" defaultValue="1" className="input-dark w-full text-xs" /></div>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Weapon / Force Used</label><input name="weapon_force" className="input-dark w-full text-xs" placeholder="e.g., Handgun, Knife, Personal weapons" /></div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><textarea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><RichTextArea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
               <button type="button" onClick={() => setShowAddOffenseModal(false)} className="toolbar-btn">Cancel</button>
@@ -2532,7 +2557,7 @@ export default function IncidentsPage() {
                 <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Departed At</label><input name="departed_at" type="datetime-local" className="input-dark w-full text-xs" /></div>
               </div>
               <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Action Taken</label><input name="action_taken" className="input-dark w-full text-xs" placeholder="e.g., Perimeter security, witness interview" /></div>
-              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><textarea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
+              <div><label className="block text-[10px] font-bold text-rmpg-400 uppercase mb-1">Notes</label><RichTextArea name="notes" className="input-dark w-full text-xs" rows={2} /></div>
             </div>
             <div className="flex justify-end gap-2 p-3 border-t border-rmpg-600">
               <button type="button" onClick={() => setShowAddOfficerModal(false)} className="toolbar-btn">Cancel</button>

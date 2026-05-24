@@ -3,7 +3,7 @@
 // Full-page wrapper around the NcicQueryPanel in embedded mode.
 // ============================================================
 
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Terminal } from 'lucide-react';
 import PanelTitleBar from '../components/PanelTitleBar';

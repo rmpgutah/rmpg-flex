@@ -6,7 +6,7 @@
 // ============================================================
 
 import React, { useRef, useState, useCallback, useEffect } from 'react';
-import { Search, RefreshCw, ChevronDown, Inbox } from 'lucide-react';
+import { Search, RefreshCw, Inbox } from 'lucide-react';
 
 // ─── Types ────────────────────────────────────────────────────
 interface MobileCardListProps<T> {

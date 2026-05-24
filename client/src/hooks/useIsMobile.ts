@@ -3,7 +3,7 @@
 // Shared hooks for responsive layout and Android detection
 // ============================================================
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 
 // ─── Viewport-based mobile detection ─────────────────────────
 // Mirrors the CSS breakpoint at 768px used throughout the app.

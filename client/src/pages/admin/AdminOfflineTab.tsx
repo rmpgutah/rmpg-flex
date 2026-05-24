@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  WifiOff, Wifi, RefreshCw, Key, Clock, Users, Database,
-  AlertTriangle, Check, Loader2, Shield, Trash2,
+  WifiOff, Wifi, RefreshCw, Key, Clock, Database, AlertTriangle, Check, Loader2,
+  Shield,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useOfflineMode } from '../../hooks/useOfflineMode';
@@ -22,20 +22,6 @@ interface PinSecret {
   has_secret: boolean;
   created_at: string | null;
 }
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function AdminOfflineTab({ LoadingSpinner, error, setError }: AdminOfflineTabProps) {
   const {

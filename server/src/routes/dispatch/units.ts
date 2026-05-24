@@ -6,6 +6,7 @@ import { broadcastUnitUpdate } from '../../utils/websocket';
 import { localNow } from '../../utils/timeUtils';
 import { auditLog } from '../../utils/auditLogger';
 import { startWelfareWatch, clearWelfareWatch } from '../../utils/officerWelfare';
+import { paramStr } from '../../utils/reqHelpers';
 
 
 const router = Router();
@@ -315,6 +316,66 @@ router.put('/units/:id/status', validateParamIdMiddleware, requireRole('admin', 
   } catch (error: any) {
     console.error('[Units] status update error:', error?.message || 'Unknown error');
     res.status(500).json({ error: 'Failed to status update', code: 'UNITS_STATUS_UPDATE_ERROR' });
+  }
+});
+
+// ── DI-5: Per-unit audio mode (silent dispatch) ────────────────────
+// Three modes: audible (default), silent (no TTS, no chimes), vibrate
+// (visual + Web Vibration API only). Server stores authoritative value;
+// client mirrors to localStorage for zero-latency voice gating.
+
+const VALID_AUDIO_MODES = ['audible', 'silent', 'vibrate'] as const;
+type AudioMode = typeof VALID_AUDIO_MODES[number];
+
+// GET /api/dispatch/units/mine/audio-mode  — current user's unit audio mode
+router.get('/units/mine/audio-mode', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const unit = db.prepare('SELECT id, call_sign, audio_mode FROM units WHERE officer_id = ?').get(req.user!.userId) as any;
+    if (!unit) {
+      res.json({ unit_id: null, call_sign: null, audio_mode: 'audible' });
+      return;
+    }
+    res.json({ unit_id: unit.id, call_sign: unit.call_sign, audio_mode: unit.audio_mode || 'audible' });
+  } catch (err) {
+    console.error('[Units] mine/audio-mode error', err);
+    res.status(500).json({ error: 'Failed to fetch audio mode', code: 'AUDIO_MODE_GET_ERR' });
+  }
+});
+
+// PUT /api/dispatch/units/:id/audio-mode  — set audio mode
+router.put('/units/:id/audio-mode', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    // FIX (QA M5): Gotcha #21 — req.params.X is string|string[], use paramStr
+    const unitId = parseInt(paramStr(req.params.id), 10);
+    if (isNaN(unitId)) {
+      res.status(400).json({ error: 'Invalid unit ID', code: 'INVALID_UNIT_ID' });
+      return;
+    }
+    const mode = String(req.body?.audio_mode || '').toLowerCase() as AudioMode;
+    if (!VALID_AUDIO_MODES.includes(mode)) {
+      res.status(400).json({ error: `audio_mode must be one of ${VALID_AUDIO_MODES.join(', ')}`, code: 'INVALID_AUDIO_MODE' });
+      return;
+    }
+    const unit = db.prepare('SELECT id, officer_id, call_sign FROM units WHERE id = ?').get(unitId) as any;
+    if (!unit) {
+      res.status(404).json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' });
+      return;
+    }
+    // Officers may only change their own unit; supervisors+ may change any
+    const role = req.user!.role;
+    if (!['admin', 'manager', 'supervisor', 'dispatcher'].includes(role) && unit.officer_id !== req.user!.userId) {
+      res.status(403).json({ error: 'Officers may only change their own unit audio mode', code: 'FORBIDDEN_NOT_OWN_UNIT' });
+      return;
+    }
+    db.prepare('UPDATE units SET audio_mode = ?, updated_at = ? WHERE id = ?').run(mode, localNow(), unitId);
+    const updated = db.prepare('SELECT * FROM units WHERE id = ?').get(unitId);
+    if (updated) broadcastUnitUpdate({ action: 'unit_audio_mode_changed', unit: updated });
+    res.json({ success: true, unit_id: unitId, audio_mode: mode });
+  } catch (err) {
+    console.error('[Units] PUT audio-mode error', err);
+    res.status(500).json({ error: 'Failed to update audio mode', code: 'AUDIO_MODE_SET_ERR' });
   }
 });
 

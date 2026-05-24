@@ -8,6 +8,7 @@ import { sendCsv } from '../utils/csvExport';
 import { localNow } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { geocodeAddress } from '../utils/geocode';
+import { validateIncidentForNibrs } from '../utils/nibrsValidator';
 import { paramStr } from '../utils/reqHelpers';
 
 const router = Router();
@@ -392,7 +393,7 @@ router.post('/', async (req: Request, res: Response) => {
       occurred_date, occurred_time, end_date, end_time,
       weather_conditions, lighting_conditions,
       injuries, injury_description, damage_estimate, damage_description,
-      weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
+      weapons_involved, hazard_code, alcohol_involved, drugs_involved, domestic_violence,
       disposition, zone_beat, sector_id, zone_id, beat_id, responding_le_agency, le_case_number,
       client_id: requestClientId,
       // Sub-type fields
@@ -481,7 +482,7 @@ router.post('/', async (req: Request, res: Response) => {
         occurred_date, occurred_time, end_date, end_time,
         weather_conditions, lighting_conditions,
         injuries, injury_description, damage_estimate, damage_description,
-        weapons_involved, alcohol_involved, drugs_involved, domestic_violence,
+        weapons_involved, hazard_code, alcohol_involved, drugs_involved, domestic_violence,
         disposition, zone_beat, sector_id, zone_id, beat_id, responding_le_agency, le_case_number,
         statute_id, statute_citation, citation_fine, client_id,
         road_conditions, traffic_control, vehicle_1_info, vehicle_2_info, diagram_notes,
@@ -503,7 +504,7 @@ router.post('/', async (req: Request, res: Response) => {
         ?, ?, ?, ?,
         ?, ?,
         ?, ?, ?, ?,
-        ?, ?, ?, ?,
+        ?, ?, ?, ?, ?,
         ?, ?, ?, ?, ?, ?, ?,
         ?, ?, ?, ?,
         ?, ?, ?, ?, ?,
@@ -528,7 +529,7 @@ router.post('/', async (req: Request, res: Response) => {
       occurred_date || null, occurred_time || null, end_date || null, end_time || null,
       weather_conditions || null, lighting_conditions || null,
       injuries ?? 'none', injury_description || null, damage_estimate || null, damage_description || null,
-      weapons_involved || null,
+      weapons_involved || null, hazard_code || null,
       alcohol_involved ? 1 : 0, drugs_involved ? 1 : 0, domestic_violence ? 1 : 0,
       disposition || null, autoZoneBeat, autoSectionId, autoZoneId, autoBeatId,
       responding_le_agency || null, le_case_number || null,
@@ -644,6 +645,8 @@ router.put('/:id', async (req: Request, res: Response) => {
       injuries: v => v ?? null, injury_description: v => v ?? null,
       damage_estimate: v => v ?? null, damage_description: v => v ?? null,
       weapons_involved: v => v ?? null,
+      // F7: structured hazard code (HAZARD_CODE_OPTIONS in F2 enum module)
+      hazard_code: v => v ?? null,
       alcohol_involved: v => v ? 1 : 0, drugs_involved: v => v ? 1 : 0,
       domestic_violence: v => v ? 1 : 0,
       disposition: v => v ?? null, zone_beat: v => v ?? null,
@@ -828,6 +831,23 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/incidents/:id/nibrs-validate — Preview NIBRS validation (no state change)
+// Lets the incident edit UI show "what would fail submit" inline. Same logic
+// the PUT /submit gate runs; just returns the report without enforcing it.
+router.get('/:id/nibrs-validate', (req: Request, res: Response) => {
+  try {
+    const id = parseInt(String(req.params.id), 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      res.status(400).json({ error: 'Invalid incident id', code: 'INVALID_ID' });
+      return;
+    }
+    res.json(validateIncidentForNibrs(id));
+  } catch (err) {
+    console.error('[incidents] nibrs-validate error', err);
+    res.status(500).json({ error: 'Failed to validate', code: 'NIBRS_VALIDATE_ERR' });
+  }
+});
+
 // PUT /api/incidents/:id/submit - Submit for review
 router.put('/:id/submit', (req: Request, res: Response) => {
   try {
@@ -849,6 +869,24 @@ router.put('/:id/submit', (req: Request, res: Response) => {
     if (!incident.narrative || incident.narrative.trim().length === 0) {
       res.status(400).json({ error: 'Narrative is required before submitting', code: 'NARRATIVE_IS_REQUIRED_BEFORE' });
       return;
+    }
+
+    // NB-2: NIBRS validation gate. Errors block submit; warnings pass through
+    // and are returned in the response for the UI to surface. Admin can bypass
+    // with ?force=1 (logged as ADMIN_OVERRIDE).
+    const validation = validateIncidentForNibrs(incident.id);
+    const force = req.query.force === '1' && req.user?.role === 'admin';
+    if (!validation.valid && !force) {
+      res.status(422).json({
+        error: 'Incident fails NIBRS validation',
+        code: 'NIBRS_VALIDATION_FAILED',
+        validation,
+      });
+      return;
+    }
+    if (!validation.valid && force) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id,
+        `Admin God Mode: bypassed NIBRS validation (${validation.errors.length} errors)`);
     }
 
     db.prepare(`
@@ -1075,6 +1113,106 @@ router.delete('/:id/persons/:personId', (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to unlink person', code: 'UNLINK_PERSON_ERROR' });
   }
 });
+
+// ─── BUSINESS LINKING (Task 1.10) ────────────────────
+// POST/PUT/DELETE incident_businesses links. Mirrors business_persons
+// pattern (records.ts) — role enum validation, audit + WS broadcast.
+const VALID_INCIDENT_BUSINESS_ROLES = [
+  'victim', 'reporting_party', 'witness', 'suspect_affiliated', 'involved', 'other'
+] as const;
+
+router.post('/:id/businesses',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const incidentId = parseInt(paramStr(req.params.id as any), 10);
+      const { business_id, role, notes } = req.body;
+      const effectiveRole = role ?? 'involved';
+      if (!VALID_INCIDENT_BUSINESS_ROLES.includes(effectiveRole)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_INCIDENT_BUSINESS_ROLES] });
+        return;
+      }
+      const db = getDb();
+      const incident = db.prepare('SELECT id FROM incidents WHERE id = ?').get(incidentId);
+      if (!incident) { res.status(404).json({ error: 'Incident not found' }); return; }
+      const business = db.prepare('SELECT id FROM businesses WHERE id = ?').get(business_id);
+      if (!business) { res.status(404).json({ error: 'Business not found' }); return; }
+
+      try {
+        const result = db.prepare(`
+          INSERT INTO incident_businesses (incident_id, business_id, role, notes, added_by)
+          VALUES (?, ?, ?, ?, ?)
+        `).run(incidentId, business_id, effectiveRole, notes || null, req.user?.userId ?? null);
+        const row = db.prepare('SELECT * FROM incident_businesses WHERE id = ?').get(result.lastInsertRowid);
+        auditLog(req, 'CREATE', 'incident_business_link', Number(result.lastInsertRowid), null, row);
+        broadcastDispatchUpdate({ action: 'incident_businesses_updated', incident_id: incidentId });
+        res.status(201).json(row);
+      } catch (err: any) {
+        if (err.code === 'SQLITE_CONSTRAINT_UNIQUE') {
+          res.status(409).json({ error: 'Business already linked to this incident' });
+          return;
+        }
+        throw err;
+      }
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to create incident-business link: ' + err.message });
+    }
+  }
+);
+
+router.put('/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const incidentId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM incident_businesses WHERE id = ? AND incident_id = ?').get(linkId, incidentId) as any;
+      if (!existing) { res.status(404).json({ error: 'Incident-business link not found' }); return; }
+
+      const { role, notes } = req.body;
+      if (role !== undefined && !VALID_INCIDENT_BUSINESS_ROLES.includes(role)) {
+        res.status(400).json({ error: 'Invalid role', allowed: [...VALID_INCIDENT_BUSINESS_ROLES] });
+        return;
+      }
+
+      const updates: string[] = [];
+      const values: any[] = [];
+      if (role !== undefined)  { updates.push('role = ?');  values.push(role); }
+      if (notes !== undefined) { updates.push('notes = ?'); values.push(notes || null); }
+      if (updates.length === 0) { res.status(400).json({ error: 'No fields to update' }); return; }
+      values.push(linkId);
+
+      db.prepare(`UPDATE incident_businesses SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      const row = db.prepare('SELECT * FROM incident_businesses WHERE id = ?').get(linkId);
+      auditLog(req, 'UPDATE', 'incident_business_link', linkId, existing, row);
+      broadcastDispatchUpdate({ action: 'incident_businesses_updated', incident_id: incidentId });
+      res.json(row);
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to update incident-business link: ' + err.message });
+    }
+  }
+);
+
+router.delete('/:id/businesses/:linkId',
+  requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'),
+  (req: Request, res: Response) => {
+    try {
+      const incidentId = parseInt(paramStr(req.params.id as any), 10);
+      const linkId = parseInt(paramStr(req.params.linkId as any), 10);
+      const db = getDb();
+      const existing = db.prepare('SELECT * FROM incident_businesses WHERE id = ? AND incident_id = ?').get(linkId, incidentId);
+      if (!existing) { res.status(404).json({ error: 'Incident-business link not found' }); return; }
+
+      db.prepare('DELETE FROM incident_businesses WHERE id = ?').run(linkId);
+      auditLog(req, 'DELETE', 'incident_business_link', linkId, existing, null);
+      broadcastDispatchUpdate({ action: 'incident_businesses_updated', incident_id: incidentId });
+      res.status(204).end();
+    } catch (err: any) {
+      res.status(500).json({ error: 'Failed to delete incident-business link: ' + err.message });
+    }
+  }
+);
 
 // ─── VEHICLE LINKING ─────────────────────────────────
 
@@ -1845,7 +1983,7 @@ router.get('/:id/offenses', requireRole('admin', 'manager', 'supervisor', 'offic
     const db = getDb();
     const offenses = db.prepare(`
       SELECT io.*,
-        s.statute_number, s.title as statute_title, s.category as statute_category,
+        s.citation AS statute_number, s.title as statute_title, s.category as statute_category,
         sp.first_name as suspect_first, sp.last_name as suspect_last,
         vp.first_name as victim_first, vp.last_name as victim_last
       FROM incident_offenses io
@@ -2237,7 +2375,7 @@ router.get('/:id/full', requireRole('admin', 'manager', 'supervisor', 'officer',
 
     try {
       offenses = db.prepare(`
-        SELECT io.*, s.statute_number, s.title as statute_title,
+        SELECT io.*, s.citation AS statute_number, s.title as statute_title,
           sp.first_name as suspect_first, sp.last_name as suspect_last,
           vp.first_name as victim_first, vp.last_name as victim_last
         FROM incident_offenses io

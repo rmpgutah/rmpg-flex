@@ -23,9 +23,9 @@ import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import { startRun, completeRun, failRun } from './scraperRunner';
 import { Semaphore } from './semaphore';
-import { logSafe } from './logSafe';
 import { broadcast } from './websocket';
 import { alertCircuitBroken, checkParserDrift } from './scraperAlerts';
+import { logSafe } from './logSafe';
 
 // Safe human-readable label for a source — falls back to source_key when the
 // display_name column is NULL or empty. Prevents "[Warrant Scraper] null: fetch
@@ -1338,8 +1338,24 @@ const miamiWarrantParser: WarrantParser = {
 // ════════════════════════════════════════════════════════════
 
 const FLATHEAD_LETTERS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('');
+
+// FBI Wanted API caps `pageSize` at 50 server-side, so to pull the full
+// catalog (~1,150 records as of 2026-04) we paginate. 25 pages × 50 = 1,250
+// — generous headroom for catalog growth. Sort by `modified desc` so partial
+// fetches (rate-limit / timeout) prefer fresh data over stale.
+const FBI_PAGE_COUNT = 25;
+const FBI_PAGED_URLS = Array.from({ length: FBI_PAGE_COUNT }, (_, i) =>
+  `https://api.fbi.gov/wanted/v1/list?pageSize=50&page=${i + 1}&sort_on=modified&sort_order=desc`,
+);
+
 const PAGINATED_SOURCES: Record<string, string[]> = {
   mt_flathead_warrants: FLATHEAD_LETTERS.map(l => `https://apps.flathead.mt.gov/warrants/warrants_list.php?letter=${l}`),
+  // FBI: pull every page of the unified Wanted list (~1,150 records vs the
+  // 50 we were getting from the unparameterized URL). Both source_key
+  // aliases use the same paginated URL set so the duplicate config row
+  // keeps working even after dedup migration.
+  federal_fbi_wanted: FBI_PAGED_URLS,
+  fed_fbi_wanted: FBI_PAGED_URLS,
 };
 
 
@@ -1659,13 +1675,26 @@ async function scrapeSource(sourceKey: string): Promise<{
 
   if (paginatedUrls) {
     entries = [];
+    // JSON APIs (FBI) tolerate faster pagination than scraped HTML. Pick a
+    // shorter delay when the URLs are JSON to avoid burning 30+ seconds per
+    // scrape on courteous-but-unnecessary throttling.
+    const isApiSource = config.source_type === 'api';
+    const interPageDelayMs = isApiSource ? 250 : 1500;
+
+    let consecutiveEmpty = 0;
     for (const pageUrl of paginatedUrls) {
       try {
         const pageResult = await fetchPage(pageUrl);
         const pageEntries = parser.parseWarrants(pageResult.body);
         entries.push(...pageEntries);
-        // Small delay between pages to avoid rate limiting
-        await sleep(1500);
+        // Early-exit for API pagination: two empty pages in a row means
+        // we're past the end. Saves ~10 wasted requests on a typical FBI
+        // catalog (currently ~24 pages of data, hard cap at 25).
+        if (isApiSource) {
+          consecutiveEmpty = pageEntries.length === 0 ? consecutiveEmpty + 1 : 0;
+          if (consecutiveEmpty >= 2) break;
+        }
+        await sleep(interPageDelayMs);
       } catch (e: any) {
         // Skip individual page errors, continue with others
         if (e?.message === 'HTTP_PERMANENT_404') continue;
@@ -2005,10 +2034,102 @@ function scheduleSource(sourceKey: string): void {
   sourceIntervals.set(sourceKey, interval);
 }
 
+// ── Federal source pruning ──────────────────────────────────
+// All federal scrapers were duplicated as `fed_*` and `federal_*` rows
+// pointing at the same URL — every scrape fired twice for no benefit.
+// Several agencies (USMS, ATF, DEA, USSS) also block our VPS subnet
+// outright via Akamai — they return HTTP 403 to every request, can never
+// recover, and just spam the journal with retries. Disable both classes
+// so the scheduler stops cycling through them.
+//
+// Idempotent: skipped after first run via the in-memory flag, and the
+// SQL is no-op-on-repeat (sets enabled=0 → already 0). Run from inside
+// scheduleWarrantScraper so it executes once per process boot.
+const PERMA_BLOCKED_FED_KEYS = [
+  // US Marshals — Akamai blocks every page from us with 403.
+  'fed_usms_wanted',
+  'federal_usms_top15',
+  'federal_usmarshals_mostwanted',
+  // ATF — same Akamai block.
+  'fed_atf_wanted',
+  'federal_atf_wanted',
+  // DEA — same.
+  'fed_dea_wanted',
+  'federal_dea_fugitives',
+  // Secret Service — URLs return 404 (page restructured).
+  'fed_secret_service_wanted',
+  'federal_secret_service',
+];
+
+// Alias source_keys for the FBI + ICE that point at the same URL as
+// their canonical `federal_*` peer. Keep the `federal_*` version active
+// (matches the parser registry comment naming the canonical key).
+const REDUNDANT_ALIAS_KEYS = [
+  'fed_fbi_wanted',  // canonical: federal_fbi_wanted
+  'fed_ice_wanted',  // canonical: federal_ice_wanted
+];
+
+let _federalSourcesPruned = false;
+
+export function pruneDeadFederalSources(): void {
+  if (_federalSourcesPruned) return;
+  try {
+    const db = getDb();
+    const disable = db.prepare(
+      `UPDATE warrant_scraper_config
+         SET enabled = 0, last_error = ?
+       WHERE source_key = ? AND enabled = 1`,
+    );
+    let dead = 0;
+    for (const key of PERMA_BLOCKED_FED_KEYS) {
+      const r = disable.run('Akamai/CDN block — disabled at startup', key);
+      if (r.changes > 0) dead++;
+    }
+    let aliases = 0;
+    for (const key of REDUNDANT_ALIAS_KEYS) {
+      const r = disable.run('Duplicate alias — see federal_* equivalent', key);
+      if (r.changes > 0) aliases++;
+    }
+    // ── Sweep zombie active records ────────────────────────────
+    // Disabled sources never re-scrape, so detectClearedWarrants() never
+    // fires for them. Their old records stay status='active' forever and
+    // pollute search results (e.g. 50 stale `fed_fbi_wanted` records that
+    // were pulled before the canonical `federal_fbi_wanted` source took
+    // over). Mark them cleared with a recognisable reason so analysts
+    // can distinguish "actually cleared on the source" from "we stopped
+    // tracking this source".
+    const sweep = db.prepare(
+      `UPDATE scraped_warrants
+         SET status = 'cleared',
+             cleared_at = CASE WHEN cleared_at IS NULL THEN datetime('now','localtime') ELSE cleared_at END
+       WHERE status = 'active' AND source_key = ?`,
+    );
+    let zombies = 0;
+    for (const key of [...PERMA_BLOCKED_FED_KEYS, ...REDUNDANT_ALIAS_KEYS]) {
+      const r = sweep.run(key);
+      zombies += r.changes;
+    }
+    if (dead || aliases || zombies) {
+      console.log(`[Warrant Scraper] Pruned federal sources: ${dead} perma-blocked, ${aliases} duplicate aliases, ${zombies} zombie records cleared`);
+    }
+    _federalSourcesPruned = true;
+  } catch (err: any) {
+    // Don't crash boot if the table doesn't exist yet on a fresh schema —
+    // try again next call. Logging-only.
+    console.warn(`[Warrant Scraper] Federal pruning failed: ${err?.message ?? err}`);
+  }
+}
+
+// Exposed for tests
+export function _resetFederalPruningForTests(): void {
+  _federalSourcesPruned = false;
+}
+
 export function scheduleWarrantScraper(): void {
   console.log('[Warrant Scraper] Multi-state warrant scraper initializing...');
 
   startupTimeout = setTimeout(async () => {
+    pruneDeadFederalSources();
     const configs = getSourceConfigs();
     const enabled = configs.filter(c => c.enabled);
     const disabled = configs.length - enabled.length;

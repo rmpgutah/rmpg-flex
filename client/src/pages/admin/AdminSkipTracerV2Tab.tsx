@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
-  Search, Eye, EyeOff, Loader2, CheckCircle2, XCircle,
-  Key, ToggleLeft, ToggleRight, Save, DollarSign, BarChart3,
+  Search, Eye, EyeOff, Loader2, CheckCircle2, Key, ToggleLeft, ToggleRight, Save,
+  DollarSign, BarChart3,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 

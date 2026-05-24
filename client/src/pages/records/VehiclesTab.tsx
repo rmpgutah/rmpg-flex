@@ -1,21 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Search,
-  Car,
-  Shield,
-  MapPin,
-  Loader2,
-  Trash2,
-  Pencil,
-  FileText,
-  ExternalLink,
-  X,
-  Phone,
-  AlertTriangle,
-  Hash,
-  Calendar,
-  Archive,
-  RotateCcw,
+  Search, Car, Shield, MapPin, Loader2, Trash2, Pencil, FileText, ExternalLink,
+  X, Phone, AlertTriangle, Hash, Calendar, Archive, RotateCcw, ArrowUpDown, Filter,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -29,7 +15,10 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 import type { VehicleFormData } from '../../components/VehicleFormModal';
-import { titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType, cleanDisplay } from '../../utils/statusLabels';
+import {
+  titleCase, formatPhoneDisplay, formatAddressDisplay, humanizeType,
+  cleanDisplay,
+} from '../../utils/statusLabels';
 
 // ── DB Mapper ──────────────────────────────────────
 
@@ -88,6 +77,25 @@ export function mapDbVehicle(row: Record<string, unknown>): Vehicle {
     stolen_status: row.stolen_status ? String(row.stolen_status) : undefined,
     stolen_date: row.stolen_date ? String(row.stolen_date) : undefined,
     recovery_date: row.recovery_date ? String(row.recovery_date) : undefined,
+    // F4 additions (2026-05-04) — previously dropped on load even though
+    // persisted in DB: insurance_expiry / NCIC stolen-vehicle entry # /
+    // detailed tow_location for impound chain. registration_state +
+    // owner_dl_number + owner_dob round out the registration block.
+    insurance_expiry: row.insurance_expiry ? String(row.insurance_expiry) : undefined,
+    ncic_entry_number: row.ncic_entry_number ? String(row.ncic_entry_number) : undefined,
+    tow_location: row.tow_location ? String(row.tow_location) : undefined,
+    registration_state: row.registration_state ? String(row.registration_state) : undefined,
+    owner_dl_number: row.owner_dl_number ? String(row.owner_dl_number) : undefined,
+    owner_dob: row.owner_dob ? String(row.owner_dob) : undefined,
+    primary_driver_name: row.primary_driver_name ? String(row.primary_driver_name) : undefined,
+    vehicle_use: row.vehicle_use ? String(row.vehicle_use) : undefined,
+    title_status: row.title_status ? String(row.title_status) : undefined,
+    exterior_condition: row.exterior_condition ? String(row.exterior_condition) : undefined,
+    interior_condition: row.interior_condition ? String(row.interior_condition) : undefined,
+    estimated_value: row.estimated_value ? String(row.estimated_value) : undefined,
+    window_tint: row.window_tint ? String(row.window_tint) : undefined,
+    modifications: row.modifications ? String(row.modifications) : undefined,
+    equipment_notes: row.equipment_notes ? String(row.equipment_notes) : undefined,
     flags: parseFlags(row.flags),
     notes: row.notes ? String(row.notes) : undefined,
     incident_ids: [],
@@ -459,6 +467,34 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
     vehicleModalOpen, editingVehicle, vehicleSubmitting, vehicleSubmitError, handleVehicleSubmit, closeModal,
   } = state;
 
+  // ── Sort + filter ──
+  const [sortBy, setSortBy] = useState<'plate' | 'make' | 'newest'>('plate');
+  const [filterFlag, setFilterFlag] = useState<string | null>(null);
+
+  const displayVehicles = React.useMemo(() => {
+    let list = [...filteredVehicles];
+    if (filterFlag) {
+      list = list.filter(v => {
+        if (filterFlag === 'stolen') return v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered';
+        if (filterFlag === 'towed') return v.tow_status && v.tow_status !== 'None';
+        if (filterFlag === 'commercial') return v.commercial_vehicle;
+        if (filterFlag === 'expired') return v.registration_expiry && new Date(v.registration_expiry) < new Date();
+        return true;
+      });
+    }
+    if (sortBy === 'plate') list.sort((a, b) => (a.license_plate || '').localeCompare(b.license_plate || ''));
+    else if (sortBy === 'make') list.sort((a, b) => (a.make || '').localeCompare(b.make || '') || (a.model || '').localeCompare(b.model || ''));
+    else if (sortBy === 'newest') list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    return list;
+  }, [filteredVehicles, sortBy, filterFlag]);
+
+  const stats = React.useMemo(() => ({
+    total: filteredVehicles.length,
+    stolen: filteredVehicles.filter(v => v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered').length,
+    towed: filteredVehicles.filter(v => v.tow_status && v.tow_status !== 'None').length,
+    commercial: filteredVehicles.filter(v => v.commercial_vehicle).length,
+  }), [filteredVehicles]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
@@ -493,9 +529,36 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
         } as Vehicle);
       }} />
 
+      {/* Stats + Sort + Filter */}
+      <div className="px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-4 text-[9px] flex-wrap">
+        <span className="text-rmpg-400 flex items-center gap-1"><Car className="w-3 h-3" /> <strong className="text-white">{stats.total}</strong> Vehicles</span>
+        {stats.stolen > 0 && <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> <strong>{stats.stolen}</strong> Stolen</span>}
+        {stats.towed > 0 && <span className="text-amber-400"><strong>{stats.towed}</strong> Towed</span>}
+        {stats.commercial > 0 && <span className="text-gray-400"><strong>{stats.commercial}</strong> Commercial</span>}
+        <div className="ml-auto flex items-center gap-1">
+          <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
+          {(['plate', 'make', 'newest'] as const).map(s => (
+            <button key={s} type="button" onClick={() => setSortBy(s)}
+              className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+              {s === 'plate' ? 'Plate' : s === 'make' ? 'Make' : 'Newest'}
+            </button>
+          ))}
+        </div>
+      </div>
+      <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-1.5 text-[9px] flex-wrap">
+        <Filter className="w-3 h-3 text-rmpg-500" />
+        {[{ key: null, label: 'All' }, { key: 'stolen', label: 'Stolen' }, { key: 'towed', label: 'Towed' }, { key: 'commercial', label: 'Commercial' }, { key: 'expired', label: 'Expired Reg' }].map(f => (
+          <button key={f.key || 'all'} type="button" onClick={() => setFilterFlag(f.key)}
+            className={`px-2 py-0.5 font-medium border transition-all ${filterFlag === f.key ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-rmpg-700/50 text-rmpg-500 hover:text-rmpg-300 hover:border-rmpg-500'}`}>
+            {f.label}
+          </button>
+        ))}
+        {filterFlag && <span className="text-rmpg-500 ml-1">({displayVehicles.length})</span>}
+      </div>
+
       {/* Vehicle List */}
       <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Vehicle records">
-        {filteredVehicles.length === 0 && (
+        {displayVehicles.length === 0 && (
           <div className="text-center py-16">
             <Car className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
             <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No vehicles match your search.' : 'No vehicle records found.'}</p>
@@ -504,7 +567,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
             </p>
           </div>
         )}
-        {filteredVehicles.map((v, idx) => (
+        {displayVehicles.map((v, idx) => (
           <div
             key={v.id}
             role="listitem"

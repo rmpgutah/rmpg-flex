@@ -1,4 +1,5 @@
 import React, { useMemo } from 'react';
+import { formatEnumValue } from '../../utils/formatters';
 import {
   MapPin,
   ClipboardCheck,
@@ -174,7 +175,7 @@ export default React.memo(function ServeJobCard({
 
           {/* Priority */}
           <span className={`text-[9px] font-bold font-mono border rounded-sm px-1 py-0 ${PRIORITY_STYLES[job.priority] || PRIORITY_STYLES.normal}`}>
-            {job.priority.toUpperCase()}
+            {formatEnumValue(job.priority)}
           </span>
 
           {/* Time window */}

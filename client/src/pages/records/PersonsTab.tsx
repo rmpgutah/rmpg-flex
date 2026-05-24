@@ -18,6 +18,11 @@ import {
   CreditCard,
   Archive,
   RotateCcw,
+  ArrowUpDown,
+  Filter,
+  Users,
+  Gavel,
+  Navigation,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
@@ -103,7 +108,14 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     occupation: row.occupation ? String(row.occupation) : undefined,
     emergency_contact_name: row.emergency_contact_name ? String(row.emergency_contact_name) : undefined,
     emergency_contact_phone: row.emergency_contact_phone ? String(row.emergency_contact_phone) : undefined,
-    gang_affiliation: row.gang_affiliation && !['none', '0', 'n/a', 'na', ''].includes(String(row.gang_affiliation).toLowerCase().trim()) ? String(row.gang_affiliation) : undefined,
+    // gang_affiliation is preserved verbatim — including the literal
+    // "None" option from the dropdown — because the user EXPLICITLY
+    // chose that value. Previously this field was filtered against a
+    // blacklist of `none`/`n/a`/`na`/`0`/empty so explicit "None"
+    // selections were silently dropped on load (visible to the user
+    // as "field reset itself" — see issue 2026-05-04). The PDF render
+    // path had the same blacklist and is now also relaxed.
+    gang_affiliation: row.gang_affiliation ? String(row.gang_affiliation) : undefined,
     is_sex_offender: row.is_sex_offender === 1 || row.is_sex_offender === true,
     is_veteran: row.is_veteran === 1 || row.is_veteran === true,
     language: row.language ? String(row.language) : undefined,
@@ -130,7 +142,45 @@ function mapDbPerson(row: Record<string, unknown>): Person {
     incident_ids: [],
     created_at: String(row.created_at ?? ''),
     updated_at: String(row.updated_at ?? ''),
-  };
+
+    // ── Extended LE / medical / military / marks / jail-intake ──
+    // These were previously DROPPED on load (audit 2026-05-04). Every
+    // field in this block is typed on the Person interface and persisted
+    // by the records.ts INSERT + UPDATE field-map, but if mapDbPerson
+    // doesn't read them out of the DB row, the form re-opens blank and
+    // the PDF renders N/A. Each is a `row.X ? String(row.X) : undefined`
+    // pass-through with no silent filtering.
+    ncic_number:           row.ncic_number ? String(row.ncic_number) : undefined,
+    sor_number:            row.sor_number ? String(row.sor_number) : undefined,
+    fbi_number:            row.fbi_number ? String(row.fbi_number) : undefined,
+    state_id_number:       row.state_id_number ? String(row.state_id_number) : undefined,
+    passport_number:       row.passport_number ? String(row.passport_number) : undefined,
+    passport_country:      row.passport_country ? String(row.passport_country) : undefined,
+    immigration_status:    row.immigration_status ? String(row.immigration_status) : undefined,
+    disability_flags:      row.disability_flags ? String(row.disability_flags) : undefined,
+    mental_health_flags:   row.mental_health_flags ? String(row.mental_health_flags) : undefined,
+    substance_abuse:       row.substance_abuse ? String(row.substance_abuse) : undefined,
+    medication_notes:      row.medication_notes ? String(row.medication_notes) : undefined,
+    education_level:       row.education_level ? String(row.education_level) : undefined,
+    military_branch:       row.military_branch ? String(row.military_branch) : undefined,
+    military_status:       row.military_status ? String(row.military_status) : undefined,
+    tribal_affiliation:    row.tribal_affiliation ? String(row.tribal_affiliation) : undefined,
+    tattoo_description:    row.tattoo_description ? String(row.tattoo_description) : undefined,
+    scar_description:      row.scar_description ? String(row.scar_description) : undefined,
+    piercing_description:  row.piercing_description ? String(row.piercing_description) : undefined,
+    distinguishing_features: row.distinguishing_features ? String(row.distinguishing_features) : undefined,
+    identifying_marks_location: row.identifying_marks_location ? String(row.identifying_marks_location) : undefined,
+    email_secondary:       row.email_secondary ? String(row.email_secondary) : undefined,
+    date_last_seen:        row.date_last_seen ? String(row.date_last_seen) : undefined,
+    location_last_seen:    row.location_last_seen ? String(row.location_last_seen) : undefined,
+    alias_dob:             row.alias_dob ? String(row.alias_dob) : undefined,
+    home_phone:            row.home_phone ? String(row.home_phone) : undefined,
+    work_phone:            row.work_phone ? String(row.work_phone) : undefined,
+    // F3 jail-intake additions (2026-05-04)
+    voice_description:     row.voice_description ? String(row.voice_description) : undefined,
+    religion:              row.religion ? String(row.religion) : undefined,
+    dietary_restrictions:  row.dietary_restrictions ? String(row.dietary_restrictions) : undefined,
+  } as Person;
 }
 
 // ── Constants ──────────────────────────────────────
@@ -458,6 +508,43 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
     duplicateWarning, handleForceCreate, handleCancelDuplicate,
   } = state;
 
+  // ── Local sort + filter state ──
+  const [sortBy, setSortBy] = useState<'name' | 'dob' | 'newest'>('name');
+  const [filterFlag, setFilterFlag] = useState<string | null>(null);
+
+  // Sort + filter the already-filtered persons
+  const displayPersons = React.useMemo(() => {
+    let list = [...filteredPersons];
+    // Apply flag filter
+    if (filterFlag) {
+      list = list.filter(p => {
+        if (filterFlag === 'warrant') return p.flags.some(f => typeof f === 'string' ? f.toLowerCase().includes('warrant') : false);
+        if (filterFlag === 'sex_offender') return p.is_sex_offender;
+        if (filterFlag === 'veteran') return p.is_veteran;
+        if (filterFlag === 'gang') return !!(p as any).gang_affiliation && !['none', '0', 'n/a'].includes(String((p as any).gang_affiliation).toLowerCase());
+        if (filterFlag === 'bolo') return p.flags.some(f => typeof f === 'string' ? f.toLowerCase().includes('bolo') : false);
+        return true;
+      });
+    }
+    // Sort
+    if (sortBy === 'name') {
+      list.sort((a, b) => (a.last_name || '').localeCompare(b.last_name || '') || (a.first_name || '').localeCompare(b.first_name || ''));
+    } else if (sortBy === 'dob') {
+      list.sort((a, b) => (a.date_of_birth || '').localeCompare(b.date_of_birth || ''));
+    } else if (sortBy === 'newest') {
+      list.sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''));
+    }
+    return list;
+  }, [filteredPersons, sortBy, filterFlag]);
+
+  // Stats
+  const stats = React.useMemo(() => ({
+    total: filteredPersons.length,
+    withWarrants: filteredPersons.filter(p => p.flags.some(f => typeof f === 'string' && f.toLowerCase().includes('warrant'))).length,
+    sexOffenders: filteredPersons.filter(p => p.is_sex_offender).length,
+    veterans: filteredPersons.filter(p => p.is_veteran).length,
+  }), [filteredPersons]);
+
   return (
     <div className="h-full flex flex-col">
       {/* Search */}
@@ -496,9 +583,47 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
         </div>
       </div>
 
+      {/* Stats Bar */}
+      <div className="px-3 py-1.5 border-b border-rmpg-700/50 bg-surface-sunken flex items-center gap-4 text-[9px] flex-wrap">
+        <span className="text-rmpg-400 flex items-center gap-1"><Users className="w-3 h-3" /> <strong className="text-white">{stats.total}</strong> Records</span>
+        {stats.withWarrants > 0 && <span className="text-red-400 flex items-center gap-1"><Gavel className="w-3 h-3" /> <strong>{stats.withWarrants}</strong> Warrants</span>}
+        {stats.sexOffenders > 0 && <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> <strong>{stats.sexOffenders}</strong> RSO</span>}
+        {stats.veterans > 0 && <span className="text-green-400 flex items-center gap-1"><Shield className="w-3 h-3" /> <strong>{stats.veterans}</strong> Veterans</span>}
+
+        {/* Sort */}
+        <div className="ml-auto flex items-center gap-1">
+          <ArrowUpDown className="w-3 h-3 text-rmpg-500" />
+          {(['name', 'dob', 'newest'] as const).map(s => (
+            <button key={s} type="button" onClick={() => setSortBy(s)}
+              className={`px-1.5 py-0.5 text-[9px] font-medium border transition-all ${sortBy === s ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-transparent text-rmpg-500 hover:text-rmpg-300'}`}>
+              {s === 'name' ? 'A-Z' : s === 'dob' ? 'DOB' : 'Newest'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Filter Chips */}
+      <div className="px-3 py-1 border-b border-rmpg-700/30 flex items-center gap-1.5 text-[9px] flex-wrap">
+        <Filter className="w-3 h-3 text-rmpg-500" />
+        {[
+          { key: null, label: 'All' },
+          { key: 'warrant', label: 'Wanted' },
+          { key: 'sex_offender', label: 'RSO' },
+          { key: 'veteran', label: 'Veteran' },
+          { key: 'gang', label: 'Gang' },
+          { key: 'bolo', label: 'BOLO' },
+        ].map(f => (
+          <button key={f.key || 'all'} type="button" onClick={() => setFilterFlag(f.key)}
+            className={`px-2 py-0.5 font-medium border transition-all ${filterFlag === f.key ? 'bg-brand-900/30 border-brand-500/50 text-brand-400' : 'bg-transparent border-rmpg-700/50 text-rmpg-500 hover:text-rmpg-300 hover:border-rmpg-500'}`}>
+            {f.label}
+          </button>
+        ))}
+        {filterFlag && <span className="text-rmpg-500 ml-1">({displayPersons.length} match{displayPersons.length !== 1 ? 'es' : ''})</span>}
+      </div>
+
       {/* Person List */}
       <div className="flex-1 overflow-auto scrollbar-dark" role="list" aria-label="Person records">
-        {filteredPersons.length === 0 && (
+        {displayPersons.length === 0 && (
           <div className="text-center py-16">
             <UserCircle className="w-10 h-10 text-rmpg-600 mx-auto mb-3" />
             <p className="text-sm text-rmpg-400 font-medium">{searchQuery ? 'No persons match your search.' : 'No person records found.'}</p>
@@ -507,7 +632,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
             </p>
           </div>
         )}
-        {filteredPersons.map((person, idx) => (
+        {displayPersons.map((person, idx) => (
           <div
             key={person.id}
             role="listitem"
@@ -588,6 +713,27 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   </div>
                 )}
                 <div className="flex items-center gap-1">
+                  {/* Quick actions */}
+                  {person.phone && (
+                    <a href={`tel:${person.phone}`} onClick={e => e.stopPropagation()}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-green-400 transition-colors" title={`Call ${formatPhoneDisplay(person.phone)}`}>
+                      <Phone className="w-3 h-3" />
+                    </a>
+                  )}
+                  {person.email && (
+                    <a href={`mailto:${person.email}`} onClick={e => e.stopPropagation()}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-blue-400 transition-colors" title={`Email ${person.email}`}>
+                      <Mail className="w-3 h-3" />
+                    </a>
+                  )}
+                  {person.address && (
+                    <a href={`https://maps.google.com/?q=${encodeURIComponent(person.address + (person.city ? ', ' + person.city : '') + (person.state ? ', ' + person.state : ''))}`}
+                      target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                      className="p-0.5 hover:bg-rmpg-700 text-rmpg-500 hover:text-amber-400 transition-colors" title="Navigate to address">
+                      <Navigation className="w-3 h-3" />
+                    </a>
+                  )}
+                  <span className="w-px h-3 bg-rmpg-700 mx-0.5" />
                   {(!showArchived || user?.role === 'admin') && (
                     <button type="button"
                       onClick={(e) => { e.stopPropagation(); openEditPerson(person); }}

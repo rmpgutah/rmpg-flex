@@ -5,7 +5,6 @@
 // Hidden during print via @media print styles.
 // ============================================================
 
-import React from 'react';
 import { Printer } from 'lucide-react';
 import { printWithLightMaps } from '../utils/mapboxLoader';
 

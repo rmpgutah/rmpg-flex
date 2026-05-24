@@ -1,7 +1,7 @@
 // Geocoding search proxy — exposes Nominatim's /search endpoint to
 // authenticated clients without leaking the User-Agent / rate-limit
 // concerns that would come from calling Nominatim directly from the
-// browser. Used by the /map-v2 address search bar.
+// browser. Used by the /map address search bar.
 //
 // Single-result geocoding for back-end use cases (incident address →
 // lat/lng) lives in ../utils/geocode.ts. This route is for autocomplete

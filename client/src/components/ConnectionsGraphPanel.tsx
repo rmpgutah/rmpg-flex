@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Network, Loader2, Maximize2, Minimize2 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import CollapsibleSection from './CollapsibleSection';

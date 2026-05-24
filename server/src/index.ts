@@ -45,8 +45,14 @@ try {
 // Import routes
 import authRoutes from './routes/auth';
 import dispatchRoutes from './routes/dispatch';
+import nibrsRoutes from './routes/nibrs';
+import incidentSupplementsRoutes from './routes/incidentSupplements';
 import incidentRoutes from './routes/incidents';
 import recordsRoutes from './routes/records';
+import businessVehiclesRoutes from './routes/businessVehicles';
+import subjectSearchRoutes from './routes/subjectSearch';
+import businessVisitsRoutes from './routes/businessVisits';
+import businessPhotosRoutes from './routes/businessPhotos';
 import personnelRoutes, { mountScheduleRoutes } from './routes/personnel';
 import commsRoutes from './routes/comms';
 import reportsRoutes from './routes/reports';
@@ -62,14 +68,17 @@ import statuteRoutes from './routes/statutes';
 import citationRoutes from './routes/citations';
 import invoiceRoutes from './routes/invoices';
 import adminSystemsRoutes from './routes/adminSystems';
+import externalIntegrationsRoutes from './routes/externalIntegrations';
 import shiftPlanRoutes from './routes/shiftPlans';
 import downloadsRoutes, { mountDownloadFileRoute } from './routes/downloads';
 import serveManagerRoutes from './routes/servemanager';
 import serveIntakeRoutes from './routes/serveIntake';
+import documentIntakeRoutes from './routes/documentIntake';
 import microbiltRoutes from './routes/microbilt';
 import dlRecordRoutes from './routes/dlRecords';
 import fieldInterviewRoutes from './routes/fieldInterviews';
 import trespassOrderRoutes from './routes/trespassOrders';
+import mobileCfsRoutes from './routes/mobileCfs';
 import caseRoutes from './routes/cases';
 import codeEnforcementRoutes from './routes/codeEnforcement';
 import courtRoutes from './routes/court';
@@ -77,9 +86,12 @@ import darRoutes from './routes/dar';
 import offenderRegistryRoutes from './routes/offenderRegistry';
 import offlineRoutes from './routes/offline';
 import companyDocumentsRoutes from './routes/companyDocuments';
+import documentFoldersRoutes from './routes/documentFolders';
 import forensicsRoutes from './routes/forensics';
 import ipedRoutes from './routes/iped';
 import clearpathgpsRoutes from './routes/clearpathgps';
+import traccarRoutes from './routes/traccar';
+import pdfToolsRoutes from './routes/pdfTools';
 import integrationsRoutes from './routes/integrations';
 import intakeRoutes from './routes/intake';
 import emailRoutes from './routes/email';
@@ -106,18 +118,28 @@ import webResearchRoutes from './routes/webResearch';
 import skiptracerV2Routes from './routes/skiptracer-v2';
 import ttsRoutes from './routes/tts';
 import voiceRoutes from './routes/voice';
+import voiceDialogueRoutes from './routes/voiceDialogue';
+import diagnosticsRoutes from './routes/diagnostics';
 import voicePersonaRoutes from './routes/voicePersona';
 import aiRoutes from './routes/ai';
 import aiDevChatRoutes from './routes/aiDevChat';
 import firecrawlToolsRoutes from './routes/firecrawlTools';
 import geocodeRoutes from './routes/geocode';
-import adminMapConfigRoutes from './routes/adminMapConfig';
-import howenRoutes from './routes/howen';
+import drivingEventsRoutes from './routes/drivingEvents';
+import evidenceRoutes from './routes/evidence';
 import { authenticateToken } from './middleware/auth';
 import { checkWelfareWatches } from './utils/officerWelfare';
 import { generatePursuitUpdates } from './utils/pursuitTracker';
 
 const app = express();
+
+// ─── Reverse-proxy trust ─────────────────────────────
+// In production we sit behind nginx (which sets X-Forwarded-For). Without
+// `trust proxy = 1`, express-rate-limit raises ERR_ERL_UNEXPECTED_X_FORWARDED_FOR
+// and req.ip resolves to 127.0.0.1, defeating per-IP rate-limiting.
+// Value `1` trusts EXACTLY one proxy hop — clients cannot spoof their IP
+// by stuffing X-Forwarded-For (which `true` would allow).
+app.set('trust proxy', 1);
 
 // ─── Domain Redirect (www → apex) ────────────────────
 // In production, redirect www.rmpgutah.us → rmpgutah.us for canonical URLs
@@ -139,6 +161,13 @@ app.use(cors({
   origin: config.corsOrigins,
   credentials: true,
 }));
+// ─── Dashcam-AI webhook routes — MUST mount before express.json() ───
+// HMAC verification needs the raw request body; once express.json()
+// consumes the stream, the bytes are gone. The router brings its own
+// express.raw() middleware scoped to its routes only.
+import { dashcamAiRouter } from './routes/dashcamAi';
+app.use('/api/dashcam-ai', dashcamAiRouter);
+
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 app.use(sanitizeInput);
@@ -330,21 +359,40 @@ app.get('/api/system-status', (_req, res) => {
 // so every connected device sees changes in real-time
 app.use(liveBroadcast);
 
-// ─── OwnTracks/Traccar GPS webhook — own auth (shared secret), no JWT ───
-// NOTE: Do NOT mount this router at '/api/dispatch/gps' — that prefix shadows
+// ─── Traccar GPS webhook — own auth (shared secret), no JWT ───
+// `/api/traccar` is the canonical endpoint; `/traccar` is the short alias
+// for legacy device configs. Both accept Traccar Client (OsmAnd HTTP),
+// Traccar Server forward-webhook JSON, and generic flat JSON shapes.
+// `/owntracks/*` returns 410 Gone — migration pressure per the
+// 2026-04-29 traccar-gps-replacement design.
+//
+// NOTE: Do NOT mount these under '/api/dispatch/gps' — that prefix shadows
 // the authenticated GPS endpoint in dispatchRoutes (POST /api/dispatch/gps),
 // causing Express to match the webhook's '/' handler first and reject every
 // JWT-authenticated request with 403 "Invalid webhook token".
-// The '/owntracks' mount below is the supported path for the OwnTracks app;
-// internal subpaths like '/owntracks/:user/:device' remain available there.
-import { owntracksWebhookRouter } from './routes/dispatch/gps';
-app.use('/owntracks', owntracksWebhookRouter);
+import { traccarWebhookRouter, owntracksDeprecatedRouter } from './routes/dispatch/gps';
+import { startTraccarPoller } from './utils/traccarServerPoller';
+// NOTE: webhook router uses /:user/:device wildcards. It MUST be mounted
+// AFTER traccarRoutes (line below) so authenticated admin endpoints like
+// /api/traccar/historical/devices, /devices, /mappings, /credentials,
+// /status, /test-connection match their specific handlers first. Otherwise
+// the wildcard catches them and returns 401/403 "Invalid webhook token".
+// The webhook is also mounted on the bare /traccar prefix below so devices
+// configured with that path keep working.
+app.use('/traccar', traccarWebhookRouter);
+app.use('/owntracks', owntracksDeprecatedRouter);
 
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/incidents', incidentSupplementsRoutes);
+app.use('/api/nibrs', nibrsRoutes);
+app.use('/api/records/subjects', subjectSearchRoutes);
 app.use('/api/records', recordsRoutes);
+app.use('/api/business-vehicles', businessVehiclesRoutes);
+app.use('/api/business-visits', businessVisitsRoutes);
+app.use('/api/business-photos', businessPhotosRoutes);
 app.use('/api/personnel', personnelRoutes);
 app.use('/api/comms', commsRoutes);
 app.use('/api/reports', reportsRoutes);
@@ -360,15 +408,20 @@ app.use('/api/statutes', statuteRoutes);
 app.use('/api/citations', citationRoutes);
 app.use('/api/invoices', invoiceRoutes);
 app.use('/api/admin', adminSystemsRoutes);
+app.use('/api/admin/external-integrations', externalIntegrationsRoutes);
 app.use('/api/admin', shiftPlanRoutes);
 app.use('/api/downloads', downloadsRoutes);
 app.use('/api/updates', downloadsRoutes);
 app.use('/api/servemanager', serveManagerRoutes);
+app.use('/api/driving-events', drivingEventsRoutes);
+app.use('/api/evidence', evidenceRoutes);
 app.use('/api/serve-intake', serveIntakeRoutes);
+app.use('/api/document-intake', documentIntakeRoutes);
 app.use('/api/microbilt', microbiltRoutes);
 app.use('/api/dl-records', dlRecordRoutes);
 app.use('/api/field-interviews', fieldInterviewRoutes);
 app.use('/api/trespass-orders', trespassOrderRoutes);
+app.use('/api', mobileCfsRoutes); // Mounts /api/cfs/:id/qr-token, /api/mobile/cfs/*
 app.use('/api/cases', caseRoutes);
 app.use('/api/code-enforcement', codeEnforcementRoutes);
 app.use('/api/court', courtRoutes);
@@ -376,10 +429,16 @@ app.use('/api/dar', darRoutes);
 app.use('/api/offender-registry', offenderRegistryRoutes);
 app.use('/api/offline', offlineRoutes);
 app.use('/api/company-documents', companyDocumentsRoutes);
+app.use('/api/documents', documentFoldersRoutes);
 app.use('/api/forensic-lab', forensicsRoutes);
 app.use('/api/forensics', forensicsRoutes);
 app.use('/api/iped', ipedRoutes);
 app.use('/api/clearpathgps', clearpathgpsRoutes);
+app.use('/api/traccar', traccarRoutes);
+// Webhook fallback — only matches paths the admin router didn't claim
+// (bare /api/traccar with ?token=, or /api/traccar/<user>/<device> from
+// devices configured with that style URL). See note above the /traccar mount.
+app.use('/api/traccar', traccarWebhookRouter);
 app.use('/api/integrations', integrationsRoutes);
 app.use('/api/email/rules', emailRulesRoutes);
 app.use('/api/email', emailRoutes);
@@ -405,13 +464,14 @@ app.use('/api/web-research', webResearchRoutes);
 app.use('/api/skiptracer-v2', skiptracerV2Routes);
 app.use('/api/tts', ttsRoutes);
 app.use('/api/voice', voiceRoutes);
+app.use('/api/voice', voiceDialogueRoutes);
+app.use('/api/diagnostics', diagnosticsRoutes);
 app.use('/api/voice-persona', voicePersonaRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/ai/dev-chat', aiDevChatRoutes);
 app.use('/api/firecrawl-tools', firecrawlToolsRoutes);
-app.use('/api/admin', adminMapConfigRoutes);
+app.use('/api/pdf-tools', pdfToolsRoutes);
 app.use('/api/geocode', geocodeRoutes);
-app.use('/api/howen', howenRoutes);
 app.use('/dispatch', intakeRoutes);        // Public dispatch endpoint (called by rmpgutahps.us)
 app.use('/intake', intakeRoutes);          // Legacy alias
 app.use('/api/intake', intakeRoutes);      // Also available under /api prefix
@@ -429,16 +489,28 @@ app.use('/api', apiRouter);
 // ─── Serve static files in production ─────────────────
 const clientDistPath = path.resolve(__dirname, '../../client/dist');
 
-// No-cache for sw.js and index.html — browser must always check server
+// No-cache for sw.js and index.html — browser must always check server.
+// Pass `sendFile`'s error callback so a missing client/dist (i.e. dev mode
+// where vite serves from 5173) returns a clean 404 instead of bubbling up
+// as `unhandled express error` — that error channel is reserved for real
+// problems, and dev noise there teaches operators to ignore it.
 app.get('/sw.js', (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
   res.set('Pragma', 'no-cache');
   res.set('Expires', '0');
-  res.sendFile(path.join(clientDistPath, 'sw.js'));
+  res.sendFile(path.join(clientDistPath, 'sw.js'), (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).type('text/plain').send('sw.js not built (dev mode — Vite serves the SW from /sw.js on port 5173)');
+    }
+  });
 });
 app.get('/index.html', (_req, res) => {
   res.set('Cache-Control', 'no-cache, no-store, must-revalidate');
-  res.sendFile(path.join(clientDistPath, 'index.html'));
+  res.sendFile(path.join(clientDistPath, 'index.html'), (err) => {
+    if (err && !res.headersSent) {
+      res.status(404).type('text/plain').send('index.html not built (dev mode — open http://localhost:5173 instead)');
+    }
+  });
 });
 
 // Hashed assets (/assets/*) — long cache (immutable, hash changes on content change)
@@ -709,6 +781,14 @@ try {
       if (nightlyInterval.unref) nightlyInterval.unref();
     } catch (err: any) {
       logger.warn({ err, scheduler: 'scraper-nightly' }, 'failed to schedule');
+    }
+
+    // Traccar Server REST poller — opt-in via system_config (traccar_server_url
+    // + traccar_server_email + traccar_server_password). Idle when config missing.
+    try {
+      startTraccarPoller();
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'traccar-poller' }, 'failed to start scheduler');
     }
 
     // Voice system timers — welfare checks and pursuit updates every 30s

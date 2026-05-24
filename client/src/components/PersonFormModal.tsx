@@ -7,6 +7,21 @@ import { apiUploadFiles } from '../hooks/useApi';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
+import RichTextArea from './RichTextArea';
+import {
+  GENDER_OPTIONS, RACE_OPTIONS, MARITAL_OPTIONS, CITIZENSHIP_OPTIONS,
+  IMMIGRATION_OPTIONS, LANGUAGE_OPTIONS, BLOOD_TYPE_OPTIONS,
+  BUILD_OPTIONS, COMPLEXION_OPTIONS, HAIR_COLOR_OPTIONS,
+  HAIR_LENGTH_OPTIONS, HAIR_STYLE_OPTIONS, FACIAL_HAIR_OPTIONS,
+  EYE_COLOR_OPTIONS, GLASSES_OPTIONS,
+  PROBATION_OPTIONS, ID_TYPE_OPTIONS, DL_CLASS_OPTIONS,
+  EDUCATION_OPTIONS, OCCUPATION_OPTIONS,
+  MILITARY_BRANCH_OPTIONS, MILITARY_STATUS_OPTIONS,
+  DISABILITY_OPTIONS, GANG_OPTIONS,
+  TRIBAL_AFFILIATION_OPTIONS, RELIGION_OPTIONS,
+  DIETARY_RESTRICTION_OPTIONS,
+  EMERGENCY_CONTACT_RELATIONSHIPS, VOICE_OPTIONS,
+} from '../constants/lawEnforcementEnums';
 interface PersonFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -102,6 +117,10 @@ export interface PersonFormData {
   alias_dob: string;
   home_phone: string;
   work_phone: string;
+  // F3 advanced detail (jail-intake + descriptor)
+  voice_description: string;
+  religion: string;
+  dietary_restrictions: string;
 }
 
 const EMPTY_FORM: PersonFormData = {
@@ -190,32 +209,17 @@ const EMPTY_FORM: PersonFormData = {
   alias_dob: '',
   home_phone: '',
   work_phone: '',
+  // F3 advanced detail (jail-intake + descriptor)
+  voice_description: '',
+  religion: '',
+  dietary_restrictions: '',
 };
 
-const GENDER_OPTIONS = ['Male', 'Female', 'Non-Binary', 'Other'];
-const BUILD_OPTIONS = ['Slim', 'Medium', 'Athletic', 'Heavy', 'Stocky', 'Large'];
-const COMPLEXION_OPTIONS = ['Light', 'Medium', 'Dark', 'Fair', 'Olive', 'Ruddy', 'Sallow'];
-const DL_CLASS_OPTIONS = ['A', 'B', 'C', 'D', 'M', 'CDL-A', 'CDL-B', 'CDL-C'];
-const RACE_OPTIONS = ['White', 'Black', 'Hispanic', 'Asian', 'Native American', 'Pacific Islander', 'Middle Eastern', 'Mixed', 'Other'];
-const HAIR_OPTIONS = ['Black', 'Brown', 'Blonde', 'Red', 'Auburn', 'Gray', 'White', 'Bald', 'Other'];
-const EYE_OPTIONS = ['Brown', 'Blue', 'Green', 'Hazel', 'Gray', 'Amber', 'Black', 'Other'];
-const MARITAL_OPTIONS = ['Single', 'Married', 'Divorced', 'Widowed', 'Separated', 'Domestic Partnership'];
-const HAIR_LENGTH_OPTIONS = ['Short', 'Medium', 'Long', 'Shaved'];
-const HAIR_STYLE_OPTIONS = ['Straight', 'Curly', 'Wavy', 'Braided', 'Dreadlocks', 'Afro', 'Bun', 'Ponytail', 'Bald'];
-const FACIAL_HAIR_OPTIONS = ['None', 'Mustache', 'Goatee', 'Full Beard', 'Stubble', 'Sideburns'];
-const GLASSES_OPTIONS = ['None', 'Glasses', 'Contacts', 'Sunglasses'];
-const BLOOD_TYPE_OPTIONS = ['A+', 'A-', 'B+', 'B-', 'AB+', 'AB-', 'O+', 'O-'];
-const PROBATION_OPTIONS = ['None', 'Probation', 'Parole', 'Both', 'Pre-Trial Supervision', 'Pre-Trial Supervision + Probation', 'Deferred Sentence', 'Diversion Program'];
-const LANGUAGE_OPTIONS = ['English', 'Spanish', 'Portuguese', 'French', 'Mandarin', 'Cantonese', 'Vietnamese', 'Korean', 'Japanese', 'Arabic', 'Russian', 'German', 'Tagalog', 'Hindi', 'Urdu', 'Farsi', 'Somali', 'Swahili', 'Navajo', 'American Sign Language', 'Other'];
-const CITIZENSHIP_OPTIONS = ['U.S. Citizen', 'Permanent Resident', 'Visa Holder', 'Refugee', 'Asylum Seeker', 'Undocumented', 'Foreign National', 'Dual Citizenship', 'Unknown', 'Other'];
-const OCCUPATION_OPTIONS = ['Unemployed', 'Student', 'Retired', 'Self-Employed', 'Construction', 'Food Service', 'Healthcare', 'Retail', 'Transportation', 'Manufacturing', 'Agriculture', 'Education', 'Public Safety', 'Military', 'IT / Technology', 'Finance / Banking', 'Legal', 'Sales', 'Skilled Trades', 'Government', 'Hospitality', 'Warehouse / Logistics', 'Maintenance / Janitorial', 'Security', 'Social Services', 'Other'];
-const GANG_OPTIONS = ['None', 'Sureños (13)', 'Norteños (14)', 'MS-13', 'Latin Kings', 'Bloods', 'Crips', '18th Street', 'Aryan Brotherhood', 'Hells Angels', 'Mongols MC', 'Bandidos MC', 'Vagos MC', 'Tongan Crip Gang', 'Other — See Notes'];
-const ID_TYPE_OPTIONS = ['Driver License', 'State ID', 'Passport', 'Military ID', 'Tribal ID', 'Permanent Resident Card', 'Work Permit', 'Student ID', 'Foreign National ID', 'Other'];
-const IMMIGRATION_OPTIONS = ['U.S. Citizen', 'Permanent Resident', 'Visa Holder (Work)', 'Visa Holder (Student)', 'Visa Holder (Tourist)', 'Refugee', 'Asylum Seeker', 'DACA', 'TPS', 'Undocumented', 'Unknown'];
-const EDUCATION_OPTIONS = ['None', 'Some High School', 'High School / GED', 'Some College', 'Associate Degree', 'Bachelor Degree', 'Master Degree', 'Doctorate', 'Trade/Vocational', 'Other'];
-const MILITARY_BRANCH_OPTIONS = ['None', 'Army', 'Navy', 'Air Force', 'Marines', 'Coast Guard', 'Space Force', 'National Guard', 'Reserves', 'Other'];
-const MILITARY_STATUS_OPTIONS = ['Active Duty', 'Veteran', 'Retired', 'Discharged', 'Reserves', 'National Guard', 'Deceased'];
-const DISABILITY_OPTIONS = ['None', 'Mobility Impaired', 'Hearing Impaired', 'Visually Impaired', 'Cognitive/Developmental', 'Mental Health', 'Speech Impaired', 'Chronic Illness', 'Multiple', 'Other'];
+// Inline _OPTIONS arrays migrated to client/src/constants/lawEnforcementEnums.ts
+// (single source of truth across all Edit*Modal forms — see top-of-file imports).
+// Two arrays were renamed during migration for clarity: HAIR_OPTIONS → HAIR_COLOR_OPTIONS
+// and EYE_OPTIONS → EYE_COLOR_OPTIONS, since "HAIR_LENGTH_OPTIONS" / "HAIR_STYLE_OPTIONS"
+// already existed and the bare `HAIR` was ambiguous about which dimension it meant.
 
 export default function PersonFormModal({
   isOpen,
@@ -333,6 +337,10 @@ export default function PersonFormModal({
           alias_dob: (editingPerson as any).alias_dob || '',
           home_phone: (editingPerson as any).home_phone || '',
           work_phone: (editingPerson as any).work_phone || '',
+          // F3 advanced detail
+          voice_description: (editingPerson as any).voice_description || '',
+          religion: (editingPerson as any).religion || '',
+          dietary_restrictions: (editingPerson as any).dietary_restrictions || '',
         };
         setForm(initial);
         snapshot();
@@ -614,14 +622,14 @@ export default function PersonFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Hair Color</label>
               <select name="hair_color" className="select-dark mt-1" value={form.hair_color} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {HAIR_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
+                {HAIR_COLOR_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
               </select>
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Eye Color</label>
               <select name="eye_color" className="select-dark mt-1" value={form.eye_color} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {EYE_OPTIONS.map((e) => <option key={e} value={e}>{e}</option>)}
+                {EYE_COLOR_OPTIONS.map((e) => <option key={e} value={e}>{e}</option>)}
               </select>
             </div>
           </div>
@@ -662,32 +670,39 @@ export default function PersonFormModal({
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Shoe Size</label>
               <input name="shoe_size" type="text" className="input-dark mt-1" placeholder="e.g. 10.5" value={form.shoe_size} onChange={handleChange} />
             </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Voice Description</label>
+              <select name="voice_description" className="select-dark mt-1" value={form.voice_description} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {VOICE_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
+              </select>
+            </div>
           </div>
 
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scars / Marks / Tattoos</label>
-            <textarea name="scars_marks_tattoos" rows={2} className="input-dark mt-1" placeholder="Describe location, type, and detail of any distinguishing marks" value={form.scars_marks_tattoos} onChange={handleChange} />
+            <RichTextArea name="scars_marks_tattoos" rows={2} className="input-dark mt-1" placeholder="Describe location, type, and detail of any distinguishing marks" value={form.scars_marks_tattoos} onChange={handleChange} />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tattoo Description</label>
-              <textarea name="tattoo_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of tattoos — location, design, text, color" value={form.tattoo_description} onChange={handleChange} />
+              <RichTextArea name="tattoo_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of tattoos — location, design, text, color" value={form.tattoo_description} onChange={handleChange} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scar Description</label>
-              <textarea name="scar_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of scars — location, size, type" value={form.scar_description} onChange={handleChange} />
+              <RichTextArea name="scar_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of scars — location, size, type" value={form.scar_description} onChange={handleChange} />
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Piercing Description</label>
-              <textarea name="piercing_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of piercings — location, type" value={form.piercing_description} onChange={handleChange} />
+              <RichTextArea name="piercing_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of piercings — location, type" value={form.piercing_description} onChange={handleChange} />
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Distinguishing Features</label>
-              <textarea name="distinguishing_features" rows={2} className="input-dark mt-1" placeholder="Any other distinguishing features — birthmarks, prosthetics, etc." value={form.distinguishing_features} onChange={handleChange} />
+              <RichTextArea name="distinguishing_features" rows={2} className="input-dark mt-1" placeholder="Any other distinguishing features — birthmarks, prosthetics, etc." value={form.distinguishing_features} onChange={handleChange} />
             </div>
           </div>
           <div>
@@ -1049,7 +1064,33 @@ export default function PersonFormModal({
             </div>
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tribal Affiliation</label>
-              <input name="tribal_affiliation" type="text" className="input-dark mt-1" placeholder="Tribal name or nation" value={form.tribal_affiliation} onChange={handleChange} />
+              <select name="tribal_affiliation" className="select-dark mt-1" value={form.tribal_affiliation} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {TRIBAL_AFFILIATION_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* ── Jail Intake / Custodial Considerations ─────────────────
+              Religion drives chaplaincy + holiday observance + dietary
+              defaults. Dietary restrictions cover religious + medical +
+              personal-choice intersections. Both fields are optional —
+              "Decline to State" is a first-class option in each list to
+              respect operator-side dignity defaults. */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Religion (Jail Intake)</label>
+              <select name="religion" className="select-dark mt-1" value={form.religion} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {RELIGION_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Dietary Restrictions</label>
+              <select name="dietary_restrictions" className="select-dark mt-1" value={form.dietary_restrictions} onChange={handleChange}>
+                <option value="">-- Select --</option>
+                {DIETARY_RESTRICTION_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
+              </select>
             </div>
           </div>
 
@@ -1072,7 +1113,7 @@ export default function PersonFormModal({
 
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Notes</label>
-            <textarea name="medication_notes" rows={2} className="input-dark mt-1" placeholder="Known medications or medical needs" value={form.medication_notes} onChange={handleChange} />
+            <RichTextArea name="medication_notes" rows={2} className="input-dark mt-1" placeholder="Known medications or medical needs" value={form.medication_notes} onChange={handleChange} />
           </div>
         </>
       )}
@@ -1119,12 +1160,12 @@ export default function PersonFormModal({
 
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Associates</label>
-            <textarea name="known_associates" rows={2} className="input-dark mt-1" placeholder="Names of known associates" value={form.known_associates} onChange={handleChange} />
+            <RichTextArea name="known_associates" rows={2} className="input-dark mt-1" placeholder="Names of known associates" value={form.known_associates} onChange={handleChange} />
           </div>
 
           <div>
             <label className="text-[10px] text-red-400 uppercase font-semibold">Officer Safety / Caution Flags</label>
-            <textarea name="caution_flags" rows={2} className="input-dark mt-1" placeholder="Any officer safety concerns, violent history, weapons, etc." value={form.caution_flags} onChange={handleChange} />
+            <RichTextArea name="caution_flags" rows={2} className="input-dark mt-1" placeholder="Any officer safety concerns, violent history, weapons, etc." value={form.caution_flags} onChange={handleChange} />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1146,7 +1187,7 @@ export default function PersonFormModal({
 
           <div>
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
-            <textarea name="notes" rows={4} className="input-dark mt-1" value={form.notes} onChange={handleChange} />
+            <RichTextArea name="notes" rows={4} className="input-dark mt-1" value={form.notes} onChange={handleChange} />
           </div>
         </>
       )}

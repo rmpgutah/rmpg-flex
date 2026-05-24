@@ -10,6 +10,7 @@ import { DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface DisciplinaryFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -274,7 +275,7 @@ export default function DisciplinaryFormModal({
           {/* Description */}
           <div className="space-y-1">
             <label className="text-xs text-rmpg-400">Description *</label>
-            <textarea
+            <RichTextArea
               name="description"
               value={form.description}
               onChange={handleChange}
@@ -290,7 +291,7 @@ export default function DisciplinaryFormModal({
           {/* Action taken */}
           <div className="space-y-1">
             <label className="text-xs text-rmpg-400">Action Taken</label>
-            <textarea
+            <RichTextArea
               name="action_taken"
               value={form.action_taken}
               onChange={handleChange}

@@ -453,6 +453,7 @@ export default function FileAttachments({
                 src={authUrl(`/api/uploads/${previewAttachment.file_id}`, previewAttachment.access_sig, previewAttachment.access_exp)}
                 className="w-[800px] h-[600px] bg-white"
                 title="PDF Preview"
+                sandbox="allow-same-origin"
               />
             ) : (
               <img

@@ -10,12 +10,12 @@
 import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { generateCallNumber, generateCaseNumber } from '../utils/caseNumbers';
-import { logSafe } from '../utils/logSafe';
 import { broadcast, broadcastDispatchUpdate } from '../utils/websocket';
 import { auditLogSystem } from '../utils/auditLogger';
 import { hashApiKey } from '../utils/apiKeyHash';
 import { localNow } from '../utils/timeUtils';
 import { createServeQueueFromCall } from '../utils/serveQueueLinker';
+import { logSafe } from '../utils/logSafe';
 
 const router = Router();
 

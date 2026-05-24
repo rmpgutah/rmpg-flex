@@ -693,13 +693,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
           startIpFallbackPoller();
           return;
         }
-        // Cap restart attempts to prevent infinite restart loops
+        // Track restart count for state UI but NEVER stop trying — vehicle CADs
+        // can't be expected to refresh manually, and a quiet GPS hardware reset
+        // (cellular hand-off, ignition cycle, OS power-save) can take many minutes.
         heartbeatRestartCountRef.current++;
         if (heartbeatRestartCountRef.current > MAX_HEARTBEAT_RESTARTS) {
-          console.error('[GPS] Max heartbeat restarts reached, stopping restart attempts');
-          if (heartbeatRef.current) { clearInterval(heartbeatRef.current); heartbeatRef.current = null; }
-          setState((prev) => ({ ...prev, error: 'GPS signal lost. Refresh the page to retry.' }));
-          return;
+          // Surface the degradation to UI but keep retrying.
+          setState((prev) => ({ ...prev, error: `GPS signal stale (${Math.round(staleDuration / 1000)}s) — auto-retrying…` }));
         }
         // Clear the stale watch and restart
         navigator.geolocation.clearWatch(watchIdRef.current);
@@ -849,13 +849,56 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     };
   }, [isTracking, startTracking]);
 
-  // Screen Wake Lock used to be requested here unconditionally. It moved to
-  // a separate `useScreenWakeLock(active)` hook called from screens that
-  // genuinely need to keep the display awake (MapPage, dispatch with an
-  // active call). Holding wake lock app-wide drained battery overnight and
-  // threw NotAllowedError on initial mount before a user gesture — visible
-  // as `[useGpsTracking] WakeLock request failed: NotAllowedError` in every
-  // officer's console.
+  // Request WakeLock to prevent device sleep from interrupting GPS tracking
+  // (supported on Chrome Android, Chrome Desktop, Edge, etc.)
+  useEffect(() => {
+    let wakeLock: any = null;
+    const handleWakeLockRelease = () => {
+      // Wake lock released (e.g., user switched tabs) — will re-acquire via visibilitychange
+      wakeLock = null;
+    };
+    const requestWakeLock = async () => {
+      // WakeLock requires user-activation context + visible page; otherwise the
+      // browser throws NotAllowedError. Skip silently in those cases instead of
+      // spamming the console — GPS still works without WakeLock.
+      if (!('wakeLock' in navigator)) return;
+      if (document.visibilityState !== 'visible') return;
+      try {
+        wakeLock = await (navigator as any).wakeLock.request('screen');
+        wakeLock.addEventListener('release', handleWakeLockRelease);
+      } catch (err: any) {
+        // NotAllowedError = no user gesture yet; will retry on first user click below.
+        if (err?.name !== 'NotAllowedError') {
+          console.warn('[useGpsTracking] WakeLock request failed:', err);
+        }
+      }
+    };
+
+    requestWakeLock();
+
+    // Re-acquire wake lock when page becomes visible again, or on first user click.
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') requestWakeLock();
+    };
+    const handleFirstClick = () => {
+      requestWakeLock();
+      window.removeEventListener('click', handleFirstClick);
+      window.removeEventListener('keydown', handleFirstClick);
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('click', handleFirstClick, { once: true });
+    window.addEventListener('keydown', handleFirstClick, { once: true });
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibility);
+      window.removeEventListener('click', handleFirstClick);
+      window.removeEventListener('keydown', handleFirstClick);
+      if (wakeLock) {
+        wakeLock.removeEventListener('release', handleWakeLockRelease);
+        wakeLock.release().catch(() => { /* benign */ });
+      }
+    };
+  }, []);
 
   return {
     ...state,

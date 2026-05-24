@@ -6,7 +6,8 @@
 // Integrates StatuteLookup for violation code selection.
 // ============================================================
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
+import RichTextArea from '../components/RichTextArea';
 import {
   FileWarning,
   Plus,
@@ -287,20 +288,6 @@ function formatCurrency(n: number | null | undefined): string {
 }
 
 // ── Component ──────────────────────────────────────────────
-
-const timeAgo = (date: string): string => {
-  if (!date) return '—';
-  const parsed = new Date(date).getTime();
-  if (Number.isNaN(parsed)) return '—';
-  const ms = Date.now() - parsed;
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return 'just now';
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d ago`;
-};
 
 export default function CitationsPage() {
   const { user } = useAuth();
@@ -917,6 +904,7 @@ export default function CitationsPage() {
             <PrintRecordButton
               recordType="citation"
               recordData={{
+                id: c.id,
                 citation_number: c.citation_number,
                 type: c.type,
                 status: c.status,
@@ -1623,7 +1611,7 @@ export default function CitationsPage() {
         {/* Notes */}
         <section>
           <h3 className="text-[10px] uppercase tracking-widest text-[#d4a017] font-bold mb-2">Notes</h3>
-          <textarea
+          <RichTextArea
             value={form.notes}
             onChange={e => updateField('notes', e.target.value)}
             placeholder="Additional notes or remarks..."

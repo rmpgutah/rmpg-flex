@@ -34,6 +34,10 @@ export async function createTestApp(): Promise<Application> {
   const dispatchRoutes = (await import('../../src/routes/dispatch/index')).default;
   const incidentRoutes = (await import('../../src/routes/incidents')).default;
   const recordsRoutes = (await import('../../src/routes/records')).default;
+  const businessVehiclesRoutes = (await import('../../src/routes/businessVehicles')).default;
+  const subjectSearchRoutes = (await import('../../src/routes/subjectSearch')).default;
+  const businessVisitsRoutes = (await import('../../src/routes/businessVisits')).default;
+  const businessPhotosRoutes = (await import('../../src/routes/businessPhotos')).default;
   const citationRoutes = (await import('../../src/routes/citations')).default;
   const personnelRoutes = (await import('../../src/routes/personnel')).default;
   const mapGeofenceRoutes = (await import('../../src/routes/mapGeofences')).default;
@@ -43,18 +47,21 @@ export async function createTestApp(): Promise<Application> {
   const courtRoutes = (await import('../../src/routes/court')).default;
   const crmRoutes = (await import('../../src/routes/crm')).default;
   const crmLeadsRoutes = (await import('../../src/routes/crmLeads')).default;
-  const pdfEngineRoutes = (await import('../../src/routes/pdfEngine')).default;
-  const auditPdfEngineRoutes = (await import('../../src/routes/auditPdfEngine')).default;
-  const pdfArtifactsRoutes = (await import('../../src/routes/pdfArtifacts')).default;
-  const pdfEmailRoutes = (await import('../../src/routes/pdfEmail')).default;
   const voicePersonaRoutes = (await import('../../src/routes/voicePersona')).default;
   const connectionsRoutes = (await import('../../src/routes/connections')).default;
   const casesRoutes = (await import('../../src/routes/cases')).default;
+  const serveIntakeRoutes = (await import('../../src/routes/serveIntake')).default;
+  const documentIntakeRoutes = (await import('../../src/routes/documentIntake')).default;
+  const fieldInterviewsRoutes = (await import('../../src/routes/fieldInterviews')).default;
 
   app.use('/api/auth', authRoutes);
   app.use('/api/dispatch', dispatchRoutes);
   app.use('/api/incidents', incidentRoutes);
+  app.use('/api/records/subjects', subjectSearchRoutes);
   app.use('/api/records', recordsRoutes);
+  app.use('/api/business-vehicles', businessVehiclesRoutes);
+  app.use('/api/business-visits', businessVisitsRoutes);
+  app.use('/api/business-photos', businessPhotosRoutes);
   app.use('/api/citations', citationRoutes);
   app.use('/api/personnel', personnelRoutes);
   app.use('/api/map-geofences', mapGeofenceRoutes);
@@ -64,13 +71,12 @@ export async function createTestApp(): Promise<Application> {
   app.use('/api/court', courtRoutes);
   app.use('/api/crm', crmRoutes);
   app.use('/api/crm-leads', crmLeadsRoutes);
-  app.use('/api/admin/pdf-engine', pdfEngineRoutes);
-  app.use('/api/audit', auditPdfEngineRoutes);
-  app.use('/api/pdf-artifacts', pdfArtifactsRoutes);
-  app.use('/api/pdf-engine', pdfEmailRoutes);
   app.use('/api/voice-persona', voicePersonaRoutes);
   app.use('/api/connections', connectionsRoutes);
   app.use('/api/cases', casesRoutes);
+  app.use('/api/serve-intake', serveIntakeRoutes);
+  app.use('/api/document-intake', documentIntakeRoutes);
+  app.use('/api/field-interviews', fieldInterviewsRoutes);
 
   // Error handler (multer-aware, mirrors production)
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

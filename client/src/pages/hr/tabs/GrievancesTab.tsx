@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, AlertOctagon, Clock, CheckCircle, Search, Loader2 } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Plus, AlertOctagon, CheckCircle, Search, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
@@ -7,6 +7,7 @@ import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
 
+import RichTextArea from '../../../components/RichTextArea';
 interface Grievance {
   id: number;
   officer_id: number;
@@ -171,7 +172,7 @@ export default function GrievancesTab() {
           </div>
           <div>
             <label className="field-label">Description *</label>
-            <textarea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={4} placeholder="Detailed description of the grievance..." />
+            <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={4} placeholder="Detailed description of the grievance..." />
           </div>
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.subject.trim() || !form.description.trim()} className="toolbar-btn toolbar-btn-success text-xs disabled:opacity-50">{submitting ? <><Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> Submitting...</> : 'Submit Grievance'}</button>
