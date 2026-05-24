@@ -18,6 +18,7 @@ import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import geocode from './routes/geocode';
+import trespassOrders from './routes/trespassOrders';
 import dispatchPanic from './routes/dispatch/panic';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import admin from './routes/admin';
@@ -171,6 +172,12 @@ app.use('/api/integrations/*', authMiddleware);
 app.use('/api/geocode', authMiddleware);
 app.use('/api/geocode/*', authMiddleware);
 app.route('/api', geocode);
+
+// Trespass orders — minimal stub so PremiseHistory's defensive
+// fetch returns 200 instead of 500/404. Full implementation TBD.
+app.use('/api/trespass-orders', authMiddleware);
+app.use('/api/trespass-orders/*', authMiddleware);
+app.route('/api/trespass-orders', trespassOrders);
 app.use('/api/dispatch/stats*', authMiddleware);
 app.use('/api/dispatch/shift-handoff*', authMiddleware);
 app.route('/api/user', stubs);
