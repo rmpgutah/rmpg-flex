@@ -84,6 +84,12 @@ geocode.get('/geocode/search', async (c) => {
     c.executionCtx.waitUntil(
       c.env.KV.put(cacheKey, JSON.stringify(payload), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {}),
     );
+    // no-store so the BROWSER never holds onto a previous response —
+    // we already cache server-side in KV. Without this, an earlier
+    // mis-biased response (e.g. Indiana matches before the Utah
+    // viewbox shipped) lingers in the browser cache for the rest of
+    // the session.
+    c.header('Cache-Control', 'no-store');
     return c.json(payload);
   } catch (err) {
     return c.json({ results: [], error: String(err) }, 502);
