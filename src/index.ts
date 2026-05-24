@@ -16,6 +16,8 @@ import dispatchUnits from './routes/dispatch/units';
 import dispatchGps from './routes/dispatch/gps';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
+import dispatchPanic from './routes/dispatch/panic';
+import dispatchCallLinks from './routes/dispatch/callLinks';
 import admin from './routes/admin';
 import personnel from './routes/personnel';
 import presence from './routes/presence';
@@ -85,6 +87,8 @@ app.use('/api/dispatch/premise-alerts', authMiddleware);
 app.use('/api/dispatch/premise-alerts/*', authMiddleware);
 app.use('/api/dispatch/bolos', authMiddleware);
 app.use('/api/dispatch/bolos/*', authMiddleware);
+app.use('/api/dispatch/panic', authMiddleware);
+app.use('/api/dispatch/panic/*', authMiddleware);
 app.use('/api/nibrs', authMiddleware);
 app.use('/api/nibrs/*', authMiddleware);
 app.use('/api/incidents', authMiddleware);
@@ -98,6 +102,12 @@ app.use('/api/presence/*', authMiddleware);
 app.use('/api/records', authMiddleware);
 app.use('/api/records/*', authMiddleware);
 
+// callLinks + panic mount at /api/dispatch with /calls/:id/persons,
+// /vehicles, /property, and /panic routes. MUST mount BEFORE
+// dispatchCalls so longer-prefix routes match first — same trie
+// collision rule the extensions block below documents.
+app.route('/api/dispatch', dispatchCallLinks);
+app.route('/api/dispatch', dispatchPanic);
 app.route('/api/dispatch/calls', dispatchCalls);
 app.route('/api/dispatch/units', dispatchUnits);
 app.route('/api/dispatch/gps', dispatchGps);
