@@ -819,15 +819,46 @@ export default function MapPage() {
         style: cfg.custom_style_url || MAPBOX_STYLE_DARK,
         center: [savedCenter.lng, savedCenter.lat],
         zoom: savedZoom,
+        pitch: cfg.default_pitch,
+        bearing: cfg.default_bearing,
+        minZoom: cfg.min_zoom,
+        maxZoom: cfg.max_zoom,
+        minPitch: cfg.min_pitch,
+        maxPitch: cfg.max_pitch,
         attributionControl: cfg.show_attribution,
-        touchZoomRotate: true,
+        scrollZoom: cfg.scroll_zoom,
+        boxZoom: cfg.box_zoom,
+        dragRotate: cfg.drag_rotate,
+        dragPan: cfg.drag_pan,
+        doubleClickZoom: cfg.double_click_zoom,
+        touchZoomRotate: cfg.touch_zoom_rotate,
+        cooperativeGestures: cfg.cooperative_gestures,
+        keyboard: cfg.keyboard_enabled,
+        renderWorldCopies: cfg.render_world_copies,
+        fadeDuration: cfg.fade_duration,
+        clickTolerance: cfg.click_tolerance,
+        crossSourceCollisions: cfg.cross_source_collisions,
       };
+
+      if (cfg.language) {
+        mapOptions.locale = { 'Map.Title': cfg.language };
+      }
+
+      if (cfg.local_ideograph_font_family) {
+        mapOptions.localIdeographFontFamily = cfg.local_ideograph_font_family;
+      }
 
       if (cfg.max_bounds_sw_lat != null && cfg.max_bounds_sw_lng != null && cfg.max_bounds_ne_lat != null && cfg.max_bounds_ne_lng != null) {
         mapOptions.maxBounds = [
           [cfg.max_bounds_sw_lng, cfg.max_bounds_sw_lat],
           [cfg.max_bounds_ne_lng, cfg.max_bounds_ne_lat],
         ] as [[number, number], [number, number]];
+      }
+
+      // Disable rotation if rotation_enabled is false
+      if (!cfg.rotation_enabled) {
+        mapOptions.dragRotate = false;
+        mapOptions.touchZoomRotate = false;
       }
 
       const map = new mapboxgl.Map(mapOptions);
@@ -959,7 +990,7 @@ export default function MapPage() {
       try {
         mapConfig = await fetchMapConfig();
       } catch {
-        mapConfig = { default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12, min_zoom: 1, max_zoom: 22, default_style: 'dark', enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'], show_attribution: false, rotation_enabled: false, max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null, custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14 };
+        mapConfig = { default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12, min_zoom: 1, max_zoom: 22, default_style: 'dark', enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'], show_attribution: false, rotation_enabled: false, max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null, custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14, default_pitch: 0, default_bearing: 0, min_pitch: 0, max_pitch: 85, scroll_zoom: true, box_zoom: true, drag_rotate: true, drag_pan: true, double_click_zoom: true, touch_zoom_rotate: true, cooperative_gestures: false, show_compass: true, show_zoom_controls: true, keyboard_enabled: true, language: '', render_world_copies: true, fade_duration: 300, click_tolerance: 3, local_ideograph_font_family: '', cross_source_collisions: true };
       }
 
       let mapboxToken = '';

@@ -268,6 +268,85 @@ export async function runMigrations(db: D1Database): Promise<void> {
     }
   }
 
+  // ── Column additions for existing tables (safe to re-run) ──
+  const columnAdditions = [
+    // Warrants — add columns from the database.ts schema
+    "ALTER TABLE warrants ADD COLUMN subject_person_id INTEGER",
+    "ALTER TABLE warrants ADD COLUMN issuing_court TEXT",
+    "ALTER TABLE warrants ADD COLUMN issuing_judge TEXT",
+    "ALTER TABLE warrants ADD COLUMN charge_description TEXT",
+    "ALTER TABLE warrants ADD COLUMN bail_amount REAL",
+    "ALTER TABLE warrants ADD COLUMN offense_level TEXT",
+    "ALTER TABLE warrants ADD COLUMN entered_by INTEGER",
+    "ALTER TABLE warrants ADD COLUMN served_by INTEGER",
+    "ALTER TABLE warrants ADD COLUMN served_at TEXT",
+    "ALTER TABLE warrants ADD COLUMN served_location TEXT",
+    "ALTER TABLE warrants ADD COLUMN expires_at TEXT",
+    "ALTER TABLE warrants ADD COLUMN notes TEXT",
+    "ALTER TABLE warrants ADD COLUMN archived_at TEXT",
+    "ALTER TABLE warrants ADD COLUMN priority_score REAL DEFAULT 0",
+    "ALTER TABLE warrants ADD COLUMN statute_id INTEGER",
+    "ALTER TABLE warrants ADD COLUMN statute_citation TEXT",
+    // Properties — add archived_at (used by records-worker)
+    "ALTER TABLE properties ADD COLUMN archived_at TEXT",
+    // Calls for service — additional columns
+    "ALTER TABLE calls_for_service ADD COLUMN case_number TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN subject_description TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN weather_conditions TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN lighting_conditions TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN sector_id TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN zone_id TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN beat_id TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN dispatch_code TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN pso_requestor_name TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN pso_requestor_phone TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN pso_requestor_email TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN pso_service_type TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN pso_billing_code TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN pso_authorization TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN pso_attempt_number INTEGER",
+    "ALTER TABLE calls_for_service ADD COLUMN pso_service_windows TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN process_service_type TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN process_served_to TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN process_served_address TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN process_attempts INTEGER",
+    "ALTER TABLE calls_for_service ADD COLUMN client_id INTEGER",
+    "ALTER TABLE calls_for_service ADD COLUMN contract_id TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN secondary_type TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN contact_method TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN updated_at TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN archived_at TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN caller_address TEXT DEFAULT ''",
+    "ALTER TABLE calls_for_service ADD COLUMN cross_street TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN weapons_involved TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN injuries_reported INTEGER DEFAULT 0",
+    "ALTER TABLE calls_for_service ADD COLUMN num_subjects INTEGER",
+    "ALTER TABLE calls_for_service ADD COLUMN vehicle_description TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN direction_of_travel TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN responding_officer TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN scene_safety TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN num_victims INTEGER",
+    "ALTER TABLE calls_for_service ADD COLUMN alcohol_involved INTEGER DEFAULT 0",
+    "ALTER TABLE calls_for_service ADD COLUMN drugs_involved INTEGER DEFAULT 0",
+    "ALTER TABLE calls_for_service ADD COLUMN domestic_violence INTEGER DEFAULT 0",
+    "ALTER TABLE calls_for_service ADD COLUMN supervisor_notified INTEGER DEFAULT 0",
+    "ALTER TABLE calls_for_service ADD COLUMN le_notified INTEGER DEFAULT 0",
+    "ALTER TABLE calls_for_service ADD COLUMN le_agency TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN le_case_number TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN damage_estimate REAL",
+    "ALTER TABLE calls_for_service ADD COLUMN damage_description TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN action_taken TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN previous_status TEXT",
+    "ALTER TABLE calls_for_service ADD COLUMN starting_mileage REAL",
+    "ALTER TABLE calls_for_service ADD COLUMN ending_mileage REAL",
+    "ALTER TABLE calls_for_service ADD COLUMN tags TEXT DEFAULT '[]'",
+    "ALTER TABLE calls_for_service ADD COLUMN priority_score INTEGER DEFAULT 0",
+    "ALTER TABLE calls_for_service ADD COLUMN response_time_seconds REAL",
+  ];
+  for (const sql of columnAdditions) {
+    try { await db.exec(sql); } catch { /* column may already exist */ }
+  }
+
   // Initialize migration version if not exists
   const versionRow = await db.prepare('SELECT version FROM migration_version WHERE id = 1').first() as any;
   if (!versionRow) {

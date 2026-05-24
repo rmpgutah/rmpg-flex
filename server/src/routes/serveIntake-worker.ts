@@ -356,8 +356,8 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
         } else {
           const propName = `${addrParts.address.split(',')[0] || addrParts.address} — ${name.last || 'Unknown'} Residence`;
           const propRes = await db.prepare(
-            'INSERT INTO properties (client_id, name, address, property_type, created_at) VALUES (?, ?, ?, ?, ?)'
-          ).run(client_id || 1, propName, addrParts.address, 'residential', now);
+            'INSERT INTO properties (client_id, name, address, property_type, is_active, created_at) VALUES (?, ?, ?, ?, ?, ?)'
+          ).run(client_id || 1, propName, addrParts.address, 'residential', 1, now);
           propertyId = Number(propRes.meta.last_row_id);
         }
         // Link person to property (non-fatal — record_links may not exist in D1)
@@ -388,7 +388,6 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
         : 'summons';
       const callerName = attorney.name || plaintiff.replace(/\n/g, ' ').trim() || 'Process Service Client';
       const callerPhone = attorney.phone || '';
-      const subjectDesc = `${fullName}${dob ? ', DOB ' + dob : ''}`;
       const docType = detectDocType(allText);
       const docTypeLabel = docType === 'court_docket' ? 'court_docket'
         : docType === 'field_sheet' ? 'field_sheet'
@@ -477,46 +476,23 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
 
       const notesJson = noteEntries.length > 0 ? JSON.stringify(noteEntries) : null;
 
-      // ── 7. Create dispatch call with all structured columns ──
+      // ── 7. Create dispatch call — D1 base columns only ──
+      // Extra data (case_number, job_number, plaintiff, court, etc.)
+      // is embedded in description and notes for D1 compatibility.
       const callResult = await db.prepare(`
         INSERT INTO calls_for_service (
           call_number, incident_type, priority, status,
           caller_name, caller_phone, caller_relationship,
           location_address, property_id, latitude, longitude,
           description, notes, source, dispatcher_id,
-          case_number, subject_description,
-          pso_requestor_name, pso_requestor_phone, pso_requestor_email,
-          pso_service_type, pso_billing_code, pso_authorization,
-          pso_attempt_number, pso_service_windows,
-          process_service_type, process_served_to, process_served_address,
-          process_attempts, client_id,
-          secondary_type, contact_method,
-          weather_conditions, lighting_conditions,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?,
-          ?, ?, ?,
-          ?, ?, ?,
-          ?, ?,
-          ?, ?, ?,
-          ?, ?,
-          ?, ?,
-          ?, ?,
-          ?, ?)
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
         callNumber, 'pso_client_request', 'P4', 'pending',
         callerName, callerPhone, 'client',
         addrParts.address || 'Unknown', propertyId, null, null,
         description, notesJson, 'intake', user.userId,
-        caseNumber || null, subjectDesc || null,
-        callerName || null, callerPhone || null, attorney.email || null,
-        'process_service', fee || null, jobNumber || null,
-        1, serviceWindows || null,
-        processType, fullName || null, addrParts.address || null,
-        0, client_id || null,
-        docTypeLabel, 'email',
-        null, null,
-        now, now
+        now
       );
       const callId = Number(callResult.meta.last_row_id);
 

@@ -194,15 +194,19 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
       )}
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Default View */}
+        {/* Default View & Camera */}
         <div className="panel-beveled bg-surface-base p-4 space-y-3">
-          <SectionLabel icon={Globe2} label="Default Map View" />
+          <SectionLabel icon={Globe2} label="Default Map View & Camera" />
           <div className="space-y-2">
             <InlineInput label="Center Latitude" value={settings.default_center_lat} onChange={v => updateField('default_center_lat', v)} step="0.0001" min="-90" max="90" />
             <InlineInput label="Center Longitude" value={settings.default_center_lng} onChange={v => updateField('default_center_lng', v)} step="0.0001" min="-180" max="180" />
             <InlineInput label="Default Zoom" value={settings.default_zoom} onChange={v => updateField('default_zoom', v)} min="1" max="22" />
+            <InlineInput label="Default Pitch (tilt °)" value={settings.default_pitch} onChange={v => updateField('default_pitch', v)} min="0" max="85" suffix="°" />
+            <InlineInput label="Default Bearing (rotation °)" value={settings.default_bearing} onChange={v => updateField('default_bearing', v)} min="0" max="360" suffix="°" />
             <InlineInput label="Min Zoom" value={settings.min_zoom} onChange={v => updateField('min_zoom', v)} min="0" max="22" />
             <InlineInput label="Max Zoom" value={settings.max_zoom} onChange={v => updateField('max_zoom', v)} min="1" max="22" />
+            <InlineInput label="Min Pitch (tilt °)" value={settings.min_pitch} onChange={v => updateField('min_pitch', v)} min="0" max="85" suffix="°" />
+            <InlineInput label="Max Pitch (tilt °)" value={settings.max_pitch} onChange={v => updateField('max_pitch', v)} min="0" max="85" suffix="°" />
           </div>
         </div>
 
@@ -250,12 +254,29 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
           </div>
         </div>
 
-        {/* Interactions */}
+        {/* Gesture Controls */}
         <div className="panel-beveled bg-surface-base p-4 space-y-3">
-          <SectionLabel icon={Navigation2} label="Interactions & Controls" />
+          <SectionLabel icon={Hand} label="Gesture Controls" />
+          <div className="space-y-2.5">
+            <ToggleField label="Scroll to Zoom" value={settings.scroll_zoom} onChange={v => updateField('scroll_zoom', v)} />
+            <ToggleField label="Box Zoom (Shift+Click+Drag)" value={settings.box_zoom} onChange={v => updateField('box_zoom', v)} />
+            <ToggleField label="Drag to Rotate" value={settings.drag_rotate} onChange={v => updateField('drag_rotate', v)} />
+            <ToggleField label="Drag to Pan" value={settings.drag_pan} onChange={v => updateField('drag_pan', v)} />
+            <ToggleField label="Double-Click to Zoom" value={settings.double_click_zoom} onChange={v => updateField('double_click_zoom', v)} />
+            <ToggleField label="Touch Zoom & Rotate (mobile)" value={settings.touch_zoom_rotate} onChange={v => updateField('touch_zoom_rotate', v)} />
+            <ToggleField label="Cooperative Gestures (mobile)" value={settings.cooperative_gestures} onChange={v => updateField('cooperative_gestures', v)} />
+          </div>
+        </div>
+
+        {/* UI Controls */}
+        <div className="panel-beveled bg-surface-base p-4 space-y-3">
+          <SectionLabel icon={Monitor} label="UI Controls" />
           <div className="space-y-2.5">
             <ToggleField label="Show Mapbox Attribution" value={settings.show_attribution} onChange={v => updateField('show_attribution', v)} />
-            <ToggleField label="Enable Map Rotation" value={settings.rotation_enabled} onChange={v => updateField('rotation_enabled', v)} />
+            <ToggleField label="Enable Map Rotation (bearing)" value={settings.rotation_enabled} onChange={v => updateField('rotation_enabled', v)} />
+            <ToggleField label="Show Compass Control" value={settings.show_compass} onChange={v => updateField('show_compass', v)} />
+            <ToggleField label="Show Zoom +/- Buttons" value={settings.show_zoom_controls} onChange={v => updateField('show_zoom_controls', v)} />
+            <ToggleField label="Enable Keyboard Navigation" value={settings.keyboard_enabled} onChange={v => updateField('keyboard_enabled', v)} />
           </div>
         </div>
 
@@ -266,6 +287,27 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
             <ToggleField label="Enable Marker Clustering" value={settings.clustering_enabled} onChange={v => updateField('clustering_enabled', v)} />
             <InlineInput label="Cluster Radius (px)" value={settings.cluster_radius} onChange={v => updateField('cluster_radius', v)} min="1" max="200" suffix="px" />
             <InlineInput label="Max Cluster Zoom" value={settings.cluster_max_zoom} onChange={v => updateField('cluster_max_zoom', v)} min="1" max="22" />
+          </div>
+        </div>
+
+        {/* Rendering & Performance */}
+        <div className="panel-beveled bg-surface-base p-4 space-y-3">
+          <SectionLabel icon={Settings2} label="Rendering & Performance" />
+          <div className="space-y-2.5">
+            <ToggleField label="Render World Copies" value={settings.render_world_copies} onChange={v => updateField('render_world_copies', v)} />
+            <ToggleField label="Cross-Source Collisions" value={settings.cross_source_collisions} onChange={v => updateField('cross_source_collisions', v)} />
+            <InlineInput label="Fade Duration (ms)" value={settings.fade_duration} onChange={v => updateField('fade_duration', v)} min="0" max="5000" suffix="ms" />
+            <InlineInput label="Click Tolerance (px)" value={settings.click_tolerance} onChange={v => updateField('click_tolerance', v)} min="0" max="20" suffix="px" />
+            <label className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Language (BCP 47, e.g. 'es', 'fr')</label>
+            <input type="text" value={settings.language}
+              onChange={e => updateField('language', e.target.value)}
+              placeholder="en" className="input-dark text-[10px] w-full min-h-[28px] font-mono"
+            />
+            <label className="text-[10px] text-rmpg-400 block mt-2 mb-0.5">Local Ideograph Font Family</label>
+            <input type="text" value={settings.local_ideograph_font_family}
+              onChange={e => updateField('local_ideograph_font_family', e.target.value)}
+              placeholder="sans-serif" className="input-dark text-[10px] w-full min-h-[28px] font-mono"
+            />
           </div>
         </div>
 
