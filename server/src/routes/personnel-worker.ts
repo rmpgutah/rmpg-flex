@@ -13,17 +13,82 @@ export function mountPersonnelRoutes(app: Hono<{ Bindings: Env; Variables: { use
   api.use('/*', authenticateToken);
 
   // GET /api/personnel
+  // Express version returns ~35 columns + JOIN to units for call_sign + supports
+  // ?role=, ?status=, ?archived= filters. The original Worker port shipped a
+  // 12-column SELECT with no filters, breaking every personnel page that
+  // renders rank, department, hire_date, dl_*, emergency_contact_*, etc.
   api.get('/', async (c) => {
     const db = new D1Db(c.env.DB);
-    const users = await db.prepare(`SELECT id, username, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at FROM users ORDER BY full_name`).all();
-    return c.json(users);
+    const { role, status, archived } = c.req.query();
+
+    let whereClause = 'WHERE 1=1';
+    const params: any[] = [];
+    if (role) { whereClause += ' AND u.role = ?'; params.push(role); }
+    if (status) { whereClause += ' AND u.status = ?'; params.push(status); }
+    if (archived === 'true') {
+      whereClause += ' AND u.archived_at IS NOT NULL';
+    } else if (archived !== 'all') {
+      whereClause += ' AND u.archived_at IS NULL';
+    }
+
+    try {
+      const users = await db.prepare(`
+        SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name, u.email, u.role,
+          u.badge_number, u.phone, u.status, u.avatar_url, u.rank, u.department, u.address, u.city, u.state, u.zip,
+          u.date_of_birth, u.hire_date, u.termination_date, u.shift_preference,
+          u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies, u.uniform_size,
+          u.emergency_contact_name, u.emergency_contact_phone, u.emergency_contact_relationship,
+          u.employee_id, u.certifications, u.notes, u.profile_image,
+          u.login_count, u.last_login_at,
+          u.totp_enabled, u.totp_exempt,
+          u.created_at, u.updated_at,
+          un.call_sign as unit_call_sign
+        FROM users u
+        LEFT JOIN units un ON un.officer_id = u.id
+        ${whereClause}
+        ORDER BY u.full_name
+        LIMIT 500
+      `).all(...params);
+      return c.json(users);
+    } catch (err: any) {
+      // D1 throws `no such column` if a migration hasn't applied yet.
+      // Retry with the minimum safe set so the page renders rather than 500-ing.
+      if (err?.message?.includes('no such column')) {
+        const users = await db.prepare(`SELECT u.id, u.username, u.full_name, u.email, u.role, u.badge_number, u.status FROM users u ${whereClause} ORDER BY u.full_name LIMIT 500`).all(...params);
+        return c.json(users);
+      }
+      throw err;
+    }
   });
 
-  // GET /api/personnel/users - List users
+  // GET /api/personnel/users — admin-gated, same shape as GET /
   api.get('/users', requireRole('admin', 'manager'), async (c) => {
     const db = new D1Db(c.env.DB);
-    const users = await db.prepare(`SELECT id, username, first_name, last_name, full_name, email, role, badge_number, phone, status, avatar_url, created_at FROM users ORDER BY full_name`).all();
-    return c.json(users);
+    try {
+      const users = await db.prepare(`
+        SELECT u.id, u.username, u.full_name, u.first_name, u.last_name, u.middle_name, u.email, u.role,
+          u.badge_number, u.phone, u.status, u.avatar_url, u.rank, u.department, u.address, u.city, u.state, u.zip,
+          u.date_of_birth, u.hire_date, u.termination_date, u.shift_preference,
+          u.dl_number, u.dl_state, u.dl_expiry, u.blood_type, u.allergies, u.uniform_size,
+          u.emergency_contact_name, u.emergency_contact_phone, u.emergency_contact_relationship,
+          u.employee_id, u.certifications, u.notes, u.profile_image,
+          u.login_count, u.last_login_at,
+          u.totp_enabled, u.totp_exempt,
+          u.created_at, u.updated_at,
+          un.call_sign as unit_call_sign
+        FROM users u
+        LEFT JOIN units un ON un.officer_id = u.id
+        ORDER BY u.full_name
+        LIMIT 500
+      `).all();
+      return c.json(users);
+    } catch (err: any) {
+      if (err?.message?.includes('no such column')) {
+        const users = await db.prepare(`SELECT id, username, full_name, email, role, badge_number, status FROM users ORDER BY full_name LIMIT 500`).all();
+        return c.json(users);
+      }
+      throw err;
+    }
   });
 
   // GET /api/personnel/users/:id

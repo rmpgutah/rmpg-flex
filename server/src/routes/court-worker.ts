@@ -5,6 +5,7 @@ import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken, requireRole } from '../worker-middleware/auth';
 import { D1Db, paramNum } from '../worker-middleware/d1Helpers';
 import { localNow, localToday } from '../worker-middleware/timeUtils';
+import { auditLog } from '../worker-middleware/auditLogger';
 
 export function mountCourtRoutes(app: Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>): void {
   const api = new Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>();
@@ -140,6 +141,16 @@ export function mountCourtRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     const db = new D1Db(c.env.DB);
     const now = localNow();
     const body = await c.req.json();
+    const id = paramNum(c.req.param('id'));
+    const user = c.get('user');
+
+    // God Mode: admin can reschedule past court dates — audit when this happens.
+    if (user?.role === 'admin' && body.event_date) {
+      const existing = await db.prepare('SELECT event_date FROM court_events WHERE id = ?').get(id) as any;
+      if (existing?.event_date && existing.event_date < localToday() && body.event_date !== existing.event_date) {
+        await auditLog(db, c, 'ADMIN_OVERRIDE', 'court_event', id, `Admin God Mode: rescheduling past court date (${existing.event_date} → ${body.event_date})`);
+      }
+    }
 
     const fields = ['event_type', 'status', 'event_date', 'event_time', 'court_name', 'courtroom',
       'judge_name', 'court_case_number', 'citation_id', 'incident_id', 'case_id',
@@ -153,7 +164,6 @@ export function mountCourtRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
       updates.push('officers_required = ?');
       params.push(JSON.stringify(body.officers_required));
     }
-    const id = paramNum(c.req.param('id'));
     params.push(id);
     await db.prepare(`UPDATE court_events SET ${updates.join(', ')} WHERE id = ?`).run(...params);
 
@@ -168,7 +178,8 @@ export function mountCourtRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     const id = paramNum(c.req.param('id'));
     if (isNaN(id)) return c.json({ error: 'Invalid event ID', code: 'INVALID_EVENT_ID' }, 400);
 
-    const existing = await db.prepare('SELECT id FROM court_events WHERE id = ?').get(id);
+    // Fetch full row so we can audit both "fresh outcome" and "admin overriding completed outcome".
+    const existing = await db.prepare('SELECT id, outcome, status FROM court_events WHERE id = ?').get(id) as any;
     if (!existing) return c.json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' }, 404);
 
     const now = localNow();
@@ -179,6 +190,12 @@ export function mountCourtRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     if (fine_amount !== undefined && fine_amount !== null) {
       const fineNum = parseFloat(fine_amount);
       if (isNaN(fineNum) || fineNum < 0) return c.json({ error: 'fine_amount must be a non-negative number', code: 'FINEAMOUNT_MUST_BE_A' }, 400);
+    }
+
+    // God Mode: admin can change court outcomes on already-completed events — audit when this happens.
+    const user = c.get('user');
+    if (user?.role === 'admin' && existing.status === 'completed' && existing.outcome && existing.outcome !== outcome) {
+      await auditLog(db, c, 'ADMIN_OVERRIDE', 'court_event', id, `Admin God Mode: changing court outcome from "${existing.outcome}" to "${outcome}"`);
     }
 
     await db.prepare("UPDATE court_events SET outcome = ?, sentence = ?, fine_amount = ?, notes = ?, status = 'completed', updated_at = ? WHERE id = ?")
@@ -196,6 +213,8 @@ export function mountCourtRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     const existing = await db.prepare('SELECT * FROM court_events WHERE id = ?').get(id) as any;
     if (!existing) return c.json({ error: 'Court event not found', code: 'COURT_EVENT_NOT_FOUND' }, 404);
 
+    // Audit BEFORE delete so the record's metadata is captured even if delete fails partway.
+    await auditLog(db, c, 'ADMIN_OVERRIDE', 'court_event', id, `Admin God Mode: deleting court event ${existing.event_number} (status=${existing.status})`);
     await db.prepare('DELETE FROM court_events WHERE id = ?').run(id);
     return c.json({ success: true, message: `Court event ${existing.event_number} deleted` });
   });
