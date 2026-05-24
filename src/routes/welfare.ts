@@ -11,6 +11,12 @@ import { getDb, queryFirst, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { sendToUser, broadcastAll } from './ws';
 
+// Helper: get the WelfareWatchDO stub for a given officer
+function getDO(env: any, userId: number) {
+  const id = env.WELFARE_WATCH.idFromName(`u-${userId}`);
+  return env.WELFARE_WATCH.get(id);
+}
+
 const ALL_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'];
 
 const welfare = new Hono<Env>();
@@ -25,11 +31,48 @@ welfare.post('/ack', requireRole(...ALL_ROLES), async (c) => {
         VALUES (?, 'welfare_ack', 'user', ?, ?, ?)`,
         userId, userId, 'Code 4 ack received', c.req.header('cf-connecting-ip') || 'unknown');
     } catch { /* non-fatal */ }
+    // Tell the DO to clear the watch
+    try { await getDO(c.env, userId).fetch('https://do/ack', { method: 'POST' }); } catch { /* non-fatal */ }
     broadcastAll('dispatch_update', { action: 'welfare_cleared', user_id: userId, at: new Date().toISOString() });
     return c.json({ success: true, message: 'Code 4 ack received.' });
   } catch (err) {
     console.error('[welfare] ack error', err);
     return c.json({ error: 'Failed to ack welfare check', code: 'WELFARE_ACK_ERR' }, 500);
+  }
+});
+
+// POST /api/dispatch/welfare/start — start watching this officer
+// (called when officer goes onscene on a P1/P2 call).
+welfare.post('/start', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const userId = c.get('userId') as number;
+    const body = await c.req.json().catch(() => ({} as any));
+    const result = await getDO(c.env, userId).fetch('https://do/start', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        user_id: userId,
+        call_sign: body.call_sign || null,
+        call_id: body.call_id ?? null,
+        call_number: body.call_number || null,
+      }),
+    });
+    return c.json(await result.json());
+  } catch (err) {
+    console.error('[welfare] start error', err);
+    return c.json({ error: 'Failed to start watch', code: 'WELFARE_START_ERR' }, 500);
+  }
+});
+
+// POST /api/dispatch/welfare/activity — record activity (resets timer)
+welfare.post('/activity', requireRole(...ALL_ROLES), async (c) => {
+  try {
+    const userId = c.get('userId') as number;
+    const result = await getDO(c.env, userId).fetch('https://do/activity', { method: 'POST' });
+    return c.json(await result.json());
+  } catch (err) {
+    console.error('[welfare] activity error', err);
+    return c.json({ error: 'Failed to record activity', code: 'WELFARE_ACTIVITY_ERR' }, 500);
   }
 });
 
@@ -66,6 +109,8 @@ welfare.post('/help', requireRole(...ALL_ROLES), async (c) => {
         c.req.header('cf-connecting-ip') || 'unknown');
     } catch { /* non-fatal */ }
 
+    // Tell the DO this officer escalated to emergency
+    try { await getDO(c.env, userId).fetch('https://do/help', { method: 'POST', body: JSON.stringify({}) }); } catch { /* non-fatal */ }
     broadcastAll('dispatch_update', payload);
     return c.json({ success: true, broadcast: payload });
   } catch (err) {

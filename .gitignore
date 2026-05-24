@@ -2,3 +2,9 @@ node_modules/
 .cloudflare/
 *.log
 .wrangler/
+
+# Claude Code tooling (per-worktree, not committed)
+.claude/
+
+# Generated PDFs that shouldn't be tracked in source
+client/RMPG-Dispatch-Guide-*.pdf

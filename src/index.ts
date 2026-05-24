@@ -3,7 +3,11 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware } from './middleware/auth';
-import { handleWebSocket } from './routes/ws';
+import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+
+// Export so wrangler can find the DO class at build time
+export { WelfareWatchDO };
 
 import auth from './routes/auth';
 import health from './routes/health';
@@ -23,6 +27,7 @@ import runCards from './routes/runCards';
 import nibrs from './routes/nibrs';
 import welfare from './routes/welfare';
 import incidentSupplements from './routes/incidentSupplements';
+import incidentsRouter from './routes/incidents';
 
 type Bindings = {
   DB: D1Database;
@@ -91,6 +96,13 @@ app.route('/api/records', records);
 app.route('/api/dispatch/run-cards', runCards);
 app.route('/api/dispatch/welfare', welfare);
 app.route('/api/nibrs', nibrs);
+// IMPORTANT: incidentsRouter MUST mount BEFORE incidentSupplements.
+// Both share the /api/incidents prefix; supplements catches paths like
+// /:id/supplements/{dv,pursuit}, while incidentsRouter handles /:id and
+// /:id/{submit,approve,return}. Hono dispatches in registration order,
+// so the more-specific supplements router has to come second to let
+// incidentsRouter's exact patterns match first.
+app.route('/api/incidents', incidentsRouter);
 app.route('/api/incidents', incidentSupplements);
 
 // Stub endpoints for dashboard/feature compatibility
@@ -114,6 +126,31 @@ app.route('/api/email', stubs);
 app.route('/api/integrations', stubs);
 app.route('/api/dispatch/stats', stubs);
 app.route('/api/dispatch/shift-handoff', stubs);
+
+// ─── Internal: WelfareWatchDO → Worker callback ──────────
+// The DO's alarm() can't call sendToUser/broadcastAll directly
+// (those live in the Worker module's per-isolate state). Instead
+// it posts to /__welfare-fire authenticated by X-DO-Secret == JWT_SECRET.
+app.post('/__welfare-fire', async (c) => {
+  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
+  if (stage === 'prompt') {
+    sendToUser(watch.user_id, 'welfare_check', {
+      action: 'welfare_prompt',
+      callSign: watch.call_sign,
+      callId: watch.call_id,
+      callNumber: watch.call_number,
+      message: `Welfare check: ${watch.call_sign || 'unit'}, are you code 4${watch.call_number ? ` on call ${watch.call_number}` : ''}?`,
+    });
+  } else if (stage === 'alert') {
+    broadcastAll('dispatch_update', { action: 'welfare_alert', user_id: watch.user_id, call_sign: watch.call_sign, at: new Date().toISOString() });
+  } else if (stage === 'emergency') {
+    broadcastAll('dispatch_update', { action: 'welfare_emergency', user_id: watch.user_id, call_sign: watch.call_sign, call_id: watch.call_id, call_number: watch.call_number, triggered_by: 'automated_escalation', at: new Date().toISOString() });
+  }
+  return c.json({ success: true });
+});
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {

@@ -16,6 +16,20 @@ binding = "DB"
 database_name = "rmpg-flex-db"
 database_id = "8893480a-6dd5-4790-a11f-1fb6fac13f02"
 
+# ─── Durable Objects ─────────────────────────────────────
+# WelfareWatchDO — automated officer welfare escalation timer
+# (Spillman parity, DI-4 follow-up). One instance per officer
+# via env.WELFARE_WATCH.idFromName(`u-${userId}`).
+[[durable_objects.bindings]]
+name = "WELFARE_WATCH"
+class_name = "WelfareWatchDO"
+
+[[migrations]]
+tag = "v1"
+# new_sqlite_classes (not new_classes) — free-plan compatible.
+# SQLite-backed DO storage; same API surface for our use case.
+new_sqlite_classes = ["WelfareWatchDO"]
+
 # KV for sessions and caching
 [[kv_namespaces]]
 binding = "KV"
