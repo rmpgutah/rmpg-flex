@@ -1161,12 +1161,33 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('caller_relationship', caller_relationship);
     addField('location_address', location_address);
     addField('property_id', property_id);
+    // Detect address change with no explicit coords — clear stale lat/lng + beat
+    // so the async geocoder repopulates them and broadcasts a fresh call_updated.
+    // Without this, the map marker stays at the old location forever (gotcha:
+    // updated.latitude/longitude flow into geocodeCallIfNeeded below and cause
+    // it to bail when the row already has coords).
+    const addressChanged =
+      location_address !== undefined &&
+      location_address !== null &&
+      String(location_address).trim() !== String(call.location_address || '').trim();
+    const explicitCoordsProvided =
+      (latitude !== undefined && latitude !== null && latitude !== '') ||
+      (longitude !== undefined && longitude !== null && longitude !== '');
+    const shouldRegeocode = addressChanged && !explicitCoordsProvided;
+
     // Protect lat/lng from being wiped — only update if a real numeric value is provided
     if (latitude !== undefined && latitude !== null && latitude !== '') {
       updates.push('latitude = ?'); params.push(Number(latitude));
+    } else if (shouldRegeocode) {
+      updates.push('latitude = NULL');
     }
     if (longitude !== undefined && longitude !== null && longitude !== '') {
       updates.push('longitude = ?'); params.push(Number(longitude));
+    } else if (shouldRegeocode) {
+      updates.push('longitude = NULL');
+      // Also clear beat/zone/sector so the geocode callback recomputes them
+      // from the new coords (otherwise dispatch routing stays on the old beat).
+      updates.push('beat_id = NULL', 'zone_id = NULL', 'sector_id = NULL', 'zone_beat = NULL');
     }
     addField('description', description);
     addField('notes', notes);

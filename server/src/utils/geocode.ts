@@ -167,13 +167,46 @@ export function geocodeCallIfNeeded(callId: number, address: string, lat: any, l
   if (!callId || typeof callId !== 'number' || callId < 1) return;
   if (lat || lng || !address || !address.trim()) return;
 
-  geocodeAddress(address).then((result) => {
+  geocodeAddress(address).then(async (result) => {
     if (!result) return;
     try {
       const db = getDb();
       db.prepare('UPDATE calls_for_service SET latitude = ?, longitude = ? WHERE id = ?')
         .run(result.latitude, result.longitude, callId);
       console.log(`[geocode] Geocoded call ${callId}: ${result.latitude}, ${result.longitude}`);
+
+      // Recompute beat/zone/sector if they weren't carried over from a property.
+      // Address edits clear these (see PUT /calls/:id) so the marker AND the
+      // dispatch routing both end up on the new beat — not just the pin.
+      try {
+        const current = db.prepare(
+          'SELECT beat_id, zone_id, sector_id, zone_beat FROM calls_for_service WHERE id = ?'
+        ).get(callId) as any;
+        if (current && !current.beat_id) {
+          const { identifyBeat } = await import('./geofence');
+          const beat = identifyBeat(result.latitude, result.longitude);
+          if (beat) {
+            const district = db.prepare(`
+              SELECT db2.beat_code, dz.zone_code, ds.sector_code
+              FROM dispatch_beats db2
+              JOIN dispatch_zones dz ON dz.id = db2.zone_id
+              JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+              WHERE db2.beat_code = ? LIMIT 1
+            `).get(beat.beat_code) as any;
+            db.prepare(
+              'UPDATE calls_for_service SET beat_id = ?, zone_id = ?, sector_id = ?, zone_beat = ? WHERE id = ?'
+            ).run(
+              district?.beat_code || beat.beat_code,
+              district?.zone_code || null,
+              district?.sector_code || null,
+              current.zone_beat || beat.beat_code,
+              callId
+            );
+          }
+        }
+      } catch (beatErr) {
+        console.warn('[geocode] Beat recompute skipped:', beatErr instanceof Error ? beatErr.message : beatErr);
+      }
 
       // Broadcast updated call so map markers appear in real-time
       const updatedCall = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
