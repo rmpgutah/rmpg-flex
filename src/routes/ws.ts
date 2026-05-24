@@ -10,6 +10,59 @@ interface WsClient {
   joinedAt: number;
 }
 
+// Per-isolate connection registry — keyed by userId for targeted
+// delivery (welfare prompts, premise auto-push, Spillman parity).
+// Same trade-off as legacy server/src/worker-middleware/websocket.ts:
+// cross-isolate fanout is best-effort; the alert use case (officer's
+// MDT lives in one isolate at a time) works fine.
+const wsClients = new Map<number, Set<any>>();
+
+function registerClient(userId: number, ws: any): void {
+  let set = wsClients.get(userId);
+  if (!set) { set = new Set(); wsClients.set(userId, set); }
+  set.add(ws);
+}
+
+function unregisterClient(userId: number, ws: any): void {
+  const set = wsClients.get(userId);
+  if (set) {
+    set.delete(ws);
+    if (set.size === 0) wsClients.delete(userId);
+  }
+}
+
+export function sendToUser(userId: number, type: string, data: any): number {
+  const set = wsClients.get(userId);
+  if (!set || set.size === 0) return 0;
+  const message = JSON.stringify({ type, ...data });
+  let delivered = 0;
+  for (const ws of set) {
+    try {
+      if ((ws as any).readyState === 1) {
+        (ws as any).send(message);
+        delivered++;
+      }
+    } catch { /* connection in flight — ignore */ }
+  }
+  return delivered;
+}
+
+export function broadcastAll(type: string, data: any): number {
+  const message = JSON.stringify({ type, ...data });
+  let delivered = 0;
+  for (const set of wsClients.values()) {
+    for (const ws of set) {
+      try {
+        if ((ws as any).readyState === 1) {
+          (ws as any).send(message);
+          delivered++;
+        }
+      } catch { /* ignore */ }
+    }
+  }
+  return delivered;
+}
+
 interface Bindings {
   DB: D1Database;
   KV: KVNamespace;
@@ -100,6 +153,10 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
 
             safeSend(JSON.stringify({ type: 'authenticated', userId: user.id, role: user.role }));
 
+            // Register this WS in the per-isolate map so sendToUser
+            // can target the officer for welfare/premise pushes.
+            registerClient(user.id, server);
+
             await env.KV.put(`ws:user:${user.id}`, JSON.stringify({
               online: true, username: user.username, role: user.role, lastSeen: Date.now(),
             }), { expirationTtl: 300 });
@@ -122,12 +179,14 @@ export async function handleWebSocket(request: Request, env: Bindings): Promise<
     server.addEventListener('close', () => {
       cleanup();
       if (clientInfo?.userId) {
+        unregisterClient(clientInfo.userId, server);
         env.KV.delete(`ws:user:${clientInfo.userId}`).catch(() => {});
       }
     });
 
     server.addEventListener('error', () => {
       cleanup();
+      if (clientInfo?.userId) unregisterClient(clientInfo.userId, server);
     });
 
     return new Response(null, { status: 101, webSocket: client });

@@ -19,6 +19,10 @@ import properties from './routes/properties';
 import records from './routes/records';
 import mapData from './routes/mapData';
 import stubs from './routes/stubs';
+import runCards from './routes/runCards';
+import nibrs from './routes/nibrs';
+import welfare from './routes/welfare';
+import incidentSupplements from './routes/incidentSupplements';
 
 type Bindings = {
   DB: D1Database;
@@ -57,6 +61,14 @@ app.use('/api/dispatch/calls/*', authMiddleware);
 app.use('/api/dispatch/units/*', authMiddleware);
 app.use('/api/dispatch/gps/*', authMiddleware);
 app.use('/api/dispatch/geography/*', authMiddleware);
+app.use('/api/dispatch/run-cards', authMiddleware);
+app.use('/api/dispatch/run-cards/*', authMiddleware);
+app.use('/api/dispatch/welfare', authMiddleware);
+app.use('/api/dispatch/welfare/*', authMiddleware);
+app.use('/api/nibrs', authMiddleware);
+app.use('/api/nibrs/*', authMiddleware);
+app.use('/api/incidents', authMiddleware);
+app.use('/api/incidents/*', authMiddleware);
 app.use('/api/admin', authMiddleware);
 app.use('/api/admin/*', authMiddleware);
 app.use('/api/personnel', authMiddleware);
@@ -76,6 +88,10 @@ app.route('/api/personnel', personnel);
 app.route('/api/presence', presence);
 app.route('/api/records/properties', properties);
 app.route('/api/records', records);
+app.route('/api/dispatch/run-cards', runCards);
+app.route('/api/dispatch/welfare', welfare);
+app.route('/api/nibrs', nibrs);
+app.route('/api/incidents', incidentSupplements);
 
 // Stub endpoints for dashboard/feature compatibility
 app.use('/api/user/*', authMiddleware);
