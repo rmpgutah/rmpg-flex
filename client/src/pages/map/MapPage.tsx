@@ -369,7 +369,12 @@ export default function MapPage() {
 
   // Address search (map geocoding)
   const [addressSearch, setAddressSearch] = useState('');
-  const [addressResults, setAddressResults] = useState<{ description: string; place_id: string }[]>([]);
+  // center is captured on the initial forward-geocode and reused when
+  // the user picks a result — re-fetching by place_id against Mapbox's
+  // places endpoint is a search query, not a lookup, and would return
+  // a less-specific feature (see AddressAutocomplete for the full
+  // postmortem).
+  const [addressResults, setAddressResults] = useState<{ description: string; place_id: string; center: [number, number] }[]>([]);
   const [showAddressResults, setShowAddressResults] = useState(false);
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const addressMarkerRef = useRef<mapboxgl.Marker | null>(null);
@@ -2534,7 +2539,15 @@ export default function MapPage() {
         const resp = await fetch(geocodeUrl);
         const data = await resp.json();
         if (data.features && data.features.length > 0) {
-          setAddressResults(data.features.map((f: any) => ({ description: f.place_name, place_id: f.id })));
+          setAddressResults(
+            data.features
+              .filter((f: any) => Array.isArray(f.center) && f.center.length === 2)
+              .map((f: any) => ({
+                description: f.place_name,
+                place_id: f.id,
+                center: f.center as [number, number],
+              }))
+          );
           setShowAddressResults(true);
         } else {
           setAddressResults([]);
@@ -2545,64 +2558,53 @@ export default function MapPage() {
     }, 300);
   }, []);
 
-  const handleAddressSelect = useCallback(async (placeId: string, description: string) => {
+  const handleAddressSelect = useCallback((center: [number, number], description: string) => {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    const token = mapboxgl.accessToken;
-    if (!token) return;
+    const [lng, lat] = center;
+    if (!isFinite(lng) || !isFinite(lat)) return;
 
-    const detailUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${placeId}.json?access_token=${token}&limit=1`;
-    try {
-      const resp = await fetch(detailUrl);
-      const data = await resp.json();
-      if (data.features && data.features[0]) {
-        const [lng, lat] = data.features[0].center;
-        if (!isFinite(lng) || !isFinite(lat)) return;
-        map.panTo([lng, lat]);
-        map.setZoom(17);
+    map.panTo([lng, lat]);
+    map.setZoom(17);
 
-        // Remove previous address marker
-        if (addressMarkerRef.current) {
-          removeMarker(addressMarkerRef.current);
-          addressMarkerRef.current = null;
-        }
-
-        // Create search result marker
-        const el = document.createElement('div');
-        el.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
-        // Use safe DOM methods instead of innerHTML to prevent XSS
-        const label = document.createElement('div');
-        label.style.cssText = 'background:#888888;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:\'JetBrains Mono\',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;';
-        label.textContent = description.split(',')[0];
-
-        const arrow = document.createElement('div');
-        arrow.style.cssText = 'width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #888888;';
-
-        el.appendChild(label);
-        el.appendChild(arrow);
-
-        addressMarkerRef.current = createMarker({
-          map,
-          position: [lng, lat],
-          content: el,
-          zIndex: 5000,
-          title: description,
-        });
-
-        // Auto-dismiss after 30 seconds
-        if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
-        addressDismissTimer.current = setTimeout(() => {
-          if (addressMarkerRef.current) {
-            removeMarker(addressMarkerRef.current);
-            addressMarkerRef.current = null;
-          }
-          addressDismissTimer.current = null;
-        }, 30000);
-      }
-    } catch {
-      // Ignore geocoding errors
+    // Remove previous address marker
+    if (addressMarkerRef.current) {
+      removeMarker(addressMarkerRef.current);
+      addressMarkerRef.current = null;
     }
+
+    // Create search result marker
+    const el = document.createElement('div');
+    el.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
+    // Use safe DOM methods instead of innerHTML to prevent XSS
+    const label = document.createElement('div');
+    label.style.cssText = 'background:#888888;color:#fff;font-size:9px;font-weight:900;padding:3px 8px;border:2px solid #fff;white-space:nowrap;font-family:\'JetBrains Mono\',monospace;letter-spacing:0.05em;max-width:200px;overflow:hidden;text-overflow:ellipsis;border-radius:2px;';
+    label.textContent = description.split(',')[0];
+
+    const arrow = document.createElement('div');
+    arrow.style.cssText = 'width:0;height:0;border-left:6px solid transparent;border-right:6px solid transparent;border-top:8px solid #888888;';
+
+    el.appendChild(label);
+    el.appendChild(arrow);
+
+    addressMarkerRef.current = createMarker({
+      map,
+      position: [lng, lat],
+      content: el,
+      zIndex: 5000,
+      title: description,
+    });
+
+    // Auto-dismiss after 30 seconds
+    if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
+    addressDismissTimer.current = setTimeout(() => {
+      if (addressMarkerRef.current) {
+        removeMarker(addressMarkerRef.current);
+        addressMarkerRef.current = null;
+      }
+      addressDismissTimer.current = null;
+    }, 30000);
 
     setAddressSearch(description.split(',')[0]);
     setShowAddressResults(false);
@@ -2850,7 +2852,7 @@ export default function MapPage() {
                       role="option"
                       onMouseDown={(e) => e.preventDefault()}
                       onTouchStart={(e) => e.preventDefault()}
-                      onClick={() => handleAddressSelect(r.place_id, r.description)}
+                      onClick={() => handleAddressSelect(r.center, r.description)}
                       className="w-full text-left px-4 py-3 text-[12px] text-white/80 hover:bg-white/10 hover:text-white transition-colors border-b border-white/10 last:border-0 flex items-center gap-2"
                       style={{ minHeight: 44 }}
                     >
@@ -2917,7 +2919,7 @@ export default function MapPage() {
                       role="option"
                       onMouseDown={(e) => e.preventDefault()}
                       onTouchStart={(e) => e.preventDefault()}
-                      onClick={() => handleAddressSelect(r.place_id, r.description)}
+                      onClick={() => handleAddressSelect(r.center, r.description)}
                       className="w-full text-left px-3 py-2 text-[10px] text-rmpg-200 hover:bg-rmpg-700/50 hover:text-white transition-colors border-b border-rmpg-700 last:border-0 flex items-center gap-2"
                     >
                       <MapPin className="w-3 h-3 text-gray-400 shrink-0" />
