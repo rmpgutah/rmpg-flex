@@ -63,6 +63,11 @@ deploy/           Deployment scripts (deploy.sh, deploy-all.sh)
 - **Always bump `CACHE_NAME` in `client/public/sw.js`** when deploying client changes
 - SSL certs: Let's Encrypt symlinks `/etc/letsencrypt/live/rmpgutah.us/` → `server/certs/`
 
+### VPS auto-pull webhook (CRITICAL)
+- `rmpg-webhook` systemd service on VPS port 9000 auto-pulls `master` on every push and runs `/opt/deploy-rmpg.sh` (`vite build` + `systemctl restart rmpg-flex`)
+- **Direct VPS patches via scp/ssh get silently reverted on next push to master** — fixes must land in upstream `master` to persist
+- Before patching VPS directly, run `ssh root@194.113.64.90 "cd /opt/rmpg-flex && git status"` to see current drift
+
 ### Security
 - TOTP secrets are AES-256-GCM encrypted using a key derived from `JWT_SECRET`
 - If `JWT_SECRET` changes, all TOTP secrets become unrecoverable — users must re-enroll
@@ -306,7 +311,7 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 13. **Dispatch layout** — DispatchPage uses `flex h-full` row layout. Never wrap in flex-col or add block children — use `position: fixed` for overlays
 14. **Electron full cache clear** — `pkill -f "RMPG Flex"; sleep 1; rm -rf ~/Library/Application\ Support/rmpg-flex-desktop/{Cache,Service\ Worker,GPUCache,Code\ Cache}`
 15. **Worktree deploys** — `deploy.sh` deploys whatever branch the worktree is on. Main branch is NOT updated. Merge worktree branch to main separately
-16. **nginx on VPS** — config at `/etc/nginx/sites-enabled/rmpg-flex`. New top-level URL paths must proxy to Node (port 3001), not serve static
+16. **nginx on VPS** — config at `/etc/nginx/sites-enabled/rmpgutah.us` (NOT `rmpg-flex`). New top-level URL paths must proxy to Node (port 3001), not serve static. Has `client_max_body_size 600M;` for uploads (default 1 MB blocks images >1MB with 413). Config is NOT in the git repo — survives deploys.
 17. **Tailwind override pattern** — global Spillman enforcement at end of `index.css` uses `!important` to override utility classes (e.g., `.rounded-lg { border-radius: 2px !important; }`)
 18. **PATH in Claude Code sessions** — `npx`/`node` may not be found. Prefix with `export PATH="/opt/homebrew/bin:/usr/local/bin:$PATH"`
 19. **Worktree file paths** — when operating in a worktree, ALL edits must use the worktree path (`.claude/worktrees/<name>/`), not the main repo path. Edits to the main repo path are invisible to the worktree and will be lost
@@ -314,3 +319,8 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 21. **Multer must stay on 1.x** — multer 2.0 has an incompatible API (removes `diskStorage()`, `memoryStorage()`, `upload.single()` pattern). 8 route files use 1.x API. Dependabot multer alerts cannot be auto-fixed
 22. **Panel CSS classes** — use `.panel-raised`, `.panel-sunken`, `.panel-base` for surface backgrounds. These are defined in `index.css` and map to CSS variables. Without them, elements render with no background (white)
 23. **CI `npm ci` fragility** — the self-hosted runner uses `npm ci` which requires exact lockfile match. If lockfile drifts, CI fails on install step. Fix: regenerate lockfiles locally (`npm install`) and commit them
+24. **Module-level `getDb()` is unsafe** — calling `getDb()` at file scope (e.g. inside a `try { ... } catch {}` to lazily create a table) runs before `initDatabase()` and silently fails. Use a lazy `function ensureXxxTable(db: any) { db.prepare('CREATE TABLE IF NOT EXISTS ...').run(); }` called from each handler instead. Same pattern as `personnel.ts` and `firecrawlTools.ts`.
+25. **Silent-drop bug class** — hand-typed destructure + hand-typed INSERT/SET clauses where POST and PUT diverge. Form fields get silently dropped on save. Canonical fix: a single shared `XXX_FIELD_MAP` allowlist used by both POST and PUT (see `VEHICLE_FIELD_MAP`, `PROPERTY_FIELD_MAP`, `EVIDENCE_FIELD_MAP` in `records.ts`). Audit by diffing `*FormData` interface against route destructure + `PRAGMA table_info`.
+26. **PUT clobber bug** (inverse of silent-drop) — handlers that hard-overwrite every column with `req.body[key] || null` null out fields the form didn't send. Use a dynamic SET clause gated by `Object.prototype.hasOwnProperty.call(req.body, key)` for correct partial-update semantics.
+27. **Forensics POST/PUT is structurally broken** — `forensic_cases` and `forensic_exhibits` route handlers reference 7+ columns that don't exist in schema (`requesting_agency`, `linked_case_number`, `exhibit_type`, `quantity`, `chain_of_custody`, hash columns). Production has 1 row in `forensic_cases` total — strong evidence the feature has never successfully created via the UI. Needs schema migration or handler rewrite, not surgical patch.
+28. **Audit sweeps via parallel subagents** — for "find all silent-drop bugs across the codebase" or "audit X across 20 entity routes", spawn 3+ parallel general-purpose subagents partitioned by entity area (e.g. "citations+warrants", "incidents+CRM", "HR+personnel+forensics"). Each agent reads form modal + route handler + DB schema and reports drops. ~8x faster than sequential.
