@@ -736,10 +736,11 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
   // ═══════════════════════════════════════════════════════════
 
   // GET /api/auth/signature - Get user's digital signature
-  api.get('/signature', async (c) => {
+  api.get('/signature', authenticateToken, async (c) => {
     try {
       const db = new D1Db(c.env.DB);
       const user = c.get('user');
+      if (!user) return c.json({ error: 'Not authenticated', code: 'NOT_AUTHENTICATED' }, 401);
       const row = await db.prepare('SELECT digital_signature FROM users WHERE id = ?').get(user.userId) as { digital_signature: string | null } | null;
       return c.json({ signature: row?.digital_signature || null });
     } catch (err: any) {
@@ -748,10 +749,11 @@ export function mountAuthRoutes(app: Hono<{ Bindings: Env; Variables: { user: Jw
   });
 
   // PUT /api/auth/signature - Save user's digital signature
-  api.put('/signature', async (c) => {
+  api.put('/signature', authenticateToken, async (c) => {
     try {
       const db = new D1Db(c.env.DB);
       const user = c.get('user');
+      if (!user) return c.json({ error: 'Not authenticated', code: 'NOT_AUTHENTICATED' }, 401);
       const { signature } = await c.req.json();
       if (signature !== null && signature !== undefined) {
         if (typeof signature !== 'string' || !signature.startsWith('data:image/png;base64,')) {
