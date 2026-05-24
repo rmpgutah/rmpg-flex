@@ -96,6 +96,8 @@ records.get('/search', async (c) => {
     const db = getDb(c.env);
     const q = c.req.query('q');
     const type = (c.req.query('type') || 'person').toLowerCase();
+    // Cache-buster v2: previous deploy didn't include this handler in the bundle
+    // despite the commit being live on main. Forcing a fresh build.
     if (!q || q.length < 2) return c.json([]);
     const like = `%${q}%`;
 
