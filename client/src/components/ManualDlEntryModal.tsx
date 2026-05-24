@@ -242,11 +242,14 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
                className="input-dark w-full"
                name="address"
                onSelect={(addr) => {
-                 // Auto-fill related fields when address is selected
-                 set('address', addr.formatted);
-                 set('city', addr.city);
-                 set('address_state', addr.state);
-                 set('postal_code', addr.zip);
+                 // Auto-fill related fields when address is selected.
+                 // Street column holds the street line only (city/state/zip are
+                 // separate fields below). Fall back to the full formatted
+                 // string only if Mapbox didn't return a parsed street.
+                 set('address', addr.street || addr.formatted);
+                 if (addr.city) set('city', addr.city);
+                 if (addr.state) set('address_state', addr.state);
+                 if (addr.zip) set('postal_code', addr.zip);
                }}
              />
            </div>

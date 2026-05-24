@@ -284,6 +284,14 @@ export default function DashCamUploadModal({
                  placeholder="Enter address..."
                  className="input-dark"
                  name="address"
+                 onSelect={(addr) => {
+                   // Store the full formatted address (street + city + state + zip)
+                   // and propagate the geocoded coordinates to the GPS inputs above
+                   // so the video appears on the map after upload.
+                   setAddress(addr.formatted || addr.street);
+                   if (addr.latitude != null) setLatitude(String(addr.latitude));
+                   if (addr.longitude != null) setLongitude(String(addr.longitude));
+                 }}
                />
              </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

@@ -533,7 +533,7 @@ export default function VehicleFormModal({
                   placeholder="Owner address"
                   value={form.owner_address}
                   onChange={(val) => setForm((prev) => ({ ...prev, owner_address: val }))}
-                  onSelect={(addr) => setForm((prev) => ({ ...prev, owner_address: addr.street || addr.formatted }))}
+                  onSelect={(addr) => setForm((prev) => ({ ...prev, owner_address: addr.formatted || addr.street }))}
                 />
               </div>
               <div>

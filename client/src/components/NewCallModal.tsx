@@ -686,7 +686,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   placeholder="Caller address"
                   value={formData.caller_address}
                   onChange={(val) => update('caller_address', val)}
-                  onSelect={(addr) => update('caller_address', addr.street || addr.formatted)}
+                  onSelect={(addr) => update('caller_address', addr.formatted || addr.street)}
                 />
               </div>
             )}

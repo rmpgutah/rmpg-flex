@@ -157,6 +157,10 @@ interface CitationForm {
   zone_id: string;
   beat_id: string;
   zone_beat: string;
+  // Geocoded coordinates for the violation location — populated by the
+  // address autocomplete so the citation can be plotted on the Map UI.
+  latitude: number | null;
+  longitude: number | null;
   // Spillman Flex traffic fields
   vehicle_vin: string;
   vehicle_year: string;
@@ -251,6 +255,8 @@ const EMPTY_FORM: CitationForm = {
   zone_id: '',
   beat_id: '',
   zone_beat: '',
+  latitude: null,
+  longitude: null,
   vehicle_vin: '',
   vehicle_year: '',
   vehicle_make: '',
@@ -616,6 +622,8 @@ export default function CitationsPage() {
       zone_id: c.zone_id || '',
       beat_id: c.beat_id || '',
       zone_beat: c.zone_beat || '',
+      latitude: c.latitude ?? null,
+      longitude: c.longitude ?? null,
       vehicle_vin: (c as any).vehicle_vin || '',
       vehicle_year: (c as any).vehicle_year || '',
       vehicle_make: (c as any).vehicle_make || '',
@@ -1508,7 +1516,31 @@ export default function CitationsPage() {
             </div>
             <div>
               <label className="field-label">Location</label>
-              <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs min-h-[36px]" />
+              <AddressAutocomplete
+                value={form.location}
+                onChange={(value) => updateField('location', value)}
+                placeholder="Address or intersection"
+                className="input-dark w-full py-2 text-xs min-h-[36px]"
+                name="location"
+                onSelect={async (addr) => {
+                  // Full formatted address + geocoded coords so this citation
+                  // appears on the Map UI. Auto-fill Section/Zone/Beat via the
+                  // server's geofence identify endpoint.
+                  updateField('location', addr.formatted || addr.street);
+                  if (addr.latitude != null) {
+                    updateField('latitude', addr.latitude as any);
+                    updateField('longitude', addr.longitude as any);
+                    const district = await identifyDistrict(addr.latitude, addr.longitude!);
+                    if (district) {
+                      // Citations form uses the legacy "section_id" name for what
+                      // the geography hook returns as sector_id.
+                      if (district.sector_id) updateField('section_id', district.sector_id);
+                      if (district.zone_id) updateField('zone_id', district.zone_id);
+                      if (district.beat_id) updateField('beat_id', district.beat_id);
+                    }
+                  }
+                }}
+              />
             </div>
             {/* Section / Zone / Beat — cascading */}
             <div className="grid grid-cols-3 gap-2">
