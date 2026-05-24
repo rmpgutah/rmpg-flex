@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { User } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
-import { useFormDirty } from '../../../hooks/useFormDirty';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { UserRole } from '../../../types';
 import AddressAutocomplete, { type ParsedAddress } from '../../../components/AddressAutocomplete';
 import { formatPhoneInput } from '../../../utils/formatters';
@@ -94,17 +94,27 @@ function SectionDivider({ label }: { label: string }) {
 export default function OfficerFormModal({
   isOpen, onClose, onSubmit, isSubmitting, initialData, mode = 'create',
 }: Props) {
-  const [form, setForm] = useState<OfficerFormData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<OfficerFormData>({
+    storageKey: 'rmpg_personnel_officer_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
       const initial = { ...EMPTY, ...initialData };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen) {
       setForm(EMPTY);
-      snapshot(EMPTY);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
@@ -127,6 +137,8 @@ export default function OfficerFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Account — create only */}
       {mode === 'create' && (
@@ -252,7 +264,7 @@ export default function OfficerFormModal({
             onSelect={(addr: ParsedAddress) => {
               setForm((prev) => ({
                 ...prev,
-                address: addr.street || addr.formatted,
+                address: addr.formatted || addr.street,
                 city: addr.city || prev.city,
                 state: addr.state || prev.state,
                 zip: addr.zip || prev.zip,

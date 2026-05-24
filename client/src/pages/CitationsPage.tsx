@@ -43,6 +43,10 @@ import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import ExportButton from '../components/ExportButton';
 import { formatAddressDisplay } from '../utils/statusLabels';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 
 // ── Types ──────────────────────────────────────────────────
 
@@ -154,6 +158,10 @@ interface CitationForm {
   zone_id: string;
   beat_id: string;
   zone_beat: string;
+  // Geocoded coordinates for the violation location — populated by the
+  // address autocomplete so the citation can be plotted on the Map UI.
+  latitude: number | null;
+  longitude: number | null;
   // Spillman Flex traffic fields
   vehicle_vin: string;
   vehicle_year: string;
@@ -248,6 +256,8 @@ const EMPTY_FORM: CitationForm = {
   zone_id: '',
   beat_id: '',
   zone_beat: '',
+  latitude: null,
+  longitude: null,
   vehicle_vin: '',
   vehicle_year: '',
   vehicle_make: '',
@@ -303,11 +313,23 @@ export default function CitationsPage() {
 
   // Form state
   const [mode, setMode] = useState<'list' | 'create' | 'edit'>('list');
-  const [form, setForm] = useState<CitationForm>({ ...EMPTY_FORM });
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [saveSuccess, setSaveSuccess] = useState(false);
   const { errors: formErrors, validate: runValidation, clearAllErrors: clearFormErrors } = useFormValidation();
+
+  const {
+    form,
+    setForm,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<CitationForm>({
+    storageKey: 'rmpg_citation_form',
+    defaultValue: EMPTY_FORM,
+    isActive: mode !== 'list',
+  });
 
   // Duplicate detection
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
@@ -552,6 +574,7 @@ export default function CitationsPage() {
     setSaveError('');
     setSaveSuccess(false);
     clearFormErrors();
+    snapshotForm();
     setMode('create');
     setSelectedCitation(null);
   };
@@ -586,6 +609,8 @@ export default function CitationsPage() {
       zone_id: c.zone_id || '',
       beat_id: c.beat_id || '',
       zone_beat: c.zone_beat || '',
+      latitude: c.latitude ?? null,
+      longitude: c.longitude ?? null,
       vehicle_vin: (c as any).vehicle_vin || '',
       vehicle_year: (c as any).vehicle_year || '',
       vehicle_make: (c as any).vehicle_make || '',
@@ -611,12 +636,14 @@ export default function CitationsPage() {
     setSaveError('');
     setSaveSuccess(false);
     clearFormErrors();
+    snapshotForm();
     setMode('edit');
   };
 
   const handleCancelForm = () => {
     setMode('list');
     clearFormErrors();
+    clearFormDraft();
     setSaveError('');
     setSaveSuccess(false);
   };
@@ -647,6 +674,7 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>('/citations', { method: 'POST', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
+        clearFormDraft();
         setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
@@ -657,6 +685,7 @@ export default function CitationsPage() {
         const res = await apiFetch<{ data: Citation }>(`/citations/${selectedCitation.id}`, { method: 'PUT', body: JSON.stringify(payload) });
         setSelectedCitation(res.data);
         setSaveSuccess(true);
+        clearFormDraft();
         setTimeout(() => {
           setMode('list');
           setSaveSuccess(false);
@@ -1210,9 +1239,14 @@ export default function CitationsPage() {
     <div className="flex flex-col h-full overflow-hidden">
       {/* Form header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-rmpg-700">
-        <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
-          {isEdit ? `Edit Citation ${selectedCitation?.citation_number || ''}` : 'New Citation / Summons'}
-        </h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-xs font-bold uppercase tracking-wider text-rmpg-300">
+            {isEdit ? `Edit Citation ${selectedCitation?.citation_number || ''}` : 'New Citation / Summons'}
+          </h2>
+          {formIsDirty && (
+            <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+          )}
+        </div>
         <button type="button" onClick={handleCancelForm} className="text-rmpg-400 hover:text-rmpg-200 transition-colors">
           <X size={18} />
         </button>
@@ -1228,6 +1262,17 @@ export default function CitationsPage() {
         {saveSuccess && (
           <div className="bg-green-900/40 border border-green-700/50 px-3 py-2 text-xs text-green-300 flex items-center gap-2">
             <Check size={14} /> Citation saved successfully
+          </div>
+        )}
+        {formWasRestored && (
+          <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+            <div className="flex items-center gap-2">
+              <Clock size={14} className="text-amber-400" />
+              <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+            </div>
+            <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+              Discard
+            </button>
           </div>
         )}
         {duplicateWarning && (
@@ -1390,10 +1435,21 @@ export default function CitationsPage() {
               </div>
             </div>
 
-            <div>
-              <label className="field-label">Address</label>
-              <input type="text" value={form.person_address} onChange={e => updateField('person_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
+             <div>
+               <label className="field-label">Address</label>
+               <AddressAutocomplete
+                 value={form.person_address}
+                 onChange={(value) => updateField('person_address', value)}
+                 placeholder="Enter address..."
+                 className="input-dark w-full py-2 text-xs min-h-[36px]"
+                 name="person_address"
+                 onSelect={(addr) => {
+                   // Update related fields when address is selected
+                   updateField('person_address', addr.formatted);
+                   // Optionally auto-fill city/state/zip if we had separate fields
+                 }}
+               />
+             </div>
           </div>
         </section>
 
@@ -1448,7 +1504,31 @@ export default function CitationsPage() {
             </div>
             <div>
               <label className="field-label">Location</label>
-              <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs min-h-[36px]" />
+              <AddressAutocomplete
+                value={form.location}
+                onChange={(value) => updateField('location', value)}
+                placeholder="Address or intersection"
+                className="input-dark w-full py-2 text-xs min-h-[36px]"
+                name="location"
+                onSelect={async (addr) => {
+                  // Full formatted address + geocoded coords so this citation
+                  // appears on the Map UI. Auto-fill Section/Zone/Beat via the
+                  // server's geofence identify endpoint.
+                  updateField('location', addr.formatted || addr.street);
+                  if (addr.latitude != null) {
+                    updateField('latitude', addr.latitude as any);
+                    updateField('longitude', addr.longitude as any);
+                    const district = await identifyDistrict(addr.latitude, addr.longitude!);
+                    if (district) {
+                      // Citations form uses the legacy "section_id" name for what
+                      // the geography hook returns as sector_id.
+                      if (district.sector_id) updateField('section_id', district.sector_id);
+                      if (district.zone_id) updateField('zone_id', district.zone_id);
+                      if (district.beat_id) updateField('beat_id', district.beat_id);
+                    }
+                  }
+                }}
+              />
             </div>
             {/* Section / Zone / Beat — cascading */}
             <div className="grid grid-cols-3 gap-2">
@@ -1511,10 +1591,20 @@ export default function CitationsPage() {
               <label className="field-label">Court Name</label>
               <input type="text" value={form.court_name} onChange={e => updateField('court_name', e.target.value)} placeholder="e.g. Provo Justice Court" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
-            <div>
-              <label className="field-label">Court Address</label>
-              <input type="text" value={form.court_address} onChange={e => updateField('court_address', e.target.value)} placeholder="Street, City, State ZIP" className="input-dark w-full py-2 text-xs min-h-[36px]" />
-            </div>
+             <div>
+               <label className="field-label">Court Address</label>
+               <AddressAutocomplete
+                 value={form.court_address}
+                 onChange={(value) => updateField('court_address', value)}
+                 placeholder="Enter court address..."
+                 className="input-dark w-full py-2 text-xs min-h-[36px]"
+                 name="court_address"
+                 onSelect={(addr) => {
+                   // Update the court address field with the selected formatted address
+                   updateField('court_address', addr.formatted);
+                 }}
+               />
+             </div>
           </div>
         </section>
 
@@ -1596,6 +1686,14 @@ export default function CitationsPage() {
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
+      <UnsavedChangesGuard hasUnsavedChanges={mode !== 'list' && formIsDirty} />
+      <FloatingSaveBar
+        visible={mode !== 'list' && formIsDirty}
+        onSave={handleSave}
+        onCancel={handleCancelForm}
+        isSaving={saving}
+        saveLabel={mode === 'create' ? 'Create Citation' : 'Save Changes'}
+      />
       {/* Stats bar */}
       <div className={`${isMobile ? 'px-3 pt-3' : 'px-4 pt-4'} pb-0 shrink-0`}>
         {isMobile ? (

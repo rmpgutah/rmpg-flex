@@ -5,16 +5,13 @@
 // tabbed interface, status workflows, and fine tracking.
 // ============================================================
 
-import { useState, useEffect, useCallback } from 'react';
-import RichTextArea from '../components/RichTextArea';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Construction, Search, Plus, Truck, MapPin, X, Save, Loader2, AlertTriangle,
-  Calendar,
+  Construction, Search, Plus, Truck, MapPin, Clock, User,
+  X, Save, Loader2, AlertTriangle, DollarSign, FileText,
+  ChevronDown, Eye, Hash, CheckCircle, Calendar,
 } from 'lucide-react';
-import type {
-  CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus,
-  TowReason,
-} from '../types';
+import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus, TowReason } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
@@ -24,6 +21,9 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidVIN, isValidPlate } from '../utils/validate';
 import { localToday, safeDateStr } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
@@ -73,6 +73,20 @@ const EMPTY_TOW = {
   tow_reason: 'parking_violation' as TowReason, tow_company: '', tow_fee: '', storage_fee: '', notes: '',
 };
 
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
+
 export default function CodeEnforcementPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -116,9 +130,31 @@ export default function CodeEnforcementPage() {
 
   // Forms
   const [vFormOpen, setVFormOpen] = useState(false);
-  const [vFormData, setVFormData] = useState({ ...EMPTY_VIOLATION });
+  const {
+    form: vFormData,
+    setForm: setVFormData,
+    isDirty: vFormIsDirty,
+    wasRestored: vFormWasRestored,
+    clearDraft: clearVFormDraft,
+    snapshot: snapshotVForm,
+  } = useFormDraft<typeof EMPTY_VIOLATION>({
+    storageKey: 'rmpg_code_violation_form',
+    defaultValue: EMPTY_VIOLATION,
+    isActive: vFormOpen,
+  });
   const [tFormOpen, setTFormOpen] = useState(false);
-  const [tFormData, setTFormData] = useState({ ...EMPTY_TOW });
+  const {
+    form: tFormData,
+    setForm: setTFormData,
+    isDirty: tFormIsDirty,
+    wasRestored: tFormWasRestored,
+    clearDraft: clearTFormDraft,
+    snapshot: snapshotTForm,
+  } = useFormDraft<typeof EMPTY_TOW>({
+    storageKey: 'rmpg_code_template_form',
+    defaultValue: EMPTY_TOW,
+    isActive: tFormOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // ── Feature 31: Severity Score ──
@@ -228,6 +264,7 @@ export default function CodeEnforcementPage() {
       const zoneBeat = [vFormData.zone_id, vFormData.beat_id].filter(Boolean).join('/') || undefined;
       await apiFetch('/code-enforcement/violations', { method: 'POST', body: JSON.stringify({ ...vFormData, zone_beat: zoneBeat }) });
       addToast('Violation created', 'success');
+      clearVFormDraft();
       setVFormOpen(false);
       setVFormData({ ...EMPTY_VIOLATION });
       fetchViolations({ silent: true }); fetchStats();
@@ -247,6 +284,7 @@ export default function CodeEnforcementPage() {
     try {
       await apiFetch('/code-enforcement/tows', { method: 'POST', body: JSON.stringify(tFormData) });
       addToast('Tow order created', 'success');
+      clearTFormDraft();
       setTFormOpen(false);
       setTFormData({ ...EMPTY_TOW });
       fetchTows({ silent: true }); fetchStats();
@@ -315,7 +353,19 @@ export default function CodeEnforcementPage() {
         <PanelTitleBar title="Code Enforcement" icon={Construction}>
           <ExportButton exportUrl="/api/code-enforcement/export/csv" exportFilename="code_violations_export.csv" />
           <button type="button"
-            onClick={() => activeTab === 'violations' ? (clearVErrors(), setVFormOpen(true), setVFormData({ ...EMPTY_VIOLATION })) : (clearTErrors(), setTFormOpen(true), setTFormData({ ...EMPTY_TOW }))}
+            onClick={() => {
+              if (activeTab === 'violations') {
+                clearVErrors();
+                setVFormData({ ...EMPTY_VIOLATION });
+                setVFormOpen(true);
+                snapshotVForm();
+              } else {
+                clearTErrors();
+                setTFormData({ ...EMPTY_TOW });
+                setTFormOpen(true);
+                snapshotTForm();
+              }
+            }}
             className="toolbar-btn toolbar-btn-primary print:hidden"
           >
             <Plus style={{ width: 11, height: 11 }} />
@@ -630,9 +680,25 @@ export default function CodeEnforcementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Code Violation" icon={Plus}>
-              <IconButton onClick={() => setVFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
+              <div className="flex items-center gap-2">
+                {vFormIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+                <IconButton onClick={() => { clearVFormDraft(); setVFormOpen(false); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
+              </div>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
+              {vFormWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearVFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
@@ -654,7 +720,7 @@ export default function CodeEnforcementPage() {
               </div>
               <div>
                 <label className="field-label">Description *</label>
-                <RichTextArea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                <textarea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {vFormErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.description}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -698,7 +764,7 @@ export default function CodeEnforcementPage() {
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create
                 </button>
-                <button type="button" onClick={() => setVFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
+                <button type="button" onClick={() => { clearVFormDraft(); setVFormOpen(false); }} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </div>
           </div>
@@ -710,9 +776,25 @@ export default function CodeEnforcementPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Tow Order" icon={Truck}>
-              <IconButton onClick={() => setTFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
+              <div className="flex items-center gap-2">
+                {tFormIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+                <IconButton onClick={() => { clearTFormDraft(); setTFormOpen(false); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
+              </div>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
+              {tFormWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearTFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 <div><label className="field-label">Year</label><input value={tFormData.vehicle_year} onChange={e => setTFormData(p => ({ ...p, vehicle_year: e.target.value }))} className="w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border border-rmpg-700 text-white outline-none focus:border-brand-600" /></div>
                 <div><label className="field-label">Make *</label><input value={tFormData.vehicle_make} onChange={e => setTFormData(p => ({ ...p, vehicle_make: e.target.value }))} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none ${tFormErrors.vehicle_make ? 'border-red-500' : 'border-rmpg-700'}`} />{tFormErrors.vehicle_make && <p className="text-red-400 text-[10px] mt-0.5">{tFormErrors.vehicle_make}</p>}</div>
@@ -733,12 +815,28 @@ export default function CodeEnforcementPage() {
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Tow
                 </button>
-                <button type="button" onClick={() => setTFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
+                <button type="button" onClick={() => { clearTFormDraft(); setTFormOpen(false); }} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </div>
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={(vFormOpen && vFormIsDirty) || (tFormOpen && tFormIsDirty)} />
+      <FloatingSaveBar
+        visible={vFormOpen && vFormIsDirty}
+        onSave={handleCreateViolation}
+        onCancel={() => { clearVFormDraft(); setVFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel="Create Violation"
+      />
+      <FloatingSaveBar
+        visible={tFormOpen && tFormIsDirty}
+        onSave={handleCreateTow}
+        onCancel={() => { clearTFormDraft(); setTFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel="Create Tow"
+      />
     </div>
   );
 }

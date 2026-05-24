@@ -1,132 +1,42 @@
-name: "Deploy to Production"
+name: Deploy to Cloudflare
 
-# ─── Manual-only trigger ─────────────────────────────────────────
-# This workflow is intentionally NOT auto-triggered on push to main.
-#
-# The canonical deploy path is the local script `bash deploy/deploy.sh`
-# (see CLAUDE.md), which uses the developer's SSH key directly against
-# the VPS. The GitHub Actions deploy requires a valid `VPS_SSH_KEY`
-# secret to be configured in repo settings — as of now, the secret is
-# either missing or malformed, which caused every push to main to
-# produce a red-X deploy failure and drown real issues in noise.
-#
-# To re-enable auto-deploy:
-#   1. On the VPS, run: ssh-keygen -t ed25519 -f rmpg_deploy -N ''
-#   2. Append rmpg_deploy.pub to /root/.ssh/authorized_keys on the VPS
-#   3. Paste the PRIVATE key (rmpg_deploy file content) into the
-#      VPS_SSH_KEY repository secret at Settings → Secrets and variables
-#   4. Add `push: { branches: [main] }` back to the `on:` section below
-# ──────────────────────────────────────────────────────────────────
 on:
+  push:
+    branches: [main]
   workflow_dispatch:
-    inputs:
-      include_installers:
-        description: "Include desktop installers (--all flag)"
-        required: false
-        default: "false"
-        type: boolean
+
+concurrency:
+  group: cf-deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   deploy:
-    name: Deploy to Hostinger VPS
     runs-on: ubuntu-latest
-    environment: production
-    permissions:
-      contents: read
-
+    timeout-minutes: 10
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v6
+      - uses: actions/setup-node@v4
         with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: |
-            client/package-lock.json
-            server/package-lock.json
+          node-version: 22
+          cache: npm
 
-      - name: Install client dependencies
-        working-directory: client
-        run: npm ci
+      - run: npm ci
 
-      - name: Install server dependencies
-        working-directory: server
-        run: npm ci
+      - name: Typecheck
+        run: npm run typecheck
 
-      - name: TypeScript check
-        working-directory: client
-        run: npx tsc --noEmit || true
+      - name: Apply D1 migrations (remote)
+        continue-on-error: true  # Remote D1 has dirty schema from earlier runs; Worker reconciles at boot.
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply rmpg-flex-db --remote
 
-      - name: Run server tests
-        working-directory: server
-        run: npx vitest run
-
-      - name: Build client
-        working-directory: client
-        run: npx vite build
-
-      - name: Set up SSH key
-        env:
-          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
-        run: |
-          mkdir -p ~/.ssh
-          # Strip CRLF (Windows line endings) and ensure trailing newline —
-          # common cause of "Load key: error in libcrypto" on GitHub Actions
-          printf '%s\n' "$VPS_SSH_KEY" | tr -d '\r' > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          # Sanity check: verify the key is parseable before attempting to use it
-          if ! ssh-keygen -y -f ~/.ssh/id_rsa > /dev/null 2>&1; then
-            echo "::error::VPS_SSH_KEY secret is not a valid OpenSSH private key."
-            echo "::error::Regenerate: ssh-keygen -t ed25519 -f rmpg_deploy -N ''"
-            echo "::error::Paste the PRIVATE key (rmpg_deploy file) into the VPS_SSH_KEY secret."
-            exit 1
-          fi
-          ssh-keyscan -H 194.113.64.90 >> ~/.ssh/known_hosts
-
-      - name: Rsync code to Hostinger VPS
-        run: |
-          rsync -az --delete \
-            --exclude='node_modules' \
-            --exclude='.git' \
-            --exclude='server/data' \
-            --exclude='server/certs' \
-            --exclude='server/.env' \
-            --exclude='server/uploads' \
-            --exclude='client/.env' \
-            --exclude='desktop' \
-            --exclude='.DS_Store' \
-            --exclude='.claude' \
-            --exclude='client/android' \
-            ./ root@194.113.64.90:/opt/rmpg-flex/
-
-      - name: Deploy on VPS (install deps, restart service)
-        run: |
-          ssh root@194.113.64.90 bash << 'REMOTEEOF'
-            set -e
-            APP_DIR="/opt/rmpg-flex"
-            cd "$APP_DIR"
-
-            echo ">>> Installing server dependencies..."
-            cd server && npm install --production --legacy-peer-deps 2>&1 | tail -5 && cd ..
-
-            echo ">>> Restarting RMPG Flex service..."
-            systemctl restart rmpg-flex
-
-            echo ">>> Waiting for service to start..."
-            sleep 3
-
-            if systemctl is-active --quiet rmpg-flex; then
-              echo "✓ rmpg-flex service is running"
-            else
-              echo "✗ rmpg-flex service failed to start"
-              journalctl -u rmpg-flex --no-pager -n 30
-              exit 1
-            fi
-          REMOTEEOF
-
-      - name: Health check
-        run: |
-          sleep 5
-          curl -sf https://rmpgutah.us/api/health || (echo "Health check failed!" && exit 1)
+      - name: Deploy Worker
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy

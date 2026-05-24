@@ -6,7 +6,7 @@
     <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#000000" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="RMPG Flex" />
     <meta name="description" content="Rocky Mountain Protective Group — CAD/RMS Dispatch Console" />
@@ -61,13 +61,11 @@
     <!--
       CSP Note: 'unsafe-inline' is required in script-src and style-src for:
       1. Vite dev mode injects inline scripts/styles for HMR
-      2. Google Maps API dynamically injects inline scripts and styles
-      3. Inline styles used in Google Maps InfoWindow content
+      2. Mapbox GL JS popup InfoWindow inline styles
       TODO (production hardening): Replace 'unsafe-inline' with nonce-based CSP
       by generating a per-request nonce on the server and injecting it into both
       the CSP header and all inline <script>/<style> tags. This requires server-side
-      rendering of index.html (not static serving). Google Maps inline scripts
-      would still need 'unsafe-inline' or a hash-based approach.
+      rendering of index.html (not static serving).
     -->
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https://*.tile.openstreetmap.org https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://*.ggpht.com https://*.google.com https://*.googleusercontent.com https://*.arcgis.com https://js.arcgis.com; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' wss://rmpgutah.us https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com; frame-src 'self' blob: https://*.arcgis.com; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'" />
     <link rel="manifest" href="/manifest.json" />

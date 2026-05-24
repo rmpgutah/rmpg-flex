@@ -282,24 +282,24 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
       )}
 
       {/* Upgrade: Enhanced DB Stats */}
-      {systemHealth && (
+      {systemHealth?.server && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">DB Size</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.database.sizeMB} MB</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.database.sizeMB ?? '?'} MB</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Server Uptime</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.uptimeHours}h</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.uptimeHours ?? 0}h</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Heap Used</div>
-            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.memoryUsageMB.heapUsed} MB</div>
+            <div className="text-sm font-bold text-white font-mono">{systemHealth.server.memoryUsageMB?.heapUsed ?? '?'} MB</div>
           </div>
           <div className="bg-surface-sunken p-2 panel-beveled">
             <div className="text-[10px] text-rmpg-400 uppercase">Recent Errors</div>
-            <div className={`text-sm font-bold font-mono ${systemHealth.activity.recentErrors > 0 ? 'text-red-400' : 'text-green-400'}`}>
-              {systemHealth.activity.recentErrors}
+            <div className={`text-sm font-bold font-mono ${(systemHealth.activity?.recentErrors ?? 0) > 0 ? 'text-red-400' : 'text-green-400'}`}>
+              {systemHealth.activity?.recentErrors ?? 0}
             </div>
           </div>
         </div>
@@ -390,8 +390,8 @@ export default function AdminHealthTab({ LoadingSpinner }: Props) {
         <MetricCard
           icon={Server}
           label="Uptime"
-          value={formatDuration(h.server.uptime)}
-          sub={`Node ${h.server.nodeVersion}`}
+          value={formatDuration(h.server?.uptime ?? 0)}
+          sub={`Node ${h.server?.nodeVersion ?? '?'}`}
           color="text-gray-400"
         />
         <MetricCard

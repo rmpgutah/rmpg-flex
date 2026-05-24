@@ -1818,6 +1818,7 @@ export type WSMessageType =
   | 'panic_false_alarm'
   | 'panic_escalated'
   | 'dispatch_update'
+  | 'premise_alert_for_unit'
   // Live sync — auto-broadcast on data mutations
   | 'data_changed'
   | 'record_update'

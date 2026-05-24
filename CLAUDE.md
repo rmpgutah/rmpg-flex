@@ -1,32 +1,36 @@
 # RMPG Flex — Claude Code Project Memory
 
+> **Architecture audited 2026-05-24.** This file describes the current Cloudflare Workers deployment. The previous VPS-on-Hostinger architecture (rsync to `root@194.113.64.90`, `/opt/rmpg-flex`, systemd, better-sqlite3 file DB) is retired — do not follow any instruction that references SSH, rsync, `/opt/rmpg-flex`, or `systemctl restart rmpg-flex`.
+
 ## Project Overview
 
-RMPG Flex is a **police CAD/RMS (Computer-Aided Dispatch / Records Management System)** for Rocky Mountain Protective Group, a private security / law enforcement company operating in Salt Lake City, Utah.
+RMPG Flex is a **police CAD/RMS** (Computer-Aided Dispatch / Records Management System) for Rocky Mountain Protective Group, a private security / law enforcement company in Salt Lake City, Utah.
 
-- **Domain**: https://rmpgutah.us
-- **Production VPS**: root@194.113.64.90 (`/opt/rmpg-flex`)
-- **Service**: `systemd` unit `rmpg-flex` (HTTPS on 443, HTTP redirect on 80)
-- **Database**: SQLite via `better-sqlite3` at `server/data/rmpg-flex.db`
-- **Timezone**: America/Denver (Mountain Time)
-- **Version**: 5.8.0 (server, client, desktop, root)
+- **Domain**: https://rmpgutah.us (registrar: Network Solutions; DNS + proxy: Cloudflare)
+- **Origin**: Cloudflare Worker `rmpg-flex` (entry `server/src/worker.ts`)
+- **Database**: Cloudflare D1 `rmpg-flex` (`785de7ae-3e7a-4e01-93bb-d24ddd813f6b`) — bound as `DB`
+- **Storage**: R2 — `rmpg-flex-uploads` (`UPLOADS`), `rmpg-flex-downloads` (`DOWNLOADS`)
+- **Cache/state**: KV — `SESSIONS`, `RATE_LIMITS`
+- **Timezone**: America/Denver
+- **Version**: 5.8.0
 
 ## Tech Stack
 
 | Layer | Technology |
 |-------|-----------|
-| **Frontend** | React 18 + TypeScript + Vite 6 + Tailwind CSS |
-| **Backend** | Express 5 + TypeScript (tsx runtime) + better-sqlite3 |
-| **Auth** | JWT (access + refresh) + WebAuthn (FIDO2/YubiKey) + TOTP 2FA |
-| **Real-time** | WebSocket (ws) for live dispatch, GPS, presence |
-| **Maps** | Google Maps JS API + offline CartoDB dark_matter tiles + GeoJSON overlays |
-| **Desktop** | Electron (macOS DMG + Windows EXE) with offline sync |
-| **Mobile** | Capacitor (Android APK) |
-| **PDF** | jsPDF for reports, citations, patrol logs |
-| **Voice** | Edge TTS neural voice with radio audio processing |
-| **Styling** | Spillman Flex / Motorola Solutions pure black theme — `#0a0a0a` base, `#d4a017` gold accent, zero blue |
+| Frontend | React 18 + TypeScript + Vite 6 + Tailwind CSS (built to `client/dist/`, served via Cloudflare) |
+| Backend | **Hono** router on Cloudflare Workers runtime (Express patterns adapted; Express itself does not run on Workers) |
+| Database | **Cloudflare D1** via `server/src/models/d1Adapter.ts` (better-sqlite3-shaped async wrapper) |
+| Auth | JWT (access + refresh) + WebAuthn (FIDO2) + TOTP 2FA |
+| Real-time | WebSocket via Workers `webSocketPair()` (see `server/src/worker-middleware/websocket.ts`) |
+| Maps | Google Maps JS API with offline CartoDB dark_matter tile fallback + GeoJSON overlays |
+| Desktop | Electron (macOS DMG + Windows EXE) |
+| Mobile | Capacitor (Android APK) |
+| PDF | RMPG PDF Engine v1.0 (`client/src/lib/rmpg-pdf-engine/`) + PDF.js fallback; jsPDF for legacy reports |
+| Voice | Edge TTS neural voice with radio audio processing |
+| Styling | Spillman Flex / Motorola Solutions pure-black theme — `#0a0a0a` base, `#d4a017` gold, zero blue |
 
-## Architecture
+## Repository Layout
 
 ```
 client/           React SPA (Vite build → client/dist/)
@@ -52,108 +56,91 @@ deploy/           Deployment scripts (deploy.sh, deploy-all.sh)
 
 ## Critical Rules
 
-### NEVER modify or delete these production-only paths:
-- `server/data/` — SQLite database (lives only on VPS)
-- `server/certs/` — SSL certificate symlinks (lives only on VPS)
-- `server/.env` — Production secrets (JWT_SECRET, etc.)
-- `server/uploads/` — User-uploaded attachments
+### Never edit
+- `wrangler.toml` bindings (`database_id`, KV `id`, R2 `bucket_name`) without confirming with the user — rebinding to a wrong ID can silently point production at an empty DB.
+- `server/data/` — local dev SQLite only; not deployed. CI/Workers never read this.
 
-### Deploy Safety
-- **Deploy command**: `bash deploy/deploy.sh` (code only) or `bash deploy/deploy.sh --all` (code + installers)
-- Deploy script auto-detects project root via `$(dirname "$0")/..` — works from worktrees
-- Both scripts exclude `server/data`, `server/certs`, `server/.env`, `server/uploads`
-- After deploy, always verify: `curl -sf https://rmpgutah.us/api/health`
-- **Always bump `CACHE_NAME` in `client/public/sw.js`** when deploying client changes
-- SSL certs: Let's Encrypt symlinks `/etc/letsencrypt/live/rmpgutah.us/` → `server/certs/`
+### Deploy
+- **Canonical trigger**: push to `main` → `.github/workflows/deploy.yml` runs `wrangler deploy`.
+- **Manual**: `bash deploy/deploy.sh` (production) or `bash deploy/deploy.sh --dry-run` (preview).
+- **Required GitHub secret**: `CLOUDFLARE_API_TOKEN` (Workers + Pages + D1 edit perms).
+- **Verify after every deploy**: `curl -sf https://rmpgutah.us/api/health`.
+- **Bump `CACHE_NAME` in `client/public/sw.js`** on every client change — old service workers will otherwise serve stale chunks.
+- TLS is handled by Cloudflare automatically. No certs to manage.
+
+### Schema changes
+- Add new columns via `addCol(...)` in `server/src/models/database.ts` — never write raw `ALTER TABLE` in route code.
+- Run `node scripts/sync-d1.mjs` to generate the migration SQL, then apply with `npx wrangler d1 execute rmpg-flex --remote --file migrations/<new>.sql`.
+- D1 has SQLite semantics but is **async**. All `db.prepare(...).get()/all()/run()` calls return Promises through `d1Adapter` — always `await`.
 
 ### Security
-- TOTP secrets are AES-256-GCM encrypted using a key derived from `JWT_SECRET`
-- If `JWT_SECRET` changes, all TOTP secrets become unrecoverable — users must re-enroll
-- WebAuthn RP ID is `rmpgutah.us` — credentials are domain-bound
-- All routes require JWT auth via `authenticateToken` middleware
-- Role-based access: admin, manager, supervisor, officer, dispatcher, contract_manager, client_viewer, human_resources
+- TOTP secrets are AES-256-GCM encrypted with a key derived from `JWT_SECRET`. **Rotating `JWT_SECRET` invalidates every TOTP enrollment** — users must re-enroll.
+- WebAuthn RP ID is `rmpgutah.us`. Credentials are domain-bound.
+- Every route requires JWT auth (`authenticateToken`) except `/api/health`, `/api/auth/login`, and the unauthenticated webhook endpoints.
+- Roles: `admin`, `manager`, `supervisor`, `officer`, `dispatcher`, `contract_manager`, `client_viewer`, `human_resources`.
 
 ## Code Patterns
 
-### Express Route Pattern
+### Hono route (Workers-native)
 ```typescript
-import { Router, Request, Response } from 'express';
-import { getDb } from '../models/database';
+import { Hono } from 'hono';
+import type { Env } from '../worker';
 import { authenticateToken, requireRole } from '../middleware/auth';
+import { getDb } from '../models/d1Adapter';
 import { auditLog } from '../utils/auditLogger';
-import { broadcastDispatchUpdate } from '../utils/websocket';
 
-const router = Router();
-router.use(authenticateToken);
+const app = new Hono<{ Bindings: Env }>();
+app.use('*', authenticateToken);
 
-router.get('/', requireRole('admin', 'officer'), (req: Request, res: Response) => {
-  const db = getDb();
-  const rows = db.prepare('SELECT * FROM table WHERE ...').all();
-  res.json(rows);
+app.get('/', requireRole('admin', 'officer'), async (c) => {
+  const db = getDb(c.env.DB);
+  const rows = await db.prepare('SELECT * FROM table WHERE ...').all();
+  return c.json(rows);
 });
 
-router.post('/', requireRole('admin'), (req: Request, res: Response) => {
-  const db = getDb();
-  // ... insert logic
-  auditLog(req, 'CREATE', 'table_name', id, null, newData);
-  broadcastDispatchUpdate({ action: 'entity_created', data: { ... } });
-  res.json({ success: true, id });
+app.post('/', requireRole('admin'), async (c) => {
+  const body = await c.req.json();
+  const db = getDb(c.env.DB);
+  const result = await db.prepare('INSERT INTO ...').run(/* ... */);
+  await auditLog(c, 'CREATE', 'table_name', result.last_row_id, null, body);
+  return c.json({ success: true, id: result.last_row_id });
 });
 
-export default router;
+export default app;
 ```
 
-### React Page Pattern
-Pages use Tailwind dark theme, `apiFetch` for API calls, WebSocket for live updates:
+### React page
 ```tsx
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 
 export default function SomePage() {
   const [data, setData] = useState([]);
-
-  useEffect(() => {
-    apiFetch<any[]>('/some-endpoint').then(setData).catch(console.error);
-  }, []);
-
+  useEffect(() => { apiFetch<any[]>('/some-endpoint').then(setData).catch(console.error); }, []);
   return (
     <div className="p-4 space-y-4">
       <PanelTitleBar title="SECTION TITLE" icon={SomeIcon} />
-      {/* Surface colors: bg-surface-base (#0a0a0a), bg-surface-raised (#141414), bg-surface-sunken (#050505) */}
-      {/* Borders: border-[#222222], Gold accent: text-[#d4a017] */}
+      {/* Surface: bg-surface-base #0a0a0a, raised #141414, sunken #050505 */}
+      {/* Borders: border-[#222222], gold: text-[#d4a017] */}
     </div>
   );
 }
 ```
 
-### Client-side PDF smoke tests (introduced 2026-04-18)
-```typescript
-// Pattern for catching regressions in the large v1 PDF generators (which
-// lack structural test coverage). Smoke tests don't validate output
-// correctness — they verify each public generator accepts minimum-viable
-// data and completes without throwing. That's enough to catch the common
-// regressions: missing null-checks on optional fields, broken imports
-// after refactors, signature drift.
+### Icon-only buttons
+Use `<IconButton aria-label="...">` from `client/src/components/IconButton.tsx`. `aria-label` is a required TS prop (enforces accessibility at typecheck time). `type="button"` and `aria-hidden` on the child icon are applied automatically.
 
-// In tests/setup stub fetch for admin-branding endpoint to avoid jsdom
-// network calls. Stub once per beforeEach:
-vi.stubGlobal('fetch', vi.fn(async (url: string) => {
-  if (url.includes('/api/admin/config/branding')) {
-    return new Response(JSON.stringify([]), { status: 200 });
-  }
-  return new Response('', { status: 404 });
-}));
+### Design tokens (Spillman / Motorola pure-black)
+- Surfaces: `#0a0a0a` base, `#141414` raised, `#050505` sunken, `#000000` deep
+- Brand gold: `#d4a017`. Neutral gray: `#888888`. **Zero blue anywhere.**
+- Borders: `#222222` default, `#1a1a1a` subtle, `#2e2e2e` strong
+- Radius: **2 px everywhere** — never `rounded-lg`
+- Panel headers: gold text on dark chrome gradient (`#1a1a1a` → `#242424`)
+- LED indicators: green/red/amber dots with `box-shadow` glow
+- Table headers: `font-semibold` 9 px, `py-[3px]`. Rows: 11 px, `py-[2px]`. No pill badges.
 
-// Then exhaustively call each generator type with minimum-viable data:
-it('generates a call PDF from minimal data', async () => {
-  const doc = await generateRecordPdf('call', { call_number: 'X', incident_type: 'Y', priority: '3', status: 'CLEARED', description: '.' });
-  expect(doc.getNumberOfPages()).toBeGreaterThan(0);
-});
-```
-- Smoke test files live at `client/src/utils/__tests__/*.smoke.test.ts`
-- Current coverage: `recordPdfGenerator.smoke.test.ts` (15 tests — all 9 RecordPdfType values + BOLO + WarrantSummary + setActiveOfficerSignature), `pdfGenerator.smoke.test.ts` (9 tests — all 8 PdfReportType values + populated-fields variant)
-- **When touching the big v1 PDF files, the smoke suite is your safety net.** If you split a generator into a new module, a broken import will fail the smoke test before it reaches a user.
-- jsdom prints `HTMLCanvasElement.getContext()` warnings — these are benign (jsPDF's fallbacks handle it).
+### Logging
+Use `logger` from `server/src/utils/logger.ts` (pino). Structured object first, message second: `logger.info({ userId }, 'fetching foo')`. Errors go under `err`: `logger.error({ err }, '...')`. Per-request child loggers live on `c.var.log` (carrying a request ID echoed in `X-Request-Id`).
 
 ### Structured Logging (pino — introduced 2026-04-18)
 ```typescript
@@ -320,95 +307,34 @@ Set in `client/.env` as `VITE_GOOGLE_MAPS_API_KEY`
 ## Key Systems
 
 ### Dispatch Geography (4-tier Miller drilldown)
-- `dispatch_areas` → `dispatch_sectors` → `dispatch_zones` → `dispatch_beats` (renamed from `dispatch_sections` in 2026-04-11 rebuild)
-- `dispatch_codes` — 68 pre-seeded 10-codes + signal codes
-- `premise_alerts` — persistent location-based warnings
-- GeoJSON beat polygons with sector-colored labels on map
-- API: `server/src/routes/dispatch/geography.ts` — CRUD for all 4 tiers + `/tree` (nested) + `/identify?lat&lng` (point lookup)
-- UI: `client/src/pages/GeographyPage.tsx` — 4-column Miller drilldown (Areas 180px → Sectors 200px → Zones 240px → Beats 240px → Detail pane)
-- Production runs legacy 5/46/166/427 classification; fresh DBs get the full 6/29/288/719 Utah GeoJSON seed (see Gotcha #41)
+`dispatch_areas` → `dispatch_sectors` → `dispatch_zones` → `dispatch_beats`. Plus `dispatch_codes` (10-codes + signal codes) and `premise_alerts`. Production previously ran a 5/46/166/427 legacy classification; the GeoJSON seed on fresh DBs is 6/29/288/719. The geography seed (`seedGeographyFromGeoJSON()` in `database.ts`) is idempotent and bails on non-empty tables.
 
-### Incident RMS (Spillman Flex)
-- `incident_offenses` — UCR/NIBRS codes, statute linkage, suspect/victim mapping
-- `incident_officers` — multi-officer tracking with roles and timestamps
-- `incident_links` — cross-reference to calls, cases, warrants, citations, arrests
-- Master Name Index: `/api/incidents/mni/search`, `/api/incidents/mni/person/:id`
-- Full incident view: `/api/incidents/:id/full` (aggregated)
+### Incident RMS (Spillman Flex-style)
+`incident_offenses` (UCR/NIBRS), `incident_officers`, `incident_links`. Master Name Index at `/api/incidents/mni/search`, full incident view at `/api/incidents/:id/full`.
 
-### Citations (Spillman Flex)
-- `citation_violations` — multiple violations per citation, auto-summing fines
-- 39 extended fields: traffic data, vehicle details, bond, court, disposition
-- Batch operations: `/api/citations/batch/void`, `/api/citations/batch/status`
+### Citations
+`citation_violations` with auto-summing fines + 39 extended fields. Batch ops: `/api/citations/batch/void`, `/api/citations/batch/status`.
 
 ### Dispatch Console
-- F-key hotkeys: F2=New, F3=Dispatch, F5=Enroute, F6=OnScene, F7=Clear, F8=CMD, F12=NCIC
-- Status bar (fixed bottom): P1/P2 counts, unit metrics, F-key hints, clock
-- CAD command line: 20+ commands including 10-code lookup, premise alerts
-- Call type protocols: 70+ incident types with auto-priority/flags/backup rules
-- Edge TTS voice (`en-US-JennyNeural`) with radio squelch beeps, bandpass EQ, pink noise static
-- Call → Incident auto-links persons/vehicles from `call_persons`/`call_vehicles`
+F2 New, F3 Dispatch, F5 Enroute, F6 OnScene, F7 Clear, F8 CMD, F12 NCIC. CAD command line with 20+ commands. 70+ call-type protocols with auto-priority/flags/backup rules. Edge TTS voice (`en-US-JennyNeural`) with radio squelch / bandpass / pink-noise.
 
 ### Serve / Process Service
-- `serve_queue` — 30+ columns: recipient info, document type, deadline, GPS, officer assignment
-- `serve_attempts` — GPS-tracked service attempts with photo/signature capture
-- `serve_routes` — optimized route planning with waypoints
-- `serve_skip_traces` — skip trace results per serve job
-- `serveQueueLinker.ts` — auto-creates serve jobs from PSO/process service dispatch calls
-- API: `/api/process-server/*` (mounted via `serve.ts`)
+`serve_queue` (~30 cols), `serve_attempts` (GPS + photo + signature), `serve_routes`, `serve_skip_traces`. Auto-creates serve jobs from PSO/process-service dispatch calls via `serveQueueLinker.ts`. API under `/api/process-server/*`.
 
 ### Skip Tracer V2
-- `server/src/routes/skiptracer-v2/` — modular source adapter system
-- 22 data sources: FBI Wanted, OFAC, NSOPW, Utah Courts, SLC Assessor, Arrests, etc.
-- `BaseDataSource` — rate limiting, caching, retry, encrypted config
-- API: `/api/skiptracer-v2/search`, `/api/skiptracer-v2/sources`
+`server/src/routes/skiptracer-v2/` — 22 data sources (FBI Wanted, OFAC, NSOPW, Utah Courts, SLC Assessor, Arrests, …). `BaseDataSource` provides rate limiting, caching, retry, encrypted config.
 
-### HR Module
-- `leave_requests` + `leave_balances` — leave management with approval workflow
-- `disciplinary_records` — officer disciplinary tracking
-- `performance_reviews` + `review_cycles` — review management
-- `overtime_requests` — OT tracking
-- `hr_pay_periods` + `hr_pay_rates` + `hr_payroll_entries` — full payroll pipeline
-- API: `/api/hr/*`
-
-### Fleet Management
-- `fleet_vehicles` — vehicle tracking with `next_service_mileage`
-- `fleet_maintenance`, `fleet_fuel_log`, `fleet_inspections`, `fleet_damage_reports`
-- API: `/api/fleet/*`
-
-### Arrests & Jail Roster
-- `arrest_records` — manual entry, CSV import, JailBase scraper sync
-- `arrest_cross_links` — link arrests to persons
-- `jailRosterScraper.ts` — automated jail roster sync
-- API: `/api/arrests/*`
-
-### Case Management
-- 8 junction tables: `case_persons`, `case_vehicles`, `case_incidents`, `case_calls`, `case_evidence`, `case_citations`, `case_warrants`, `case_properties`
-- API: `/api/cases/*`
-
-### Field Interviews
-- `field_interviews` — FI contact cards with GPS, photos, person/vehicle links
-- Auto-generates FI-YY-NNNNN numbers
-- API: `/api/field-interviews` (CRUD, by-person, by-location radius, stats)
-
-### Dispatch Messaging
-- `dispatch_messages` — secure dispatcher-to-unit messaging
-- Channels: dispatch, unit-to-unit, broadcast, BOLO
-- WebSocket delivery for real-time
-- API: `/api/dispatch-messages`
+### HR / Fleet / Arrests / Cases / FI / Court / Forensic / Trespass / UoF / Shift Plans
+All present, each backed by `/api/<domain>/*`. See `server/src/routes/` for the file-per-domain layout.
 
 ### Advanced Search
-- **Compound Search**: `/api/records/compound-search` — NCIC-style multi-field (name wildcard, DOB range, physical description, address radius, plate, flags)
-- **Universal Search**: `/api/records/universal-search` — one query across 9 record types
-- **MNI Dossier**: `/api/records/persons/:id/dossier` — complete person intelligence package
-- **Saved Searches**: `/api/records/saved-searches` — user preset CRUD
+- `/api/records/compound-search` — NCIC-style multi-field
+- `/api/records/universal-search` — one query across 9 record types
+- `/api/records/persons/:id/dossier` — full MNI dossier
+- `/api/records/saved-searches` — user presets
 
-### Other Systems
-- **Court Tracker**: `court_events` table, API `/api/court/*`
-- **Forensic Lab**: `forensic_cases`, `forensic_exhibits`, `forensic_analyses`, API `/api/forensic-lab/*`
-- **Trespass Orders**: `trespass_orders`, `trespass_violations`, API `/api/trespass-orders/*`
-- **Use of Force**: `use_of_force` table for incident-linked UoF reports
-- **Shift Plans**: `shift_plans`, `shift_swap_requests`
-- **Notification Rules**: `notification_rules` for custom alert automation
+### Evidence Chain (Phase 4)
+Ed25519-signed `evidence_hashes` rows. Keys: `EVIDENCE_SIGNING_PRIVATE_KEY`, `EVIDENCE_SIGNING_PUBLIC_KEY` (base64 DER, generated via `server/scripts/generate-evidence-keypair.mjs`) — **independent** of `JWT_SECRET` and the dashcam HMAC secret so each can be rotated separately. Operator endpoints under `/api/evidence/*`. SOP at `docs/evidence-handling-sop.md`.
 
 ### Maps — Google Maps is the sole map surface
 `/map` is the single production map, backed by the Google Maps JS API with offline CartoDB raster tile fallback. **Do not reintroduce OpenLayers or a parallel `/map-v2` surface.** A parallel OpenLayers map (`/map-v2`) was attempted and retired; all traces were removed 2026-04-23 (route, redirect, `ol` dependency, PDF guide section 15, migration plan). The stale iOS PWA plans (`docs/plans/2026-04-20-ios-mobile-pwa-enhancement-*.md`) still reference non-existent `map-v2` hooks and need Google-Maps-based replacements before execution.

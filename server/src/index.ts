@@ -45,6 +45,8 @@ try {
 // Import routes
 import authRoutes from './routes/auth';
 import dispatchRoutes from './routes/dispatch';
+import nibrsRoutes from './routes/nibrs';
+import incidentSupplementsRoutes from './routes/incidentSupplements';
 import incidentRoutes from './routes/incidents';
 import recordsRoutes from './routes/records';
 import businessVehiclesRoutes from './routes/businessVehicles';
@@ -384,6 +386,8 @@ app.use('/owntracks', owntracksDeprecatedRouter);
 app.use('/api/auth', authRoutes);
 app.use('/api/dispatch', dispatchRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/incidents', incidentSupplementsRoutes);
+app.use('/api/nibrs', nibrsRoutes);
 app.use('/api/records/subjects', subjectSearchRoutes);
 app.use('/api/records', recordsRoutes);
 app.use('/api/business-vehicles', businessVehiclesRoutes);
@@ -392,9 +396,9 @@ app.use('/api/business-photos', businessPhotosRoutes);
 app.use('/api/personnel', personnelRoutes);
 app.use('/api/comms', commsRoutes);
 app.use('/api/reports', reportsRoutes);
+app.use('/api/admin', systemConfigRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/uploads', uploadRoutes);
-app.use('/api/admin', systemConfigRoutes);
 app.use('/api/audit', auditRoutes);
 app.use('/api/patrol', patrolRoutes);
 app.use('/api/warrants', warrantRoutes);
@@ -733,6 +737,15 @@ try {
       startHealthChecker();
     } catch (err: any) {
       logger.warn({ err, scheduler: 'health-checker' }, 'failed to start scheduler');
+    }
+
+    // Start Howen/VizTrack dashcam TCP receiver (H-protocol listener)
+    try {
+      const { startHowenReceiver } = require('./utils/howenReceiver');
+      startHowenReceiver();
+      logger.info({ scheduler: 'howen', port: 33000 }, 'howen receiver started');
+    } catch (err: any) {
+      logger.warn({ err, scheduler: 'howen' }, 'failed to start howen receiver');
     }
 
     // Start Utah warrant sync scheduler (live search + automated bulk scan every 4h)

@@ -54,9 +54,9 @@ export function readEncryptedConfig(configKey: string): string | undefined {
 }
 
 /**
- * Resolve the Google Maps API key.
- * Priority: system_config (admin-managed) → GOOGLE_MAPS_API_KEY env var.
+ * Resolve the Mapbox access token.
+ * Priority: system_config (admin-managed) → MAPBOX_ACCESS_TOKEN env var.
  */
-export function resolveGoogleMapsApiKey(): string | undefined {
-  return readEncryptedConfig('google_maps_api_key') || process.env.GOOGLE_MAPS_API_KEY;
+export function resolveMapboxAccessToken(): string | undefined {
+  return readEncryptedConfig('mapbox_access_token') || process.env.MAPBOX_ACCESS_TOKEN;
 }

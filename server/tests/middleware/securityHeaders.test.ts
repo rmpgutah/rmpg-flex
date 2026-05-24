@@ -157,14 +157,14 @@ describe('securityHeaders middleware', () => {
     expect(res._headers['Pragma']).toBeUndefined();
   });
 
-  // ── CSP allows Google Maps resources ───────────────────
+  // ── CSP allows Mapbox resources ────────────────────
 
-  it('CSP allows Google Maps domains', () => {
+  it('CSP allows Mapbox domains', () => {
     const res = mockRes();
     securityHeaders(mockReq(), res, mockNext());
     const csp = res._headers['Content-Security-Policy'];
-    expect(csp).toContain('googleapis.com');
-    expect(csp).toContain('gstatic.com');
+    expect(csp).toContain('api.mapbox.com');
+    expect(csp).toContain('events.mapbox.com');
   });
 
   it('CSP allows ArcGIS domains', () => {

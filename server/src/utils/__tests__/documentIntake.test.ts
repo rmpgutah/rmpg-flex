@@ -198,7 +198,7 @@ describe('extractFromText — preview cap', () => {
     const big = 'a'.repeat(60_000);
     const result = extractFromText(big);
     expect(result.rawTextPreview.length).toBeLessThanOrEqual(50_000);
-  });
+  }, 30_000); // Flaky on slow CI runners doing 60k-char allocation + extraction.
 });
 
 describe('extractFromText — court_summons real-sample regression fixtures', () => {

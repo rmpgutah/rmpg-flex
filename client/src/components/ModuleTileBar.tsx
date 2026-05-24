@@ -35,7 +35,7 @@ interface ModuleTileBarProps {
 
 // ---------- Role-blocked paths ----------
 const CLIENT_VIEWER_BLOCKED = new Set([
-  '/admin', '/audit', '/personnel', '/fleet', '/ncic', '/radio',
+  '/admin', '/audit', '/personnel', '/fleet', '/ncic',
   '/patrol', '/shift-plans', '/statute-analytics', '/reports/custom',
   '/crime-analysis', '/dar',
 ]);

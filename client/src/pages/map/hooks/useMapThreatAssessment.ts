@@ -1,13 +1,6 @@
-// ============================================================
-// RMPG Flex — useMapThreatAssessment Hook
-// Threat assessment overlays: threat score circle, approach
-// routes, hazard markers, armed-history icons, DV-repeat markers.
-// ============================================================
-
 import { useState, useRef, useCallback, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-
-// ─── Types ──────────────────────────────────────────────────
 
 export interface HazardLocation {
   lat: number;
@@ -60,8 +53,6 @@ interface UseMapThreatAssessmentReturn {
   loading: boolean;
 }
 
-// ─── Color mapping ──────────────────────────────────────────
-
 const THREAT_COLORS: Record<string, string> = {
   low: '#22c55e',
   moderate: '#f59e0b',
@@ -69,10 +60,8 @@ const THREAT_COLORS: Record<string, string> = {
   critical: '#7f1d1d',
 };
 
-// ─── Hook ───────────────────────────────────────────────────
-
 export function useMapThreatAssessment(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
   _units?: any[],
 ): UseMapThreatAssessmentReturn {
@@ -80,222 +69,186 @@ export function useMapThreatAssessment(
   const [approachRoutes, setApproachRoutes] = useState<ApproachRoute[] | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // Refs for map overlays
-  const threatCircleRef = useRef<google.maps.Circle | null>(null);
-  const approachLinesRef = useRef<google.maps.Polyline[]>([]);
-  const hazardMarkersRef = useRef<google.maps.Marker[]>([]);
-  const armedMarkersRef = useRef<google.maps.Marker[]>([]);
-  const dvMarkersRef = useRef<google.maps.Marker[]>([]);
-
-  // ── Clear all map overlays ────────────────────────────────
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const threatSourceId = 'threat-circle';
+  const hazardSourceId = 'threat-hazards';
+  const armedSourceId = 'threat-armed';
+  const dvSourceId = 'threat-dv';
+  const approachSourceId = 'threat-approach';
 
   const clearOverlays = useCallback(() => {
-    if (threatCircleRef.current) {
-      threatCircleRef.current.setMap(null);
-      threatCircleRef.current = null;
+    if (!map) return;
+    [threatSourceId, hazardSourceId, armedSourceId, dvSourceId, approachSourceId].forEach(id => {
+      if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(id)) map.removeSource(id);
+    });
+  }, [map]);
+
+  const renderAssessment = useCallback((assessment: ThreatAssessment) => {
+    if (!map) return;
+    clearOverlays();
+
+    if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '320px', closeButton: true, closeOnClick: false });
+
+    const color = THREAT_COLORS[assessment.level] || THREAT_COLORS.moderate;
+
+    map.addSource(threatSourceId, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [assessment.lng, assessment.lat] as [number, number] }, properties: { color, score: assessment.score, level: assessment.level, factors: assessment.factors.join(', ') } }] },
+    });
+    map.addLayer({
+      id: threatSourceId,
+      type: 'circle',
+      source: threatSourceId,
+      paint: {
+        'circle-color': ['get', 'color'],
+        'circle-radius': 200,
+        'circle-opacity': 0.18,
+        'circle-stroke-color': ['get', 'color'],
+        'circle-stroke-width': 2,
+        'circle-stroke-opacity': 0.7,
+      },
+    });
+
+    map.on('click', threatSourceId, (e) => {
+      const feature = e.features?.[0];
+      if (!feature || !feature.properties) return;
+      const p = feature.properties;
+      const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid ${p.color}40"><div style="font-weight:bold;font-size:12px;color:${p.color};margin-bottom:4px">Threat Assessment</div><div style="font-size:10px;color:#9ca3af">Score: ${p.score} | Level: ${p.level}</div><div style="font-size:9px;color:#6b7280;margin-top:4px">${p.factors}</div></div>`;
+      if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    });
+
+    if (assessment.hazards.length > 0) {
+      const hazardFeatures = assessment.hazards.map(h => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [h.lng, h.lat] as [number, number] },
+        properties: { type: h.type, description: h.description },
+      }));
+      map.addSource(hazardSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: hazardFeatures } });
+      map.addLayer({
+        id: hazardSourceId,
+        type: 'circle',
+        source: hazardSourceId,
+        paint: { 'circle-color': '#f59e0b', 'circle-radius': 5, 'circle-stroke-color': '#92400e', 'circle-stroke-width': 1 },
+      });
+      map.on('click', hazardSourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #f59e0b40"><div style="font-weight:bold;color:#f59e0b">Hazard: ${feature.properties.type}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.description}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
     }
-    approachLinesRef.current.forEach((l) => l.setMap(null));
-    approachLinesRef.current = [];
-    hazardMarkersRef.current.forEach((m) => m.setMap(null));
-    hazardMarkersRef.current = [];
-    armedMarkersRef.current.forEach((m) => m.setMap(null));
-    armedMarkersRef.current = [];
-    dvMarkersRef.current.forEach((m) => m.setMap(null));
-    dvMarkersRef.current = [];
-  }, []);
 
-  // ── Render assessment overlays ────────────────────────────
-
-  const renderAssessment = useCallback(
-    (assessment: ThreatAssessment) => {
-      if (!map || !window.google?.maps) return;
-
-      clearOverlays();
-
-      const color = THREAT_COLORS[assessment.level] || THREAT_COLORS.moderate;
-
-      // Threat score circle
-      threatCircleRef.current = new google.maps.Circle({
-        center: { lat: assessment.lat, lng: assessment.lng },
-        radius: 200,
-        fillColor: color,
-        fillOpacity: 0.18,
-        strokeColor: color,
-        strokeWeight: 2,
-        strokeOpacity: 0.7,
-        map,
-        clickable: false,
-        zIndex: 10,
+    if (assessment.armed_history.length > 0) {
+      const armedFeatures = assessment.armed_history.map(a => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [a.lng, a.lat] as [number, number] },
+        properties: { count: a.incident_count, last_date: a.last_date },
+      }));
+      map.addSource(armedSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: armedFeatures } });
+      map.addLayer({
+        id: armedSourceId,
+        type: 'circle',
+        source: armedSourceId,
+        paint: { 'circle-color': '#ef4444', 'circle-radius': 7, 'circle-stroke-color': '#7f1d1d', 'circle-stroke-width': 1 },
       });
-
-      // Hazard markers
-      assessment.hazards.forEach((h) => {
-        const marker = new google.maps.Marker({
-          position: { lat: h.lat, lng: h.lng },
-          map,
-          icon: {
-            path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-            scale: 5,
-            fillColor: '#f59e0b',
-            fillOpacity: 0.9,
-            strokeColor: '#92400e',
-            strokeWeight: 1,
-          },
-          title: `Hazard: ${h.type} — ${h.description}`,
-          zIndex: 12,
-        });
-        hazardMarkersRef.current.push(marker);
+      map.on('click', armedSourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #ef444440"><div style="font-weight:bold;color:#ef4444">Armed History</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.count} weapon call(s), last ${feature.properties.last_date}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
       });
+    }
 
-      // Armed-history markers (gun icon shape)
-      assessment.armed_history.forEach((a) => {
-        const marker = new google.maps.Marker({
-          position: { lat: a.lat, lng: a.lng },
-          map,
-          icon: {
-            path: 'M2 4h4v2H2V4zm6 0h12v2H8V4zM2 8h18v2H2V8z',
-            scale: 1.2,
-            fillColor: '#ef4444',
-            fillOpacity: 0.85,
-            strokeColor: '#7f1d1d',
-            strokeWeight: 1,
-            anchor: new google.maps.Point(10, 5),
-          },
-          title: `Armed History: ${a.incident_count} weapon call(s), last ${a.last_date}`,
-          zIndex: 13,
-        });
-        armedMarkersRef.current.push(marker);
+    if (assessment.dv_repeat_locations.length > 0) {
+      const dvFeatures = assessment.dv_repeat_locations.map(dv => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [dv.lng, dv.lat] as [number, number] },
+        properties: { count: dv.call_count, address: dv.address },
+      }));
+      map.addSource(dvSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: dvFeatures } });
+      map.addLayer({
+        id: dvSourceId,
+        type: 'circle',
+        source: dvSourceId,
+        paint: { 'circle-color': '#a855f7', 'circle-radius': 7, 'circle-stroke-color': '#581c87', 'circle-stroke-width': 2 },
       });
-
-      // DV-repeat location markers
-      assessment.dv_repeat_locations.forEach((dv) => {
-        const marker = new google.maps.Marker({
-          position: { lat: dv.lat, lng: dv.lng },
-          map,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 7,
-            fillColor: '#a855f7',
-            fillOpacity: 0.8,
-            strokeColor: '#581c87',
-            strokeWeight: 2,
-          },
-          title: `DV Repeat: ${dv.call_count} calls — ${dv.address}`,
-          zIndex: 11,
-        });
-        dvMarkersRef.current.push(marker);
+      map.on('click', dvSourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #a855f740"><div style="font-weight:bold;color:#a855f7">DV Repeat</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.count} calls — ${feature.properties.address}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
       });
-    },
-    [map, clearOverlays],
-  );
+    }
+  }, [map, clearOverlays]);
 
-  // ── Render approach routes ────────────────────────────────
+  const renderApproachRoutes = useCallback((routes: ApproachRoute[]) => {
+    if (!map) return;
+    if (map.getLayer(approachSourceId)) map.removeLayer(approachSourceId);
+    if (map.getSource(approachSourceId)) map.removeSource(approachSourceId);
 
-  const renderApproachRoutes = useCallback(
-    (routes: ApproachRoute[]) => {
-      if (!map || !window.google?.maps) return;
+    const routeColors: Record<string, string> = { low: '#22c55e', moderate: '#f59e0b', high: '#ef4444' };
 
-      // Clear previous approach lines only
-      approachLinesRef.current.forEach((l) => l.setMap(null));
-      approachLinesRef.current = [];
+    const features = routes.map(route => ({
+      type: 'Feature' as const,
+      geometry: { type: 'LineString' as const, coordinates: route.path.map(p => [p.lng, p.lat] as [number, number]) },
+      properties: { color: routeColors[route.risk_level] || '#f59e0b', direction: route.direction, notes: route.notes },
+    }));
 
-      const routeColors: Record<string, string> = {
-        low: '#22c55e',
-        moderate: '#f59e0b',
-        high: '#ef4444',
-      };
-
-      routes.forEach((route) => {
-        const color = routeColors[route.risk_level] || '#f59e0b';
-        const path = route.path.map((p) => ({ lat: p.lat, lng: p.lng }));
-
-        const line = new google.maps.Polyline({
-          path,
-          strokeColor: color,
-          strokeWeight: 3,
-          strokeOpacity: 0.8,
-          icons: [
-            {
-              icon: {
-                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 3,
-                fillColor: color,
-                fillOpacity: 1,
-                strokeWeight: 0,
-              },
-              offset: '50%',
-              repeat: '80px',
-            },
-          ],
-          map,
-          clickable: false,
-          zIndex: 9,
-        });
-        approachLinesRef.current.push(line);
-      });
-    },
-    [map],
-  );
-
-  // ── assessLocation ────────────────────────────────────────
+    map.addSource(approachSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    map.addLayer({
+      id: approachSourceId,
+      type: 'line',
+      source: approachSourceId,
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 3,
+        'line-opacity': 0.8,
+      },
+    });
+  }, [map]);
 
   const abortControllerRef = useRef<AbortController | null>(null);
 
-  const assessLocation = useCallback(
-    async (lat: number, lng: number) => {
-      if (!enabled) return;
-      // Abort any in-flight assessment request
-      if (abortControllerRef.current) abortControllerRef.current.abort();
-      const controller = new AbortController();
-      abortControllerRef.current = controller;
+  const assessLocation = useCallback(async (lat: number, lng: number) => {
+    if (!enabled) return;
+    if (abortControllerRef.current) abortControllerRef.current.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
 
-      setLoading(true);
-      try {
-        const data = await apiFetch<ThreatAssessment>(
-          `/map/safety/threat-assessment/${lat}/${lng}`,
-          { signal: controller.signal },
-        );
-        if (data && !controller.signal.aborted) {
-          setCurrentAssessment(data);
-          renderAssessment(data);
-        }
-      } catch (err) {
-        if (!controller.signal.aborted) {
-          console.warn('[useMapThreatAssessment] Assessment fetch failed:', err);
-          setCurrentAssessment(null);
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
+    setLoading(true);
+    try {
+      const data = await apiFetch<ThreatAssessment>(`/map/safety/threat-assessment/${lat}/${lng}`, { signal: controller.signal });
+      if (data && !controller.signal.aborted) {
+        setCurrentAssessment(data);
+        renderAssessment(data);
       }
-    },
-    [enabled, renderAssessment],
-  );
-
-  // ── getApproachRoutes ─────────────────────────────────────
-
-  const getApproachRoutes = useCallback(
-    async (lat: number, lng: number) => {
-      if (!enabled) return;
-      setLoading(true);
-      try {
-        const data = await apiFetch<ApproachRoute[]>(
-          `/map/safety/approach-routes/${lat}/${lng}`,
-        );
-        if (data) {
-          setApproachRoutes(data);
-          renderApproachRoutes(data);
-        }
-      } catch (err) {
-        console.warn('[useMapThreatAssessment] Approach routes fetch failed:', err);
-        setApproachRoutes(null);
-      } finally {
-        setLoading(false);
+    } catch (err) {
+      if (!controller.signal.aborted) {
+        console.warn('[useMapThreatAssessment] Assessment fetch failed:', err);
+        setCurrentAssessment(null);
       }
-    },
-    [enabled, renderApproachRoutes],
-  );
+    } finally {
+      if (!controller.signal.aborted) setLoading(false);
+    }
+  }, [enabled, renderAssessment]);
 
-  // ── clearAssessment ───────────────────────────────────────
+  const getApproachRoutes = useCallback(async (lat: number, lng: number) => {
+    if (!enabled) return;
+    setLoading(true);
+    try {
+      const data = await apiFetch<ApproachRoute[]>(`/map/safety/approach-routes/${lat}/${lng}`);
+      if (data) {
+        setApproachRoutes(data);
+        renderApproachRoutes(data);
+      }
+    } catch (err) {
+      console.warn('[useMapThreatAssessment] Approach routes fetch failed:', err);
+      setApproachRoutes(null);
+    } finally {
+      setLoading(false);
+    }
+  }, [enabled, renderApproachRoutes]);
 
   const clearAssessment = useCallback(() => {
     clearOverlays();
@@ -303,25 +256,20 @@ export function useMapThreatAssessment(
     setApproachRoutes(null);
   }, [clearOverlays]);
 
-  // ── Cleanup on unmount or disabled ────────────────────────
-
   useEffect(() => {
     if (!enabled) {
       clearOverlays();
       setCurrentAssessment(null);
       setApproachRoutes(null);
     }
-    return () => {
-      clearOverlays();
-    };
+    return () => { clearOverlays(); };
   }, [enabled, clearOverlays]);
 
-  return {
-    assessLocation,
-    getApproachRoutes,
-    clearAssessment,
-    currentAssessment,
-    approachRoutes,
-    loading,
-  };
+  useEffect(() => {
+    return () => {
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
+    };
+  }, []);
+
+  return { assessLocation, getApproachRoutes, clearAssessment, currentAssessment, approachRoutes, loading };
 }

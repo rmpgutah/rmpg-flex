@@ -4,11 +4,12 @@
 // ============================================================
 
 import { useState, useEffect, useMemo } from 'react';
-import { X, Star, Loader2 } from 'lucide-react';
+import { X, Star, Loader2, Clock } from 'lucide-react';
 import { REVIEW_CATEGORIES, RATING_LABELS } from '../utils/hrConstants';
 import type { PerformanceReview, ReviewType } from '../../../types';
+import { useFormDraft } from '../../../hooks/useFormDraft';
+import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
-import RichTextArea from '../../../components/RichTextArea';
 interface ReviewFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -71,6 +72,18 @@ function StarPicker({
   );
 }
 
+const EMPTY_FORM = {
+  officer_id: '',
+  type: 'annual' as ReviewType,
+  period_start: '',
+  period_end: '',
+  review_date: '',
+  categories: {} as Record<string, number>,
+  strengths: '',
+  areas_for_improvement: '',
+  goals: '',
+};
+
 export default function ReviewFormModal({
   isOpen,
   onClose,
@@ -78,52 +91,50 @@ export default function ReviewFormModal({
   editReview,
   officers,
 }: ReviewFormModalProps) {
-  const [officerId, setOfficerId] = useState('');
-  const [type, setType] = useState<ReviewType>('annual');
-  const [periodStart, setPeriodStart] = useState('');
-  const [periodEnd, setPeriodEnd] = useState('');
-  const [reviewDate, setReviewDate] = useState('');
-  const [categories, setCategories] = useState<Record<string, number>>({});
-  const [strengths, setStrengths] = useState('');
-  const [areasForImprovement, setAreasForImprovement] = useState('');
-  const [goals, setGoals] = useState('');
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_hr_review_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Reset form when modal opens or editReview changes
   useEffect(() => {
     if (isOpen) {
       if (editReview) {
-        setOfficerId(String(editReview.officer_id));
-        setType(editReview.type);
-        setPeriodStart(editReview.review_period_start);
-        setPeriodEnd(editReview.review_period_end);
-        setReviewDate(editReview.review_date ?? '');
-        setCategories(editReview.categories ?? {});
-        setStrengths(editReview.strengths ?? '');
-        setAreasForImprovement(editReview.areas_for_improvement ?? '');
-        setGoals(editReview.goals ?? '');
+        setForm({
+          officer_id: String(editReview.officer_id),
+          type: editReview.type,
+          period_start: editReview.review_period_start,
+          period_end: editReview.review_period_end,
+          review_date: editReview.review_date ?? '',
+          categories: editReview.categories ?? {},
+          strengths: editReview.strengths ?? '',
+          areas_for_improvement: editReview.areas_for_improvement ?? '',
+          goals: editReview.goals ?? '',
+        });
       } else {
-        setOfficerId('');
-        setType('annual');
-        setPeriodStart('');
-        setPeriodEnd('');
-        setReviewDate('');
-        setCategories({});
-        setStrengths('');
-        setAreasForImprovement('');
-        setGoals('');
+        setForm({ ...EMPTY_FORM });
       }
+      snapshot();
     }
-  }, [isOpen, editReview]);
+  }, [isOpen, editReview, setForm, snapshot]);
 
   const overallRating = useMemo(() => {
-    const vals = Object.values(categories).filter((v) => v > 0);
+    const vals = Object.values(form.categories).filter((v) => v > 0);
     if (vals.length === 0) return 0;
     return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
-  }, [categories]);
+  }, [form.categories]);
 
   const handleCategoryRating = (cat: string, val: number) => {
-    setCategories((prev) => ({ ...prev, [cat]: val }));
+    setForm((prev) => ({ ...prev, categories: { ...prev.categories, [cat]: val } }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -131,17 +142,18 @@ export default function ReviewFormModal({
     setSubmitting(true);
     try {
       await onSubmit({
-        officer_id: Number(officerId),
-        type,
-        review_period_start: periodStart,
-        review_period_end: periodEnd,
-        review_date: reviewDate || null,
-        categories,
+        officer_id: Number(form.officer_id),
+        type: form.type,
+        review_period_start: form.period_start,
+        review_period_end: form.period_end,
+        review_date: form.review_date || null,
+        categories: form.categories,
         overall_rating: overallRating || null,
-        strengths: strengths || null,
-        areas_for_improvement: areasForImprovement || null,
-        goals: goals || null,
+        strengths: form.strengths || null,
+        areas_for_improvement: form.areas_for_improvement || null,
+        goals: form.goals || null,
       });
+      clearDraft();
       onClose();
     } finally {
       setSubmitting(false);
@@ -151,7 +163,9 @@ export default function ReviewFormModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center">
+    <>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
+      <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center">
       {/* Backdrop */}
       <div className="absolute inset-0 bg-black/60" onClick={onClose} />
 
@@ -172,6 +186,17 @@ export default function ReviewFormModal({
 
         {/* Scrollable content */}
         <form onSubmit={handleSubmit} className="flex flex-col overflow-hidden">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-3 py-2 mx-4 mt-3 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={() => { setForm({ ...EMPTY_FORM }); snapshot(); }} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                Discard
+              </button>
+            </div>
+          )}
           <div className="overflow-y-auto p-4 space-y-4">
             {/* Officer + Type */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -181,8 +206,8 @@ export default function ReviewFormModal({
                 </span>
                 <select
                   required
-                  value={officerId}
-                  onChange={(e) => setOfficerId(e.target.value)}
+                  value={form.officer_id}
+                  onChange={(e) => setForm(f => ({ ...f, officer_id: e.target.value }))}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none"
                 >
                   <option value="">Select officer...</option>
@@ -199,8 +224,8 @@ export default function ReviewFormModal({
                   Review Type
                 </span>
                 <select
-                  value={type}
-                  onChange={(e) => setType(e.target.value as ReviewType)}
+                  value={form.type}
+                  onChange={(e) => setForm(f => ({ ...f, type: e.target.value as ReviewType }))}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none"
                 >
                   {REVIEW_TYPES.map((t) => (
@@ -221,8 +246,8 @@ export default function ReviewFormModal({
                 <input
                   type="date"
                   required
-                  value={periodStart}
-                  onChange={(e) => setPeriodStart(e.target.value)}
+                  value={form.period_start}
+                  onChange={(e) => setForm(f => ({ ...f, period_start: e.target.value }))}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none"
                 />
               </label>
@@ -233,8 +258,8 @@ export default function ReviewFormModal({
                 <input
                   type="date"
                   required
-                  value={periodEnd}
-                  onChange={(e) => setPeriodEnd(e.target.value)}
+                  value={form.period_end}
+                  onChange={(e) => setForm(f => ({ ...f, period_end: e.target.value }))}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none"
                 />
               </label>
@@ -246,8 +271,8 @@ export default function ReviewFormModal({
               </span>
               <input
                 type="date"
-                value={reviewDate}
-                onChange={(e) => setReviewDate(e.target.value)}
+                value={form.review_date}
+                onChange={(e) => setForm(f => ({ ...f, review_date: e.target.value }))}
                 className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none sm:max-w-[50%]"
               />
             </label>
@@ -267,7 +292,7 @@ export default function ReviewFormModal({
                       {cat}
                     </span>
                     <StarPicker
-                      rating={categories[cat] ?? 0}
+                      rating={form.categories[cat] ?? 0}
                       onChange={(val) => handleCategoryRating(cat, val)}
                     />
                   </div>
@@ -306,9 +331,9 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Strengths
                 </span>
-                <RichTextArea
-                  value={strengths}
-                  onChange={(e) => setStrengths(e.target.value)}
+                <textarea
+                  value={form.strengths}
+                  onChange={(e) => setForm(f => ({ ...f, strengths: e.target.value }))}
                   rows={3}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none resize-y"
                   placeholder="Notable strengths observed during this review period..."
@@ -318,9 +343,9 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Areas for Improvement
                 </span>
-                <RichTextArea
-                  value={areasForImprovement}
-                  onChange={(e) => setAreasForImprovement(e.target.value)}
+                <textarea
+                  value={form.areas_for_improvement}
+                  onChange={(e) => setForm(f => ({ ...f, areas_for_improvement: e.target.value }))}
                   rows={3}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none resize-y"
                   placeholder="Areas where improvement is expected..."
@@ -328,9 +353,9 @@ export default function ReviewFormModal({
               </label>
               <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">Goals</span>
-                <RichTextArea
-                  value={goals}
-                  onChange={(e) => setGoals(e.target.value)}
+                <textarea
+                  value={form.goals}
+                  onChange={(e) => setForm(f => ({ ...f, goals: e.target.value }))}
                   rows={3}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none resize-y"
                   placeholder="Goals for the next review period..."
@@ -360,5 +385,6 @@ export default function ReviewFormModal({
         </form>
       </div>
     </div>
+    </>
   );
 }

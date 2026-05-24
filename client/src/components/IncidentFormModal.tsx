@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, Scale } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { Incident, CallPriority } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
 import RichTextArea from './RichTextArea';
@@ -16,6 +16,7 @@ import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 import StatuteLookup, { type StatuteResult } from './StatuteLookup';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
+import Dropdown from './ui/Dropdown';
 
 interface IncidentFormModalProps {
   isOpen: boolean;
@@ -359,8 +360,18 @@ export default function IncidentFormModal({
   clients = [],
   defaultType = '',
 }: IncidentFormModalProps) {
-  const [formData, setFormData] = useState<IncidentFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(formData, isOpen);
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<IncidentFormData>({
+    storageKey: 'rmpg_incident_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<SectionId>('basic');
   const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { identify: identifyDistrict } = useDistrictIdentify();
@@ -473,14 +484,14 @@ export default function IncidentFormModal({
           supervisor_notified: !!inc.supervisor_notified,
         };
         setFormData(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         const initial: IncidentFormData = {
           ...EMPTY_FORM,
           ...(defaultType ? { incident_type: defaultType as IncidentType, priority: 'P1' as CallPriority } : {}),
         };
         setFormData(initial);
-        snapshot(initial);
+        snapshot();
       }
       setActiveSection(defaultType && USE_OF_FORCE_TYPES.includes(defaultType) ? 'use_of_force' : 'basic');
     }
@@ -510,6 +521,8 @@ export default function IncidentFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-4xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Section Tabs (dynamic based on incident type) */}
       <div className="flex gap-1 -mt-1 mb-2 flex-wrap">
@@ -536,28 +549,24 @@ export default function IncidentFormModal({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Incident Type</label>
-              <select
-                className="select-dark mt-1"
+              <Dropdown
+                groups={Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => ({
+                  label: category,
+                  options: types.map((t) => ({ value: t.value, label: t.label })),
+                }))}
                 value={formData.incident_type}
-                onChange={(e) => {
-                  update('incident_type', e.target.value);
-                  // Reset to basic tab if current sub-section no longer applies
-                  const newTabs = getSectionTabs(e.target.value);
+                onChange={(v) => {
+                  update('incident_type', v);
+                  const newTabs = getSectionTabs(v);
                   if (!newTabs.find((t) => t.id === activeSection)) {
                     setActiveSection('basic');
                   }
                 }}
                 required
-              >
-                <option value="" disabled>-- Select Type --</option>
-                {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => (
-                  <optgroup key={category} label={category}>
-                    {types.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                searchable
+                placeholder="-- Select Type --"
+                className="mt-1"
+              />
               {/* Feature 30: Incident Type Auto-suggest based on narrative keywords */}
               {formData.narrative && !formData.incident_type && (() => {
                 const text = formData.narrative.toLowerCase();
@@ -1112,10 +1121,16 @@ export default function IncidentFormModal({
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served To</label>
                 <input type="text" className="input-dark mt-1" placeholder="Name of person served" value={formData.process_served_to} onChange={(e) => update('process_served_to', e.target.value)} />
               </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served Address</label>
-                <input type="text" className="input-dark mt-1" placeholder="Address where served" value={formData.process_served_address} onChange={(e) => update('process_served_address', e.target.value)} />
-              </div>
+               <div>
+                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served Address</label>
+                 <AddressAutocomplete
+                   className="input-dark mt-1 w-full"
+                   placeholder="Address where served"
+                   value={formData.process_served_address}
+                   onChange={(value) => update('process_served_address', value)}
+                   name="process_served_address"
+                 />
+               </div>
               <div>
                 <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Served At</label>
                 <input type="datetime-local" className="input-dark mt-1" value={formData.process_served_at} onChange={(e) => update('process_served_at', e.target.value)} />

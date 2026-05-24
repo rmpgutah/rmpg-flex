@@ -1341,7 +1341,7 @@ export default function SkipTracerV2Page() {
                       <td className="px-2 py-1.5">
                         <div className="flex items-center gap-1">
                           {fullAddr && (
-                            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="p-0.5 rounded-sm hover:bg-white/10 text-[#f59e0b] hover:text-[#fbbf24] transition-colors" title="Open in Google Maps">
+                            <a href={mapsUrl} target="_blank" rel="noopener noreferrer" className="p-0.5 rounded-sm hover:bg-white/10 text-[#f59e0b] hover:text-[#fbbf24] transition-colors" title="Open in Maps">
                               <MapPinned size={12} />
                             </a>
                           )}

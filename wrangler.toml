@@ -1,0 +1,41 @@
+name = "rmpg-flex-api"
+main = "src/index.ts"
+compatibility_date = "2026-05-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Custom domain. Wrangler provisions the DNS record + zone hostname
+# mapping; the zone (rmpgutah.us) must already be on this Cloudflare
+# account.
+[[routes]]
+pattern = "api.rmpgutah.us"
+custom_domain = true
+
+# D1 Database
+[[d1_databases]]
+binding = "DB"
+database_name = "rmpg-flex-db"
+database_id = "8893480a-6dd5-4790-a11f-1fb6fac13f02"
+
+# KV for sessions and caching
+[[kv_namespaces]]
+binding = "KV"
+id = "8e01c392038e4f76838ca9a1130c908e"
+preview_id = "8e01c392038e4f76838ca9a1130c908e"
+
+# R2 buckets
+[[r2_buckets]]
+binding = "MAP_DATA"
+bucket_name = "system-essentials"
+
+# Environment variables
+[vars]
+NODE_ENV = "production"
+PRIMARY_DOMAIN = "rmpgutah.us"
+CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173"
+JWT_ACCESS_EXPIRY = "15m"
+JWT_REFRESH_EXPIRY = "7d"
+SERVER_TIMEZONE = "America/Denver"
+
+# Secrets (set via `npx wrangler secret put`)
+# JWT_SECRET (already set)
+# GOOGLE_MAPS_API_KEY

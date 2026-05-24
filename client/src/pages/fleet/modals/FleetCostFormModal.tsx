@@ -13,9 +13,12 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useEffect, useId, useState } from 'react';
-import RichTextArea from '../../../components/RichTextArea';
-import { Save, X as XIcon, AlertTriangle, CreditCard, Shield, Wrench, Zap } from 'lucide-react';
+import {
+  DollarSign, Calendar, Save, X as XIcon, AlertTriangle,
+  CreditCard, Shield, Wrench, Zap, Clock,
+} from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 export type CostCategory = 'loan' | 'insurance' | 'accessory' | 'utility';
 
@@ -88,8 +91,8 @@ interface Props {
   isOpen: boolean;
   category: CostCategory;
   mode: 'create' | 'edit';
-  form: CostFormState;
-  onChange: (form: CostFormState) => void;
+  /** Optional: pre-populate form for editing. When omitted, starts empty. */
+  initial?: CostFormState | null;
   onSave: (payload: Record<string, any>) => Promise<void>;
   onClose: () => void;
   saving: boolean;
@@ -194,10 +197,32 @@ function buildPayload(category: CostCategory, f: CostFormState): { payload: Reco
 }
 
 export default function FleetCostFormModal({
-  isOpen, category, mode, form, onChange, onSave, onClose, saving,
+  isOpen, category, mode, initial, onSave, onClose, saving,
 }: Props) {
   const titleId = useId();
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<CostFormState>({
+    storageKey: `rmpg_fleet_cost_form_${category}`,
+    defaultValue: EMPTY_COST_FORM,
+    isActive: isOpen,
+  });
   const [localError, setLocalError] = useState('');
+
+  useEffect(() => {
+    if (!isOpen) return;
+    if (mode === 'edit' && initial) {
+      setForm(initial);
+    } else if (mode === 'create') {
+      setForm(EMPTY_COST_FORM);
+    }
+    setTimeout(() => snapshot(), 0);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -208,7 +233,7 @@ export default function FleetCostFormModal({
 
   if (!isOpen) return null;
   const meta = CATEGORY_META[category];
-  const set = (k: keyof CostFormState, v: string) => onChange({ ...form, [k]: v });
+  const set = (k: keyof CostFormState, v: string) => setForm({ ...form, [k]: v });
 
   const submit = async () => {
     setLocalError('');
@@ -216,22 +241,44 @@ export default function FleetCostFormModal({
     if (error) { setLocalError(error); return; }
     try {
       await onSave(payload);
+      clearDraft();
     } catch (e: any) {
       setLocalError(e?.message || 'Save failed');
+    }
+  };
+
+  const guardedClose = () => {
+    if (isDirty && !saving) {
+      if (window.confirm('You have unsaved changes. Discard them?')) {
+        clearDraft();
+        onClose();
+      }
+    } else {
+      onClose();
     }
   };
 
   return (
     <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center"
       role="dialog" aria-modal="true" aria-labelledby={titleId}
-      style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
+      style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : guardedClose}>
       <div className="panel-beveled w-[560px] max-w-full mx-4 max-h-[90vh] flex flex-col bg-surface-raised"
         onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={`${mode === 'edit' ? 'EDIT' : 'NEW'} ${meta.title}`} icon={meta.icon} id={titleId}>
-          <button type="button" className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
+          {isDirty && <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider mr-2">UNSAVED</span>}
+          <button type="button" className="toolbar-btn text-[9px]" onClick={guardedClose}>X</button>
         </PanelTitleBar>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={clearDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">Discard</button>
+            </div>
+          )}
           {localError && (
             <div className="panel-beveled p-2 border border-red-700/40 bg-red-900/20">
               <div className="flex items-center gap-1.5 text-[10px] text-red-400"><AlertTriangle className="w-3 h-3" />{localError}</div>
@@ -447,13 +494,13 @@ export default function FleetCostFormModal({
           {/* ── Notes (shared) ───────────────────────────────── */}
           <div>
             <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-            <RichTextArea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
+            <textarea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
               onChange={(e) => set('notes', e.target.value)} maxLength={2000} />
           </div>
         </div>
 
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
-          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>
+          <button type="button" className="toolbar-btn" onClick={guardedClose} disabled={saving}>
             <XIcon className="w-3 h-3" /> Cancel
           </button>
           <button type="button" className="toolbar-btn toolbar-btn-primary" onClick={submit} disabled={saving}>

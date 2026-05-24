@@ -87,7 +87,7 @@ export function WebSocketProvider({ children }: { children: React.ReactNode }) {
       // Message-based auth: connect without URL token, then send authenticate
       // frame on open. URL-token auth was deprecated 2026-04-15 to prevent JWT
       // leakage via server logs, browser history, and referrer headers.
-      const ws = new WebSocket(`${protocol}//${host}/ws`);
+      const ws = new WebSocket(`${protocol}//${host}/api/ws`);
 
       // Connection timeout — if the socket hasn't opened in 10s, kill it and retry.
       // Without this, a stalled TCP handshake can hang the socket indefinitely.

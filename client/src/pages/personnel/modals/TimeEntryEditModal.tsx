@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Clock } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
-import { useFormDirty } from '../../../hooks/useFormDirty';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { TimeEntry } from '../../../types';
 
 export interface TimeEntryEditData {
@@ -31,46 +31,52 @@ function toLocalInput(dt?: string): string {
 export default function TimeEntryEditModal({
   isOpen, onClose, onSubmit, isSubmitting, entry,
 }: Props) {
-  const [clockIn, setClockIn] = useState('');
-  const [clockOut, setClockOut] = useState('');
-  const form = useMemo(() => ({ clockIn, clockOut }), [clockIn, clockOut]);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<{ clockIn: string; clockOut: string }>({
+    storageKey: 'rmpg_personnel_time_entry_form',
+    defaultValue: { clockIn: '', clockOut: '' },
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && entry) {
       const initialIn = toLocalInput(entry.clock_in);
       const initialOut = toLocalInput(entry.clock_out);
-      setClockIn(initialIn);
-      setClockOut(initialOut);
-      snapshot({ clockIn: initialIn, clockOut: initialOut });
+      setForm({ clockIn: initialIn, clockOut: initialOut });
+      snapshot();
     } else if (isOpen) {
-      setClockIn('');
-      setClockOut('');
-      snapshot({ clockIn: '', clockOut: '' });
+      setForm({ clockIn: '', clockOut: '' });
+      snapshot();
     }
-  }, [isOpen, entry]);
+  }, [isOpen, entry, setForm, snapshot]);
 
   const calculatedHours = useMemo(() => {
-    if (!clockIn) return null;
-    if (!clockOut) return null;
-    const start = new Date(clockIn).getTime();
-    const end = new Date(clockOut).getTime();
+    if (!form.clockIn) return null;
+    if (!form.clockOut) return null;
+    const start = new Date(form.clockIn).getTime();
+    const end = new Date(form.clockOut).getTime();
     if (isNaN(start) || isNaN(end)) return null;
     const hrs = (end - start) / (1000 * 60 * 60);
     return hrs >= 0 ? hrs : null;
-  }, [clockIn, clockOut]);
+  }, [form.clockIn, form.clockOut]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!entry) return;
     onSubmit({
       id: entry.id,
-      clock_in: clockIn,
-      clock_out: clockOut,
+      clock_in: form.clockIn,
+      clock_out: form.clockOut,
     });
   };
 
-  const handleClose = () => { setClockIn(''); setClockOut(''); onClose(); };
+  const handleClose = () => { setForm({ clockIn: '', clockOut: '' }); onClose(); };
 
   return (
     <FormModal
@@ -83,6 +89,8 @@ export default function TimeEntryEditModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-md"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Officer info (read-only) */}
       {entry && (
@@ -105,8 +113,8 @@ export default function TimeEntryEditModal({
           <input
             type="datetime-local"
             required
-            value={clockIn}
-            onChange={e => setClockIn(e.target.value)}
+            value={form.clockIn}
+            onChange={e => setForm(f => ({ ...f, clockIn: e.target.value }))}
             className="input-dark min-h-[36px]"
           />
         </div>
@@ -114,11 +122,11 @@ export default function TimeEntryEditModal({
           <label className="field-label">Clock Out</label>
           <input
             type="datetime-local"
-            value={clockOut}
-            onChange={e => setClockOut(e.target.value)}
+            value={form.clockOut}
+            onChange={e => setForm(f => ({ ...f, clockOut: e.target.value }))}
             className="input-dark min-h-[36px]"
           />
-          {!clockOut && <p className="text-[9px] text-amber-400 mt-1">Leave blank if still active</p>}
+          {!form.clockOut && <p className="text-[9px] text-amber-400 mt-1">Leave blank if still active</p>}
         </div>
       </div>
 
