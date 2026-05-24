@@ -39,11 +39,22 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Token rotated 2026-05-24 to one that includes container
-          # image push permission, so the Containers rollout runs
-          # again. Revert to `deploy --containers-rollout=none` if a
-          # future token loses that scope.
-          command: deploy
+          # Containers rollout is currently SKIPPED — re-enabling it in
+          # PR #609 caused wrangler to fail at the registry push with
+          # `Unauthorized`. The token rotation that PR #609 referenced
+          # either didn't take effect or doesn't include the right
+          # scope. Per the original escape-hatch note, we restore the
+          # --containers-rollout=none flag so Worker code keeps shipping.
+          #
+          # Effect: the Container CLASS still bundles into the Worker
+          # (getContainer(env.PDF_TOOLS, ...) is callable from code),
+          # but the container image stops getting pushed to Cloudflare's
+          # registry. /api/pdf-tools/* will return 503 CONTAINER_UNREACHABLE
+          # at runtime until the token is fixed and this flag is removed.
+          #
+          # To re-enable: verify CLOUDFLARE_API_TOKEN has "Containers Write"
+          # in CF dashboard → API Tokens, then drop the flag below.
+          command: deploy --containers-rollout=none
 
       # Client SPA build + deploy to Cloudflare Pages.
       # Without these steps the Worker (API) ships but the React app
