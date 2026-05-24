@@ -599,7 +599,7 @@ export function mountConnectionsRoutes(app: Hono<{ Bindings: Env; Variables: { u
       if (isNaN(Number(id)) || Number(id) < 1) { return c.json({ error: 'id must be a positive integer', code: 'ID_MUST_BE_A' }, 400); }
 
       const maxDepth = Math.min(Math.max(Number(depth) || 2, 1), 3);
-      const graph = buildGraph(db, String(type), Number(id), maxDepth);
+      const graph = await buildGraph(db, String(type), Number(id), maxDepth);
       return c.json(graph);
     } catch {
       return c.json({ error: 'Failed to build connection graph', code: 'FAILED_TO_BUILD_CONNECTION' }, 500);

@@ -50,8 +50,10 @@ export function authedImageUrl(url: string | null | undefined): string {
   if (url.includes('/api/uploads') || url.startsWith('/api/')) {
     const token = localStorage.getItem('rmpg_token');
     if (!token) return url;
-    const sep = url.includes('?') ? '&' : '?';
-    return `${url}${sep}token=${encodeURIComponent(token)}`;
+    // Strip any existing token= param to prevent duplicates
+    const cleanUrl = url.replace(/([?&])token=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+    const sep = cleanUrl.includes('?') ? '&' : '?';
+    return `${cleanUrl}${sep}token=${encodeURIComponent(token)}`;
   }
   return url;
 }

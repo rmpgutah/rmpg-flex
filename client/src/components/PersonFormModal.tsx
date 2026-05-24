@@ -403,8 +403,7 @@ export default function PersonFormModal({
       try {
         const results = await apiUploadFiles([idImageFile], 'person_id_image');
         if (results.length > 0) {
-          const token = localStorage.getItem('rmpg_token');
-          finalForm.id_image_url = `/api/uploads/${results[0].file_id}${token ? `?token=${token}` : ''}`;
+          finalForm.id_image_url = `/api/uploads/${results[0].file_id}`;
         }
       } catch (err) {
         console.error('ID image upload failed:', err);
