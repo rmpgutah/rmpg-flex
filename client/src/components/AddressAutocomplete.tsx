@@ -349,30 +349,28 @@ export default function AddressAutocomplete({
       return;
     }
 
-    try {
-      const token = await getMapboxAccessToken();
-      if (!token) {
-        if (onSelect) onSelect({ formatted: suggestion.place_name, street: '', city: '', state: '', zip: '', country: '', latitude: null, longitude: null });
-        return;
-      }
-
-      const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${suggestion.id}.json?access_token=${token}&types=address,place`;
-      const res = await fetch(url);
-      if (!res.ok) {
-        if (onSelect) onSelect({ formatted: suggestion.place_name, street: '', city: '', state: '', zip: '', country: '', latitude: null, longitude: null });
-        return;
-      }
-
-      const data = await res.json();
-      const feature = data.features?.[0] as MapboxFeature | undefined;
-
-      if (feature && onSelect) {
+    // Mapbox path. Use the feature already returned by the initial
+    // forward-geocode (stashed in `suggestion.raw`) instead of refetching.
+    //
+    // Why the refetch was wrong: previously we hit
+    //   /geocoding/v5/mapbox.places/{suggestion.id}.json
+    // intending it as a feature-detail lookup, but that endpoint treats
+    // the path segment as a SEARCH QUERY — feeding it a feature id like
+    // "address.7438274632" matches whatever Mapbox's text search returns
+    // for that opaque string, often a less-specific feature (street
+    // only, or a different city with similar tokens). onSelect then
+    // overwrote the full place_name from onChange with this partial
+    // result, which is what the operator saw as "address fills out
+    // partially." The forward-geocode response already includes
+    // place_name + context + center, so re-parsing from `raw` is both
+    // accurate and one fewer network round-trip.
+    const feature = (suggestion.raw as MapboxFeature | undefined);
+    if (onSelect) {
+      if (feature) {
         onSelect(parseAddressFromFeature(feature));
-      } else if (onSelect) {
+      } else {
         onSelect({ formatted: suggestion.place_name, street: '', city: '', state: '', zip: '', country: '', latitude: null, longitude: null });
       }
-    } catch {
-      if (onSelect) onSelect({ formatted: suggestion.place_name, street: '', city: '', state: '', zip: '', country: '', latitude: null, longitude: null });
     }
   }, [onChange, onSelect]);
 
