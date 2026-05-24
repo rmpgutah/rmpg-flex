@@ -153,9 +153,14 @@ const API_ROUTES: RouteRule[] = [
   // (manager-tier roles can edit anyone, self-edit allowed on a narrow
   // contact/prefs subset) and soft-delete (manager-only, can't delete
   // self, sets status='terminated'). Legacy 404s on both. Scoped to
-  // PUT/DELETE only so GET/POST keep flowing to legacy until the
-  // rewrite has feature parity (read + create).
+  // PUT/DELETE only so GET keeps flowing to legacy until the rewrite
+  // has a read handler.
   { kind: 'regex', value: /^\/api\/personnel\/\d+$/, methods: ['PUT', 'DELETE'] },
+  // POST /api/personnel — rewrite implements create handler
+  // (manager-only, case-insensitive username dedup, must_change_password
+  // defaults on). Bare /api/personnel kept routing to legacy for GET
+  // (list endpoint with org-context filters legacy still owns).
+  { kind: 'regex', value: /^\/api\/personnel\/?$/, methods: ['POST'] },
   // Dedicated audited surfaces for role/password/status changes — rewrite-only.
   // Each is locked to a tighter role tier than the general PUT (admin-only
   // for role and password; manager-tier for status). See src/routes/personnel.ts.
