@@ -13,6 +13,7 @@ import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken, requireRole } from '../worker-middleware/auth';
 import { D1Db } from '../worker-middleware/d1Helpers';
 import { localNow, localToday } from '../worker-middleware/timeUtils';
+import { auditLog } from '../worker-middleware/auditLogger';
 
 export function mountCitationRoutes(app: Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>): void {
   const api = new Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>();
@@ -339,6 +340,11 @@ export function mountCitationRoutes(app: Hono<{ Bindings: Env; Variables: { user
 
       const now = localNow();
       const created_at = (user?.role === 'admin' && body.created_at) ? body.created_at : now;
+      if (user?.role === 'admin' && body.created_at) {
+        // Audit BEFORE insert so we capture the override intent even if the insert fails.
+        // last_row_id is unknown at this point; entityId 0 matches the Express convention.
+        await auditLog(db, c, 'ADMIN_OVERRIDE', 'citation', 0, `Admin God Mode: overrode created_at to ${body.created_at} on new citation`);
+      }
 
       const result = await db.prepare(`
         INSERT INTO citations (
@@ -507,13 +513,15 @@ export function mountCitationRoutes(app: Hono<{ Bindings: Env; Variables: { user
         values.push(effectiveUpdatedAt);
         values.push(id);
         await db.prepare(`UPDATE citations SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+        if (user?.role === 'admin' && body.updated_at) {
+          await auditLog(db, c, 'ADMIN_OVERRIDE', 'citation', id, `Admin God Mode: overrode updated_at to ${body.updated_at}`);
+        }
       }
 
       if (user?.role === 'admin' && body.citation_number) {
         await db.prepare('UPDATE citations SET citation_number = ? WHERE id = ?').run(body.citation_number, id);
+        await auditLog(db, c, 'ADMIN_OVERRIDE', 'citation', id, `Admin God Mode: overrode citation_number to ${body.citation_number}`);
       }
-
-      // Activity log + broadcast skipped (not critical for Workers)
 
       const updated = await db.prepare('SELECT * FROM citations WHERE id = ?').get(id);
       return c.json({ data: updated });
@@ -539,7 +547,7 @@ export function mountCitationRoutes(app: Hono<{ Bindings: Env; Variables: { user
 
       if (user?.role === 'admin' && c.req.query('hard') === 'true') {
         await db.prepare('DELETE FROM citations WHERE id = ?').run(id);
-        // Audit log + broadcast skipped (not critical for Workers)
+        await auditLog(db, c, 'ADMIN_OVERRIDE', 'citation', id, `Hard-deleted citation #${citation.citation_number}`);
         return c.json({ success: true, hard_deleted: true });
       }
 
