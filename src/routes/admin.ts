@@ -149,3 +149,14 @@ admin.get('/realtime-stats', (c) => c.json({
   todayActivity: 0,
   todayCalls: 0,
 }));
+
+// ── Departments / Retention / Announcements list stubs ─────
+// AdminDepartmentsTab, AdminRetentionTab, AdminAnnouncementsTab
+// all render an "empty state" gracefully when given []. Write
+// endpoints (POST/PUT/DELETE) on these resources still 404 and
+// need real implementations when the features come online —
+// not in this PR's scope.
+admin.get('/departments', (c) => c.json([]));
+admin.get('/retention', (c) => c.json([]));
+admin.get('/retention/preview', (c) => c.json([]));
+admin.get('/announcements/all', (c) => c.json([]));

@@ -307,4 +307,59 @@ personnel.post('/:id/status', async (c) => {
   }
 });
 
+// DELETE /personnel/:id — soft-delete only.
+//
+// Hard DELETE would orphan FK references in audit_log, incidents,
+// units.assigned_user_id, time_entries, body_cameras, etc. — the
+// users table is referenced almost everywhere. status='terminated'
+// preserves the row so history queries still resolve.
+//
+// Manager-only. Self-delete is forbidden: if the only admin
+// terminates themselves the org loses admin access with no in-app
+// recovery path, so we 403 rather than fail dangerously. Idempotent
+// — already-terminated returns 200 with previous_status='terminated'.
+personnel.delete('/:id', async (c) => {
+  try {
+    const targetId = Number(c.req.param('id'));
+    if (!Number.isInteger(targetId) || targetId <= 0) {
+      return c.json({ error: 'Invalid user id' }, 400);
+    }
+
+    const actor = c.get('user') as { id: number; role: string } | undefined;
+    const actorId = c.get('userId') as number | undefined;
+    if (!actor || actorId == null) {
+      return c.json({ error: 'Authentication required' }, 401);
+    }
+    if (!MANAGER_ROLES.has(actor.role)) {
+      return c.json({ error: 'Insufficient permissions' }, 403);
+    }
+    if (actorId === targetId) {
+      return c.json({ error: 'Cannot terminate your own account' }, 403);
+    }
+
+    const db = getDb(c.env);
+    const existing = await queryFirst<{ id: number; status: string }>(
+      db,
+      'SELECT id, status FROM users WHERE id = ?',
+      targetId
+    );
+    if (!existing) return c.json({ error: 'User not found' }, 404);
+
+    await execute(
+      db,
+      `UPDATE users
+       SET status = 'terminated',
+           termination_date = CURRENT_TIMESTAMP,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      targetId
+    );
+
+    return c.json({ ok: true, id: targetId, previous_status: existing.status, status: 'terminated' });
+  } catch (err) {
+    console.error('DELETE /personnel/:id failed:', err);
+    return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 export default personnel;

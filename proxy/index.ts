@@ -149,11 +149,13 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/personnel/coverage-gaps' },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
-  // PUT /api/personnel/:id — rewrite implements edit handler (manager-tier
-  // roles can edit anyone, self-edit allowed on a narrow contact/prefs subset).
-  // Legacy returns 404. Scoped to PUT only so GET/POST/DELETE keep flowing
-  // to legacy until the rewrite has feature parity (delete + create).
-  { kind: 'regex', value: /^\/api\/personnel\/\d+$/, methods: ['PUT'] },
+  // PUT + DELETE /api/personnel/:id — rewrite implements edit handler
+  // (manager-tier roles can edit anyone, self-edit allowed on a narrow
+  // contact/prefs subset) and soft-delete (manager-only, can't delete
+  // self, sets status='terminated'). Legacy 404s on both. Scoped to
+  // PUT/DELETE only so GET/POST keep flowing to legacy until the
+  // rewrite has feature parity (read + create).
+  { kind: 'regex', value: /^\/api\/personnel\/\d+$/, methods: ['PUT', 'DELETE'] },
   // Dedicated audited surfaces for role/password/status changes — rewrite-only.
   // Each is locked to a tighter role tier than the general PUT (admin-only
   // for role and password; manager-tier for status). See src/routes/personnel.ts.
