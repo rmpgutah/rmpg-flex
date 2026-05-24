@@ -25,7 +25,7 @@ id = "18dcb50f5f8f494596b02a50885ed379"
 
 [[kv_namespaces]]
 binding = "RATE_LIMITS"
-id = "fc1bbc050e894fc09a2b5371f8cbd546"
+id = "6573850e8db64408aa4aa719aff35d61"
 
 # ─── R2 Bucket (uploads, attachments, desktop builds) ───
 [[r2_buckets]]
