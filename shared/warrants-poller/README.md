@@ -1,5 +1,9 @@
 # Utah Warrants Poller — Runtime-Agnostic Core
 
+> ⚠️ **STATUS: REFERENCE / NOT WIRED INTO PRODUCTION (2026-05-24).** The canonical Utah warrants poller for the live RMPG Flex system is **`server/src/utils/utahWarrantScraper.ts`** in the legacy Express server. That implementation is more mature than this subtree: it has adaptive CloudFront WAF backoff, 24h SQLite caching, the `warrant_watch_runs`/`warrant_watch_log` audit tables, and (as of commit 7d8d6c12) `scraper_events` WebSocket broadcasts that surface every run in the `/warrants → Scrapers` tab live feed.
+>
+> This subtree exists as a clean-room reference for the Cloudflare Workers rehome (different repo, different agent) — runtime-agnostic, no Express/`better-sqlite3` deps, portable to D1. Do NOT wire any of these modules into a server route handler; that would duplicate work and produce two parallel pollers fighting over the same upstream API. If you need to make changes that affect production polling, edit `server/src/utils/utahWarrantScraper.ts`.
+
 Pure TypeScript modules. No Express, no Cloudflare bindings, no `better-sqlite3`. Depends only on standard `fetch` and a small `DataStore` interface.
 
 ## Why portable?
