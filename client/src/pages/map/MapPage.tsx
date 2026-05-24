@@ -460,6 +460,7 @@ export default function MapPage() {
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
   const clusteringInitRef = useRef(false);
   const [clusteringEnabled, setClusteringEnabled] = useState(false);
+  const [mapConfigVersion, setMapConfigVersion] = useState(0);
 
   // Apply admin cluster defaults once on mount
   useEffect(() => {
@@ -474,6 +475,7 @@ export default function MapPage() {
   }, []);
 
   // Admin layer style overrides — apply after map + GeoJSON layers are loaded
+  // Uses mapConfigVersion to re-apply when admin config finishes loading
   const layerOverridesAppliedRef = useRef(false);
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -509,7 +511,7 @@ export default function MapPage() {
         if (strokeWeight != null) map.setPaintProperty(ids.lineId, 'line-width', strokeWeight);
       }
     }
-  }, [mapLoaded, mapInstanceRef.current]);
+  }, [mapLoaded, mapConfigVersion]);
 
   // Marker CSS injection — pulse animations + font size
   const markerStyleRef = useRef<HTMLStyleElement | null>(null);
@@ -538,7 +540,7 @@ export default function MapPage() {
     } else {
       markerStyleRef.current.textContent = css;
     }
-  }, [mapConfigRef.current]);
+  }, [mapConfigVersion]);
 
   // Separate marker tracking for clustering & drag dispatch
   const unitMarkersMapRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
@@ -1061,6 +1063,7 @@ export default function MapPage() {
         mapConfig = { default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12, min_zoom: 1, max_zoom: 22, default_style: 'dark', enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'], show_attribution: false, rotation_enabled: false, max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null, custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14, default_pitch: 0, default_bearing: 0, min_pitch: 0, max_pitch: 85, scroll_zoom: true, box_zoom: true, drag_rotate: true, drag_pan: true, double_click_zoom: true, touch_zoom_rotate: true, cooperative_gestures: false, show_compass: true, show_zoom_controls: true, keyboard_enabled: true, language: '', render_world_copies: true, fade_duration: 300, click_tolerance: 3, local_ideograph_font_family: '', cross_source_collisions: true, default_visible_layers: ['county', 'beat'], layer_beat_fill: '#22c55e', layer_beat_fill_opacity: 0.2, layer_beat_stroke: '#22c55e', layer_beat_stroke_opacity: 0.6, layer_beat_stroke_weight: 1.2, layer_beat_min_zoom: 10, layer_county_fill: '#141414', layer_county_fill_opacity: 0.15, layer_county_stroke: '#444444', layer_county_stroke_opacity: 0.5, layer_county_stroke_weight: 1.5, layer_county_min_zoom: 8, layer_municipality_fill: '#a855f7', layer_municipality_fill_opacity: 0.06, layer_municipality_stroke: '#a855f7', layer_municipality_stroke_opacity: 0.35, layer_municipality_stroke_weight: 1, layer_municipality_min_zoom: 9, layer_highway_stroke: '#ef4444', layer_highway_stroke_opacity: 0.6, layer_highway_stroke_weight: 3, layer_state_boundary_stroke: '#ffffff', layer_state_boundary_stroke_opacity: 0.3, layer_state_boundary_stroke_weight: 2, gps_batch_interval_ms: 5000, gps_max_accuracy_meters: 100, gps_max_speed_ms: 80, gps_high_accuracy: true, screenshot_width: 1280, screenshot_height: 720, screenshot_style: 'dark', unit_marker_pulse: true, call_marker_pulse: true, marker_font_size: 9 };
       }
       mapConfigRef.current = mapConfig;
+      setMapConfigVersion(v => v + 1);
 
       let mapboxToken = '';
       try {

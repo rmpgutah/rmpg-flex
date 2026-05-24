@@ -342,6 +342,7 @@ import { mountHowenRoutes } from './routes/howen-worker';
 
 mountAuthRoutes(app);
 mountDispatchRoutes(app);
+mountSystemConfigRoutes(app);
 mountAdminRoutes(app);
 mountPersonnelRoutes(app);
 mountWarrantRoutes(app);
@@ -379,7 +380,6 @@ mountDispatchAggregatesRoutes(app);
 mountMapboxRoutes(app);
 mountDispatchMessagesRoutes(app);
 mountWebAuthnRoutes(app);
-mountSystemConfigRoutes(app);
 mountSkipTracerV2Routes(app);
 mountMapGeofencesRoutes(app);
 mountMapSafetyRoutes(app);

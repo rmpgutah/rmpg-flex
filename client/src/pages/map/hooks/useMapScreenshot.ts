@@ -1,12 +1,22 @@
 import { useCallback, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 
+const STYLE_URL_MAP: Record<string, string> = {
+  dark: 'mapbox://styles/mapbox/dark-v11',
+  night_nav: 'mapbox://styles/mapbox/navigation-night-v1',
+  satellite: 'mapbox://styles/mapbox/satellite-streets-v12',
+  streets: 'mapbox://styles/mapbox/streets-v12',
+  terrain: 'mapbox://styles/mapbox/outdoors-v12',
+  light: 'mapbox://styles/mapbox/light-v11',
+};
+
 /**
  * Hook providing map screenshot capabilities via Mapbox Static Images API.
  * Returns functions to capture and download map images.
  */
 export function useMapScreenshot(
   map: mapboxgl.Map | null,
+  styleId: string = 'dark',
 ) {
   const busyRef = useRef(false);
 
@@ -26,8 +36,10 @@ export function useMapScreenshot(
     const w = Math.min(width, 1280);
     const h = Math.min(height, 1280);
 
-    return `https://api.mapbox.com/styles/v1/mapbox/dark-v11/static/${lng},${lat},${zoom},0/${w}x${h}@2x?access_token=${token}`;
-  }, [map]);
+    const styleUrl = STYLE_URL_MAP[styleId] || 'mapbox://styles/mapbox/dark-v11';
+    const stylePath = styleUrl.replace('mapbox://styles/', '');
+    return `https://api.mapbox.com/styles/v1/${stylePath}/static/${lng},${lat},${zoom},0/${w}x${h}@2x?access_token=${token}`;
+  }, [map, styleId]);
 
   const captureMapImage = useCallback(async (): Promise<string | null> => {
     if (busyRef.current) return null;

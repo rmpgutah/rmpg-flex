@@ -25,7 +25,7 @@ const STYLE_OPTIONS: { id: string; label: string; desc: string }[] = [
   { id: 'light', label: 'Light', desc: 'mapbox://styles/mapbox/light-v11' },
 ];
 
-const LAYER_IDS = ['beat', 'county', 'municipality', 'highway', 'state_boundary'] as const;
+const LAYER_IDS = ['beat', 'county', 'municipality', 'highway', 'state_boundary', 'place'] as const;
 
 const DEFAULT_VALUES: MapSettings = {
   default_center_lat: 40.7608,
@@ -90,6 +90,12 @@ const DEFAULT_VALUES: MapSettings = {
   layer_state_boundary_stroke: '#ffffff',
   layer_state_boundary_stroke_opacity: 0.3,
   layer_state_boundary_stroke_weight: 2,
+  layer_place_fill: '#22c55e',
+  layer_place_fill_opacity: 0.7,
+  layer_place_stroke: '#22c55e',
+  layer_place_stroke_opacity: 0.9,
+  layer_place_stroke_weight: 1,
+  layer_place_min_zoom: 10,
   gps_batch_interval_ms: 5000,
   gps_max_accuracy_meters: 100,
   gps_max_speed_ms: 80,
