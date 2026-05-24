@@ -24,9 +24,15 @@ orchestrator.ts    runPoll() — Promise.allSettled across sources,
 ### Two adapter modes
 
 - **list-poll** — site publishes a public list/table; cron harvests periodically; `pollAll()` returns the full snapshot.
-- **query-lookup** — site only exposes a search form; the adapter is called reactively (e.g. from MNI lookup) with `{name, dob}`; `lookup()` returns matches.
+- **query-lookup** — site only exposes a search form; the adapter is called reactively (e.g. from MNI lookup) with `{name, dob?, age?}`; `lookup()` returns matches.
 
 The orchestrator only runs `list-poll` sources. `query-lookup` adapters are wired into the existing MNI / skip-trace path.
+
+### Calling convention for `lookup()`
+
+**Pass both `dob` and `age` when the local person record has them.** `dob` is canonical truth; `age` is an optimization hint that adapters disambiguating by age (like warrants-utah-gov) prefer when both are present. If the local record only has age (legacy import paths), `age` alone is sufficient. Adapters MUST tolerate either field being absent.
+
+Age-based disambiguation only fires when the upstream source returns **multiple** persons for the same name — single-match results are trusted on the API's name match alone, because dropping a real warrant due to a ±1y data-entry slip is a strictly worse outcome than presenting a possibly-misaged single match (which the officer visually verifies in the field anyway).
 
 ## Wiring into a Cloudflare Worker
 
