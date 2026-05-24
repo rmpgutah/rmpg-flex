@@ -316,6 +316,7 @@ import { mountDispatchAggregatesRoutes } from './routes/dispatch-aggregates-work
 import { mountRunCardsRoutes } from './routes/runCards-worker';
 import { mountNibrsRoutes } from './routes/nibrs-worker';
 import { mountIncidentSupplementsRoutes } from './routes/incidentSupplements-worker';
+import { mountWelfareRoutes } from './routes/welfare-worker';
 import { mountMapboxRoutes } from './routes/mapbox-worker';
 import { mountOcrRoutes } from './routes/ocr-worker';
 import { mountSystemConfigRoutes } from './routes/systemConfig-worker';
@@ -350,6 +351,7 @@ mountDispatchRoutes(app);
 mountRunCardsRoutes(app);
 mountNibrsRoutes(app);
 mountIncidentSupplementsRoutes(app);
+mountWelfareRoutes(app);
 mountSystemConfigRoutes(app);
 mountAdminRoutes(app);
 mountPersonnelRoutes(app);
