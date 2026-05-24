@@ -21,9 +21,14 @@
 //   failed again (TS2300 duplicate).
 //
 //   After: adding a route is a 1-line append to ROUTE_REGISTRY plus
-//   an import in this file. Git's auto-merge handles adjacent array
-//   entries cleanly because the structural diff is "two entries added
-//   at the same tail" not "two insertions before line 45".
+//   an import in this file. Two PRs adding entries CAN still collide
+//   if both insert at the same line — the "tail-append auto-merges"
+//   hope didn't survive contact with reality. PRs #625/626/628/629
+//   (2026-05-24) all wanted the same slot between forensics and
+//   audit, and all conflicted. The fix is the alphabetical convention
+//   in the RMS section below: each new prefix lands at a unique line
+//   based on its name, so two concurrent PRs end up modifying
+//   different lines and git auto-merges cleanly.
 //
 // Ordering invariants (Hono dispatches in registration order):
 //   - Public routes (no auth) first — declared with auth: 'public'
@@ -33,6 +38,8 @@
 //   - More-specific subroutes BEFORE catch-alls (subjects/properties
 //     BEFORE records; recommendedUnits/audioMode BEFORE units;
 //     incidentsRouter BEFORE incidentSupplements)
+//   - RMS Phase-1 ports section: ALPHABETICAL by prefix (see section
+//     header below for rationale)
 //   - Stubs always last
 //
 // Auth applies to BOTH bare prefix and /:* glob — Hono's `/path/*`
@@ -173,17 +180,27 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/incidents', router: incidentSupplements, auth: 'required' },
 
   // ── RMS routes (Phase 1 ports) ─────────────────────────────
+  // KEEP ALPHABETICAL BY PREFIX. New ports must be inserted at the
+  // alphabetical position of their prefix — NOT appended at the end
+  // of the section. Why: two PRs both "appending at the end" both
+  // modify the same line (just before /api/audit) and git can't
+  // auto-merge them. Two PRs inserting at different alphabetical
+  // positions (e.g. /api/court vs /api/serve) modify different
+  // lines and auto-merge cleanly. PRs #625/626/628/629 (2026-05-24)
+  // all conflicted on this exact slot — that's how this rule got
+  // codified. None of the prefixes here have ordering invariants
+  // with each other (no shared trie roots), so alphabetical is safe.
   { prefix: '/api/arrests', router: arrests, auth: 'required',
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/cases', router: cases, auth: 'required',
     note: 'MVP core; entity-junction tables in a follow-up PR' },
   { prefix: '/api/citations', router: citations, auth: 'required' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
-  { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
+  { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
 
   // ── Documents ──────────────────────────────────────────────
