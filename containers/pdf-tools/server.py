@@ -18,6 +18,7 @@ through the Worker fetch handler.
 import base64
 import logging
 import os
+import re
 import secrets
 import shutil
 import subprocess
@@ -31,6 +32,19 @@ from fastapi.responses import FileResponse, JSONResponse
 
 app = FastAPI(title="rmpg-pdf-tools", version="1.0.0")
 logger = logging.getLogger(__name__)
+
+_PASSWORD_CONTROL_CHARS_RE = re.compile(r"[\x00-\x1F\x7F]")
+_MAX_PDF_PASSWORD_LENGTH = 1024
+
+
+def _validate_qpdf_password(value: str, field_name: str) -> str:
+    if not isinstance(value, str):
+        raise HTTPException(400, f"{field_name} must be a string")
+    if len(value) > _MAX_PDF_PASSWORD_LENGTH:
+        raise HTTPException(400, f"{field_name} is too long")
+    if _PASSWORD_CONTROL_CHARS_RE.search(value):
+        raise HTTPException(400, f"{field_name} contains invalid control characters")
+    return value
 
 # Size cap matches the existing client-side PDF editor limit. Cloudflare
 # Container disk on the `basic` instance is 4 GB, but holding a 50 MB PDF in
@@ -148,6 +162,9 @@ async def encrypt(
     if not owner_password:
         owner_password = base64.urlsafe_b64encode(secrets.token_bytes(24)).decode().rstrip("=")
         generated_owner = True
+
+    user_password = _validate_qpdf_password(user_password, "user_password")
+    owner_password = _validate_qpdf_password(owner_password, "owner_password")
 
     with temp_workdir() as workdir:
         in_path = os.path.join(workdir, "in.pdf")
