@@ -888,14 +888,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
       }
-      if (idleTimerRef.current) {
-        clearTimeout(idleTimerRef.current);
-        idleTimerRef.current = null;
-      }
-      if (sessionTimerRef.current) {
-        clearTimeout(sessionTimerRef.current);
-        sessionTimerRef.current = null;
-      }
+
       // Clear sensitive auth state from memory on unmount
       tempTokenRef.current = null;
       isRefreshingRef.current = false;

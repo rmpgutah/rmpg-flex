@@ -61,7 +61,9 @@ function extractName(text: string): { first: string; middle: string; last: strin
   // Try "Party to Serve: Muhammad A Nawaz" or "Recipient: Muhammad A Nawaz"
   const nameStr = extractField(text, 'Party to Serve') || extractField(text, 'Recipient') || extractField(text, 'Defendant');
   if (!nameStr) return { first: '', middle: '', last: '' };
-  const parts = nameStr.replace(/,.*$/, '').replace(/an individual/i, '').trim().split(/\s+/);
+  // Strip trailing field labels when PDF text extraction has no newlines between fields
+  const cleaned = nameStr.replace(/\s+(?:Server|Fee|Case|Plaintiff|DOB|Phone|Email|Attorney):.*$/i, '').replace(/,.*$/, '').replace(/an individual/i, '').trim();
+  const parts = cleaned.split(/\s+/);
   if (parts.length >= 3) return { first: parts[0], middle: parts.slice(1, -1).join(' '), last: parts[parts.length - 1] };
   if (parts.length === 2) return { first: parts[0], middle: '', last: parts[1] };
   return { first: nameStr, middle: '', last: '' };
@@ -98,7 +100,12 @@ function extractCourt(text: string): string {
 }
 
 function extractDocuments(text: string): string {
-  return extractField(text, 'Documents') || '';
+  const raw = extractField(text, 'Documents') || '';
+  if (!raw) return '';
+  // Stop at instruction keywords to avoid capturing serve instructions on same line
+  const stopAt = raw.search(/Sub-serve|Personal only|Diligence:|Never serve|If subject provides|Call phone|Any occupant|1 attempt/i);
+  if (stopAt !== -1) return raw.substring(0, stopAt).trim();
+  return raw.length > 200 ? raw.substring(0, 200).trim() + '...' : raw;
 }
 
 function extractInstructions(text: string): string {
@@ -122,15 +129,37 @@ function extractDueDate(text: string): string {
 }
 
 function extractAttorney(text: string): { name: string; phone: string; email: string; bar: string } {
-  const name = extractField(text, 'Attorney for Plaintiff') || '';
+  // Attorney name is usually BEFORE "Attorney for Plaintiff" label (previous line)
+  let name = '';
+  const beforeLabel = text.match(/([A-Za-z\s.,]+?)(?:\s+#?\d+)?\s*\n\s*Attorney for Plaintiff/i);
+  if (beforeLabel) name = beforeLabel[1].replace(/[,.]?\s*$/, '').trim();
+  // Try "Attorney for Plaintiff: Name" format (use only first pattern to avoid catching court name on next line)
+  if (!name) {
+    const m = text.match(/Attorney for Plaintiff[:]\s*([^\n]+)/i);
+    if (m) name = m[1].trim();
+  }
+  // Utah summons format: "By: /s/ Heather Valerga"
+  if (!name) {
+    const byMatch = text.match(/By:\s*\/?s?\s*\/?\s*([A-Za-z]+\s+[A-Za-z]+)/i);
+    if (byMatch) name = byMatch[1].trim();
+  }
   const phone = (text.match(/Tel[:\s]*([\(\d\)\-\s]+)/i) || [])[1]?.trim() || '';
   const email = (text.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i) || [])[1] || '';
   const bar = (text.match(/Bar#?\s*(\d+)/i) || [])[1] || '';
-  return { name, phone, email, bar };
+  // Utah bar number format: *S\d+*
+  const utahBar = (text.match(/\*S(\d+)\*/) || [])[1] || '';
+  return { name, phone, email, bar: bar || utahBar };
 }
 
 function extractFee(text: string): string {
   return extractField(text, 'Fee') || '';
+}
+
+function extractServer(text: string): string {
+  const raw = extractField(text, 'Server') || '';
+  if (!raw) return '';
+  // Strip trailing labels if on same line (same issue as extractName)
+  return raw.replace(/\s+(?:Fee|Case|Plaintiff|DOB|Phone|Email|Attorney):.*$/i, '').trim();
 }
 
 function extractServiceWindows(text: string): string {
@@ -278,6 +307,8 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
     const attorney = extractAttorney(courtDocketText) || extractAttorney(allText);
     // Fee: Field Sheet
     const fee = extractFee(fieldSheetText) || extractFee(infoPageText) || extractFee(allText);
+    // Server (process server): Info Page
+    const serverName = extractServer(infoPageText) || extractServer(fieldSheetText) || '';
 
     if (!name.last) {
       res.status(400).json({ error: 'Could not extract defendant/recipient name from documents' });
@@ -559,6 +590,7 @@ router.post('/intake', requireRole('admin', 'manager', 'supervisor', 'dispatcher
         name, dob, address, plaintiff, court, docs, instructions,
         jobNumber, caseNumber, dueDate, attorney, fee,
         processType, serviceWindows, deadlineStr,
+        serverName,
       },
     });
   } catch (err: any) {

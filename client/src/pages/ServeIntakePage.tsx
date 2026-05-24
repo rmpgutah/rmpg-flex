@@ -23,8 +23,11 @@ interface IntakeResult {
   property_id: number | null;
   call_id: number;
   call_number: string;
+  serve_queue_id: number | null;
   latitude: number | null;
   longitude: number | null;
+  weather: string | null;
+  lighting: string | null;
   extracted: {
     name: { first: string; middle: string; last: string };
     dob: string;
@@ -38,6 +41,10 @@ interface IntakeResult {
     dueDate: string;
     attorney: { name: string; phone: string; email: string; bar: string };
     fee: string;
+    processType: string;
+    serviceWindows: string;
+    deadlineStr: string;
+    serverName: string;
   };
 }
 
@@ -399,6 +406,7 @@ export default function ServeIntakePage() {
                   {result.extracted?.name?.first} {result.extracted?.name?.middle} {result.extracted?.name?.last}
                 </p>
                 {result.extracted?.dob && <p className="text-[10px] text-rmpg-400">DOB: {result.extracted.dob}</p>}
+                {result.extracted?.serverName && <p className="text-[10px] text-rmpg-400">Server: {result.extracted.serverName}</p>}
                 <button onClick={() => navigate('/records')} className="text-[9px] text-brand-400 mt-1 hover:underline">
                   View in Records →
                 </button>
@@ -437,6 +445,8 @@ export default function ServeIntakePage() {
               {result.extracted?.jobNumber && <div><span className="text-rmpg-500">Job #:</span> <span className="text-rmpg-300">{result.extracted.jobNumber}</span></div>}
               {result.extracted?.dueDate && <div><span className="text-rmpg-500">Due:</span> <span className="text-rmpg-300">{result.extracted.dueDate}</span></div>}
               {result.extracted?.attorney?.name && <div><span className="text-rmpg-500">Attorney:</span> <span className="text-rmpg-300">{result.extracted.attorney.name}</span></div>}
+              {result.extracted?.fee && <div><span className="text-rmpg-500">Fee:</span> <span className="text-rmpg-300">{result.extracted.fee}</span></div>}
+              {result.extracted?.serviceWindows && <div className="col-span-2"><span className="text-rmpg-500">Service Windows:</span> <span className="text-rmpg-300">{result.extracted.serviceWindows}</span></div>}
             </div>
           </div>
 
