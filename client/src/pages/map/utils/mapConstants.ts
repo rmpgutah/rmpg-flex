@@ -1,5 +1,5 @@
 // ============================================================
-// Map Page — Types & Constants
+// Map Page — Types & Constants (Mapbox GL JS)
 // ============================================================
 
 import type { UnitStatus } from '../../../types';
@@ -41,20 +41,6 @@ export interface ActiveCall {
   longitude: number | null;
   property_name: string | null;
   created_at?: string | null;
-  // ── Optional fields surfaced in marker info bubble (2026-04-30) ──
-  // All come from the calls_for_service / call_geography join; absent
-  // when the dispatcher hasn't filled them in. Treat every read as nullable.
-  cross_street?: string | null;
-  beat_name?: string | null;
-  sector_name?: string | null;
-  // Hazard / officer-safety boolean flags — aggregated into a single banner.
-  officer_safety_caution?: boolean | null;
-  weapons_involved?: string | null;
-  felony_in_progress?: boolean | null;
-  domestic_violence?: boolean | null;
-  hazmat?: boolean | null;
-  mental_health_crisis?: boolean | null;
-  gang_related?: boolean | null;
 }
 
 export interface MapProperty {

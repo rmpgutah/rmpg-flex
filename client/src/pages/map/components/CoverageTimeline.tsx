@@ -5,6 +5,7 @@
 // (covered, slow/stationary, gap) with opacity by unit count.
 // ============================================================
 
+import React from 'react';
 import { Clock, ChevronDown, ChevronUp } from 'lucide-react';
 
 interface CoverageInterval {

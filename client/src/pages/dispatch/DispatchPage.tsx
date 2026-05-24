@@ -37,11 +37,13 @@ import FloatingSaveBar from '../../components/FloatingSaveBar';
 import CadCommandLine from '../../components/CadCommandLine';
 import NcicQueryPanel from '../../components/NcicQueryPanel';
 import UnitRecommendationPanel from '../../components/UnitRecommendationPanel';
+import RecommendedUnitsInline from '../../components/RecommendedUnitsInline';
 import type { CommandAction } from '../../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
 import { announceTarget } from '../../utils/voiceChannel';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
@@ -3765,7 +3767,13 @@ export default function DispatchPage() {
                         <div className="space-y-1 mt-0.5">
                           <input type="text" className="input-dark text-xs" placeholder="Caller name" value={editData.caller_name} onChange={(e) => updateEditField('caller_name', e.target.value)} />
                           <input type="text" inputMode="tel" className="input-dark text-xs" placeholder="Caller phone" value={editData.caller_phone} onChange={(e) => updateEditField('caller_phone', formatPhoneInput(e.target.value))} />
-                          <input type="text" className="input-dark text-xs" placeholder="Caller address" value={editData.caller_address} onChange={(e) => updateEditField('caller_address', e.target.value)} />
+                           <AddressAutocomplete
+                             className="input-dark text-xs"
+                             placeholder="Caller address"
+                             value={editData.caller_address}
+                             onChange={(value) => updateEditField('caller_address', value)}
+                             name="caller_address"
+                           />
                           <select className="select-dark text-xs" value={editData.caller_relationship} onChange={(e) => updateEditField('caller_relationship', e.target.value)}>
                             <option value="">-- Relationship --</option>
                             <option value="employee">Employee</option><option value="victim">Victim</option>
@@ -3906,6 +3914,19 @@ export default function DispatchPage() {
                           </div>
                         )}
                       </div>
+                      {/* DI-2: Persistent closest-unit recommendation (server-authoritative GPS) */}
+                      {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
+                        <div className="mt-1 mb-1">
+                          <RecommendedUnitsInline
+                            callId={selectedCall.id}
+                            limit={3}
+                            onAssign={(callSign) => {
+                              const u = units.find((x) => x.call_sign === callSign);
+                              if (u) handleAssignUnit(u.id);
+                            }}
+                          />
+                        </div>
+                      )}
                       {/* Feature 11: Auto-assign + Feature 18: Multi-unit buttons */}
                       {!isEditing && (isGodMode || !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)) && (
                         <div className="flex gap-1 mt-1 mb-1">

@@ -1,13 +1,53 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Radio, Map, FileText, Database, Users, MessageSquare,
-  BarChart3, Settings, LogOut, Phone, QrCode, ScrollText, Search, Car,
-  AlertTriangle, FileWarning, Video, ClipboardList, ShieldBan, Monitor, User, Lock,
-  ChevronDown, Shield, X, Calendar, Briefcase, Package, TrendingUp, Construction,
-  ClipboardCheck, UserX, Gavel, Terminal, ExternalLink, CreditCard, Network,
-  Camera, ChevronLeft, ChevronRight, Mail, GraduationCap, Microscope, FolderOpen,
-  Upload,
+  LayoutDashboard,
+  Radio,
+  Map,
+  FileText,
+  Database,
+  Users,
+  MessageSquare,
+  BarChart3,
+  Settings,
+  LogOut,
+  Phone,
+  QrCode,
+  ScrollText,
+  Search,
+  Car,
+  AlertTriangle,
+  FileWarning,
+  Video,
+  ClipboardList,
+  ShieldBan,
+  Monitor,
+  User,
+  Lock,
+  ChevronDown,
+  Shield,
+  Menu,
+  X,
+  Calendar,
+  Briefcase,
+  Package,
+  TrendingUp,
+  Landmark,
+  Construction,
+  Truck,
+  ClipboardCheck,
+  UserX,
+  Gavel,
+  Terminal,
+  ExternalLink,
+  CreditCard,
+  Network,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Mail,
+  GraduationCap,
+  Microscope,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -39,11 +79,7 @@ import { openPageWindow, POPOUT_PAGES } from '../utils/windowManager';
 import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
-import { useVoiceChannel } from '../hooks/useVoiceChannel';
-import VoiceChannelIndicator from './VoiceChannelIndicator';
 import { applyThemePreference } from '../utils/theme';
-// RadioConsole sidebar was removed; radio is accessed via the Comms > Radio menu.
-// Component still exists at ./radio/RadioConsole for use inside RadioPage.
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -60,7 +96,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/warrants': 'Warrants',
   '/citations': 'Citations',
   '/field-interviews': 'Field Interviews',
-  '/document-intake': 'Document Intake',
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
   '/ncic': 'NCIC Terminal',
@@ -85,9 +120,20 @@ const PAGE_TITLES: Record<string, string> = {
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
-  '/documents': 'Documents',
   '/hr': 'HR Console',
   '/admin': 'Admin',
+  '/use-of-force': 'Use of Force',
+  '/security-dashboard': 'Security Dashboard',
+  '/help': 'Help & About',
+  '/notifications': 'Notifications',
+  '/colorado-doc': 'Colorado DOC Search',
+  '/dashcams': 'Dashcam System',
+  '/command-center': 'Command Center',
+  '/geo-data-viewer': 'Geo Data Viewer',
+  '/invoices': 'Invoices',
+  '/iped': 'IPED Forensics',
+  '/national-warrant-search': 'National Warrant Search',
+  '/downloads': 'Downloads',
 };
 
 // Nav items — items with `children` render a dropdown menu in the toolbar
@@ -114,7 +160,6 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
-    { path: '/document-intake', icon: Upload, label: 'Document Intake' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
     { path: '/microbilt', icon: Search, label: 'MicroBilt' },
@@ -131,8 +176,6 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
     { path: '/serve', icon: Briefcase, label: 'Process Server' },
-    { path: '/documents', icon: FolderOpen, label: 'Documents' },
-    { path: '/pdf-editor', icon: FileText, label: 'PDF Editor' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -140,6 +183,7 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/fleet', icon: Car, label: 'Fleet' },
     { path: '/body-cameras', icon: Video, label: 'Body Cameras' },
     { path: '/dash-cameras', icon: Camera, label: 'Dash Cameras' },
+    { path: '/dashcams', icon: Camera, label: 'Dashcam System' },
   ]},
   { path: '/communications', icon: MessageSquare, label: 'Comms', group: 'comms', shortcut: 'F9', children: [
     { path: '/communications', icon: MessageSquare, label: 'Comms' },
@@ -176,15 +220,12 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 
 export default function Layout() {
   const { user, logout, refreshUser } = useAuth();
-  const { isConnected, connectionLost, subscribe } = useWebSocket();
+  const { isConnected, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
 
   const gps = useGpsTracking();
   const presence = usePresence();
-
-  // ── Voice channel (unified voice I/O state machine) ──
-  const { alert: voiceAlert } = useVoiceChannel();
 
   // ── Dispatch voice alerts + visual banner state ──
   const [dispatchAlerts, setDispatchAlerts] = useState<AlertBannerItem[]>([]);
@@ -195,7 +236,7 @@ export default function Layout() {
     setDispatchAlerts(prev => prev.filter(a => a.id !== id));
   }, []);
   const dismissAllDispatchAlerts = useCallback(() => setDispatchAlerts([]), []);
-  useDispatchVoiceAlerts({ onAlert: addDispatchAlert, voiceAlert });
+  useDispatchVoiceAlerts({ onAlert: addDispatchAlert });
 
   const isAdmin = user?.role === 'admin' || user?.role === 'manager';
   const isClientViewer = user?.role === 'client_viewer';
@@ -1455,7 +1496,6 @@ export default function Layout() {
       {!isMobile && (
         <StatusBar
           isConnected={isConnected}
-          connectionLost={connectionLost}
           user={user}
           activeCallCount={activeCallCount}
           callsByPriority={callsByPriority}
@@ -1599,8 +1639,7 @@ export default function Layout() {
         </div>
       )}
 
-      {/* Voice Channel floating indicator (mic button + state overlay) */}
-      <VoiceChannelIndicator />
+
     </div>
   );
 }

@@ -128,7 +128,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
         `/connections/graph?type=person&id=${personId}&depth=1`
       );
       const centerX = 300, centerY = 200;
-      const newNodes: GraphNode[] = data.nodes.map((n, i) => {
+      const newNodes: GraphNode[] = (data?.nodes || []).map((n, i) => {
         const isSeed = n.type === 'person' && String(n.entityId) === String(personId);
         return {
           id: n.id,
@@ -141,7 +141,7 @@ export default function ConnectionsGraphPanel({ personId, personName }: Props) {
           pinned: isSeed,
         };
       });
-      const newEdges: GraphEdge[] = data.edges.map(e => ({
+      const newEdges: GraphEdge[] = (data?.edges || []).map(e => ({
         source: e.source, target: e.target, label: (e.relationship || '').toUpperCase(),
       }));
       simulate(newNodes, newEdges);

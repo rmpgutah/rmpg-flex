@@ -1,12 +1,5 @@
-// ============================================================
-// RMPG Flex — useMapResponseRadius Hook
-// Client-side response time radius rings showing estimated
-// travel distance at 30mph for 2, 5, and 10 minute intervals.
-// ============================================================
-
 import { useEffect, useRef, useState, useCallback } from 'react';
-
-// ─── Types ──────────────────────────────────────────────────
+import mapboxgl from 'mapbox-gl';
 
 interface UseMapResponseRadiusReturn {
   showRadiusAt: (lat: number, lng: number) => void;
@@ -16,169 +9,157 @@ interface UseMapResponseRadiusReturn {
   setCursorRingsEnabled: (v: boolean) => void;
 }
 
-// ─── Ring definitions ───────────────────────────────────────
-// 30 mph = ~48.28 km/h = ~804.67 m/min
-
 const RINGS = [
-  { minutes: 2,  radiusMeters: 1609,  fillColor: '#22c55e', strokeColor: '#22c55e', fillOpacity: 0.08, label: '2 min' },
-  { minutes: 5,  radiusMeters: 4023,  fillColor: '#f59e0b', strokeColor: '#f59e0b', fillOpacity: 0.06, label: '5 min' },
-  { minutes: 10, radiusMeters: 8047,  fillColor: '#dc2626', strokeColor: '#dc2626', fillOpacity: 0.04, label: '10 min' },
+  { minutes: 2, radiusMeters: 1609, fillColor: '#22c55e', strokeColor: '#22c55e', fillOpacity: 0.08, label: '2 min' },
+  { minutes: 5, radiusMeters: 4023, fillColor: '#f59e0b', strokeColor: '#f59e0b', fillOpacity: 0.06, label: '5 min' },
+  { minutes: 10, radiusMeters: 8047, fillColor: '#dc2626', strokeColor: '#dc2626', fillOpacity: 0.04, label: '10 min' },
 ];
 
-// Cursor distance rings — concentric circles following mouse
 const CURSOR_RINGS = [
-  { radiusMeters: 100,  strokeColor: '#22c55e', fillOpacity: 0.05, label: '100m' },
-  { radiusMeters: 250,  strokeColor: '#888888', fillOpacity: 0.04, label: '250m' },
-  { radiusMeters: 500,  strokeColor: '#f59e0b', fillOpacity: 0.03, label: '500m' },
+  { radiusMeters: 100, strokeColor: '#22c55e', fillOpacity: 0.05, label: '100m' },
+  { radiusMeters: 250, strokeColor: '#888888', fillOpacity: 0.04, label: '250m' },
+  { radiusMeters: 500, strokeColor: '#f59e0b', fillOpacity: 0.03, label: '500m' },
   { radiusMeters: 1000, strokeColor: '#ef4444', fillOpacity: 0.02, label: '1km' },
 ];
 
-// ─── Hook ───────────────────────────────────────────────────
-
 export function useMapResponseRadius(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
 ): UseMapResponseRadiusReturn {
   const [activePoint, setActivePoint] = useState<{ lat: number; lng: number } | null>(null);
   const [cursorRingsEnabled, setCursorRingsEnabled] = useState(false);
 
-  const circlesRef = useRef<google.maps.Circle[]>([]);
-  const cursorCirclesRef = useRef<google.maps.Circle[]>([]);
-  const mouseMoveListenerRef = useRef<google.maps.MapsEventListener | null>(null);
+  const sourceId = 'response-radius';
+  const cursorSourceId = 'cursor-rings';
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+  const mouseMoveHandlerRef = useRef<((e: MouseEvent) => void) | null>(null);
   const throttleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Clear all circles ─────────────────────────────────────
-
   const clearRadius = useCallback(() => {
-    circlesRef.current.forEach((c) => c.setMap(null));
-    circlesRef.current = [];
+    if (!map) return;
+    if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
     setActivePoint(null);
-  }, []);
-
-  // ── Show radius rings at a point ──────────────────────────
+  }, [map]);
 
   const showRadiusAt = useCallback((lat: number, lng: number) => {
-    if (!map || !window.google?.maps || !enabled) return;
+    if (!map || !enabled) return;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
-    // Clear existing rings first
-    circlesRef.current.forEach((c) => c.setMap(null));
-    circlesRef.current = [];
+    clearRadius();
+    setActivePoint({ lat, lng });
 
-    const center = { lat, lng };
-    setActivePoint(center);
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
+    }
 
-    // Draw rings from outermost to innermost so inner rings render on top
-    const sortedRings = [...RINGS].reverse();
+    const features = RINGS.map((ring) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] },
+      properties: { radius: ring.radiusMeters, color: ring.fillColor, opacity: ring.fillOpacity, label: ring.label },
+    }));
 
-    sortedRings.forEach((ring) => {
-      const circle = new google.maps.Circle({
-        center,
-        radius: ring.radiusMeters,
-        fillColor: ring.fillColor,
-        fillOpacity: ring.fillOpacity,
-        strokeColor: ring.strokeColor,
-        strokeWeight: 2,
-        strokeOpacity: 0.5,
-        map,
-        clickable: false,
-        zIndex: 5,
+    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+
+    RINGS.forEach((ring, i) => {
+      map.addLayer({
+        id: `${sourceId}-${i}`,
+        type: 'circle',
+        source: sourceId,
+        filter: ['==', ['get', 'label'], ring.label],
+        paint: {
+          'circle-color': ring.fillColor,
+          'circle-radius': ring.radiusMeters,
+          'circle-opacity': ring.fillOpacity,
+          'circle-stroke-color': ring.strokeColor,
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': 0.5,
+        },
       });
-
-      circlesRef.current.push(circle);
     });
-  }, [map, enabled]);
-
-  // ── Clear when disabled ───────────────────────────────────
+  }, [map, enabled, clearRadius]);
 
   useEffect(() => {
-    if (!enabled) {
-      clearRadius();
-    }
+    if (!enabled) clearRadius();
   }, [enabled, clearRadius]);
 
-  // ── Cursor distance rings — follow mouse ──────────────────
-
   useEffect(() => {
-    if (!map || !window.google?.maps || !enabled || !cursorRingsEnabled) {
-      // Cleanup cursor rings
-      cursorCirclesRef.current.forEach((c) => c.setMap(null));
-      cursorCirclesRef.current = [];
-      if (mouseMoveListenerRef.current) {
-        google.maps.event.removeListener(mouseMoveListenerRef.current);
-        mouseMoveListenerRef.current = null;
+    if (!map || !enabled || !cursorRingsEnabled) {
+      if (map) {
+        if (map.getLayer(cursorSourceId)) map.removeLayer(cursorSourceId);
+        if (map.getSource(cursorSourceId)) map.removeSource(cursorSourceId);
+      }
+      if (mouseMoveHandlerRef.current) {
+        map?.getCanvas()?.removeEventListener('mousemove', mouseMoveHandlerRef.current);
+        mouseMoveHandlerRef.current = null;
       }
       return;
     }
 
-    // Create cursor ring circles (hidden until first mousemove)
-    const circles = CURSOR_RINGS.map((ring) => new google.maps.Circle({
-      center: { lat: 0, lng: 0 },
-      radius: ring.radiusMeters,
-      fillColor: ring.strokeColor,
-      fillOpacity: ring.fillOpacity,
-      strokeColor: ring.strokeColor,
-      strokeWeight: 1,
-      strokeOpacity: 0.4,
-      map: null, // start hidden
-      clickable: false,
-      zIndex: 3,
+    const features = CURSOR_RINGS.map((ring) => ({
+      type: 'Feature' as const,
+      geometry: { type: 'Point' as const, coordinates: [0, 0] as [number, number] },
+      properties: { radius: ring.radiusMeters, color: ring.strokeColor, opacity: ring.fillOpacity, label: ring.label },
     }));
-    cursorCirclesRef.current = circles;
 
-    // Throttled mousemove handler (100ms)
-    mouseMoveListenerRef.current = map.addListener('mousemove', (e: google.maps.MapMouseEvent) => {
-      if (throttleTimerRef.current) return;
+    map.addSource(cursorSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
 
-      throttleTimerRef.current = setTimeout(() => {
-        throttleTimerRef.current = null;
-      }, 100);
-
-      if (!e.latLng) return;
-      const center = { lat: e.latLng.lat(), lng: e.latLng.lng() };
-
-      circles.forEach((circle) => {
-        circle.setCenter(center);
-        if (!circle.getMap()) circle.setMap(map);
+    CURSOR_RINGS.forEach((ring, i) => {
+      if (map.getLayer(`${cursorSourceId}-${i}`)) map.removeLayer(`${cursorSourceId}-${i}`);
+      map.addLayer({
+        id: `${cursorSourceId}-${i}`,
+        type: 'circle',
+        source: cursorSourceId,
+        filter: ['==', ['get', 'label'], ring.label],
+        paint: {
+          'circle-color': ring.strokeColor,
+          'circle-radius': ring.radiusMeters,
+          'circle-opacity': ring.fillOpacity,
+          'circle-stroke-color': ring.strokeColor,
+          'circle-stroke-width': 1,
+          'circle-stroke-opacity': 0.4,
+        },
       });
     });
 
-    // Hide rings when mouse leaves map
-    const mouseOutListener = map.addListener('mouseout', () => {
-      circles.forEach((c) => c.setMap(null));
-    });
+    const handler = (e: MouseEvent) => {
+      if (throttleTimerRef.current) return;
+      throttleTimerRef.current = setTimeout(() => { throttleTimerRef.current = null; }, 100);
+
+      const rect = map.getCanvas().getBoundingClientRect();
+      const point: [number, number] = [e.clientX - rect.left, e.clientY - rect.top];
+      const lngLat = map.unproject(point);
+
+      const source = map.getSource(cursorSourceId) as mapboxgl.GeoJSONSource | undefined;
+      if (source) {
+        const updatedFeatures = CURSOR_RINGS.map((ring) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [lngLat.lng, lngLat.lat] as [number, number] },
+          properties: { radius: ring.radiusMeters, color: ring.strokeColor, opacity: ring.fillOpacity, label: ring.label },
+        }));
+        source.setData({ type: 'FeatureCollection', features: updatedFeatures });
+      }
+    };
+
+    map.getCanvas().addEventListener('mousemove', handler);
+    mouseMoveHandlerRef.current = handler;
 
     return () => {
-      circles.forEach((c) => c.setMap(null));
-      cursorCirclesRef.current = [];
-      if (mouseMoveListenerRef.current) {
-        google.maps.event.removeListener(mouseMoveListenerRef.current);
-        mouseMoveListenerRef.current = null;
-      }
-      google.maps.event.removeListener(mouseOutListener);
-      if (throttleTimerRef.current) {
-        clearTimeout(throttleTimerRef.current);
-        throttleTimerRef.current = null;
-      }
+      map.getCanvas().removeEventListener('mousemove', handler);
+      mouseMoveHandlerRef.current = null;
+      if (map.getLayer(cursorSourceId)) map.removeLayer(cursorSourceId);
+      if (map.getSource(cursorSourceId)) map.removeSource(cursorSourceId);
+      if (throttleTimerRef.current) { clearTimeout(throttleTimerRef.current); throttleTimerRef.current = null; }
     };
   }, [map, enabled, cursorRingsEnabled]);
 
-  // ── Cleanup on unmount ────────────────────────────────────
-
   useEffect(() => {
     return () => {
-      circlesRef.current.forEach((c) => c.setMap(null));
-      circlesRef.current = [];
-      cursorCirclesRef.current.forEach((c) => c.setMap(null));
-      cursorCirclesRef.current = [];
-      if (mouseMoveListenerRef.current) {
-        google.maps.event.removeListener(mouseMoveListenerRef.current);
-      }
-      if (throttleTimerRef.current) {
-        clearTimeout(throttleTimerRef.current);
-      }
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
+      if (mouseMoveHandlerRef.current && map) map.getCanvas().removeEventListener('mousemove', mouseMoveHandlerRef.current);
+      if (throttleTimerRef.current) clearTimeout(throttleTimerRef.current);
     };
-  }, []);
+  }, [map]);
 
   return { showRadiusAt, clearRadius, activePoint, cursorRingsEnabled, setCursorRingsEnabled };
 }

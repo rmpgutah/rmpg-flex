@@ -6,6 +6,7 @@ import { broadcastDispatchUpdate, broadcastUnitUpdate } from '../../utils/websoc
 import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { localNow } from '../../utils/timeUtils';
 import { auditLog } from '../../utils/auditLogger';
+import { getPremiseAlertsNear } from '../../utils/premiseAlertsForCall';
 
 const router = Router();
 
@@ -709,6 +710,25 @@ router.get('/calls/:id/warnings', validateParamIdMiddleware, requireRole('admin'
         }
       } catch (propErr) { console.error('[CallLifecycle] Property hazard lookup error:', propErr instanceof Error ? propErr.message : propErr); }
     }
+
+    // DI-3: Premise alerts within 50m of call lat/lng
+    try {
+      if (call.latitude != null && call.longitude != null) {
+        const nearby = getPremiseAlertsNear(call.latitude, call.longitude);
+        for (const a of nearby) {
+          const sev: 'critical' | 'high' | 'medium' =
+            a.alert_level === 'critical' ? 'critical'
+            : a.alert_level === 'warning' ? 'high'
+            : 'medium';
+          warnings.push({
+            type: 'PREMISE',
+            label: `PREMISE: ${a.title}`.toUpperCase(),
+            severity: sev,
+            source: `${a.address} (${a.distance_meters}m)`,
+          });
+        }
+      }
+    } catch (paErr) { console.error('[CallLifecycle] Premise alert lookup error:', paErr instanceof Error ? paErr.message : paErr); }
 
     // Incident type-based warnings
     const itype = (call.incident_type || '').toLowerCase();

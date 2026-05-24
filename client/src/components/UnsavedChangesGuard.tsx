@@ -1,5 +1,4 @@
-import { useEffect, useCallback } from 'react';
-import { useBlocker } from 'react-router-dom';
+import { useEffect, useState, useCallback } from 'react';
 import ConfirmDialog from './ConfirmDialog';
 
 interface UnsavedChangesGuardProps {
@@ -13,8 +12,8 @@ interface UnsavedChangesGuardProps {
 
 /**
  * Warns users before navigating away when there are unsaved changes.
- * Intercepts both browser close/refresh (beforeunload) and
- * react-router route navigation (useBlocker).
+ * Uses beforeunload for browser close/refresh and a history-based
+ * navigation guard for SPA route changes (does not require a data router).
  *
  * Usage:
  *   <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
@@ -24,13 +23,15 @@ export default function UnsavedChangesGuard({
   title = 'Unsaved Changes',
   message = 'You have unsaved changes. Are you sure you want to leave? Your changes will be lost.',
 }: UnsavedChangesGuardProps) {
+  const [showDialog, setShowDialog] = useState(false);
+  const [pendingNav, setPendingNav] = useState<(() => void) | null>(null);
+
   // ── Browser close / refresh guard ──────────────────────────
   useEffect(() => {
     if (!hasUnsavedChanges) return;
 
     const handler = (e: BeforeUnloadEvent) => {
       e.preventDefault();
-      // Modern browsers ignore custom text, but setting returnValue is required
       e.returnValue = '';
     };
 
@@ -38,15 +39,39 @@ export default function UnsavedChangesGuard({
     return () => window.removeEventListener('beforeunload', handler);
   }, [hasUnsavedChanges]);
 
-  // ── React Router navigation guard ─────────────────────────
-  const blocker = useBlocker(
-    useCallback(
-      () => hasUnsavedChanges,
-      [hasUnsavedChanges],
-    ),
-  );
+  // ── SPA navigation guard (history-based, no data router needed) ──
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
 
-  if (blocker.state !== 'blocked') return null;
+    const handleClick = (e: MouseEvent) => {
+      const link = (e.target as HTMLElement).closest('a');
+      if (!link || !link.href) return;
+      if (link.target === '_blank' || link.href.startsWith('mailto:') || link.href.startsWith('tel:')) return;
+      const currentOrigin = window.location.origin;
+      if (!link.href.startsWith(currentOrigin)) return;
+      if (link.href === window.location.href) return;
+
+      e.preventDefault();
+      setPendingNav(() => () => { window.location.href = link.href; });
+      setShowDialog(true);
+    };
+
+    document.addEventListener('click', handleClick, true);
+    return () => document.removeEventListener('click', handleClick, true);
+  }, [hasUnsavedChanges]);
+
+  const handleDiscard = useCallback(() => {
+    setShowDialog(false);
+    if (pendingNav) pendingNav();
+    setPendingNav(null);
+  }, [pendingNav]);
+
+  const handleStay = useCallback(() => {
+    setShowDialog(false);
+    setPendingNav(null);
+  }, []);
+
+  if (!showDialog) return null;
 
   return (
     <ConfirmDialog
@@ -56,8 +81,8 @@ export default function UnsavedChangesGuard({
       confirmLabel="Discard"
       cancelLabel="Stay"
       confirmVariant="warning"
-      onConfirm={() => blocker.proceed()}
-      onClose={() => blocker.reset()}
+      onConfirm={handleDiscard}
+      onClose={handleStay}
     />
   );
 }

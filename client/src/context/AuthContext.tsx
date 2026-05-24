@@ -885,94 +885,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (err) { console.warn('[Auth] User refresh failed:', err); }
   }, []);
 
-  // ─── Session idle timeout (CJIS compliance) ────────
-  // Tracks user activity (mouse, keyboard, touch) and auto-logs out
-  // after the configured inactivity period.
-  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const idleTimeoutMsRef = useRef(60 * 60 * 1000); // 1 hour of inactivity before auto-logout
-  const sessionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const maxSessionMsRef = useRef(12 * 60 * 60 * 1000); // 12 hours of continuous use before auto-logout
-
-  // Fetch session timeout config from server once authenticated
-  useEffect(() => {
-    if (!user || !token) return;
-    fetch('/api/auth/session-timeout', {
-      headers: { Authorization: `Bearer ${token}` },
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then(data => {
-        if (data?.timeoutMinutes) {
-          idleTimeoutMsRef.current = data.timeoutMinutes * 60 * 1000;
-          resetIdleTimer(); // restart with updated timeout
-        }
-        if (data?.maxSessionHours) {
-          maxSessionMsRef.current = data.maxSessionHours * 60 * 60 * 1000;
-        }
-      })
-      .catch(() => { /* use default */ });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [!!user]);
-
-  const resetIdleTimer = useCallback(() => {
-    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    // Only set idle timer if user is authenticated
-    if (!user) return;
-    idleTimerRef.current = setTimeout(() => {
-      console.warn('[Auth] Session idle timeout — auto-logout');
-      // Set a flag so login page can show timeout message
-      sessionStorage.setItem('rmpg_idle_logout', '1');
-      logout();
-    }, idleTimeoutMsRef.current);
-  }, [user, logout]);
-
-  // Listen for user activity to reset idle timer
-  useEffect(() => {
-    if (!user) {
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-      return;
-    }
-
-    const onActivity = () => resetIdleTimer();
-    const events = ['mousedown', 'keydown', 'touchstart', 'scroll', 'mousemove'];
-
-    // Throttle — only reset timer at most once per 30 seconds to avoid overhead
-    let lastReset = Date.now();
-    const throttledActivity = () => {
-      const now = Date.now();
-      if (now - lastReset > 30_000) {
-        lastReset = now;
-        onActivity();
-      }
-    };
-
-    events.forEach(e => document.addEventListener(e, throttledActivity, { passive: true }));
-    resetIdleTimer(); // start the timer
-
-    return () => {
-      events.forEach(e => document.removeEventListener(e, throttledActivity));
-      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
-    };
-  }, [user, resetIdleTimer]);
-
-  // ─── Absolute session duration timer ─────────────────
-  // Forces logout after maxSessionHours regardless of activity.
-  // Server also enforces this on refresh, but this gives a clean client UX.
-  useEffect(() => {
-    if (!user) {
-      if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
-      return;
-    }
-
-    sessionTimerRef.current = setTimeout(() => {
-      console.warn('[Auth] Max session duration reached — auto-logout');
-      sessionStorage.setItem('rmpg_session_expired', '1');
-      logout();
-    }, maxSessionMsRef.current);
-
-    return () => {
-      if (sessionTimerRef.current) clearTimeout(sessionTimerRef.current);
-    };
-  }, [user, logout]);
+   // Auto-signout mechanisms removed per user request
+   // Session idle timeout and absolute session duration timer have been disabled
 
   // Cleanup on unmount — clear timers and sensitive state from memory
   useEffect(() => {
@@ -981,14 +895,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearTimeout(refreshTimerRef.current);
         refreshTimerRef.current = null;
       }
-      if (idleTimerRef.current) {
-        clearTimeout(idleTimerRef.current);
-        idleTimerRef.current = null;
-      }
-      if (sessionTimerRef.current) {
-        clearTimeout(sessionTimerRef.current);
-        sessionTimerRef.current = null;
-      }
+
       // Clear sensitive auth state from memory on unmount
       tempTokenRef.current = null;
       isRefreshingRef.current = false;

@@ -75,7 +75,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
     label: 'Communications',
     items: [
       { path: '/communications', icon: MessageSquare, label: 'Communications' },
-      { path: '/radio', icon: Radio, label: 'Radio' },
+
       { path: '/email', icon: Mail, label: 'Email' },
       { path: '/dar', icon: ClipboardCheck, label: 'Daily Activity' },
     ],
@@ -105,7 +105,7 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
 // Paths blocked for contract_manager role
 const CONTRACT_MANAGER_BLOCKED = new Set([
   '/admin', '/audit', '/personnel', '/fleet', '/ncic',
-  '/radio', '/patrol', '/shift-plans', '/statute-analytics',
+  '/patrol', '/shift-plans', '/statute-analytics',
   '/reports/custom', '/crime-analysis', '/dar',
 ]);
 

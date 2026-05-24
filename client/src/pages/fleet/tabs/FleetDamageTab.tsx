@@ -1,7 +1,10 @@
 import { useState, useEffect } from 'react';
 import { AlertTriangle, Plus } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import { useToast } from '../../../components/ToastProvider';
+import FloatingSaveBar from '../../../components/FloatingSaveBar';
+import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import { localToday } from '../../../utils/dateUtils';
 
 import RichTextArea from '../../../components/RichTextArea';
@@ -37,9 +40,20 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
   const [reports, setReports] = useState<DamageReport[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    damage_date: localToday(), damage_type: '', location_on_vehicle: '',
-    severity: 'minor', description: '', repair_estimate: '',
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft({
+    storageKey: 'rmpg_fleet_damage_form',
+    defaultValue: {
+      damage_date: localToday(), damage_type: '', location_on_vehicle: '',
+      severity: 'minor', description: '', repair_estimate: '',
+    },
+    isActive: showForm,
   });
   const [submitting, setSubmitting] = useState(false);
 
@@ -52,10 +66,15 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
 
   useEffect(() => { load(); }, [vehicleId]);
 
+  // Snapshot initial form state as clean baseline when form opens
+  useEffect(() => {
+    if (showForm) snapshot();
+  }, [showForm]);
+
   // Escape to close form
   useEffect(() => {
     if (!showForm) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setShowForm(false); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { clearDraft(); setShowForm(false); } };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [showForm]);
@@ -66,7 +85,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
     setSubmitting(true);
     try { await apiFetch(`/fleet/${vehicleId}/damage-reports`, {
       method: 'POST', body: JSON.stringify({ ...form, repair_estimate: form.repair_estimate ? Number(form.repair_estimate) : null }),
-    }); addToast('Damage reported', 'success'); setShowForm(false); load(); } catch { addToast('Failed to report damage', 'error'); } finally { setSubmitting(false); }
+    }); addToast('Damage reported', 'success'); clearDraft(); setShowForm(false); load(); } catch { addToast('Failed to report damage', 'error'); } finally { setSubmitting(false); }
   };
 
   const updateRepairStatus = async (id: number, repair_status: string) => {
@@ -81,6 +100,8 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
 
   return (
     <div className="space-y-3">
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
+      <FloatingSaveBar visible={isDirty && showForm} onSave={handleSubmit} onCancel={() => { clearDraft(); setShowForm(false); }} isSaving={submitting} saveLabel="Submit" />
       <div className="flex items-center justify-between">
         <h3 className="text-xs font-bold text-white flex items-center gap-1"><AlertTriangle className="w-3.5 h-3.5" /> Damage Reports</h3>
         <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-[9px]"><Plus className="w-3 h-3" /> Report Damage</button>
@@ -95,6 +116,15 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
 
       {showForm && (
         <div className="panel-inset p-3 space-y-2">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <span className="led-dot led-amber" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={clearDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">Discard</button>
+            </div>
+          )}
           <div className="grid grid-cols-3 gap-2">
             <input type="date" value={form.damage_date} onChange={e => setForm(f => ({ ...f, damage_date: e.target.value }))} className="input-field text-xs" />
             <input value={form.damage_type} onChange={e => setForm(f => ({ ...f, damage_type: e.target.value }))} className="input-field text-xs" placeholder="Type (dent, scratch...)" />
@@ -110,7 +140,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
           <RichTextArea value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} className="input-field w-full text-xs" rows={2} placeholder="Description..." />
           <div className="flex gap-2">
             <button type="button" onClick={handleSubmit} disabled={submitting || !form.damage_type.trim() || !form.description.trim()} className="toolbar-btn toolbar-btn-success text-[9px] disabled:opacity-50">{submitting ? 'Submitting...' : 'Submit'}</button>
-            <button type="button" onClick={() => setShowForm(false)} disabled={submitting} className="toolbar-btn text-[9px]">Cancel</button>
+            <button type="button" onClick={() => { clearDraft(); setShowForm(false); }} disabled={submitting} className="toolbar-btn text-[9px]">Cancel</button>
           </div>
         </div>
       )}

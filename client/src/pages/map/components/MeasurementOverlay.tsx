@@ -4,6 +4,7 @@
 // Displays distance or area value with Clear/Done controls.
 // ============================================================
 
+import React from 'react';
 import { X, Check, Ruler, Maximize2, Undo2 } from 'lucide-react';
 import type { MeasureMode } from '../hooks/useMapMeasurement';
 

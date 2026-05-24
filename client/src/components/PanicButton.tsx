@@ -4,7 +4,6 @@ import { useWebSocket } from '../context/WebSocketContext';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
 import { usePanicAudio } from '../hooks/usePanicAudio';
-import { playRadioTone } from '../utils/radioTones';
 import { useToast } from './ToastProvider';
 import { safeTimeStr } from '../utils/dateUtils';
 
@@ -13,42 +12,22 @@ import { safeTimeStr } from '../utils/dateUtils';
 // loop for the specified duration. Uses the unified radioTones
 // system so all emergency sounds are consistent.
 // ─────────────────────────────────────────────────────────────────
+/** Simple beep alarm as radioTones replacement */
 function playPanicAlarm(durationMs = 10000): { stop: () => void } {
   let stopped = false;
-  const handles: Array<{ stop: () => void }> = [];
-
-  // panicWarble is ~3s; loop it to fill the requested duration
-  const loopInterval = 3100; // slightly over 3s to avoid overlap
-  const maxLoops = Math.ceil(durationMs / loopInterval);
-
-  // Play first immediately
-  const first = playRadioTone('panicWarble');
-  if (first) handles.push(first);
-
-  // Schedule subsequent loops
-  const timers: ReturnType<typeof setTimeout>[] = [];
-  for (let i = 1; i < maxLoops && !stopped; i++) {
-    const timer = setTimeout(() => {
-      if (stopped) return;
-      const h = playRadioTone('panicWarble');
-      if (h) handles.push(h);
-    }, i * loopInterval);
-    timers.push(timer);
-  }
-
-  // Auto-stop after duration
-  const autoStop = setTimeout(() => {
-    stopped = true;
-    handles.forEach(h => h.stop());
-  }, durationMs);
-
+  const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const gain = ctx.createGain();
+  gain.connect(ctx.destination);
+  const osc = ctx.createOscillator();
+  osc.type = 'sawtooth';
+  osc.frequency.setValueAtTime(960, ctx.currentTime);
+  osc.frequency.setValueAtTime(1500, ctx.currentTime + 1.5);
+  osc.frequency.setValueAtTime(960, ctx.currentTime + 3);
+  osc.connect(gain);
+  osc.start();
+  const timer = setTimeout(() => { stopped = true; osc.stop(); gain.disconnect(); }, durationMs);
   return {
-    stop: () => {
-      stopped = true;
-      timers.forEach(clearTimeout);
-      clearTimeout(autoStop);
-      handles.forEach(h => h.stop());
-    },
+    stop: () => { if (!stopped) { stopped = true; clearTimeout(timer); osc.stop(); gain.disconnect(); } },
   };
 }
 

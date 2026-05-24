@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
-import { X, Phone, AlertTriangle, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Phone, AlertTriangle, Clock, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
-import RichTextArea from './RichTextArea';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,
@@ -17,8 +16,10 @@ import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
 import BoloAlertBanner from './BoloAlertBanner';
+import RunCardPreview, { type RunCard } from './RunCardPreview';
 import { useDistrictIdentify, useDistrictOptions } from '../hooks/useDistrictLookup';
 import { apiFetch } from '../hooks/useApi';
+import Dropdown from './ui/Dropdown';
 
 interface NewCallModalProps {
   isOpen: boolean;
@@ -461,20 +462,34 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           <div className={`grid gap-4 ${mode === 'full' ? 'grid-cols-1 sm:grid-cols-2' : 'grid-cols-1'}`}>
             <div>
               <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Incident Type</label>
-              <select
-                className="select-dark"
+              <Dropdown
+                groups={Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => ({
+                  label: category,
+                  options: types.map((t) => ({ value: t.value, label: t.label })),
+                }))}
                 value={formData.incident_type}
-                onChange={(e) => update('incident_type', e.target.value)}
+                onChange={(v) => update('incident_type', v)}
                 required
-              >
-                {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => (
-                  <optgroup key={category} label={category}>
-                    {types.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                searchable
+                placeholder="Select Incident Type"
+                className="mt-0.5"
+              />
+              <div className="mt-1.5">
+                <RunCardPreview
+                  incidentType={formData.incident_type}
+                  onCardLoaded={(card: RunCard | null) => {
+                    if (!card) return;
+                    // Auto-elevate priority to the run card's default ONLY if the
+                    // dispatcher hasn't already raised it — never downgrade.
+                    const order = ['P4', 'P3', 'P2', 'P1'];
+                    const currentIdx = order.indexOf(formData.priority);
+                    const cardIdx = order.indexOf(card.default_priority);
+                    if (cardIdx > currentIdx) {
+                      setFormData((prev) => ({ ...prev, priority: card.default_priority as typeof prev.priority }));
+                    }
+                  }}
+                />
+              </div>
             </div>
             {mode === 'full' && (
               <div>
@@ -604,10 +619,16 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                       <input type="text" className="input-dark" placeholder="Person to be served" value={formData.process_served_to || ''} onChange={(e) => update('process_served_to', e.target.value)} />
                     </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
-                    <input type="text" className="input-dark w-full" placeholder="Address for service" value={formData.process_served_address || ''} onChange={(e) => update('process_served_address', e.target.value)} />
-                  </div>
+                   <div>
+                     <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Service Address</label>
+                     <AddressAutocomplete
+                       className="input-dark w-full"
+                       placeholder="Address for service"
+                       value={formData.process_served_address || ''}
+                       onChange={(value) => update('process_served_address', value)}
+                       name="process_served_address"
+                     />
+                   </div>
                 </div>
               )}
             </div>
@@ -682,6 +703,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                   placeholder="Caller address"
                   value={formData.caller_address}
                   onChange={(val) => update('caller_address', val)}
+                  onSelect={(addr) => update('caller_address', addr.formatted || addr.street)}
                 />
               </div>
             )}
@@ -742,7 +764,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Description — moved up for faster tab flow */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
-            <RichTextArea
+            <textarea
               className="textarea-dark"
               rows={mode === 'quick' ? 2 : 4}
               placeholder="Describe the situation..."

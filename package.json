@@ -1,62 +1,27 @@
 {
-  "name": "rmpg-flex",
-  "version": "5.8.4",
-  "description": "RMPG Flex - CAD/RMS for Rocky Mountain Protective Group",
+  "name": "rmpg-flex-cloudflare",
+  "version": "1.0.0",
   "private": true,
-  "engines": {
-    "node": ">=18.0.0"
-  },
   "scripts": {
-    "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
-    "dev:server": "cd server && npx tsx watch src/index.ts",
-    "dev:client": "cd client && npx vite",
-    "build": "cd client && npx vite build",
-    "start": "cd server && npx tsx src/index.ts",
-    "seed": "cd server && npx tsx src/seeds/seed.ts",
-    "production": "npm run build && npm run start",
-    "desktop:dev": "cd desktop && npx electron . --dev",
-    "desktop:install": "cd desktop && npm install",
-    "desktop:sync-version": "node desktop/scripts/syncVersion.cjs",
-    "desktop:build": "npm run desktop:sync-version && npm run build && cd desktop && npx electron-builder --mac",
-    "desktop:build:mac": "npm run desktop:sync-version && npm run build && cd desktop && npx electron-builder --mac",
-    "desktop:build:win": "npm run desktop:sync-version && npm run build && cd desktop && npx electron-builder --win",
-    "desktop:build:all": "npm run desktop:sync-version && npm run build && cd desktop && npx electron-builder --mac --win",
-    "desktop:deploy": "node desktop/scripts/copyToDownloads.cjs",
-    "android:sync": "cd client && npx vite build && npx cap sync android",
-    "android:build": "cd client && npx vite build && npx cap sync android && cd android && ./gradlew assembleRelease",
-    "android:build:debug": "cd client && npx vite build && npx cap sync android && cd android && ./gradlew assembleDebug",
-    "android:deploy": "node desktop/scripts/copyAndroidToDownloads.cjs",
-    "android:open": "cd client && npx cap open android",
-    "deploy": "bash deploy/deploy.sh",
-    "deploy:all": "bash deploy/deploy-all.sh",
-    "deploy:code": "bash deploy/deploy.sh",
-    "deploy:downloads": "bash deploy/deploy.sh --downloads",
-    "release": "bash deploy/deploy-all.sh",
-    "release:patch": "bash deploy/deploy-all.sh --bump patch",
-    "release:minor": "bash deploy/deploy-all.sh --bump minor",
-    "release:major": "bash deploy/deploy-all.sh --bump major",
-    "version:major": "node scripts/bump-version.cjs major",
-    "version:minor": "node scripts/bump-version.cjs minor",
-    "version:patch": "node scripts/bump-version.cjs patch",
-    "lint": "cd client && npx tsc --noEmit",
-    "clean": "rm -rf client/dist server/dist desktop/dist",
-    "test": "cd client && npm test && cd ../server && npm test",
-    "health": "curl -sf https://rmpgutah.us/api/health",
-    "prepare": "husky"
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "types": "wrangler types",
+    "typecheck": "tsc --noEmit",
+    "migrate:local": "wrangler d1 migrations apply rmpg-flex-db --local",
+    "migrate:prod": "wrangler d1 migrations apply rmpg-flex-db --remote"
   },
   "dependencies": {
-    "groq-sdk": "^1.1.2",
-    "jspdf": "^4.2.1",
-    "otpauth": "^9.5.1",
-    "pdf-parse": "^2.4.5",
-    "qrcode": "^1.5.4"
+    "bcryptjs": "^3.0.3",
+    "hono": "^4.12.21",
+    "jose": "^6.2.3",
+    "uuid": "^14.0.0",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@types/qrcode": "^1.5.6",
-    "concurrently": "^9.0.0",
-    "husky": "^9.1.7"
-  },
-  "overrides": {
-    "lodash": ">=4.18.0"
+    "@cloudflare/workers-types": "^4.20260520.1",
+    "@types/bcryptjs": "^2.4.6",
+    "@types/uuid": "^10.0.0",
+    "typescript": "^6.0.3",
+    "wrangler": "^4.93.0"
   }
 }

@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Car } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
@@ -165,8 +165,18 @@ export default function VehicleFormModal({
   editingVehicle,
   submitError,
 }: VehicleFormModalProps) {
-  const [form, setForm] = useState<VehicleFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<VehicleFormData>({
+    storageKey: 'rmpg_vehicle_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<'vehicle' | 'mechanical' | 'registration' | 'condition'>('vehicle');
 
   useEffect(() => {
@@ -227,10 +237,10 @@ export default function VehicleFormModal({
           vehicle_use: (editingVehicle as any).vehicle_use || '',
         };
         setForm(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         setForm(EMPTY_FORM);
-        snapshot(EMPTY_FORM);
+        snapshot();
       }
     }
   }, [isOpen, editingVehicle, snapshot]);
@@ -267,6 +277,8 @@ export default function VehicleFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Submit Error */}
       {submitError && (
@@ -519,6 +531,7 @@ export default function VehicleFormModal({
                   placeholder="Owner address"
                   value={form.owner_address}
                   onChange={(val) => setForm((prev) => ({ ...prev, owner_address: val }))}
+                  onSelect={(addr) => setForm((prev) => ({ ...prev, owner_address: addr.formatted || addr.street }))}
                 />
               </div>
               <div>

@@ -1550,7 +1550,7 @@ function section9(ctx: GuideContext): void {
 
   h3(ctx, 'Map tiles not loading');
   paragraph(ctx,
-    'The offline CartoDB dark_matter tile layer is served from your local disk cache via service worker. If tiles are blank, the cache may be empty or corrupted. Admin can reseed by visiting Admin -> Tiles -> Reseed. In the meantime, the Google Maps base layer should work as fallback — verify via the map layer selector.',
+    'Tile layers are served from Mapbox GL JS with server-side access tokens. If tiles are blank, verify the access token is configured in Admin → Integrations. The map should work online with any valid Mapbox token.',
   );
 
   h2(ctx, 'Voice');

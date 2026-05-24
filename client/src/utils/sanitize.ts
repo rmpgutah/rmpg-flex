@@ -6,7 +6,7 @@
 /**
  * Escape special HTML characters to prevent XSS injection.
  * Use this whenever interpolating user-supplied data into raw HTML strings
- * (e.g., Google Maps InfoWindow content).
+ * (e.g., Mapbox Popup content).
  */
 export function escapeHtml(str: string | number | null | undefined): string {
   if (str == null) return '';

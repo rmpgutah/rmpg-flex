@@ -1,61 +1,54 @@
-import dotenv from 'dotenv';
-import path from 'path';
-import { fileURLToPath } from 'url';
+// ============================================================
+// RMPG Flex — Configuration
+// ============================================================
+// Supports both Node.js (development) and Cloudflare Workers (production).
+// In Workers, environment variables come from wrangler.toml [vars] and secrets.
+// ============================================================
+
 import crypto from 'crypto';
+import path from 'path';
 import fs from 'fs';
+import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-dotenv.config({ path: path.resolve(__dirname, '../.env') });
-
+// ─── Environment Variable Helpers ────────────────────────
 function envBool(key: string, defaultVal: boolean): boolean {
-  const val = process.env[key];
+  const val = typeof process !== 'undefined' ? process.env?.[key] : undefined;
   if (val === undefined) return defaultVal;
   return val === 'true' || val === '1';
 }
 
+function envStr(key: string, defaultVal: string): string {
+  const val = typeof process !== 'undefined' ? process.env?.[key] : undefined;
+  return val !== undefined ? val : defaultVal;
+}
+
 function envInt(key: string, defaultVal: number): number {
-  const val = process.env[key];
+  const val = typeof process !== 'undefined' ? process.env?.[key] : undefined;
   if (val === undefined) return defaultVal;
   const parsed = parseInt(val, 10);
   return isNaN(parsed) ? defaultVal : parsed;
 }
 
-function envTrustProxy(defaultVal: boolean | number | string): boolean | number | string {
-  const val = process.env.TRUST_PROXY;
-  if (val === undefined) return defaultVal;
-  if (val === 'true' || val === '1') return true;
-  if (val === 'false' || val === '0') return false;
-  const parsed = parseInt(val, 10);
-  return Number.isNaN(parsed) ? val : parsed;
-}
-
 // ─── JWT Secret Handling ───────────────────────────────
-const isProduction = process.env.NODE_ENV === 'production';
+const isProduction = envStr('NODE_ENV', 'development') === 'production';
 const defaultSecret = 'rmpg-flex-secret-change-me-in-production-2024';
-const envSecret = process.env.JWT_SECRET;
+const envSecret = typeof process !== 'undefined' ? process.env?.JWT_SECRET : undefined;
 
 let jwtSecret: string;
 
 if (!envSecret || envSecret === defaultSecret) {
   if (isProduction) {
-    console.error('');
-    console.error('╔═══════════════════════════════════════════════════════════╗');
-    console.error('║  CRITICAL SECURITY WARNING                               ║');
-    console.error('║  JWT_SECRET is not set or using default value!            ║');
-    console.error('║  Generate a strong secret: openssl rand -hex 64           ║');
-    console.error('║  Set it in .env: JWT_SECRET=<your-secret>                 ║');
-    console.error('╚═══════════════════════════════════════════════════════════╝');
-    console.error('');
-    // In production, generate a random secret so the server still runs
-    // but tokens will invalidate on restart
+    // In production (Workers), JWT_SECRET should be set as a secret
+    // If not, generate a random one (tokens will invalidate on redeploy)
     jwtSecret = crypto.randomBytes(64).toString('hex');
+    console.warn('[Config] JWT_SECRET not set — using random secret (tokens will invalidate on redeploy)');
   } else {
-    // Development: use the default but warn
     jwtSecret = envSecret || crypto.randomBytes(64).toString('hex');
     if (!envSecret) {
-      console.warn('⚠  WARNING: JWT_SECRET not set in .env — using random secret (tokens will invalidate on restart)');
+      console.warn('⚠  WARNING: JWT_SECRET not set — using random secret (tokens will invalidate on restart)');
     }
   }
 } else {
@@ -88,19 +81,16 @@ if (!sslDisabled) {
 export const config = {
   // Server
   port: envInt('PORT', 3001),
-  httpsPort: envInt('HTTPS_PORT', 443),
-  nodeEnv: process.env.NODE_ENV || 'development',
+  httpsPort: envInt('HTTPS_PORT', 3443),
+  nodeEnv: envStr('NODE_ENV', 'development'),
   isProduction,
-  trustProxy: envTrustProxy(isProduction ? 1 : false),
-
-  // SSL/TLS
+  trustProxy: true, // Always behind Cloudflare proxy
   ssl: {
-    enabled: sslEnabled,
-    cert: sslCert,
-    key: sslKey,
-    certPath: sslCertPath,
-    keyPath: sslKeyPath,
-    // Auto-redirect HTTP to HTTPS in production
+    enabled: envBool('SSL_ENABLED', false),
+    cert: envStr('SSL_CERT', ''),
+    key: envStr('SSL_KEY', ''),
+    certPath: envStr('SSL_CERT_PATH', ''),
+    keyPath: envStr('SSL_KEY_PATH', ''),
     httpRedirect: envBool('SSL_HTTP_REDIRECT', true),
     httpRedirectPort: envInt('SSL_HTTP_REDIRECT_PORT', 80),
   },
@@ -108,15 +98,15 @@ export const config = {
   // JWT
   jwt: {
     secret: jwtSecret,
-    accessExpiry: process.env.JWT_ACCESS_EXPIRY || '15m',
-    refreshExpiry: process.env.JWT_REFRESH_EXPIRY || '7d',
+    accessExpiry: envStr('JWT_ACCESS_EXPIRY', '15m'),
+    refreshExpiry: envStr('JWT_REFRESH_EXPIRY', '7d'),
   },
 
   // Security
   security: {
     maxLoginAttempts: envInt('MAX_LOGIN_ATTEMPTS', 5),
     lockoutDurationMinutes: envInt('LOCKOUT_DURATION_MINUTES', 15),
-    rateLimitWindowMs: envInt('RATE_LIMIT_WINDOW_MS', 1 * 60 * 1000),
+    rateLimitWindowMs: envInt('RATE_LIMIT_WINDOW_MS', 60000),
     rateLimitMaxRequests: envInt('RATE_LIMIT_MAX_REQUESTS', 1000),
   },
 
@@ -134,9 +124,10 @@ export const config = {
 
   // Two-Factor Authentication (TOTP)
   totp: {
-    encryptionKey: process.env.TOTP_ENCRYPTION_KEY || jwtSecret,
-    issuer: process.env.TOTP_ISSUER || 'RMPG Flex',
-    requiredRoles: (process.env.TOTP_REQUIRED_ROLES || 'admin,manager,supervisor,officer,dispatcher,contract_manager').split(',').map(s => s.trim()).filter(Boolean),
+    encryptionKey: envStr('TOTP_ENCRYPTION_KEY', jwtSecret),
+    issuer: envStr('TOTP_ISSUER', 'RMPG Flex'),
+    requiredRoles: (envStr('TOTP_REQUIRED_ROLES', 'admin,manager,supervisor,officer,dispatcher,contract_manager'))
+      .split(',').map(s => s.trim()).filter(Boolean),
     backupCodeCount: envInt('TOTP_BACKUP_CODE_COUNT', 10),
   },
 
@@ -144,19 +135,19 @@ export const config = {
   session: {
     maxPerUser: envInt('SESSION_MAX_PER_USER', 5),
     enforceIpBinding: envBool('SESSION_ENFORCE_IP_BINDING', true),
-    ipChangeAction: (process.env.SESSION_IP_CHANGE_ACTION || 'warn') as 'invalidate' | 'reauth' | 'warn',
+    ipChangeAction: (envStr('SESSION_IP_CHANGE_ACTION', 'warn')) as 'invalidate' | 'reauth' | 'warn',
   },
 
   // CORS
-  corsOrigins: (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:3000,http://localhost:4173,https://rmpgutah.us,http://rmpgutah.us,https://www.rmpgutah.us')
+  corsOrigins: (envStr('CORS_ORIGINS', 'http://localhost:5173,http://localhost:3000,http://localhost:4173,https://rmpgutah.us,http://rmpgutah.us,https://www.rmpgutah.us'))
     .split(',')
     .map(s => s.trim()),
 
   // Domain — primary domain for canonical redirects (www → apex)
-  primaryDomain: process.env.PRIMARY_DOMAIN || 'rmpgutah.us',
+  primaryDomain: envStr('PRIMARY_DOMAIN', 'rmpgutah.us'),
 
   // Auto-Update Server URL (where desktop apps check for updates)
-  updateServerUrl: process.env.UPDATE_SERVER_URL || 'https://rmpgutah.us',
+  updateServerUrl: envStr('UPDATE_SERVER_URL', 'https://rmpgutah.us'),
 
   // Two-Factor Authentication (general 2FA settings)
   twoFactor: {
@@ -165,42 +156,41 @@ export const config = {
 
   // WebAuthn / FIDO2
   webauthn: {
-    rpName: process.env.WEBAUTHN_RP_NAME || 'RMPG Flex',
-    rpID: process.env.WEBAUTHN_RP_ID || 'rmpgutah.us',
-    origin: process.env.WEBAUTHN_ORIGIN || (isProduction ? 'https://rmpgutah.us' : 'http://localhost:5173'),
+    rpName: envStr('WEBAUTHN_RP_NAME', 'RMPG Flex'),
+    rpID: envStr('WEBAUTHN_RP_ID', 'rmpgutah.us'),
+    origin: isProduction ? 'https://rmpgutah.us' : 'http://localhost:5173',
   },
 
   // Integrations
-  serveManagerApiKey: process.env.SERVEMANAGER_API_KEY || '',
+  serveManagerApiKey: envStr('SERVEMANAGER_API_KEY', ''),
 
   // Email (Microsoft Graph)
   email: {
-    clientId: process.env.AZURE_CLIENT_ID || '',
-    clientSecret: process.env.AZURE_CLIENT_SECRET || '',
-    tenantId: process.env.AZURE_TENANT_ID || '',
+    clientId: envStr('AZURE_CLIENT_ID', ''),
+    clientSecret: envStr('AZURE_CLIENT_SECRET', ''),
+    tenantId: envStr('AZURE_TENANT_ID', ''),
   },
 } as const;
 
 // ─── Environment Variable Validation ──────────────────
-// Warn about missing critical env vars at startup
-const requiredInProduction: Array<{ key: string; label: string }> = [
+const requiredInProduction = [
   { key: 'JWT_SECRET', label: 'JWT signing secret' },
 ];
 
-const recommendedInProduction: Array<{ key: string; label: string }> = [
+const recommendedInProduction = [
   { key: 'CORS_ORIGINS', label: 'Allowed CORS origins' },
   { key: 'PRIMARY_DOMAIN', label: 'Primary domain for redirects' },
   { key: 'WEBAUTHN_RP_ID', label: 'WebAuthn relying party ID' },
 ];
 
-if (isProduction) {
-  const missing = requiredInProduction.filter(({ key }) => !process.env[key] || process.env[key] === defaultSecret);
+if (isProduction && typeof process !== 'undefined' && process.env) {
+  const missing = requiredInProduction.filter(({ key }) => !process.env![key] || process.env![key] === defaultSecret);
   if (missing.length > 0) {
     console.warn(`\n[Config] Missing required environment variables in production:`);
     missing.forEach(({ key, label }) => console.warn(`  - ${key}: ${label}`));
     console.warn('');
   }
-  const unset = recommendedInProduction.filter(({ key }) => !process.env[key]);
+  const unset = recommendedInProduction.filter(({ key }) => !process.env![key]);
   if (unset.length > 0) {
     console.warn(`[Config] Recommended environment variables not set:`);
     unset.forEach(({ key, label }) => console.warn(`  - ${key}: ${label}`));

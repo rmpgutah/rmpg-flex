@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { formatEnumValue } from '../../utils/formatters';
-import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading } from '../../utils/googleMapsLoader';
-import { getGoogleMapsApiKey } from '../../utils/googleMapsApiKey';
+import { initMapbox, resolveMapboxAccessToken, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_NIGHT, MAPBOX_STYLE_SATELLITE, MAPBOX_STYLE_STREETS, MAPBOX_STYLE_OUTDOORS, registerMapInstance, unregisterMapInstance, updateMapStyle, monitorTileLoading } from '../../utils/mapboxLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -69,25 +67,22 @@ import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
+import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
 import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
-import { useGeoJsonLayers, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
+import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useMultiUnitRouting } from '../../hooks/useMultiUnitRouting';
-import { usePersistedState } from '../../hooks/usePersistedState';
-import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
-import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
-import { useMapKeyboardShortcuts } from '../../hooks/useMapKeyboardShortcuts';
+import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
-import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes } from './utils/mapMarkerBuilders';
+import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
 import { useMapHeatmapTimelapse } from './hooks/useMapHeatmapTimelapse';
 import { useMapHeatmapAdvanced, type HeatmapAdvancedMode, type HeatmapColorScheme, type HeatmapResolution, type HeatmapAdvancedOptions } from './hooks/useMapHeatmapAdvanced';
 import { useMapPredictions } from './hooks/useMapPredictions';
@@ -109,6 +104,7 @@ import { useMapPanicZone } from './hooks/useMapPanicZone';
 import { useMapDaylightOverlay } from './hooks/useMapDaylightOverlay';
 import { useMapCallHistory } from './hooks/useMapCallHistory';
 import { useMapIncidentReports } from './hooks/useMapIncidentReports';
+import { fetchMapConfig, type MapSettings } from './hooks/useMapConfig';
 import PredictionsPanel from './components/PredictionsPanel';
 import GeofenceManager from './components/GeofenceManager';
 import { useMapThreatAssessment } from './hooks/useMapThreatAssessment';
@@ -126,14 +122,6 @@ import PerimeterToolsPanel from './components/PerimeterToolsPanel';
 import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
 import CallHistoryPanel from './components/CallHistoryPanel';
-import HeatmapLegend from './components/HeatmapLegend';
-import HeatmapPresets, { type HeatmapPresetValue } from './components/HeatmapPresets';
-import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
-import RouteComparePanel from './components/RouteComparePanel';
-import { useMapHotspots } from './hooks/useMapHotspots';
-import { useMapDimBase } from './hooks/useMapDimBase';
-import { useMapIdleZones } from './hooks/useMapIdleZones';
-import { computeTrailStats, formatTrailStats, downloadTrailAsGpx } from './utils/trailStats';
 import IncidentReportsPanel from './components/IncidentReportsPanel';
 import SafetyZonesPanel from './components/SafetyZonesPanel';
 import TacticalSummaryPanel from './components/TacticalSummaryPanel';
@@ -144,7 +132,6 @@ import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 import { useSpeedAnalytics } from './hooks/useSpeedAnalytics';
 import SpeedGraphOverlay from './components/SpeedGraphOverlay';
 import CoverageTimeline from './components/CoverageTimeline';
-import { hashToHsl } from '../../utils/colorLookup';
 
 // ============================================================
 // Constants
@@ -230,14 +217,6 @@ const statusToColor = (status: string): string => {
 // Main Component
 // ============================================================
 
-// Module-level frozen constant used as a filter default that the UI never
-// updates. Module-level (not inline) so identity stays stable across renders
-// — passing inline `[]` to the useMap*History/IncidentReports hooks would
-// retrigger their useEffect deps every render and cause infinite refetch.
-// Typed as mutable `string[]` (not `readonly`) so it satisfies the hooks'
-// arg types, but Object.freeze gives runtime mutation protection anyway.
-const EMPTY_STRING_FILTER: string[] = Object.freeze([] as string[]) as string[];
-
 export default function MapPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -245,22 +224,19 @@ export default function MapPage() {
   const [mobileLayersOpen, setMobileLayersOpen] = useState(false);
   const [mobileSheetTab, setMobileSheetTab] = useState<'layers' | 'units' | 'calls'>('layers');
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]); // AdvancedMarkerElement or OverlayView
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const heatmapLayerRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
-  const trackingLinesRef = useRef<google.maps.Polyline[]>([]);
+  const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
+  const heatmapLayerRef = useRef<any | null>(null);
+  const trackingLinesRef = useRef<any[]>([]);
+  const mapConfigRef = useRef<MapSettings | null>(null);
   const [trackingLineCount, setTrackingLineCount] = useState(0);
   const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [mapRetry, setMapRetry] = useState(0); // bump to re-trigger Google Maps init
+  const [mapRetry, setMapRetry] = useState(0);
   const [tilesStalled, setTilesStalled] = useState(false);
 
-  // Google Maps is the sole map surface. Any map load failure surfaces the
-  // configuration-required dialog instead of degrading to a Leaflet/CartoDB
-  // fallback (the offline fallback was retired 2026-04-29 to make Google
-  // failures visible rather than silently masked).
   const isAuthError = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 
@@ -307,10 +283,9 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Heat map state — overlay toggles persist across sessions so officers
-  // don't have to re-enable their usual layers every shift.
-  const [showHeatmap, setShowHeatmap] = usePersistedState<boolean>('rmpg_map_showHeatmap', false);
-  const [showTrackingLines, setShowTrackingLines] = usePersistedState<boolean>('rmpg_map_showTrackingLines', true);
+  // Heat map state
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showTrackingLines, setShowTrackingLines] = useState(true);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
   const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
@@ -329,6 +304,7 @@ export default function MapPage() {
   const [advHeatmapRadius, setAdvHeatmapRadius] = useState(30);
   const [advHeatmapShowClusters, setAdvHeatmapShowClusters] = useState(true);
   const [advHeatmapComparisonDays, setAdvHeatmapComparisonDays] = useState(30);
+  const [showAdvHeatmapPanel, setShowAdvHeatmapPanel] = useState(false);
 
   const advHeatmapOptions: HeatmapAdvancedOptions = useMemo(() => ({
     enabled: advancedHeatmapEnabled && showHeatmap,
@@ -347,79 +323,24 @@ export default function MapPage() {
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
-  const [breadcrumbHours, setBreadcrumbHours] = useState(24);
+  const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
-  const breadcrumbLinesRef = useRef<google.maps.Polyline[]>([]);
-  const speedAlertMarkersRef = useRef<google.maps.Marker[]>([]);
+  const breadcrumbLinesRef = useRef<any[]>([]);
+  const speedAlertMarkersRef = useRef<any[]>([]);
 
   // Speed analytics integration
   const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
 
   // Trail playback state
-  const [playbackTrailsRaw, setPlaybackTrailsRaw] = useState<PlaybackTrail[]>([]);
-
-  // Breadcrumb fetch-window presets. Labels are compact per operator request
-  // (24h / 48h / 7d / 14d / 21d / 1mo / 3mo / 1y). Values are hours — the
-  // server /dispatch/gps/trails endpoint still takes ?hours= so upstream
-  // doesn't need to change. Month = 30d, year = 365d rounded in hours.
-  const BREADCRUMB_HOUR_PRESETS: ReadonlyArray<{ hours: number; label: string }> = [
-    { hours: 24,   label: '24h' },
-    { hours: 48,   label: '48h' },
-    { hours: 168,  label: '7d' },
-    { hours: 336,  label: '14d' },
-    { hours: 504,  label: '21d' },
-    { hours: 720,  label: '1mo' },
-    { hours: 2160, label: '3mo' },
-    { hours: 8760, label: '1y' },
-  ];
-
-  // Trail scrubber — lets dispatchers narrow the rendered trails to a
-  // time sub-window without a re-fetch. Values are "hours ago relative to
-  // now": fromH is the older edge (larger), toH is the newer edge (smaller),
-  // so [fromH=8, toH=0] means "last 8h through now". Default matches
-  // breadcrumbHours so the scrubber starts showing everything and the
-  // dispatcher narrows from there.
-  const [trailWindowFromH, setTrailWindowFromH] = useState<number>(breadcrumbHours);
-  const [trailWindowToH, setTrailWindowToH] = useState<number>(0);
-
-  // Keep the scrubber's "from" handle aligned with the fetched window —
-  // if the user bumps breadcrumbHours from 8 to 24, extend the scrubber
-  // range too so they can actually see the newer data.
-  useEffect(() => {
-    setTrailWindowFromH((prev) => (prev > breadcrumbHours ? breadcrumbHours : prev));
-  }, [breadcrumbHours]);
-
-  // Derived, window-filtered view of the trails. Render effects read this;
-  // the fetch effect writes the unfiltered Raw state. Filter is cheap for
-  // typical point counts (≤2k per unit), so recomputing on every scrubber
-  // drag is fine — no debounce needed.
-  const playbackTrails = useMemo<PlaybackTrail[]>(() => {
-    if (playbackTrailsRaw.length === 0) return playbackTrailsRaw;
-    const now = Date.now();
-    const windowStart = now - trailWindowFromH * 3600 * 1000;
-    const windowEnd = now - trailWindowToH * 3600 * 1000;
-    // Fast path: default window covers everything.
-    if (trailWindowFromH >= breadcrumbHours && trailWindowToH <= 0) {
-      return playbackTrailsRaw;
-    }
-    return playbackTrailsRaw
-      .map((t) => {
-        const filtered = t.points.filter((p) => {
-          const ts = Date.parse(p.time);
-          return Number.isFinite(ts) && ts >= windowStart && ts <= windowEnd;
-        });
-        return { ...t, points: filtered };
-      })
-      .filter((t) => t.points.length > 0);
-  }, [playbackTrailsRaw, trailWindowFromH, trailWindowToH, breadcrumbHours]);
+  const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
   const [playbackUnit, setPlaybackUnit] = useState<number | null>(null);
   const [playbackIdx, setPlaybackIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackSpeed, setPlaybackSpeed] = useState(2);
-  const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
+  const playbackMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
-  const playbackSpeedLabelRef = useRef<google.maps.InfoWindow | null>(null);
+  const playbackSpeedLabelRef = useRef<mapboxgl.Popup | null>(null);
 
   // Layers panel (left) collapsed/expanded
   const [layersPanelOpen, setLayersPanelOpen] = useState(true);
@@ -441,82 +362,7 @@ export default function MapPage() {
   const [showMapStyles, setShowMapStyles] = useState(false);
 
   // Routing
-  // Multi-unit routing: when multiple units are assigned to a call, show an
-  // ETA-colored polyline for each simultaneously (green=fastest, amber=mid,
-  // red=slowest) so the dispatcher can see who's closest at a glance.
-  // Each Route click in the call info window adds to the current set rather
-  // than replacing — clicking Route on unit B while unit A is already routed
-  // shows both polylines.
-  const { activeRoutes, routeLoading, showRoute, clearAllRoutes, updateOrigin } =
-    useMultiUnitRouting({ map: mapInstanceRef.current });
-
-  // Auto-pan the map to newly-dispatched P1 calls so dispatchers don't miss
-  // high-priority events while looking at another part of the map. Existing
-  // P1s at page-load do NOT trigger a pan — only calls that arrive after
-  // this mount. No-op until the Map instance is ready.
-  useAutoPanToP1(mapInstanceRef.current, calls);
-
-  // Audible chirp when a new P1 dispatches — paired with the auto-pan above
-  // so dispatchers who aren't looking at the map still get cued. Defaults on;
-  // user can toggle via localStorage key `rmpg_map_p1AudioEnabled`.
-  const [p1AudioEnabled] = usePersistedState<boolean>('rmpg_map_p1AudioEnabled', true);
-  useP1AudioAlert(calls, { enabled: p1AudioEnabled });
-
-  // Hotspot markers — numbered red pins at the top-5 heatmap peaks. Only
-  // rendered when the basic heatmap layer is on (Advanced heatmap has its
-  // own built-in cluster overlay). Reuses heatmapData — no extra fetch.
-  useMapHotspots({
-    mapInstanceRef,
-    data: heatmapData,
-    enabled: showHeatmap && !advancedHeatmapEnabled,
-    mode: heatmapMode === 'risk' ? 'risk' : 'calls',
-    topN: 5,
-  });
-
-  // Dim-base mode: slightly darken the base tiles when the heatmap is on
-  // so hot peaks pop without muting our own marker colors. Toggle persists.
-  const [dimBaseEnabled, setDimBaseEnabled] = usePersistedState<boolean>('rmpg_map_dimBaseEnabled', true);
-  useMapDimBase({
-    mapInstanceRef,
-    enabled: dimBaseEnabled && showHeatmap,
-    opacity: 0.35,
-  });
-
-  // Idle-zone detection: highlight stretches >=10min where a unit stayed
-  // within ~50m as orange circles. Reuses playbackTrails — pure client-side.
-  const [showIdleZones, setShowIdleZones] = usePersistedState<boolean>('rmpg_map_showIdleZones', false);
-
-  // Route comparison — pick two units from the active breadcrumb set and see
-  // side-by-side stats. Visibility is session-only; IDs are not persisted
-  // because their meaning depends on who's on shift right now.
-  const [showRouteCompare, setShowRouteCompare] = useState(false);
-  const [compareUnitA, setCompareUnitA] = useState<string | number | null>(null);
-  const [compareUnitB, setCompareUnitB] = useState<string | number | null>(null);
-  useMapIdleZones({
-    mapInstanceRef,
-    trails: playbackTrails,
-    enabled: showIdleZones && showBreadcrumbs,
-    minIdleSec: 600,
-    clusterRadiusM: 50,
-  });
-
-  // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
-  // F=field interviews, D=daylight, I=incidents, E=enforcement, ?=help.
-  // No-op when an input is focused or a modifier key is held.
-  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
-  useMapKeyboardShortcuts(
-    {
-      toggleHeatmap: () => setShowHeatmap((v) => !v),
-      toggleBreadcrumbs: () => setShowBreadcrumbs((v) => !v),
-      toggleClustering: () => setClusteringEnabled((v) => !v),
-      togglePatrolCheckpoints: () => setShowPatrolCheckpoints((v) => !v),
-      toggleFieldInterviews: () => setShowFieldInterviews((v) => !v),
-      toggleDaylight: () => setShowDaylight((v) => !v),
-      toggleIncidentReports: () => setShowIncidentReports((v) => !v),
-      toggleEnforcementClusters: () => setShowEnforcementClusters((v) => !v),
-    },
-    () => setShowShortcutsHelp(true),
-  );
+  const { activeRoute, routeLoading, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -526,7 +372,7 @@ export default function MapPage() {
   const [addressResults, setAddressResults] = useState<{ description: string; place_id: string }[]>([]);
   const [showAddressResults, setShowAddressResults] = useState(false);
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addressMarkerRef = useRef<google.maps.marker.AdvancedMarkerElement | null>(null);
+  const addressMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Clean up address search/dismiss timers on unmount
@@ -539,6 +385,9 @@ export default function MapPage() {
 
   // GPS own-position
   const gps = useGpsTracking();
+  // Keep the screen awake while the map is foregrounded — officers can't be
+  // glancing down to wake the device mid-pursuit. Auto-released on unmount.
+  useScreenWakeLock(true);
   const selfMarkerRef = useRef<any>(null);
 
   // WebSocket
@@ -558,47 +407,17 @@ export default function MapPage() {
   const [beatDistrictMap, setBeatDistrictMap] = useState<Map<string, Map<string, BeatDistrictEntry>> | undefined>(undefined);
   const [districtSections, setDistrictSections] = useState<{ id: string; name: string }[]>([]);
   const [showDistrictLegend, setShowDistrictLegend] = useState(false);
-  const [hierarchyColors, setHierarchyColors] = useState<{
-    sectionColors: Map<string, string>;
-    zoneColors: Map<string, string>;
-    areaColors: Map<string | number, string>;
-    beatToArea: Map<string, string | number>;
-  } | null>(null);
-  const [tierColorsOn, setTierColorsOn] = useState<boolean>(() => {
-    return localStorage.getItem('rmpg.map.hierarchyColors') !== 'off'; // default ON
-  });
-  useEffect(() => {
-    localStorage.setItem('rmpg.map.hierarchyColors', tierColorsOn ? 'on' : 'off');
-  }, [tierColorsOn]);
 
   useEffect(() => {
     let cancelled = false;
     apiFetch<any[]>('/dispatch/districts').then((districts) => {
       if (cancelled || !Array.isArray(districts) || districts.length === 0) return;
-      // Map is keyed by city_code (e.g. "MUR") because GeoJSON beat
-      // properties carry city_code, not the server's zone_id ("SL1-MUR").
-      // Inner map is keyed by district_letter ("A").
       const map = new Map<string, Map<string, BeatDistrictEntry>>();
       const sectionSet = new Map<string, string>();
-      const sectionColors = new Map<string, string>();
-      const zoneColors = new Map<string, string>();
-      const areaColors = new Map<string | number, string>();
-      const beatToArea = new Map<string, string | number>();
       for (const d of districts) {
         if (!d.zone_id || !d.beat_id) continue;
-        if (d.sector_id) sectionColors.set(d.sector_id, d.sector_color || hashToHsl(d.sector_id));
-        if (d.zone_id) zoneColors.set(d.zone_id, d.zone_color || hashToHsl(d.zone_id));
-        if (d.area_id != null) {
-          areaColors.set(d.area_id, hashToHsl(`area-${d.area_id}`));
-          beatToArea.set(d.beat_id, d.area_id);
-        }
-        // Derive GeoJSON-shaped keys from server chart codes:
-        //   zone_id "SL1-MUR" → cityCode "MUR"
-        //   beat_id "SL1-MUR/A" → distLetter "A"
-        const cityCode = String(d.zone_id).split('-').slice(1).join('-') || d.zone_id;
-        const distLetter = String(d.beat_id).split('/').pop() || d.beat_id;
-        if (!map.has(cityCode)) map.set(cityCode, new Map());
-        map.get(cityCode)!.set(distLetter, {
+        if (!map.has(d.zone_id)) map.set(d.zone_id, new Map());
+        map.get(d.zone_id)!.set(d.beat_id, {
           sectionId: d.sector_id || '',
           sectionName: d.sector_name || '',
           zoneId: d.zone_id,
@@ -606,13 +425,11 @@ export default function MapPage() {
           beatId: d.beat_id,
           beatName: d.beat_name || '',
           beatDescriptor: d.beat_descriptor || '',
-          // dispatch_code = beat_code is already chart format ("SL1-MUR/A").
-          dispatchCode: d.dispatch_code || d.beat_id || '',
+          dispatchCode: d.dispatch_code || '',
         });
         if (d.sector_id) sectionSet.set(d.sector_id, d.sector_name || '');
       }
       setBeatDistrictMap(map);
-      setHierarchyColors({ sectionColors, zoneColors, areaColors, beatToArea });
       setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
     }).catch((err) => { console.warn('[MapPage] fetch districts failed:', err); });
     return () => { cancelled = true; };
@@ -621,20 +438,19 @@ export default function MapPage() {
   // GeoJSON spatial layers (with shift planning selection integration)
   const { layerStates: geoLayerStates, toggleGeoLayer, ensureLayerLoaded, configs: geoConfigs } = useGeoJsonLayers({
     map: mapInstanceRef.current,
-    infoWindow: infoWindowRef.current,
+    popup: infoWindowRef.current,
     selectionMode: shiftPlanning.selectionMode,
     onFeatureClick: shiftPlanning.handleFeatureClick,
     selectedFeatures: shiftPlanning.selectedAreas,
     assignedFeatures: shiftPlanning.assignedFeatures,
     beatDistrictMap,
-    hierarchyColors: tierColorsOn ? hierarchyColors : null,
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
   // Event planning overlays
   const eventPlanning = useEventPlanning({
     map: mapInstanceRef.current,
-    infoWindow: infoWindowRef.current,
+    popup: infoWindowRef.current,
   });
   const [showEventPanel, setShowEventPanel] = useState(false);
   const [newPlanName, setNewPlanName] = useState('');
@@ -646,12 +462,95 @@ export default function MapPage() {
   const [showGeofences, setShowGeofences] = useState(false);
   const [showAnalysisDashboard, setShowAnalysisDashboard] = useState(false);
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
-  const [clusteringEnabled, setClusteringEnabled] = usePersistedState<boolean>('rmpg_map_clusteringEnabled', false);
+  const clusteringInitRef = useRef(false);
+  const [clusteringEnabled, setClusteringEnabled] = useState(false);
+  const [mapConfigVersion, setMapConfigVersion] = useState(0);
+
+  // Apply admin cluster defaults once on mount
+  useEffect(() => {
+    if (!clusteringInitRef.current) {
+      fetchMapConfig().then(cfg => {
+        if (!clusteringInitRef.current) {
+          clusteringInitRef.current = true;
+          setClusteringEnabled(cfg.clustering_enabled);
+        }
+      });
+    }
+  }, []);
+
+  // Admin layer style overrides — apply after map + GeoJSON layers are loaded
+  // Uses mapConfigVersion to re-apply when admin config finishes loading
+  const layerOverridesAppliedRef = useRef(false);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const cfg = mapConfigRef.current;
+    if (!map || !cfg || !map.loaded() || layerOverridesAppliedRef.current) return;
+    layerOverridesAppliedRef.current = true;
+
+    const LAYER_STYLE_MAP: Record<string, { fillId?: string; lineId?: string }> = {
+      beat: { fillId: 'geojson-beat-fill', lineId: 'geojson-beat-line' },
+      county: { fillId: 'geojson-county-fill', lineId: 'geojson-county-line' },
+      municipality: { fillId: 'geojson-municipality-fill', lineId: 'geojson-municipality-line' },
+      highway: { lineId: 'geojson-highway-line' },
+      state_boundary: { lineId: 'geojson-state_boundary-line' },
+      place: { fillId: 'geojson-place-fill', lineId: 'geojson-place-line' },
+    };
+
+    for (const [layerId, ids] of Object.entries(LAYER_STYLE_MAP)) {
+      const visible = cfg.default_visible_layers.includes(layerId);
+
+      if (ids.fillId && map.getLayer(ids.fillId)) {
+        map.setLayoutProperty(ids.fillId, 'visibility', visible ? 'visible' : 'none');
+        const fillColor = (cfg as any)[`layer_${layerId}_fill`];
+        const fillOpacity = (cfg as any)[`layer_${layerId}_fill_opacity`];
+        if (fillColor) map.setPaintProperty(ids.fillId, 'fill-color', fillColor);
+        if (fillOpacity != null) map.setPaintProperty(ids.fillId, 'fill-opacity', fillOpacity);
+      }
+      if (ids.lineId && map.getLayer(ids.lineId)) {
+        map.setLayoutProperty(ids.lineId, 'visibility', visible ? 'visible' : 'none');
+        const strokeColor = (cfg as any)[`layer_${layerId}_stroke`];
+        const strokeOpacity = (cfg as any)[`layer_${layerId}_stroke_opacity`];
+        const strokeWeight = (cfg as any)[`layer_${layerId}_stroke_weight`];
+        if (strokeColor) map.setPaintProperty(ids.lineId, 'line-color', strokeColor);
+        if (strokeOpacity != null) map.setPaintProperty(ids.lineId, 'line-opacity', strokeOpacity);
+        if (strokeWeight != null) map.setPaintProperty(ids.lineId, 'line-width', strokeWeight);
+      }
+    }
+  }, [mapLoaded, mapConfigVersion]);
+
+  // Marker CSS injection — pulse animations + font size
+  const markerStyleRef = useRef<HTMLStyleElement | null>(null);
+  useEffect(() => {
+    const cfg = mapConfigRef.current;
+    if (!cfg) return;
+
+    let css = '';
+    if (!cfg.unit_marker_pulse) {
+      css += '.rmpg-unit-marker { animation: none !important; }';
+    }
+    if (!cfg.call_marker_pulse) {
+      css += '.rmpg-call-marker-p1 { animation: none !important; }';
+      css += '.rmpg-call-marker-p2 { animation: none !important; }';
+    }
+    if (cfg.marker_font_size !== 9) {
+      css += `.rmpg-marker-label { font-size: ${cfg.marker_font_size}px !important; }`;
+    }
+
+    if (!markerStyleRef.current) {
+      const style = document.createElement('style');
+      style.id = '__rmpg-admin-marker-styles__';
+      style.textContent = css;
+      document.head.appendChild(style);
+      markerStyleRef.current = style;
+    } else {
+      markerStyleRef.current.textContent = css;
+    }
+  }, [mapConfigVersion]);
 
   // Separate marker tracking for clustering & drag dispatch
-  const unitMarkersMapRef = useRef<Map<string, google.maps.marker.AdvancedMarkerElement>>(new Map());
-  const callMarkersMapRef = useRef<Map<string, { marker: google.maps.marker.AdvancedMarkerElement; callId: string }>>(new Map());
-  const callMarkersArrayRef = useRef<google.maps.marker.AdvancedMarkerElement[]>([]);
+  const unitMarkersMapRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
+  const callMarkersMapRef = useRef<Map<string, { marker: mapboxgl.Marker; callId: string }>>(new Map());
+  const callMarkersArrayRef = useRef<mapboxgl.Marker[]>([]);
 
   // Intel layers
   const [intelLayers, setIntelLayers] = useState({ warrants: false, trespass: false, offenders: false, bolos: false });
@@ -659,14 +558,13 @@ export default function MapPage() {
     setIntelLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   };
 
-  // New tactical layer toggles — persist across reload so officers don't
-  // have to re-enable their usual layers every shift.
-  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = usePersistedState<boolean>('rmpg_map_showPatrolCheckpoints', false);
-  const [showFieldInterviews, setShowFieldInterviews] = usePersistedState<boolean>('rmpg_map_showFieldInterviews', false);
+  // New tactical layer toggles
+  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = useState(false);
+  const [showFieldInterviews, setShowFieldInterviews] = useState(false);
   const [fiDays, setFiDays] = useState(30);
-  const [showDwellTime, setShowDwellTime] = usePersistedState<boolean>('rmpg_map_showDwellTime', false);
-  const [showResponseRadius, setShowResponseRadius] = usePersistedState<boolean>('rmpg_map_showResponseRadius', false);
-  const [showEnforcementClusters, setShowEnforcementClusters] = usePersistedState<boolean>('rmpg_map_showEnforcementClusters', false);
+  const [showDwellTime, setShowDwellTime] = useState(false);
+  const [showResponseRadius, setShowResponseRadius] = useState(false);
+  const [showEnforcementClusters, setShowEnforcementClusters] = useState(false);
   const [enforcementType, setEnforcementType] = useState<'citations' | 'arrests'>('citations');
   const [enforcementDays, setEnforcementDays] = useState(90);
   const [showCoverage, setShowCoverage] = useState(false);
@@ -676,23 +574,18 @@ export default function MapPage() {
   const [repeatDays, setRepeatDays] = useState(30);
   const [repeatMinCount, setRepeatMinCount] = useState(3);
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
-  const [showDaylight, setShowDaylight] = usePersistedState<boolean>('rmpg_map_showDaylight', false);
+  const [showDaylight, setShowDaylight] = useState(false);
 
   // Historical call & incident report layers
   const [showCallHistory, setShowCallHistory] = useState(false);
   const [callHistoryDays, setCallHistoryDays] = useState(7);
   const [callHistoryStatuses, setCallHistoryStatuses] = useState(['cleared', 'closed']);
-  // callHistoryTypes / incidentStatuses / incidentTypes were useState<string[]>([])
-  // declarations that never got a setter call anywhere — they're effectively
-  // constant filter defaults. Pinned to the module-level frozen constant so
-  // identity stays stable across renders (preventing useEffect dep churn in
-  // the consuming hooks).
-  const callHistoryTypes = EMPTY_STRING_FILTER;
+  const [callHistoryTypes, setCallHistoryTypes] = useState<string[]>([]);
   const [callHistoryPriorities, setCallHistoryPriorities] = useState<string[]>([]);
-  const [showIncidentReports, setShowIncidentReports] = usePersistedState<boolean>('rmpg_map_showIncidentReports', false);
+  const [showIncidentReports, setShowIncidentReports] = useState(false);
   const [incidentDays, setIncidentDays] = useState(30);
-  const incidentStatuses = EMPTY_STRING_FILTER;
-  const incidentTypes = EMPTY_STRING_FILTER;
+  const [incidentStatuses, setIncidentStatuses] = useState<string[]>([]);
+  const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
 
   // Officer Safety System
   const [showSafetyDashboard, setShowSafetyDashboard] = useState(false);
@@ -902,20 +795,45 @@ export default function MapPage() {
     // Server broadcasts 'dispatch_update' type for call events
     // Unit state is now fully handled by 'unit_update' events (enriched with call details),
     // so no need to re-fetch all units on every dispatch event.
+    // Statuses excluded from /dispatch/queue (the map's source-of-truth fetch) —
+    // keep this in sync with aggregates.ts queue endpoint's WHERE clause.
+    const INACTIVE_STATUSES = new Set(['closed', 'completed', 'cleared', 'cancelled']);
+    const isInactive = (s: any) => typeof s === 'string' && INACTIVE_STATUSES.has(s.toLowerCase());
+
     const unsubscribeCall = subscribe('dispatch_update', (msg: any) => {
       const evtData = msg.data || msg;
+
+      // Handle deletions explicitly — call_deleted broadcasts carry call_id, not call
+      if (evtData?.action === 'call_deleted') {
+        const deletedId = evtData.call_id ?? evtData.call?.id;
+        if (deletedId != null) {
+          setCalls((prev) => prev.filter((c) => c.id !== deletedId));
+        }
+        return;
+      }
+
+      // Bulk operations don't carry per-call data — fall back to a silent refresh
+      if (
+        evtData?.action === 'calls_bulk_updated' ||
+        evtData?.action === 'calls_bulk_archived' ||
+        evtData?.action === 'calls_auto_closed'
+      ) {
+        fetchAllDataRef.current?.({ silent: true });
+        return;
+      }
+
       if (evtData && evtData.call) {
         setCalls((prev) => {
           const index = prev.findIndex((c) => c.id === evtData.call.id);
           if (index >= 0) {
             const updated = [...prev];
             updated[index] = { ...updated[index], ...evtData.call };
-            if (evtData.call.status === 'closed' || evtData.call.status === 'completed') {
+            if (isInactive(evtData.call.status)) {
               return updated.filter((c) => c.id !== evtData.call.id);
             }
             return updated;
           }
-          if (evtData.call.status !== 'closed' && evtData.call.status !== 'completed') {
+          if (!isInactive(evtData.call.status)) {
             return [...prev, evtData.call];
           }
           return prev;
@@ -952,7 +870,7 @@ export default function MapPage() {
   }, [showHeatmap]);
 
   // ============================================================
-  // Google Maps Initialization
+  // Mapbox Initialization
   // ============================================================
 
   useEffect(() => {
@@ -973,87 +891,94 @@ export default function MapPage() {
       return;
     }
 
-    // Register Google's official auth-failure callback BEFORE loading the script.
-    // Google calls window.gm_authFailure() when the API key is invalid, billing
-    // is not enabled, or the Maps JavaScript API is not turned on.
     let authFailed = false;
-    (window as any).gm_authFailure = () => {
-      authFailed = true;
-      console.error('[MapPage] Google Maps authentication failure — API key rejected');
-      setMapError(
-        'Google Maps API key was rejected.\n\n' +
-        'Fix these in Google Cloud Console (console.cloud.google.com):\n\n' +
-        '1. BILLING: Link a billing account to the project\n' +
-        '   (Google Maps requires billing — free tier covers most usage)\n\n' +
-        '2. ENABLE APIs: Go to APIs & Services → Library → enable:\n' +
-        '   • Maps JavaScript API\n' +
-        '   • Places API (New)\n\n' +
-        '3. KEY RESTRICTIONS: Go to Credentials → click your key:\n' +
-        '   • API restrictions: "Don\'t restrict key" (or add Maps JS + Places APIs)\n' +
-        '   • Website restrictions: set to "None" for dev, or add:\n' +
-        '     http://localhost:3001/*\n' +
-        '     http://localhost:5173/*\n' +
-        '     http://localhost:4173/*'
-      );
-    };
 
-    // Load Google Maps via direct script tag (more reliable than js-api-loader).
-    // Auto-retry with exponential backoff if the script fails to load
+    // Auto-retry with exponential backoff if the map fails to load
     // (e.g. server restart, brief network blip, slow vehicle WiFi).
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000]; // ms
     let dismissObserver: MutationObserver | null = null;
     let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
-    function initMap(apiKey: string) {
+    function initMap(apiKey: string, cfg: MapSettings) {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
       // Fix 31: restore map center/zoom from localStorage
-      let savedCenter = DEFAULT_CENTER;
-      let savedZoom = 12;
+      let savedCenter = { lat: cfg.default_center_lat, lng: cfg.default_center_lng };
+      let savedZoom = cfg.default_zoom;
       try {
         const sc = localStorage.getItem('rmpg_map_center');
         const sz = localStorage.getItem('rmpg_map_zoom');
         if (sc) savedCenter = JSON.parse(sc);
-        if (sz) savedZoom = parseInt(sz, 10) || 12;
+        if (sz) savedZoom = parseInt(sz, 10) || cfg.default_zoom;
       } catch { /* use defaults */ }
 
-      const map = new google.maps.Map(mapRef.current, {
-        center: savedCenter,
+      const mapOptions: mapboxgl.MapboxOptions = {
+        container: mapRef.current!,
+        style: cfg.custom_style_url || MAPBOX_STYLE_DARK,
+        center: [savedCenter.lng, savedCenter.lat],
         zoom: savedZoom,
-        disableDefaultUI: true,
-        zoomControl: false,
-        styles: DARK_MAP_STYLE,
-        backgroundColor: '#171717',
-        // 'greedy' allows single-finger pan on mobile/tablet — critical for
-        // in-vehicle use where two-finger gestures are awkward while driving.
-        gestureHandling: 'greedy',
-      });
+        pitch: cfg.default_pitch,
+        bearing: cfg.default_bearing,
+        minZoom: cfg.min_zoom,
+        maxZoom: cfg.max_zoom,
+        minPitch: cfg.min_pitch,
+        maxPitch: cfg.max_pitch,
+        attributionControl: cfg.show_attribution,
+        scrollZoom: cfg.scroll_zoom,
+        boxZoom: cfg.box_zoom,
+        dragRotate: cfg.drag_rotate,
+        dragPan: cfg.drag_pan,
+        doubleClickZoom: cfg.double_click_zoom,
+        touchZoomRotate: cfg.touch_zoom_rotate,
+        cooperativeGestures: cfg.cooperative_gestures,
+        keyboard: cfg.keyboard_enabled,
+        renderWorldCopies: cfg.render_world_copies,
+        fadeDuration: cfg.fade_duration,
+        clickTolerance: cfg.click_tolerance,
+        crossSourceCollisions: cfg.cross_source_collisions,
+      };
 
-      // Auth/quota failure can hand back a stub Map with no div — route to the
-      // existing error UI instead of crashing in monitorTileLoading.
-      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
-        setMapError('Google Maps failed to initialize — check API key / billing.');
-        return;
+      if (cfg.language) {
+        mapOptions.locale = { 'Map.Title': cfg.language };
       }
+
+      if (cfg.local_ideograph_font_family) {
+        mapOptions.localIdeographFontFamily = cfg.local_ideograph_font_family;
+      }
+
+      if (cfg.max_bounds_sw_lat != null && cfg.max_bounds_sw_lng != null && cfg.max_bounds_ne_lat != null && cfg.max_bounds_ne_lng != null) {
+        mapOptions.maxBounds = [
+          [cfg.max_bounds_sw_lng, cfg.max_bounds_sw_lat],
+          [cfg.max_bounds_ne_lng, cfg.max_bounds_ne_lat],
+        ] as [[number, number], [number, number]];
+      }
+
+      // Disable rotation if rotation_enabled is false
+      if (!cfg.rotation_enabled) {
+        mapOptions.dragRotate = false;
+        mapOptions.touchZoomRotate = false;
+      }
+
+      const map = new mapboxgl.Map(mapOptions);
 
       mapInstanceRef.current = map;
       registerMapInstance(map);
 
-      // Fix 30: save map center/zoom to localStorage on idle
-      map.addListener('idle', () => {
+      // Fix 30: save map center/zoom to localStorage on moveend
+      map.on('moveend', () => {
         try {
           const c = map.getCenter();
           const z = map.getZoom();
           if (c && z != null) {
-            localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat(), lng: c.lng() }));
+            localStorage.setItem('rmpg_map_center', JSON.stringify({ lat: c.lat, lng: c.lng }));
             localStorage.setItem('rmpg_map_zoom', String(z));
           }
         } catch { /* quota exceeded */ }
       });
 
-      infoWindowRef.current = new google.maps.InfoWindow();
+      infoWindowRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false });
 
       // Hide Google's dismissible "can't load correctly" dialog instantly.
       const hideStyleId = '__rmpg_hide_gm_dialog__';
@@ -1068,15 +993,15 @@ export default function MapPage() {
         if (authFailed) return;
         const hardErr = mapRef.current?.querySelector('.gm-err-container');
         if (hardErr) {
-          console.error('[MapPage] Google Maps hard error overlay detected');
+          console.error('[MapPage] Mapbox map error overlay detected');
           authFailed = true;
           dismissObserver?.disconnect();
           setMapError(
-            'Google Maps failed to load.\n\n' +
-            'Check Google Cloud Console:\n' +
-            '1. Billing account linked to the project\n' +
-            '2. Maps JavaScript API enabled\n' +
-            '3. API key restrictions allow this domain'
+            'Mapbox map failed to load.\n\n' +
+            'Check your Mapbox account:\n' +
+            '1. Valid access token configured\n' +
+            '2. Styles and tilesets enabled\n' +
+            '3. No network restrictions blocking api.mapbox.com'
           );
           return;
         }
@@ -1090,13 +1015,14 @@ export default function MapPage() {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
-      // Google's native dark-styled basemap is the sole tile source
-      // (no CartoDB raster overlay). AdvancedMarkerElement requires a
-      // cloud mapId; without one, markers are created but never render,
-      // so we keep the OverlayView-based fallback which works on any
-      // map type until a mapId is provisioned.
+      // CartoDB dark_matter tiles handled by Mapbox style
+
+      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
+      // Without mapId, markers are created but silently never render.
+      // Since we use a raster styled map (no mapId), always use the
+      // OverlayView-based fallback which works reliably on all map types.
       useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using Google base layer + OverlayView markers');
+      devLog('[MapPage] Using CartoDB dark_matter overlay + OverlayView markers');
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
@@ -1117,8 +1043,10 @@ export default function MapPage() {
       if (!authFailed) setMapLoaded(true);
     }
 
+    let mapConfig: MapSettings | null = null;
+
     function attemptLoad(apiKey: string, attempt: number) {
-      if (cancelled) return;
+      if (cancelled || !mapConfig) return;
 
       // If device is offline, pause retries and wait for connectivity
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -1134,53 +1062,61 @@ export default function MapPage() {
         return;
       }
 
-      loadGoogleMaps(apiKey)
-        .then(() => initMap(apiKey))
-        .catch((err: any) => {
-          if (cancelled) return;
-          const errMsg = err?.message || String(err);
-          devWarn(`[MapPage] Google Maps load attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, errMsg);
+      try {
+        initMapbox(apiKey);
+        initMap(apiKey, mapConfig);
+      } catch (err: any) {
+        if (cancelled) return;
+        const errMsg = err?.message || String(err);
+        devWarn(`[MapPage] Mapbox init attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, errMsg);
 
-          if (attempt < MAX_RETRIES) {
-            const delay = RETRY_DELAYS[attempt] || 30000;
-            devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
-            setTimeout(() => attemptLoad(apiKey, attempt + 1), delay);
-          } else {
-            console.error('[MapPage] Google Maps load failed after all retries');
-            setMapError(
-              'Failed to load Google Maps after multiple attempts.\n\n' +
-              'If you are on a slow or intermittent connection (vehicle WiFi),\n' +
-              'wait for a stronger signal and click Retry below.\n\n' +
-              (errMsg ? `Technical details: ${errMsg}` : '')
-            );
-          }
-        });
+        if (attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAYS[attempt] || 30000;
+          devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
+          setTimeout(() => attemptLoad(apiKey, attempt + 1), delay);
+        } else {
+          console.error('[MapPage] Mapbox init failed after all retries');
+          setMapError(
+            'Failed to initialize Mapbox map after multiple attempts.\n\n' +
+            'If you are on a slow or intermittent connection (vehicle WiFi),\n' +
+            'wait for a stronger signal and click Retry below.\n\n' +
+            (errMsg ? `Technical details: ${errMsg}` : '')
+          );
+        }
+      }
     }
 
     (async () => {
-      let apiKey = '';
       try {
-        apiKey = await getGoogleMapsApiKey();
-      } catch (err: any) {
-        // No Google API key — surface the configuration-required dialog.
+        mapConfig = await fetchMapConfig();
+      } catch {
+        mapConfig = { default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12, min_zoom: 1, max_zoom: 22, default_style: 'dark', enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'], show_attribution: false, rotation_enabled: false, max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null, custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14, default_pitch: 0, default_bearing: 0, min_pitch: 0, max_pitch: 85, scroll_zoom: true, box_zoom: true, drag_rotate: true, drag_pan: true, double_click_zoom: true, touch_zoom_rotate: true, cooperative_gestures: false, show_compass: true, show_zoom_controls: true, keyboard_enabled: true, language: '', render_world_copies: true, fade_duration: 300, click_tolerance: 3, local_ideograph_font_family: '', cross_source_collisions: true, default_visible_layers: ['county', 'beat'], layer_beat_fill: '#22c55e', layer_beat_fill_opacity: 0.2, layer_beat_stroke: '#22c55e', layer_beat_stroke_opacity: 0.6, layer_beat_stroke_weight: 1.2, layer_beat_min_zoom: 10, layer_county_fill: '#141414', layer_county_fill_opacity: 0.15, layer_county_stroke: '#444444', layer_county_stroke_opacity: 0.5, layer_county_stroke_weight: 1.5, layer_county_min_zoom: 8, layer_municipality_fill: '#a855f7', layer_municipality_fill_opacity: 0.06, layer_municipality_stroke: '#a855f7', layer_municipality_stroke_opacity: 0.35, layer_municipality_stroke_weight: 1, layer_municipality_min_zoom: 9, layer_highway_stroke: '#ef4444', layer_highway_stroke_opacity: 0.6, layer_highway_stroke_weight: 3, layer_state_boundary_stroke: '#ffffff', layer_state_boundary_stroke_opacity: 0.3, layer_state_boundary_stroke_weight: 2, layer_place_fill: '#22c55e', layer_place_fill_opacity: 0.7, layer_place_stroke: '#22c55e', layer_place_stroke_opacity: 0.9, layer_place_stroke_weight: 1, layer_place_min_zoom: 10, gps_batch_interval_ms: 5000, gps_max_accuracy_meters: 100, gps_max_speed_ms: 80, gps_high_accuracy: true, screenshot_width: 1280, screenshot_height: 720, screenshot_style: 'dark', unit_marker_pulse: true, call_marker_pulse: true, marker_font_size: 9 };
+      }
+      mapConfigRef.current = mapConfig;
+      setMapConfigVersion(v => v + 1);
+
+      let mapboxToken = '';
+      try {
+        mapboxToken = await resolveMapboxAccessToken();
+      } catch {
         if (!cancelled) {
-          setMapError(err?.message || 'Google Maps API key is not configured. Set it in Admin → Integrations → Google Cloud Console.');
+          setMapError('offline');
         }
-        return;
       }
 
       if (cancelled) return;
-      attemptLoad(apiKey, 0);
+      attemptLoad(mapboxToken, 0);
 
-      // Auto-retry when device comes back online (covers the case where all retries
-      // exhausted during a dead zone, then WiFi reconnects while the error screen is showing)
-      unsubOnline = onOnlineRetryMaps(apiKey, () => {
-        if (!cancelled && !mapInstanceRef.current) {
+      // Auto-retry when device comes back online
+      const onlineToken = mapboxToken;
+      unsubOnline = (() => {
+        if (!cancelled && !mapInstanceRef.current && mapConfig) {
           devLog('[MapPage] Online auto-retry triggered — reinitializing map');
           setMapError(null);
-          initMap(apiKey);
+          initMapbox(onlineToken);
+          initMap(onlineToken, mapConfig);
         }
-      });
+      }) as any;
     })();
 
     return () => {
@@ -1192,11 +1128,9 @@ export default function MapPage() {
       if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
       markersRef.current.forEach((m) => {
         if (m && typeof m.remove === 'function') m.remove();
-        else if (m) m.map = null;
       });
       markersRef.current = [];
       mapInstanceRef.current = null;
-      delete (window as any).gm_authFailure;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRetry, mapStyle]);
@@ -1209,30 +1143,19 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map) return;
 
-    if (mapStyle === 'dark') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: DARK_MAP_STYLE });
-      updateMapStyles(map, DARK_MAP_STYLE);
-    } else if (mapStyle === 'night_nav') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: NIGHT_NAV_STYLE });
-      updateMapStyles(map, NIGHT_NAV_STYLE);
-    } else if (mapStyle === 'satellite') {
-      map.setMapTypeId('satellite');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
-    } else if (mapStyle === 'hybrid') {
-      map.setMapTypeId('hybrid');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
-    } else if (mapStyle === 'terrain') {
-      map.setMapTypeId('terrain');
-      map.setOptions({ styles: TERRAIN_STYLE });
-      updateMapStyles(map, TERRAIN_STYLE);
-    } else if (mapStyle === 'streets') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
+    const styleMap: Record<string, string> = {
+      dark: MAPBOX_STYLE_DARK,
+      night_nav: MAPBOX_STYLE_NIGHT,
+      satellite: MAPBOX_STYLE_SATELLITE,
+      hybrid: MAPBOX_STYLE_SATELLITE,
+      terrain: MAPBOX_STYLE_OUTDOORS,
+      streets: MAPBOX_STYLE_STREETS,
+    };
+
+    const url = styleMap[mapStyle];
+    if (url) {
+      map.setStyle(url);
+      updateMapStyle(map, url);
     }
   }, [mapStyle, mapLoaded]);
 
@@ -1242,8 +1165,8 @@ export default function MapPage() {
 
   // Helper: create a marker using AdvancedMarkerElement or OverlayView fallback
   const createMarker = useCallback((opts: {
-    map: google.maps.Map;
-    position: google.maps.LatLngLiteral;
+    map: mapboxgl.Map;
+    position: [number, number];
     content: HTMLElement;
     zIndex?: number;
     title?: string;
@@ -1251,14 +1174,10 @@ export default function MapPage() {
   }): any => {
     if (useAdvancedMarkersRef.current) {
       try {
-        const marker = new google.maps.marker.AdvancedMarkerElement({
-          map: opts.map,
-          position: opts.position,
-          content: opts.content,
-          zIndex: opts.zIndex,
-          title: opts.title,
-        });
-        if (opts.onClick) marker.addListener('click', opts.onClick);
+        const marker = new mapboxgl.Marker(opts.content)
+          .setLngLat(opts.position)
+          .addTo(opts.map);
+        if (opts.onClick) opts.content.addEventListener('click', opts.onClick);
         return marker;
       } catch {
         // Fall through to overlay
@@ -1273,7 +1192,6 @@ export default function MapPage() {
   // Helper: remove a marker (works for both types)
   const removeMarker = useCallback((m: any) => {
     if (m && typeof m.remove === 'function') m.remove();
-    else if (m) m.map = null;
   }, []);
 
   useEffect(() => {
@@ -1286,7 +1204,7 @@ export default function MapPage() {
     unitMarkersMapRef.current.clear();
     callMarkersMapRef.current.clear();
     callMarkersArrayRef.current = [];
-    infoWindowRef.current?.close();
+    infoWindowRef.current?.remove();
 
     // Add unit markers
     if (layers.units) {
@@ -1298,7 +1216,7 @@ export default function MapPage() {
 
           const marker = createMarker({
             map,
-            position: { lat: unit.latitude, lng: unit.longitude },
+            position: [unit.longitude, unit.latitude],
             content,
             zIndex: 1000,
             title: `${unit.call_sign} - ${unit.officer_name}`,
@@ -1324,7 +1242,7 @@ export default function MapPage() {
                    </button>`
                 : '';
 
-              infoWindowRef.current?.setContent(`
+              infoWindowRef.current?.setHTML(`
                 <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${statusColor}50;border-radius:4px;">
                   <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;padding-bottom:8px;border-bottom:1px solid #2b2b2b;">
                     <div style="width:10px;height:10px;border-radius:50%;background:${statusColor};box-shadow:0 0 8px ${statusColor}80;"></div>
@@ -1344,8 +1262,8 @@ export default function MapPage() {
                   ${omBtnHtml}
                 </div>
               `);
-              infoWindowRef.current?.setPosition({ lat: unit.latitude!, lng: unit.longitude! });
-              infoWindowRef.current?.open(map);
+              infoWindowRef.current?.setLngLat([unit.longitude!, unit.latitude!]);
+              infoWindowRef.current?.addTo(map);
             },
           });
 
@@ -1364,63 +1282,12 @@ export default function MapPage() {
 
           const marker = createMarker({
             map,
-            position: { lat: call.latitude, lng: call.longitude },
+            position: [call.longitude, call.latitude],
             content,
             zIndex: call.priority === 'P1' ? 2000 : 500,
             title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
             onClick: () => {
               const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
-              // Compute the 3 nearest units with GPS that are NOT already
-              // assigned to this call. Straight-line haversine — cheap enough
-              // to recompute on every info-window open (unit count is small).
-              // This intentionally ignores unit status: the dispatcher can see
-              // the status dot and make their own call on whether an on-break
-              // unit can roll. "Closest by road" would require Directions
-              // calls per unit — too expensive for a tap-to-preview panel.
-              const assignedIds = new Set(assignedUnits.map(u => String(u.id)));
-              const nearestUnits = (call.latitude != null && call.longitude != null)
-                ? units
-                    .filter(u => !assignedIds.has(String(u.id)) && u.latitude != null && u.longitude != null)
-                    .map(u => {
-                      const dLat = ((u.latitude! - call.latitude!) * Math.PI) / 180;
-                      const dLng = ((u.longitude! - call.longitude!) * Math.PI) / 180;
-                      const a = Math.sin(dLat / 2) ** 2
-                        + Math.cos((u.latitude! * Math.PI) / 180)
-                        * Math.cos((call.latitude! * Math.PI) / 180)
-                        * Math.sin(dLng / 2) ** 2;
-                      const meters = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                      return { unit: u, meters };
-                    })
-                    .sort((a, b) => a.meters - b.meters)
-                    .slice(0, 3)
-                : [];
-
-              let nearestHtml = '';
-              if (nearestUnits.length > 0) {
-                nearestHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
-                  <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">NEAREST UNITS</div>
-                  ${nearestUnits.map(({ unit: u, meters }) => {
-                    const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
-                    const miles = (meters / 1609.344).toFixed(1);
-                    const routeBtn = (call.latitude != null && call.longitude != null)
-                      ? `<button type="button" data-route-unit="${escapeHtml(u.call_sign)}" data-route-call="${escapeHtml(call.call_number)}"
-                           data-route-ulat="${u.latitude}" data-route-ulng="${u.longitude}"
-                           data-route-clat="${call.latitude}" data-route-clng="${call.longitude}"
-                           style="margin-left:auto;padding:1px 5px;background:#88888820;border:1px solid #88888850;color:#a0a0a0;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
-                           ▶ ROUTE
-                         </button>`
-                      : '';
-                    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-                      <div style="width:6px;height:6px;border-radius:50%;background:${uc};box-shadow:0 0 4px ${uc}80;"></div>
-                      <span style="font-size:10px;color:${uc};font-weight:bold;font-family:monospace;">${escapeHtml(u.call_sign)}</span>
-                      <span style="font-size:9px;color:#9ca3af;">${escapeHtml(u.officer_name || '')}</span>
-                      <span style="font-size:9px;color:#6b7280;">${miles} mi</span>
-                      ${routeBtn}
-                    </div>`;
-                  }).join('')}
-                </div>`;
-              }
-
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
@@ -1438,7 +1305,7 @@ export default function MapPage() {
                     const omBtn = (call.latitude != null && call.longitude != null)
                       ? `<button type="button" data-om-lat="${call.latitude}" data-om-lng="${call.longitude}"
                            data-om-label="${escapeHtml(call.call_number)}"
-                           title="${isAndroidNative() ? 'Open in Organic Maps' : 'Open Google Maps directions'}"
+                           title="${isAndroidNative() ? 'Open in Organic Maps' : 'Open external navigation'}"
                            style="padding:1px 5px;background:#1b5e2020;border:1px solid #1b5e2080;color:#4ade80;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
                            \u{1F9ED} NAV
                          </button>`
@@ -1456,88 +1323,21 @@ export default function MapPage() {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;color:#5a6e80;">No units assigned</div>`;
               }
 
-              // ── Time received ("5m ago" / "1h 12m ago" / "now") ──
-              const receivedMs = call.created_at ? new Date(call.created_at).getTime() : NaN;
-              const ageSec = !isNaN(receivedMs) ? Math.max(0, Math.floor((Date.now() - receivedMs) / 1000)) : null;
-              const ageStr = ageSec == null ? '—'
-                : ageSec < 60 ? `${ageSec}s ago`
-                : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m ago`
-                : ageSec < 86400 ? `${Math.floor(ageSec / 3600)}h ${Math.floor((ageSec % 3600) / 60)}m ago`
-                : `${Math.floor(ageSec / 86400)}d ago`;
-              const receivedTime = !isNaN(receivedMs)
-                ? new Date(receivedMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
-                : '';
-
-              // ── Hazard / officer-safety flags (aggregate into one red banner) ──
-              const hazardFlags: string[] = [];
-              if (call.officer_safety_caution) hazardFlags.push('OFFICER SAFETY');
-              if (call.weapons_involved) hazardFlags.push(`WEAPONS: ${escapeHtml(String(call.weapons_involved))}`);
-              if (call.felony_in_progress) hazardFlags.push('FELONY IN PROGRESS');
-              if (call.domestic_violence) hazardFlags.push('DOMESTIC');
-              if (call.hazmat) hazardFlags.push('HAZMAT');
-              if (call.mental_health_crisis) hazardFlags.push('MENTAL HEALTH CRISIS');
-              if (call.gang_related) hazardFlags.push('GANG');
-              const hazardHtml = hazardFlags.length > 0
-                ? `<div style="margin-top:8px;padding:6px 8px;background:#7f1d1d33;border-left:3px solid #ef4444;font-size:9px;font-weight:900;color:#fca5a5;letter-spacing:0.5px;">
-                     ⚠ ${hazardFlags.join(' · ')}
-                   </div>`
-                : '';
-
-              // ── Beat / Sector geography ──
-              const geographyHtml = (call.beat_name || call.sector_name)
-                ? `<div style="margin-top:6px;font-size:9px;color:#9ca3af;font-family:monospace;">
-                     ${call.beat_name ? `BEAT <span style="color:#d4a017;font-weight:bold;">${escapeHtml(call.beat_name)}</span>` : ''}
-                     ${call.beat_name && call.sector_name ? '<span style="color:#3a3a3a;margin:0 6px;">|</span>' : ''}
-                     ${call.sector_name ? `SECTOR <span style="color:#d4a017;font-weight:bold;">${escapeHtml(call.sector_name)}</span>` : ''}
-                   </div>`
-                : '';
-
-              // ── Cross-street / notes line ──
-              const crossHtml = call.cross_street
-                ? `<div style="font-size:9px;margin-top:3px;color:#9ca3af;font-family:monospace;">↳ Cross: ${escapeHtml(call.cross_street)}</div>`
-                : '';
-
-              // ── Status pill color ──
-              const statusColors: Record<string, string> = {
-                pending: '#facc15', dispatched: '#06b6d4', enroute: '#06b6d4',
-                onscene: '#10b981', cleared: '#888888', closed: '#5a5a5a',
-              };
-              const statusKey = call.status.toLowerCase().replace(/_/g, '');
-              const statusBg = statusColors[statusKey] || '#888888';
-
-              infoWindowRef.current?.setContent(`
-                <div style="min-width:280px;max-width:340px;font-family:'JetBrains Mono','Courier New',monospace;background:#0a0a0a;color:#e5e7eb;padding:0;border:1px solid ${pColor}60;border-radius:2px;overflow:hidden;">
-                  <!-- Header row: priority + call number + status + age -->
-                  <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:linear-gradient(180deg,#141414 0%,#0a0a0a 100%);border-bottom:1px solid ${pColor}33;">
-                    <span style="background:${pColor};color:#000;padding:2px 7px;font-size:10px;font-weight:900;letter-spacing:0.5px;border-radius:2px;">${escapeHtml(call.priority)}</span>
-                    <span style="font-size:11px;color:#d4a017;font-weight:bold;flex:1;">${escapeHtml(call.call_number)}</span>
-                    <span style="background:${statusBg}22;border:1px solid ${statusBg}66;color:${statusBg};padding:1px 6px;font-size:8px;font-weight:900;letter-spacing:1px;border-radius:2px;text-transform:uppercase;">${escapeHtml(call.status.replace(/_/g, ' '))}</span>
+              infoWindowRef.current?.setHTML(`
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
+                    <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
                   </div>
-                  <div style="padding:8px 10px 4px 10px;">
-                    <!-- Incident type -->
-                    <div style="font-size:12px;font-weight:bold;color:${pColor};margin-bottom:6px;letter-spacing:0.3px;">${escapeHtml(formatIncidentType(call.incident_type))}</div>
-                    <!-- Address + cross-street -->
-                    <div style="font-size:10px;color:#d1d5db;line-height:1.4;">\u{1F4CD} ${escapeHtml(call.location_address)}</div>
-                    ${crossHtml}
-                    ${call.property_name ? `<div style="font-size:9px;margin-top:3px;color:#9ca3af;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
-                    <!-- Beat / Sector -->
-                    ${geographyHtml}
-                    <!-- Time received -->
-                    <div style="margin-top:6px;font-size:9px;color:#9ca3af;font-family:monospace;display:flex;align-items:center;gap:8px;">
-                      <span>\u{23F1} <span style="color:#d4a017;font-weight:bold;">${ageStr}</span></span>
-                      <span style="color:#3a3a3a;">|</span>
-                      <span style="color:#5a6e80;">${receivedTime}</span>
-                    </div>
-                  </div>
-                  ${hazardHtml}
-                  <div style="padding:0 10px 10px 10px;">
-                    ${unitsHtml}
-                    ${nearestHtml}
-                  </div>
+                  <div style="font-size:12px;color:#a0a0a0;font-weight:bold;">${escapeHtml(call.call_number)}</div>
+                  <div style="font-size:10px;margin-top:4px;color:#d1d5db;">${escapeHtml(call.location_address)}</div>
+                  ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
+                  <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
+                  ${unitsHtml}
                 </div>
               `);
-              infoWindowRef.current?.setPosition({ lat: call.latitude!, lng: call.longitude! });
-              infoWindowRef.current?.open(map);
+              infoWindowRef.current?.setLngLat([call.longitude!, call.latitude!]);
+              infoWindowRef.current?.addTo(map);
             },
           });
 
@@ -1558,20 +1358,20 @@ export default function MapPage() {
 
           const marker = createMarker({
             map,
-            position: { lat: prop.latitude, lng: prop.longitude },
+            position: [prop.longitude, prop.latitude],
             content,
             zIndex: 100,
             title: prop.name,
             onClick: async () => {
               // Show loading state immediately
-              infoWindowRef.current?.setContent(`
+              infoWindowRef.current?.setHTML(`
                 <div style="min-width:200px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
                   <div style="font-weight:900;font-size:13px;color:#a0a0a0;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
                   <div style="font-size:10px;color:#9ca3af;">Loading details...</div>
                 </div>
               `);
-              infoWindowRef.current?.setPosition({ lat: prop.latitude!, lng: prop.longitude! });
-              infoWindowRef.current?.open(map);
+              infoWindowRef.current?.setLngLat([prop.longitude!, prop.latitude!]);
+              infoWindowRef.current?.addTo(map);
 
               // Fetch full property details (includes recent calls, contacts, schedules)
               try {
@@ -1627,7 +1427,7 @@ export default function MapPage() {
                   </div>`
                 ).join('');
 
-                infoWindowRef.current?.setContent(`
+                infoWindowRef.current?.setHTML(`
                   <div style="min-width:280px;max-width:360px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:12px;border:1px solid #88888850;border-radius:4px;">
                     <div style="font-weight:900;font-size:13px;color:#a0a0a0;margin-bottom:2px;">${escapeHtml(prop.name)}</div>
                     <div style="font-size:10px;color:#d1d5db;margin-bottom:2px;">${escapeHtml(prop.address)}</div>
@@ -1681,7 +1481,7 @@ export default function MapPage() {
               } catch (err) {
                 console.error('[MapPage] Failed to fetch property details:', err);
                 // If fetch fails, show basic info
-                infoWindowRef.current?.setContent(`
+                infoWindowRef.current?.setHTML(`
                   <div style="min-width:160px;font-family:'JetBrains Mono',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid #88888850;border-radius:4px;">
                     <div style="font-weight:900;font-size:13px;color:#a0a0a0;margin-bottom:4px;">${escapeHtml(prop.name)}</div>
                     <div style="font-size:10px;color:#d1d5db;">${escapeHtml(prop.address)}</div>
@@ -1714,7 +1514,7 @@ export default function MapPage() {
       const cLng = parseFloat(btn.getAttribute('data-route-clng') || '');
       if (!isNaN(uLat) && !isNaN(uLng) && !isNaN(cLat) && !isNaN(cLng)) {
         showRoute(unitCallSign, callNumber, uLat, uLng, cLat, cLng);
-        infoWindowRef.current?.close();
+        infoWindowRef.current?.remove();
       }
     }
     document.addEventListener('click', handleRouteClick);
@@ -1735,25 +1535,23 @@ export default function MapPage() {
         if (!res.ok) devWarn('[Nav] launch failed:', res.reason);
         else devLog('[Nav] launched via', res.mode);
       });
-      infoWindowRef.current?.close();
+      infoWindowRef.current?.remove();
     }
     document.addEventListener('click', handleOmClick);
     return () => document.removeEventListener('click', handleOmClick);
   }, []);
 
   // ============================================================
-  // Update Routes When Routed Unit GPS Changes (multi-unit)
+  // Update Route When Routed Unit GPS Changes
   // ============================================================
 
   useEffect(() => {
-    if (activeRoutes.length === 0) return;
-    for (const route of activeRoutes) {
-      const routedUnit = units.find(u => u.call_sign === route.unitCallSign);
-      if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
-        updateOrigin(route.unitCallSign, routedUnit.latitude, routedUnit.longitude);
-      }
+    if (!activeRoute) return;
+    const routedUnit = units.find(u => u.call_sign === activeRoute.unitCallSign);
+    if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
+      updateOrigin(routedUnit.latitude, routedUnit.longitude);
     }
-  }, [activeRoutes, units, updateOrigin]);
+  }, [activeRoute, units, updateOrigin]);
 
   // ============================================================
   // Heat Map Circles
@@ -1763,76 +1561,85 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Remove existing heatmap layer
-    if (heatmapLayerRef.current) {
-      heatmapLayerRef.current.setMap(null);
-      heatmapLayerRef.current = null;
-    }
+    // Remove existing heatmap source and layer
+    if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
+    if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
 
     // Skip basic heatmap rendering when advanced heatmap is active (it manages its own layers)
     if (!showHeatmap || heatmapData.length === 0 || advancedHeatmapEnabled) return;
 
-    // Fix 9: guard for missing visualization library
-    if (!google.maps.visualization?.HeatmapLayer) {
-      console.warn('[MapPage] google.maps.visualization.HeatmapLayer not available');
-      return;
-    }
-
-    // Build weighted data points for HeatmapLayer
-    const weightedData = heatmapData
-      // Fix 11: validate heatmap data points have finite lat/lng
+    // Build weighted GeoJSON data points for heatmap
+    const weightedFeatures = heatmapData
       .filter((p: any) => p.latitude != null && p.longitude != null && isFinite(p.latitude) && isFinite(p.longitude))
-      // Fix 12: cap heatmap points at 10000
       .slice(0, 10000)
       .map((point: any) => ({
-        location: new google.maps.LatLng(point.latitude, point.longitude),
-        weight: heatmapMode === 'risk' ? (point.risk_weight || point.count || 1) : (point.count || 1),
+        type: 'Feature' as const,
+        properties: {
+          weight: heatmapMode === 'risk' ? (point.risk_weight || point.count || 1) : (point.count || 1),
+        },
+        geometry: {
+          type: 'Point' as const,
+          coordinates: [point.longitude, point.latitude],
+        },
       }));
 
-    // Choose gradient based on mode (Fix 14: dark-theme compatible colors)
-    const gradient = heatmapMode === 'risk'
-      ? [
-          'rgba(0,0,0,0)',        // transparent
-          'rgba(255,165,0,0.3)',  // orange low
-          'rgba(255,100,0,0.5)',  // deep orange
-          'rgba(255,50,0,0.7)',   // red-orange
-          'rgba(255,0,0,0.85)',   // red
-          'rgba(200,0,0,1)',      // dark red
-        ]
-      : [
-          'rgba(0,0,0,0)',
-          'rgba(0,128,255,0.2)',  // blue low
-          'rgba(0,200,100,0.4)', // green
-          'rgba(200,200,0,0.6)', // yellow
-          'rgba(255,140,0,0.8)', // orange
-          'rgba(255,50,0,0.95)', // red high
-        ];
-
-    try { // Fix 10: try/catch around heatmap creation
-      // ── Visual: heatmap as soft haze, not hard rings ──
-      // Smaller radius + lower opacity + maxIntensity ceiling collapses the
-      // per-point bright halos that read as "circles" at typical zoom. The
-      // gradient still conveys density; it just doesn't bloom into discs.
-      const heatmap = new google.maps.visualization.HeatmapLayer({
-        data: weightedData,
-        map,
-        radius: 14,
-        opacity: 0.28,
-        gradient,
-        dissipating: true,
-        maxIntensity: 8,
+    try {
+      map.addSource('rmpg-heatmap', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: weightedFeatures,
+        },
       });
 
-      heatmapLayerRef.current = heatmap;
+      const heatmapColor = heatmapMode === 'risk'
+        ? [
+            'rgba(0,0,0,0)',
+            'rgba(255,165,0,0.3)',
+            'rgba(255,100,0,0.5)',
+            'rgba(255,50,0,0.7)',
+            'rgba(255,0,0,0.85)',
+            'rgba(200,0,0,1)',
+          ]
+        : [
+            'rgba(0,0,0,0)',
+            'rgba(0,128,255,0.2)',
+            'rgba(0,200,100,0.4)',
+            'rgba(200,200,0,0.6)',
+            'rgba(255,140,0,0.8)',
+            'rgba(255,50,0,0.95)',
+          ];
+
+      const colorExpr = ['interpolate', ['linear'], ['heatmap-density'],
+        0, heatmapColor[0],
+        0.2, heatmapColor[1],
+        0.4, heatmapColor[2],
+        0.6, heatmapColor[3],
+        0.8, heatmapColor[4],
+        1, heatmapColor[5],
+      ];
+
+      map.addLayer({
+        id: 'rmpg-heatmap-layer',
+        type: 'heatmap',
+        source: 'rmpg-heatmap',
+        paint: {
+          'heatmap-weight': ['get', 'weight'],
+          'heatmap-radius': 30,
+          'heatmap-opacity': 0.7,
+          'heatmap-color': colorExpr as any,
+        },
+      });
+
+      heatmapLayerRef.current = { setMap: null } as any;
     } catch (err) {
       console.warn('[MapPage] Error creating heatmap layer:', err);
     }
 
     return () => {
-      if (heatmapLayerRef.current) {
-        heatmapLayerRef.current.setMap(null);
-        heatmapLayerRef.current = null;
-      }
+      if (map.getLayer('rmpg-heatmap-layer')) map.removeLayer('rmpg-heatmap-layer');
+      if (map.getSource('rmpg-heatmap')) map.removeSource('rmpg-heatmap');
+      heatmapLayerRef.current = null;
     };
   }, [showHeatmap, heatmapData, heatmapMode, mapLoaded, advancedHeatmapEnabled]);
 
@@ -1845,87 +1652,113 @@ export default function MapPage() {
     if (!map || !mapLoaded) return;
 
     // Clear existing lines
-    trackingLinesRef.current.forEach((line) => line.setMap(null));
+    if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
+    if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
     trackingLinesRef.current = [];
     setTrackingLineCount(0);
 
     if (!showTrackingLines) return;
 
-    // Draw lines from each dispatched/enroute/onscene unit to their assigned call
+    const features: any[] = [];
+
     units.forEach((unit) => {
       if (unit.latitude == null || unit.longitude == null) return;
       if (!unit.current_call_id) return;
       if (!CLEARABLE_STATUSES.includes(unit.status)) return;
-      // Fix 19: validate unit has finite coordinates
       if (!isFinite(unit.latitude) || !isFinite(unit.longitude)) return;
 
-      // Find the call this unit is assigned to
       const call = calls.find((c) => String(c.id) === String(unit.current_call_id));
       if (!call || call.latitude == null || call.longitude == null) return;
-      // Fix 19: validate call has finite coordinates
       if (!isFinite(call.latitude) || !isFinite(call.longitude)) return;
-
-      // Fix 21: skip zero-length lines
       if (unit.latitude === call.latitude && unit.longitude === call.longitude) return;
 
       const statusColor = UNIT_STATUS_COLORS[unit.status] || '#666666';
       const isDashed = unit.status === 'dispatched';
 
-      try { // Fix 20: try/catch around Polyline creation
-      const line = new google.maps.Polyline({
-        path: [
-          { lat: unit.latitude, lng: unit.longitude },
-          { lat: call.latitude, lng: call.longitude },
-        ],
-        geodesic: true,
-        strokeColor: statusColor,
-        strokeOpacity: isDashed ? 0 : 0.6,
-        strokeWeight: 2,
-        icons: isDashed ? [{
-          icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.6, strokeWeight: 2, scale: 3 },
-          offset: '0',
-          repeat: '15px',
-        }] : undefined,
-        map,
+      features.push({
+        type: 'Feature',
+        properties: { color: statusColor, isDashed },
+        geometry: {
+          type: 'LineString',
+          coordinates: [
+            [unit.longitude, unit.latitude],
+            [call.longitude, call.latitude],
+          ],
+        },
+      });
+    });
+
+    if (features.length === 0) return;
+
+    try {
+      map.addSource('rmpg-tracking-lines', {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
       });
 
-      trackingLinesRef.current.push(line);
-      } catch (err) {
-        console.warn('[MapPage] Error creating tracking line:', err);
-      }
-    });
-    setTrackingLineCount(trackingLinesRef.current.length);
+      // Mapbox 'case' requires both branches to produce the same type. The
+      // "then" branch returns [1, 4] (a 2-segment dash pattern), so the
+      // "else" must also return an array — not a bare `1`. Use [1] for a
+      // solid line (single-segment pattern). Previously this threw
+      // `line-dasharray[3]: Expected array<number> but found number`.
+      const dashExpr = ['case',
+        ['==', ['get', 'isDashed'], true],
+        [1, 4],
+        [1],
+      ];
+
+      map.addLayer({
+        id: 'rmpg-tracking-lines',
+        type: 'line',
+        source: 'rmpg-tracking-lines',
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-opacity': ['case', ['==', ['get', 'isDashed'], true], 0, 0.6],
+          'line-width': 2,
+          'line-dasharray': dashExpr as any,
+        },
+      });
+
+      setTrackingLineCount(features.length);
+    } catch (err) {
+      console.warn('[MapPage] Error creating tracking lines:', err);
+    }
+
+    return () => {
+      if (map.getLayer('rmpg-tracking-lines')) map.removeLayer('rmpg-tracking-lines');
+      if (map.getSource('rmpg-tracking-lines')) map.removeSource('rmpg-tracking-lines');
+    };
   }, [units, calls, showTrackingLines, mapLoaded]);
 
   // ============================================================
   // GPS Breadcrumb Trails (enhanced: color modes, arrows, road names, playback)
   // ============================================================
 
-  const breadcrumbMarkersRef = useRef<google.maps.Circle[]>([]);
-  const breadcrumbArrowsRef = useRef<google.maps.Marker[]>([]);
-  const breadcrumbInfoRef = useRef<google.maps.InfoWindow | null>(null);
+  const breadcrumbMarkersRef = useRef<any[]>([]);
+  const breadcrumbArrowsRef = useRef<any[]>([]);
+  const breadcrumbInfoRef = useRef<mapboxgl.Popup | null>(null);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
     // Clear existing breadcrumb visuals
-    breadcrumbLinesRef.current.forEach((line) => line.setMap(null));
-    breadcrumbLinesRef.current = [];
-    breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
+    if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
+    if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
+    breadcrumbMarkersRef.current.forEach((m) => m.remove());
     breadcrumbMarkersRef.current = [];
-    breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+    breadcrumbArrowsRef.current.forEach((a) => a.remove());
     breadcrumbArrowsRef.current = [];
-    speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+    speedAlertMarkersRef.current.forEach((m) => m.remove());
     speedAlertMarkersRef.current = [];
 
-    if (!showBreadcrumbs) { setPlaybackTrailsRaw([]); return; }
+    if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
 
     const token = localStorage.getItem('rmpg_token');
     if (!token) return;
 
     if (!breadcrumbInfoRef.current) {
-      breadcrumbInfoRef.current = new google.maps.InfoWindow();
+      breadcrumbInfoRef.current = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     }
 
     const formatSpeedMph = (mps: number | null) => mps == null ? '—' : `${(mps * 2.237).toFixed(0)} mph`;
@@ -1953,29 +1786,29 @@ export default function MapPage() {
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     const fetchTrails = async () => {
-      breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
-      breadcrumbLinesRef.current = [];
-      breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
-      breadcrumbMarkersRef.current = [];
-      breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+      breadcrumbArrowsRef.current.forEach((a) => a.remove());
       breadcrumbArrowsRef.current = [];
-      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      breadcrumbMarkersRef.current.forEach((m) => m.remove());
+      breadcrumbMarkersRef.current = [];
+      speedAlertMarkersRef.current.forEach((m) => m.remove());
       speedAlertMarkersRef.current = [];
 
       try {
         const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
         if (!trails) return;
-        setPlaybackTrailsRaw(trails);
+        setPlaybackTrails(trails);
+
+        const lineFeatures: any[] = [];
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
 
           const unitColor = TRAIL_COLORS[idx % TRAIL_COLORS.length];
 
-          // Draw segments with color mode
           for (let i = 0; i < trail.points.length - 1; i++) {
             const p1 = trail.points[i];
             const p2 = trail.points[i + 1];
+            if (!isFinite(p1.lng) || !isFinite(p1.lat) || !isFinite(p2.lng) || !isFinite(p2.lat)) continue;
             const freshness = (i + 1) / trail.points.length;
             const opacity = 0.25 + freshness * 0.6;
 
@@ -1985,7 +1818,6 @@ export default function MapPage() {
             } else if (breadcrumbColorMode === 'status') {
               segColor = statusToColor(p1.status);
             } else if (breadcrumbColorMode === 'accel') {
-              // Compute inline acceleration between consecutive points
               const dt = (new Date(p2.time).getTime() - new Date(p1.time).getTime()) / 1000;
               if (dt > 0 && p1.speed != null && p2.speed != null) {
                 const accel = (p2.speed - p1.speed) / dt;
@@ -1997,48 +1829,45 @@ export default function MapPage() {
               segColor = unitColor;
             }
 
-            const seg = new google.maps.Polyline({
-              path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
-              geodesic: true,
-              strokeColor: segColor,
-              strokeOpacity: opacity,
-              strokeWeight: 3,
-              map,
+            lineFeatures.push({
+              type: 'Feature',
+              geometry: { type: 'LineString', coordinates: [[p1.lng, p1.lat], [p2.lng, p2.lat]] },
+              properties: { strokeColor: segColor, strokeOpacity: opacity },
             });
-            breadcrumbLinesRef.current.push(seg);
           }
 
-          // Directional arrows every 8th point
           trail.points.forEach((pt, ptIdx) => {
             if (ptIdx % 8 !== 4 || pt.heading == null) return;
             const freshness = (ptIdx + 1) / trail.points.length;
-            const arrow = new google.maps.Marker({
-              position: { lat: pt.lat, lng: pt.lng },
-              map,
-              icon: {
-                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 2.5,
-                rotation: pt.heading,
-                fillColor: breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : breadcrumbColorMode === 'status' ? statusToColor(pt.status) : breadcrumbColorMode === 'accel' ? accelToColor(null) : unitColor,
-                fillOpacity: 0.3 + freshness * 0.5,
-                strokeColor: '#fff',
-                strokeWeight: 0.5,
-                strokeOpacity: 0.6,
-              },
-              clickable: false,
-              zIndex: 1,
-            });
+            const arrowColor = breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : breadcrumbColorMode === 'status' ? statusToColor(pt.status) : breadcrumbColorMode === 'accel' ? accelToColor(null) : unitColor;
+            const arrowOpacity = 0.3 + freshness * 0.5;
+
+            const arrowEl = document.createElement('div');
+            arrowEl.style.cssText = 'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:12px solid transparent;line-height:0;';
+            const arrowSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+            arrowSvg.setAttribute('width', '14');
+            arrowSvg.setAttribute('height', '14');
+            arrowSvg.setAttribute('viewBox', '0 0 24 24');
+            arrowSvg.style.cssText = `transform:rotate(${pt.heading}deg);opacity:${arrowOpacity};overflow:visible;`;
+            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
+            poly.setAttribute('points', '12,2 22,22 2,22');
+            poly.setAttribute('fill', arrowColor);
+            poly.setAttribute('stroke', '#fff');
+            poly.setAttribute('stroke-width', '0.5');
+            arrowSvg.appendChild(poly);
+            arrowEl.appendChild(arrowSvg);
+
+            if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
+            const arrow = new mapboxgl.Marker({ element: arrowEl }).setLngLat([pt.lng, pt.lat]).addTo(map);
             breadcrumbArrowsRef.current.push(arrow);
           });
 
-          // Dot markers at each breadcrumb point
           trail.points.forEach((pt, ptIdx) => {
             const isLast = ptIdx === trail.points.length - 1;
             let dotColor: string;
             if (breadcrumbColorMode === 'speed') dotColor = speedToColor(pt.speed);
             else if (breadcrumbColorMode === 'status') dotColor = statusToColor(pt.status);
             else if (breadcrumbColorMode === 'accel') {
-              // Compute accel from prev point
               if (ptIdx > 0) {
                 const prev = trail.points[ptIdx - 1];
                 const dt = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
@@ -2048,20 +1877,13 @@ export default function MapPage() {
               } else { dotColor = accelToColor(null); }
             } else dotColor = unitColor;
 
-            const dot = new google.maps.Circle({
-              center: { lat: pt.lat, lng: pt.lng },
-              radius: 4,
-              fillColor: dotColor,
-              fillOpacity: isLast ? 1 : 0.6,
-              strokeColor: '#fff',
-              strokeWeight: isLast ? 2 : 0.5,
-              strokeOpacity: 0.8,
-              map,
-              clickable: true,
-              zIndex: ptIdx,
-            });
+            if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
+            const dotEl = document.createElement('div');
+            const dotSize = isLast ? 10 : 8;
+            dotEl.style.cssText = `width:${dotSize}px;height:${dotSize}px;background:${dotColor};border:${isLast ? 2 : 0.5}px solid ${isLast ? '#fbbf24' : '#fff'};border-radius:50%;opacity:${isLast ? 1 : 0.6};cursor:pointer;box-shadow:${isLast ? '0 0 6px ' + dotColor : 'none'};`;
+            const dot = new mapboxgl.Marker({ element: dotEl }).setLngLat([pt.lng, pt.lat]).addTo(map);
 
-            dot.addListener('click', () => {
+            dot.getElement().addEventListener('click', () => {
               const time = new Date(pt.time).toLocaleString();
               const locationRow = pt.road_name
                 ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
@@ -2152,37 +1974,49 @@ export default function MapPage() {
                   </table>
                 </div>
               `;
-              breadcrumbInfoRef.current?.setContent(html);
-              breadcrumbInfoRef.current?.setPosition({ lat: pt.lat, lng: pt.lng });
-              breadcrumbInfoRef.current?.open(map);
+              breadcrumbInfoRef.current?.setHTML(html);
+              if (isFinite(pt.lng) && isFinite(pt.lat)) {
+                breadcrumbInfoRef.current?.setLngLat([pt.lng, pt.lat]);
+                breadcrumbInfoRef.current?.addTo(map);
+              }
             });
 
             breadcrumbMarkersRef.current.push(dot);
           });
         });
 
+        // Create or update breadcrumb line source & layer
+        if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
+        if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
+        if (lineFeatures.length > 0) {
+          map.addSource('rmpg-breadcrumb-lines', {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: lineFeatures },
+          });
+          map.addLayer({
+            id: 'rmpg-breadcrumb-lines',
+            type: 'line',
+            source: 'rmpg-breadcrumb-lines',
+            paint: {
+              'line-color': ['get', 'strokeColor'],
+              'line-opacity': ['get', 'strokeOpacity'],
+              'line-width': 3,
+            },
+          });
+        }
+
         // Speed alert triangle markers (>= 80 mph)
-        speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+        speedAlertMarkersRef.current.forEach((m) => m.remove());
         speedAlertMarkersRef.current = [];
         trails.forEach((trail) => {
           trail.points.forEach((pt) => {
             const mph = pt.speed != null ? pt.speed * 2.237 : 0;
+            if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
             if (mph >= 80) {
-              const marker = new google.maps.Marker({
-                position: { lat: pt.lat, lng: pt.lng },
-                map,
-                icon: {
-                  path: 'M 0,-8 L 7,5 L -7,5 Z',
-                  scale: 1.4,
-                  fillColor: '#dc2626',
-                  fillOpacity: 0.9,
-                  strokeColor: '#fbbf24',
-                  strokeWeight: 1.5,
-                },
-                label: { text: '!', color: '#fff', fontSize: '9px', fontWeight: 'bold' },
-                title: `Speed alert: ${Math.round(mph)} mph — ${trail.call_sign}`,
-                zIndex: 5000,
-              });
+              const el = document.createElement('div');
+              el.innerHTML = `<svg width="18" height="16" viewBox="0 0 18 16"><polygon points="9,0 18,14 0,14" fill="#dc2626" stroke="#fbbf24" stroke-width="1.5"/><text x="9" y="11" text-anchor="middle" fill="#fff" font-size="9" font-weight="bold">!</text></svg>`;
+              el.title = `Speed alert: ${Math.round(mph)} mph \u2014 ${trail.call_sign}`;
+              const marker = new mapboxgl.Marker({ element: el }).setLngLat([pt.lng, pt.lat]).addTo(map);
               speedAlertMarkersRef.current.push(marker);
             }
           });
@@ -2197,14 +2031,13 @@ export default function MapPage() {
     return () => {
       clearInterval(interval);
       clearTimeout(retryTimeout);
-      // Clean up polylines, markers, and arrows on unmount to prevent memory leaks
-      breadcrumbLinesRef.current.forEach((l) => l.setMap(null));
-      breadcrumbLinesRef.current = [];
-      breadcrumbMarkersRef.current.forEach((m) => m.setMap(null));
+      if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
+      if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
+      breadcrumbMarkersRef.current.forEach((m) => m.remove());
       breadcrumbMarkersRef.current = [];
-      breadcrumbArrowsRef.current.forEach((a) => a.setMap(null));
+      breadcrumbArrowsRef.current.forEach((a) => a.remove());
       breadcrumbArrowsRef.current = [];
-      speedAlertMarkersRef.current.forEach((m) => m.setMap(null));
+      speedAlertMarkersRef.current.forEach((m) => m.remove());
       speedAlertMarkersRef.current = [];
     };
   }, [showBreadcrumbs, breadcrumbHours, breadcrumbColorMode, mapLoaded]);
@@ -2223,26 +2056,18 @@ export default function MapPage() {
     // Create or update playback marker
     if (!playbackMarkerRef.current) {
       const pt = trail.points[playbackIdx] || trail.points[0];
-      playbackMarkerRef.current = new google.maps.Marker({
-        position: { lat: pt.lat, lng: pt.lng },
-        map,
-        icon: {
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 5,
-          rotation: pt.heading || 0,
-          fillColor: speedToColor(pt.speed),
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        },
-        zIndex: 9999,
-        title: `${trail.call_sign} \u2014 Playback`,
-      });
+      if (!isFinite(pt.lng) || !isFinite(pt.lat)) { setIsPlaying(false); return; }
+      const arrowEl = document.createElement('div');
+      arrowEl.textContent = '\u25B6';
+      arrowEl.style.cssText = `color:${speedToColor(pt.speed)};font-size:20px;text-shadow:0 0 3px #fff;transform:rotate(${pt.heading || 0}deg);font-family:system-ui;`;
+      playbackMarkerRef.current = new mapboxgl.Marker({ element: arrowEl })
+        .setLngLat([pt.lng, pt.lat])
+        .addTo(map);
     }
 
     // Create speed label InfoWindow
     if (!playbackSpeedLabelRef.current) {
-      playbackSpeedLabelRef.current = new google.maps.InfoWindow({ disableAutoPan: true });
+      playbackSpeedLabelRef.current = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     }
 
     let currentIdx = playbackIdx;
@@ -2250,32 +2075,27 @@ export default function MapPage() {
       if (currentIdx >= trail.points.length) {
         setIsPlaying(false);
         setPlaybackIdx(trail.points.length - 1);
-        if (playbackSpeedLabelRef.current) playbackSpeedLabelRef.current.close();
+        if (playbackSpeedLabelRef.current) playbackSpeedLabelRef.current.remove();
         return;
       }
 
       const pt = trail.points[currentIdx];
+      if (!isFinite(pt.lng) || !isFinite(pt.lat)) { currentIdx++; step(); return; }
       if (playbackMarkerRef.current) {
-        playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
-        playbackMarkerRef.current.setIcon({
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 5,
-          rotation: pt.heading || 0,
-          fillColor: speedToColor(pt.speed),
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        });
+        playbackMarkerRef.current.setLngLat([pt.lng, pt.lat]);
+        const el = playbackMarkerRef.current.getElement();
+        el.style.color = speedToColor(pt.speed);
+        el.style.transform = `rotate(${pt.heading || 0}deg)`;
       }
 
       // Floating speed readout above playback marker
       if (playbackSpeedLabelRef.current) {
         const mphStr = pt.speed != null ? `${(pt.speed * 2.237).toFixed(0)} mph` : '\u2014';
-        playbackSpeedLabelRef.current.setContent(
+        playbackSpeedLabelRef.current.setHTML(
           `<div style="font-family:monospace;font-size:12px;font-weight:900;color:${speedToColor(pt.speed)};background:#0d0d0d;padding:2px 6px;border-radius:3px;border:1px solid #282828;white-space:nowrap">${mphStr}</div>`
         );
-        playbackSpeedLabelRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
-        playbackSpeedLabelRef.current.open(map);
+        playbackSpeedLabelRef.current.setLngLat([pt.lng, pt.lat]);
+        playbackSpeedLabelRef.current.addTo(map);
       }
 
       setPlaybackIdx(currentIdx);
@@ -2302,11 +2122,11 @@ export default function MapPage() {
   useEffect(() => {
     if (playbackUnit == null) {
       if (playbackMarkerRef.current) {
-        playbackMarkerRef.current.setMap(null);
+        playbackMarkerRef.current.remove();
         playbackMarkerRef.current = null;
       }
       if (playbackSpeedLabelRef.current) {
-        playbackSpeedLabelRef.current.close();
+        playbackSpeedLabelRef.current.remove();
         playbackSpeedLabelRef.current = null;
       }
     }
@@ -2316,45 +2136,68 @@ export default function MapPage() {
   // Speed Heatmap Layer (grid rectangles)
   // ============================================================
 
-  const heatmapRectsRef = useRef<google.maps.Rectangle[]>([]);
+  const heatmapRectsRef = useRef<any[]>([]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
-      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
+        try { map?.removeLayer(layerId); } catch {}
+        try { map?.removeSource(sourceId); } catch {}
+      });
       heatmapRectsRef.current = [];
       return;
     }
 
     // Clean previous
-    heatmapRectsRef.current.forEach((r) => r.setMap(null));
+    heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
+      try { map.removeLayer(layerId); } catch {}
+      try { map.removeSource(sourceId); } catch {}
+    });
     heatmapRectsRef.current = [];
 
     if (!speedAnalytics.showSpeedHeatmap || speedAnalytics.heatmapCells.length === 0) return;
 
     const GRID_SIZE = 0.002; // ~200m grid cells
-    speedAnalytics.heatmapCells.forEach((cell) => {
-      const rect = new google.maps.Rectangle({
-        bounds: {
-          north: cell.grid_lat + GRID_SIZE,
-          south: cell.grid_lat,
-          east: cell.grid_lng + GRID_SIZE,
-          west: cell.grid_lng,
+    speedAnalytics.heatmapCells.forEach((cell, i) => {
+      const fillColor = speedToColor(cell.avg_speed / 2.237);
+      const fillOpacity = Math.min(0.15 + (cell.point_count / 50) * 0.35, 0.5);
+      const north = cell.grid_lat + GRID_SIZE;
+      const south = cell.grid_lat;
+      const east = cell.grid_lng + GRID_SIZE;
+      const west = cell.grid_lng;
+
+      const sourceId = `rmpg-speed-cell-${i}`;
+      const layerId = `rmpg-speed-cell-layer-${i}`;
+
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[[west, north], [east, north], [east, south], [west, south], [west, north]]],
+          },
+          properties: { fillColor, fillOpacity, strokeColor: fillColor },
         },
-        fillColor: speedToColor(cell.avg_speed / 2.237), // convert mph to m/s for speedToColor
-        fillOpacity: Math.min(0.15 + (cell.point_count / 50) * 0.35, 0.5),
-        strokeColor: speedToColor(cell.avg_speed / 2.237),
-        strokeWeight: 0.5,
-        strokeOpacity: 0.3,
-        map,
-        clickable: false,
-        zIndex: 50,
       });
-      heatmapRectsRef.current.push(rect);
+      map.addLayer({
+        id: layerId,
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': ['get', 'fillColor'],
+          'fill-opacity': ['get', 'fillOpacity'],
+        },
+      });
+      heatmapRectsRef.current.push({ sourceId, layerId });
     });
 
     return () => {
-      heatmapRectsRef.current.forEach((r) => r.setMap(null));
+      heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
+        try { map.removeLayer(layerId); } catch {}
+        try { map.removeSource(sourceId); } catch {}
+      });
       heatmapRectsRef.current = [];
     };
   }, [speedAnalytics.showSpeedHeatmap, speedAnalytics.heatmapCells, mapLoaded]);
@@ -2363,38 +2206,70 @@ export default function MapPage() {
   // Pursuit Corridor Polylines
   // ============================================================
 
-  const pursuitLinesRef = useRef<google.maps.Polyline[]>([]);
+  const pursuitLinesRef = useRef<any[]>([]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
-      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current.forEach((id) => {
+        try { map?.removeLayer(id); } catch {}
+        try { map?.removeSource(id); } catch {}
+      });
       pursuitLinesRef.current = [];
       return;
     }
 
     // Clean previous
-    pursuitLinesRef.current.forEach((l) => l.setMap(null));
+    pursuitLinesRef.current.forEach((id) => {
+      try { map.removeLayer(id); } catch {}
+      try { map.removeSource(id); } catch {}
+    });
     pursuitLinesRef.current = [];
 
     if (speedAnalytics.pursuitSegments.length === 0) return;
 
+    const features: any[] = [];
     speedAnalytics.pursuitSegments.forEach((seg) => {
       if (seg.points.length < 2) return;
-      const line = new google.maps.Polyline({
-        path: seg.points.map((p) => ({ lat: p.lat, lng: p.lng })),
-        geodesic: true,
-        strokeColor: '#dc2626',
-        strokeOpacity: 0.8,
-        strokeWeight: 6,
-        map,
-        zIndex: 100,
+      const coords = seg.points
+        .filter((p: any) => isFinite(p.lng) && isFinite(p.lat))
+        .map((p: any) => [p.lng, p.lat]);
+      if (coords.length < 2) return;
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'LineString',
+          coordinates: coords,
+        },
+        properties: {},
       });
-      pursuitLinesRef.current.push(line);
     });
 
+    if (features.length > 0) {
+      const sourceId = 'rmpg-pursuit-lines';
+      const layerId = 'rmpg-pursuit-lines';
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      });
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': '#dc2626',
+          'line-opacity': 0.8,
+          'line-width': 6,
+        },
+      });
+      pursuitLinesRef.current.push(sourceId);
+    }
+
     return () => {
-      pursuitLinesRef.current.forEach((l) => l.setMap(null));
+      pursuitLinesRef.current.forEach((id) => {
+        try { map.removeLayer(id); } catch {}
+        try { map.removeSource(id); } catch {}
+      });
       pursuitLinesRef.current = [];
     };
   }, [speedAnalytics.pursuitSegments, mapLoaded]);
@@ -2403,23 +2278,29 @@ export default function MapPage() {
   // Speed Zone Polygons
   // ============================================================
 
-  const speedZonePolysRef = useRef<google.maps.Polygon[]>([]);
-  const speedZoneLabelsRef = useRef<google.maps.Marker[]>([]);
+  const speedZonePolysRef = useRef<any[]>([]);
+  const speedZoneLabelsRef = useRef<any[]>([]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
-      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current.forEach((id) => {
+        try { map?.removeLayer(id); } catch {}
+        try { map?.removeSource(id); } catch {}
+      });
       speedZonePolysRef.current = [];
-      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current.forEach((m) => m.remove());
       speedZoneLabelsRef.current = [];
       return;
     }
 
     // Clean previous
-    speedZonePolysRef.current.forEach((p) => p.setMap(null));
+    speedZonePolysRef.current.forEach((id) => {
+      try { map.removeLayer(id); } catch {}
+      try { map.removeSource(id); } catch {}
+    });
     speedZonePolysRef.current = [];
-    speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+    speedZoneLabelsRef.current.forEach((m) => m.remove());
     speedZoneLabelsRef.current = [];
 
     if (speedAnalytics.speedZones.length === 0) return;
@@ -2432,46 +2313,57 @@ export default function MapPage() {
       parking: '#6b7280',
     };
 
-    speedAnalytics.speedZones.forEach((zone) => {
+    speedAnalytics.speedZones.forEach((zone, i) => {
       if (!zone.is_active || !zone.polygon_coords) return;
       try {
         const coords: { lat: number; lng: number }[] = JSON.parse(zone.polygon_coords);
         if (coords.length < 3) return;
+        const validCoords = coords.filter((c) => isFinite(c.lat) && isFinite(c.lng));
+        if (validCoords.length < 3) return;
 
         const zoneColor = ZONE_TYPE_COLORS[zone.zone_type] || '#888888';
-        const poly = new google.maps.Polygon({
-          paths: coords,
-          fillColor: zoneColor,
-          fillOpacity: 0.15,
-          strokeColor: zoneColor,
-          strokeWeight: 2,
-          strokeOpacity: 0.6,
-          map,
-          zIndex: 60,
-          clickable: false,
+        const sourceId = `rmpg-speed-zone-${i}`;
+        const layerId = `rmpg-speed-zone-layer-${i}`;
+        const ringCoords = [...validCoords.map((c) => [c.lng, c.lat]), [validCoords[0].lng, validCoords[0].lat]];
+
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: { type: 'Polygon', coordinates: [ringCoords] },
+            properties: { zoneColor, zoneOpacity: 0.15 },
+          },
         });
-        speedZonePolysRef.current.push(poly);
+        map.addLayer({
+          id: layerId,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': zoneColor,
+            'fill-opacity': 0.15,
+          },
+        });
+        map.addLayer({
+          id: `${layerId}-outline`,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': zoneColor,
+            'line-opacity': 0.6,
+            'line-width': 2,
+          },
+        });
+        speedZonePolysRef.current.push(sourceId);
 
         // Centroid label
-        const cLat = coords.reduce((s, c) => s + c.lat, 0) / coords.length;
-        const cLng = coords.reduce((s, c) => s + c.lng, 0) / coords.length;
-        const label = new google.maps.Marker({
-          position: { lat: cLat, lng: cLng },
-          map,
-          icon: {
-            path: 'M 0,0',
-            scale: 0,
-          },
-          label: {
-            text: `${zone.speed_limit_mph} mph`,
-            color: zoneColor,
-            fontSize: '9px',
-            fontWeight: 'bold',
-            className: 'speed-zone-label',
-          },
-          clickable: false,
-          zIndex: 61,
-        });
+        const cLat = validCoords.reduce((s, c) => s + c.lat, 0) / validCoords.length;
+        const cLng = validCoords.reduce((s, c) => s + c.lng, 0) / validCoords.length;
+        const textEl = document.createElement('div');
+        textEl.textContent = `${zone.speed_limit_mph} mph`;
+        textEl.style.cssText = `color:${zoneColor};font-size:9px;font-weight:bold;font-family:'JetBrains Mono',monospace;text-shadow:0 0 2px rgba(0,0,0,0.9);white-space:nowrap;`;
+        const label = new mapboxgl.Marker({ element: textEl })
+          .setLngLat([cLng, cLat])
+          .addTo(map);
         speedZoneLabelsRef.current.push(label);
       } catch {
         // Invalid polygon_coords JSON
@@ -2479,9 +2371,13 @@ export default function MapPage() {
     });
 
     return () => {
-      speedZonePolysRef.current.forEach((p) => p.setMap(null));
+      speedZonePolysRef.current.forEach((id) => {
+        try { map.removeLayer(`${id}-outline`); } catch {}
+        try { map.removeLayer(id); } catch {}
+        try { map.removeSource(id); } catch {}
+      });
       speedZonePolysRef.current = [];
-      speedZoneLabelsRef.current.forEach((m) => m.setMap(null));
+      speedZoneLabelsRef.current.forEach((m) => m.remove());
       speedZoneLabelsRef.current = [];
     };
   }, [speedAnalytics.speedZones, mapLoaded]);
@@ -2495,7 +2391,7 @@ export default function MapPage() {
     if (!map || !mapLoaded) return;
 
     if (gps.isTracking && gps.latitude != null && gps.longitude != null) {
-      const pos = { lat: gps.latitude, lng: gps.longitude };
+      const pos: [number, number] = [gps.longitude, gps.latitude];
       if (selfMarkerRef.current) {
         // Update existing marker
         if (typeof selfMarkerRef.current.updatePosition === 'function') {
@@ -2619,7 +2515,7 @@ export default function MapPage() {
     }
   }, [fetchCalls, fetchUnits, addToast]);
 
-  // Address search with Google Places Autocomplete
+  // Address search with Mapbox Geocoding API
   const handleAddressSearch = useCallback((query: string) => {
     setAddressSearch(query);
     if (addressSearchTimer.current) clearTimeout(addressSearchTimer.current);
@@ -2630,32 +2526,40 @@ export default function MapPage() {
       return;
     }
 
-    addressSearchTimer.current = setTimeout(() => {
-      if (typeof google === 'undefined' || !google.maps?.places) return;
-      const service = new google.maps.places.AutocompleteService();
-      service.getPlacePredictions(
-        { input: query, types: ['geocode', 'establishment'], componentRestrictions: { country: 'us' } },
-        (predictions, status) => {
-          if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
-            setAddressResults(predictions.map(p => ({ description: p.description, place_id: p.place_id })));
-            setShowAddressResults(true);
-          } else {
-            setAddressResults([]);
-          }
+    addressSearchTimer.current = setTimeout(async () => {
+      const token = mapboxgl.accessToken;
+      if (!token) return;
+      const geocodeUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=US&autocomplete=true&types=address,place`;
+      try {
+        const resp = await fetch(geocodeUrl);
+        const data = await resp.json();
+        if (data.features && data.features.length > 0) {
+          setAddressResults(data.features.map((f: any) => ({ description: f.place_name, place_id: f.id })));
+          setShowAddressResults(true);
+        } else {
+          setAddressResults([]);
         }
-      );
+      } catch {
+        // Ignore network errors
+      }
     }, 300);
   }, []);
 
-  const handleAddressSelect = useCallback((placeId: string, description: string) => {
+  const handleAddressSelect = useCallback(async (placeId: string, description: string) => {
     const map = mapInstanceRef.current;
-    if (!map || typeof google === 'undefined') return;
+    if (!map) return;
 
-    const geocoder = new google.maps.Geocoder();
-    geocoder.geocode({ placeId }, (results, status) => {
-      if (status === 'OK' && results && results[0]) {
-        const loc = results[0].geometry.location;
-        map.panTo(loc);
+    const token = mapboxgl.accessToken;
+    if (!token) return;
+
+    const detailUrl = `https://api.mapbox.com/geocoding/v5/mapbox.places/${placeId}.json?access_token=${token}&limit=1`;
+    try {
+      const resp = await fetch(detailUrl);
+      const data = await resp.json();
+      if (data.features && data.features[0]) {
+        const [lng, lat] = data.features[0].center;
+        if (!isFinite(lng) || !isFinite(lat)) return;
+        map.panTo([lng, lat]);
         map.setZoom(17);
 
         // Remove previous address marker
@@ -2680,7 +2584,7 @@ export default function MapPage() {
 
         addressMarkerRef.current = createMarker({
           map,
-          position: { lat: loc.lat(), lng: loc.lng() },
+          position: [lng, lat],
           content: el,
           zIndex: 5000,
           title: description,
@@ -2696,7 +2600,9 @@ export default function MapPage() {
           addressDismissTimer.current = null;
         }, 30000);
       }
-    });
+    } catch {
+      // Ignore geocoding errors
+    }
 
     setAddressSearch(description.split(',')[0]);
     setShowAddressResults(false);
@@ -2735,15 +2641,15 @@ export default function MapPage() {
         case 'c': // Center on all units
           e.preventDefault();
           if (mapInstanceRef.current && units.length > 0) {
-            const bounds = new google.maps.LatLngBounds();
+            const bounds = new mapboxgl.LngLatBounds();
             let hasCoords = false;
             units.forEach(u => {
               if (u.latitude != null && u.longitude != null) {
-                bounds.extend({ lat: u.latitude, lng: u.longitude });
+                bounds.extend([u.longitude, u.latitude]);
                 hasCoords = true;
               }
             });
-            if (hasCoords) mapInstanceRef.current.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: layersPanelOpen ? 220 : 60 });
+            if (hasCoords) mapInstanceRef.current.fitBounds(bounds, { padding: { top: 50, right: 50, bottom: 50, left: layersPanelOpen ? 220 : 60 } });
           }
           break;
         case '+':
@@ -2763,7 +2669,7 @@ export default function MapPage() {
           break;
         case 'escape': // Close all panels
           e.preventDefault();
-          infoWindowRef.current?.close();
+          infoWindowRef.current?.remove();
           setLayersPanelOpen(false);
           setSidebarOpen(false);
           break;
@@ -2821,8 +2727,8 @@ export default function MapPage() {
                 if (map) {
                   const center = map.getCenter();
                   if (center) {
-                    map.panTo({ lat: center.lat() + 0.0001, lng: center.lng() });
-                    setTimeout(() => map.panTo(center), 200);
+                    map.panTo([center.lng + 0.0001, center.lat]);
+                    setTimeout(() => map.panTo([center.lng, center.lat]), 200);
                   }
                 }
               }}
@@ -2839,10 +2745,7 @@ export default function MapPage() {
           <RmpgLogo height={20} iconOnly />
         </div>
 
-        {/* Offline Leaflet/CartoDB fallback removed 2026-04-29; map errors
-            now surface the configuration-required dialog below. */}
-
-        {/* API key / auth error dialog — sole error surface */}
+        {/* API key / auth error dialog (only for configuration problems, not connectivity) */}
         {isAuthError && (
           <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="bg-surface-overlay/95 border border-red-600 p-8 shadow-xl max-w-lg text-center" style={{ borderRadius: 2 }}>
@@ -2851,15 +2754,13 @@ export default function MapPage() {
               <pre className="text-rmpg-300 text-xs leading-relaxed mb-4 whitespace-pre-wrap text-left">{mapError}</pre>
               <div className="bg-surface-deep border border-rmpg-600 p-3 text-left mb-4" style={{ borderRadius: 2 }}>
                 <p className="text-[10px] text-rmpg-400 font-mono leading-relaxed">
-                  <span className="text-amber-400 font-bold">Checklist:</span><br/>
-                  1. Go to <span className="text-gray-400">console.cloud.google.com/apis/library</span><br/>
-                  2. Enable <span className="text-amber-400">Maps JavaScript API</span><br/>
-                  3. Enable <span className="text-amber-400">Places API (New)</span><br/>
-                  4. Go to <span className="text-gray-400">Billing</span> → ensure billing is active<br/>
-                  5. Go to <span className="text-gray-400">Credentials</span> → check key restrictions<br/>
-                  6. Add key to <span className="text-brand-400">client/.env</span>:<br/>
-                  <span className="text-green-400 ml-2">GOOGLE_MAPS_API_KEY=your_key</span><br/>
-                  7. Restart the dev server
+                   <span className="text-amber-400 font-bold">Checklist:</span><br/>
+                  1. Go to <span className="text-gray-400">account.mapbox.com/access-tokens</span><br/>
+                  2. Create a <span className="text-amber-400">Mapbox Access Token</span><br/>
+                  3. Ensure the token has <span className="text-amber-400">tilesets:read</span> scope<br/>
+                  4. Add token to <span className="text-brand-400">client/.env</span>:<br/>
+                  <span className="text-green-400 ml-2">VITE_MAPBOX_ACCESS_TOKEN=your_token</span><br/>
+                  5. Restart the dev server
                 </p>
               </div>
               <div className="flex gap-3 justify-center">
@@ -3142,33 +3043,10 @@ export default function MapPage() {
                     ))}
                   </div>
 
-                  {/* Dim base map toggle — darkens base tiles so heat pops */}
-                  <button
-                    onClick={() => setDimBaseEnabled(!dimBaseEnabled)}
-                    className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
-                      dimBaseEnabled ? 'text-red-400' : 'text-rmpg-500 hover:text-rmpg-300'
-                    }`}
-                  >
-                    <span className="flex-1 text-left">Dim Base Map</span>
-                    {dimBaseEnabled && <span className="led-dot led-red" style={{ width: 5, height: 5 }} />}
-                  </button>
-
-                  {/* Saved filter presets */}
-                  <div className="border-t border-rmpg-700/50 pt-1 mt-1">
-                    <HeatmapPresets
-                      current={{ days: heatmapDays, mode: heatmapMode, typeFilter: heatmapTypeFilter }}
-                      onApply={(p: HeatmapPresetValue) => {
-                        setHeatmapDays(p.days);
-                        setHeatmapMode(p.mode);
-                        setHeatmapTypeFilter(p.typeFilter);
-                      }}
-                    />
-                  </div>
-
                   {/* Advanced mode toggle */}
                   <div className="border-t border-rmpg-700/50 pt-1 mt-1">
                     <button
-                      onClick={() => setAdvancedHeatmapEnabled(!advancedHeatmapEnabled)}
+                      onClick={() => { setAdvancedHeatmapEnabled(!advancedHeatmapEnabled); if (!advancedHeatmapEnabled) setShowAdvHeatmapPanel(true); }}
                       className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
                         advancedHeatmapEnabled ? 'text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
@@ -3652,10 +3530,9 @@ export default function MapPage() {
               </button>
               {showBreadcrumbs && (
                 <div className="px-3 py-1 space-y-1">
-                  {/* Hours selector — presets extend from 24h to 1y per
-                      operator request. Label abbreviates days/months/years. */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
+                  {/* Hours selector */}
+                  <div className="flex items-center gap-1">
+                    {[2, 4, 8, 12, 24].map((h) => (
                       <button
                         key={h}
                         onClick={() => setBreadcrumbHours(h)}
@@ -3665,7 +3542,7 @@ export default function MapPage() {
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
-                        {label}
+                        {h}h
                       </button>
                     ))}
                     <button
@@ -3797,8 +3674,8 @@ export default function MapPage() {
                                   setIsPlaying(false);
                                   if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
                                   const pt = activeTrail?.points?.[idx];
-                                  if (pt && playbackMarkerRef.current) {
-                                    playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
+                                  if (pt && isFinite(pt.lng) && isFinite(pt.lat) && playbackMarkerRef.current) {
+                                    playbackMarkerRef.current.setLngLat([pt.lng, pt.lat]);
                                   }
                                 }}
                                 className="flex-1 h-1 accent-gray-400"
@@ -3841,7 +3718,7 @@ export default function MapPage() {
             {/* ── Speed Analytics ── */}
             {showBreadcrumbs && (
               <div className="border-t border-rmpg-700 p-1.5">
-                <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Speed Analytics</div>
+                <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Speed Analytics</div>
 
                 {/* Violations badge */}
                 {speedAnalytics.unacknowledgedCount > 0 && (
@@ -3919,7 +3796,7 @@ export default function MapPage() {
 
             {/* ── Intelligence Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Intelligence</div>
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
               {([
                 { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
                 { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
@@ -3944,7 +3821,7 @@ export default function MapPage() {
 
             {/* ── History Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">History</div>
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">History</div>
 
               {/* Call History */}
               <button
@@ -4080,7 +3957,7 @@ export default function MapPage() {
 
             {/* ── Analysis ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Analysis</div>
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
 
               {/* Predictions */}
               <button
@@ -4156,7 +4033,7 @@ export default function MapPage() {
 
             {/* ── Tactical Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Tactical</div>
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Tactical</div>
 
               {/* Patrol Checkpoints */}
               <button
@@ -4515,21 +4392,6 @@ export default function MapPage() {
                       </button>
                     );
                   })}
-                  <label className="flex items-center gap-2 px-2 py-1 text-[10px] cursor-pointer hover:bg-[#1a1a1a]">
-                    <input
-                      type="checkbox"
-                      checked={tierColorsOn}
-                      onChange={(e) => setTierColorsOn(e.target.checked)}
-                      disabled={!hierarchyColors}
-                      className="accent-[#d4a017]"
-                    />
-                    <span className={hierarchyColors ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}>
-                      Hierarchy Colors
-                    </span>
-                    {!hierarchyColors && (
-                      <span className="text-[8px] text-[var(--text-muted)] ml-auto" title="Districts unavailable offline">⚠</span>
-                    )}
-                  </label>
                 </div>
               )}
             </div>
@@ -4611,7 +4473,7 @@ export default function MapPage() {
                               plan.status === 'draft' ? 'bg-rmpg-700/30 text-rmpg-400' :
                               'bg-rmpg-800/30 text-rmpg-500'
                             }`}>
-                              {formatEnumValue(plan.status)}
+                              {plan.status.toUpperCase()}
                             </span>
                             <span className="text-[8px] text-rmpg-500 font-mono">{plan.assignments.length}</span>
                             <button
@@ -5249,8 +5111,8 @@ export default function MapPage() {
             isOpen={showSafetyAlertModal}
             onClose={() => setShowSafetyAlertModal(false)}
             onBroadcast={(type, lat, lng, details, radius) => alerts.broadcastAlert(type as SafetyAlertType, lat, lng, details, radius)}
-            defaultLat={mapInstanceRef.current?.getCenter()?.lat() ?? DEFAULT_CENTER.lat}
-            defaultLng={mapInstanceRef.current?.getCenter()?.lng() ?? DEFAULT_CENTER.lng}
+            defaultLat={mapInstanceRef.current?.getCenter()?.lat ?? DEFAULT_CENTER.lat}
+            defaultLng={mapInstanceRef.current?.getCenter()?.lng ?? DEFAULT_CENTER.lng}
           />
         )}
 
@@ -5344,11 +5206,11 @@ export default function MapPage() {
               loading={threatAssessment.loading}
               onAssessCenter={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) threatAssessment.assessLocation(c.lat(), c.lng());
+                if (c) threatAssessment.assessLocation(c.lat, c.lng);
               }}
               onGetApproachRoutes={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) threatAssessment.getApproachRoutes(c.lat(), c.lng());
+                if (c) threatAssessment.getApproachRoutes(c.lat, c.lng);
               }}
               onClear={() => threatAssessment.clearAssessment()}
               onClose={() => setShowThreatAssessment(false)}
@@ -5364,21 +5226,21 @@ export default function MapPage() {
               entryPoints={tactical.entryPoints}
               crowdDensity={(() => {
                 const c = mapInstanceRef.current?.getCenter();
-                return c ? tactical.estimateCrowdDensity(c.lat(), c.lng()) : 'Low (<50)';
+                return c ? tactical.estimateCrowdDensity(c.lat, c.lng) : 'Low (<50)';
               })()}
               onSetRallyPoint={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) tactical.setRallyPoint(c.lat(), c.lng(), 'Rally Point');
+                if (c) tactical.setRallyPoint(c.lat, c.lng, 'Rally Point');
               }}
               onClearRallyPoint={() => tactical.clearRallyPoint()}
               onShowCommandRings={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) tactical.showCommandRings(c.lat(), c.lng());
+                if (c) tactical.showCommandRings(c.lat, c.lng);
               }}
               onClearCommandRings={() => tactical.clearCommandRings()}
               onShowK9Radius={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) tactical.showK9Radius(c.lat(), c.lng());
+                if (c) tactical.showK9Radius(c.lat, c.lng);
               }}
               onClearK9Radius={() => tactical.clearK9Radius()}
               onShowHospitals={() => tactical.showHospitals()}
@@ -5386,14 +5248,14 @@ export default function MapPage() {
               onHideEmergencyServices={() => tactical.hideEmergencyServices()}
               onAddEntryPoint={(label) => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) tactical.addEntryPoint(c.lat(), c.lng(), label);
+                if (c) tactical.addEntryPoint(c.lat, c.lng, label);
               }}
               onClearEntryPoints={() => tactical.clearEntryPoints()}
               onQuickDeploy={(preset: QuickDeployPreset) => {
                 const c = mapInstanceRef.current?.getCenter();
                 if (!c) return;
-                const lat = c.lat();
-                const lng = c.lng();
+                const lat = c.lat;
+                const lng = c.lng;
                 // Clear existing tactical markers first
                 tactical.clearRallyPoint();
                 tactical.clearEntryPoints();
@@ -5448,13 +5310,13 @@ export default function MapPage() {
               loading={perimeter.loading}
               onAnalyzeCoverage={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) perimeter.showPerimeter(c.lat(), c.lng());
+                if (c) perimeter.showPerimeter(c.lat, c.lng);
               }}
               onStartContainment={() => perimeter.startContainment()}
               onClearContainment={() => perimeter.endContainment()}
               onToggleHVTs={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) perimeter.showPerimeter(c.lat(), c.lng());
+                if (c) perimeter.showPerimeter(c.lat, c.lng);
               }}
               onClose={() => setShowPerimeterTools(false)}
             />
@@ -5470,16 +5332,16 @@ export default function MapPage() {
               loading={corridor.loading}
               onAnalyzeCorridor={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) corridor.analyzeCorridor(c.lat() - 0.01, c.lng() - 0.01, c.lat() + 0.01, c.lng() + 0.01);
+                if (c) corridor.analyzeCorridor(c.lat - 0.01, c.lng - 0.01, c.lat + 0.01, c.lng + 0.01);
               }}
               onShowPursuitProjection={(heading) => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) corridor.showPursuitProjection(c.lat(), c.lng(), heading);
+                if (c) corridor.showPursuitProjection(c.lat, c.lng, heading);
               }}
               onClearPursuit={() => corridor.clearPursuit()}
               onShowEscapeRoutes={() => {
                 const c = mapInstanceRef.current?.getCenter();
-                if (c) corridor.showEscapeRoutes(c.lat(), c.lng());
+                if (c) corridor.showEscapeRoutes(c.lat, c.lng);
               }}
               onClearEscapeRoutes={() => corridor.clearEscapeRoutes()}
               onClearCorridor={() => corridor.clearCorridor()}
@@ -5691,218 +5553,14 @@ export default function MapPage() {
           </div>
         </div>}
 
-        {/* ── Keyboard Shortcuts Help (triggered by `?` key) ── */}
-        <KeyboardShortcutsHelp open={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
-
-        {/* ── Breadcrumb Status Chip + Trail Stats/Export (top-left) ── */}
-        {/* Shows unit count + window + color mode; hovering reveals per-unit
-            stats (miles/duration/max-mph). Clicking EXPORT downloads one
-            .gpx file per trail into the browser downloads folder — good for
-            shift reports or legal discovery. */}
-        {showBreadcrumbs && playbackTrails.length > 0 && (
-          <div
-            className="absolute z-[999]"
-            style={{
-              top: 64,
-              left: 16,
-              background: 'rgba(6,12,20,0.92)',
-              border: '1px solid #2b2b2b',
-              padding: '4px 10px',
-              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-              fontSize: 10,
-              color: '#9ca3af',
-              letterSpacing: '0.08em',
-              borderRadius: 2,
-            }}
-            title={playbackTrails
-              .map((t) => {
-                const stats = computeTrailStats(t);
-                return `${t.call_sign}: ${formatTrailStats(stats)}`;
-              })
-              .join('\n')}
-          >
-            <span style={{ color: '#d4a017', fontWeight: 900, marginRight: 6 }}>TRAILS</span>
-            <span>{playbackTrails.length} unit{playbackTrails.length === 1 ? '' : 's'}</span>
-            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
-            <span>last {BREADCRUMB_HOUR_PRESETS.find((p) => p.hours === breadcrumbHours)?.label || `${breadcrumbHours}h`}</span>
-            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
-            <span style={{ color: '#6b7280', textTransform: 'uppercase' }}>{breadcrumbColorMode}</span>
-            <button
-              type="button"
-              onClick={() => setShowIdleZones(!showIdleZones)}
-              style={{
-                marginLeft: 8,
-                padding: '1px 6px',
-                background: showIdleZones ? '#f59e0b30' : '#88888820',
-                border: showIdleZones ? '1px solid #f59e0b80' : '1px solid #88888850',
-                color: showIdleZones ? '#f59e0b' : '#a0a0a0',
-                fontSize: 8,
-                fontWeight: 900,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                letterSpacing: '0.08em',
-                borderRadius: 2,
-              }}
-              title="Highlight stretches where a unit was stationary >10min"
-            >
-              IDLE
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                for (const trail of playbackTrails) downloadTrailAsGpx(trail);
-              }}
-              style={{
-                marginLeft: 4,
-                padding: '1px 6px',
-                background: '#88888820',
-                border: '1px solid #88888850',
-                color: '#a0a0a0',
-                fontSize: 8,
-                fontWeight: 900,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                letterSpacing: '0.08em',
-                borderRadius: 2,
-              }}
-              title="Download each unit's trail as a GPX file"
-            >
-              ⇩ GPX
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowRouteCompare((v) => !v)}
-              style={{
-                marginLeft: 4,
-                padding: '1px 6px',
-                background: showRouteCompare ? '#d4a01730' : '#88888820',
-                border: showRouteCompare ? '1px solid #d4a01780' : '1px solid #88888850',
-                color: showRouteCompare ? '#d4a017' : '#a0a0a0',
-                fontSize: 8,
-                fontWeight: 900,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                letterSpacing: '0.08em',
-                borderRadius: 2,
-              }}
-              title="Compare two units' trail stats side-by-side"
-            >
-              ⇆ COMPARE
-            </button>
-          </div>
-        )}
-
-        {/* ── Route Comparison Panel (bottom-right, when toggled) ── */}
-        {showBreadcrumbs && showRouteCompare && (
-          <RouteComparePanel
-            trails={playbackTrails}
-            unitAId={compareUnitA}
-            unitBId={compareUnitB}
-            onChangeA={setCompareUnitA}
-            onChangeB={setCompareUnitB}
-            onClose={() => setShowRouteCompare(false)}
-          />
-        )}
-
-        {/* ── Trail Time-Window Scrubber (top-left, below chip) ── */}
-        {/* Two range inputs that narrow the rendered trail window without
-            re-fetching. fromH is the older edge, toH the newer one. The
-            filter runs in a useMemo, so drags feel live even on ≤2k points
-            per unit. Rendered only when there's something to scrub. */}
-        {showBreadcrumbs && playbackTrailsRaw.length > 0 && (
-          <div
-            className="absolute z-[999]"
-            style={{
-              top: 90,
-              left: 16,
-              background: 'rgba(6,12,20,0.92)',
-              border: '1px solid #2b2b2b',
-              padding: '4px 10px',
-              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-              fontSize: 9,
-              color: '#9ca3af',
-              letterSpacing: '0.05em',
-              borderRadius: 2,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              minWidth: 320,
-            }}
-          >
-            <span style={{ color: '#d4a017', fontWeight: 900 }}>WINDOW</span>
-            <span title="From (hours ago)" style={{ color: '#6b7280' }}>{trailWindowFromH.toFixed(1)}h</span>
-            <input
-              type="range"
-              min={0}
-              max={breadcrumbHours}
-              step={0.25}
-              value={trailWindowFromH}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                setTrailWindowFromH(Math.max(v, trailWindowToH + 0.1));
-              }}
-              aria-label="Trail window start (hours ago)"
-              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
-            />
-            <span style={{ color: '#6b7280' }}>now</span>
-            <input
-              type="range"
-              min={0}
-              max={breadcrumbHours}
-              step={0.25}
-              value={trailWindowToH}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                setTrailWindowToH(Math.min(v, trailWindowFromH - 0.1));
-              }}
-              aria-label="Trail window end (hours ago)"
-              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
-            />
-            <span title="To (hours ago)" style={{ color: '#6b7280' }}>{trailWindowToH.toFixed(1)}h</span>
-            <button
-              type="button"
-              onClick={() => { setTrailWindowFromH(breadcrumbHours); setTrailWindowToH(0); }}
-              style={{
-                padding: '1px 5px',
-                background: '#88888820',
-                border: '1px solid #88888850',
-                color: '#a0a0a0',
-                fontSize: 8,
-                fontWeight: 900,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                letterSpacing: '0.08em',
-                borderRadius: 2,
-              }}
-              title="Reset window to full fetched range"
-            >
-              RESET
-            </button>
-          </div>
-        )}
-
-        {/* ── Heatmap Legend (bottom-right) ── */}
-        {/* Visible whenever any heatmap variant is on; swaps gradient for
-            the "risk" mode so the legend always matches what's on the map. */}
-        {showHeatmap && (
-          <HeatmapLegend
-            mode={heatmapMode === 'risk' ? 'risk' : 'calls'}
-            hint={`last ${heatmapDays} day${heatmapDays === 1 ? '' : 's'}`}
-            position="bottom-right"
-          />
-        )}
-
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
-        {/* Lists one row per active unit route; colors match the polylines
-            (green=fastest, amber=mid, red=slowest) for instant "who's closest"
-            read. Single Clear All action collapses the whole set. */}
-        {activeRoutes.length > 0 && (
+        {activeRoute && (
           <div
             className="absolute z-[1000] backdrop-blur-md"
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: 16, minWidth: 220 }),
+                : { bottom: 48, left: 16, minWidth: 200 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',
@@ -5911,51 +5569,22 @@ export default function MapPage() {
               boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
               <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
-                ROUTES ({activeRoutes.length})
+                {activeRoute.unitCallSign} → {activeRoute.callNumber}
               </span>
               <button
-                onClick={clearAllRoutes}
+                onClick={clearRoute}
                 style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
-                title="Clear all routes"
+                title="Clear route"
               >
                 ✕
               </button>
             </div>
-            {activeRoutes
-              .slice()
-              .sort((a, b) => a.durationSec - b.durationSec)
-              .map((r) => (
-                <div
-                  key={r.unitCallSign}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '3px 0',
-                    borderTop: '1px solid ' + (isLightMapStyle(mapStyle) ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'),
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      background: r.color,
-                      display: 'inline-block',
-                      borderRadius: 2,
-                      flexShrink: 0,
-                      boxShadow: `0 0 6px ${r.color}80`,
-                    }}
-                    title="Route color"
-                  />
-                  <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em', minWidth: 70 }}>
-                    {r.unitCallSign}
-                  </span>
-                  <span style={{ fontSize: 13, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{r.eta}</span>
-                  <span style={{ fontSize: 10, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999', marginLeft: 'auto' }}>{r.distance}</span>
-                </div>
-              ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
+            </div>
             {routeLoading && (
               <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
             )}
@@ -6403,18 +6032,18 @@ export default function MapPage() {
                 {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
                   <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
-                    <div className="flex gap-1 flex-wrap">
-                      {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
+                    <div className="flex gap-1">
+                      {[2, 4, 8, 12, 24].map((h) => (
                         <button
                           key={h}
                           onClick={() => setBreadcrumbHours(h)}
-                          className={`flex-1 min-w-[44px] py-2 text-xs font-bold rounded-sm ${
+                          className={`flex-1 py-2 text-xs font-bold rounded-sm ${
                             breadcrumbHours === h
                               ? 'bg-gray-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                           }`}
                         >
-                          {label}
+                          {h}h
                         </button>
                       ))}
                     </div>

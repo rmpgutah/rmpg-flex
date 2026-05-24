@@ -16,7 +16,6 @@ import {
   Link2,
   Shield,
   GraduationCap,
-  Radio,
   WifiOff,
   DatabaseZap,
   Lock,
@@ -28,8 +27,7 @@ import {
   Plug,
   ClipboardList,
   Brain,
-  BarChart3,
-  Trophy,
+  Map,
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
@@ -55,23 +53,21 @@ import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
 import AdminSessionsTab from './admin/AdminSessionsTab';
 import AdminTrainingTab from './admin/AdminTrainingTab';
-import AdminRadioTab from './admin/AdminRadioTab';
 import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
-import AdminEvidenceTab from './admin/AdminEvidenceTab';
 import AdminArrestsTab from './admin/AdminArrestsTab';
 import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
 import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
+import AdminSkipTracerV2Tab from './admin/AdminSkipTracerV2Tab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
 import AdminBrandingTab from './admin/AdminBrandingTab';
 import AdminEmailTab from './admin/AdminEmailTab';
 import AdminIntegrationsTab from './admin/AdminIntegrationsTab';
 import AdminAISettingsTab from './admin/AdminAISettingsTab';
 import AdminGodModeTab from './admin/AdminGodModeTab';
-import AdminDashboardTab from './admin/AdminDashboardTab';
-import AdminCompetitiveTab from './admin/AdminCompetitiveTab';
+import AdminMapSettingsTab from './admin/AdminMapSettingsTab';
 
 // ============================================================
 // Shared sub-components (module-level to avoid remounting)
@@ -236,7 +232,7 @@ function mapAuditRow(row: AuditRow): AuditEntry {
 // Constants
 // ============================================================
 
-type TabId = 'dashboard' | 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'sessions' | 'training' | 'radio' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'evidence' | 'competitive';
+type TabId = 'users' | 'clients' | 'system' | 'audit' | 'health' | 'announcements' | 'retention' | 'departments' | 'notif_rules' | 'servemanager' | 'microbilt' | 'clearpathgps' | 'arrests' | 'warrant_scrapers' | 'skiptracer' | 'skiptracer_v2' | 'sessions' | 'training' | 'offline' | 'security' | 'branding' | 'email' | 'iped' | 'integrations' | 'ai_settings' | 'godmode' | 'map_settings';
 
 const LS_ADMIN_TAB = 'rmpg_admin_tab';
 
@@ -250,7 +246,7 @@ export default function AdminPage() {
   const clientEditPendingRef = useRef(false);
 
   // Restore active tab from URL ?tab= param or localStorage (default: 'users')
-  const VALID_TABS = ['dashboard', 'users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'radio', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'competitive'];
+  const VALID_TABS = ['users', 'clients', 'system', 'audit', 'health', 'announcements', 'retention', 'departments', 'notif_rules', 'servemanager', 'microbilt', 'clearpathgps', 'arrests', 'warrant_scrapers', 'skiptracer', 'skiptracer_v2', 'sessions', 'training', 'offline', 'security', 'branding', 'email', 'iped', 'integrations', 'ai_settings', 'godmode', 'map_settings'];
   const [activeTab, setActiveTabState] = useState<TabId>(() => {
     try {
       // URL ?tab= param takes priority (used by Help → Training link)
@@ -259,7 +255,7 @@ export default function AdminPage() {
       const saved = localStorage.getItem(LS_ADMIN_TAB);
       if (saved && VALID_TABS.includes(saved)) return saved as TabId;
     } catch { /* ignore */ }
-    return 'dashboard';
+    return 'users';
   });
   const setActiveTab = useCallback((tab: TabId) => {
     setActiveTabState(tab);
@@ -628,12 +624,6 @@ export default function AdminPage() {
 
   const tabGroups: { category: string; tabs: { id: TabId; label: string; icon: React.ElementType }[] }[] = [
     {
-      category: 'Overview',
-      tabs: [
-        { id: 'dashboard', label: 'Dashboard', icon: BarChart3 },
-      ],
-    },
-    {
       category: 'People & Access',
       tabs: [
         { id: 'users', label: 'Users', icon: Users },
@@ -647,6 +637,7 @@ export default function AdminPage() {
       category: 'System',
       tabs: [
         { id: 'system', label: 'System Config', icon: Cog },
+        { id: 'map_settings', label: 'Map Settings', icon: Map },
         { id: 'health', label: 'System Health', icon: Activity },
         { id: 'branding', label: 'Branding & Reports', icon: Palette },
         { id: 'retention', label: 'Data Retention', icon: Archive },
@@ -664,7 +655,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
         { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
-        { id: 'radio', label: 'Radio Config', icon: Radio },
+
       ],
     },
     {
@@ -676,6 +667,7 @@ export default function AdminPage() {
         { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
         { id: 'warrant_scrapers', label: 'Warrant Scrapers', icon: Shield },
         { id: 'skiptracer', label: 'Skip Tracker', icon: Search },
+        { id: 'skiptracer_v2', label: 'Skip Tracer V2', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'integrations', label: 'API Integrations', icon: Plug },
         { id: 'training', label: 'Training', icon: GraduationCap },
@@ -686,13 +678,6 @@ export default function AdminPage() {
       tabs: [
         { id: 'audit', label: 'Audit Log', icon: ScrollText },
         { id: 'iped', label: 'IPED', icon: ClipboardList },
-        { id: 'evidence', label: 'Evidence Chain', icon: Shield },
-      ],
-    },
-    {
-      category: 'Reference',
-      tabs: [
-        { id: 'competitive', label: 'Competitive Analysis', icon: Trophy },
       ],
     },
     {
@@ -829,13 +814,6 @@ export default function AdminPage() {
 
         {/* Content */}
         <div className="flex-1 overflow-auto scrollbar-dark" role="tabpanel" id={`admin-tabpanel-${activeTab}`} aria-labelledby={`admin-tab-${activeTab}`}>
-        {activeTab === 'dashboard' && (
-          <AdminDashboardTab
-            LoadingSpinner={LoadingSpinner}
-            onNavigate={(tabId) => setActiveTab(tabId as TabId)}
-          />
-        )}
-
         {activeTab === 'users' && (
           <AdminUsersTab
             users={users}
@@ -877,9 +855,17 @@ export default function AdminPage() {
         {activeTab === 'system' && (
           <AdminSystemTab
             users={users}
+            LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
+          />
+        )}
+
+        {activeTab === 'map_settings' && (
+          <AdminMapSettingsTab
             LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
           />
         )}
 
@@ -949,14 +935,6 @@ export default function AdminPage() {
           />
         )}
 
-        {activeTab === 'evidence' && (
-          <AdminEvidenceTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
         {activeTab === 'arrests' && (
           <AdminArrestsTab
             LoadingSpinner={LoadingSpinner}
@@ -989,6 +967,14 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'skiptracer_v2' && (
+          <AdminSkipTracerV2Tab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
         {activeTab === 'sessions' && (
           <AdminSessionsTab
             LoadingSpinner={LoadingSpinner}
@@ -999,14 +985,6 @@ export default function AdminPage() {
 
         {activeTab === 'training' && (
           <AdminTrainingTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'radio' && (
-          <AdminRadioTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
@@ -1063,10 +1041,6 @@ export default function AdminPage() {
 
         {activeTab === 'godmode' && (
           <AdminGodModeTab />
-        )}
-
-        {activeTab === 'competitive' && (
-          <AdminCompetitiveTab />
         )}
 
         {activeTab === 'audit' && (
