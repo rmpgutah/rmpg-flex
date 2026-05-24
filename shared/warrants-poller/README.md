@@ -62,16 +62,27 @@ crons = ["*/30 * * * *"]   # every 30 min; tune per source ToS
 
 ## Status (as of 2026-05-24)
 
-| Source | Mode | URL verified | Adapter |
+| Source | Mode | Verified | Adapter |
 |---|---|---|---|
-| warrants.utah.gov | query-lookup | ✅ live API captured via chrome-devtools MCP 2026-05-24 | ✅ implemented |
-| Salt Lake County Sheriff | list-poll | **URL UNKNOWN** | not started |
-| Utah County Sheriff | list-poll | **URL UNKNOWN** | not started |
-| Davis County Sheriff | list-poll | **URL UNKNOWN** | not started |
-| Weber County Sheriff | list-poll | **URL UNKNOWN** | not started |
-| Utah Courts XCHANGE | query-lookup | **URL UNKNOWN** | not started |
+| warrants.utah.gov | query-lookup | ✅ live JSON API (chrome-devtools MCP) | ✅ implemented |
+| SLCo Sheriff (saltlakecounty.gov/sheriff) | — | ✅ verified: no separate warrant list | not needed (see below) |
+| Weber County Sheriff | — | ✅ verified: links to statewide portal | not needed (see below) |
+| Utah County / Davis County Sheriff | — | timeout/403 on automation; pattern predicts no separate list | not needed (see below) |
+| Utah Courts XCHANGE (xchange.utcourts.gov) | — | ✅ verified: case dockets, not active warrants | deferred (see below) |
 
-**Before any county adapter ships**, the real URL must be confirmed by a human with a browser open. URL-guessing produced a 5-of-6 miss rate in initial probing. See conversation log for the verification protocol.
+### Why only one adapter
+
+Utah is **UCJIS-centralized**. County sheriffs contribute warrant data to the state index (UCJIS) rather than publishing duplicate public lists. Live evidence captured 2026-05-24:
+
+- **Salt Lake County Sheriff** homepage has zero links containing "warrant"
+- **Weber County Sheriff** has a "Statewide Warrant Search" link that points at the state (the linked URL `secure.utah.gov/warrants` is actually defunct, but the intent is clear — they don't publish their own)
+- **warrants.utah.gov** is the live statewide aggregator that ingests from all counties via UCJIS
+
+Building county-specific adapters would mean either (a) scraping data already present in `warrants.utah.gov` (waste + maintenance burden) or (b) building dead adapters against URLs that don't exist (silent half-build).
+
+**XCHANGE** is a different data surface — court case dockets, not an active-warrants list. A case docket may *mention* warrant issuance as a docket entry, but extracting "currently-outstanding warrants" from dockets is a fragile derivative that would compete with UCJIS's authoritative version. Deferred unless a future requirement specifically needs court-level case context that warrants.utah.gov doesn't expose.
+
+**Re-evaluate if**: a Utah county begins publishing its own active-warrants portal (would show up as a "Warrants" link on their sheriff homepage), or RMPG obtains UCJIS-credentialed API access (would unlock richer per-warrant data via the credentialed back-end, not via a different public site).
 
 ## DataStore contract for the CF agent
 

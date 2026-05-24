@@ -106,7 +106,8 @@ export class WarrantsUtahGovSource extends BaseWarrantSource {
 // "LAST, FIRST MIDDLE" -> {first:"FIRST", last:"LAST"}
 // "FIRST MIDDLE LAST"  -> {first:"FIRST", last:"LAST"}
 // "MONONYM"            -> {first:"", last:""}  (rejected upstream)
-function splitName(raw: string): { first: string; last: string } {
+/** @internal exported for tests, not stable API */
+export function splitName(raw: string): { first: string; last: string } {
   const s = raw.trim();
   if (s.includes(',')) {
     const [last, rest] = s.split(',', 2).map((x) => x.trim());
@@ -122,7 +123,8 @@ function splitName(raw: string): { first: string; last: string } {
 // the caller's expected age — provided directly or derived from their DOB.
 // `age` wins when both are supplied because it matches the portal's own
 // representation (no birthday-timing recomputation needed on our side).
-function expectedAge(query: { dob?: string; age?: number }): number | undefined {
+/** @internal exported for tests, not stable API */
+export function expectedAge(query: { dob?: string; age?: number }): number | undefined {
   if (typeof query.age === 'number' && Number.isFinite(query.age) && query.age >= 0) {
     return Math.floor(query.age);
   }
@@ -143,7 +145,8 @@ function expectedAge(query: { dob?: string; age?: number }): number | undefined 
 // computed age (December-born person queried in early January, etc.).
 // If the portal didn't expose age for a candidate, don't drop them —
 // missing data is not evidence of mismatch.
-function matchesAge(apiAge: string | undefined, expected: number): boolean {
+/** @internal exported for tests, not stable API */
+export function matchesAge(apiAge: string | undefined, expected: number): boolean {
   if (!apiAge) return true;
   const actual = parseInt(apiAge, 10);
   if (Number.isNaN(actual)) return true;
