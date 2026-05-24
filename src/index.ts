@@ -1,3 +1,20 @@
+// ============================================================
+// RMPG Flex — Worker entry
+// ============================================================
+// Almost-static after the route-registry refactor (PR introducing
+// src/routesConfig.ts). All HTTP route mounts live in ROUTE_REGISTRY;
+// this file owns:
+//   - Hono app construction + global middleware (logger, secureHeaders, cors)
+//   - Global error handler (with userId visibility for auth-gap diagnostics)
+//   - Auth middleware application (iterates ROUTE_REGISTRY)
+//   - Route mounting (iterates ROUTE_REGISTRY)
+//   - The /__welfare-fire internal callback for WelfareWatchDO
+//   - Default export: fetch + scheduled handlers + WebSocket dispatch
+//
+// Adding a new route: edit src/routesConfig.ts (one append to the
+// array + one import). Do NOT add new app.use/app.route here.
+// ============================================================
+
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
@@ -6,76 +23,18 @@ import { authMiddleware } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
+import { runUtahWarrantScan } from './utils/utahWarrantPoller';
+import type { Bindings, Variables } from './types';
+import { ROUTE_REGISTRY } from './routesConfig';
 
-// Export so wrangler can find the DO classes at build time. The Container
-// subclass extends DurableObject and is configured by [[containers]] +
-// [[durable_objects.bindings]] in wrangler.toml.
+// Export Durable Object classes so wrangler can find them at build time.
+// The Container subclass extends DurableObject and is configured by
+// [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
 export { WelfareWatchDO, PdfToolsContainer };
 
-import auth from './routes/auth';
-import health from './routes/health';
-import dispatchCalls from './routes/dispatch/calls';
-import dispatchUnits from './routes/dispatch/units';
-import dispatchGps from './routes/dispatch/gps';
-import dispatchGeography from './routes/dispatch/geography';
-import dispatchAggregates from './routes/dispatch/aggregates';
-import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
-import geocode from './routes/geocode';
-import trespassOrders from './routes/trespassOrders';
-import dispatchPanic from './routes/dispatch/panic';
-import dispatchCallLinks from './routes/dispatch/callLinks';
-import admin from './routes/admin';
-import personnel from './routes/personnel';
-import presence from './routes/presence';
-import properties from './routes/properties';
-import records from './routes/records';
-import subjects from './routes/records/subjects';
-import mapData from './routes/mapData';
-import stubs from './routes/stubs';
-import runCards from './routes/runCards';
-import nibrs from './routes/nibrs';
-import welfare from './routes/welfare';
-import incidentSupplements from './routes/incidentSupplements';
-import incidentsRouter from './routes/incidents';
-import warrants from './routes/warrants';
-import pdfTools from './routes/pdfTools';
-import documentIntake from './routes/documentIntake';
-import documentFolders from './routes/documents/folders';
-import audit from './routes/audit';
-import citations from './routes/citations';
-import arrests from './routes/arrests';
-import cases from './routes/cases';
-import fieldInterviews from './routes/fieldInterviews';
-import businessVehicles from './routes/business/vehicles';
-import businessVisits from './routes/business/visits';
-import businessPhotos from './routes/business/photos';
-import { runUtahWarrantScan } from './utils/utahWarrantPoller';
-import {
-  recommendedUnits,
-  audioMode,
-  premiseAlerts,
-  callWarnings,
-  unitStatus,
-  bolos as bolosRouter,
-  welfareActive,
-} from './routes/dispatch/extensions';
+const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
-type Bindings = {
-  DB: D1Database;
-  KV: KVNamespace;
-  MAP_DATA: R2Bucket;
-  UPLOADS: R2Bucket;
-  JWT_SECRET: string;
-  CORS_ORIGINS?: string;
-  PRIMARY_DOMAIN?: string;
-  // Mirrors src/types.ts Bindings — kept here so the local Hono<{ Bindings }>
-  // type matches what wrangler exposes at runtime.
-  WELFARE_WATCH?: DurableObjectNamespace;
-  PDF_TOOLS: DurableObjectNamespace<PdfToolsContainer>;
-};
-
-const app = new Hono<{ Bindings: Bindings; Variables: { user: { id: number; username: string; role: string; full_name: string }; userId: number } }>();
-
+// ─── Global middleware ───────────────────────────────────────
 app.use('*', logger());
 app.use('*', secureHeaders());
 app.use('*', cors({
@@ -88,32 +47,24 @@ app.use('*', cors({
   credentials: true,
 }));
 
+// Root probe — useful for "is the Worker even reachable" smoke checks
 app.get('/', (c) => c.json({ name: 'RMPG Flex API', version: '1.0.0', status: 'running' }));
 
-// Global error handler — surfaces the route + raw message for any
-// uncaught throw inside a route handler. Without this, Hono's default
-// just returns a 500 with the text "Internal Server Error" and we
-// lose the actual D1 / SQL message. Several dispatch routes (the
-// callLinks attach handlers in particular) INSERT without try/catch,
-// so any FK violation there used to surface as a generic 500 with no
-// detail. Now the client sees:
-//   { error: "Internal server error",
-//     code: "UNHANDLED",
-//     route: "POST /api/dispatch/calls/:id/persons",
-//     detail: "D1_ERROR: FOREIGN KEY constraint failed ..." }
-// and the dispatcher can read the FK breakdown directly from the
-// toast (apiFetch concatenates error + detail with ": ").
+// ─── Global error handler ────────────────────────────────────
+// Surfaces the route + raw message for any uncaught throw inside a
+// route handler. Without this, Hono's default returns "Internal Server
+// Error" with no detail and we lose the actual D1 / SQL message.
+//
+// `userId` visibility flags auth-coverage gaps: if userId is undefined
+// here, the request reached the handler without going through auth —
+// likely a missing ROUTE_REGISTRY entry or a bug in applyAuthMiddleware
+// below. This was the root cause of the dispatcher_id NULL FK bug
+// fixed in PR #620.
 app.onError((err, c) => {
   const method = c.req.method;
   const path = new URL(c.req.url).pathname;
   const route = `${method} ${path}`;
   const detail = err instanceof Error ? err.message : String(err);
-  // userId is set by authMiddleware. If it's undefined here, the
-  // request reached the handler without going through auth — likely a
-  // path-matching gap in the app.use() coverage above. That was the
-  // exact root cause of the call-create FK failures fixed 2026-05-24:
-  // POST /api/dispatch/calls slipped past auth, userId was undefined,
-  // dispatcher_id bound as NULL, FK to users(id) rejected.
   const userId = c.get('userId') as number | undefined;
   console.error(`Unhandled in ${route} (userId=${userId}):`, err);
   return c.json({
@@ -125,218 +76,39 @@ app.onError((err, c) => {
   }, 500);
 });
 
-// Public routes
-app.route('/api/health', health);
-app.route('/api/auth', auth);
-app.route('/api/map-data', mapData);
-
-// Auth middleware for protected routes.
+// ─── Apply route registry ────────────────────────────────────
+// Two passes so auth is declared exactly once per prefix even if
+// multiple routers mount at the same path (e.g. dispatchCallLinks +
+// dispatchPanic + dispatchPremiseHistory all at /api/dispatch).
 //
-// Hono's path matcher: `app.use('/path/*', mw)` matches `/path/X` for
-// any X but does NOT match the bare `/path` itself. Without explicit
-// coverage of the bare path, POST /api/dispatch/calls (no path after
-// `/calls`) slipped past auth entirely, leaving `userId = undefined`
-// inside the handler. dispatcher_id then bound as NULL on the INSERT
-// and the FK to users(id) failed (NULL ≠ any row). Symptom: the
-// dispatcher saw a "FOREIGN KEY constraint failed" toast on every
-// call create.
-//
-// Each protected router needs BOTH lines: the bare path and the /*
-// sub-path glob. The /run-cards, /welfare, /premise-alerts, /bolos,
-// /panic, /premise-history mounts below already do this; the four
-// canonical dispatch resources had only the /* line.
-app.use('/api/dispatch', authMiddleware);
-app.use('/api/dispatch/calls', authMiddleware);
-app.use('/api/dispatch/calls/*', authMiddleware);
-app.use('/api/dispatch/units', authMiddleware);
-app.use('/api/dispatch/units/*', authMiddleware);
-app.use('/api/dispatch/gps', authMiddleware);
-app.use('/api/dispatch/gps/*', authMiddleware);
-app.use('/api/dispatch/geography', authMiddleware);
-app.use('/api/dispatch/geography/*', authMiddleware);
-app.use('/api/dispatch/run-cards', authMiddleware);
-app.use('/api/dispatch/run-cards/*', authMiddleware);
-app.use('/api/dispatch/welfare', authMiddleware);
-app.use('/api/dispatch/welfare/*', authMiddleware);
-app.use('/api/dispatch/premise-alerts', authMiddleware);
-app.use('/api/dispatch/premise-alerts/*', authMiddleware);
-app.use('/api/dispatch/bolos', authMiddleware);
-app.use('/api/dispatch/bolos/*', authMiddleware);
-app.use('/api/dispatch/panic', authMiddleware);
-app.use('/api/dispatch/panic/*', authMiddleware);
-app.use('/api/dispatch/premise-history', authMiddleware);
-app.use('/api/dispatch/premise-history/*', authMiddleware);
-app.use('/api/nibrs', authMiddleware);
-app.use('/api/nibrs/*', authMiddleware);
-app.use('/api/incidents', authMiddleware);
-app.use('/api/incidents/*', authMiddleware);
-app.use('/api/admin', authMiddleware);
-app.use('/api/admin/*', authMiddleware);
-app.use('/api/personnel', authMiddleware);
-app.use('/api/personnel/*', authMiddleware);
-app.use('/api/presence', authMiddleware);
-app.use('/api/presence/*', authMiddleware);
-app.use('/api/records', authMiddleware);
-app.use('/api/records/*', authMiddleware);
+// Each `auth: 'required'` prefix gets BOTH `app.use(prefix, ...)` and
+// `app.use(prefix/*, ...)`. Hono's path matcher treats `/path/*` as
+// matching `/path/X` for any X but NOT the bare `/path` itself — so
+// without the bare-prefix line, requests to the exact prefix slip
+// past auth entirely (silent — userId comes through as undefined).
+const authPrefixes = new Set<string>();
+for (const m of ROUTE_REGISTRY) {
+  if (m.auth === 'required') authPrefixes.add(m.prefix);
+}
+for (const prefix of authPrefixes) {
+  app.use(prefix, authMiddleware);
+  app.use(`${prefix}/*`, authMiddleware);
+}
 
-// callLinks + panic mount at /api/dispatch with /calls/:id/persons,
-// /vehicles, /property, and /panic routes. MUST mount BEFORE
-// dispatchCalls so longer-prefix routes match first — same trie
-// collision rule the extensions block below documents.
-app.route('/api/dispatch', dispatchCallLinks);
-app.route('/api/dispatch', dispatchPanic);
-app.route('/api/dispatch', dispatchPremiseHistory);
-app.route('/api/dispatch/calls', dispatchCalls);
-app.route('/api/dispatch/units', dispatchUnits);
-app.route('/api/dispatch/gps', dispatchGps);
-app.route('/api/dispatch/geography', dispatchGeography);
-app.route('/api/dispatch', dispatchAggregates);
-app.route('/api/admin', admin);
-app.route('/api/personnel', personnel);
-app.route('/api/presence', presence);
-app.route('/api/records/properties', properties);
-// subjects MUST mount BEFORE records so /api/records/subjects/search
-// matches this router, not the records catch-all. Same pattern as
-// /api/records/properties above.
-app.route('/api/records/subjects', subjects);
-app.route('/api/records', records);
-app.route('/api/dispatch/run-cards', runCards);
-app.route('/api/dispatch/welfare', welfare);
-// Dispatch extensions — Spillman-parity gaps filled in DEV-1..7:
-//   recommendedUnits  → GET /api/dispatch/calls/:id/recommended-units
-//   audioMode         → GET /api/dispatch/units/mine/audio-mode
-//                       PUT /api/dispatch/units/:id/audio-mode
-//   premiseAlerts     → GET/POST/PUT/DELETE /api/dispatch/premise-alerts
-//                       GET /api/dispatch/premise-alerts/near/scan
-//   callWarnings      → GET /api/dispatch/calls/:id/warnings
-//   unitStatus        → PUT /api/dispatch/units/:id/status
-//   bolosRouter       → GET/POST/PUT/DELETE /api/dispatch/bolos
-//   welfareActive     → GET /api/dispatch/welfare/active
-// IMPORTANT: extensions mount BEFORE the existing calls/units routers
-// so the more-specific paths (/calls/:id/recommended-units,
-// /units/:id/status, /units/:id/audio-mode) match first.
-app.route('/api/dispatch/calls', recommendedUnits);
-app.route('/api/dispatch/calls', callWarnings);
-app.route('/api/dispatch/units', audioMode);
-app.route('/api/dispatch/units', unitStatus);
-app.route('/api/dispatch/premise-alerts', premiseAlerts);
-app.route('/api/dispatch/bolos', bolosRouter);
-app.route('/api/dispatch/welfare', welfareActive);
-app.route('/api/nibrs', nibrs);
-// IMPORTANT: incidentsRouter MUST mount BEFORE incidentSupplements.
-// Both share the /api/incidents prefix; supplements catches paths like
-// /:id/supplements/{dv,pursuit}, while incidentsRouter handles /:id and
-// /:id/{submit,approve,return}. Hono dispatches in registration order,
-// so the more-specific supplements router has to come second to let
-// incidentsRouter's exact patterns match first.
-app.route('/api/incidents', incidentsRouter);
-app.route('/api/incidents', incidentSupplements);
+// Mount routers in declared order — Hono dispatches in registration
+// order, so the per-PR maintainer's job is to add entries to
+// ROUTE_REGISTRY at the right position relative to the ordering
+// invariants in that file's header comment.
+for (const m of ROUTE_REGISTRY) {
+  app.route(m.prefix, m.router);
+}
 
-// Business records cluster — PR-E. Migration 0023_business_records
-// creates the businesses + business_vehicles + business_visits +
-// business_photos + call_businesses tables. Photos route is
-// R2-backed (UPLOADS bucket, business-photos/ prefix); the streamer
-// at /api/business-photos/file/:key{.+} flows through the Worker
-// so premise photos stay auth-gated.
-app.use('/api/business-vehicles', authMiddleware);
-app.use('/api/business-vehicles/*', authMiddleware);
-app.use('/api/business-visits', authMiddleware);
-app.use('/api/business-visits/*', authMiddleware);
-app.use('/api/business-photos', authMiddleware);
-app.use('/api/business-photos/*', authMiddleware);
-app.route('/api/business-vehicles', businessVehicles);
-app.route('/api/business-visits', businessVisits);
-app.route('/api/business-photos', businessPhotos);
-
-// Stub endpoints for dashboard/feature compatibility
-app.use('/api/user/*', authMiddleware);
-app.use('/api/notifications/*', authMiddleware);
-app.use('/api/reports/*', authMiddleware);
-app.use('/api/comms/*', authMiddleware);
-app.use('/api/warrants/*', authMiddleware);
-app.use('/api/weather*', authMiddleware);
-app.use('/api/email/*', authMiddleware);
-app.use('/api/integrations/*', authMiddleware);
-// Audit log viewer + retention. Route module enforces admin OR manager
-// at the role level; destructive endpoints (retention/enforce, retention/
-// policy PUT, compress, index-stats) further restrict to admin.
-app.use('/api/audit', authMiddleware);
-app.use('/api/audit/*', authMiddleware);
-app.route('/api/audit', audit);
-// Citations (traffic / criminal / parking / warning). Niche endpoints
-// deferred to follow-up: /statutes/lookup, /calculate-fine,
-// /stats/by-officer, /:id/full, /:id/completeness, /batch/*.
-app.use('/api/citations', authMiddleware);
-app.use('/api/citations/*', authMiddleware);
-app.route('/api/citations', citations);
-// Arrests — manual booking subset only. JailBase poller endpoints
-// (credentials/toggle/poller/sync/etc) deferred to Phase 2 per plan.
-// Inline role checks inside the route file (officer+ for most writes,
-// admin/manager for delete, supervisor+ for CSV export).
-app.use('/api/arrests', authMiddleware);
-app.use('/api/arrests/*', authMiddleware);
-app.route('/api/arrests', arrests);
-// Cases (investigative case management). MVP scope: core CRUD,
-// workflow (submit-review/approve/status/archive), notes,
-// solvability scoring, persons junction, export. Entity junction
-// tables (calls/incidents/vehicles/properties/evidence/warrants/
-// citations) deferred to a focused follow-up PR.
-app.use('/api/cases', authMiddleware);
-app.use('/api/cases/*', authMiddleware);
-app.route('/api/cases', cases);
-// Document folders — hierarchical browser backed by document_folders +
-// attachments. Migration 0024_document_folders adds the folders table
-// + a folder_id column to attachments (NULL = unfoldered, legacy).
-app.use('/api/documents', authMiddleware);
-app.use('/api/documents/*', authMiddleware);
-app.route('/api/documents', documentFolders);
-// Field interviews — officer-initiated contact records with GPS,
-// subject details, vehicle, disposition. Migration 0025_field_interviews.
-// DELETE + /export/csv enforce role checks inside the route module.
-app.use('/api/field-interviews', authMiddleware);
-app.use('/api/field-interviews/*', authMiddleware);
-app.route('/api/field-interviews', fieldInterviews);
-// geocode proxy — must mount BEFORE the /api/integrations stubs
-// catch-all so /api/integrations/mapbox/client-token resolves here
-// instead of returning a stub. /api/geocode/search is the Nominatim
-// fallback used when no Mapbox token is configured.
-app.use('/api/geocode', authMiddleware);
-app.use('/api/geocode/*', authMiddleware);
-app.route('/api', geocode);
-
-// Trespass orders — minimal stub so PremiseHistory's defensive
-// fetch returns 200 instead of 500/404. Full implementation TBD.
-app.use('/api/trespass-orders', authMiddleware);
-app.use('/api/trespass-orders/*', authMiddleware);
-app.route('/api/trespass-orders', trespassOrders);
-app.use('/api/dispatch/stats*', authMiddleware);
-app.use('/api/dispatch/shift-handoff*', authMiddleware);
-app.route('/api/user', stubs);
-app.route('/api/notifications', stubs);
-app.route('/api/reports', stubs);
-app.route('/api/comms', stubs);
-// Warrants — real implementation (warrant-watch runs + Utah smoke poll).
-// Pulled out of the stubs catch-all 2026-05-24 so the dashboard widget +
-// "Warrant Polling Status" admin tab show real data instead of stub 200s.
-app.route('/api/warrants', warrants);
-app.route('/api/weather', stubs);
-app.route('/api/email', stubs);
-app.route('/api/integrations', stubs);
-app.route('/api/dispatch/stats', stubs);
-app.route('/api/dispatch/shift-handoff', stubs);
-
-// PDF Tools (qpdf) + Document Intake (pdftotext + ocrmypdf) — both proxy
-// to the PdfToolsContainer sidecar. Auth required; per-endpoint role gates
-// inside the route files (encrypt = admin/manager, extract-text = officer+).
-app.use('/api/pdf-tools/*', authMiddleware);
-app.use('/api/document-intake/*', authMiddleware);
-app.route('/api/pdf-tools', pdfTools);
-app.route('/api/document-intake', documentIntake);
-
-// ─── Internal: WelfareWatchDO → Worker callback ──────────
+// ─── Internal: WelfareWatchDO → Worker callback ──────────────
 // The DO's alarm() can't call sendToUser/broadcastAll directly
 // (those live in the Worker module's per-isolate state). Instead
 // it posts to /__welfare-fire authenticated by X-DO-Secret == JWT_SECRET.
+// Lives outside ROUTE_REGISTRY because it's an internal callback,
+// not an API endpoint.
 app.post('/__welfare-fire', async (c) => {
   if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
     return c.json({ error: 'forbidden' }, 403);
@@ -358,6 +130,7 @@ app.post('/__welfare-fire', async (c) => {
   return c.json({ success: true });
 });
 
+// ─── Worker export ───────────────────────────────────────────
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {
     const url = new URL(request.url);
@@ -367,10 +140,11 @@ export default {
     return app.fetch(request, env, ctx);
   },
 
-  // Cron-triggered Utah warrant scan. Schedule defined in wrangler.toml
-  // [[triggers]] crons. waitUntil ensures the scan finishes even though
-  // the scheduled handler returns immediately. Errors are swallowed inside
-  // runUtahWarrantScan so a single bad run can't crash the cron loop.
+  // Cron-triggered Utah warrant scan. Schedule defined in
+  // wrangler.toml [[triggers]] crons. waitUntil ensures the scan
+  // finishes even though the scheduled handler returns immediately.
+  // Errors are swallowed inside runUtahWarrantScan so one bad run
+  // can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
       runUtahWarrantScan(env.DB).catch((err) => {
