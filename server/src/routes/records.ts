@@ -1270,6 +1270,7 @@ router.post('/properties', (req: Request, res: Response) => {
       business_type, structure_type, occupancy_status, year_built, square_footage,
       number_of_stories, security_features, key_holder_name, key_holder_phone,
       key_holder_relationship, owner_name, owner_phone, last_inspection_date,
+      sector_id, zone_id, beat_id,
     } = req.body;
 
     if (!req.body.client_id) {
@@ -1286,8 +1287,9 @@ router.post('/properties', (req: Request, res: Response) => {
         gate_code, alarm_code, emergency_contact, post_orders, hazard_notes, access_instructions, is_active, notes,
         business_type, structure_type, occupancy_status, year_built, square_footage,
         number_of_stories, security_features, key_holder_name, key_holder_phone,
-        key_holder_relationship, owner_name, owner_phone, last_inspection_date)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        key_holder_relationship, owner_name, owner_phone, last_inspection_date,
+        sector_id, zone_id, beat_id)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       client_id, name, address, city || null, state || null, zip || null,
       latitude || null, longitude || null,
@@ -1299,6 +1301,7 @@ router.post('/properties', (req: Request, res: Response) => {
       security_features || null, key_holder_name || null, key_holder_phone || null,
       key_holder_relationship || null, owner_name || null, owner_phone || null,
       last_inspection_date || null,
+      sector_id || null, zone_id || null, beat_id || null,
     );
 
     db.prepare(`
@@ -2547,6 +2550,7 @@ router.put('/properties/:id', (req: Request, res: Response) => {
       key_holder_phone: v => v ?? null, key_holder_relationship: v => v ?? null,
       owner_name: v => v ?? null, owner_phone: v => v ?? null,
       last_inspection_date: v => v ?? null,
+      sector_id: v => v ?? null, zone_id: v => v ?? null, beat_id: v => v ?? null,
     };
 
     for (const [key, transform] of Object.entries(pFieldMap)) {

@@ -2039,6 +2039,12 @@ function migrateSchema(): void {
   addCol('properties', 'owner_name', 'TEXT');
   addCol('properties', 'owner_phone', 'TEXT');
   addCol('properties', 'last_inspection_date', 'TEXT');
+  // Dispatch geography (S/Z/B) — TEXT codes, matching the same scheme used
+  // on calls_for_service / incidents / citations. Optional; auto-resolved
+  // client-side from lat/lng via the SectorZoneBeatPicker component.
+  addCol('properties', 'sector_id', 'TEXT');
+  addCol('properties', 'zone_id', 'TEXT');
+  addCol('properties', 'beat_id', 'TEXT');
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema

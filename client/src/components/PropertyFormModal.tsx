@@ -8,6 +8,7 @@ import { formatPhoneInput } from '../utils/formatters';
 
 import RichTextArea from './RichTextArea';
 import { ALARM_SYSTEM_OPTIONS } from '../constants/lawEnforcementEnums';
+import SectorZoneBeatPicker from './SectorZoneBeatPicker';
 interface PropertyFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -65,6 +66,10 @@ export interface PropertyFormData {
   patrol_frequency: string;
   opening_hours: string;
   closing_hours: string;
+  // Dispatch geography — TEXT codes; auto-fills from lat/lng when blank.
+  sector_id: string;
+  zone_id: string;
+  beat_id: string;
 }
 
 const EMPTY_FORM: PropertyFormData = {
@@ -113,6 +118,9 @@ const EMPTY_FORM: PropertyFormData = {
   patrol_frequency: '',
   opening_hours: '',
   closing_hours: '',
+  sector_id: '',
+  zone_id: '',
+  beat_id: '',
 };
 
 const US_STATES = [
@@ -196,6 +204,9 @@ export default function PropertyFormModal({
           patrol_frequency: (editingProperty as any).patrol_frequency || '',
           opening_hours: (editingProperty as any).opening_hours || '',
           closing_hours: (editingProperty as any).closing_hours || '',
+          sector_id: (editingProperty as any).sector_id || '',
+          zone_id: (editingProperty as any).zone_id || '',
+          beat_id: (editingProperty as any).beat_id || '',
         };
         setForm(initial);
         snapshot(initial);
@@ -458,6 +469,22 @@ export default function PropertyFormModal({
             onChange={handleChange}
           />
         </div>
+      </div>
+
+      {/* Row 7: Dispatch Geography (Sector / Zone / Beat)
+          Auto-fills from lat/lng when blank, sticky once edited manually. */}
+      <div>
+        <div className="text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-2">
+          Dispatch Geography
+        </div>
+        <SectorZoneBeatPicker
+          sectorId={form.sector_id}
+          zoneId={form.zone_id}
+          beatId={form.beat_id}
+          onChange={(next) => setForm((prev) => ({ ...prev, ...next }))}
+          latitude={form.latitude ? Number(form.latitude) : null}
+          longitude={form.longitude ? Number(form.longitude) : null}
+        />
       </div>
 
       {/* ── Security & Access ── */}
