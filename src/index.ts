@@ -174,6 +174,12 @@ app.use('/api/warrants/*', authMiddleware);
 app.use('/api/weather*', authMiddleware);
 app.use('/api/email/*', authMiddleware);
 app.use('/api/integrations/*', authMiddleware);
+// Audit log viewer + retention. Route module enforces admin OR manager
+// at the role level; destructive endpoints (retention/enforce, retention/
+// policy PUT, compress, index-stats) further restrict to admin.
+app.use('/api/audit', authMiddleware);
+app.use('/api/audit/*', authMiddleware);
+app.route('/api/audit', audit);
 // geocode proxy — must mount BEFORE the /api/integrations stubs
 // catch-all so /api/integrations/mapbox/client-token resolves here
 // instead of returning a stub. /api/geocode/search is the Nominatim
