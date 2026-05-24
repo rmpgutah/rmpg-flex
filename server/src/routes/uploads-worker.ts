@@ -58,10 +58,12 @@ async function authenticateTokenOrQuery(c: any, next: any): Promise<Response | v
     token = authHeader.slice(7);
   }
 
-  // 3. Query param token
+  // 3. Query param token (take last if duplicates exist — authUrl fallback may append to stale)
   if (!token) {
-    const queryToken = c.req.query('token');
-    if (queryToken) token = queryToken;
+    const queryTokens = c.req.queries('token');
+    if (queryTokens && queryTokens.length > 0) {
+      token = queryTokens[queryTokens.length - 1];
+    }
   }
 
   if (!token) {
