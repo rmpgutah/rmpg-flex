@@ -81,8 +81,9 @@ links.post('/calls/:id/persons', async (c) => {
   // doesn't surface as a 500; the existing link is returned.
   await execute(
     db,
-    `INSERT OR IGNORE INTO call_persons (call_id, person_id, role, notes, added_by)
-     VALUES (?, ?, ?, ?, ?)`,
+    // added_at explicit override — schema DEFAULT is UTC on Workers.
+    `INSERT OR IGNORE INTO call_persons (call_id, person_id, role, notes, added_by, added_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now', '-6 hours'))`,
     callId, body.person_id, body.role || 'subject', body.notes ?? null, userId,
   );
   const created = await queryFirst<Record<string, unknown>>(
@@ -198,8 +199,8 @@ links.post('/calls/:id/vehicles', async (c) => {
 
   await execute(
     db,
-    `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by)
-     VALUES (?, ?, ?, ?, ?)`,
+    `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now', '-6 hours'))`,
     callId, body.vehicle_id, body.role || 'subject', body.notes ?? null, userId,
   );
   const created = await queryFirst<Record<string, unknown>>(
@@ -293,7 +294,7 @@ links.put('/calls/:id/property', async (c) => {
   );
   if (!prop) return c.json({ error: 'Property not found' }, 404);
 
-  const sets: string[] = ['property_id = ?', "updated_at = datetime('now')"];
+  const sets: string[] = ['property_id = ?', "updated_at = datetime('now', '-6 hours')"];
   const params: unknown[] = [body.property_id];
   if (body.inherit_address && prop.address) {
     sets.push('location_address = ?');
@@ -354,7 +355,7 @@ links.delete('/calls/:id/property', async (c) => {
   const callId = c.req.param('id');
   await execute(
     db,
-    `UPDATE calls_for_service SET property_id = NULL, updated_at = datetime('now') WHERE id = ?`,
+    `UPDATE calls_for_service SET property_id = NULL, updated_at = datetime('now', '-6 hours') WHERE id = ?`,
     callId,
   );
   broadcastAll('dispatch_update', {

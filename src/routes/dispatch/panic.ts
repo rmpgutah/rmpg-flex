@@ -55,8 +55,9 @@ panic.post('/panic', async (c) => {
 
   const result = await execute(
     db,
-    `INSERT INTO panic_alerts (user_id, unit_id, call_id, latitude, longitude, location_address, source)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    // created_at / updated_at explicit overrides — schema DEFAULT is UTC.
+    `INSERT INTO panic_alerts (user_id, unit_id, call_id, latitude, longitude, location_address, source, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now', '-6 hours'), datetime('now', '-6 hours'))`,
     userId, unit?.id ?? null, body.call_id ?? unit?.current_call_id ?? null,
     body.latitude ?? null, body.longitude ?? null, body.location_address ?? null,
     body.source ?? 'manual',
@@ -97,8 +98,8 @@ panic.post('/panic/:id/acknowledge', async (c) => {
   await execute(
     db,
     `UPDATE panic_alerts
-     SET status = 'acknowledged', acknowledged_by = ?, acknowledged_at = datetime('now'),
-         updated_at = datetime('now')
+     SET status = 'acknowledged', acknowledged_by = ?, acknowledged_at = datetime('now', '-6 hours'),
+         updated_at = datetime('now', '-6 hours')
      WHERE id = ? AND status = 'active'`,
     userId, id,
   );
@@ -116,8 +117,8 @@ panic.post('/panic/:id/resolve', async (c) => {
   await execute(
     db,
     `UPDATE panic_alerts
-     SET status = 'resolved', resolved_by = ?, resolved_at = datetime('now'),
-         resolution_notes = ?, updated_at = datetime('now')
+     SET status = 'resolved', resolved_by = ?, resolved_at = datetime('now', '-6 hours'),
+         resolution_notes = ?, updated_at = datetime('now', '-6 hours')
      WHERE id = ?`,
     userId, body.notes ?? null, id,
   );
@@ -142,8 +143,8 @@ panic.post('/panic/:id/cancel', async (c) => {
   await execute(
     db,
     `UPDATE panic_alerts
-     SET status = 'cancelled', resolved_by = ?, resolved_at = datetime('now'),
-         updated_at = datetime('now')
+     SET status = 'cancelled', resolved_by = ?, resolved_at = datetime('now', '-6 hours'),
+         updated_at = datetime('now', '-6 hours')
      WHERE id = ?`,
     userId, id,
   );
@@ -160,8 +161,8 @@ panic.post('/panic/:id/false-alarm', async (c) => {
   await execute(
     db,
     `UPDATE panic_alerts
-     SET status = 'false_alarm', resolved_by = ?, resolved_at = datetime('now'),
-         updated_at = datetime('now')
+     SET status = 'false_alarm', resolved_by = ?, resolved_at = datetime('now', '-6 hours'),
+         updated_at = datetime('now', '-6 hours')
      WHERE id = ?`,
     userId, id,
   );

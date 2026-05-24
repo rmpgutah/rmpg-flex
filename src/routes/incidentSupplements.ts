@@ -88,7 +88,7 @@ function buildHandlers(table: 'dv_supplements' | 'pursuit_supplements', cols: st
         if (existing) {
           if (Object.keys(data).length === 0) return c.json(existing);
           const setClause = Object.keys(data).map((cn) => `${cn} = ?`).join(', ');
-          await execute(db, `UPDATE ${table} SET ${setClause}, updated_at = datetime('now') WHERE incident_id = ?`,
+          await execute(db, `UPDATE ${table} SET ${setClause}, updated_at = datetime('now', '-6 hours') WHERE incident_id = ?`,
             ...Object.values(data), incidentId);
           return c.json(await queryFirst(db, `SELECT * FROM ${table} WHERE incident_id = ?`, incidentId));
         }

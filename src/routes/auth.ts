@@ -64,7 +64,7 @@ auth.post('/login', async (c) => {
     await execute(
       db,
       `INSERT INTO sessions (user_id, token, refresh_token, ip_address, user_agent, expires_at, refresh_expires_at)
-       VALUES (?, ?, ?, ?, ?, datetime('now', '+15 minutes'), datetime('now', '+7 days'))`,
+       VALUES (?, ?, ?, ?, ?, datetime('now', '-6 hours', '+15 minutes'), datetime('now', '-6 hours', '+7 days'))`,
       user.id, accessToken, refreshToken, c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || ''
     );
 
@@ -93,7 +93,7 @@ auth.post('/refresh', async (c) => {
     const db = getDb(c.env);
     const session = await queryFirst<any>(
       db,
-      `SELECT id, user_id, token FROM sessions WHERE refresh_token = ? AND refresh_expires_at > datetime('now')`,
+      `SELECT id, user_id, token FROM sessions WHERE refresh_token = ? AND refresh_expires_at > datetime('now', '-6 hours')`,
       refresh_token
     );
     if (!session) {
@@ -115,7 +115,7 @@ auth.post('/refresh', async (c) => {
     const payload = { sub: String(user.id), user_id: user.id, username: user.username, role: user.role };
     const newAccessToken = await sign({ ...payload, sessionId: uuidv4().replace(/-/g, '') }, jwtSecret);
 
-    await execute(db, `UPDATE sessions SET token = ?, expires_at = datetime('now', '+15 minutes') WHERE id = ?`, newAccessToken, session.id);
+    await execute(db, `UPDATE sessions SET token = ?, expires_at = datetime('now', '-6 hours', '+15 minutes') WHERE id = ?`, newAccessToken, session.id);
 
     return c.json({
       token: newAccessToken,
@@ -165,7 +165,7 @@ auth.put('/password', authMiddleware, async (c) => {
     const newHash = hashSync(new_password, 12);
     await execute(
       db,
-      `UPDATE users SET password_hash = ?, force_password_change = 0, password_changed_at = datetime('now'), updated_at = datetime('now') WHERE id = ?`,
+      `UPDATE users SET password_hash = ?, force_password_change = 0, password_changed_at = datetime('now', '-6 hours'), updated_at = datetime('now', '-6 hours') WHERE id = ?`,
       newHash, userId
     );
     return c.json({ message: 'Password updated' });
