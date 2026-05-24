@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
-import { runUtahWarrantSmokePoll } from '../utils/utahWarrantPoller';
+import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 
 const warrants = new Hono<Env>();
 
@@ -40,7 +40,7 @@ warrants.get('/watch/runs', async (c) => {
 warrants.post('/watch/scan', async (c) => {
   try {
     const db = getDb(c.env);
-    const result = await runUtahWarrantSmokePoll(db);
+    const result = await runUtahWarrantScan(db);
     return c.json({ success: true, run: result });
   } catch (err) {
     return c.json(
