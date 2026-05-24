@@ -104,3 +104,48 @@ admin.get('/upcoming-court-dates', (c) => c.json([]));
 admin.get('/expiring-certifications', (c) => c.json([]));
 admin.get('/google-maps-config', (c) => c.json({}));
 admin.get('/config/branding', (c) => c.json([]));
+
+// ── AdminHealthTab observability stubs ──────────────────────
+// AdminHealthTab.tsx polls these on mount + every 60s. Without
+// these stubs the console flooded with 404s every minute.
+// Shapes match the TypeScript interfaces in AdminHealthTab.tsx
+// (HealthData, ChangelogData, plus the inline shape for
+// systemHealth/usersActivity/realtimeStats). The UI uses
+// optional chaining throughout so null/zero values render as
+// "—" or "0" rather than crashing. Promote any of these to
+// real queries in a follow-up — D1 size + host metrics aren't
+// available to a Worker so the host block stays undefined.
+admin.get('/health/detailed', (c) => c.json({
+  version: '1.0.0',
+  server: {
+    uptime: 0,
+    memory: { rss: 0, heapUsed: 0, heapTotal: 0, external: 0 },
+    nodeVersion: 'workerd',
+  },
+  database: { sizeBytes: 0, tables: {} },
+  operations: { activeSessions: 0, activeUnits: 0, pendingCalls: 0, connectedClients: 0 },
+  loginStats: { successful24h: 0, failed24h: 0 },
+  recentErrors: [],
+}));
+
+admin.get('/changelog', (c) => c.json({
+  version: '1.0.0',
+  changelog: [],
+}));
+
+// Returning null lets the client's `d && setSystemHealth(d)`
+// guard skip the setState, keeping the panel hidden until a
+// real impl ships rather than rendering a frame of zeros.
+admin.get('/system-health', (c) => c.json(null));
+
+admin.get('/users-activity-summary', (c) => c.json({ data: [] }));
+
+admin.get('/realtime-stats', (c) => c.json({
+  activeCalls: 0,
+  unitsOnDuty: 0,
+  pendingIncidents: 0,
+  activeBolos: 0,
+  activeSessions: 0,
+  todayActivity: 0,
+  todayCalls: 0,
+}));

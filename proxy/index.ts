@@ -71,10 +71,23 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/departments' },
   { kind: 'prefix', value: '/api/admin/notification-rules' },
   { kind: 'prefix', value: '/api/admin/announcements' },
+  // AdminHealthTab observability — currently stubs in the new
+  // Worker (src/routes/admin.ts). Listed individually rather than
+  // a broad /api/admin prefix because most /api/admin/* still
+  // lives on legacy (config, call-templates, clients, audit, etc.)
+  // and broadening would silently break those.
+  { kind: 'prefix', value: '/api/admin/health/detailed' },
+  { kind: 'prefix', value: '/api/admin/changelog' },
+  { kind: 'prefix', value: '/api/admin/system-health' },
+  { kind: 'prefix', value: '/api/admin/users-activity-summary' },
+  { kind: 'prefix', value: '/api/admin/realtime-stats' },
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
-  // Offline app secrets
-  { kind: 'prefix', value: '/api/offline/secrets' },
+  // Offline-cache sync engine (browser IndexedDB) — entire namespace
+  // lives on the new Worker: /sync/pull, /sync/push, /secrets,
+  // /my-secret, /secrets/generate. Legacy never implemented any of
+  // these, so route everything under /api/offline to env.API.
+  { kind: 'prefix', value: '/api/offline' },
   // AI namespace (all)
   { kind: 'prefix', value: '/api/ai/' },
   // Skip tracer v1 status/stats stubs (NOT skiptracer-v2, which is legacy)
@@ -89,6 +102,12 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/personnel/coverage-gaps' },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
+  // PUT /api/personnel/:id — new Worker has the write handler
+  // (src/routes/personnel.ts). Method-gated to PUT only because
+  // GET /api/personnel/:id and DELETE /api/personnel/:id still
+  // live on legacy; broadening would silently break those until
+  // the new Worker gains feature parity.
+  { kind: 'regex', value: /^\/api\/personnel\/\d+$/, methods: ['PUT'] },
   // Fleet — entire namespace
   { kind: 'prefix', value: '/api/fleet' },
   // Comms BOLOs + message priority stats (legacy has /comms/messages
