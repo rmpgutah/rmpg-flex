@@ -5,9 +5,12 @@ import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { PdfToolsContainer } from './containers/pdfToolsContainer';
 
-// Export so wrangler can find the DO class at build time
-export { WelfareWatchDO };
+// Export so wrangler can find the DO classes at build time. The Container
+// subclass extends DurableObject and is configured by [[containers]] +
+// [[durable_objects.bindings]] in wrangler.toml.
+export { WelfareWatchDO, PdfToolsContainer };
 
 import auth from './routes/auth';
 import health from './routes/health';
@@ -35,6 +38,9 @@ import welfare from './routes/welfare';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentsRouter from './routes/incidents';
 import warrants from './routes/warrants';
+import pdfTools from './routes/pdfTools';
+import documentIntake from './routes/documentIntake';
+import audit from './routes/audit';
 import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import {
   recommendedUnits,
@@ -53,6 +59,10 @@ type Bindings = {
   JWT_SECRET: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
+  // Mirrors src/types.ts Bindings — kept here so the local Hono<{ Bindings }>
+  // type matches what wrangler exposes at runtime.
+  WELFARE_WATCH?: DurableObjectNamespace;
+  PDF_TOOLS: DurableObjectNamespace<PdfToolsContainer>;
 };
 
 const app = new Hono<{ Bindings: Bindings; Variables: { user: { id: number; username: string; role: string; full_name: string }; userId: number } }>();
@@ -170,6 +180,12 @@ app.use('/api/warrants/*', authMiddleware);
 app.use('/api/weather*', authMiddleware);
 app.use('/api/email/*', authMiddleware);
 app.use('/api/integrations/*', authMiddleware);
+// Audit log viewer + retention. Route module enforces admin OR manager
+// at the role level; destructive endpoints (retention/enforce, retention/
+// policy PUT, compress, index-stats) further restrict to admin.
+app.use('/api/audit', authMiddleware);
+app.use('/api/audit/*', authMiddleware);
+app.route('/api/audit', audit);
 // geocode proxy — must mount BEFORE the /api/integrations stubs
 // catch-all so /api/integrations/mapbox/client-token resolves here
 // instead of returning a stub. /api/geocode/search is the Nominatim
@@ -198,6 +214,14 @@ app.route('/api/email', stubs);
 app.route('/api/integrations', stubs);
 app.route('/api/dispatch/stats', stubs);
 app.route('/api/dispatch/shift-handoff', stubs);
+
+// PDF Tools (qpdf) + Document Intake (pdftotext + ocrmypdf) — both proxy
+// to the PdfToolsContainer sidecar. Auth required; per-endpoint role gates
+// inside the route files (encrypt = admin/manager, extract-text = officer+).
+app.use('/api/pdf-tools/*', authMiddleware);
+app.use('/api/document-intake/*', authMiddleware);
+app.route('/api/pdf-tools', pdfTools);
+app.route('/api/document-intake', documentIntake);
 
 // ─── Internal: WelfareWatchDO → Worker callback ──────────
 // The DO's alarm() can't call sendToUser/broadcastAll directly
