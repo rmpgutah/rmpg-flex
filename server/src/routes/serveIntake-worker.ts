@@ -72,11 +72,16 @@ function extractDOB(text: string): string {
 }
 
 function extractAddress(text: string): string {
-  const m = text.match(/^Address\s*\n\s*(.+(?:,\s*[A-Z]{2}\s*\d{5}).*)$/im);
-  if (m) return m[1].trim();
-  const addrLine = text.match(/(\d+\s+[A-Za-z].*?,\s*[A-Za-z ]+,\s*[A-Z]{2}\s*\d{5}[^)\n]*)/);
-  if (addrLine) return addrLine[1].trim();
-  return extractField(text, 'Address') || '';
+  // Prefer address on same line as "Address" heading (common in field sheets/court docs)
+  const inline = text.match(/Address[:\s]+(\d+\s+[A-Za-z].*?,\s*[A-Za-z ]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/i);
+  if (inline) return inline[1].trim();
+  // Try address on line after "Address" heading
+  const block = text.match(/^Address\s*\n\s*(.+(?:,\s*[A-Z]{2}\s*\d{5}).*)$/im);
+  if (block) return block[1].trim();
+  // Generic first address in document
+  const anyAddr = text.match(/(\d+\s+[A-Za-z].*?,\s*[A-Za-z ]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/);
+  if (anyAddr) return anyAddr[1].trim();
+  return '';
 }
 
 function extractAddressParts(text: string): { address: string; city: string; state: string; zip: string } {
@@ -258,6 +263,23 @@ function generateCaseNarrative(fields: {
   return parts.join('\n\n');
 }
 
+async function geocodeAddress(
+  address: string,
+  env: Env,
+): Promise<{ lat: number | null; lng: number | null }> {
+  if (!address) return { lat: null, lng: null };
+  try {
+    const url = `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(address)}&format=json&limit=1&countrycodes=us`;
+    const resp = await fetch(url, { headers: { 'User-Agent': 'RMPGFlex/5.8' } });
+    if (!resp.ok) return { lat: null, lng: null };
+    const data: any[] = await resp.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+    }
+  } catch { /* geocoding is best-effort */ }
+  return { lat: null, lng: null };
+}
+
 export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>): void {
   const api = new Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>();
   api.use('/*', authenticateToken);
@@ -332,6 +354,15 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
       const serviceWindows = extractServiceWindows(allText);
       const caseNotes = extractCaseNotes(allText);
       const clientAddress = extractClientAddress(allText);
+
+      // ── Geocode the service address (best-effort) ──
+      let latitude: number | null = null;
+      let longitude: number | null = null;
+      if (addrParts.address) {
+        const geo = await geocodeAddress(`${addrParts.address}, ${addrParts.city}, ${addrParts.state} ${addrParts.zip}`, c.env);
+        latitude = geo.lat;
+        longitude = geo.lng;
+      }
 
       // ── 1. Ensure person exists ──
       const persons: any[] = [];
@@ -490,7 +521,7 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
       `).run(
         callNumber, 'pso_client_request', 'P4', 'pending',
         callerName, callerPhone, 'client',
-        addrParts.address || 'Unknown', propertyId, null, null,
+        addrParts.address || 'Unknown', propertyId, latitude, longitude,
         description, notesJson, 'intake', user.userId,
         now
       );
@@ -530,8 +561,8 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
         call_id: callId,
         call_number: callNumber,
         serve_queue_id: serveId,
-        latitude: null,
-        longitude: null,
+        latitude,
+        longitude,
         weather: null,
         lighting: null,
         persons: persons.map(p => ({ id: p.id, role: p.role })),
