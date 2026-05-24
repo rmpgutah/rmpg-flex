@@ -341,8 +341,8 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
           persons.push({ id: existing.id, role: 'defendant' });
         } else {
           const res = await db.prepare(
-            'INSERT INTO persons (first_name, last_name, dob, address, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)'
-          ).run(name.first, name.last, dob || null, addrParts.address || null, now, now);
+            'INSERT INTO persons (first_name, last_name, dob, address, created_at) VALUES (?, ?, ?, ?, ?)'
+          ).run(name.first, name.last, dob || null, addrParts.address || null, now);
           persons.push({ id: Number(res.meta.last_row_id), role: 'defendant' });
         }
       }
@@ -360,11 +360,13 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
           ).run(client_id || 1, propName, addrParts.address, 'residential', now);
           propertyId = Number(propRes.meta.last_row_id);
         }
-        // Link person to property
+        // Link person to property (non-fatal — record_links may not exist in D1)
         if (propertyId && persons.length > 0) {
-          await db.prepare(
-            'INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES (?, ?, ?, ?, ?, ?)'
-          ).run('person', persons[0].id, 'property', propertyId, 'resident', user.userId);
+          try {
+            await db.prepare(
+              'INSERT OR IGNORE INTO record_links (source_type, source_id, target_type, target_id, relationship, created_by) VALUES (?, ?, ?, ?, ?, ?)'
+            ).run('person', persons[0].id, 'property', propertyId, 'resident', user.userId);
+          } catch (_) { /* table may not exist in D1 */ }
         }
       }
 
@@ -503,11 +505,13 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
       );
       const callId = Number(callResult.meta.last_row_id);
 
-      // ── 8. Link person to call ──
+      // ── 8. Link person to call (non-fatal — call_persons may not exist in D1) ──
       if (persons.length > 0) {
-        await db.prepare(
-          'INSERT INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)'
-        ).run(callId, persons[0].id, 'defendant', user.userId, now);
+        try {
+          await db.prepare(
+            'INSERT INTO call_persons (call_id, person_id, role, added_by, created_at) VALUES (?, ?, ?, ?, ?)'
+          ).run(callId, persons[0].id, 'defendant', user.userId, now);
+        } catch (_) { /* table may not exist in D1 */ }
       }
 
       // ── 9. Create serve_queue entry linked to call with full document text ──
