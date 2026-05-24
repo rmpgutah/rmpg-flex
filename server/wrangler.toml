@@ -65,6 +65,37 @@ bucket_name = "rmpg-flex-uploads"
 binding = "DOWNLOADS"
 bucket_name = "rmpg-flex-downloads"
 
+# ── Cloudflare Containers ─────────────────────────────────────
+# PDF Tools sidecar (qpdf + pdftotext + ocrmypdf). The Worker can't
+# shell out to native binaries — this container holds them and the
+# Worker proxies via getContainer(env.PDF_TOOLS, "shared").fetch(req).
+#
+# Image is built from containers/pdf-tools/Dockerfile relative to the
+# REPO ROOT (wrangler resolves container image paths relative to the
+# config file's directory; "../containers/pdf-tools" walks up from
+# /server/ to /containers/pdf-tools/).
+#
+# instance_type = "basic" → 1/4 vCPU, 1 GiB RAM, 4 GB disk.
+# "lite" (default, 256 MiB) is too tight for Tesseract on multi-page
+# PDFs. Bump to "standard-1" (4 GiB) if OCR throughput is a problem.
+[[containers]]
+class_name = "PdfToolsContainer"
+image = "../containers/pdf-tools/Dockerfile"
+max_instances = 3
+instance_type = "basic"
+
+[[durable_objects.bindings]]
+name = "PDF_TOOLS"
+class_name = "PdfToolsContainer"
+
+# new_sqlite_classes is required for container-enabled DOs even
+# though we don't actually use storage — the Container base class
+# extends DurableObject and needs SQLite-backed state for its
+# lifecycle bookkeeping (sleepAfter timer, etc).
+[[migrations]]
+tag = "v1-pdftools"
+new_sqlite_classes = ["PdfToolsContainer"]
+
 # ── Vars (non-secret runtime config) ──────────────────────────
 [vars]
 NODE_ENV = "production"

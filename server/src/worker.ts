@@ -9,7 +9,7 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { handleWebSocketUpgrade, getConnectedUserCount } from './worker-middleware/websocket';
-import type { D1Database, KVNamespace, R2Bucket, ExecutionContext } from '@cloudflare/workers-types';
+import type { D1Database, KVNamespace, R2Bucket, ExecutionContext, DurableObjectNamespace } from '@cloudflare/workers-types';
 
 // ─── Environment Bindings ────────────────────────────────
 export interface Env {
@@ -18,6 +18,11 @@ export interface Env {
   RATE_LIMITS: KVNamespace;
   UPLOADS: R2Bucket;
   DOWNLOADS: R2Bucket;
+  // Cloudflare Container binding — the qpdf + pdftotext + ocrmypdf
+  // sidecar built from containers/pdf-tools/Dockerfile. Class is
+  // exported below via `export { PdfToolsContainer }` so wrangler
+  // can find it. See containers/pdf-tools/README.md for the API.
+  PDF_TOOLS: DurableObjectNamespace;
   JWT_SECRET: string;
   NODE_ENV: string;
   PRIMARY_DOMAIN: string;
@@ -351,6 +356,11 @@ import { mountBusinessVisitsRoutes } from './routes/businessVisits-worker';
 import { mountBusinessPhotosRoutes } from './routes/businessPhotos-worker';
 import { mountDocumentFoldersRoutes } from './routes/documentFolders-worker';
 import { mountWeatherRoutes } from './routes/weather-worker';
+import { mountPdfToolsRoutes } from './routes/pdfTools-worker';
+import { mountDocumentIntakeRoutes } from './routes/documentIntake-worker';
+// Container class — must be exported from the Worker entry so wrangler
+// can discover it for the [[durable_objects.bindings]] declaration.
+export { PdfToolsContainer } from './containers/pdfToolsContainer';
 
 mountAuthRoutes(app);
 mountDownloadsRoutes(app);
@@ -426,6 +436,8 @@ mountBusinessVisitsRoutes(app);
 mountBusinessPhotosRoutes(app);
 mountDocumentFoldersRoutes(app);
 mountWeatherRoutes(app);
+mountPdfToolsRoutes(app);
+mountDocumentIntakeRoutes(app);
 
 // ─── SPA Fallback (Pages Proxy) ──────────────────────────
 // Non-API requests are proxied to the Pages project (rmpg-flex.pages.dev)

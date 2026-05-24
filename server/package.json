@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@azure/msal-node": "^5.2.2",
+    "@cloudflare/containers": "^0.3.4",
     "@cloudflare/workers-types": "^4.20260524.1",
     "@microsoft/microsoft-graph-client": "^3.0.7",
     "@simplewebauthn/server": "^13.2.3",
