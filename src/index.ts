@@ -20,7 +20,7 @@ import records from './routes/records';
 import mapData from './routes/mapData';
 import stubs from './routes/stubs';
 import warrants from './routes/warrants';
-import { runUtahWarrantSmokePoll } from './utils/utahWarrantPoller';
+import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 
 type Bindings = {
   DB: D1Database;
@@ -113,14 +113,14 @@ export default {
     return app.fetch(request, env, ctx);
   },
 
-  // Cron-triggered Utah warrant smoke poll. Schedule defined in wrangler.toml
-  // [[triggers]] crons. waitUntil ensures the poll finishes even though the
-  // scheduled handler returns immediately. Errors are swallowed inside
-  // runUtahWarrantSmokePoll so a single bad run can't crash the cron loop.
+  // Cron-triggered Utah warrant scan. Schedule defined in wrangler.toml
+  // [[triggers]] crons. waitUntil ensures the scan finishes even though
+  // the scheduled handler returns immediately. Errors are swallowed inside
+  // runUtahWarrantScan so a single bad run can't crash the cron loop.
   async scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext): Promise<void> {
     ctx.waitUntil(
-      runUtahWarrantSmokePoll(env.DB).catch((err) => {
-        console.error('Utah warrant scheduled poll failed:', err);
+      runUtahWarrantScan(env.DB).catch((err) => {
+        console.error('Utah warrant scheduled scan failed:', err);
       }),
     );
   },
