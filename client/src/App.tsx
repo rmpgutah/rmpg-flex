@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { WebSocketProvider } from './context/WebSocketContext';
+import { useDispatchVoice } from './hooks/useDispatchVoice';
 import { UserPreferencesProvider } from './context/UserPreferencesContext';
 import { ToastProvider } from './components/ToastProvider';
 import { GlobalSearch } from './components/GlobalSearch';
@@ -251,6 +252,13 @@ function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
   return <ErrorBoundary>{children}</ErrorBoundary>;
 }
 
+// Mount the Spillman-parity dispatch voice subscriber. Has to live
+// inside the auth + WS providers, so it rides along with AppRoutes.
+function DispatchVoiceMount() {
+  useDispatchVoice();
+  return null;
+}
+
 function AppRoutes() {
   const { isAuthenticated, isLoading } = useAuth();
 
@@ -260,6 +268,7 @@ function AppRoutes() {
 
   return (
     <>
+      {isAuthenticated && <DispatchVoiceMount />}
       {isAuthenticated && <GlobalSearch />}
       {isAuthenticated && <KeyboardShortcuts />}
       <Suspense fallback={<LoadingSplash message="Loading module" />}>

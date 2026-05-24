@@ -27,6 +27,17 @@ preview_id = "8e01c392038e4f76838ca9a1130c908e"
 binding = "MAP_DATA"
 bucket_name = "system-essentials"
 
+# Durable Objects — DispatchHub owns every connected WebSocket so
+# routes in any isolate can broadcast through a single point. See
+# src/durable/DispatchHub.ts and src/lib/broadcast.ts.
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "DispatchHub"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["DispatchHub"]
+
 # Environment variables
 [vars]
 NODE_ENV = "production"

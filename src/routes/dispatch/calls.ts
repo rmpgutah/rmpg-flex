@@ -4,8 +4,58 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
+import {
+  broadcastCallCreated,
+  broadcastCallUpdated,
+  broadcastDispatchUpdate,
+  broadcastUnitUpdate,
+  sendToUsers,
+} from '../../lib/broadcast';
 
 const calls = new Hono<Env>();
+
+// Refetch helper — broadcasts carry the post-mutation call so every
+// dispatcher screen and officer MDT renders consistent state without
+// a second GET.
+async function refetchCall(db: ReturnType<typeof getDb>, id: string | number) {
+  return queryFirst<Record<string, unknown>>(
+    db,
+    'SELECT * FROM calls_for_service WHERE id = ?',
+    id,
+  );
+}
+
+// Officer user_ids assigned to a call — used so dispatch/status changes
+// can target each officer's MDT directly (premise alerts, OS flags, voice
+// prompts) on top of the broadcast.
+async function getOfficerUserIdsForUnits(
+  db: ReturnType<typeof getDb>,
+  unitIds: number[],
+): Promise<number[]> {
+  if (unitIds.length === 0) return [];
+  const placeholders = unitIds.map(() => '?').join(',');
+  const rows = await query<{ officer_id: number | null }>(
+    db,
+    `SELECT officer_id FROM units WHERE id IN (${placeholders}) AND officer_id IS NOT NULL`,
+    ...unitIds,
+  );
+  return rows.map((r) => r.officer_id!).filter((id): id is number => typeof id === 'number');
+}
+
+function actionForStatus(status: string): string {
+  switch (status) {
+    case 'dispatched': return 'call_dispatched';
+    case 'enroute':    return 'call_enroute';
+    case 'onscene':    return 'call_onscene';
+    case 'cleared':    return 'call_cleared';
+    case 'closed':     return 'call_closed';
+    case 'cancelled':  return 'call_cancelled';
+    case 'on_hold':    return 'call_on_hold';
+    case 'pending':    return 'call_pending';
+    case 'archived':   return 'call_archived';
+    default:           return 'call_status_changed';
+  }
+}
 
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
 calls.get('/', async (c) => {
@@ -107,6 +157,13 @@ calls.post('/', async (c) => {
     const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
     const callId = Number(result.meta.last_row_id);
     const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
+
+    // Fire-and-forget — broadcasts are best-effort. P1/P2 priority
+    // is what triggers the client's alert tone (see WebSocketContext
+    // onmessage handler at line 171). Including both `data:` and the
+    // legacy `call:` shape so the existing alert path still matches.
+    c.executionCtx.waitUntil(broadcastCallCreated(c.env, call).then(() => {}));
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'call_created', call }).then(() => {}));
 
     return c.json(call, 201);
   } catch (err) {
@@ -341,6 +398,8 @@ calls.put('/:id', async (c) => {
       'SELECT c.*, ext.* FROM calls_for_service c LEFT JOIN calls_for_service_ext ext ON ext.id = c.id WHERE c.id = ?',
       id,
     );
+    c.executionCtx.waitUntil(broadcastCallUpdated(c.env, updated).then(() => {}));
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'call_updated', call: updated }).then(() => {}));
     return c.json(updated);
   } catch (err) {
     console.error('PUT /dispatch/calls/:id failed:', err);
@@ -354,6 +413,7 @@ calls.delete('/:id', async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     await execute(db, 'DELETE FROM calls_for_service WHERE id = ?', id);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'call_deleted', call_id: Number(id) }).then(() => {}));
     return c.json({ message: 'Call deleted' });
   } catch (err) {
     return c.json({ error: 'Failed to delete call' }, 500);
@@ -374,7 +434,43 @@ calls.post('/:id/status', async (c) => {
     const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now'))` : '';
 
     await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql} WHERE id = ?`, status, id);
-    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const updated = await refetchCall(db, id);
+
+    // Free units on terminal status. Keep this mirrored from the
+    // legacy server route — without it units stay stuck on cleared
+    // calls and stop showing as available.
+    if (updated && ['cleared', 'closed', 'cancelled', 'archived'].includes(status)) {
+      try {
+        const unitIds = JSON.parse(String((updated as any).assigned_unit_ids || '[]')) as number[];
+        for (const uid of unitIds) {
+          await execute(db,
+            "UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now') WHERE id = ? AND current_call_id = ?",
+            uid, parseInt(id, 10));
+        }
+        if (unitIds.length > 0) {
+          c.executionCtx.waitUntil(broadcastUnitUpdate(c.env, { action: 'units_cleared', unit_ids: unitIds, call_id: Number(id) }).then(() => {}));
+        }
+      } catch { /* parse failure — broadcast still fires below */ }
+    }
+
+    const action = actionForStatus(status);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action, call: updated }).then(() => {}));
+    c.executionCtx.waitUntil(broadcastCallUpdated(c.env, updated).then(() => {}));
+
+    // Targeted MDT notify on enroute/onscene/cleared — short status
+    // ("Call Update") that the officer's voice queue speaks.
+    if (updated && ['enroute', 'onscene', 'cleared'].includes(status)) {
+      try {
+        const unitIds = JSON.parse(String((updated as any).assigned_unit_ids || '[]')) as number[];
+        const officerIds = await getOfficerUserIdsForUnits(db, unitIds);
+        if (officerIds.length > 0) {
+          c.executionCtx.waitUntil(sendToUsers(c.env, officerIds, 'call_status_for_officer', {
+            action, call: updated,
+          }).then(() => {}));
+        }
+      } catch { /* non-fatal */ }
+    }
+
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
@@ -387,6 +483,8 @@ calls.post('/:id/archive', async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE id = ?", id);
+    const updated = await refetchCall(db, id);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'call_archived', call: updated }).then(() => {}));
     return c.json({ message: 'Archived' });
   } catch (err) { return c.json({ error: 'Archive failed' }, 500); }
 });
@@ -397,20 +495,34 @@ calls.post('/:id/unarchive', async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     await execute(db, "UPDATE calls_for_service SET status = 'closed' WHERE id = ? AND status = 'archived'", id);
+    const updated = await refetchCall(db, id);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'call_unarchived', call: updated }).then(() => {}));
     return c.json({ message: 'Unarchived' });
   } catch (err) { return c.json({ error: 'Unarchive failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/hold
 calls.post('/:id/hold', async (c) => {
-  try { const db = getDb(c.env); await execute(db, "UPDATE calls_for_service SET status = 'on_hold' WHERE id = ?", c.req.param('id')); return c.json({ message: 'On hold' }); }
-  catch (err) { return c.json({ error: 'Hold failed' }, 500); }
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, "UPDATE calls_for_service SET status = 'on_hold' WHERE id = ?", id);
+    const updated = await refetchCall(db, id);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'call_on_hold', call: updated }).then(() => {}));
+    return c.json({ message: 'On hold' });
+  } catch (err) { return c.json({ error: 'Hold failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/resume
 calls.post('/:id/resume', async (c) => {
-  try { const db = getDb(c.env); await execute(db, "UPDATE calls_for_service SET status = 'pending' WHERE id = ? AND status = 'on_hold'", c.req.param('id')); return c.json({ message: 'Resumed' }); }
-  catch (err) { return c.json({ error: 'Resume failed' }, 500); }
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, "UPDATE calls_for_service SET status = 'pending' WHERE id = ? AND status = 'on_hold'", id);
+    const updated = await refetchCall(db, id);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'call_resumed', call: updated }).then(() => {}));
+    return c.json({ message: 'Resumed' });
+  } catch (err) { return c.json({ error: 'Resume failed' }, 500); }
 });
 
 // POST /dispatch/calls/:id/assign-unit
@@ -424,7 +536,23 @@ calls.post('/:id/assign-unit', async (c) => {
     const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), unit_id);
+    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = datetime('now') WHERE id = ?", parseInt(id, 10), unit_id);
+
+    const updated = await refetchCall(db, id);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'unit_assigned', call: updated, unit_id }).then(() => {}));
+    c.executionCtx.waitUntil(broadcastUnitUpdate(c.env, { action: 'unit_dispatched', unit_id, call_id: Number(id) }).then(() => {}));
+
+    // Targeted dispatch announcement — give the newly-assigned
+    // officer the full detailed call payload their MDT voices out
+    // (unit, type, priority, address, flags). Replayed for 5 min if
+    // the officer was offline at assign time.
+    const officerIds = await getOfficerUserIdsForUnits(db, [unit_id]);
+    if (officerIds.length > 0) {
+      c.executionCtx.waitUntil(sendToUsers(c.env, officerIds, 'dispatch_assignment', {
+        call: updated, unit_id,
+      }).then(() => {}));
+    }
+
     return c.json({ message: 'Unit assigned', assigned_unit_ids: assigned });
   } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
 });
@@ -439,7 +567,11 @@ calls.post('/:id/unassign-unit', async (c) => {
     if (!call) return c.json({ error: 'Call not found' }, 404);
     const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
-    await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
+    await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = datetime('now') WHERE id = ?", unit_id);
+
+    const updated = await refetchCall(db, id);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'unit_unassigned', call: updated, unit_id }).then(() => {}));
+    c.executionCtx.waitUntil(broadcastUnitUpdate(c.env, { action: 'unit_available', unit_id }).then(() => {}));
     return c.json({ message: 'Unit unassigned', assigned_unit_ids: assigned });
   } catch (err) { return c.json({ error: 'Unassign failed' }, 500); }
 });
@@ -461,7 +593,21 @@ calls.post('/:id/dispatch', async (c) => {
     await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify([...assigned]), id);
 
     for (const uid of unit_ids) {
-      await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);
+      await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = datetime('now') WHERE id = ?", parseInt(id, 10), uid);
+    }
+
+    const updated = await refetchCall(db, id);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'units_dispatched', call: updated, unit_ids }).then(() => {}));
+    c.executionCtx.waitUntil(broadcastUnitUpdate(c.env, { action: 'units_dispatched', unit_ids, call_id: Number(id) }).then(() => {}));
+
+    // Each dispatched officer's MDT gets the full call payload.
+    // Detailed dispatch announcement — unit ID, call type, priority,
+    // address, flags — is composed client-side from this payload.
+    const officerIds = await getOfficerUserIdsForUnits(db, unit_ids);
+    if (officerIds.length > 0) {
+      c.executionCtx.waitUntil(sendToUsers(c.env, officerIds, 'dispatch_assignment', {
+        call: updated, unit_ids,
+      }).then(() => {}));
     }
 
     return c.json({ message: 'Units dispatched' });

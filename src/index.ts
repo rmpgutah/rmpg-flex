@@ -12,6 +12,11 @@ import dispatchUnits from './routes/dispatch/units';
 import dispatchGps from './routes/dispatch/gps';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
+import dispatchPanic from './routes/dispatch/panic';
+import dispatchWelfare from './routes/dispatch/welfare';
+import dispatchRunCards from './routes/dispatch/runCards';
+import dispatchCallActions from './routes/dispatch/callActions';
+import dispatchCallLinks from './routes/dispatch/callLinks';
 import admin from './routes/admin';
 import personnel from './routes/personnel';
 import presence from './routes/presence';
@@ -24,6 +29,7 @@ type Bindings = {
   DB: D1Database;
   KV: KVNamespace;
   MAP_DATA: R2Bucket;
+  HUB: DurableObjectNamespace;
   JWT_SECRET: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
@@ -66,11 +72,25 @@ app.use('/api/presence/*', authMiddleware);
 app.use('/api/records', authMiddleware);
 app.use('/api/records/*', authMiddleware);
 
+// IMPORTANT: dispatchCallActions mounts at /api/dispatch with routes
+// like /calls/:id/notes, /calls/:id/warnings, etc. It MUST mount
+// BEFORE dispatchCalls so that path-specific routes like
+// /calls/:id/warnings don't get swallowed by /calls/:id (PUT/DELETE).
+// Hono has the same collision footgun as Express.
+app.route('/api/dispatch', dispatchCallActions);
+// callLinks also mounts at /api/dispatch with /calls/:id/persons,
+// /calls/:id/vehicles, /calls/:id/property routes. Must precede
+// dispatchCalls so the longer-prefix routes are matched first
+// (avoids the same trie-routing collision as callActions).
+app.route('/api/dispatch', dispatchCallLinks);
 app.route('/api/dispatch/calls', dispatchCalls);
 app.route('/api/dispatch/units', dispatchUnits);
 app.route('/api/dispatch/gps', dispatchGps);
 app.route('/api/dispatch/geography', dispatchGeography);
 app.route('/api/dispatch', dispatchAggregates);
+app.route('/api/dispatch', dispatchPanic);
+app.route('/api/dispatch', dispatchWelfare);
+app.route('/api/dispatch', dispatchRunCards);
 app.route('/api/admin', admin);
 app.route('/api/personnel', personnel);
 app.route('/api/presence', presence);
@@ -98,6 +118,10 @@ app.route('/api/email', stubs);
 app.route('/api/integrations', stubs);
 app.route('/api/dispatch/stats', stubs);
 app.route('/api/dispatch/shift-handoff', stubs);
+
+// Cloudflare requires the Durable Object class to be exported from
+// the worker entry so the runtime can construct it inside its isolate.
+export { DispatchHub } from './durable/DispatchHub';
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {

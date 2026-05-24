@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { broadcastUnitUpdate, broadcastDispatchUpdate } from '../../lib/broadcast';
 
 const units = new Hono<Env>();
 
@@ -36,6 +37,7 @@ units.post('/', async (c) => {
       call_sign, officer_id || null, vehicle_id || null, JSON.stringify(capabilities || [])
     );
     const unit = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM units WHERE id = ?', Number(result.meta.last_row_id));
+    c.executionCtx.waitUntil(broadcastUnitUpdate(c.env, { action: 'unit_created', unit }).then(() => {}));
     return c.json(unit, 201);
   } catch (err: any) {
     if (err?.message?.includes('UNIQUE')) return c.json({ error: 'Call sign already exists' }, 409);
@@ -64,6 +66,16 @@ units.put('/:id', async (c) => {
     params.push(id);
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
+
+    // Status change is the high-leverage moment — officer goes
+    // available/off-duty/on-break, that drives the dispatcher's
+    // unit-availability board. Action discriminator carries the new
+    // status so the client can fan out without a second fetch.
+    const newStatus = (updated as any)?.status;
+    c.executionCtx.waitUntil(broadcastUnitUpdate(c.env, {
+      action: newStatus ? `unit_status_${newStatus}` : 'unit_updated',
+      unit: updated,
+    }).then(() => {}));
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update unit' }, 500);
@@ -74,14 +86,19 @@ units.put('/:id', async (c) => {
 units.delete('/:id', async (c) => {
   try {
     const db = getDb(c.env);
-    await execute(db, 'DELETE FROM units WHERE id = ?', c.req.param('id'));
+    const id = c.req.param('id');
+    await execute(db, 'DELETE FROM units WHERE id = ?', id);
+    c.executionCtx.waitUntil(broadcastUnitUpdate(c.env, { action: 'unit_deleted', unit_id: Number(id) }).then(() => {}));
     return c.json({ message: 'Unit deleted' });
   } catch (err) {
     return c.json({ error: 'Failed to delete unit' }, 500);
   }
 });
 
-// POST /dispatch/calls/:callId/assign-unit
+// POST /dispatch/units/assign-unit — convenience endpoint that mirrors
+// calls.ts /:id/assign-unit but takes call_id in the body. Kept for
+// clients that hit this path; emits the same dispatch_update so both
+// entry points produce identical client state.
 units.post('/assign-unit', async (c) => {
   try {
     const db = getDb(c.env);
@@ -91,7 +108,10 @@ units.post('/assign-unit', async (c) => {
     const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
     assigned.add(unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify([...assigned]), call_id);
-    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", call_id, unit_id);
+    await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = datetime('now') WHERE id = ?", call_id, unit_id);
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', call_id);
+    c.executionCtx.waitUntil(broadcastDispatchUpdate(c.env, { action: 'unit_assigned', call: updated, unit_id }).then(() => {}));
+    c.executionCtx.waitUntil(broadcastUnitUpdate(c.env, { action: 'unit_dispatched', unit_id, call_id }).then(() => {}));
     return c.json({ message: 'Unit assigned' });
   } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
 });

@@ -2,6 +2,7 @@ export type Bindings = {
   DB: D1Database;
   KV: KVNamespace;
   MAP_DATA: R2Bucket;
+  HUB: DurableObjectNamespace;
   JWT_SECRET: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
