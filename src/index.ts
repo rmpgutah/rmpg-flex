@@ -3,7 +3,11 @@ import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
 import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware } from './middleware/auth';
-import { handleWebSocket } from './routes/ws';
+import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
+import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+
+// Export so wrangler can find the DO class at build time
+export { WelfareWatchDO };
 
 import auth from './routes/auth';
 import health from './routes/health';
@@ -19,8 +23,22 @@ import properties from './routes/properties';
 import records from './routes/records';
 import mapData from './routes/mapData';
 import stubs from './routes/stubs';
+import runCards from './routes/runCards';
+import nibrs from './routes/nibrs';
+import welfare from './routes/welfare';
+import incidentSupplements from './routes/incidentSupplements';
+import incidentsRouter from './routes/incidents';
 import warrants from './routes/warrants';
 import { runUtahWarrantSmokePoll } from './utils/utahWarrantPoller';
+import {
+  recommendedUnits,
+  audioMode,
+  premiseAlerts,
+  callWarnings,
+  unitStatus,
+  bolos as bolosRouter,
+  welfareActive,
+} from './routes/dispatch/extensions';
 
 type Bindings = {
   DB: D1Database;
@@ -59,6 +77,18 @@ app.use('/api/dispatch/calls/*', authMiddleware);
 app.use('/api/dispatch/units/*', authMiddleware);
 app.use('/api/dispatch/gps/*', authMiddleware);
 app.use('/api/dispatch/geography/*', authMiddleware);
+app.use('/api/dispatch/run-cards', authMiddleware);
+app.use('/api/dispatch/run-cards/*', authMiddleware);
+app.use('/api/dispatch/welfare', authMiddleware);
+app.use('/api/dispatch/welfare/*', authMiddleware);
+app.use('/api/dispatch/premise-alerts', authMiddleware);
+app.use('/api/dispatch/premise-alerts/*', authMiddleware);
+app.use('/api/dispatch/bolos', authMiddleware);
+app.use('/api/dispatch/bolos/*', authMiddleware);
+app.use('/api/nibrs', authMiddleware);
+app.use('/api/nibrs/*', authMiddleware);
+app.use('/api/incidents', authMiddleware);
+app.use('/api/incidents/*', authMiddleware);
 app.use('/api/admin', authMiddleware);
 app.use('/api/admin/*', authMiddleware);
 app.use('/api/personnel', authMiddleware);
@@ -78,6 +108,37 @@ app.route('/api/personnel', personnel);
 app.route('/api/presence', presence);
 app.route('/api/records/properties', properties);
 app.route('/api/records', records);
+app.route('/api/dispatch/run-cards', runCards);
+app.route('/api/dispatch/welfare', welfare);
+// Dispatch extensions — Spillman-parity gaps filled in DEV-1..7:
+//   recommendedUnits  → GET /api/dispatch/calls/:id/recommended-units
+//   audioMode         → GET /api/dispatch/units/mine/audio-mode
+//                       PUT /api/dispatch/units/:id/audio-mode
+//   premiseAlerts     → GET/POST/PUT/DELETE /api/dispatch/premise-alerts
+//                       GET /api/dispatch/premise-alerts/near/scan
+//   callWarnings      → GET /api/dispatch/calls/:id/warnings
+//   unitStatus        → PUT /api/dispatch/units/:id/status
+//   bolosRouter       → GET/POST/PUT/DELETE /api/dispatch/bolos
+//   welfareActive     → GET /api/dispatch/welfare/active
+// IMPORTANT: extensions mount BEFORE the existing calls/units routers
+// so the more-specific paths (/calls/:id/recommended-units,
+// /units/:id/status, /units/:id/audio-mode) match first.
+app.route('/api/dispatch/calls', recommendedUnits);
+app.route('/api/dispatch/calls', callWarnings);
+app.route('/api/dispatch/units', audioMode);
+app.route('/api/dispatch/units', unitStatus);
+app.route('/api/dispatch/premise-alerts', premiseAlerts);
+app.route('/api/dispatch/bolos', bolosRouter);
+app.route('/api/dispatch/welfare', welfareActive);
+app.route('/api/nibrs', nibrs);
+// IMPORTANT: incidentsRouter MUST mount BEFORE incidentSupplements.
+// Both share the /api/incidents prefix; supplements catches paths like
+// /:id/supplements/{dv,pursuit}, while incidentsRouter handles /:id and
+// /:id/{submit,approve,return}. Hono dispatches in registration order,
+// so the more-specific supplements router has to come second to let
+// incidentsRouter's exact patterns match first.
+app.route('/api/incidents', incidentsRouter);
+app.route('/api/incidents', incidentSupplements);
 
 // Stub endpoints for dashboard/feature compatibility
 app.use('/api/user/*', authMiddleware);
@@ -103,6 +164,31 @@ app.route('/api/email', stubs);
 app.route('/api/integrations', stubs);
 app.route('/api/dispatch/stats', stubs);
 app.route('/api/dispatch/shift-handoff', stubs);
+
+// ─── Internal: WelfareWatchDO → Worker callback ──────────
+// The DO's alarm() can't call sendToUser/broadcastAll directly
+// (those live in the Worker module's per-isolate state). Instead
+// it posts to /__welfare-fire authenticated by X-DO-Secret == JWT_SECRET.
+app.post('/__welfare-fire', async (c) => {
+  if (c.req.header('X-DO-Secret') !== c.env.JWT_SECRET) {
+    return c.json({ error: 'forbidden' }, 403);
+  }
+  const { stage, watch } = await c.req.json<{ stage: 'prompt' | 'alert' | 'emergency'; watch: any }>();
+  if (stage === 'prompt') {
+    sendToUser(watch.user_id, 'welfare_check', {
+      action: 'welfare_prompt',
+      callSign: watch.call_sign,
+      callId: watch.call_id,
+      callNumber: watch.call_number,
+      message: `Welfare check: ${watch.call_sign || 'unit'}, are you code 4${watch.call_number ? ` on call ${watch.call_number}` : ''}?`,
+    });
+  } else if (stage === 'alert') {
+    broadcastAll('dispatch_update', { action: 'welfare_alert', user_id: watch.user_id, call_sign: watch.call_sign, at: new Date().toISOString() });
+  } else if (stage === 'emergency') {
+    broadcastAll('dispatch_update', { action: 'welfare_emergency', user_id: watch.user_id, call_sign: watch.call_sign, call_id: watch.call_id, call_number: watch.call_number, triggered_by: 'automated_escalation', at: new Date().toISOString() });
+  }
+  return c.json({ success: true });
+});
 
 export default {
   async fetch(request: Request, env: Bindings, ctx: ExecutionContext): Promise<Response> {

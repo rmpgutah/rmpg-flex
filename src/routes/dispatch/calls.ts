@@ -4,6 +4,8 @@ import { z } from 'zod';
 import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
+import { applyRunCard } from '../runCards';
+import { sendToUser } from '../ws';
 
 const calls = new Hono<Env>();
 
@@ -75,6 +77,31 @@ calls.post('/', async (c) => {
       return c.json({ error: 'incident_type, priority, and location_address are required' }, 400);
     }
 
+    // ── Run Card application (Spillman parity, DI-1) ──
+    // Caller-provided fields always win; the run card fills only
+    // nullish/empty entries. Records run_card_id + run_card_applied_at
+    // on the call row.
+    const normalizedIncidentType = String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_');
+    const rcResult = await applyRunCard(db, normalizedIncidentType, String(priority).toUpperCase(), {
+      weapons_involved: body.weapons_involved,
+      injuries_reported: body.injuries_reported,
+      domestic_violence: body.domestic_violence,
+      alcohol_involved: body.alcohol_involved,
+      mental_health_crisis: body.mental_health_crisis,
+      officer_safety_caution: body.officer_safety_caution,
+      felony_in_progress: body.felony_in_progress,
+      vehicle_pursuit: body.vehicle_pursuit,
+      foot_pursuit: body.foot_pursuit,
+      hazmat: body.hazmat,
+      ems_requested: body.ems_requested,
+      fire_requested: body.fire_requested,
+    });
+    if (rcResult.card) {
+      for (const [k, v] of Object.entries(rcResult.appliedFlags)) {
+        if (body[k] == null || body[k] === '') body[k] = v as any;
+      }
+    }
+
     const year = new Date().getFullYear().toString().slice(-2);
     const [{ max }] = await query<{ max: string | null }>(db, "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?", `${year}-CFS%`);
     const seq = max ? String(parseInt(max.split('-CFS')[1] || '0', 10) + 1).padStart(5, '0') : '00001';
@@ -104,11 +131,18 @@ calls.post('/', async (c) => {
       }
     }
 
+    // If a run card was applied, record run_card_id + run_card_applied_at
+    if (rcResult.card) {
+      cols.push('run_card_id', 'run_card_applied_at');
+      vals.push('?', '?');
+      bindParams.push(rcResult.card.id, new Date().toISOString());
+    }
+
     const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
     const callId = Number(result.meta.last_row_id);
     const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
 
-    return c.json(call, 201);
+    return c.json({ ...call, runCard: rcResult.card }, 201);
   } catch (err) {
     console.error('Create call error:', err);
     return c.json({ error: 'Failed to create call' }, 500);
@@ -419,13 +453,55 @@ calls.post('/:id/assign-unit', async (c) => {
     const db = getDb(c.env);
     const id = c.req.param('id');
     const { unit_id } = await c.req.json<{ unit_id: number }>();
-    const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
+    const call = await queryFirst<{ assigned_unit_ids: string; call_number: string; latitude: number | null; longitude: number | null }>(
+      db, 'SELECT assigned_unit_ids, call_number, latitude, longitude FROM calls_for_service WHERE id = ?', id
+    );
     if (!call) return c.json({ error: 'Call not found' }, 404);
     const assigned = JSON.parse(call.assigned_unit_ids || '[]') as number[];
     if (!assigned.includes(unit_id)) assigned.push(unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
     await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), unit_id);
-    return c.json({ message: 'Unit assigned', assigned_unit_ids: assigned });
+
+    // ── Premise auto-push (Spillman parity, DI-3) ──
+    // Look up premise_alerts within 50m of the call's GPS, push to the
+    // assigned officer's MDT via sendToUser. Best-effort.
+    let premise_pushed = 0;
+    try {
+      if (call.latitude != null && call.longitude != null) {
+        const dLat = 0.001;
+        const dLng = 0.001 / Math.max(0.01, Math.cos(call.latitude * Math.PI / 180));
+        const alerts = await query<any>(db, `
+          SELECT id, address, latitude, longitude, alert_type, alert_level,
+                 title, description, flags
+          FROM premise_alerts
+          WHERE active = 1
+            AND latitude  BETWEEN ? AND ?
+            AND longitude BETWEEN ? AND ?
+            AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
+          call.latitude - dLat, call.latitude + dLat,
+          call.longitude - dLng, call.longitude + dLng);
+        const within50m = alerts.filter((a: any) => {
+          const dLatR = (a.latitude - call.latitude!) * Math.PI / 180;
+          const dLngR = (a.longitude - call.longitude!) * Math.PI / 180;
+          const aa = Math.sin(dLatR / 2) ** 2 + Math.cos(call.latitude! * Math.PI / 180) * Math.cos(a.latitude * Math.PI / 180) * Math.sin(dLngR / 2) ** 2;
+          return 6371000 * 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa)) <= 50;
+        });
+        if (within50m.length > 0) {
+          const unit = await queryFirst<{ officer_id: number | null }>(db, 'SELECT officer_id FROM units WHERE id = ?', unit_id);
+          if (unit?.officer_id) {
+            premise_pushed = sendToUser(unit.officer_id, 'premise_alert_for_unit', {
+              call_id: id,
+              call_number: call.call_number,
+              unit_id,
+              alerts: within50m,
+              pushed_at: new Date().toISOString(),
+            });
+          }
+        }
+      }
+    } catch (err) { console.error('[dispatch] premise auto-push:', err); }
+
+    return c.json({ message: 'Unit assigned', assigned_unit_ids: assigned, premise_pushed });
   } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
 });
 
