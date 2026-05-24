@@ -72,6 +72,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
   const [activeTab, setActiveTab] = useState(initialTab);
 
   // Profile form
+  const [username, setUsername] = useState('');
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [email, setEmail] = useState('');
@@ -160,6 +161,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
 
   useEffect(() => {
     if (isOpen && user) {
+      setUsername(user.username || '');
       setFirstName(user.first_name || '');
       setLastName(user.last_name || '');
       setEmail(user.email || '');
@@ -377,13 +379,34 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
       setProfileMsg({ type: 'error', text: 'First and last name are required.' });
       return;
     }
+    const trimmedUsername = username.trim();
+    if (!trimmedUsername) {
+      setProfileMsg({ type: 'error', text: 'Username is required.' });
+      return;
+    }
     setProfileSaving(true);
     setProfileMsg(null);
     try {
-      await apiFetch('/auth/profile', {
+      const result = await apiFetch<{ token?: string; refreshToken?: string }>('/auth/profile', {
         method: 'PUT',
-        body: JSON.stringify({ first_name: firstName.trim(), last_name: lastName.trim(), email, phone }),
+        body: JSON.stringify({
+          username: trimmedUsername,
+          first_name: firstName.trim(),
+          last_name: lastName.trim(),
+          email,
+          phone,
+        }),
       });
+      // Username changes invalidate the existing JWT (username claim moved).
+      // The server re-issues a fresh token in the same response — swap it
+      // into localStorage before refreshUser() so the next request carries
+      // the new token instead of 401-ing.
+      if (result?.token) {
+        try { localStorage.setItem('rmpg_token', result.token); } catch { /* storage full */ }
+      }
+      if (result?.refreshToken) {
+        try { localStorage.setItem('rmpg_refresh_token', result.refreshToken); } catch { /* storage full */ }
+      }
       // Refresh AuthContext user so header/OPR name updates immediately
       await refreshUser();
       setProfileMsg({ type: 'success', text: 'Profile updated successfully.' });
@@ -638,12 +661,22 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                 />
               </div>
 
-              {/* Read-only fields */}
+              {/* Username (editable) + Badge # (read-only) */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
                 <div>
-                  <label className="field-label">Username</label>
-                  <div className="text-xs text-white px-3 py-1.5" style={{ background: '#030303', border: '1px solid #242424' }}>
-                    {user.username}
+                  <label className="field-label">Username *</label>
+                  <input
+                    type="text"
+                    value={username}
+                    onChange={e => setUsername(e.target.value)}
+                    className="input-dark"
+                    autoComplete="username"
+                    spellCheck={false}
+                    pattern="[a-zA-Z0-9_.\-]+"
+                    minLength={3}
+                  />
+                  <div className="text-[9px] text-rmpg-400 mt-0.5">
+                    Letters, numbers, _ . - · 3+ chars · session stays active after change
                   </div>
                 </div>
                 <div>

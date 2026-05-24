@@ -289,7 +289,120 @@ auth.get('/session-timeout', (c) => {
   return c.json({ idleTimeoutMinutes: 30, maxSessionHours: 12 });
 });
 
-auth.get('/profile', authMiddleware, (c) => c.json({}));
-auth.put('/profile', authMiddleware, async (c) => c.json({ success: true }));
+// GET /auth/profile — return the current user's editable profile fields.
+// Used by UserProfileModal on mount to populate the form.
+auth.get('/profile', authMiddleware, async (c) => {
+  const db = getDb(c.env);
+  const userId = c.get('userId');
+  const row = await queryFirst<any>(
+    db,
+    `SELECT id, username, full_name, email, phone, badge_number, role, status, avatar_url
+     FROM users WHERE id = ?`,
+    userId,
+  );
+  if (!row) return c.json({ error: 'User not found' }, 404);
+  const [first_name, ...rest] = (row.full_name || '').trim().split(/\s+/);
+  const last_name = rest.join(' ');
+  return c.json({ ...row, first_name: first_name || '', last_name });
+});
+
+// PUT /auth/profile — update the current user's profile.
+// Accepts: username, first_name, last_name, email, phone (any subset).
+// Username changes hit the UNIQUE constraint on users.username, so the
+// route checks for collisions and returns 409 with a clear message
+// instead of bubbling the raw SQL error. When username changes, the
+// JWT becomes stale (its `username` claim no longer matches), so the
+// route issues a fresh access token + refresh + session row in the
+// same response — the client can swap it in transparently without
+// forcing a logout.
+auth.put('/profile', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{
+      username?: string;
+      first_name?: string; last_name?: string;
+      firstName?: string; lastName?: string;
+      email?: string; phone?: string;
+    }>();
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+
+    const existing = await queryFirst<any>(
+      db, 'SELECT username, full_name FROM users WHERE id = ?', userId,
+    );
+    if (!existing) return c.json({ error: 'User not found' }, 404);
+
+    const first = (body.first_name ?? body.firstName ?? '').trim();
+    const last = (body.last_name ?? body.lastName ?? '').trim();
+    const fullName = [first, last].filter(Boolean).join(' ');
+    const username = body.username?.trim();
+
+    if (username && username !== existing.username) {
+      if (username.length < 3) {
+        return c.json({ error: 'Username must be at least 3 characters' }, 400);
+      }
+      if (!/^[a-zA-Z0-9_.-]+$/.test(username)) {
+        return c.json({ error: 'Username can only contain letters, numbers, underscore, dot, hyphen' }, 400);
+      }
+      const collision = await queryFirst<any>(
+        db, 'SELECT id FROM users WHERE LOWER(username) = LOWER(?) AND id != ?',
+        username, userId,
+      );
+      if (collision) {
+        return c.json({ error: 'Username already taken', code: 'USERNAME_TAKEN' }, 409);
+      }
+    }
+
+    const sets: string[] = [];
+    const params: unknown[] = [];
+    if (username && username !== existing.username) { sets.push('username = ?'); params.push(username); }
+    if (fullName && fullName !== existing.full_name) { sets.push('full_name = ?'); params.push(fullName); }
+    if (body.email !== undefined) { sets.push('email = ?'); params.push(body.email || null); }
+    if (body.phone !== undefined) { sets.push('phone = ?'); params.push(body.phone || null); }
+
+    if (sets.length === 0) {
+      return c.json({ success: true, message: 'No changes' });
+    }
+    sets.push("updated_at = datetime('now', '-6 hours')");
+    params.push(userId);
+    await execute(db, `UPDATE users SET ${sets.join(', ')} WHERE id = ?`, ...params);
+
+    const updated = await queryFirst<any>(
+      db,
+      `SELECT id, username, full_name, email, role, badge_number, phone, avatar_url,
+              status, force_password_change, totp_enrolled
+       FROM users WHERE id = ?`,
+      userId,
+    );
+
+    // Username changed → re-issue JWT so the username claim matches.
+    // The client's apiFetch reads `token` from the response and swaps
+    // it into localStorage when present, so the existing session
+    // continues uninterrupted under the new username.
+    let tokenBundle: Record<string, unknown> = {};
+    if (username && username !== existing.username) {
+      const jwtSecret = c.env.JWT_SECRET;
+      const payload = { sub: String(updated.id), user_id: updated.id, username: updated.username, role: updated.role };
+      const sessionId = uuidv4().replace(/-/g, '');
+      const accessToken = await sign({ ...payload, sessionId }, jwtSecret);
+      const refreshToken = uuidv4();
+      await execute(
+        db,
+        `INSERT INTO sessions (user_id, token, refresh_token, ip_address, user_agent, expires_at, refresh_expires_at)
+         VALUES (?, ?, ?, ?, ?, datetime('now', '-6 hours', '+15 minutes'), datetime('now', '-6 hours', '+7 days'))`,
+        updated.id, accessToken, refreshToken,
+        c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || '',
+      );
+      tokenBundle = { token: accessToken, refreshToken, sessionId };
+    }
+
+    return c.json({ success: true, user: userPayload(updated), ...tokenBundle });
+  } catch (err: any) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes('UNIQUE')) {
+      return c.json({ error: 'Username already taken', code: 'USERNAME_TAKEN' }, 409);
+    }
+    return c.json({ error: 'Failed to update profile', detail: msg }, 500);
+  }
+});
 
 export default auth;
