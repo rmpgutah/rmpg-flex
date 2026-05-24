@@ -408,7 +408,14 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
+    // Append server-side `details`/`detail` diagnostic when present — otherwise
+    // every 500 looks identical to the user even when the server told us
+    // exactly what failed (e.g. SQL "no such column: foo"). See dispatch
+    // PUT /calls/:id, which returns `details: <real error>` but historically
+    // got rendered as just "Failed to update call".
+    const base = errData.error || errData.message || `Request failed with status ${res.status}`;
+    const diag = errData.details || errData.detail;
+    throw new Error(diag ? `${base}: ${diag}` : base);
   }
 
   return res.json();

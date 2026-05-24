@@ -74,6 +74,7 @@ import type { CommandAction } from '../../utils/cadCommandParser';
 import { getTimerState, isActiveStatus } from '../../utils/dispatchTimers';
 import { playTone } from '../../utils/dispatchTones';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
 import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
@@ -262,6 +263,14 @@ export default function DispatchPage() {
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
   const [units, setUnits] = useState<Unit[]>([]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
+
+  // Hold the screen wake lock while a non-terminal call is selected.
+  // Released automatically when the call closes or the dispatcher navigates
+  // away. Battery-friendly compared to the old always-on wake lock that
+  // useGpsTracking used to hold app-wide.
+  useScreenWakeLock(
+    !!selectedCall && !['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status)
+  );
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
