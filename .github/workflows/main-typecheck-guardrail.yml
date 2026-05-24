@@ -1,0 +1,112 @@
+# ============================================================
+# Main Typecheck Guardrail
+# ============================================================
+# Fast early-warning when a merge to main breaks typecheck.
+#
+# Why this exists separately from deploy.yml:
+#   - deploy.yml ALSO runs typecheck, but only after `npm ci` plus
+#     the D1 migrations step (~90s to surface a failure).
+#   - This guardrail runs typecheck FIRST and FAST (~30s), so the
+#     failure signal arrives before deploy machinery even starts.
+#   - On failure, it OPENS A GITHUB ISSUE with the offending commit
+#     SHA + a recommended revert command — turning a buried CI log
+#     into a persistent, actionable record.
+#
+# Caught (retroactively, 2026-05-24):
+#   - PR #605 auto-merge dropped an import the mount still referenced.
+#     deploy.yml surfaced the failure at T+90s; no issue was opened,
+#     so the outage lingered until manual investigation.
+#   - PR #606 + PR #607 both independently added back the dropped
+#     import within minutes — main ended up with the import declared
+#     twice (TS2300 Duplicate identifier), same buried-log fate.
+#
+# Both would have been a one-click revert with this guardrail in place.
+#
+# SECURITY NOTE: this workflow is the kind of place where injection
+# bugs hide. All user-controlled inputs (commit message, author name)
+# are routed through `env:` vars in the failure step — never
+# interpolated directly into shell or JS source. See
+# https://github.blog/security/vulnerability-research/how-to-catch-github-actions-workflow-injections-before-attackers-do/
+
+name: Main typecheck guardrail
+
+on:
+  push:
+    branches: [main]
+
+# Intentionally NO concurrency cancellation — every commit to main
+# deserves its own clean typecheck result. Cancelling in-flight runs
+# could hide a real regression behind a fast-following commit.
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  typecheck:
+    name: Worker typecheck (post-merge)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install root deps
+        run: npm ci
+
+      - name: Worker typecheck (tsc --noEmit)
+        id: typecheck
+        run: npm run typecheck
+
+      - name: Open issue on failure
+        if: failure() && steps.typecheck.conclusion == 'failure'
+        uses: actions/github-script@v7
+        env:
+          # User-controlled inputs go through env vars so they never
+          # land in source-evaluated context.
+          COMMIT_SHA: ${{ github.sha }}
+          COMMIT_AUTHOR: ${{ github.event.head_commit.author.name }}
+          COMMIT_MESSAGE: ${{ github.event.head_commit.message }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        with:
+          script: |
+            const sha = process.env.COMMIT_SHA;
+            const short = sha.slice(0, 7);
+            const author = process.env.COMMIT_AUTHOR || 'unknown';
+            const title = (process.env.COMMIT_MESSAGE || '').split('\n')[0].slice(0, 120);
+            const runUrl = process.env.RUN_URL;
+
+            const body = [
+              '**Commit:** `' + sha + '`',
+              '**Title:** ' + title,
+              '**Author:** ' + author,
+              '**CI run:** ' + runUrl,
+              '',
+              '## What happened',
+              '`tsc --noEmit` failed on `main` after this commit merged. The Worker code is now in a state where `wrangler deploy` will also fail — production has NOT been replaced (deploy.yml`s typecheck step aborts too), but the next merge to main will keep failing until this is resolved.',
+              '',
+              '## Recommended remediation',
+              '',
+              'If the offending commit is the most recent one (`' + short + '`):',
+              '```bash',
+              'git revert --no-edit ' + sha,
+              'git push origin main',
+              '```',
+              '',
+              'If a fix-forward is faster (e.g. a one-line dedupe or missing import — see PR #611 retro for the kinds of failures this catches), open a hotfix PR and reference this issue.',
+              '',
+              '## Auto-close',
+              'This issue will NOT auto-close. Close it manually once `main` typechecks cleanly again, so the audit trail of past outages stays intact.',
+            ].join('\n');
+
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: '🚨 Main typecheck broke at ' + short,
+              body,
+              labels: ['ci-broken', 'urgent'],
+            });
