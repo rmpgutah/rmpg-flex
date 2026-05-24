@@ -392,16 +392,23 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
         : docType === 'field_sheet' ? 'field_sheet'
         : 'unknown';
 
-      // ── 5. Build structured dispatch description ──
+      // ── 5. Build structured dispatch description (for D1 which lacks addCol columns) ──
       const descLines: string[] = [];
       descLines.push(`SERVE ${(docs || 'DOCUMENTS').toUpperCase()} TO ${fullName.toUpperCase()}`);
       if (addrParts.address) descLines.push(`AT ${addrParts.address.toUpperCase()}`);
       if (dueDate) descLines.push(`DUE: ${dueDate}`);
+      if (caseNumber) descLines.push(`CASE: ${caseNumber}`);
+      if (jobNumber) descLines.push(`JOB: ${jobNumber}`);
+      if (plaintiff) descLines.push(`PLAINTIFF: ${plaintiff.replace(/\n/g, ' ').trim().toUpperCase()}`);
+      if (court) descLines.push(`COURT: ${court}`);
+      descLines.push(`TYPE: ${processType.toUpperCase()}`);
+      if (subjectDesc) descLines.push(`SUBJECT: ${subjectDesc}`);
+      if (clientAddress) descLines.push(`CLIENT ADDR: ${clientAddress}`);
       if (instructions) {
         const cleaned = instructions.replace(/\r\n/g, ' ').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
         descLines.push(`INSTRUCTIONS: ${cleaned.length > 500 ? cleaned.slice(0, 500) + '...' : cleaned}`);
       }
-      if (serviceWindows) descLines.push(`SERVICE WINDOWS: ${serviceWindows}`);
+      if (serviceWindows) descLines.push(`WINDOWS: ${serviceWindows}`);
       const description = descLines.join('\n');
 
       // ── 6. Build rich system notes ──
@@ -477,33 +484,22 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
       const notesJson = noteEntries.length > 0 ? JSON.stringify(noteEntries) : null;
 
       // ── 7. Create dispatch call with property reference ──
+      // NOTE: Only using D1 base columns — addCol columns (pso_*, process_*, etc.)
+      // don't exist in the D1 production schema. Extra data is embedded in description.
       const callResult = await db.prepare(`
         INSERT INTO calls_for_service (
-          call_number, case_number, incident_type, priority, status,
-          caller_name, caller_phone, caller_relationship, caller_address,
+          call_number, incident_type, priority, status,
+          caller_name, caller_phone, caller_relationship,
           location_address, property_id, latitude, longitude,
-          weather_conditions, lighting_conditions,
           description, notes, source, dispatcher_id,
-          subject_description,
-          pso_requestor_name, pso_service_type, pso_service_windows,
-          pso_attempt_number, process_service_type, process_served_to,
-          process_served_address, process_attempts, client_id,
-          secondary_type, contact_method,
-          created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
-          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        callNumber, caseNumber || null, 'pso_client_request', 'P4', 'pending',
-        callerName, callerPhone, 'client', clientAddress || null,
+        callNumber, 'pso_client_request', 'P4', 'pending',
+        callerName, callerPhone, 'client',
         addrParts.address || 'Unknown', propertyId, null, null,
-        null, null,
         description, notesJson, 'intake', user.userId,
-        subjectDesc,
-        callerName, 'process_service', serviceWindows || null,
-        1, processType, fullName,
-        addrParts.address || null, 0, client_id || null,
-        docTypeLabel, 'email',
-        now, now
+        now
       );
       const callId = Number(callResult.meta.last_row_id);
 
@@ -516,14 +512,14 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
 
       // ── 9. Create serve_queue entry linked to call with full document text ──
       const serveResult = await db.prepare(`
-        INSERT INTO serve_queue (call_id, case_number, recipient_name,
+        INSERT INTO serve_queue (call_id, client_id, case_number, recipient_name,
           recipient_address, recipient_city, recipient_state, recipient_zip,
           document_type, court_name, client_name, attorney_name, priority,
           deadline, service_instructions, notes, officer_id, sm_job_id,
           status, created_at, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `).run(
-        callId, caseNumber || null, fullName || null,
+        callId, client_id || null, caseNumber || null, fullName || null,
         addrParts.address || null, addrParts.city || null, addrParts.state || null, addrParts.zip || null,
         docTypeLabel, court || null, plaintiff || null, attorney.name || null,
         'normal', dueDate || null, instructions || null, allText.substring(0, 500000) || null,
