@@ -68,6 +68,7 @@ import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import trespassOrders from './routes/trespassOrders';
 import forensics from './routes/forensics';
+import serveIntake from './routes/serveIntake';
 import shiftPlans from './routes/shiftPlans';
 import stubs from './routes/stubs';
 // Dispatch domain
@@ -182,6 +183,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
+    note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
   { prefix: '/api', router: shiftPlans, auth: 'public',
     note: 'Mounts at /api to serve /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. auth: "public" here is deliberate — the router enforces auth INSIDE itself via `sp.use("*", authMiddleware)`. Using `auth: "required"` would make the registry loop register `app.use("/api/*", authMiddleware)`, blanket-blocking every public route including /api/auth/login (see PR #627 incident, same pattern as geocode).' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
