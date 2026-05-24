@@ -166,9 +166,32 @@ export function geocodeCallIfNeeded(callId: number, address: string, lat: any, l
   // [FIX 102] Validate callId is a positive integer
   if (!callId || typeof callId !== 'number' || callId < 1) return;
   if (lat || lng || !address || !address.trim()) return;
+  runGeocodeAndBroadcast(callId, address, { recomputeBeat: false });
+}
 
+/**
+ * Force-re-geocode a call's address even if it already has coordinates.
+ * Use when an existing call's location_address changes — keeps the old pin
+ * visible on the map until the new coords land (or until geocoding fails
+ * silently, in which case the marker stays at the old location rather than
+ * disappearing). Recomputes beat/zone/sector from the new coords.
+ */
+export function regeocodeCallAddress(callId: number, address: string): void {
+  if (!callId || typeof callId !== 'number' || callId < 1) return;
+  if (!address || !address.trim()) return;
+  runGeocodeAndBroadcast(callId, address, { recomputeBeat: true });
+}
+
+function runGeocodeAndBroadcast(
+  callId: number,
+  address: string,
+  opts: { recomputeBeat: boolean }
+): void {
   geocodeAddress(address).then(async (result) => {
-    if (!result) return;
+    if (!result) {
+      console.warn(`[geocode] No result for call ${callId} address "${address}" — leaving existing coords in place`);
+      return;
+    }
     try {
       const db = getDb();
       db.prepare('UPDATE calls_for_service SET latitude = ?, longitude = ? WHERE id = ?')
@@ -182,7 +205,7 @@ export function geocodeCallIfNeeded(callId: number, address: string, lat: any, l
         const current = db.prepare(
           'SELECT beat_id, zone_id, sector_id, zone_beat FROM calls_for_service WHERE id = ?'
         ).get(callId) as any;
-        if (current && !current.beat_id) {
+        if (current && (opts.recomputeBeat || !current.beat_id)) {
           const { identifyBeat } = await import('./geofence');
           const beat = identifyBeat(result.latitude, result.longitude);
           if (beat) {
