@@ -27,6 +27,47 @@ type RouteRule =
   | { kind: 'prefix'; value: string; methods?: string[] }
   | { kind: 'regex'; value: RegExp; methods?: string[] };
 
+// Stubs short-circuit BEFORE any backend dispatch — used when neither
+// rmpg-flex nor rmpg-flex-api can serve a path correctly (typically
+// missing data or missing handler) and the user-visible 5xx noise is
+// worse than a cleanly-empty 200. Each stub MUST include a reason
+// comment so future maintainers can see whether the underlying bug
+// has since been fixed and the stub is now hiding a working backend.
+//
+// Stubs match FIRST. Add only paths that:
+//   - currently 500 or 4xx in legacy AND
+//   - rewrite either doesn't implement them OR can't serve them yet
+// Remove a stub the moment its underlying bug is fixed.
+interface StubRule {
+  match: RegExp;
+  methods?: string[];
+  // Static JSON body returned with 200 OK. Stubs are intentionally NOT
+  // configurable per-request — they exist to silence broken routes, not
+  // to model business logic in the proxy layer.
+  body: unknown;
+  // Free-text reason — shown in `wrangler tail` so it's obvious when a
+  // stub fires.
+  reason: string;
+}
+
+const STUBS: StubRule[] = [
+  // GET /api/statutes/search?q=… — legacy handler 500s because the
+  // utah_statutes table is missing on live D1 (785de7ae). The rewrite
+  // doesn't implement statutes at all. Returns {data: []} so the
+  // report-writer's statute-autocomplete dropdown shows "no results"
+  // cleanly instead of throwing. Real fix needs:
+  //   (1) Apply utah_statutes schema to live D1 (idempotent)
+  //   (2) Seed from upstream — utah.gov or VPS backup
+  //   (3) Reconcile handler's SELECT (`citation_fine` col missing)
+  // See incident report 2026-05-24 for details.
+  {
+    match: /^\/api\/statutes\/search(\?|$)/,
+    methods: ['GET'],
+    body: { data: [] },
+    reason: 'utah_statutes table missing on live D1',
+  },
+];
+
 const API_ROUTES: RouteRule[] = [
   // ── More specific dispatch sub-paths (new in rewrite) ──
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,
@@ -45,9 +86,15 @@ const API_ROUTES: RouteRule[] = [
   // validated against the live broadcaster + linked-incident flow.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+$/, methods: ['GET', 'PUT', 'DELETE'] },
 
-  // ── Records search (rewrite has both; legacy is missing vehicles/search) ──
+  // ── Records search (rewrite has all three; legacy is missing /search
+  // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
   { kind: 'prefix', value: '/api/records/vehicles/search' },
+  // /api/records/search?q=...&type=person|vehicle|business — used by
+  // client/src/components/LinkRecordModal.tsx. Regex (not prefix) so
+  // we don't accidentally swallow /api/records/searchfoo if someone
+  // adds an adjacent endpoint later.
+  { kind: 'regex', value: /^\/api\/records\/search(\?|$)/ },
 
   // ── Warrants watch (rewrite has /watch/runs, /watch/scan) ──
   // Legacy uses /warrants/scrapers/* against a different table — those stay
@@ -139,11 +186,33 @@ interface Env {
   LEGACY: { fetch: typeof fetch };
 }
 
+function stubMatches(stub: StubRule, pathname: string, method: string): boolean {
+  if (stub.methods && !stub.methods.includes(method)) return false;
+  return stub.match.test(pathname);
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     const pathname = url.pathname;
     const method = request.method;
+
+    // Stubs win over everything else — they exist precisely BECAUSE the
+    // real backends can't serve these paths. Visible in wrangler tail.
+    for (const stub of STUBS) {
+      if (stubMatches(stub, pathname, method)) {
+        console.log(`[stub] ${method} ${pathname} — ${stub.reason}`);
+        return new Response(JSON.stringify(stub.body), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            // 60s cache so the SPA stops re-hammering the proxy for the
+            // same dead endpoint while a user types into a search box.
+            'cache-control': 'private, max-age=60',
+          },
+        });
+      }
+    }
 
     for (const rule of API_ROUTES) {
       if (matches(rule, pathname, method)) {

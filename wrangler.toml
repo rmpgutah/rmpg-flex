@@ -10,11 +10,18 @@ compatibility_flags = ["nodejs_compat"]
 pattern = "api.rmpgutah.us"
 custom_domain = true
 
-# D1 Database
+# D1 Database — points at the LIVE production DB (the one bound to the legacy
+# rmpg-flex Worker that the rmpg-api-proxy falls back to). The `rmpg-flex-db`
+# (8893480a-…) created with this rewrite is EMPTY of production data; reading
+# from it caused every dispatch-panel endpoint routed through the proxy to
+# return "Call not found" / empty arrays on 2026-05-24. See
+# [[project-live-db-is-different]] memory for the dual-DB history. Schema
+# repairs needed to keep this rewrite happy against the live DB live in
+# migrations/live/L0001_*.sql + L0002_*.sql (applied manually via D1 MCP).
 [[d1_databases]]
 binding = "DB"
-database_name = "rmpg-flex-db"
-database_id = "8893480a-6dd5-4790-a11f-1fb6fac13f02"
+database_name = "rmpg-flex"
+database_id = "785de7ae-3e7a-4e01-93bb-d24ddd813f6b"
 
 # ─── Durable Objects ─────────────────────────────────────
 # WelfareWatchDO — automated officer welfare escalation timer

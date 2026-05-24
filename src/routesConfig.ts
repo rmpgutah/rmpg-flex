@@ -64,6 +64,7 @@ import properties from './routes/properties';
 import geocode from './routes/geocode';
 import warrants from './routes/warrants';
 import nibrs from './routes/nibrs';
+import offline from './routes/offline';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentsRouter from './routes/incidents';
 import audit from './routes/audit';
@@ -212,6 +213,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/offline', router: offline, auth: 'required',
+    note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/serve', router: serve, auth: 'required',

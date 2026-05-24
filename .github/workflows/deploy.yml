@@ -27,12 +27,12 @@ jobs:
         run: npm run typecheck
 
       - name: Apply D1 migrations (remote)
-        continue-on-error: true  # Remote D1 has dirty schema from earlier runs; Worker reconciles at boot.
+        continue-on-error: true  # Live D1 has dirty schema; many migrations conflict with existing ALTER-applied columns. Bulk schema state is managed via migrations/live/*.sql applied manually by an admin (see [[project-live-db-is-different]] memory).
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: d1 migrations apply rmpg-flex-db --remote
+          command: d1 migrations apply rmpg-flex --remote
 
       - name: Deploy Worker
         uses: cloudflare/wrangler-action@v3
