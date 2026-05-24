@@ -45,9 +45,15 @@ const API_ROUTES: RouteRule[] = [
   // validated against the live broadcaster + linked-incident flow.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+$/, methods: ['GET', 'PUT', 'DELETE'] },
 
-  // ── Records search (rewrite has both; legacy is missing vehicles/search) ──
+  // ── Records search (rewrite has all three; legacy is missing /search
+  // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
   { kind: 'prefix', value: '/api/records/vehicles/search' },
+  // /api/records/search?q=...&type=person|vehicle|business — used by
+  // client/src/components/LinkRecordModal.tsx. Regex (not prefix) so
+  // we don't accidentally swallow /api/records/searchfoo if someone
+  // adds an adjacent endpoint later.
+  { kind: 'regex', value: /^\/api\/records\/search(\?|$)/ },
 
   // ── Warrants watch (rewrite has /watch/runs, /watch/scan) ──
   // Legacy uses /warrants/scrapers/* against a different table — those stay

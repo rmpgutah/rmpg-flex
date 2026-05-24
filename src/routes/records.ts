@@ -85,4 +85,53 @@ records.get('/vehicles/search', async (c) => {
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
+// GET /records/search?q=...&type=person|vehicle|business
+// Used by client/src/components/LinkRecordModal.tsx for cross-type linking.
+// Returns an array of records matching the query for the given type. Legacy
+// has no handler at this exact path (it has /persons/search and /vehicles/
+// search separately) so calls fell through with empty `[]` and the dropdown
+// stayed blank.
+records.get('/search', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const q = c.req.query('q');
+    const type = (c.req.query('type') || 'person').toLowerCase();
+    if (!q || q.length < 2) return c.json([]);
+    const like = `%${q}%`;
+
+    if (type === 'person') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT * FROM persons
+        WHERE last_name LIKE ? OR first_name LIKE ? OR phone LIKE ?
+          OR (first_name || ' ' || last_name) LIKE ?
+        ORDER BY last_name, first_name LIMIT 50
+      `, like, like, like, like);
+      return c.json(rows);
+    }
+    if (type === 'vehicle') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT v.*, p.first_name, p.last_name
+        FROM vehicles_records v
+        LEFT JOIN persons p ON v.owner_person_id = p.id
+        WHERE v.plate_number LIKE ? OR v.vin LIKE ? OR v.make LIKE ? OR v.model LIKE ?
+        ORDER BY v.plate_number LIMIT 50
+      `, like, like, like, like);
+      return c.json(rows);
+    }
+    if (type === 'business' || type === 'property') {
+      const rows = await query<Record<string, unknown>>(db, `
+        SELECT * FROM properties
+        WHERE name LIKE ? OR address LIKE ?
+        ORDER BY name LIMIT 50
+      `, like, like);
+      return c.json(rows);
+    }
+    // Unknown type — empty array keeps the client UI consistent (no error toast).
+    return c.json([]);
+  } catch (err) {
+    console.error('GET /records/search failed:', err);
+    return c.json({ error: 'Search failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 export default records;
