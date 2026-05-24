@@ -191,8 +191,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
 
   // ── Geocode (BEFORE /api/integrations stubs catch-all) ─────
-  { prefix: '/api', router: geocode, auth: 'required',
-    note: 'Mounts at root /api to serve /api/geocode/* and /api/integrations/mapbox/client-token' },
+  { prefix: '/api', router: geocode, auth: 'public',
+    note: 'Mounts at root /api to serve /api/geocode/* and /api/integrations/mapbox/client-token. MUST be public at the registry level — marking `required` here would make the auth loop add app.use(/api/*, authMiddleware) which blanket-blocks every /api/* path including /api/auth/login. The geocode router self-applies authMiddleware on its own routes; see src/routes/geocode.ts.' },
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants', router: warrants, auth: 'required' },
