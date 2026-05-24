@@ -1,9 +1,9 @@
 // Runs all list-poll sources, isolates failures, audits each result,
 // and fires alerts when a new warrant matches a known person.
 
-import type { AlertSink, DataStore, PollResult, WarrantRecord } from './types';
-import type { BaseWarrantSource } from './sources/base';
-import { toCanonicalName, normalizeDob } from './normalize';
+import type { AlertSink, DataStore, PollResult, WarrantRecord } from './types.ts';
+import type { BaseWarrantSource } from './sources/base.ts';
+import { toCanonicalName, normalizeDob } from './normalize.ts';
 
 export async function runPoll(opts: {
   sources: BaseWarrantSource[];

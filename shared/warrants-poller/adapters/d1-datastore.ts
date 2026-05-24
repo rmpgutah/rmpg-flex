@@ -10,7 +10,7 @@
 // shared/warrants-poller/README.md. If you change the schema there,
 // change it here too (keep them in sync).
 
-import type { DataStore, PersonStub, PollResult, WarrantRecord } from '../types';
+import type { DataStore, PersonStub, PollResult, WarrantRecord } from '../types.ts';
 
 // === Minimal D1 surface (delete when copying into CF repo) ===
 interface D1Database {

@@ -25,10 +25,10 @@
 // the /api/warrants/lookup route MUST require an authenticated officer
 // session — warrant queries are auditable per Utah open-records law.
 
-import { runPoll } from '../orchestrator';
-import { WarrantsUtahGovSource } from '../sources/warrants-utah-gov';
-import type { BaseWarrantSource } from '../sources/base';
-import { makeD1DataStore } from '../adapters/d1-datastore';
+import { runPoll } from '../orchestrator.ts';
+import { WarrantsUtahGovSource } from '../sources/warrants-utah-gov.ts';
+import type { BaseWarrantSource } from '../sources/base.ts';
+import { makeD1DataStore } from '../adapters/d1-datastore.ts';
 
 // Adjust to match your Worker's actual Env shape.
 interface Env {

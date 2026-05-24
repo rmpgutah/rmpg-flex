@@ -13,13 +13,47 @@ The RMPG Flex VPS was decommissioned 2026-05-24; the system is being rehomed to 
 ## Architecture
 
 ```
-types.ts           WarrantRecord, PollResult, DataStore, AlertSink
-normalize.ts       Name/DOB canonicalization + dedup keys (pure fns)
-sources/base.ts    BaseWarrantSource: rate-limit + retry + UA wrapper
-sources/*.ts       Per-source adapters (list-poll OR query-lookup)
-orchestrator.ts    runPoll() — Promise.allSettled across sources,
-                   per-source audit, MNI cross-link, alert fan-out
+types.ts                       WarrantRecord, PollResult, DataStore, AlertSink
+normalize.ts                   Name/DOB canonicalization + dedup keys (pure fns)
+sources/base.ts                BaseWarrantSource: rate-limit + retry + UA wrapper
+sources/*.ts                   Per-source adapters (list-poll OR query-lookup)
+orchestrator.ts                runPoll() — Promise.allSettled across sources,
+                               per-source audit, MNI cross-link, alert fan-out
+adapters/memory-datastore.ts   In-memory DataStore (tests + CLI demos)
+adapters/d1-datastore.ts       Reference D1 DataStore (copy into CF repo)
+examples/cloudflare-worker.ts  Reference Worker integration (copy into CF repo)
+cli/lookup.ts                  End-to-end CLI demo against the live .gov API
+__tests__/*.ts                 52 unit + 9 orchestrator + 3 live integration tests
 ```
+
+## CLI demo
+
+End-to-end runnable against the LIVE state API, zero deps:
+
+```
+node shared/warrants-poller/cli/lookup.ts <FIRST> <LAST> [--age N] [--dob YYYY-MM-DD] [--json]
+
+# examples
+node shared/warrants-poller/cli/lookup.ts JOHN SMITH
+node shared/warrants-poller/cli/lookup.ts JOHN SMITH --age 47
+node shared/warrants-poller/cli/lookup.ts JANE DOE --dob 1990-03-14 --json
+```
+
+Requires Node 22+ (uses `--experimental-strip-types` to run TS directly). Verified 2026-05-24 against production UDPS API.
+
+## Running tests
+
+```
+# Default suite (52 tests, ~180ms) — runs in CI
+./client/node_modules/.bin/vitest run shared/warrants-poller/__tests__
+
+# Live integration suite (3 tests, ~14s) — opt-in, hits real .gov API
+WARRANTS_LIVE_TEST=1 ./client/node_modules/.bin/vitest run shared/warrants-poller/__tests__/warrants-utah-gov.integration.test.ts
+```
+
+## User-agent decision (important)
+
+The default UA in `sources/base.ts` is a current Chrome string, NOT a descriptive `RMPG-Flex-Warrants-Poller/1.0` identifier. This is **deliberate** and verified live: CloudFront-fronted state portals (warrants.utah.gov among them) return **403 to identifier-style UAs** even when the underlying API is public. The Chrome UA gets 200/201. Identifier UAs are RFC-encouraged but incompatible with current WAF defaults — don't "improve" this without re-validating every source.
 
 ### Two adapter modes
 

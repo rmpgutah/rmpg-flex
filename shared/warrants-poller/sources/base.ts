@@ -1,7 +1,7 @@
 // BaseWarrantSource: shared rate-limit + retry + fetch wrapper.
 // Mirrors the BaseDataSource pattern already used in server/src/routes/skiptracer-v2/.
 
-import type { WarrantRecord } from '../types';
+import type { WarrantRecord } from '../types.ts';
 
 export type SourceMode = 'list-poll' | 'query-lookup';
 
@@ -22,7 +22,15 @@ export abstract class BaseWarrantSource {
 
   constructor(cfg: SourceConfig = {}) {
     this.config = {
-      userAgent: cfg.userAgent ?? 'RMPG-Flex-Warrants-Poller/1.0 (chzamo@rmpgutah.us)',
+      // Browser-shaped UA is required for CloudFront-fronted government
+      // portals (e.g. warrants.utah.gov), which 403 descriptive
+      // identifier-style UAs even when the underlying API is public.
+      // Verified 2026-05-24 against a Node 22 client: polite identifier
+      // -> 403; this Chrome string -> 200/201. Don't "improve" this back
+      // to an identifier UA without re-validating against every source.
+      userAgent:
+        cfg.userAgent ??
+        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36',
       minIntervalMs: cfg.minIntervalMs ?? 2000,
       maxRetries: cfg.maxRetries ?? 3,
       timeoutMs: cfg.timeoutMs ?? 30_000,

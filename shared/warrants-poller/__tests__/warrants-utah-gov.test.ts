@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { splitName, expectedAge, matchesAge, WarrantsUtahGovSource } from '../sources/warrants-utah-gov';
+import { splitName, expectedAge, matchesAge, WarrantsUtahGovSource } from '../sources/warrants-utah-gov.ts';
 
 describe('splitName', () => {
   it('parses canonical "LAST, FIRST MIDDLE" form', () => {

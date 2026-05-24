@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { normalizeName, toCanonicalName, normalizeDob, syntheticWarrantId } from '../normalize';
+import { normalizeName, toCanonicalName, normalizeDob, syntheticWarrantId } from '../normalize.ts';
 
 describe('normalizeName', () => {
   it('uppercases and collapses whitespace', () => {

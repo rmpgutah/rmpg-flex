@@ -17,8 +17,8 @@
 // takes a canonical name string from normalize.ts (typically "LAST, FIRST
 // MIDDLE") and splits it.
 
-import { BaseWarrantSource, type SourceMode } from './base';
-import type { WarrantRecord } from '../types';
+import { BaseWarrantSource, type SourceMode } from './base.ts';
+import type { WarrantRecord } from '../types.ts';
 
 const API_BASE = 'https://warrants.utah.gov/api/v1';
 
