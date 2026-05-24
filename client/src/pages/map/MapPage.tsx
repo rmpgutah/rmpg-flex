@@ -228,6 +228,7 @@ export default function MapPage() {
   const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
   const heatmapLayerRef = useRef<any | null>(null);
   const trackingLinesRef = useRef<any[]>([]);
+  const mapConfigRef = useRef<MapSettings | null>(null);
   const [trackingLineCount, setTrackingLineCount] = useState(0);
   const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -471,6 +472,73 @@ export default function MapPage() {
       });
     }
   }, []);
+
+  // Admin layer style overrides — apply after map + GeoJSON layers are loaded
+  const layerOverridesAppliedRef = useRef(false);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const cfg = mapConfigRef.current;
+    if (!map || !cfg || !map.loaded() || layerOverridesAppliedRef.current) return;
+    layerOverridesAppliedRef.current = true;
+
+    const LAYER_STYLE_MAP: Record<string, { fillId?: string; lineId?: string }> = {
+      beat: { fillId: 'geojson-beat-fill', lineId: 'geojson-beat-line' },
+      county: { fillId: 'geojson-county-fill', lineId: 'geojson-county-line' },
+      municipality: { fillId: 'geojson-municipality-fill', lineId: 'geojson-municipality-line' },
+      highway: { lineId: 'geojson-highway-line' },
+      state_boundary: { lineId: 'geojson-state_boundary-line' },
+    };
+
+    for (const [layerId, ids] of Object.entries(LAYER_STYLE_MAP)) {
+      const visible = cfg.default_visible_layers.includes(layerId);
+
+      if (ids.fillId && map.getLayer(ids.fillId)) {
+        map.setLayoutProperty(ids.fillId, 'visibility', visible ? 'visible' : 'none');
+        const fillColor = (cfg as any)[`layer_${layerId}_fill`];
+        const fillOpacity = (cfg as any)[`layer_${layerId}_fill_opacity`];
+        if (fillColor) map.setPaintProperty(ids.fillId, 'fill-color', fillColor);
+        if (fillOpacity != null) map.setPaintProperty(ids.fillId, 'fill-opacity', fillOpacity);
+      }
+      if (ids.lineId && map.getLayer(ids.lineId)) {
+        map.setLayoutProperty(ids.lineId, 'visibility', visible ? 'visible' : 'none');
+        const strokeColor = (cfg as any)[`layer_${layerId}_stroke`];
+        const strokeOpacity = (cfg as any)[`layer_${layerId}_stroke_opacity`];
+        const strokeWeight = (cfg as any)[`layer_${layerId}_stroke_weight`];
+        if (strokeColor) map.setPaintProperty(ids.lineId, 'line-color', strokeColor);
+        if (strokeOpacity != null) map.setPaintProperty(ids.lineId, 'line-opacity', strokeOpacity);
+        if (strokeWeight != null) map.setPaintProperty(ids.lineId, 'line-width', strokeWeight);
+      }
+    }
+  }, [mapLoaded, mapInstanceRef.current]);
+
+  // Marker CSS injection — pulse animations + font size
+  const markerStyleRef = useRef<HTMLStyleElement | null>(null);
+  useEffect(() => {
+    const cfg = mapConfigRef.current;
+    if (!cfg) return;
+
+    let css = '';
+    if (!cfg.unit_marker_pulse) {
+      css += '.rmpg-unit-marker { animation: none !important; }';
+    }
+    if (!cfg.call_marker_pulse) {
+      css += '.rmpg-call-marker-p1 { animation: none !important; }';
+      css += '.rmpg-call-marker-p2 { animation: none !important; }';
+    }
+    if (cfg.marker_font_size !== 9) {
+      css += `.rmpg-marker-label { font-size: ${cfg.marker_font_size}px !important; }`;
+    }
+
+    if (!markerStyleRef.current) {
+      const style = document.createElement('style');
+      style.id = '__rmpg-admin-marker-styles__';
+      style.textContent = css;
+      document.head.appendChild(style);
+      markerStyleRef.current = style;
+    } else {
+      markerStyleRef.current.textContent = css;
+    }
+  }, [mapConfigRef.current]);
 
   // Separate marker tracking for clustering & drag dispatch
   const unitMarkersMapRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
@@ -990,8 +1058,9 @@ export default function MapPage() {
       try {
         mapConfig = await fetchMapConfig();
       } catch {
-        mapConfig = { default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12, min_zoom: 1, max_zoom: 22, default_style: 'dark', enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'], show_attribution: false, rotation_enabled: false, max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null, custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14, default_pitch: 0, default_bearing: 0, min_pitch: 0, max_pitch: 85, scroll_zoom: true, box_zoom: true, drag_rotate: true, drag_pan: true, double_click_zoom: true, touch_zoom_rotate: true, cooperative_gestures: false, show_compass: true, show_zoom_controls: true, keyboard_enabled: true, language: '', render_world_copies: true, fade_duration: 300, click_tolerance: 3, local_ideograph_font_family: '', cross_source_collisions: true };
+        mapConfig = { default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12, min_zoom: 1, max_zoom: 22, default_style: 'dark', enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'], show_attribution: false, rotation_enabled: false, max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null, custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14, default_pitch: 0, default_bearing: 0, min_pitch: 0, max_pitch: 85, scroll_zoom: true, box_zoom: true, drag_rotate: true, drag_pan: true, double_click_zoom: true, touch_zoom_rotate: true, cooperative_gestures: false, show_compass: true, show_zoom_controls: true, keyboard_enabled: true, language: '', render_world_copies: true, fade_duration: 300, click_tolerance: 3, local_ideograph_font_family: '', cross_source_collisions: true, default_visible_layers: ['county', 'beat'], layer_beat_fill: '#22c55e', layer_beat_fill_opacity: 0.2, layer_beat_stroke: '#22c55e', layer_beat_stroke_opacity: 0.6, layer_beat_stroke_weight: 1.2, layer_beat_min_zoom: 10, layer_county_fill: '#141414', layer_county_fill_opacity: 0.15, layer_county_stroke: '#444444', layer_county_stroke_opacity: 0.5, layer_county_stroke_weight: 1.5, layer_county_min_zoom: 8, layer_municipality_fill: '#a855f7', layer_municipality_fill_opacity: 0.06, layer_municipality_stroke: '#a855f7', layer_municipality_stroke_opacity: 0.35, layer_municipality_stroke_weight: 1, layer_municipality_min_zoom: 9, layer_highway_stroke: '#ef4444', layer_highway_stroke_opacity: 0.6, layer_highway_stroke_weight: 3, layer_state_boundary_stroke: '#ffffff', layer_state_boundary_stroke_opacity: 0.3, layer_state_boundary_stroke_weight: 2, gps_batch_interval_ms: 5000, gps_max_accuracy_meters: 100, gps_max_speed_ms: 80, gps_high_accuracy: true, screenshot_width: 1280, screenshot_height: 720, screenshot_style: 'dark', unit_marker_pulse: true, call_marker_pulse: true, marker_font_size: 9 };
       }
+      mapConfigRef.current = mapConfig;
 
       let mapboxToken = '';
       try {

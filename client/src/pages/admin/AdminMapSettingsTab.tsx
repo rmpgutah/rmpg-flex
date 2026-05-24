@@ -2,8 +2,10 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Map, Save, Loader2, RefreshCw, Globe2,
   Palette, ToggleLeft, ToggleRight,
-  Layers, Crosshair, Navigation2, SlidersHorizontal,
+  Layers, Crosshair, Navigation2,
   Hand, Monitor, Settings2, Type, Cpu,
+  Hexagon, Crosshair as CrosshairIcon,
+  Satellite,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { invalidateMapConfigCache, type MapSettings } from '../../pages/map/hooks/useMapConfig';
@@ -22,6 +24,8 @@ const STYLE_OPTIONS: { id: string; label: string; desc: string }[] = [
   { id: 'terrain', label: 'Terrain', desc: 'mapbox://styles/mapbox/outdoors-v12' },
   { id: 'light', label: 'Light', desc: 'mapbox://styles/mapbox/light-v11' },
 ];
+
+const LAYER_IDS = ['beat', 'county', 'municipality', 'highway', 'state_boundary'] as const;
 
 const DEFAULT_VALUES: MapSettings = {
   default_center_lat: 40.7608,
@@ -61,6 +65,41 @@ const DEFAULT_VALUES: MapSettings = {
   click_tolerance: 3,
   local_ideograph_font_family: '',
   cross_source_collisions: true,
+  default_visible_layers: ['county', 'beat'],
+  layer_beat_fill: '#22c55e',
+  layer_beat_fill_opacity: 0.2,
+  layer_beat_stroke: '#22c55e',
+  layer_beat_stroke_opacity: 0.6,
+  layer_beat_stroke_weight: 1.2,
+  layer_beat_min_zoom: 10,
+  layer_county_fill: '#141414',
+  layer_county_fill_opacity: 0.15,
+  layer_county_stroke: '#444444',
+  layer_county_stroke_opacity: 0.5,
+  layer_county_stroke_weight: 1.5,
+  layer_county_min_zoom: 8,
+  layer_municipality_fill: '#a855f7',
+  layer_municipality_fill_opacity: 0.06,
+  layer_municipality_stroke: '#a855f7',
+  layer_municipality_stroke_opacity: 0.35,
+  layer_municipality_stroke_weight: 1,
+  layer_municipality_min_zoom: 9,
+  layer_highway_stroke: '#ef4444',
+  layer_highway_stroke_opacity: 0.6,
+  layer_highway_stroke_weight: 3,
+  layer_state_boundary_stroke: '#ffffff',
+  layer_state_boundary_stroke_opacity: 0.3,
+  layer_state_boundary_stroke_weight: 2,
+  gps_batch_interval_ms: 5000,
+  gps_max_accuracy_meters: 100,
+  gps_max_speed_ms: 80,
+  gps_high_accuracy: true,
+  screenshot_width: 1280,
+  screenshot_height: 720,
+  screenshot_style: 'dark',
+  unit_marker_pulse: true,
+  call_marker_pulse: true,
+  marker_font_size: 9,
 };
 
 export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }: Props) {
@@ -311,6 +350,102 @@ export default function AdminMapSettingsTab({ LoadingSpinner, error, setError }:
           </div>
         </div>
 
+        {/* Marker Behavior */}
+        <div className="panel-beveled bg-surface-base p-4 space-y-3">
+          <SectionLabel icon={CrosshairIcon} label="Marker Behavior" />
+          <div className="space-y-2.5">
+            <ToggleField label="Unit Marker Pulse Animation" value={settings.unit_marker_pulse} onChange={v => updateField('unit_marker_pulse', v)} />
+            <ToggleField label="Call Marker Pulse Animation (P1/P2)" value={settings.call_marker_pulse} onChange={v => updateField('call_marker_pulse', v)} />
+            <InlineInput label="Marker Font Size (px)" value={settings.marker_font_size} onChange={v => updateField('marker_font_size', v)} min="6" max="18" suffix="px" />
+          </div>
+        </div>
+
+        {/* GeoJSON Layer Defaults */}
+        <div className="panel-beveled bg-surface-base p-4 space-y-3 xl:col-span-2">
+          <SectionLabel icon={Hexagon} label="GeoJSON Layer Defaults" />
+          <div className="space-y-4">
+            {LAYER_IDS.map(layerId => {
+              const visible = settings.default_visible_layers.includes(layerId);
+              const label = layerId.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+              const fill = (settings as any)[`layer_${layerId}_fill`] as string;
+              const fillOpacity = (settings as any)[`layer_${layerId}_fill_opacity`] as number;
+              const stroke = (settings as any)[`layer_${layerId}_stroke`] as string;
+              const strokeOpacity = (settings as any)[`layer_${layerId}_stroke_opacity`] as number;
+              const strokeWeight = (settings as any)[`layer_${layerId}_stroke_weight`] as number;
+              const minZoom = (settings as any)[`layer_${layerId}_min_zoom`] as number | undefined;
+              const hasFill = layerId !== 'highway' && layerId !== 'state_boundary';
+
+              return (
+                <div key={layerId} className="bg-surface-sunken border border-[#1a1a1a] p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <button type="button" onClick={() => {
+                        const current = settings.default_visible_layers;
+                        const updated = current.includes(layerId)
+                          ? current.filter(l => l !== layerId)
+                          : [...current, layerId];
+                        updateField('default_visible_layers', updated);
+                      }}
+                        className={`text-[10px] px-2 py-1 border transition-colors ${visible ? 'bg-brand-900/20 border-brand-700/40 text-brand-300' : 'bg-[#0a0a0a] border-[#222] text-rmpg-600'}`}
+                      >
+                        {visible ? 'ON' : 'OFF'}
+                      </button>
+                      <span className="text-[11px] font-semibold text-rmpg-200">{label}</span>
+                    </div>
+                    {minZoom !== undefined && (
+                      <span className="text-[9px] text-rmpg-600">Min Zoom: {minZoom}</span>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-3">
+                    {hasFill && (
+                      <>
+                        <ColorInput label="Fill" value={fill} onChange={v => updateField(`layer_${layerId}_fill` as any, v)} />
+                        <OpacitySlider label="Fill Opacity" value={fillOpacity} onChange={v => updateField(`layer_${layerId}_fill_opacity` as any, v)} />
+                      </>
+                    )}
+                    <ColorInput label="Stroke" value={stroke} onChange={v => updateField(`layer_${layerId}_stroke` as any, v)} />
+                    <OpacitySlider label="Stroke Opacity" value={strokeOpacity} onChange={v => updateField(`layer_${layerId}_stroke_opacity` as any, v)} />
+                    <InlineInput label="Stroke Weight" value={strokeWeight} onChange={v => updateField(`layer_${layerId}_stroke_weight` as any, v)} min="0.5" max="6" step="0.1" suffix="px" />
+                    {minZoom !== undefined && (
+                      <InlineInput label="Min Zoom" value={minZoom} onChange={v => updateField(`layer_${layerId}_min_zoom` as any, v)} min="0" max="22" />
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* GPS Tracking */}
+        <div className="panel-beveled bg-surface-base p-4 space-y-3">
+          <SectionLabel icon={Satellite} label="GPS Tracking" />
+          <div className="space-y-2.5">
+            <ToggleField label="High-Accuracy GPS" value={settings.gps_high_accuracy} onChange={v => updateField('gps_high_accuracy', v)} />
+            <InlineInput label="Batch Interval (ms)" value={settings.gps_batch_interval_ms} onChange={v => updateField('gps_batch_interval_ms', v)} min="1000" max="60000" step="500" suffix="ms" />
+            <InlineInput label="Max Accuracy (m)" value={settings.gps_max_accuracy_meters} onChange={v => updateField('gps_max_accuracy_meters', v)} min="10" max="1000" suffix="m" />
+            <InlineInput label="Max Speed (m/s)" value={settings.gps_max_speed_ms} onChange={v => updateField('gps_max_speed_ms', v)} min="10" max="200" suffix="m/s" />
+            <p className="text-[9px] text-rmpg-600 mt-1">GPS settings affect battery life and tracking precision. Changes apply on next page load.</p>
+          </div>
+        </div>
+
+        {/* Map Export & Screenshot */}
+        <div className="panel-beveled bg-surface-base p-4 space-y-3">
+          <SectionLabel icon={Save} label="Map Export & Screenshot" />
+          <div className="space-y-2.5">
+            <label className="text-[10px] text-rmpg-400 block mb-1">Screenshot Map Style</label>
+            <select value={settings.screenshot_style}
+              onChange={e => updateField('screenshot_style', e.target.value)}
+              className="input-dark text-[10px] w-full min-h-[32px]"
+            >
+              {STYLE_OPTIONS.map(s => (
+                <option key={s.id} value={s.id}>{s.label} — {s.desc}</option>
+              ))}
+            </select>
+            <InlineInput label="Screenshot Width (px)" value={settings.screenshot_width} onChange={v => updateField('screenshot_width', v)} min="320" max="3840" suffix="px" />
+            <InlineInput label="Screenshot Height (px)" value={settings.screenshot_height} onChange={v => updateField('screenshot_height', v)} min="240" max="2160" suffix="px" />
+          </div>
+        </div>
+
         {/* Max Bounds */}
         <div className="panel-beveled bg-surface-base p-4 space-y-3 xl:col-span-2">
           <SectionLabel icon={Crosshair} label="Max Bounds (Restrict visible area — leave empty for no restriction)" />
@@ -353,5 +488,32 @@ function CheckMini(props: React.SVGProps<SVGSVGElement>) {
     <svg {...props} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
       <polyline points="20 6 9 17 4 12" />
     </svg>
+  );
+}
+
+function ColorInput({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
+      <span className="w-14 shrink-0">{label}</span>
+      <input type="color" value={value} onChange={e => onChange(e.target.value)}
+        className="w-6 h-6 p-0 border border-[#333] bg-transparent cursor-pointer rounded-sm"
+      />
+      <input type="text" value={value} onChange={e => onChange(e.target.value)}
+        className="input-dark text-[10px] w-20 text-center font-mono min-h-[24px]"
+      />
+    </label>
+  );
+}
+
+function OpacitySlider({ label, value, onChange }: { label: string; value: number; onChange: (v: number) => void }) {
+  return (
+    <label className="flex items-center gap-1.5 text-[10px] text-rmpg-400">
+      <span className="w-[72px] shrink-0">{label}</span>
+      <input type="range" min="0" max="1" step="0.01" value={value}
+        onChange={e => onChange(parseFloat(e.target.value))}
+        className="w-16 h-3 accent-brand-400 cursor-pointer"
+      />
+      <span className="text-[10px] font-mono text-rmpg-500 w-8 text-right">{value.toFixed(2)}</span>
+    </label>
   );
 }
