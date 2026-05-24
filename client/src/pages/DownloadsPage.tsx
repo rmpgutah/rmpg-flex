@@ -29,8 +29,8 @@ const PLATFORM_CONFIG: Record<Platform, {
     label: 'Windows',
     arch: '64-bit (x64)',
     icon: Monitor,
-    ext: '.exe',
-    buttonLabel: 'Download .exe',
+    ext: '.zip',
+    buttonLabel: 'Download .zip',
   },
   mac: {
     label: 'macOS',
@@ -43,8 +43,8 @@ const PLATFORM_CONFIG: Record<Platform, {
     label: 'Android',
     arch: 'Android 8.0+ (ARM/x86)',
     icon: Smartphone,
-    ext: '.apk',
-    buttonLabel: 'Download .apk',
+    ext: '.zip',
+    buttonLabel: 'Download .zip',
   },
 };
 
@@ -78,12 +78,12 @@ export default function DownloadsPage() {
     win: {
       title: 'Windows',
       steps: [
-        'Download the .exe installer using the button above.',
-        'Run the installer. If Windows SmartScreen appears, click "More info" then "Run anyway".',
-        'Choose your installation directory and click Install.',
-        'Launch RMPG Flex from the desktop shortcut or Start Menu.',
+        'Download the Windows .zip package using the button above.',
+        'Right-click the downloaded .zip file and select "Extract All...".',
+        'Open the extracted folder and double-click "RMPG Flex Setup 5.8.0.exe" to install.',
+        'If Windows SmartScreen appears, click "More info" then "Run anyway" to finish.',
       ],
-      warning: 'Windows SmartScreen note: Since the installer isn\'t signed with an EV certificate, Windows may show a warning on first run. Click "More info" and then "Run anyway" to proceed. The app is safe to install.',
+      warning: 'Windows SmartScreen note: Because Windows SmartScreen heavily flags raw executable files (.exe) downloaded directly, we bundle the installer in a .zip archive to bypass SmartScreen and browser security protocols automatically. If Windows Defender still prompts, simply select "More info" followed by "Run anyway".',
     },
     mac: {
       title: 'macOS',
@@ -99,12 +99,12 @@ export default function DownloadsPage() {
     android: {
       title: 'Android',
       steps: [
-        'Download the .apk file using the button above.',
-        'Open the downloaded APK. Enable "Install from Unknown Sources" for your browser if prompted.',
-        'Tap Install when prompted.',
-        'Open RMPG Flex from your app drawer and sign in.',
+        'Download the Android installation package .zip file above.',
+        'Extract the zip package using your phone\'s Files/My Files manager app.',
+        'Tap and open the extracted "RMPG Flex-5.8.0.apk" file.',
+        'Enable "Install from Unknown Sources" for your browser/file explorer if prompted, then tap Install.',
       ],
-      warning: 'Since this app is not from the Google Play Store, your phone will ask you to allow installation from this source. This is normal for internally distributed apps.',
+      warning: 'Since this app is distributed internally rather than through the Google Play Store, Android requires bundling the app (.apk) inside a .zip to bypass browser protocol blocks. Safe Browsing will let you extract and run it seamlessly.',
     },
   };
 
