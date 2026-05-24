@@ -704,71 +704,127 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
   // ═══════════════════════════════════════════════════════════
 
   // GET /api/dispatch/geography/tree - Full geography tree
+  // GET /api/dispatch/geography/tree
+  // Returns nested hierarchy: { areas: [{..., sectors: [{..., zones: [{..., beats: []}]}]}], unassigned_sectors: [...] }
+  // Shape must match what GeographyPage expects (object with `areas` + `unassigned_sectors`, NOT a bare array).
   api.get('/geography/tree', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
-    const areas = await db.prepare('SELECT * FROM dispatch_areas ORDER BY sort_order, name').all();
-    const result: any[] = [];
-    for (const area of areas as any[]) {
-      const sectors = await db.prepare('SELECT * FROM dispatch_sectors WHERE area_id = ? ORDER BY sort_order, name').all(area.id);
-      const sectorList: any[] = [];
-      for (const sector of sectors as any[]) {
-        const zones = await db.prepare('SELECT * FROM dispatch_zones WHERE sector_id = ? ORDER BY sort_order, name').all(sector.id);
-        const zoneList: any[] = [];
-        for (const zone of zones as any[]) {
-          const beats = await db.prepare('SELECT * FROM dispatch_beats WHERE zone_id = ? ORDER BY sort_order, name').all(zone.id);
-          zoneList.push({ ...zone, beats });
-        }
-        sectorList.push({ ...sector, zones: zoneList });
-      }
-      result.push({ ...area, sectors: sectorList });
+    try {
+      const [areas, sectors, zones, beats] = await Promise.all([
+        db.prepare('SELECT * FROM dispatch_areas WHERE active = 1 ORDER BY sort_order, area_name').all() as Promise<any[]>,
+        db.prepare(`SELECT s.*, a.area_code, a.area_name FROM dispatch_sectors s LEFT JOIN dispatch_areas a ON a.id = s.area_id WHERE s.active = 1 ORDER BY s.sort_order, s.sector_name`).all() as Promise<any[]>,
+        db.prepare(`SELECT z.*, s.sector_code, s.sector_name FROM dispatch_zones z LEFT JOIN dispatch_sectors s ON s.id = z.sector_id WHERE z.active = 1 ORDER BY z.sort_order, z.zone_name`).all() as Promise<any[]>,
+        db.prepare(`SELECT b.*, z.zone_code, z.zone_name, s.sector_code, s.sector_name FROM dispatch_beats b LEFT JOIN dispatch_zones z ON z.id = b.zone_id LEFT JOIN dispatch_sectors s ON s.id = z.sector_id WHERE b.active = 1 ORDER BY b.sort_order, b.beat_name`).all() as Promise<any[]>,
+      ]);
+
+      const tree = areas.map((area: any) => ({
+        ...area,
+        sectors: sectors
+          .filter((s: any) => s.area_id === area.id)
+          .map((sector: any) => ({
+            ...sector,
+            zones: zones
+              .filter((z: any) => z.sector_id === sector.id)
+              .map((zone: any) => ({
+                ...zone,
+                beats: beats.filter((b: any) => b.zone_id === zone.id),
+              })),
+          })),
+      }));
+
+      const unassigned_sectors = sectors
+        .filter((s: any) => !s.area_id)
+        .map((sector: any) => ({
+          ...sector,
+          zones: zones
+            .filter((z: any) => z.sector_id === sector.id)
+            .map((zone: any) => ({
+              ...zone,
+              beats: beats.filter((b: any) => b.zone_id === zone.id),
+            })),
+        }));
+
+      c.header('Cache-Control', 'private, max-age=30');
+      return c.json({ areas: tree, unassigned_sectors });
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json({ areas: [], unassigned_sectors: [] });
+      throw err;
     }
-    return c.json(result);
   });
 
   // GET /api/dispatch/geography/areas
   api.get('/geography/areas', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
-    const areas = await db.prepare('SELECT * FROM dispatch_areas ORDER BY sort_order, name').all();
-    return c.json(areas);
+    try {
+      const areas = await db.prepare(`SELECT a.*, (SELECT COUNT(*) FROM dispatch_sectors WHERE area_id = a.id) as section_count FROM dispatch_areas a ORDER BY a.sort_order, a.area_name`).all();
+      c.header('Cache-Control', 'private, max-age=30');
+      return c.json(areas);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      throw err;
+    }
   });
 
   // GET /api/dispatch/geography/sectors
   api.get('/geography/sectors', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
     const areaId = c.req.query('area_id');
-    let sectors;
-    if (areaId) {
-      sectors = await db.prepare('SELECT * FROM dispatch_sectors WHERE area_id = ? ORDER BY sort_order, name').all(areaId);
-    } else {
-      sectors = await db.prepare('SELECT * FROM dispatch_sectors ORDER BY sort_order, name').all();
+    try {
+      let query = `SELECT s.*, a.area_code, a.area_name, (SELECT COUNT(*) FROM dispatch_zones WHERE sector_id = s.id) as zone_count FROM dispatch_sectors s LEFT JOIN dispatch_areas a ON a.id = s.area_id`;
+      const params: any[] = [];
+      if (areaId) { query += ' WHERE s.area_id = ?'; params.push(parseInt(areaId, 10)); }
+      query += ' ORDER BY s.sort_order, s.sector_name';
+      const sectors = await db.prepare(query).all(...params);
+      c.header('Cache-Control', 'private, max-age=30');
+      return c.json(sectors);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      throw err;
     }
-    return c.json(sectors);
   });
 
   // GET /api/dispatch/geography/zones
   api.get('/geography/zones', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
     const sectorId = c.req.query('sector_id');
-    let zones;
-    if (sectorId) {
-      zones = await db.prepare('SELECT * FROM dispatch_zones WHERE sector_id = ? ORDER BY sort_order, name').all(sectorId);
-    } else {
-      zones = await db.prepare('SELECT * FROM dispatch_zones ORDER BY sort_order, name').all();
+    try {
+      let query = `SELECT z.*, s.sector_code, s.sector_name, (SELECT COUNT(*) FROM dispatch_beats WHERE zone_id = z.id) as beat_count, (SELECT COUNT(*) FROM calls_for_service WHERE zone_id = z.zone_code AND status NOT IN ('closed','archived','cancelled')) as active_calls FROM dispatch_zones z LEFT JOIN dispatch_sectors s ON s.id = z.sector_id`;
+      const params: any[] = [];
+      if (sectorId) { query += ' WHERE z.sector_id = ?'; params.push(parseInt(sectorId, 10)); }
+      query += ' ORDER BY z.sort_order, z.zone_name';
+      const zones = await db.prepare(query).all(...params);
+      c.header('Cache-Control', 'private, max-age=30');
+      return c.json(zones);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      throw err;
     }
-    return c.json(zones);
   });
 
   // GET /api/dispatch/geography/beats
   api.get('/geography/beats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
     const zoneId = c.req.query('zone_id');
-    let beats;
-    if (zoneId) {
-      beats = await db.prepare('SELECT * FROM dispatch_beats WHERE zone_id = ? ORDER BY sort_order, name').all(zoneId);
-    } else {
-      beats = await db.prepare('SELECT * FROM dispatch_beats ORDER BY sort_order, name').all();
+    const search = c.req.query('search');
+    try {
+      let query = `SELECT b.*, z.zone_code, z.zone_name, s.sector_code, s.sector_name, (SELECT COUNT(*) FROM calls_for_service WHERE beat_id = b.beat_code AND status NOT IN ('closed','archived','cancelled')) as active_calls FROM dispatch_beats b LEFT JOIN dispatch_zones z ON z.id = b.zone_id LEFT JOIN dispatch_sectors s ON s.id = z.sector_id WHERE 1=1`;
+      const params: any[] = [];
+      if (zoneId) { query += ' AND b.zone_id = ?'; params.push(parseInt(zoneId, 10)); }
+      if (search && search.length >= 1 && search.length <= 100) {
+        // Escape LIKE metacharacters (%, _, \) to prevent wildcard injection in search filter
+        const escaped = search.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+        const s = `%${escaped}%`;
+        query += " AND (b.beat_code LIKE ? ESCAPE '\\' OR b.beat_name LIKE ? ESCAPE '\\' OR b.beat_descriptor LIKE ? ESCAPE '\\')";
+        params.push(s, s, s);
+      }
+      query += ' ORDER BY b.sort_order, b.beat_name';
+      const beats = await db.prepare(query).all(...params);
+      c.header('Cache-Control', 'private, max-age=30');
+      return c.json(beats);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      throw err;
     }
-    return c.json(beats);
   });
 
   // GET /api/dispatch/geography/codes - 10-codes / signal codes
@@ -1078,19 +1134,54 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
   });
 
   // GET /api/dispatch/geography/identify
+  // GET /api/dispatch/geography/identify?lat=&lng=
+  //
+  // Returns the area/sector/zone/beat for a GPS coordinate plus nearby
+  // premise alerts.
+  //
+  // The premise-alert lookup is correct (bounding-box query on D1). The
+  // beat lookup, however, requires point-in-polygon against beat.geojson
+  // (8.9 MB of polygon features) — that file is too large to bundle into
+  // the Worker script, and `fs.readFileSync` (used by the Express version)
+  // does not exist on Workers.
+  //
+  // The previous implementation in this file did `WHERE beat_code LIKE
+  // '%<lat*100>%'` which returned arbitrary nonsense matches. That has
+  // been removed in favour of an explicit 501 so callers don't silently
+  // receive wrong geofence data.
+  //
+  // TODO: pick one of three strategies and implement:
+  //   (a) Move beat.geojson to R2, fetch + cache in module scope on first
+  //       call, run PIP in the Worker (cold-start cost on first lat/lng
+  //       per isolate; ~9 MB R2 fetch).
+  //   (b) Move PIP to the client (client already has beat.geojson at
+  //       /geojson/beat.geojson) — strictly better UX but requires a
+  //       client refactor and changes the contract.
+  //   (c) Pre-compute beat MBR bounds at seed time, store min/max
+  //       lat/lng on dispatch_beats (columns already exist!), look up
+  //       candidate beats via indexed BETWEEN queries, then do PIP only
+  //       on the small candidate set. Workable today if the seed pipeline
+  //       fills those columns.
   api.get('/geography/identify', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
-    const lat = parseFloat(c.req.query().lat || '0');
-    const lng = parseFloat(c.req.query().lng || '0');
-    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return c.json({ error: 'Valid lat and lng required' }, 400);
+    const lat = parseFloat(c.req.query('lat') || '');
+    const lng = parseFloat(c.req.query('lng') || '');
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return c.json({ error: 'Valid lat and lng required' }, 400);
+    }
     try {
-      const beatRecord = await db.prepare(`SELECT b.*, z.zone_code, z.zone_name, s.sector_code, s.sector_name, a.area_code, a.area_name FROM dispatch_beats b LEFT JOIN dispatch_zones z ON z.id = b.zone_id LEFT JOIN dispatch_sectors s ON s.id = z.sector_id LEFT JOIN dispatch_areas a ON a.id = s.area_id WHERE b.beat_code LIKE ? LIMIT 1`).get(`%${Math.floor(lat * 100)}%`);
-      const alerts = await db.prepare(`SELECT * FROM premise_alerts WHERE active = 1 AND (expires_at IS NULL OR expires_at > datetime('now')) AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ? ORDER BY alert_level DESC LIMIT 5`).all(lat - 0.003, lat + 0.003, lng - 0.003, lng + 0.003);
-      if (beatRecord) {
-        return c.json({ found: true, area: { code: (beatRecord as any).area_code, name: (beatRecord as any).area_name }, sector: { code: (beatRecord as any).sector_code, name: (beatRecord as any).sector_name }, zone: { code: (beatRecord as any).zone_code, name: (beatRecord as any).zone_name }, beat: { code: (beatRecord as any).beat_code, name: (beatRecord as any).beat_name, descriptor: (beatRecord as any).beat_descriptor, dispatch_code: (beatRecord as any).dispatch_code, assigned_unit: (beatRecord as any).assigned_unit, hazard_notes: (beatRecord as any).hazard_notes }, premise_alerts: alerts });
-      }
-      return c.json({ found: false, premise_alerts: alerts });
-    } catch { return c.json({ found: false }); }
+      const alerts = await db.prepare(
+        `SELECT * FROM premise_alerts WHERE active = 1 AND (expires_at IS NULL OR expires_at > datetime('now')) AND latitude BETWEEN ? AND ? AND longitude BETWEEN ? AND ? ORDER BY alert_level DESC LIMIT 5`
+      ).all(lat - 0.003, lat + 0.003, lng - 0.003, lng + 0.003);
+      return c.json({
+        found: false,
+        unavailable: true,
+        reason: 'geofence-on-worker-not-implemented',
+        premise_alerts: alerts,
+      }, 501);
+    } catch {
+      return c.json({ found: false, unavailable: true, premise_alerts: [] }, 501);
+    }
   });
 
   // ═══════════════════════════════════════════════════════════
