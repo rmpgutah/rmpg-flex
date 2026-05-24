@@ -4,8 +4,15 @@ import { jwtVerify } from 'jose';
 import { getDb, queryFirst } from '../utils/db';
 
 export interface JwtPayload {
-  sub: string;
-  user_id: number;
+  sub?: string;
+  // Both spellings live in the wild: tokens issued by this Worker use
+  // `user_id` (snake_case), but tokens issued by the legacy `rmpg-flex`
+  // Worker — still the source for /api/auth/login behind the proxy —
+  // use `userId` (camelCase, see legacy/server-vps/src/middleware/auth.ts).
+  // Accept both so a legacy-issued session can call any rewrite-routed
+  // endpoint without re-authenticating.
+  user_id?: number;
+  userId?: number;
   username: string;
   role: string;
   iat?: number;
@@ -33,6 +40,11 @@ export async function authMiddleware(c: Context, next: Next) {
     const { payload } = await jwtVerify(token, secret);
     const jwtPayload = payload as unknown as JwtPayload;
 
+    const userId = jwtPayload.user_id ?? jwtPayload.userId;
+    if (userId == null) {
+      return c.json({ error: 'Invalid token: missing user id claim' }, 401);
+    }
+
     const db = getDb(c.env);
     const user = await queryFirst<{
       id: number;
@@ -43,7 +55,7 @@ export async function authMiddleware(c: Context, next: Next) {
     }>(
       db,
       'SELECT id, username, role, full_name, status FROM users WHERE id = ? AND status = ?',
-      jwtPayload.user_id,
+      userId,
       'active'
     );
 
