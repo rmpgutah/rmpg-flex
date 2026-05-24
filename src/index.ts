@@ -42,6 +42,7 @@ import pdfTools from './routes/pdfTools';
 import documentIntake from './routes/documentIntake';
 import documentFolders from './routes/documents/folders';
 import audit from './routes/audit';
+import cases from './routes/cases';
 import fieldInterviews from './routes/fieldInterviews';
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
@@ -235,6 +236,14 @@ app.use('/api/integrations/*', authMiddleware);
 app.use('/api/audit', authMiddleware);
 app.use('/api/audit/*', authMiddleware);
 app.route('/api/audit', audit);
+// Cases (investigative case management). MVP scope: core CRUD,
+// workflow (submit-review/approve/status/archive), notes,
+// solvability scoring, persons junction, export. Entity junction
+// tables (calls/incidents/vehicles/properties/evidence/warrants/
+// citations) deferred to a focused follow-up PR.
+app.use('/api/cases', authMiddleware);
+app.use('/api/cases/*', authMiddleware);
+app.route('/api/cases', cases);
 // Document folders — hierarchical browser backed by document_folders +
 // attachments. Migration 0024_document_folders adds the folders table
 // + a folder_id column to attachments (NULL = unfoldered, legacy).
