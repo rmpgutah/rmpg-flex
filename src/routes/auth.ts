@@ -174,6 +174,105 @@ auth.put('/password', authMiddleware, async (c) => {
   }
 });
 
+// POST /auth/change-password — alias the client uses from the in-profile
+// password rotation modal (UserProfileModal). Same logic as the existing
+// PUT /password, but accepts camelCase body keys to match the client.
+auth.post('/change-password', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{
+      currentPassword?: string; newPassword?: string;
+      current_password?: string; new_password?: string;
+    }>();
+    const current = body.currentPassword ?? body.current_password ?? '';
+    const next = body.newPassword ?? body.new_password ?? '';
+    if (!current || !next) {
+      return c.json({ error: 'Current and new password required' }, 400);
+    }
+    if (next.length < 8) {
+      return c.json({ error: 'Password must be at least 8 characters' }, 400);
+    }
+
+    const userId = c.get('userId');
+    const db = getDb(c.env);
+    const user = await queryFirst<any>(db, 'SELECT password_hash FROM users WHERE id = ?', userId);
+    if (!user || !compareSync(current, user.password_hash)) {
+      return c.json({ error: 'Current password is incorrect' }, 401);
+    }
+
+    const newHash = hashSync(next, 12);
+    await execute(
+      db,
+      `UPDATE users SET password_hash = ?, force_password_change = 0,
+                          password_changed_at = datetime('now', '-6 hours'),
+                          updated_at = datetime('now', '-6 hours')
+       WHERE id = ?`,
+      newHash, userId,
+    );
+    return c.json({ message: 'Password updated' });
+  } catch (err) {
+    return c.json({ error: 'Password change failed' }, 500);
+  }
+});
+
+// POST /auth/login/change-password — forced password change at login.
+// Triggered when the login response carries `force_password_change: 1`.
+// The client holds a `tempToken` (the just-issued JWT) and sends only
+// the new password — current password is implicit (just authenticated).
+// Returns a fresh access token + user so the SPA can complete login.
+auth.post('/login/change-password', authMiddleware, async (c) => {
+  try {
+    const body = await c.req.json<{ newPassword?: string; new_password?: string }>();
+    const next = body.newPassword ?? body.new_password ?? '';
+    if (!next || next.length < 8) {
+      return c.json({ error: 'New password must be at least 8 characters' }, 400);
+    }
+
+    const userId = c.get('userId');
+    const db = getDb(c.env);
+    const newHash = hashSync(next, 12);
+    await execute(
+      db,
+      `UPDATE users SET password_hash = ?, force_password_change = 0,
+                          password_changed_at = datetime('now', '-6 hours'),
+                          updated_at = datetime('now', '-6 hours')
+       WHERE id = ?`,
+      newHash, userId,
+    );
+
+    // Re-issue a fresh JWT so the old tempToken can't be reused.
+    const user = await queryFirst<any>(
+      db,
+      `SELECT id, username, full_name, email, role, badge_number, phone,
+              avatar_url, status, force_password_change, totp_enrolled
+       FROM users WHERE id = ?`,
+      userId,
+    );
+    if (!user) return c.json({ error: 'User not found' }, 404);
+
+    const jwtSecret = c.env.JWT_SECRET;
+    const payload = { sub: String(user.id), user_id: user.id, username: user.username, role: user.role };
+    const sessionId = uuidv4().replace(/-/g, '');
+    const accessToken = await sign({ ...payload, sessionId }, jwtSecret);
+    const refreshToken = uuidv4();
+
+    await execute(
+      db,
+      `INSERT INTO sessions (user_id, token, refresh_token, ip_address, user_agent, expires_at, refresh_expires_at)
+       VALUES (?, ?, ?, ?, ?, datetime('now', '-6 hours', '+15 minutes'), datetime('now', '-6 hours', '+7 days'))`,
+      user.id, accessToken, refreshToken, c.req.header('cf-connecting-ip') || '', c.req.header('user-agent') || '',
+    );
+
+    return c.json({
+      token: accessToken,
+      refreshToken,
+      sessionId,
+      user: userPayload(user),
+    });
+  } catch (err) {
+    return c.json({ error: 'Password change failed' }, 500);
+  }
+});
+
 auth.get('/password-policy', (c) => {
   return c.json({
     minLength: 8,
