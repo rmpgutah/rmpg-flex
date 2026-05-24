@@ -386,11 +386,32 @@ async function tryRefreshToken(): Promise<string | null> {
 // Standalone fetch helper for one-off requests.
 // Automatically retries once with a refreshed token on 401.
 // When running in Electron and offline, routes through local SQLite via IPC.
+// Routes that have been migrated to the CF Worker at api.rmpgutah.us.
+// The rest of the app still hits the legacy origin via relative paths.
+// As routes port over, add their prefix here; remove when the legacy
+// origin retires entirely. Keep prefixes specific to avoid catching
+// related-but-still-legacy paths (e.g. /api/warrants alone would catch
+// the legacy CRUD warrant list; we want only watch+utah subroutes).
+const CF_WORKER_PREFIXES = [
+  '/api/warrants/watch/',
+  '/api/warrants/utah/',
+];
+const CF_WORKER_BASE = 'https://api.rmpgutah.us';
+
+function maybeRedirectToCfWorker(url: string): string {
+  if (!url.startsWith('/api/')) return url;
+  for (const prefix of CF_WORKER_PREFIXES) {
+    if (url.startsWith(prefix)) return CF_WORKER_BASE + url;
+  }
+  return url;
+}
+
 export async function apiFetch<T>(
   endpoint: string,
   options?: RequestInit & { timeoutMs?: number }
 ): Promise<T> {
-  const url = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const relativeUrl = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
+  const url = maybeRedirectToCfWorker(relativeUrl);
   const method = options?.method || 'GET';
 
   // ─── Offline interception (Electron desktop only) ──────

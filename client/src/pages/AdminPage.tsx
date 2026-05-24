@@ -661,13 +661,17 @@ export default function AdminPage() {
     {
       category: 'Integrations',
       tabs: [
+        // Reordered 2026-05-24: operator complaint that warrant-polling
+        // status was undiscoverable. Surfaced at top of Integrations and
+        // renamed from "Warrant Scrapers" (engineer-speak) to
+        // "Warrant Polling Status" (the term operators actually search for).
+        { id: 'warrant_scrapers', label: 'Warrant Polling Status', icon: Shield },
+        { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
+        { id: 'skiptracer', label: 'Skip Tracker', icon: Search },
+        { id: 'skiptracer_v2', label: 'Skip Tracer V2', icon: Search },
         { id: 'servemanager', label: 'ServeManager', icon: Link2 },
         { id: 'microbilt', label: 'Microbilt', icon: DatabaseZap },
         { id: 'clearpathgps', label: 'ClearPathGPS', icon: Navigation },
-        { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
-        { id: 'warrant_scrapers', label: 'Warrant Scrapers', icon: Shield },
-        { id: 'skiptracer', label: 'Skip Tracker', icon: Search },
-        { id: 'skiptracer_v2', label: 'Skip Tracer V2', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'integrations', label: 'API Integrations', icon: Plug },
         { id: 'training', label: 'Training', icon: GraduationCap },

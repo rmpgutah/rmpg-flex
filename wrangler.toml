@@ -53,3 +53,10 @@ SERVER_TIMEZONE = "America/Denver"
 # Secrets (set via `npx wrangler secret put`)
 # JWT_SECRET (already set)
 # GOOGLE_MAPS_API_KEY
+
+# Scheduled cron triggers.
+# Utah warrant smoke poll runs every 4h, matching the legacy server's
+# scheduleUtahWarrantSync interval. Workers cron uses UTC; "0 */4 * * *"
+# means every 4 hours on the hour (00:00, 04:00, 08:00, ... UTC).
+[triggers]
+crons = ["0 */4 * * *"]
