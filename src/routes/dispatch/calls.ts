@@ -102,10 +102,51 @@ calls.post('/', async (c) => {
       }
     }
 
+    // Call-number format: CFS{YY}-{NNNNN}, 5-digit sequence, resets
+    // each calendar year (the LIKE filter is YY-scoped so MAX() only
+    // sees this year's rows). Example: CFS26-00001.
+    // Back-compat: legacy rows used "{YY}-CFS{NNNNN}" — those still
+    // co-exist; the LIKE here only scans the new format so we don't
+    // collide with the old sequence.
     const year = new Date().getFullYear().toString().slice(-2);
-    const [{ max }] = await query<{ max: string | null }>(db, "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?", `${year}-CFS%`);
-    const seq = max ? String(parseInt(max.split('-CFS')[1] || '0', 10) + 1).padStart(5, '0') : '00001';
-    const callNumber = `${year}-CFS${seq}`;
+    const prefix = `CFS${year}-`;
+    const [{ max }] = await query<{ max: string | null }>(
+      db,
+      "SELECT MAX(call_number) as max FROM calls_for_service WHERE call_number LIKE ?",
+      `${prefix}%`,
+    );
+    const seq = max
+      ? String(parseInt(max.slice(prefix.length), 10) + 1).padStart(5, '0')
+      : '00001';
+    const callNumber = `${prefix}${seq}`;
+
+    // FK guard — restored-pending-draft can carry a stale property_id
+    // from localStorage that no longer exists in this database. If
+    // the ID doesn't resolve, drop it rather than failing the INSERT
+    // with SQLITE_CONSTRAINT_FOREIGNKEY (the production crash this
+    // change is fixing).
+    if (body.property_id != null && body.property_id !== '') {
+      const exists = await queryFirst<{ id: number }>(
+        db, 'SELECT id FROM properties WHERE id = ?', body.property_id,
+      );
+      if (!exists) body.property_id = null;
+    }
+    // Same guard for client_id when present (some clients send it
+    // directly on create instead of inheriting via property).
+    if ((body as any).client_id != null && (body as any).client_id !== '') {
+      const exists = await queryFirst<{ id: number }>(
+        db, 'SELECT id FROM clients WHERE id = ?', (body as any).client_id,
+      );
+      if (!exists) (body as any).client_id = null;
+    }
+    // dispatcher_id is taken from JWT below — but verify the user row
+    // still exists (sessions can outlive deleted users).
+    const dispatcherExists = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM users WHERE id = ?', userId,
+    );
+    if (!dispatcherExists) {
+      return c.json({ error: 'Your user account no longer exists; please re-login' }, 401);
+    }
 
     const cols: string[] = [];
     const vals: string[] = [];
@@ -123,8 +164,14 @@ calls.post('/', async (c) => {
     vals.push('?', '?');
     bindParams.push(callNumber, userId);
 
+    // Same whitelist applies on create as on edit. Use the
+    // UPDATABLE_CALL_COLUMNS_BASE set so any column writable later is
+    // writable on insert. Skip immutable cols (id, call_number,
+    // created_at, dispatcher_id — set above).
+    const skipOnCreate = new Set(['id', 'call_number', 'created_at', 'dispatcher_id']);
     for (const [key, val] of Object.entries(body)) {
-      if (key in fieldMap || ['incident_type', 'priority', 'location_address', 'caller_name', 'caller_phone', 'description', 'notes', 'source', 'latitude', 'longitude', 'property_id'].includes(key)) {
+      if (skipOnCreate.has(key)) continue;
+      if (UPDATABLE_CALL_COLUMNS_BASE.has(key)) {
         cols.push(key);
         vals.push('?');
         bindParams.push(val ?? null);

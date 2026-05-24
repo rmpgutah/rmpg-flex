@@ -16,6 +16,7 @@ import dispatchUnits from './routes/dispatch/units';
 import dispatchGps from './routes/dispatch/gps';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
+import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import dispatchPanic from './routes/dispatch/panic';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import admin from './routes/admin';
@@ -108,6 +109,7 @@ app.use('/api/records/*', authMiddleware);
 // collision rule the extensions block below documents.
 app.route('/api/dispatch', dispatchCallLinks);
 app.route('/api/dispatch', dispatchPanic);
+app.route('/api/dispatch', dispatchPremiseHistory);
 app.route('/api/dispatch/calls', dispatchCalls);
 app.route('/api/dispatch/units', dispatchUnits);
 app.route('/api/dispatch/gps', dispatchGps);
