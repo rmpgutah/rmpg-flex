@@ -39,11 +39,21 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          # Token rotated 2026-05-24 to one that includes container
-          # image push permission, so the Containers rollout runs
-          # again. Revert to `deploy --containers-rollout=none` if a
-          # future token loses that scope.
-          command: deploy
+          # --containers-rollout=none skips the Cloudflare Containers
+          # rollout. Without this, every Worker deploy fails at the
+          # container image push step with a bare `Unauthorized` (the
+          # image builds fine via Docker on the runner, but the push
+          # to Cloudflare's registry is rejected).
+          #
+          # Probed 2026-05-24 with a freshly issued Account token that
+          # included every Workers/D1/KV/R2/Pages scope — still
+          # Unauthorized on registry push. The required permission
+          # isn't surfaced by name in wrangler's error message and
+          # didn't show up under any "Containers" / "Workers" scope
+          # in the Cloudflare token UI at the time. Until that's
+          # sorted, every route still ships; only the PdfToolsContainer
+          # sidecar stays inactive (/api/pdf-tools/* will 500 if called).
+          command: deploy --containers-rollout=none
 
       # Client SPA build + deploy to Cloudflare Pages.
       # Without these steps the Worker (API) ships but the React app
