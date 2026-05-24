@@ -389,5 +389,9 @@ export function mountReportsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     }
   });
 
+  // GET /api/reports/response-times — cutover-parity stub
+  // Replaces the /src/ stubs.ts hardcoded `[]`. Real implementation TODO.
+  api.get('/response-times', async (_c) => _c.json([]));
+
   app.route('/api/reports', api);
 }

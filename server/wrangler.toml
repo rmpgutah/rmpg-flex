@@ -1,0 +1,107 @@
+# ============================================================
+# RMPG Flex — Workers config for /server/ (the full RMS port)
+# ============================================================
+# Atomic cutover from /src/ → /server/: same Worker name
+# (rmpg-flex-api), same custom_domain route (api.rmpgutah.us),
+# same live D1 database (8893480a-...). On `wrangler deploy`,
+# Cloudflare replaces the running Worker code in place — DNS,
+# secrets, and durable bindings carry forward unchanged.
+#
+# See memory/project_dual_worker_codebases.md for why we're
+# cutting over from the smaller /src/ Worker (~10 routes, mostly
+# stubs) to /server/ (~70 fully-built Hono+D1 routes).
+# ============================================================
+
+name = "rmpg-flex-api"
+main = "src/worker.ts"
+compatibility_date = "2026-05-24"
+compatibility_flags = ["nodejs_compat"]
+
+# Custom domain — same route the current /src/ Worker serves.
+# Cutover is atomic: as soon as `wrangler deploy` completes, the
+# next request to api.rmpgutah.us hits this Worker instead.
+[[routes]]
+pattern = "api.rmpgutah.us"
+custom_domain = true
+
+# ── D1 ────────────────────────────────────────────────────────
+# Live production database. Migrations are applied by
+# .github/workflows/deploy.yml via `d1 migrations apply rmpg-flex-db --remote`
+# (20 SQL files under /migrations at repo root). Each -worker.ts
+# route file also runs an idempotent ensureSchema() at first
+# request to self-heal any tables not in the migration list (see
+# the CREATE TABLE IF NOT EXISTS pattern in dispatch-worker.ts,
+# audit-worker.ts, etc).
+[[d1_databases]]
+binding = "DB"
+database_name = "rmpg-flex-db"
+database_id = "8893480a-6dd5-4790-a11f-1fb6fac13f02"
+
+# ── KV ────────────────────────────────────────────────────────
+# SESSIONS reuses the existing KV namespace that was bound as
+# "KV" in the root wrangler.toml. Same id, new binding name —
+# /server/ code already references c.env.SESSIONS throughout.
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "8e01c392038e4f76838ca9a1130c908e"
+
+# RATE_LIMITS is a NEW namespace created for this cutover (KV
+# `npx wrangler kv namespace create RATE_LIMITS`).
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "6573850e8db64408aa4aa719aff35d61"
+
+# ── R2 ────────────────────────────────────────────────────────
+# Two NEW R2 buckets — must be created before first deploy:
+#   npx wrangler r2 bucket create rmpg-flex-uploads
+#   npx wrangler r2 bucket create rmpg-flex-downloads
+# R2 binds by bucket name (no ID needed), so once the buckets
+# exist these blocks Just Work.
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "rmpg-flex-uploads"
+
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "rmpg-flex-downloads"
+
+# ── Vars (non-secret runtime config) ──────────────────────────
+[vars]
+NODE_ENV = "production"
+PRIMARY_DOMAIN = "rmpgutah.us"
+CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173"
+JWT_ACCESS_EXPIRY = "15m"
+JWT_REFRESH_EXPIRY = "7d"
+SERVER_TIMEZONE = "America/Denver"
+
+# WebAuthn binding — domain-locked to rmpgutah.us per CLAUDE.md.
+# Rotating these breaks every enrolled FIDO2 credential.
+WEBAUTHN_RP_ID = "rmpgutah.us"
+WEBAUTHN_RP_NAME = "RMPG Flex"
+TOTP_ISSUER = "RMPG Flex"
+
+# Auth policy
+MAX_LOGIN_ATTEMPTS = "5"
+LOCKOUT_DURATION_MINUTES = "15"
+PASSWORD_MIN_LENGTH = "12"
+
+# ── Secrets (set via `npx wrangler secret put <NAME>`) ────────
+# Carried over from the /src/ Worker on cutover — same Worker
+# name means existing secret bindings stay attached:
+#   JWT_SECRET                  (required — rotating invalidates
+#                                every TOTP enrollment per CLAUDE.md
+#                                gotcha #1)
+#   GOOGLE_MAPS_API_KEY         (existing on /src/ Worker)
+#   MAPBOX_ACCESS_TOKEN         (per project_mapbox_decision memory)
+#
+# Set as needed for /server/ features:
+#   TOTP_ENCRYPTION_KEY         (optional — derived from JWT_SECRET
+#                                if absent)
+#   SERVEMANAGER_API_KEY        (process service integration)
+#   AZURE_CLIENT_ID
+#   AZURE_CLIENT_SECRET
+#   AZURE_TENANT_ID
+#   TOTP_REQUIRED_ROLES
+#   OLLAMA_URL
+#   AI_MODEL
+#   GOOGLE_VISION_API_KEY

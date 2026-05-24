@@ -350,6 +350,7 @@ import { mountBusinessVehiclesRoutes } from './routes/businessVehicles-worker';
 import { mountBusinessVisitsRoutes } from './routes/businessVisits-worker';
 import { mountBusinessPhotosRoutes } from './routes/businessPhotos-worker';
 import { mountDocumentFoldersRoutes } from './routes/documentFolders-worker';
+import { mountWeatherRoutes } from './routes/weather-worker';
 
 mountAuthRoutes(app);
 mountDownloadsRoutes(app);
@@ -424,6 +425,7 @@ mountBusinessVehiclesRoutes(app);
 mountBusinessVisitsRoutes(app);
 mountBusinessPhotosRoutes(app);
 mountDocumentFoldersRoutes(app);
+mountWeatherRoutes(app);
 
 // ─── SPA Fallback (Pages Proxy) ──────────────────────────
 // Non-API requests are proxied to the Pages project (rmpg-flex.pages.dev)

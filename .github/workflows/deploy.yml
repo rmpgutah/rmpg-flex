@@ -21,10 +21,22 @@ jobs:
           node-version: 22
           cache: npm
 
-      - run: npm ci
+      # Cutover 2026-05-24: /server/ is now the deployed Worker source.
+      # See memory/project_dual_worker_codebases.md.
+      - name: Install root deps (wrangler CLI)
+        run: npm ci
 
-      - name: Typecheck
-        run: npm run typecheck
+      - name: Install server deps
+        working-directory: server
+        run: npm ci --legacy-peer-deps
+
+      - name: Typecheck (server — the deployed Worker)
+        working-directory: server
+        run: npx tsc --noEmit
+
+      - name: Route collision guard
+        working-directory: server
+        run: npm run check:routes
 
       - name: Apply D1 migrations (remote)
         continue-on-error: true  # Remote D1 has dirty schema from earlier runs; Worker reconciles at boot.
@@ -34,9 +46,19 @@ jobs:
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: d1 migrations apply rmpg-flex-db --remote
 
-      - name: Deploy Worker
+      - name: Deploy Worker (from /server/)
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: server
           command: deploy
+
+      - name: Verify deployment
+        run: |
+          sleep 5
+          curl -sf https://api.rmpgutah.us/api/health
+          if [ $? -ne 0 ]; then
+            echo "::error::Health check failed after deploy"
+            exit 1
+          fi

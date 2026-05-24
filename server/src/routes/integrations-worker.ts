@@ -383,5 +383,9 @@ export function mountIntegrationsRoutes(app: Hono<{ Bindings: Env; Variables: { 
     }
   });
 
+  // GET /api/integrations/google-maps/client-key — cutover-parity stub
+  // /src/ returned `{}`. Until we wire a real key handler, return empty.
+  api.get('/google-maps/client-key', async (c) => c.json({}));
+
   app.route('/api/integrations', api);
 }

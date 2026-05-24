@@ -36,8 +36,13 @@ export async function authenticateToken(c: Context<{ Bindings: Env }>, next: Nex
     const secret = new TextEncoder().encode(c.env.JWT_SECRET);
     const { payload } = await jwtVerify(token, secret);
 
+    // Accept either `userId` (this Worker's native format) or `user_id`
+    // (the legacy /src/ Worker's format). Cutover-compat shim — lets
+    // already-issued tokens stay valid through the switchover. Remove the
+    // fallback once all /src/-issued sessions have expired (≤ 7 days).
+    const uid = payload.userId ?? (payload as Record<string, unknown>).user_id;
     c.set('user', {
-      userId: Number(payload.userId),
+      userId: Number(uid),
       username: String(payload.username),
       role: String(payload.role),
       iat: Number(payload.iat),
@@ -73,8 +78,13 @@ export async function optionalAuth(c: Context<{ Bindings: Env }>, next: Next): P
   try {
     const secret = new TextEncoder().encode(c.env.JWT_SECRET);
     const { payload } = await jwtVerify(token, secret);
+    // Accept either `userId` (this Worker's native format) or `user_id`
+    // (the legacy /src/ Worker's format). Cutover-compat shim — lets
+    // already-issued tokens stay valid through the switchover. Remove the
+    // fallback once all /src/-issued sessions have expired (≤ 7 days).
+    const uid = payload.userId ?? (payload as Record<string, unknown>).user_id;
     c.set('user', {
-      userId: Number(payload.userId),
+      userId: Number(uid),
       username: String(payload.username),
       role: String(payload.role),
       iat: Number(payload.iat),
