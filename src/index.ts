@@ -28,6 +28,8 @@ import nibrs from './routes/nibrs';
 import welfare from './routes/welfare';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentsRouter from './routes/incidents';
+import warrants from './routes/warrants';
+import { runUtahWarrantSmokePoll } from './utils/utahWarrantPoller';
 
 type Bindings = {
   DB: D1Database;
