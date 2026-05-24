@@ -395,6 +395,10 @@ async function tryRefreshToken(): Promise<string | null> {
 const CF_WORKER_PREFIXES = [
   '/api/warrants/watch/',
   '/api/warrants/utah/',
+  // Subject search — unified person+business typeahead.
+  // Narrow prefix (not /api/records/) so unported /api/records/persons
+  // and /api/records/vehicles still route to legacy until those land.
+  '/api/records/subjects/',
 ];
 const CF_WORKER_BASE = 'https://api.rmpgutah.us';
 
