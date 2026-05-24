@@ -67,6 +67,8 @@ import documentFolders from './routes/documents/folders';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import trespassOrders from './routes/trespassOrders';
+import forensics from './routes/forensics';
+import serveIntake from './routes/serveIntake';
 import serve from './routes/serve';
 import stubs from './routes/stubs';
 // Dispatch domain
@@ -179,6 +181,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/citations', router: citations, auth: 'required' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
+  { prefix: '/api/forensics', router: forensics, auth: 'required',
+    note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
+    note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
