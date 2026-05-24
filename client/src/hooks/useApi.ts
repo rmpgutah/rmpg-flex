@@ -401,6 +401,12 @@ const CF_WORKER_PREFIXES = [
   // here also activates the new /quick-add endpoints with server-side
   // duplicate detection — see src/routes/dispatch/callLinks.ts.
   '/api/dispatch/',
+  // Business records cluster — PR-E (vehicles/visits/photos).
+  // The /file/<key> photo streamer lives under /api/business-photos/
+  // so this prefix covers it too.
+  '/api/business-vehicles/',
+  '/api/business-visits/',
+  '/api/business-photos/',
 ];
 const CF_WORKER_BASE = 'https://api.rmpgutah.us';
 
