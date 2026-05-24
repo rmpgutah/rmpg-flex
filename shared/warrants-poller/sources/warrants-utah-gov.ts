@@ -41,7 +41,7 @@ export class WarrantsUtahGovSource extends BaseWarrantSource {
   readonly displayName = 'Utah Statewide Warrants Portal';
   readonly mode: SourceMode = 'query-lookup';
 
-  async lookup(query: { name: string; dob?: string }): Promise<WarrantRecord[]> {
+  async lookup(query: { name: string; dob?: string; age?: number }): Promise<WarrantRecord[]> {
     const { first, last } = splitName(query.name);
     if (!first || !last) {
       // API requires both. Refuse rather than spam a guaranteed-empty call.
@@ -49,7 +49,18 @@ export class WarrantsUtahGovSource extends BaseWarrantSource {
     }
 
     const persons = await this.searchPersons(first, last);
-    const filtered = query.dob ? persons.filter((p) => ageMatchesDob(p.age, query.dob!)) : persons;
+
+    // Disambiguate ONLY when the portal returned multiple candidates with the
+    // same name. Single-match means the API's name match was unique enough to
+    // trust — applying an age filter there risks dropping a real warrant due
+    // to a ±1y data-entry slip (typo on system-side DOB, etc.). In a CAD/RMS
+    // context the cost of a missed warrant alert >> the cost of a possibly-
+    // misaged single match (which the officer will visually verify anyway).
+    const expected = expectedAge(query);
+    const filtered =
+      persons.length > 1 && expected !== undefined
+        ? persons.filter((p) => matchesAge(p.age, expected))
+        : persons;
 
     // Fan out to per-person warrants endpoints. Sequential, not parallel:
     // the source is behind CloudFront + APIGW and we don't want to trip
@@ -107,20 +118,33 @@ function splitName(raw: string): { first: string; last: string } {
   return { first: parts[0], last: parts[parts.length - 1] };
 }
 
-// API exposes `age` (string years), not DOB. Compute expected age from
-// caller's DOB and accept ±1 year for birthday-timing slop. Caller's DOB
-// is YYYY-MM-DD (normalize.ts already canonicalized it).
-function ageMatchesDob(apiAge: string | undefined, dob: string): boolean {
-  if (!apiAge) return true; // missing data — don't drop, let caller decide
-  const m = dob.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (!m) return true;
+// API exposes `age` (string years), not DOB. To disambiguate by age we need
+// the caller's expected age — provided directly or derived from their DOB.
+// `age` wins when both are supplied because it matches the portal's own
+// representation (no birthday-timing recomputation needed on our side).
+function expectedAge(query: { dob?: string; age?: number }): number | undefined {
+  if (typeof query.age === 'number' && Number.isFinite(query.age) && query.age >= 0) {
+    return Math.floor(query.age);
+  }
+  if (!query.dob) return undefined;
+  const m = query.dob.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return undefined;
   const birth = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
   const now = new Date();
-  let expected = now.getFullYear() - birth.getFullYear();
+  let age = now.getFullYear() - birth.getFullYear();
   const beforeBirthday =
     now.getMonth() < birth.getMonth() ||
     (now.getMonth() === birth.getMonth() && now.getDate() < birth.getDate());
-  if (beforeBirthday) expected--;
+  if (beforeBirthday) age--;
+  return age;
+}
+
+// ±1y tolerance absorbs birthday-timing slop between when each side last
+// computed age (December-born person queried in early January, etc.).
+// If the portal didn't expose age for a candidate, don't drop them —
+// missing data is not evidence of mismatch.
+function matchesAge(apiAge: string | undefined, expected: number): boolean {
+  if (!apiAge) return true;
   const actual = parseInt(apiAge, 10);
   if (Number.isNaN(actual)) return true;
   return Math.abs(actual - expected) <= 1;

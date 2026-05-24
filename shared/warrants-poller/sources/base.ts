@@ -35,7 +35,10 @@ export abstract class BaseWarrantSource {
   }
 
   // query-lookup sources implement this; list-poll sources may also support it.
-  async lookup(_query: { name: string; dob?: string }): Promise<WarrantRecord[]> {
+  // `age` is in years; pass it when the local system stores age directly,
+  // OR alongside dob (in which case adapters that disambiguate prefer age,
+  // since the upstream usually exposes age, not dob).
+  async lookup(_query: { name: string; dob?: string; age?: number }): Promise<WarrantRecord[]> {
     throw new Error(`${this.id} does not support per-name lookup`);
   }
 
