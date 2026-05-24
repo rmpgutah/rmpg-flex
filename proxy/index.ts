@@ -110,10 +110,23 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/departments' },
   { kind: 'prefix', value: '/api/admin/notification-rules' },
   { kind: 'prefix', value: '/api/admin/announcements' },
+  // AdminHealthTab observability — currently stubs in the new
+  // Worker (src/routes/admin.ts). Listed individually rather than
+  // a broad /api/admin prefix because most /api/admin/* still
+  // lives on legacy (config, call-templates, clients, audit, etc.)
+  // and broadening would silently break those.
+  { kind: 'prefix', value: '/api/admin/health/detailed' },
+  { kind: 'prefix', value: '/api/admin/changelog' },
+  { kind: 'prefix', value: '/api/admin/system-health' },
+  { kind: 'prefix', value: '/api/admin/users-activity-summary' },
+  { kind: 'prefix', value: '/api/admin/realtime-stats' },
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
-  // Offline app secrets
-  { kind: 'prefix', value: '/api/offline/secrets' },
+  // Offline-cache sync engine (browser IndexedDB) — entire namespace
+  // lives on the new Worker: /sync/pull, /sync/push, /secrets,
+  // /my-secret, /secrets/generate. Legacy never implemented any of
+  // these, so route everything under /api/offline to env.API.
+  { kind: 'prefix', value: '/api/offline' },
   // AI namespace (all)
   { kind: 'prefix', value: '/api/ai/' },
   // Skip tracer v1 status/stats stubs (NOT skiptracer-v2, which is legacy)
@@ -128,6 +141,17 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/personnel/coverage-gaps' },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
+  // PUT /api/personnel/:id — rewrite implements edit handler (manager-tier
+  // roles can edit anyone, self-edit allowed on a narrow contact/prefs subset).
+  // Legacy returns 404. Scoped to PUT only so GET/POST/DELETE keep flowing
+  // to legacy until the rewrite has feature parity (delete + create).
+  { kind: 'regex', value: /^\/api\/personnel\/\d+$/, methods: ['PUT'] },
+  // Dedicated audited surfaces for role/password/status changes — rewrite-only.
+  // Each is locked to a tighter role tier than the general PUT (admin-only
+  // for role and password; manager-tier for status). See src/routes/personnel.ts.
+  { kind: 'regex', value: /^\/api\/personnel\/\d+\/role$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/personnel\/\d+\/reset-password$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/personnel\/\d+\/status$/, methods: ['POST'] },
   // Fleet — entire namespace
   { kind: 'prefix', value: '/api/fleet' },
   // Comms BOLOs + message priority stats (legacy has /comms/messages

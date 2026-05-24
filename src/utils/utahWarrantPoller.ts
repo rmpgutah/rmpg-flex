@@ -49,8 +49,27 @@ interface PersonStub {
   name: { first: string; middle?: string; last: string };
 }
 
-interface WarrantStub {
+/** Full upstream warrant shape from /persons/:id/warrants. */
+interface UtahApiWarrant {
   id: string;
+  issueDate?: string;
+  court?: { name?: string; caseId?: string };
+  charges?: string[];
+}
+
+/** Row we insert into utah_warrants — joins the upstream person + warrant data. */
+interface FetchedWarrant {
+  utah_person_id: string;
+  utah_warrant_id: string;
+  first_name: string;
+  middle_name: string | null;
+  last_name: string;
+  age: number | null;
+  city: string | null;
+  issue_date: string | null;
+  court_name: string | null;
+  case_id: string | null;
+  charges: string; // JSON-stringified array
 }
 
 export interface WatchRunResult {
@@ -77,9 +96,15 @@ async function fetchWithTimeout(url: string, init: RequestInit): Promise<Respons
 
 /**
  * Search the public Utah warrants API for one person.
- * Returns the count of unique warrants matched, or throws on transport error.
+ * Returns the full warrant details (joined with upstream person data)
+ * for caller-side persistence. Throws on transport error.
+ *
+ * v3 (this revision): returns full warrant rows instead of just a count
+ * so the caller can persist them via recordWarrant() into utah_warrants.
+ * Earlier versions counted and discarded — see git blame for the count-only
+ * implementation prior to migration 0035.
  */
-async function fetchWarrantsForPerson(person: PersonRow): Promise<number> {
+async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant[]> {
   const personsRes = await fetchWithTimeout(`${API_BASE}/persons`, {
     method: 'POST',
     headers: {
@@ -92,16 +117,16 @@ async function fetchWarrantsForPerson(person: PersonRow): Promise<number> {
     }),
   });
 
-  if (personsRes.status === 404 || personsRes.status === 204) return 0;
+  if (personsRes.status === 404 || personsRes.status === 204) return [];
   if (!personsRes.ok && personsRes.status !== 201) {
     throw new Error(`persons search ${personsRes.status}`);
   }
 
   const personsJson = (await personsRes.json()) as { persons?: PersonStub[] };
   const candidates = personsJson.persons ?? [];
-  if (candidates.length === 0) return 0;
+  if (candidates.length === 0) return [];
 
-  let warrantCount = 0;
+  const out: FetchedWarrant[] = [];
   for (const candidate of candidates) {
     const warrantsRes = await fetchWithTimeout(
       `${API_BASE}/persons/${encodeURIComponent(candidate.id)}/warrants`,
@@ -109,10 +134,90 @@ async function fetchWarrantsForPerson(person: PersonRow): Promise<number> {
     );
     if (warrantsRes.status === 404) continue;
     if (!warrantsRes.ok) throw new Error(`warrants/${candidate.id} ${warrantsRes.status}`);
-    const wJson = (await warrantsRes.json()) as { warrants?: WarrantStub[] };
-    warrantCount += wJson.warrants?.length ?? 0;
+    const wJson = (await warrantsRes.json()) as { warrants?: UtahApiWarrant[] };
+    for (const w of wJson.warrants ?? []) {
+      out.push({
+        utah_person_id: candidate.id,
+        utah_warrant_id: w.id,
+        first_name: candidate.name.first,
+        middle_name: candidate.name.middle ?? null,
+        last_name: candidate.name.last,
+        age: typeof (candidate as PersonStub & { age?: number | string }).age === 'number'
+          ? (candidate as PersonStub & { age?: number }).age ?? null
+          : null,
+        city: null, // PersonStub doesn't currently expose homeAddress; extend if/when needed
+        issue_date: w.issueDate ?? null,
+        court_name: w.court?.name ?? null,
+        case_id: w.court?.caseId ?? null,
+        charges: JSON.stringify(w.charges ?? []),
+      });
+    }
   }
-  return warrantCount;
+  return out;
+}
+
+/**
+ * Persist one fetched warrant into utah_warrants.
+ *
+ * Lifecycle model: first-seen + last-seen, mutable detail fields.
+ *   - first_seen_at and issue_date are immutable after initial insert (the
+ *     timeline anchors — "when did THIS warrant first appear in our view?").
+ *   - last_seen_at + is_active are refreshed on every re-fetch. The matching
+ *     markClearedWarrants() pass below flips is_active=0 for rows the latest
+ *     run didn't return.
+ *   - charges/court_name/case_id/age/middle_name are overwritten with the
+ *     latest upstream values — warrant charges can be amended court-side,
+ *     and we want the dashboard to reflect that without an audit table.
+ *
+ * If we ever need a full mutation audit (e.g. for evidence chain), add a
+ * separate utah_warrant_observations table; don't try to retrofit it here.
+ */
+async function recordWarrant(
+  db: D1Database,
+  w: FetchedWarrant,
+  localPersonId: number | null,
+): Promise<void> {
+  await execute(
+    db,
+    `INSERT INTO utah_warrants (
+       utah_person_id, utah_warrant_id, first_name, middle_name, last_name,
+       age, city, issue_date, court_name, case_id, charges, person_id,
+       first_seen_at, last_seen_at, is_active
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'), 1)
+     ON CONFLICT (utah_person_id, utah_warrant_id) DO UPDATE SET
+       last_seen_at = datetime('now'),
+       is_active    = 1,
+       charges      = excluded.charges,
+       court_name   = excluded.court_name,
+       case_id      = excluded.case_id,
+       age          = excluded.age,
+       middle_name  = excluded.middle_name`,
+    w.utah_person_id, w.utah_warrant_id,
+    w.first_name, w.middle_name, w.last_name,
+    w.age, w.city, w.issue_date, w.court_name, w.case_id, w.charges,
+    localPersonId,
+  );
+}
+
+/**
+ * Mark warrants is_active=0 when they weren't seen in the current run.
+ * Used at end of runUtahWarrantScan to count warrants_cleared.
+ *
+ * Returns the number of rows that transitioned active → cleared.
+ */
+async function markClearedWarrants(
+  db: D1Database,
+  runStartedAt: string,
+): Promise<number> {
+  const result = await execute(
+    db,
+    `UPDATE utah_warrants
+        SET is_active = 0
+      WHERE is_active = 1
+        AND last_seen_at < ?`,
+    runStartedAt,
+  );
+  return result.meta?.changes ?? 0;
 }
 
 /**
@@ -140,6 +245,7 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
 
   let persons_checked = 0;
   let new_warrants_found = 0;
+  let warrants_cleared = 0;
   let errors = 0;
   let status: 'completed' | 'failed' = 'completed';
   let error_message: string | undefined;
@@ -170,8 +276,11 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
 
     for (const person of persons) {
       try {
-        const count = await fetchWarrantsForPerson(person);
-        new_warrants_found += count;
+        const fetched = await fetchWarrantsForPerson(person);
+        for (const w of fetched) {
+          await recordWarrant(db, w, person.id);
+        }
+        new_warrants_found += fetched.length;
       } catch (err) {
         errors++;
         console.warn(
@@ -187,6 +296,9 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
         await sleep(BASE_DELAY_MS + Math.floor(Math.random() * 2_000));
       }
     }
+
+    // Sweep: anything whose last_seen_at predates this run is cleared.
+    warrants_cleared = await markClearedWarrants(db, started_at);
   } catch (err) {
     status = 'failed';
     error_message = err instanceof Error ? err.message : String(err);
@@ -196,12 +308,13 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     db,
     `UPDATE warrant_watch_runs
        SET completed_at = ?, status = ?, persons_checked = ?,
-           new_warrants_found = ?, errors = ?, error_message = ?
+           new_warrants_found = ?, warrants_cleared = ?, errors = ?, error_message = ?
        WHERE run_id = ?`,
     new Date().toISOString(),
     status,
     persons_checked,
     new_warrants_found,
+    warrants_cleared,
     errors,
     error_message ?? null,
     run_id,
@@ -212,7 +325,7 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     status,
     persons_checked,
     new_warrants_found,
-    warrants_cleared: 0, // requires scraped_warrants table — v3
+    warrants_cleared,
     errors,
     error_message,
   };

@@ -55,6 +55,7 @@ import auth from './routes/auth';
 import health from './routes/health';
 import mapData from './routes/mapData';
 import admin from './routes/admin';
+import offline from './routes/offline';
 import personnel from './routes/personnel';
 import presence from './routes/presence';
 import records from './routes/records';
@@ -173,6 +174,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
 
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
+  { prefix: '/api/offline', router: offline, auth: 'required',
+    note: 'Browser offline-cache sync (POST /sync/pull, push stub, secret stubs)' },
   { prefix: '/api/personnel', router: personnel, auth: 'required' },
   { prefix: '/api/presence', router: presence, auth: 'required' },
 
@@ -209,6 +212,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/offline', router: offline, auth: 'required',
+    note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/serve', router: serve, auth: 'required',
