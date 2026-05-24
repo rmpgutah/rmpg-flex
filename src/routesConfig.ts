@@ -64,7 +64,6 @@ import properties from './routes/properties';
 import geocode from './routes/geocode';
 import warrants from './routes/warrants';
 import nibrs from './routes/nibrs';
-import offline from './routes/offline';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentsRouter from './routes/incidents';
 import audit from './routes/audit';
