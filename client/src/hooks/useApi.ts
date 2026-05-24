@@ -386,35 +386,19 @@ async function tryRefreshToken(): Promise<string | null> {
 // Standalone fetch helper for one-off requests.
 // Automatically retries once with a refreshed token on 401.
 // When running in Electron and offline, routes through local SQLite via IPC.
-// Routes that have been migrated to the CF Worker at api.rmpgutah.us.
-// The rest of the app still hits the legacy origin via relative paths.
-// As routes port over, add their prefix here; remove when the legacy
-// origin retires entirely. Keep prefixes specific to avoid catching
-// related-but-still-legacy paths (e.g. /api/warrants alone would catch
-// the legacy CRUD warrant list; we want only watch+utah subroutes).
-const CF_WORKER_PREFIXES = [
-  '/api/warrants/watch/',
-  '/api/warrants/utah/',
-  // 2026-05-24: dispatch routes (calls / units / gps / geography /
-  // aggregates / call-links / panic / premise-history / run-cards /
-  // welfare) are ported to the CF Worker. Routing all /api/dispatch/
-  // here also activates the new /quick-add endpoints with server-side
-  // duplicate detection — see src/routes/dispatch/callLinks.ts.
-  '/api/dispatch/',
-  // Business records cluster — PR-E (vehicles/visits/photos).
-  // The /file/<key> photo streamer lives under /api/business-photos/
-  // so this prefix covers it too.
-  '/api/business-vehicles/',
-  '/api/business-visits/',
-  '/api/business-photos/',
-];
-const CF_WORKER_BASE = 'https://api.rmpgutah.us';
-
+//
+// All /api/* requests use RELATIVE URLs (same-origin to rmpgutah.us).
+// Cloudflare Pages proxies /api/* → https://api.rmpgutah.us/api/* via
+// client/public/_redirects, so the browser never makes a cross-origin
+// request and connect-src 'self' is enough — no Transform Rule update
+// required for the SPA to reach the Worker.
+//
+// Previously this file injected an absolute CF_WORKER_BASE prefix for a
+// curated allowlist of "ported" routes. That worked only when the zone
+// Transform Rule kept api.rmpgutah.us in connect-src; a single dashboard
+// edit silently broke every dispatch call. The Pages proxy makes the
+// path immune to that failure mode.
 function maybeRedirectToCfWorker(url: string): string {
-  if (!url.startsWith('/api/')) return url;
-  for (const prefix of CF_WORKER_PREFIXES) {
-    if (url.startsWith(prefix)) return CF_WORKER_BASE + url;
-  }
   return url;
 }
 

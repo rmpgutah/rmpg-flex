@@ -1,0 +1,21 @@
+# Cloudflare Pages _redirects
+# https://developers.cloudflare.com/pages/configuration/redirects/
+#
+# Same-origin proxy for the API + WebSocket. Without this, the SPA at
+# rmpgutah.us would have to call https://api.rmpgutah.us/api/* directly
+# (cross-origin), which means every request must pass connect-src CSP
+# check against api.rmpgutah.us. The zone-level Cloudflare Transform Rule
+# that injects the production CSP has, in the past, silently dropped that
+# origin from connect-src — instantly breaking every API call from the
+# SPA. Routing /api/* through Pages as a 200-proxy keeps requests
+# same-origin so connect-src 'self' is sufficient regardless of what the
+# Transform Rule looks like.
+#
+# Status 200 = transparent proxy (browser sees rmpgutah.us as origin).
+# :splat captures everything after /api/ and is appended to the target.
+
+/api/*  https://api.rmpgutah.us/api/:splat  200
+
+# SPA fallback — every non-asset, non-API path serves index.html so the
+# React Router can handle the route client-side.
+/*  /index.html  200

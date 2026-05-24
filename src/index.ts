@@ -40,6 +40,7 @@ import incidentsRouter from './routes/incidents';
 import warrants from './routes/warrants';
 import pdfTools from './routes/pdfTools';
 import documentIntake from './routes/documentIntake';
+import documentFolders from './routes/documents/folders';
 import audit from './routes/audit';
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
