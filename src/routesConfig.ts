@@ -75,6 +75,7 @@ import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import trespassOrders from './routes/trespassOrders';
 import forensics from './routes/forensics';
+import patrol from './routes/patrol';
 import serveIntake from './routes/serveIntake';
 import shiftPlans from './routes/shiftPlans';
 import stubs from './routes/stubs';
@@ -199,6 +200,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/patrol', router: patrol, auth: 'required',
+    note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
