@@ -41,6 +41,7 @@ import warrants from './routes/warrants';
 import pdfTools from './routes/pdfTools';
 import documentIntake from './routes/documentIntake';
 import audit from './routes/audit';
+import documentFolders from './routes/documents/folders';
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
