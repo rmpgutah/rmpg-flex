@@ -189,14 +189,33 @@ calls.post('/', async (c) => {
       bindParams.push(rcResult.card.id, new Date().toISOString());
     }
 
-    const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
-    const callId = Number(result.meta.last_row_id);
-    const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
-
-    return c.json({ ...call, runCard: rcResult.card }, 201);
-  } catch (err) {
-    console.error('Create call error:', err);
-    return c.json({ error: 'Failed to create call' }, 500);
+    try {
+      const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
+      const callId = Number(result.meta.last_row_id);
+      const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
+      return c.json({ ...call, runCard: rcResult.card }, 201);
+    } catch (sqlErr: any) {
+      // Surface the real SQL error so the dispatcher (and we) can see
+      // which column / FK is rejecting. Without this the client sees a
+      // generic 500 and we can't debug from production.
+      const msg = String(sqlErr?.message || sqlErr || 'unknown');
+      console.error('Create call INSERT failed:', {
+        msg,
+        userId,
+        cols,
+        params: bindParams,
+      });
+      if (msg.includes('FOREIGN KEY')) {
+        return c.json({
+          error: `Foreign key constraint failed. dispatcher_id=${userId} (must reference users.id), property_id=${body.property_id ?? null}, client_id=${(body as any).client_id ?? null}. Detail: ${msg}`,
+          code: 'FK_VIOLATION',
+        }, 500);
+      }
+      return c.json({ error: `Failed to create call: ${msg}`, code: 'INSERT_FAILED' }, 500);
+    }
+  } catch (err: any) {
+    console.error('Create call outer error:', err);
+    return c.json({ error: `Failed to create call: ${err?.message || 'unknown'}`, code: 'OUTER_ERROR' }, 500);
   }
 });
 
