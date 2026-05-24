@@ -1301,6 +1301,22 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     return c.json({ duplicates, count: (duplicates as any[]).length });
   });
 
+  // GET /api/dispatch/calls/:id/serve-link - Get serve queue link for a call
+  api.get('/calls/:id/serve-link', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const job = await db.prepare('SELECT * FROM serve_queue WHERE call_id = ?').get(id) as any;
+      if (!job) return c.json(null);
+      const attempts = await db.prepare(
+        'SELECT * FROM serve_attempts WHERE serve_queue_id = ? ORDER BY attempt_number ASC'
+      ).all(job.id);
+      return c.json({ ...job, attempts });
+    } catch (err: any) {
+      return c.json(null);
+    }
+  });
+
   // GET /api/dispatch/calls/export - CSV export (returns JSON for Workers)
   api.get('/calls/export', requireRole('admin', 'manager', 'supervisor'), async (c) => {
     const db = new D1Db(c.env.DB);

@@ -23,6 +23,51 @@ export function mountCommsRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     return c.json(bolos);
   });
 
+  // GET /api/comms/bolos/check - Check active BOLOs for matching descriptions
+  api.get('/bolos/check', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const address = c.req.query('address') || '';
+      const subject = c.req.query('subject') || '';
+      const vehicle = c.req.query('vehicle') || '';
+      if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
+
+      const conditions: string[] = ["b.status = 'active'"];
+      const params: any[] = [];
+      const matchClauses: string[] = [];
+      const extractKW = (text: string) => String(text).toUpperCase().split(/[\s,;]+/).filter((w: string) => w.length >= 3);
+
+      if (subject.length >= 3) {
+        for (const kw of extractKW(subject).slice(0, 5)) {
+          matchClauses.push('(UPPER(b.subject_description) LIKE ? OR UPPER(b.description) LIKE ?)');
+          params.push(`%${kw}%`, `%${kw}%`);
+        }
+      }
+      if (vehicle.length >= 3) {
+        for (const kw of extractKW(vehicle).slice(0, 5)) {
+          matchClauses.push('(UPPER(b.vehicle_description) LIKE ? OR UPPER(b.description) LIKE ?)');
+          params.push(`%${kw}%`, `%${kw}%`);
+        }
+      }
+      if (address.length >= 3) {
+        matchClauses.push('UPPER(b.description) LIKE ?');
+        params.push(`%${String(address).toUpperCase()}%`);
+      }
+      if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
+
+      conditions.push(`(${matchClauses.join(' OR ')})`);
+      const matches = await db.prepare(`
+        SELECT b.id, b.bolo_number, b.type, b.title, b.description,
+               b.subject_description, b.vehicle_description, b.priority,
+               b.created_at, b.expires_at
+        FROM bolos b
+        WHERE ${conditions.join(' AND ')}
+        ORDER BY b.priority ASC, b.created_at DESC LIMIT 10
+      `).all(...params);
+      return c.json({ matches, count: (matches as any[]).length });
+    } catch { return c.json({ matches: [], count: 0 }); }
+  });
+
   // GET /api/comms/radio-channels — active radio channels for the UI
   api.get('/radio-channels', async (c) => {
     try {
