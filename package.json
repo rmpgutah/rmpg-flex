@@ -7,6 +7,7 @@
     "deploy": "wrangler deploy",
     "types": "wrangler types",
     "typecheck": "tsc --noEmit",
+    "test": "cd server && npx tsc --noEmit && npm run --silent check:routes && cd ../client && npx tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply rmpg-flex-db --local",
     "migrate:prod": "wrangler d1 migrations apply rmpg-flex-db --remote"
   },
