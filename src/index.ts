@@ -42,6 +42,7 @@ import pdfTools from './routes/pdfTools';
 import documentIntake from './routes/documentIntake';
 import documentFolders from './routes/documents/folders';
 import audit from './routes/audit';
+import citations from './routes/citations';
 import arrests from './routes/arrests';
 import cases from './routes/cases';
 import fieldInterviews from './routes/fieldInterviews';
@@ -262,6 +263,12 @@ app.use('/api/integrations/*', authMiddleware);
 app.use('/api/audit', authMiddleware);
 app.use('/api/audit/*', authMiddleware);
 app.route('/api/audit', audit);
+// Citations (traffic / criminal / parking / warning). Niche endpoints
+// deferred to follow-up: /statutes/lookup, /calculate-fine,
+// /stats/by-officer, /:id/full, /:id/completeness, /batch/*.
+app.use('/api/citations', authMiddleware);
+app.use('/api/citations/*', authMiddleware);
+app.route('/api/citations', citations);
 // Arrests — manual booking subset only. JailBase poller endpoints
 // (credentials/toggle/poller/sync/etc) deferred to Phase 2 per plan.
 // Inline role checks inside the route file (officer+ for most writes,
