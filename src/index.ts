@@ -43,6 +43,7 @@ import documentIntake from './routes/documentIntake';
 import documentFolders from './routes/documents/folders';
 import audit from './routes/audit';
 import citations from './routes/citations';
+import fieldInterviews from './routes/fieldInterviews';
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
@@ -86,6 +87,33 @@ app.use('*', cors({
 }));
 
 app.get('/', (c) => c.json({ name: 'RMPG Flex API', version: '1.0.0', status: 'running' }));
+
+// Global error handler — surfaces the route + raw message for any
+// uncaught throw inside a route handler. Without this, Hono's default
+// just returns a 500 with the text "Internal Server Error" and we
+// lose the actual D1 / SQL message. Several dispatch routes (the
+// callLinks attach handlers in particular) INSERT without try/catch,
+// so any FK violation there used to surface as a generic 500 with no
+// detail. Now the client sees:
+//   { error: "Internal server error",
+//     code: "UNHANDLED",
+//     route: "POST /api/dispatch/calls/:id/persons",
+//     detail: "D1_ERROR: FOREIGN KEY constraint failed ..." }
+// and the dispatcher can read the FK breakdown directly from the
+// toast (apiFetch concatenates error + detail with ": ").
+app.onError((err, c) => {
+  const method = c.req.method;
+  const path = new URL(c.req.url).pathname;
+  const route = `${method} ${path}`;
+  const detail = err instanceof Error ? err.message : String(err);
+  console.error(`Unhandled in ${route}:`, err);
+  return c.json({
+    error: 'Internal server error',
+    code: 'UNHANDLED',
+    route,
+    detail,
+  }, 500);
+});
 
 // Public routes
 app.route('/api/health', health);
@@ -220,6 +248,12 @@ app.route('/api/citations', citations);
 app.use('/api/documents', authMiddleware);
 app.use('/api/documents/*', authMiddleware);
 app.route('/api/documents', documentFolders);
+// Field interviews — officer-initiated contact records with GPS,
+// subject details, vehicle, disposition. Migration 0025_field_interviews.
+// DELETE + /export/csv enforce role checks inside the route module.
+app.use('/api/field-interviews', authMiddleware);
+app.use('/api/field-interviews/*', authMiddleware);
+app.route('/api/field-interviews', fieldInterviews);
 // geocode proxy — must mount BEFORE the /api/integrations stubs
 // catch-all so /api/integrations/mapbox/client-token resolves here
 // instead of returning a stub. /api/geocode/search is the Nominatim
