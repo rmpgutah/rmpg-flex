@@ -1,7 +1,7 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  History, Play, Pause, SkipForward, SkipBack, Search, X, Loader2, Gauge,
-  AlertTriangle,
+  History, Play, Pause, SkipForward, SkipBack, Search, X, Loader2,
+  ChevronDown, ChevronUp, MapPin, Gauge, Navigation2, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
@@ -73,6 +73,19 @@ const formatHeadingDir = (deg: number | null) => {
 // ============================================================
 // Component
 // ============================================================
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+};
 
 export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }: Props) {
   const [units, setUnits] = useState<UnitOption[]>([]);

@@ -5,7 +5,7 @@
 // status breakdown, top incident types, and recent reports.
 // ============================================================
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { X, FileText, Info, Navigation, Clock } from 'lucide-react';
 
 interface IncidentReport {

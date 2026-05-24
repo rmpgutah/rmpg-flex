@@ -4,13 +4,12 @@
 // device info, then 2FA / setup / password change flows.
 // ============================================================
 
-import React, { useState, useEffect, useRef, useMemo, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
-  Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock, KeyRound, Usb, Monitor,
-  Server, Wifi, Clock,
+  Eye, EyeOff, AlertCircle, ShieldCheck, ArrowLeft, Lock,
+  KeyRound, Usb, Fingerprint, Monitor, Server, Wifi, Clock,
+  HelpCircle, CheckCircle, ArrowRight,
 } from 'lucide-react';
-
-const LoginGlobe = lazy(() => import('../components/login/LoginGlobe'));
 import { useAuth, type LoginStep } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
 import PasswordStrengthMeter from '../components/security/PasswordStrengthMeter';
@@ -433,86 +432,9 @@ export default function LoginPage() {
   );
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative overflow-hidden" style={{ background: 'radial-gradient(ellipse at center, #0b0b0b 0%, #050505 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
-      {/* Ambient 3D globe — sits at the back */}
-      <Suspense fallback={null}>
-        <div
-          className="absolute inset-0 pointer-events-none"
-          style={{ zIndex: 0, opacity: 0.65 }}
-          aria-hidden="true"
-        >
-          <LoginGlobe className="w-full h-full" />
-        </div>
-      </Suspense>
-
-      {/* Animated grid overlay (now translucent — globe shows through) */}
-      <div className="login-grid-bg" style={{ zIndex: 1 }} />
-
-      {/* Radar sweep behind everything (decorative) */}
-      <div className="login-radar" aria-hidden="true" />
-
-      {/* HUD corner brackets */}
-      <div className="login-corner tl" aria-hidden="true" />
-      <div className="login-corner tr" aria-hidden="true" />
-      <div className="login-corner bl" aria-hidden="true" />
-      <div className="login-corner br" aria-hidden="true" />
-
-      {/* Scanline overlay */}
-      <div className="login-scanline" aria-hidden="true" />
-
-      {/* Vignette to keep card readable over globe */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          zIndex: 1,
-          background: 'radial-gradient(ellipse at center, rgba(0,0,0,0) 22%, rgba(0,0,0,0.55) 65%, rgba(0,0,0,0.92) 100%)',
-        }}
-        aria-hidden="true"
-      />
-
-      {/* HUD readout panel — top left (system) */}
-      <div className="hidden md:block absolute top-4 left-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
-        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1" style={{ color: '#d4a017' }}>◆ Command Console</div>
-        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
-          <div className="flex justify-between gap-3"><span>NODE</span><span style={{ color: '#c5c5c5' }}>RMPG-PRIMARY</span></div>
-          <div className="flex justify-between gap-3"><span>UPLINK</span><span className="login-data-flicker" style={{ color: '#22c55e' }}>● SECURE</span></div>
-          <div className="flex justify-between gap-3"><span>TLS</span><span style={{ color: '#c5c5c5' }}>1.3 / AES-256</span></div>
-          <div className="flex justify-between gap-3"><span>SECTOR</span><span style={{ color: '#c5c5c5' }}>UTAH · MTN</span></div>
-        </div>
-      </div>
-
-      {/* HUD readout panel — top right (clock + threat level) */}
-      <div className="hidden md:block absolute top-4 right-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
-        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1 text-right" style={{ color: '#d4a017' }}>Tactical Status ◆</div>
-        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
-          <div className="flex justify-between gap-3"><span>TIME</span><span style={{ color: '#c5c5c5' }}>{clock} MT</span></div>
-          <div className="flex justify-between gap-3"><span>DATE</span><span style={{ color: '#c5c5c5' }}>{new Date().toLocaleDateString('en-US', { timeZone: 'America/Denver', month: 'short', day: '2-digit', year: 'numeric' })}</span></div>
-          <div className="flex justify-between gap-3"><span>DEFCON</span><span style={{ color: '#22c55e' }}>● NORMAL</span></div>
-          <div className="flex justify-between gap-3"><span>PATROL</span><span className="login-data-flicker" style={{ color: '#c5c5c5' }}>ACTIVE</span></div>
-        </div>
-      </div>
-
-      {/* HUD readout panel — bottom left (system telemetry) */}
-      <div className="hidden md:block absolute bottom-4 left-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
-        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1" style={{ color: '#d4a017' }}>◆ Telemetry</div>
-        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
-          <div className="flex justify-between gap-3"><span>CAD/RMS</span><span style={{ color: '#22c55e' }}>● ONLINE</span></div>
-          <div className="flex justify-between gap-3"><span>DISPATCH</span><span style={{ color: '#22c55e' }}>● ONLINE</span></div>
-          <div className="flex justify-between gap-3"><span>NCIC</span><span style={{ color: '#22c55e' }}>● LINKED</span></div>
-          <div className="flex justify-between gap-3"><span>EVIDENCE</span><span style={{ color: '#22c55e' }}>● SIGNED</span></div>
-        </div>
-      </div>
-
-      {/* HUD readout panel — bottom right (region) */}
-      <div className="hidden md:block absolute bottom-4 right-12 z-10 login-hud-panel login-hud-readout px-3 py-2 max-w-[220px]" aria-hidden="true">
-        <div className="text-[8px] uppercase tracking-[0.2em] font-bold mb-1 text-right" style={{ color: '#d4a017' }}>Coverage ◆</div>
-        <div className="space-y-0.5 text-[9px]" style={{ color: '#888' }}>
-          <div className="flex justify-between gap-3"><span>AREAS</span><span style={{ color: '#c5c5c5' }}>6</span></div>
-          <div className="flex justify-between gap-3"><span>SECTORS</span><span style={{ color: '#c5c5c5' }}>29</span></div>
-          <div className="flex justify-between gap-3"><span>ZONES</span><span style={{ color: '#c5c5c5' }}>288</span></div>
-          <div className="flex justify-between gap-3"><span>BEATS</span><span style={{ color: '#c5c5c5' }}>719</span></div>
-        </div>
-      </div>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 relative" style={{ background: 'linear-gradient(180deg, #0b0b0b 0%, #141414 100%)', paddingTop: 'env(safe-area-inset-top, 16px)', paddingBottom: 'env(safe-area-inset-bottom, 16px)' }}>
+      {/* Animated grid background */}
+      <div className="login-grid-bg" />
 
       {/* ── Security Warning Banner ─────────────────── */}
       <div
@@ -548,7 +470,7 @@ export default function LoginPage() {
             <img
               src="/rmpg flex.png"
               alt="RMPG Flex"
-              className="login-badge-anim"
+              className="drop-shadow-[0_0_15px_rgba(212,160,23,0.25)]"
               style={{
                 height: 'clamp(48px, 12vw, 88px)',
                 width: 'clamp(48px, 12vw, 88px)',
@@ -568,7 +490,7 @@ export default function LoginPage() {
         </div>
 
         {/* ── Login Card ──────────────────────────────── */}
-        <div className="shadow-md relative overflow-hidden panel-beveled bg-surface-base login-card-frame" role="form" aria-label="Authentication form">
+        <div className="shadow-md relative overflow-hidden panel-beveled bg-surface-base" role="form" aria-label="Authentication form">
           {/* Title bar */}
           <div className="panel-title-bar flex items-center gap-2">
             <ShieldCheck className="w-3 h-3" style={{ color: '#888888' }} />

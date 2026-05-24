@@ -15,13 +15,12 @@
 //   Notes               — free text (budget rationale, approver, etc.)
 // ═══════════════════════════════════════════════════════════════
 
-import { useEffect, useId, useState } from 'react';
-import { DollarSign, Calendar, AlertTriangle, Save, X as XIcon } from 'lucide-react';
+import React, { useEffect, useId, useState } from 'react';
+import { DollarSign, Calendar, AlertTriangle, Save, X as XIcon, Clock } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { FleetFuelBudget, FuelBudgetPeriod } from '../../../types';
 
-import RichTextArea from '../../../components/RichTextArea';
 interface Props {
   isOpen: boolean;
   mode: 'create' | 'edit';
@@ -237,8 +236,8 @@ export default function FuelBudgetModal({
 
           <div>
             <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-            <RichTextArea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={notes}
-              onChange={(e) => setNotes(e.target.value)} maxLength={2000}
+            <textarea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
+              onChange={(e) => setForm(f => ({ ...f, notes: e.target.value }))} maxLength={2000}
               placeholder="Approver, rationale, etc." />
           </div>
         </div>

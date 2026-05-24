@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { formatIncidentType } from '../../../utils/caseNumbers';
+import { useToast } from '../../../components/ToastProvider';
 
 const MAX_HEATMAP_POINTS = 10000;
 

@@ -8,7 +8,7 @@
 // tile cache — no separate Leaflet fallback needed.
 // ============================================================
 
-import { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
@@ -37,13 +37,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tilesStalled, setTilesStalled] = useState(false);
-  const [gmapsRetry, setGmapsRetry] = useState(0);
-  const tileMonitorRef = useRef<(() => void) | null>(null);
+  const [retrying, setRetrying] = useState(false);
+  const [mapTokenRetry, setMapTokenRetry] = useState(0);
 
   // Classify error: auth/config vs connectivity
-  // Google Maps is the sole map surface — every error becomes an auth/config
-  // error placeholder (Leaflet/CartoDB fallback retired 2026-04-29).
-  const isAuthError = error != null;
+  const isAuthError = error != null && (error.includes('token') || error.includes('configured'));
 
   // Routing (auto-route when a single assigned unit has GPS)
   const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapRef.current });
@@ -90,12 +88,6 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         zoom: MINI_ZOOM,
         attributionControl: false,
       });
-      // Auth/quota failure leaves a stub Map whose getDiv() is undefined —
-      // route to the offline fallback rather than crashing the error boundary.
-      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
-        setError('Map load failed — check connection');
-        return;
-      }
       mapRef.current = map;
       registerMapInstance(map);
 
@@ -197,7 +189,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     };
   }, []);
 
-  // ── Map error placeholder (sole error surface) ──
+  // Auth error (config problem, not connectivity)
   if (isAuthError) {
     return (
       <div className="dispatch-minimap-container" style={{ height: fullHeight ? '100%' : 180, display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#0b0b0b' }}>

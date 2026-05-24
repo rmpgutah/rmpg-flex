@@ -5,16 +5,13 @@
 // tabbed interface, status workflows, and fine tracking.
 // ============================================================
 
-import { useState, useEffect, useCallback } from 'react';
-import RichTextArea from '../components/RichTextArea';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  Construction, Search, Plus, Truck, MapPin, X, Save, Loader2, AlertTriangle,
-  Calendar,
+  Construction, Search, Plus, Truck, MapPin, Clock, User,
+  X, Save, Loader2, AlertTriangle, DollarSign, FileText,
+  ChevronDown, Eye, Hash, CheckCircle, Calendar,
 } from 'lucide-react';
-import type {
-  CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus,
-  TowReason,
-} from '../types';
+import type { CodeViolation, VehicleTow, ViolationType, ViolationStatus, TowStatus, TowReason } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
@@ -74,6 +71,20 @@ const EMPTY_TOW = {
   vehicle_year: '', vehicle_make: '', vehicle_model: '', vehicle_color: '',
   vehicle_plate: '', vehicle_vin: '', tow_from: '', tow_to: '',
   tow_reason: 'parking_violation' as TowReason, tow_company: '', tow_fee: '', storage_fee: '', notes: '',
+};
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 };
 
 export default function CodeEnforcementPage() {
@@ -709,7 +720,7 @@ export default function CodeEnforcementPage() {
               </div>
               <div>
                 <label className="field-label">Description *</label>
-                <RichTextArea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                <textarea value={vFormData.description} onChange={e => setVFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${vFormErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {vFormErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{vFormErrors.description}</p>}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

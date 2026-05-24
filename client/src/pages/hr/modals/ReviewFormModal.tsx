@@ -10,7 +10,6 @@ import type { PerformanceReview, ReviewType } from '../../../types';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
-import RichTextArea from '../../../components/RichTextArea';
 interface ReviewFormModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -332,9 +331,9 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Strengths
                 </span>
-                <RichTextArea
-                  value={strengths}
-                  onChange={(e) => setStrengths(e.target.value)}
+                <textarea
+                  value={form.strengths}
+                  onChange={(e) => setForm(f => ({ ...f, strengths: e.target.value }))}
                   rows={3}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none resize-y"
                   placeholder="Notable strengths observed during this review period..."
@@ -344,9 +343,9 @@ export default function ReviewFormModal({
                 <span className="text-xs text-rmpg-400 mb-1 block">
                   Areas for Improvement
                 </span>
-                <RichTextArea
-                  value={areasForImprovement}
-                  onChange={(e) => setAreasForImprovement(e.target.value)}
+                <textarea
+                  value={form.areas_for_improvement}
+                  onChange={(e) => setForm(f => ({ ...f, areas_for_improvement: e.target.value }))}
                   rows={3}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none resize-y"
                   placeholder="Areas where improvement is expected..."
@@ -354,9 +353,9 @@ export default function ReviewFormModal({
               </label>
               <label className="block">
                 <span className="text-xs text-rmpg-400 mb-1 block">Goals</span>
-                <RichTextArea
-                  value={goals}
-                  onChange={(e) => setGoals(e.target.value)}
+                <textarea
+                  value={form.goals}
+                  onChange={(e) => setForm(f => ({ ...f, goals: e.target.value }))}
                   rows={3}
                   className="w-full bg-surface-sunken border border-rmpg-700 rounded-sm px-2.5 py-1.5 text-sm text-white focus:border-brand-500 focus:outline-none resize-y"
                   placeholder="Goals for the next review period..."

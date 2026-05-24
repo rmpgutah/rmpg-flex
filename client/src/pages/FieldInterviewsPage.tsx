@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import RichTextArea from '../components/RichTextArea';
 import {
-  Plus, Search, ClipboardList, MapPin, User, FileText, Archive, RotateCcw, X,
-  Save, Loader2, AlertTriangle,
+  Plus, Search, ClipboardList, MapPin, User, Clock, FileText,
+  ChevronDown, Archive, RotateCcw, X, Save, Loader2, Eye, AlertTriangle,
 } from 'lucide-react';
 import type { FieldInterview, FIContactReason, FIContactType, FIActionTaken } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -76,6 +75,20 @@ const EMPTY_FORM = {
   person_id: '',
   section_id: '', zone_id: '', beat_id: '',
   gang_affiliation: '',
+};
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 };
 
 export default function FieldInterviewsPage() {
@@ -671,7 +684,7 @@ export default function FieldInterviewsPage() {
 
               {/* Narrative */}
               <div><label className="field-label">Narrative</label>
-                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
+                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={4} value={formData.narrative} onChange={e => update('narrative', e.target.value)} /></div>
 
               {/* Actions */}
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>

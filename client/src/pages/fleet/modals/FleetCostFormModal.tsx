@@ -13,8 +13,10 @@
 // ═══════════════════════════════════════════════════════════════
 
 import React, { useEffect, useId, useState } from 'react';
-import RichTextArea from '../../../components/RichTextArea';
-import { Save, X as XIcon, AlertTriangle, CreditCard, Shield, Wrench, Zap } from 'lucide-react';
+import {
+  DollarSign, Calendar, Save, X as XIcon, AlertTriangle,
+  CreditCard, Shield, Wrench, Zap, Clock,
+} from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 
@@ -492,7 +494,7 @@ export default function FleetCostFormModal({
           {/* ── Notes (shared) ───────────────────────────────── */}
           <div>
             <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-            <RichTextArea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
+            <textarea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
               onChange={(e) => set('notes', e.target.value)} maxLength={2000} />
           </div>
         </div>

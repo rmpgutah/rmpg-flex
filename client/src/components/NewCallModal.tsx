@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef, useId, useCallback } from 'react';
-import { X, Phone, AlertTriangle, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
+import { X, Phone, AlertTriangle, Clock, History, Loader2, ChevronDown, ChevronUp } from 'lucide-react';
 import type { CallForService, CallPriority, CallSource } from '../types';
 import { INCIDENT_TYPE_CATEGORIES, type IncidentType } from '../utils/caseNumbers';
-import RichTextArea from './RichTextArea';
 import {
   WEATHER_OPTIONS,
   LIGHTING_OPTIONS,
@@ -17,7 +16,6 @@ import PremiseHistory from './PremiseHistory';
 import SafetyScreening from './SafetyScreening';
 import DuplicateCallWarning from './DuplicateCallWarning';
 import BoloAlertBanner from './BoloAlertBanner';
-import RunCardPreview from './RunCardPreview';
 import { useDistrictIdentify, useDistrictOptions } from '../hooks/useDistrictLookup';
 import { apiFetch } from '../hooks/useApi';
 import Dropdown from './ui/Dropdown';
@@ -471,15 +469,10 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
                 value={formData.incident_type}
                 onChange={(v) => update('incident_type', v)}
                 required
-              >
-                {Object.entries(INCIDENT_TYPE_CATEGORIES).map(([category, types]) => (
-                  <optgroup key={category} label={category}>
-                    {types.map((t) => (
-                      <option key={t.value} value={t.value}>{t.label}</option>
-                    ))}
-                  </optgroup>
-                ))}
-              </select>
+                searchable
+                placeholder="Select Incident Type"
+                className="mt-0.5"
+              />
               <div className="mt-1.5">
                 <RunCardPreview
                   incidentType={formData.incident_type}
@@ -770,7 +763,7 @@ export default function NewCallModal({ isOpen, onClose, onSubmit, properties = [
           {/* Description — moved up for faster tab flow */}
           <div>
             <label className="block text-xs font-semibold text-rmpg-300 uppercase mb-1">Description</label>
-            <RichTextArea
+            <textarea
               className="textarea-dark"
               rows={mode === 'quick' ? 2 : 4}
               placeholder="Describe the situation..."

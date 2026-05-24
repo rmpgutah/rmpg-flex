@@ -1,10 +1,5 @@
-// ============================================================
-// RMPG Flex — useMapHeatmapTimelapse Hook
-// Time-lapse heatmap animation — animates through hourly/daily
-// slices of incident data as a heatmap layer.
-// ============================================================
-
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 
 interface TimelapseSlice {

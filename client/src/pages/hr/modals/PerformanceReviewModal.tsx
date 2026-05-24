@@ -3,14 +3,13 @@
 // Create or edit a performance review for an employee
 // ============================================================
 
-import { useState, useEffect } from 'react';
-import { X, TrendingUp, Star } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, TrendingUp, Star, Clock } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { localToday } from '../../../utils/dateUtils';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
-import RichTextArea from '../../../components/RichTextArea';
 interface UserOption {
   id: string;
   full_name: string;
@@ -236,9 +235,9 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div>
             <label className={labelClass}>Strengths</label>
-            <RichTextArea
-              value={strengths}
-              onChange={e => setStrengths(e.target.value)}
+            <textarea
+              value={form.strengths}
+              onChange={e => setForm(f => ({ ...f, strengths: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
               placeholder="Key strengths and accomplishments..."
             />
@@ -246,9 +245,9 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div>
             <label className={labelClass}>Areas for Improvement</label>
-            <RichTextArea
-              value={areasForImprovement}
-              onChange={e => setAreasForImprovement(e.target.value)}
+            <textarea
+              value={form.areas_for_improvement}
+              onChange={e => setForm(f => ({ ...f, areas_for_improvement: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
               placeholder="Areas where the employee can grow..."
             />
@@ -256,9 +255,9 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div>
             <label className={labelClass}>Goals</label>
-            <RichTextArea
-              value={goals}
-              onChange={e => setGoals(e.target.value)}
+            <textarea
+              value={form.goals}
+              onChange={e => setForm(f => ({ ...f, goals: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
               placeholder="Goals for the next review period..."
             />
@@ -266,9 +265,9 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
           <div>
             <label className={labelClass}>Additional Comments</label>
-            <RichTextArea
-              value={comments}
-              onChange={e => setComments(e.target.value)}
+            <textarea
+              value={form.comments}
+              onChange={e => setForm(f => ({ ...f, comments: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
               placeholder="Any additional notes or comments..."
             />

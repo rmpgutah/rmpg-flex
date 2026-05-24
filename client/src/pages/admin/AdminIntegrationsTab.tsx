@@ -6,7 +6,6 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
-import AdminCustomIntegrationsSection from './AdminCustomIntegrationsSection';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -56,10 +55,6 @@ interface ApiKeyConfig {
   pattern?: RegExp;
   /** Human-readable format hint shown below the input */
   formatHint?: string;
-  /** When false, render the input as type=text instead of type=password —
-   *  for non-secret config like URLs, boolean flags, and intervals.
-   *  Defaults to true (treat unknown keys as secrets). */
-  secret?: boolean;
 }
 
 function validateKey(value: string, config: ApiKeyConfig): string | null {
@@ -70,13 +65,11 @@ function validateKey(value: string, config: ApiKeyConfig): string | null {
   return null; // valid
 }
 
-const GOOGLE_CLOUD_KEYS: ApiKeyConfig[] = [
-  { key: 'google_maps_api_key', label: 'Maps JavaScript API', desc: 'Client-side map rendering — used by Map page, dispatch overlays, beat polygons', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
-  { key: 'google_maps_server_key', label: 'Geocoding / Directions API', desc: 'Server-side address resolution, route optimization, reverse geocoding', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
-  { key: 'google_places_api_key', label: 'Places Autocomplete API', desc: 'Address search autocomplete in New Call, Incident, and Serve Intake forms', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
-  { key: 'google_cloud_vision_key', label: 'Cloud Vision API', desc: 'Image analysis — DL photo OCR, evidence photo tagging, document scanning', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
-  { key: 'google_cloud_speech_key', label: 'Cloud Speech-to-Text API', desc: 'Voice transcription for radio recordings and body camera audio', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
-  { key: 'google_generative_language_key', label: 'Generative Language API (Gemini)', desc: 'AI-powered narrative generation, report summarization, CAD command intelligence', pattern: /^AIza[A-Za-z0-9_-]{35,}$/, formatHint: 'Must start with AIza (39+ characters)' },
+const MAPBOX_KEYS: ApiKeyConfig[] = [
+  { key: 'mapbox_username', label: 'Account Username', desc: 'Your Mapbox account username — used in style URLs and studio access (mapbox.com → Account)' },
+  { key: 'mapbox_password', label: 'Account Password', desc: 'Mapbox account password — used for API token management and Mapbox Studio login', formatHint: 'Your Mapbox account password (encrypted at rest)' },
+  { key: 'mapbox_style_url', label: 'Custom Style URL', desc: 'Your Mapbox Studio custom style URL — creates a branded map (mapbox://styles/username/style_id)', formatHint: 'mapbox://styles/{username}/{style_id}' },
+  { key: 'mapbox_access_token', label: 'Public Access Token', desc: 'PRIMARY — Client-side map rendering, geocoding, directions. Starts with pk.', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com → Access Tokens' },
 ];
 
 const AI_ML_KEYS: ApiKeyConfig[] = [
@@ -121,12 +114,8 @@ const LAW_ENFORCEMENT_KEYS: ApiKeyConfig[] = [
 ];
 
 const GPS_WEBHOOK_KEYS: ApiKeyConfig[] = [
-  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'PRIMARY GPS source (replaced OwnTracks 2026-04-29). Bearer token for Traccar Client app + Traccar Server forward-webhook. Endpoint: POST /api/traccar?token=<TOKEN>. OwnTracks endpoints now return HTTP 410 Gone — devices must reconfigure.', secret: true },
-  { key: 'traccar_url', label: 'Traccar Server URL (optional pull)', desc: 'If you run a self-hosted Traccar Server, set its base URL (e.g. https://traccar.example.com). RMPG Flex polls /api/positions on the configured interval using the credentials below. Leave blank to use webhook-only.', secret: false },
-  { key: 'traccar_email', label: 'Traccar Server email', desc: 'Login email for the Traccar Server REST API session. AES-encrypted at rest.', secret: false },
-  { key: 'traccar_password', label: 'Traccar Server password', desc: 'Password for the Traccar Server REST API session. AES-encrypted at rest.', secret: true },
-  { key: 'traccar_enabled', label: 'Traccar pull enabled', desc: 'Set to "true" to activate the REST poller, "false" to use webhook-only (default true when URL+email+password are set).', secret: false },
-  { key: 'traccar_poll_interval', label: 'Traccar poll interval (sec)', desc: 'Seconds between /api/positions polls. Range 5-300. Default 15.', secret: false },
+  { key: 'owntracks_webhook_token', label: 'OwnTracks Webhook Token', desc: 'Shared secret for OwnTracks iPhone/Android background GPS → POST /api/dispatch/gps/owntracks' },
+  { key: 'traccar_webhook_token', label: 'Traccar Webhook Token', desc: 'Shared secret for Traccar Client background GPS (same endpoint, auto-detected format)' },
 ];
 
 const FREE_OPEN_APIS: ApiKeyConfig[] = [
@@ -240,12 +229,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
         <h2 className="text-sm font-semibold text-rmpg-300">{title}</h2>
       </div>
       <div className="p-4 space-y-4">
-        {keyConfigs.map(({ key, label, desc, formatHint, secret }) => {
-          // Default to secret=true for back-compat — every legacy key was
-          // a credential. Only the explicit `secret: false` rows render as
-          // plain text (URLs, boolean flags, numeric intervals).
-          const isSecret = secret !== false;
-          return (
+        {keyConfigs.map(({ key, label, desc, formatHint }) => (
           <div key={key} className="flex flex-col gap-2 p-3 bg-[#0c0c0c] border border-[#2b2b2b] rounded-sm">
             <div className="flex items-center justify-between">
               <div>
@@ -267,21 +251,15 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <input
-                  type={!isSecret || showKey[key] ? 'text' : 'password'}
+                  type={showKey[key] ? 'text' : 'password'}
                   value={values[key] || ''}
                   onChange={e => setValues(prev => ({ ...prev, [key]: e.target.value }))}
-                  placeholder={configured[key]
-                    ? (isSecret ? '••••••••••••••••••••' : '(saved — type to overwrite)')
-                    : (isSecret ? 'Paste API key here...' : 'Type or paste value...')}
-                  autoComplete={isSecret ? 'off' : 'on'}
-                  spellCheck={false}
+                  placeholder={configured[key] ? '••••••••••••••••••••' : 'Paste API key here...'}
                   className="w-full px-3 py-2 pr-8 bg-[#141414] border border-[#2b2b2b] rounded-sm text-xs text-white font-mono placeholder-[#525252] focus:outline-none focus:border-brand-500"
                 />
-                {isSecret && (
-                  <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400" aria-label={showKey[key] ? 'Hide value' : 'Show value'}>
-                    {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                  </button>
-                )}
+                <button type="button" onClick={() => setShowKey(prev => ({ ...prev, [key]: !prev[key] }))} className="absolute right-2 top-1/2 -translate-y-1/2 text-rmpg-600 hover:text-rmpg-400">
+                  {showKey[key] ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                </button>
               </div>
               <button
                 type="button"
@@ -307,8 +285,7 @@ function ApiKeyPanel({ title, icon, keys: keyConfigs }: { title: string; icon: R
             {formatHint && !errors[key] && <div className="text-[9px] text-rmpg-600 italic">{formatHint}</div>}
             <div className="text-[9px] text-rmpg-700 font-mono">config_key: {key}</div>
           </div>
-          );
-        })}
+        ))}
       </div>
     </div>
   );
@@ -599,8 +576,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       </div>
 
       {/* ── GPS Background Tracking ── */}
-      <ApiKeyPanel title="GPS Background Tracking — Traccar (PRIMARY)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
-      <TraccarPullStatusCard />
+      <ApiKeyPanel title="GPS Background Tracking (OwnTracks / Traccar)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
 
       {/* ── Mapbox API (DOMINANT MAP SOURCE) ── */}
       <ApiKeyPanel title="Mapbox API — Primary Map System" icon={<Navigation className="w-4 h-4 text-brand-400" />} keys={MAPBOX_KEYS} />
@@ -818,11 +794,6 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
         )}
       </div>
 
-      {/* ── Custom External Integrations ── */}
-      {/* Outbound HTTP credentials for calling other software FROM Flex.
-          Distinct from the inbound API keys above. Added 2026-05-05. */}
-      <AdminCustomIntegrationsSection />
-
       {/* ── Create Key Modal ── */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true">
@@ -909,72 +880,6 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ─── Traccar Pull-Mode Status Card ──────────────────────────────────
-// Polls /api/admin/traccar-pull-status every 5s. Renders a coloured
-// status pill so the operator can see at a glance whether the REST
-// poller is logging in successfully.
-
-function TraccarPullStatusCard() {
-  const [status, setStatus] = useState<{ status: string; kind: 'ok' | 'error' | 'disabled' | 'unknown'; serverUrl: string | null } | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const refresh = useCallback(async () => {
-    try {
-      const r = await apiFetch<{ status: string; kind: 'ok' | 'error' | 'disabled' | 'unknown'; serverUrl: string | null }>('/api/admin/traccar-pull-status');
-      setStatus(r);
-    } catch {
-      setStatus({ status: '(could not load)', kind: 'unknown', serverUrl: null });
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    refresh();
-    const t = setInterval(refresh, 5000);
-    return () => clearInterval(t);
-  }, [refresh]);
-
-  const pill = (kind: typeof status extends null ? never : NonNullable<typeof status>['kind']) => {
-    if (kind === 'ok') return 'bg-emerald-900/40 text-emerald-300 border-emerald-700/40';
-    if (kind === 'error') return 'bg-red-900/40 text-red-300 border-red-700/40';
-    if (kind === 'disabled') return 'bg-amber-900/40 text-amber-300 border-amber-700/40';
-    return 'bg-rmpg-800/40 text-rmpg-400 border-rmpg-700/40';
-  };
-
-  return (
-    <div className="panel-beveled bg-surface-base p-3 mt-2">
-      <div className="flex items-center gap-2 mb-2">
-        <MapPin className="w-3.5 h-3.5 text-emerald-400" />
-        <h3 className="text-[11px] font-bold text-white uppercase tracking-wider">Traccar Server Pull Status</h3>
-        <button type="button" onClick={refresh}
-          className="ml-auto text-[10px] text-rmpg-400 hover:text-white border border-rmpg-700 px-1.5 py-0.5">
-          Refresh
-        </button>
-      </div>
-      {loading && !status ? (
-        <div className="text-[11px] text-rmpg-400">Loading…</div>
-      ) : status ? (
-        <div className="space-y-1.5">
-          <div className="flex items-center gap-2">
-            <span className={`text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 border ${pill(status.kind)}`}>
-              {status.kind === 'ok' ? 'OK' : status.kind === 'error' ? 'ERROR' : status.kind === 'disabled' ? 'DISABLED' : 'UNKNOWN'}
-            </span>
-            {status.serverUrl && <span className="text-[10px] text-rmpg-500 font-mono truncate">{status.serverUrl}</span>}
-          </div>
-          <div className="text-[11px] text-rmpg-300 font-mono break-all">{status.status || '(no heartbeat yet — waiting for first poll)'}</div>
-          {status.kind === 'error' && status.status.includes('401') && (
-            <div className="text-[10px] text-amber-300 mt-1">
-              The Traccar Server rejected the login. Check the email + password fields above; password is AES-encrypted at rest, so re-enter it after any rotation.
-            </div>
-          )}
-          <div className="text-[9px] text-rmpg-500">Refreshes every 5 seconds. Poller runs at the configured interval (default 15 s) regardless of this UI.</div>
-        </div>
-      ) : null}
     </div>
   );
 }

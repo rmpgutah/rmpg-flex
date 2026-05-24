@@ -1,3 +1,4 @@
+import React from 'react';
 import { X, Radar, Target, Pentagon, Building, MapPin, Loader2 } from 'lucide-react';
 
 interface PerimeterToolsPanelProps {

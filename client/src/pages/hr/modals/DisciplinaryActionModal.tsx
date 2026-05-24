@@ -3,14 +3,13 @@
 // Create a new disciplinary action record
 // ============================================================
 
-import { useState, useEffect } from 'react';
-import { X, AlertTriangle } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, AlertTriangle, Clock } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { localToday } from '../../../utils/dateUtils';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
-import RichTextArea from '../../../components/RichTextArea';
 interface UserOption {
   id: string;
   full_name: string;
@@ -243,9 +242,9 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
           <div>
             <label className={labelClass}>Description *</label>
-            <RichTextArea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
+            <textarea
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               className={`${inputClass} h-20 resize-none`}
               placeholder="Describe the incident or behavior..."
             />
@@ -253,9 +252,9 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
           <div>
             <label className={labelClass}>Corrective Action</label>
-            <RichTextArea
-              value={correctiveAction}
-              onChange={e => setCorrectiveAction(e.target.value)}
+            <textarea
+              value={form.corrective_action}
+              onChange={e => setForm(f => ({ ...f, corrective_action: e.target.value }))}
               className={`${inputClass} h-16 resize-none`}
               placeholder="Required corrective measures..."
             />

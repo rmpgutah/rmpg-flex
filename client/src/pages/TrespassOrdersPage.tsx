@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import RichTextArea from '../components/RichTextArea';
 import {
-  Plus, Search, ShieldBan, MapPin, User, Ban, Calendar, RotateCcw, X, Save,
-  Loader2, CheckCircle, AlertTriangle,
+  Plus, Search, ShieldBan, MapPin, User, Clock, Ban, Calendar,
+  Archive, RotateCcw, X, Save, Loader2, CheckCircle, AlertTriangle,
 } from 'lucide-react';
 import type { TrespassOrder, TrespassOrderType, TrespassOrderStatus } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -51,6 +50,20 @@ const EMPTY_FORM = {
   reason: '', conditions: '', duration_days: '', notes: '',
   authorized_by: '', person_id: '', property_id: '',
   sector_id: '', zone_id: '', beat_id: '',
+};
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
 };
 
 export default function TrespassOrdersPage() {
@@ -464,17 +477,7 @@ export default function TrespassOrdersPage() {
             />
           ) : (
             orders.map(order => (
-              <div
-                key={order.id}
-                role="button"
-                tabIndex={0}
-                onClick={() => setSelectedOrder(order)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' || e.key === ' ') {
-                    e.preventDefault();
-                    setSelectedOrder(order);
-                  }
-                }}
+              <div key={order.id} onClick={() => setSelectedOrder(order)}
                 className={`px-3 ${isMobile ? 'py-3' : 'py-2'} cursor-pointer border-b border-rmpg-800 transition-colors hover:bg-surface-raised ${selectedOrder?.id === order.id ? 'bg-brand-900/20 border-l-2 border-l-brand-500' : 'border-l-2 border-l-transparent'}`}
                 style={isMobile ? { minHeight: 56 } : undefined}
               >
@@ -734,13 +737,13 @@ export default function TrespassOrdersPage() {
               </div>
 
               <div><label className="field-label">Reason</label>
-                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
+                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.reason} onChange={e => update('reason', e.target.value)} /></div>
 
               <div><label className="field-label">Conditions / Exceptions</label>
-                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
+                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.conditions} onChange={e => update('conditions', e.target.value)} /></div>
 
               <div><label className="field-label">Notes</label>
-                <RichTextArea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
+                <textarea className="input-dark text-xs w-full min-h-[36px]" rows={2} value={formData.notes} onChange={e => update('notes', e.target.value)} /></div>
 
               <div className={`flex ${isMobile ? 'flex-col gap-2' : 'justify-end gap-2'} pt-2 border-t border-rmpg-700`}>
                 <button type="submit" disabled={submitting} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={{ background: 'rgba(212,160,23,0.25)', borderColor: 'rgba(212,160,23,0.5)', minHeight: isMobile ? 48 : undefined, fontSize: isMobile ? 14 : undefined }}>

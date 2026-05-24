@@ -3,13 +3,12 @@
 // File a new grievance (employee-facing)
 // ============================================================
 
-import { useState, useEffect } from 'react';
-import { X, FileWarning } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { X, FileWarning, Clock } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
-import RichTextArea from '../../../components/RichTextArea';
 interface UserOption {
   id: string;
   full_name: string;
@@ -222,9 +221,9 @@ export default function GrievanceModal({ onClose, onSaved, grievance }: Grievanc
 
           <div>
             <label className={labelClass}>Description *</label>
-            <RichTextArea
-              value={description}
-              onChange={e => setDescription(e.target.value)}
+            <textarea
+              value={form.description}
+              onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
               className={`${inputClass} h-28 resize-none`}
               placeholder="Detailed description of the grievance, including dates, witnesses, and specifics..."
               maxLength={5000}

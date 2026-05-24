@@ -69,36 +69,10 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       if (!mapRef.current || authFailed || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
-      const map = new google.maps.Map(mapRef.current, {
-        center: { lat: 40.7608, lng: -111.8910 },
-        zoom: 12,
-        disableDefaultUI: true,
-        zoomControl: false,
-        styles: DARK_MAP_STYLE,
-        backgroundColor: '#171717',
-        renderingType: 'RASTER' as any,
-        isFractionalZoomEnabled: false,
-        gestureHandling: 'greedy',
-      });
-
-      // Auth/quota failure can return a stub Map with no div — bail early
-      // so the existing setMapError path takes over instead of crashing in monitorTileLoading.
-      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
-        setMapError('Google Maps failed to initialize — check API key / billing.');
+      if (!MAPBOX_TOKEN) {
+        authFailed = true;
+        setMapError('Mapbox access token is not configured.\n\nSet VITE_MAPBOX_ACCESS_TOKEN in your .env file.');
         return;
-      }
-
-      mapInstanceRef.current = map;
-      registerMapInstance(map);
-
-      infoWindowRef.current = new google.maps.InfoWindow();
-
-      const hideStyleId = '__rmpg_hide_gm_dialog__';
-      if (!document.getElementById(hideStyleId)) {
-        const s = document.createElement('style');
-        s.id = hideStyleId;
-        s.textContent = '[role="alertdialog"] { display: none !important; }';
-        document.head.appendChild(s);
       }
 
       mapboxgl.accessToken = MAPBOX_TOKEN;

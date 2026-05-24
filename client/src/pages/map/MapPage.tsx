@@ -1,7 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from 'react';
-import { formatEnumValue } from '../../utils/formatters';
-import { loadGoogleMaps, DARK_MAP_STYLE, NIGHT_NAV_STYLE, TERRAIN_STYLE, registerMapInstance, unregisterMapInstance, updateMapStyles, onOnlineRetryMaps, monitorTileLoading } from '../../utils/googleMapsLoader';
-import { getGoogleMapsApiKey } from '../../utils/googleMapsApiKey';
+import { initMapbox, resolveMapboxAccessToken, mapboxgl, MAPBOX_STYLE_DARK, MAPBOX_STYLE_NIGHT, MAPBOX_STYLE_SATELLITE, MAPBOX_STYLE_STREETS, MAPBOX_STYLE_OUTDOORS, registerMapInstance, unregisterMapInstance, updateMapStyle, monitorTileLoading } from '../../utils/mapboxLoader';
 import { devLog, devWarn } from '../../utils/devLog';
 import {
   Layers,
@@ -76,19 +74,15 @@ import { escapeHtml } from '../../utils/sanitize';
 import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
-import { useGeoJsonLayers, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
+import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { useMultiUnitRouting } from '../../hooks/useMultiUnitRouting';
-import { usePersistedState } from '../../hooks/usePersistedState';
-import { useAutoPanToP1 } from '../../hooks/useAutoPanToP1';
-import { useP1AudioAlert } from '../../hooks/useP1AudioAlert';
-import { useMapKeyboardShortcuts } from '../../hooks/useMapKeyboardShortcuts';
+import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
-import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes } from './utils/mapMarkerBuilders';
+import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
 import { useMapHeatmapTimelapse } from './hooks/useMapHeatmapTimelapse';
 import { useMapHeatmapAdvanced, type HeatmapAdvancedMode, type HeatmapColorScheme, type HeatmapResolution, type HeatmapAdvancedOptions } from './hooks/useMapHeatmapAdvanced';
 import { useMapPredictions } from './hooks/useMapPredictions';
@@ -128,14 +122,6 @@ import PerimeterToolsPanel from './components/PerimeterToolsPanel';
 import CorridorAnalysisPanel from './components/CorridorAnalysisPanel';
 import AlertSystemPanel from './components/AlertSystemPanel';
 import CallHistoryPanel from './components/CallHistoryPanel';
-import HeatmapLegend from './components/HeatmapLegend';
-import HeatmapPresets, { type HeatmapPresetValue } from './components/HeatmapPresets';
-import KeyboardShortcutsHelp from './components/KeyboardShortcutsHelp';
-import RouteComparePanel from './components/RouteComparePanel';
-import { useMapHotspots } from './hooks/useMapHotspots';
-import { useMapDimBase } from './hooks/useMapDimBase';
-import { useMapIdleZones } from './hooks/useMapIdleZones';
-import { computeTrailStats, formatTrailStats, downloadTrailAsGpx } from './utils/trailStats';
 import IncidentReportsPanel from './components/IncidentReportsPanel';
 import SafetyZonesPanel from './components/SafetyZonesPanel';
 import TacticalSummaryPanel from './components/TacticalSummaryPanel';
@@ -146,7 +132,6 @@ import { useAnalysisSummary } from './hooks/useAnalysisSummary';
 import { useSpeedAnalytics } from './hooks/useSpeedAnalytics';
 import SpeedGraphOverlay from './components/SpeedGraphOverlay';
 import CoverageTimeline from './components/CoverageTimeline';
-import { hashToHsl } from '../../utils/colorLookup';
 
 // ============================================================
 // Constants
@@ -232,14 +217,6 @@ const statusToColor = (status: string): string => {
 // Main Component
 // ============================================================
 
-// Module-level frozen constant used as a filter default that the UI never
-// updates. Module-level (not inline) so identity stays stable across renders
-// — passing inline `[]` to the useMap*History/IncidentReports hooks would
-// retrigger their useEffect deps every render and cause infinite refetch.
-// Typed as mutable `string[]` (not `readonly`) so it satisfies the hooks'
-// arg types, but Object.freeze gives runtime mutation protection anyway.
-const EMPTY_STRING_FILTER: string[] = Object.freeze([] as string[]) as string[];
-
 export default function MapPage() {
   const isMobile = useIsMobile();
   const { addToast } = useToast();
@@ -260,10 +237,6 @@ export default function MapPage() {
   const [mapRetry, setMapRetry] = useState(0);
   const [tilesStalled, setTilesStalled] = useState(false);
 
-  // Google Maps is the sole map surface. Any map load failure surfaces the
-  // configuration-required dialog instead of degrading to a Leaflet/CartoDB
-  // fallback (the offline fallback was retired 2026-04-29 to make Google
-  // failures visible rather than silently masked).
   const isAuthError = mapError != null;
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 
@@ -310,10 +283,9 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Heat map state — overlay toggles persist across sessions so officers
-  // don't have to re-enable their usual layers every shift.
-  const [showHeatmap, setShowHeatmap] = usePersistedState<boolean>('rmpg_map_showHeatmap', false);
-  const [showTrackingLines, setShowTrackingLines] = usePersistedState<boolean>('rmpg_map_showTrackingLines', true);
+  // Heat map state
+  const [showHeatmap, setShowHeatmap] = useState(false);
+  const [showTrackingLines, setShowTrackingLines] = useState(true);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
   const [heatmapMode, setHeatmapMode] = useState<'all' | 'risk' | 'type'>('all');
@@ -332,6 +304,7 @@ export default function MapPage() {
   const [advHeatmapRadius, setAdvHeatmapRadius] = useState(30);
   const [advHeatmapShowClusters, setAdvHeatmapShowClusters] = useState(true);
   const [advHeatmapComparisonDays, setAdvHeatmapComparisonDays] = useState(30);
+  const [showAdvHeatmapPanel, setShowAdvHeatmapPanel] = useState(false);
 
   const advHeatmapOptions: HeatmapAdvancedOptions = useMemo(() => ({
     enabled: advancedHeatmapEnabled && showHeatmap,
@@ -350,7 +323,7 @@ export default function MapPage() {
 
   // Breadcrumb trail state
   const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
-  const [breadcrumbHours, setBreadcrumbHours] = useState(24);
+  const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
   const breadcrumbLinesRef = useRef<any[]>([]);
@@ -360,62 +333,7 @@ export default function MapPage() {
   const speedAnalytics = useSpeedAnalytics({ hours: breadcrumbHours, enabled: showBreadcrumbs });
 
   // Trail playback state
-  const [playbackTrailsRaw, setPlaybackTrailsRaw] = useState<PlaybackTrail[]>([]);
-
-  // Breadcrumb fetch-window presets. Labels are compact per operator request
-  // (24h / 48h / 7d / 14d / 21d / 1mo / 3mo / 1y). Values are hours — the
-  // server /dispatch/gps/trails endpoint still takes ?hours= so upstream
-  // doesn't need to change. Month = 30d, year = 365d rounded in hours.
-  const BREADCRUMB_HOUR_PRESETS: ReadonlyArray<{ hours: number; label: string }> = [
-    { hours: 24,   label: '24h' },
-    { hours: 48,   label: '48h' },
-    { hours: 168,  label: '7d' },
-    { hours: 336,  label: '14d' },
-    { hours: 504,  label: '21d' },
-    { hours: 720,  label: '1mo' },
-    { hours: 2160, label: '3mo' },
-    { hours: 8760, label: '1y' },
-  ];
-
-  // Trail scrubber — lets dispatchers narrow the rendered trails to a
-  // time sub-window without a re-fetch. Values are "hours ago relative to
-  // now": fromH is the older edge (larger), toH is the newer edge (smaller),
-  // so [fromH=8, toH=0] means "last 8h through now". Default matches
-  // breadcrumbHours so the scrubber starts showing everything and the
-  // dispatcher narrows from there.
-  const [trailWindowFromH, setTrailWindowFromH] = useState<number>(breadcrumbHours);
-  const [trailWindowToH, setTrailWindowToH] = useState<number>(0);
-
-  // Keep the scrubber's "from" handle aligned with the fetched window —
-  // if the user bumps breadcrumbHours from 8 to 24, extend the scrubber
-  // range too so they can actually see the newer data.
-  useEffect(() => {
-    setTrailWindowFromH((prev) => (prev > breadcrumbHours ? breadcrumbHours : prev));
-  }, [breadcrumbHours]);
-
-  // Derived, window-filtered view of the trails. Render effects read this;
-  // the fetch effect writes the unfiltered Raw state. Filter is cheap for
-  // typical point counts (≤2k per unit), so recomputing on every scrubber
-  // drag is fine — no debounce needed.
-  const playbackTrails = useMemo<PlaybackTrail[]>(() => {
-    if (playbackTrailsRaw.length === 0) return playbackTrailsRaw;
-    const now = Date.now();
-    const windowStart = now - trailWindowFromH * 3600 * 1000;
-    const windowEnd = now - trailWindowToH * 3600 * 1000;
-    // Fast path: default window covers everything.
-    if (trailWindowFromH >= breadcrumbHours && trailWindowToH <= 0) {
-      return playbackTrailsRaw;
-    }
-    return playbackTrailsRaw
-      .map((t) => {
-        const filtered = t.points.filter((p) => {
-          const ts = Date.parse(p.time);
-          return Number.isFinite(ts) && ts >= windowStart && ts <= windowEnd;
-        });
-        return { ...t, points: filtered };
-      })
-      .filter((t) => t.points.length > 0);
-  }, [playbackTrailsRaw, trailWindowFromH, trailWindowToH, breadcrumbHours]);
+  const [playbackTrails, setPlaybackTrails] = useState<PlaybackTrail[]>([]);
   const [playbackUnit, setPlaybackUnit] = useState<number | null>(null);
   const [playbackIdx, setPlaybackIdx] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -444,82 +362,7 @@ export default function MapPage() {
   const [showMapStyles, setShowMapStyles] = useState(false);
 
   // Routing
-  // Multi-unit routing: when multiple units are assigned to a call, show an
-  // ETA-colored polyline for each simultaneously (green=fastest, amber=mid,
-  // red=slowest) so the dispatcher can see who's closest at a glance.
-  // Each Route click in the call info window adds to the current set rather
-  // than replacing — clicking Route on unit B while unit A is already routed
-  // shows both polylines.
-  const { activeRoutes, routeLoading, showRoute, clearAllRoutes, updateOrigin } =
-    useMultiUnitRouting({ map: mapInstanceRef.current });
-
-  // Auto-pan the map to newly-dispatched P1 calls so dispatchers don't miss
-  // high-priority events while looking at another part of the map. Existing
-  // P1s at page-load do NOT trigger a pan — only calls that arrive after
-  // this mount. No-op until the Map instance is ready.
-  useAutoPanToP1(mapInstanceRef.current, calls);
-
-  // Audible chirp when a new P1 dispatches — paired with the auto-pan above
-  // so dispatchers who aren't looking at the map still get cued. Defaults on;
-  // user can toggle via localStorage key `rmpg_map_p1AudioEnabled`.
-  const [p1AudioEnabled] = usePersistedState<boolean>('rmpg_map_p1AudioEnabled', true);
-  useP1AudioAlert(calls, { enabled: p1AudioEnabled });
-
-  // Hotspot markers — numbered red pins at the top-5 heatmap peaks. Only
-  // rendered when the basic heatmap layer is on (Advanced heatmap has its
-  // own built-in cluster overlay). Reuses heatmapData — no extra fetch.
-  useMapHotspots({
-    mapInstanceRef,
-    data: heatmapData,
-    enabled: showHeatmap && !advancedHeatmapEnabled,
-    mode: heatmapMode === 'risk' ? 'risk' : 'calls',
-    topN: 5,
-  });
-
-  // Dim-base mode: slightly darken the base tiles when the heatmap is on
-  // so hot peaks pop without muting our own marker colors. Toggle persists.
-  const [dimBaseEnabled, setDimBaseEnabled] = usePersistedState<boolean>('rmpg_map_dimBaseEnabled', true);
-  useMapDimBase({
-    mapInstanceRef,
-    enabled: dimBaseEnabled && showHeatmap,
-    opacity: 0.35,
-  });
-
-  // Idle-zone detection: highlight stretches >=10min where a unit stayed
-  // within ~50m as orange circles. Reuses playbackTrails — pure client-side.
-  const [showIdleZones, setShowIdleZones] = usePersistedState<boolean>('rmpg_map_showIdleZones', false);
-
-  // Route comparison — pick two units from the active breadcrumb set and see
-  // side-by-side stats. Visibility is session-only; IDs are not persisted
-  // because their meaning depends on who's on shift right now.
-  const [showRouteCompare, setShowRouteCompare] = useState(false);
-  const [compareUnitA, setCompareUnitA] = useState<string | number | null>(null);
-  const [compareUnitB, setCompareUnitB] = useState<string | number | null>(null);
-  useMapIdleZones({
-    mapInstanceRef,
-    trails: playbackTrails,
-    enabled: showIdleZones && showBreadcrumbs,
-    minIdleSec: 600,
-    clusterRadiusM: 50,
-  });
-
-  // Keyboard shortcuts: H=heatmap, B=breadcrumbs, C=cluster, P=patrol,
-  // F=field interviews, D=daylight, I=incidents, E=enforcement, ?=help.
-  // No-op when an input is focused or a modifier key is held.
-  const [showShortcutsHelp, setShowShortcutsHelp] = useState(false);
-  useMapKeyboardShortcuts(
-    {
-      toggleHeatmap: () => setShowHeatmap((v) => !v),
-      toggleBreadcrumbs: () => setShowBreadcrumbs((v) => !v),
-      toggleClustering: () => setClusteringEnabled((v) => !v),
-      togglePatrolCheckpoints: () => setShowPatrolCheckpoints((v) => !v),
-      toggleFieldInterviews: () => setShowFieldInterviews((v) => !v),
-      toggleDaylight: () => setShowDaylight((v) => !v),
-      toggleIncidentReports: () => setShowIncidentReports((v) => !v),
-      toggleEnforcementClusters: () => setShowEnforcementClusters((v) => !v),
-    },
-    () => setShowShortcutsHelp(true),
-  );
+  const { activeRoute, routeLoading, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -564,47 +407,17 @@ export default function MapPage() {
   const [beatDistrictMap, setBeatDistrictMap] = useState<Map<string, Map<string, BeatDistrictEntry>> | undefined>(undefined);
   const [districtSections, setDistrictSections] = useState<{ id: string; name: string }[]>([]);
   const [showDistrictLegend, setShowDistrictLegend] = useState(false);
-  const [hierarchyColors, setHierarchyColors] = useState<{
-    sectionColors: Map<string, string>;
-    zoneColors: Map<string, string>;
-    areaColors: Map<string | number, string>;
-    beatToArea: Map<string, string | number>;
-  } | null>(null);
-  const [tierColorsOn, setTierColorsOn] = useState<boolean>(() => {
-    return localStorage.getItem('rmpg.map.hierarchyColors') !== 'off'; // default ON
-  });
-  useEffect(() => {
-    localStorage.setItem('rmpg.map.hierarchyColors', tierColorsOn ? 'on' : 'off');
-  }, [tierColorsOn]);
 
   useEffect(() => {
     let cancelled = false;
     apiFetch<any[]>('/dispatch/districts').then((districts) => {
       if (cancelled || !Array.isArray(districts) || districts.length === 0) return;
-      // Map is keyed by city_code (e.g. "MUR") because GeoJSON beat
-      // properties carry city_code, not the server's zone_id ("SL1-MUR").
-      // Inner map is keyed by district_letter ("A").
       const map = new Map<string, Map<string, BeatDistrictEntry>>();
       const sectionSet = new Map<string, string>();
-      const sectionColors = new Map<string, string>();
-      const zoneColors = new Map<string, string>();
-      const areaColors = new Map<string | number, string>();
-      const beatToArea = new Map<string, string | number>();
       for (const d of districts) {
         if (!d.zone_id || !d.beat_id) continue;
-        if (d.sector_id) sectionColors.set(d.sector_id, d.sector_color || hashToHsl(d.sector_id));
-        if (d.zone_id) zoneColors.set(d.zone_id, d.zone_color || hashToHsl(d.zone_id));
-        if (d.area_id != null) {
-          areaColors.set(d.area_id, hashToHsl(`area-${d.area_id}`));
-          beatToArea.set(d.beat_id, d.area_id);
-        }
-        // Derive GeoJSON-shaped keys from server chart codes:
-        //   zone_id "SL1-MUR" → cityCode "MUR"
-        //   beat_id "SL1-MUR/A" → distLetter "A"
-        const cityCode = String(d.zone_id).split('-').slice(1).join('-') || d.zone_id;
-        const distLetter = String(d.beat_id).split('/').pop() || d.beat_id;
-        if (!map.has(cityCode)) map.set(cityCode, new Map());
-        map.get(cityCode)!.set(distLetter, {
+        if (!map.has(d.zone_id)) map.set(d.zone_id, new Map());
+        map.get(d.zone_id)!.set(d.beat_id, {
           sectionId: d.sector_id || '',
           sectionName: d.sector_name || '',
           zoneId: d.zone_id,
@@ -612,13 +425,11 @@ export default function MapPage() {
           beatId: d.beat_id,
           beatName: d.beat_name || '',
           beatDescriptor: d.beat_descriptor || '',
-          // dispatch_code = beat_code is already chart format ("SL1-MUR/A").
-          dispatchCode: d.dispatch_code || d.beat_id || '',
+          dispatchCode: d.dispatch_code || '',
         });
         if (d.sector_id) sectionSet.set(d.sector_id, d.sector_name || '');
       }
       setBeatDistrictMap(map);
-      setHierarchyColors({ sectionColors, zoneColors, areaColors, beatToArea });
       setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
     }).catch((err) => { console.warn('[MapPage] fetch districts failed:', err); });
     return () => { cancelled = true; };
@@ -633,7 +444,6 @@ export default function MapPage() {
     selectedFeatures: shiftPlanning.selectedAreas,
     assignedFeatures: shiftPlanning.assignedFeatures,
     beatDistrictMap,
-    hierarchyColors: tierColorsOn ? hierarchyColors : null,
   });
   const [showGeoPanel, setShowGeoPanel] = useState(false);
 
@@ -652,7 +462,90 @@ export default function MapPage() {
   const [showGeofences, setShowGeofences] = useState(false);
   const [showAnalysisDashboard, setShowAnalysisDashboard] = useState(false);
   const [dragDispatchMode, setDragDispatchMode] = useState(false);
-  const [clusteringEnabled, setClusteringEnabled] = usePersistedState<boolean>('rmpg_map_clusteringEnabled', false);
+  const clusteringInitRef = useRef(false);
+  const [clusteringEnabled, setClusteringEnabled] = useState(false);
+  const [mapConfigVersion, setMapConfigVersion] = useState(0);
+
+  // Apply admin cluster defaults once on mount
+  useEffect(() => {
+    if (!clusteringInitRef.current) {
+      fetchMapConfig().then(cfg => {
+        if (!clusteringInitRef.current) {
+          clusteringInitRef.current = true;
+          setClusteringEnabled(cfg.clustering_enabled);
+        }
+      });
+    }
+  }, []);
+
+  // Admin layer style overrides — apply after map + GeoJSON layers are loaded
+  // Uses mapConfigVersion to re-apply when admin config finishes loading
+  const layerOverridesAppliedRef = useRef(false);
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    const cfg = mapConfigRef.current;
+    if (!map || !cfg || !map.loaded() || layerOverridesAppliedRef.current) return;
+    layerOverridesAppliedRef.current = true;
+
+    const LAYER_STYLE_MAP: Record<string, { fillId?: string; lineId?: string }> = {
+      beat: { fillId: 'geojson-beat-fill', lineId: 'geojson-beat-line' },
+      county: { fillId: 'geojson-county-fill', lineId: 'geojson-county-line' },
+      municipality: { fillId: 'geojson-municipality-fill', lineId: 'geojson-municipality-line' },
+      highway: { lineId: 'geojson-highway-line' },
+      state_boundary: { lineId: 'geojson-state_boundary-line' },
+      place: { fillId: 'geojson-place-fill', lineId: 'geojson-place-line' },
+    };
+
+    for (const [layerId, ids] of Object.entries(LAYER_STYLE_MAP)) {
+      const visible = cfg.default_visible_layers.includes(layerId);
+
+      if (ids.fillId && map.getLayer(ids.fillId)) {
+        map.setLayoutProperty(ids.fillId, 'visibility', visible ? 'visible' : 'none');
+        const fillColor = (cfg as any)[`layer_${layerId}_fill`];
+        const fillOpacity = (cfg as any)[`layer_${layerId}_fill_opacity`];
+        if (fillColor) map.setPaintProperty(ids.fillId, 'fill-color', fillColor);
+        if (fillOpacity != null) map.setPaintProperty(ids.fillId, 'fill-opacity', fillOpacity);
+      }
+      if (ids.lineId && map.getLayer(ids.lineId)) {
+        map.setLayoutProperty(ids.lineId, 'visibility', visible ? 'visible' : 'none');
+        const strokeColor = (cfg as any)[`layer_${layerId}_stroke`];
+        const strokeOpacity = (cfg as any)[`layer_${layerId}_stroke_opacity`];
+        const strokeWeight = (cfg as any)[`layer_${layerId}_stroke_weight`];
+        if (strokeColor) map.setPaintProperty(ids.lineId, 'line-color', strokeColor);
+        if (strokeOpacity != null) map.setPaintProperty(ids.lineId, 'line-opacity', strokeOpacity);
+        if (strokeWeight != null) map.setPaintProperty(ids.lineId, 'line-width', strokeWeight);
+      }
+    }
+  }, [mapLoaded, mapConfigVersion]);
+
+  // Marker CSS injection — pulse animations + font size
+  const markerStyleRef = useRef<HTMLStyleElement | null>(null);
+  useEffect(() => {
+    const cfg = mapConfigRef.current;
+    if (!cfg) return;
+
+    let css = '';
+    if (!cfg.unit_marker_pulse) {
+      css += '.rmpg-unit-marker { animation: none !important; }';
+    }
+    if (!cfg.call_marker_pulse) {
+      css += '.rmpg-call-marker-p1 { animation: none !important; }';
+      css += '.rmpg-call-marker-p2 { animation: none !important; }';
+    }
+    if (cfg.marker_font_size !== 9) {
+      css += `.rmpg-marker-label { font-size: ${cfg.marker_font_size}px !important; }`;
+    }
+
+    if (!markerStyleRef.current) {
+      const style = document.createElement('style');
+      style.id = '__rmpg-admin-marker-styles__';
+      style.textContent = css;
+      document.head.appendChild(style);
+      markerStyleRef.current = style;
+    } else {
+      markerStyleRef.current.textContent = css;
+    }
+  }, [mapConfigVersion]);
 
   // Separate marker tracking for clustering & drag dispatch
   const unitMarkersMapRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
@@ -665,14 +558,13 @@ export default function MapPage() {
     setIntelLayers(prev => ({ ...prev, [layer]: !prev[layer] }));
   };
 
-  // New tactical layer toggles — persist across reload so officers don't
-  // have to re-enable their usual layers every shift.
-  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = usePersistedState<boolean>('rmpg_map_showPatrolCheckpoints', false);
-  const [showFieldInterviews, setShowFieldInterviews] = usePersistedState<boolean>('rmpg_map_showFieldInterviews', false);
+  // New tactical layer toggles
+  const [showPatrolCheckpoints, setShowPatrolCheckpoints] = useState(false);
+  const [showFieldInterviews, setShowFieldInterviews] = useState(false);
   const [fiDays, setFiDays] = useState(30);
-  const [showDwellTime, setShowDwellTime] = usePersistedState<boolean>('rmpg_map_showDwellTime', false);
-  const [showResponseRadius, setShowResponseRadius] = usePersistedState<boolean>('rmpg_map_showResponseRadius', false);
-  const [showEnforcementClusters, setShowEnforcementClusters] = usePersistedState<boolean>('rmpg_map_showEnforcementClusters', false);
+  const [showDwellTime, setShowDwellTime] = useState(false);
+  const [showResponseRadius, setShowResponseRadius] = useState(false);
+  const [showEnforcementClusters, setShowEnforcementClusters] = useState(false);
   const [enforcementType, setEnforcementType] = useState<'citations' | 'arrests'>('citations');
   const [enforcementDays, setEnforcementDays] = useState(90);
   const [showCoverage, setShowCoverage] = useState(false);
@@ -682,23 +574,18 @@ export default function MapPage() {
   const [repeatDays, setRepeatDays] = useState(30);
   const [repeatMinCount, setRepeatMinCount] = useState(3);
   const [showPanicZone, setShowPanicZone] = useState(true); // on by default for safety
-  const [showDaylight, setShowDaylight] = usePersistedState<boolean>('rmpg_map_showDaylight', false);
+  const [showDaylight, setShowDaylight] = useState(false);
 
   // Historical call & incident report layers
   const [showCallHistory, setShowCallHistory] = useState(false);
   const [callHistoryDays, setCallHistoryDays] = useState(7);
   const [callHistoryStatuses, setCallHistoryStatuses] = useState(['cleared', 'closed']);
-  // callHistoryTypes / incidentStatuses / incidentTypes were useState<string[]>([])
-  // declarations that never got a setter call anywhere — they're effectively
-  // constant filter defaults. Pinned to the module-level frozen constant so
-  // identity stays stable across renders (preventing useEffect dep churn in
-  // the consuming hooks).
-  const callHistoryTypes = EMPTY_STRING_FILTER;
+  const [callHistoryTypes, setCallHistoryTypes] = useState<string[]>([]);
   const [callHistoryPriorities, setCallHistoryPriorities] = useState<string[]>([]);
-  const [showIncidentReports, setShowIncidentReports] = usePersistedState<boolean>('rmpg_map_showIncidentReports', false);
+  const [showIncidentReports, setShowIncidentReports] = useState(false);
   const [incidentDays, setIncidentDays] = useState(30);
-  const incidentStatuses = EMPTY_STRING_FILTER;
-  const incidentTypes = EMPTY_STRING_FILTER;
+  const [incidentStatuses, setIncidentStatuses] = useState<string[]>([]);
+  const [incidentTypes, setIncidentTypes] = useState<string[]>([]);
 
   // Officer Safety System
   const [showSafetyDashboard, setShowSafetyDashboard] = useState(false);
@@ -1051,13 +938,6 @@ export default function MapPage() {
 
       const map = new mapboxgl.Map(mapOptions);
 
-      // Auth/quota failure can hand back a stub Map with no div — route to the
-      // existing error UI instead of crashing in monitorTileLoading.
-      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
-        setMapError('Google Maps failed to initialize — check API key / billing.');
-        return;
-      }
-
       mapInstanceRef.current = map;
       registerMapInstance(map);
 
@@ -1110,13 +990,14 @@ export default function MapPage() {
       dismissObserver.observe(document.body, { childList: true, subtree: true });
       dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
 
-      // Google's native dark-styled basemap is the sole tile source
-      // (no CartoDB raster overlay). AdvancedMarkerElement requires a
-      // cloud mapId; without one, markers are created but never render,
-      // so we keep the OverlayView-based fallback which works on any
-      // map type until a mapId is provisioned.
+      // CartoDB dark_matter tiles handled by Mapbox style
+
+      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
+      // Without mapId, markers are created but silently never render.
+      // Since we use a raster styled map (no mapId), always use the
+      // OverlayView-based fallback which works reliably on all map types.
       useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using Google base layer + OverlayView markers');
+      devLog('[MapPage] Using CartoDB dark_matter overlay + OverlayView markers');
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
@@ -1182,11 +1063,19 @@ export default function MapPage() {
 
     (async () => {
       try {
-        apiKey = await getGoogleMapsApiKey();
-      } catch (err: any) {
-        // No Google API key — surface the configuration-required dialog.
+        mapConfig = await fetchMapConfig();
+      } catch {
+        mapConfig = { default_center_lat: 40.7608, default_center_lng: -111.891, default_zoom: 12, min_zoom: 1, max_zoom: 22, default_style: 'dark', enabled_styles: ['dark', 'night_nav', 'satellite', 'streets', 'terrain', 'light'], show_attribution: false, rotation_enabled: false, max_bounds_sw_lat: null, max_bounds_sw_lng: null, max_bounds_ne_lat: null, max_bounds_ne_lng: null, custom_style_url: '', clustering_enabled: true, cluster_radius: 50, cluster_max_zoom: 14, default_pitch: 0, default_bearing: 0, min_pitch: 0, max_pitch: 85, scroll_zoom: true, box_zoom: true, drag_rotate: true, drag_pan: true, double_click_zoom: true, touch_zoom_rotate: true, cooperative_gestures: false, show_compass: true, show_zoom_controls: true, keyboard_enabled: true, language: '', render_world_copies: true, fade_duration: 300, click_tolerance: 3, local_ideograph_font_family: '', cross_source_collisions: true, default_visible_layers: ['county', 'beat'], layer_beat_fill: '#22c55e', layer_beat_fill_opacity: 0.2, layer_beat_stroke: '#22c55e', layer_beat_stroke_opacity: 0.6, layer_beat_stroke_weight: 1.2, layer_beat_min_zoom: 10, layer_county_fill: '#141414', layer_county_fill_opacity: 0.15, layer_county_stroke: '#444444', layer_county_stroke_opacity: 0.5, layer_county_stroke_weight: 1.5, layer_county_min_zoom: 8, layer_municipality_fill: '#a855f7', layer_municipality_fill_opacity: 0.06, layer_municipality_stroke: '#a855f7', layer_municipality_stroke_opacity: 0.35, layer_municipality_stroke_weight: 1, layer_municipality_min_zoom: 9, layer_highway_stroke: '#ef4444', layer_highway_stroke_opacity: 0.6, layer_highway_stroke_weight: 3, layer_state_boundary_stroke: '#ffffff', layer_state_boundary_stroke_opacity: 0.3, layer_state_boundary_stroke_weight: 2, layer_place_fill: '#22c55e', layer_place_fill_opacity: 0.7, layer_place_stroke: '#22c55e', layer_place_stroke_opacity: 0.9, layer_place_stroke_weight: 1, layer_place_min_zoom: 10, gps_batch_interval_ms: 5000, gps_max_accuracy_meters: 100, gps_max_speed_ms: 80, gps_high_accuracy: true, screenshot_width: 1280, screenshot_height: 720, screenshot_style: 'dark', unit_marker_pulse: true, call_marker_pulse: true, marker_font_size: 9 };
+      }
+      mapConfigRef.current = mapConfig;
+      setMapConfigVersion(v => v + 1);
+
+      let mapboxToken = '';
+      try {
+        mapboxToken = await resolveMapboxAccessToken();
+      } catch {
         if (!cancelled) {
-          setMapError(err?.message || 'Google Maps API key is not configured. Set it in Admin → Integrations → Google Cloud Console.');
+          setMapError('offline');
         }
       }
 
@@ -1374,57 +1263,6 @@ export default function MapPage() {
             title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
             onClick: () => {
               const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
-              // Compute the 3 nearest units with GPS that are NOT already
-              // assigned to this call. Straight-line haversine — cheap enough
-              // to recompute on every info-window open (unit count is small).
-              // This intentionally ignores unit status: the dispatcher can see
-              // the status dot and make their own call on whether an on-break
-              // unit can roll. "Closest by road" would require Directions
-              // calls per unit — too expensive for a tap-to-preview panel.
-              const assignedIds = new Set(assignedUnits.map(u => String(u.id)));
-              const nearestUnits = (call.latitude != null && call.longitude != null)
-                ? units
-                    .filter(u => !assignedIds.has(String(u.id)) && u.latitude != null && u.longitude != null)
-                    .map(u => {
-                      const dLat = ((u.latitude! - call.latitude!) * Math.PI) / 180;
-                      const dLng = ((u.longitude! - call.longitude!) * Math.PI) / 180;
-                      const a = Math.sin(dLat / 2) ** 2
-                        + Math.cos((u.latitude! * Math.PI) / 180)
-                        * Math.cos((call.latitude! * Math.PI) / 180)
-                        * Math.sin(dLng / 2) ** 2;
-                      const meters = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                      return { unit: u, meters };
-                    })
-                    .sort((a, b) => a.meters - b.meters)
-                    .slice(0, 3)
-                : [];
-
-              let nearestHtml = '';
-              if (nearestUnits.length > 0) {
-                nearestHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
-                  <div style="font-size:9px;color:#5a6e80;margin-bottom:4px;font-weight:bold;text-transform:uppercase;letter-spacing:1px;">NEAREST UNITS</div>
-                  ${nearestUnits.map(({ unit: u, meters }) => {
-                    const uc = UNIT_STATUS_COLORS[u.status] || '#666666';
-                    const miles = (meters / 1609.344).toFixed(1);
-                    const routeBtn = (call.latitude != null && call.longitude != null)
-                      ? `<button type="button" data-route-unit="${escapeHtml(u.call_sign)}" data-route-call="${escapeHtml(call.call_number)}"
-                           data-route-ulat="${u.latitude}" data-route-ulng="${u.longitude}"
-                           data-route-clat="${call.latitude}" data-route-clng="${call.longitude}"
-                           style="margin-left:auto;padding:1px 5px;background:#88888820;border:1px solid #88888850;color:#a0a0a0;font-size:8px;font-weight:900;font-family:monospace;cursor:pointer;">
-                           ▶ ROUTE
-                         </button>`
-                      : '';
-                    return `<div style="display:flex;align-items:center;gap:6px;margin-bottom:2px;">
-                      <div style="width:6px;height:6px;border-radius:50%;background:${uc};box-shadow:0 0 4px ${uc}80;"></div>
-                      <span style="font-size:10px;color:${uc};font-weight:bold;font-family:monospace;">${escapeHtml(u.call_sign)}</span>
-                      <span style="font-size:9px;color:#9ca3af;">${escapeHtml(u.officer_name || '')}</span>
-                      <span style="font-size:9px;color:#6b7280;">${miles} mi</span>
-                      ${routeBtn}
-                    </div>`;
-                  }).join('')}
-                </div>`;
-              }
-
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
@@ -1460,84 +1298,17 @@ export default function MapPage() {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;color:#5a6e80;">No units assigned</div>`;
               }
 
-              // ── Time received ("5m ago" / "1h 12m ago" / "now") ──
-              const receivedMs = call.created_at ? new Date(call.created_at).getTime() : NaN;
-              const ageSec = !isNaN(receivedMs) ? Math.max(0, Math.floor((Date.now() - receivedMs) / 1000)) : null;
-              const ageStr = ageSec == null ? '—'
-                : ageSec < 60 ? `${ageSec}s ago`
-                : ageSec < 3600 ? `${Math.floor(ageSec / 60)}m ago`
-                : ageSec < 86400 ? `${Math.floor(ageSec / 3600)}h ${Math.floor((ageSec % 3600) / 60)}m ago`
-                : `${Math.floor(ageSec / 86400)}d ago`;
-              const receivedTime = !isNaN(receivedMs)
-                ? new Date(receivedMs).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
-                : '';
-
-              // ── Hazard / officer-safety flags (aggregate into one red banner) ──
-              const hazardFlags: string[] = [];
-              if (call.officer_safety_caution) hazardFlags.push('OFFICER SAFETY');
-              if (call.weapons_involved) hazardFlags.push(`WEAPONS: ${escapeHtml(String(call.weapons_involved))}`);
-              if (call.felony_in_progress) hazardFlags.push('FELONY IN PROGRESS');
-              if (call.domestic_violence) hazardFlags.push('DOMESTIC');
-              if (call.hazmat) hazardFlags.push('HAZMAT');
-              if (call.mental_health_crisis) hazardFlags.push('MENTAL HEALTH CRISIS');
-              if (call.gang_related) hazardFlags.push('GANG');
-              const hazardHtml = hazardFlags.length > 0
-                ? `<div style="margin-top:8px;padding:6px 8px;background:#7f1d1d33;border-left:3px solid #ef4444;font-size:9px;font-weight:900;color:#fca5a5;letter-spacing:0.5px;">
-                     ⚠ ${hazardFlags.join(' · ')}
-                   </div>`
-                : '';
-
-              // ── Beat / Sector geography ──
-              const geographyHtml = (call.beat_name || call.sector_name)
-                ? `<div style="margin-top:6px;font-size:9px;color:#9ca3af;font-family:monospace;">
-                     ${call.beat_name ? `BEAT <span style="color:#d4a017;font-weight:bold;">${escapeHtml(call.beat_name)}</span>` : ''}
-                     ${call.beat_name && call.sector_name ? '<span style="color:#3a3a3a;margin:0 6px;">|</span>' : ''}
-                     ${call.sector_name ? `SECTOR <span style="color:#d4a017;font-weight:bold;">${escapeHtml(call.sector_name)}</span>` : ''}
-                   </div>`
-                : '';
-
-              // ── Cross-street / notes line ──
-              const crossHtml = call.cross_street
-                ? `<div style="font-size:9px;margin-top:3px;color:#9ca3af;font-family:monospace;">↳ Cross: ${escapeHtml(call.cross_street)}</div>`
-                : '';
-
-              // ── Status pill color ──
-              const statusColors: Record<string, string> = {
-                pending: '#facc15', dispatched: '#06b6d4', enroute: '#06b6d4',
-                onscene: '#10b981', cleared: '#888888', closed: '#5a5a5a',
-              };
-              const statusKey = call.status.toLowerCase().replace(/_/g, '');
-              const statusBg = statusColors[statusKey] || '#888888';
-
-              infoWindowRef.current?.setContent(`
-                <div style="min-width:280px;max-width:340px;font-family:'JetBrains Mono','Courier New',monospace;background:#0a0a0a;color:#e5e7eb;padding:0;border:1px solid ${pColor}60;border-radius:2px;overflow:hidden;">
-                  <!-- Header row: priority + call number + status + age -->
-                  <div style="display:flex;align-items:center;gap:6px;padding:8px 10px;background:linear-gradient(180deg,#141414 0%,#0a0a0a 100%);border-bottom:1px solid ${pColor}33;">
-                    <span style="background:${pColor};color:#000;padding:2px 7px;font-size:10px;font-weight:900;letter-spacing:0.5px;border-radius:2px;">${escapeHtml(call.priority)}</span>
-                    <span style="font-size:11px;color:#d4a017;font-weight:bold;flex:1;">${escapeHtml(call.call_number)}</span>
-                    <span style="background:${statusBg}22;border:1px solid ${statusBg}66;color:${statusBg};padding:1px 6px;font-size:8px;font-weight:900;letter-spacing:1px;border-radius:2px;text-transform:uppercase;">${escapeHtml(call.status.replace(/_/g, ' '))}</span>
+              infoWindowRef.current?.setHTML(`
+                <div style="min-width:200px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${pColor}50;border-radius:4px;">
+                  <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                    <span style="background:${pColor};color:white;padding:2px 8px;font-size:10px;font-weight:900;letter-spacing:0.5px;">${escapeHtml(call.priority)}</span>
+                    <span style="font-weight:900;font-size:13px;color:${pColor};">${escapeHtml(formatIncidentType(call.incident_type))}</span>
                   </div>
-                  <div style="padding:8px 10px 4px 10px;">
-                    <!-- Incident type -->
-                    <div style="font-size:12px;font-weight:bold;color:${pColor};margin-bottom:6px;letter-spacing:0.3px;">${escapeHtml(formatIncidentType(call.incident_type))}</div>
-                    <!-- Address + cross-street -->
-                    <div style="font-size:10px;color:#d1d5db;line-height:1.4;">\u{1F4CD} ${escapeHtml(call.location_address)}</div>
-                    ${crossHtml}
-                    ${call.property_name ? `<div style="font-size:9px;margin-top:3px;color:#9ca3af;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
-                    <!-- Beat / Sector -->
-                    ${geographyHtml}
-                    <!-- Time received -->
-                    <div style="margin-top:6px;font-size:9px;color:#9ca3af;font-family:monospace;display:flex;align-items:center;gap:8px;">
-                      <span>\u{23F1} <span style="color:#d4a017;font-weight:bold;">${ageStr}</span></span>
-                      <span style="color:#3a3a3a;">|</span>
-                      <span style="color:#5a6e80;">${receivedTime}</span>
-                    </div>
-                  </div>
-                  ${hazardHtml}
-                  <div style="padding:0 10px 10px 10px;">
-                    ${unitsHtml}
-                    ${nearestHtml}
-                  </div>
+                  <div style="font-size:12px;color:#a0a0a0;font-weight:bold;">${escapeHtml(call.call_number)}</div>
+                  <div style="font-size:10px;margin-top:4px;color:#d1d5db;">${escapeHtml(call.location_address)}</div>
+                  ${call.property_name ? `<div style="font-size:10px;margin-top:4px;color:#888888;">\u{1F3E2} ${escapeHtml(call.property_name)}</div>` : ''}
+                  <div style="font-size:9px;margin-top:6px;text-transform:uppercase;color:#5a6e80;letter-spacing:1px;font-weight:800;">${escapeHtml(call.status.replace(/_/g, ' '))}</div>
+                  ${unitsHtml}
                 </div>
               `);
               infoWindowRef.current?.setLngLat([call.longitude!, call.latitude!]);
@@ -1746,18 +1517,16 @@ export default function MapPage() {
   }, []);
 
   // ============================================================
-  // Update Routes When Routed Unit GPS Changes (multi-unit)
+  // Update Route When Routed Unit GPS Changes
   // ============================================================
 
   useEffect(() => {
-    if (activeRoutes.length === 0) return;
-    for (const route of activeRoutes) {
-      const routedUnit = units.find(u => u.call_sign === route.unitCallSign);
-      if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
-        updateOrigin(route.unitCallSign, routedUnit.latitude, routedUnit.longitude);
-      }
+    if (!activeRoute) return;
+    const routedUnit = units.find(u => u.call_sign === activeRoute.unitCallSign);
+    if (routedUnit?.latitude != null && routedUnit?.longitude != null) {
+      updateOrigin(routedUnit.latitude, routedUnit.longitude);
     }
-  }, [activeRoutes, units, updateOrigin]);
+  }, [activeRoute, units, updateOrigin]);
 
   // ============================================================
   // Heat Map Circles
@@ -1789,38 +1558,13 @@ export default function MapPage() {
         },
       }));
 
-    // Choose gradient based on mode (Fix 14: dark-theme compatible colors)
-    const gradient = heatmapMode === 'risk'
-      ? [
-          'rgba(0,0,0,0)',        // transparent
-          'rgba(255,165,0,0.3)',  // orange low
-          'rgba(255,100,0,0.5)',  // deep orange
-          'rgba(255,50,0,0.7)',   // red-orange
-          'rgba(255,0,0,0.85)',   // red
-          'rgba(200,0,0,1)',      // dark red
-        ]
-      : [
-          'rgba(0,0,0,0)',
-          'rgba(0,128,255,0.2)',  // blue low
-          'rgba(0,200,100,0.4)', // green
-          'rgba(200,200,0,0.6)', // yellow
-          'rgba(255,140,0,0.8)', // orange
-          'rgba(255,50,0,0.95)', // red high
-        ];
-
-    try { // Fix 10: try/catch around heatmap creation
-      // ── Visual: heatmap as soft haze, not hard rings ──
-      // Smaller radius + lower opacity + maxIntensity ceiling collapses the
-      // per-point bright halos that read as "circles" at typical zoom. The
-      // gradient still conveys density; it just doesn't bloom into discs.
-      const heatmap = new google.maps.visualization.HeatmapLayer({
-        data: weightedData,
-        map,
-        radius: 14,
-        opacity: 0.28,
-        gradient,
-        dissipating: true,
-        maxIntensity: 8,
+    try {
+      map.addSource('rmpg-heatmap', {
+        type: 'geojson',
+        data: {
+          type: 'FeatureCollection',
+          features: weightedFeatures,
+        },
       });
 
       const heatmapColor = heatmapMode === 'risk'
@@ -1983,7 +1727,7 @@ export default function MapPage() {
     speedAlertMarkersRef.current.forEach((m) => m.remove());
     speedAlertMarkersRef.current = [];
 
-    if (!showBreadcrumbs) { setPlaybackTrailsRaw([]); return; }
+    if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
 
     const token = localStorage.getItem('rmpg_token');
     if (!token) return;
@@ -2027,7 +1771,7 @@ export default function MapPage() {
       try {
         const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
         if (!trails) return;
-        setPlaybackTrailsRaw(trails);
+        setPlaybackTrails(trails);
 
         const lineFeatures: any[] = [];
 
@@ -2976,10 +2720,7 @@ export default function MapPage() {
           <RmpgLogo height={20} iconOnly />
         </div>
 
-        {/* Offline Leaflet/CartoDB fallback removed 2026-04-29; map errors
-            now surface the configuration-required dialog below. */}
-
-        {/* API key / auth error dialog — sole error surface */}
+        {/* API key / auth error dialog (only for configuration problems, not connectivity) */}
         {isAuthError && (
           <div className="absolute inset-0 z-[2000] flex items-center justify-center bg-black/80 backdrop-blur-sm">
             <div className="bg-surface-overlay/95 border border-red-600 p-8 shadow-xl max-w-lg text-center" style={{ borderRadius: 2 }}>
@@ -3277,33 +3018,10 @@ export default function MapPage() {
                     ))}
                   </div>
 
-                  {/* Dim base map toggle — darkens base tiles so heat pops */}
-                  <button
-                    onClick={() => setDimBaseEnabled(!dimBaseEnabled)}
-                    className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
-                      dimBaseEnabled ? 'text-red-400' : 'text-rmpg-500 hover:text-rmpg-300'
-                    }`}
-                  >
-                    <span className="flex-1 text-left">Dim Base Map</span>
-                    {dimBaseEnabled && <span className="led-dot led-red" style={{ width: 5, height: 5 }} />}
-                  </button>
-
-                  {/* Saved filter presets */}
-                  <div className="border-t border-rmpg-700/50 pt-1 mt-1">
-                    <HeatmapPresets
-                      current={{ days: heatmapDays, mode: heatmapMode, typeFilter: heatmapTypeFilter }}
-                      onApply={(p: HeatmapPresetValue) => {
-                        setHeatmapDays(p.days);
-                        setHeatmapMode(p.mode);
-                        setHeatmapTypeFilter(p.typeFilter);
-                      }}
-                    />
-                  </div>
-
                   {/* Advanced mode toggle */}
                   <div className="border-t border-rmpg-700/50 pt-1 mt-1">
                     <button
-                      onClick={() => setAdvancedHeatmapEnabled(!advancedHeatmapEnabled)}
+                      onClick={() => { setAdvancedHeatmapEnabled(!advancedHeatmapEnabled); if (!advancedHeatmapEnabled) setShowAdvHeatmapPanel(true); }}
                       className={`flex items-center gap-1.5 w-full text-[9px] font-bold transition-colors ${
                         advancedHeatmapEnabled ? 'text-brand-400' : 'text-rmpg-500 hover:text-rmpg-300'
                       }`}
@@ -3787,10 +3505,9 @@ export default function MapPage() {
               </button>
               {showBreadcrumbs && (
                 <div className="px-3 py-1 space-y-1">
-                  {/* Hours selector — presets extend from 24h to 1y per
-                      operator request. Label abbreviates days/months/years. */}
-                  <div className="flex items-center gap-1 flex-wrap">
-                    {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
+                  {/* Hours selector */}
+                  <div className="flex items-center gap-1">
+                    {[2, 4, 8, 12, 24].map((h) => (
                       <button
                         key={h}
                         onClick={() => setBreadcrumbHours(h)}
@@ -3800,7 +3517,7 @@ export default function MapPage() {
                             : 'text-rmpg-500 hover:text-rmpg-300'
                         }`}
                       >
-                        {label}
+                        {h}h
                       </button>
                     ))}
                     <button
@@ -3976,7 +3693,7 @@ export default function MapPage() {
             {/* ── Speed Analytics ── */}
             {showBreadcrumbs && (
               <div className="border-t border-rmpg-700 p-1.5">
-                <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Speed Analytics</div>
+                <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Speed Analytics</div>
 
                 {/* Violations badge */}
                 {speedAnalytics.unacknowledgedCount > 0 && (
@@ -4054,7 +3771,7 @@ export default function MapPage() {
 
             {/* ── Intelligence Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Intelligence</div>
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Intelligence</div>
               {([
                 { key: 'warrants' as const, label: 'Active Warrants', color: 'red' },
                 { key: 'trespass' as const, label: 'Trespass Orders', color: 'orange' },
@@ -4079,7 +3796,7 @@ export default function MapPage() {
 
             {/* ── History Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">History</div>
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">History</div>
 
               {/* Call History */}
               <button
@@ -4215,7 +3932,7 @@ export default function MapPage() {
 
             {/* ── Analysis ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Analysis</div>
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Analysis</div>
 
               {/* Predictions */}
               <button
@@ -4291,7 +4008,7 @@ export default function MapPage() {
 
             {/* ── Tactical Layers ── */}
             <div className="border-t border-rmpg-700 p-1.5">
-              <div className="map-sidebar-section text-[9px] text-[#d4a017] uppercase font-semibold mb-2 px-1 pb-1 border-b border-[#d4a017]/15">Tactical</div>
+              <div className="text-[8px] text-rmpg-500 uppercase tracking-widest font-bold mb-1.5 px-1">Tactical</div>
 
               {/* Patrol Checkpoints */}
               <button
@@ -4650,21 +4367,6 @@ export default function MapPage() {
                       </button>
                     );
                   })}
-                  <label className="flex items-center gap-2 px-2 py-1 text-[10px] cursor-pointer hover:bg-[#1a1a1a]">
-                    <input
-                      type="checkbox"
-                      checked={tierColorsOn}
-                      onChange={(e) => setTierColorsOn(e.target.checked)}
-                      disabled={!hierarchyColors}
-                      className="accent-[#d4a017]"
-                    />
-                    <span className={hierarchyColors ? 'text-[var(--text-primary)]' : 'text-[var(--text-muted)]'}>
-                      Hierarchy Colors
-                    </span>
-                    {!hierarchyColors && (
-                      <span className="text-[8px] text-[var(--text-muted)] ml-auto" title="Districts unavailable offline">⚠</span>
-                    )}
-                  </label>
                 </div>
               )}
             </div>
@@ -4746,7 +4448,7 @@ export default function MapPage() {
                               plan.status === 'draft' ? 'bg-rmpg-700/30 text-rmpg-400' :
                               'bg-rmpg-800/30 text-rmpg-500'
                             }`}>
-                              {formatEnumValue(plan.status)}
+                              {plan.status.toUpperCase()}
                             </span>
                             <span className="text-[8px] text-rmpg-500 font-mono">{plan.assignments.length}</span>
                             <button
@@ -5826,218 +5528,14 @@ export default function MapPage() {
           </div>
         </div>}
 
-        {/* ── Keyboard Shortcuts Help (triggered by `?` key) ── */}
-        <KeyboardShortcutsHelp open={showShortcutsHelp} onClose={() => setShowShortcutsHelp(false)} />
-
-        {/* ── Breadcrumb Status Chip + Trail Stats/Export (top-left) ── */}
-        {/* Shows unit count + window + color mode; hovering reveals per-unit
-            stats (miles/duration/max-mph). Clicking EXPORT downloads one
-            .gpx file per trail into the browser downloads folder — good for
-            shift reports or legal discovery. */}
-        {showBreadcrumbs && playbackTrails.length > 0 && (
-          <div
-            className="absolute z-[999]"
-            style={{
-              top: 64,
-              left: 16,
-              background: 'rgba(6,12,20,0.92)',
-              border: '1px solid #2b2b2b',
-              padding: '4px 10px',
-              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-              fontSize: 10,
-              color: '#9ca3af',
-              letterSpacing: '0.08em',
-              borderRadius: 2,
-            }}
-            title={playbackTrails
-              .map((t) => {
-                const stats = computeTrailStats(t);
-                return `${t.call_sign}: ${formatTrailStats(stats)}`;
-              })
-              .join('\n')}
-          >
-            <span style={{ color: '#d4a017', fontWeight: 900, marginRight: 6 }}>TRAILS</span>
-            <span>{playbackTrails.length} unit{playbackTrails.length === 1 ? '' : 's'}</span>
-            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
-            <span>last {BREADCRUMB_HOUR_PRESETS.find((p) => p.hours === breadcrumbHours)?.label || `${breadcrumbHours}h`}</span>
-            <span style={{ color: '#5a6e80', margin: '0 6px' }}>·</span>
-            <span style={{ color: '#6b7280', textTransform: 'uppercase' }}>{breadcrumbColorMode}</span>
-            <button
-              type="button"
-              onClick={() => setShowIdleZones(!showIdleZones)}
-              style={{
-                marginLeft: 8,
-                padding: '1px 6px',
-                background: showIdleZones ? '#f59e0b30' : '#88888820',
-                border: showIdleZones ? '1px solid #f59e0b80' : '1px solid #88888850',
-                color: showIdleZones ? '#f59e0b' : '#a0a0a0',
-                fontSize: 8,
-                fontWeight: 900,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                letterSpacing: '0.08em',
-                borderRadius: 2,
-              }}
-              title="Highlight stretches where a unit was stationary >10min"
-            >
-              IDLE
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                for (const trail of playbackTrails) downloadTrailAsGpx(trail);
-              }}
-              style={{
-                marginLeft: 4,
-                padding: '1px 6px',
-                background: '#88888820',
-                border: '1px solid #88888850',
-                color: '#a0a0a0',
-                fontSize: 8,
-                fontWeight: 900,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                letterSpacing: '0.08em',
-                borderRadius: 2,
-              }}
-              title="Download each unit's trail as a GPX file"
-            >
-              ⇩ GPX
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowRouteCompare((v) => !v)}
-              style={{
-                marginLeft: 4,
-                padding: '1px 6px',
-                background: showRouteCompare ? '#d4a01730' : '#88888820',
-                border: showRouteCompare ? '1px solid #d4a01780' : '1px solid #88888850',
-                color: showRouteCompare ? '#d4a017' : '#a0a0a0',
-                fontSize: 8,
-                fontWeight: 900,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                letterSpacing: '0.08em',
-                borderRadius: 2,
-              }}
-              title="Compare two units' trail stats side-by-side"
-            >
-              ⇆ COMPARE
-            </button>
-          </div>
-        )}
-
-        {/* ── Route Comparison Panel (bottom-right, when toggled) ── */}
-        {showBreadcrumbs && showRouteCompare && (
-          <RouteComparePanel
-            trails={playbackTrails}
-            unitAId={compareUnitA}
-            unitBId={compareUnitB}
-            onChangeA={setCompareUnitA}
-            onChangeB={setCompareUnitB}
-            onClose={() => setShowRouteCompare(false)}
-          />
-        )}
-
-        {/* ── Trail Time-Window Scrubber (top-left, below chip) ── */}
-        {/* Two range inputs that narrow the rendered trail window without
-            re-fetching. fromH is the older edge, toH the newer one. The
-            filter runs in a useMemo, so drags feel live even on ≤2k points
-            per unit. Rendered only when there's something to scrub. */}
-        {showBreadcrumbs && playbackTrailsRaw.length > 0 && (
-          <div
-            className="absolute z-[999]"
-            style={{
-              top: 90,
-              left: 16,
-              background: 'rgba(6,12,20,0.92)',
-              border: '1px solid #2b2b2b',
-              padding: '4px 10px',
-              fontFamily: "'JetBrains Mono', 'Courier New', monospace",
-              fontSize: 9,
-              color: '#9ca3af',
-              letterSpacing: '0.05em',
-              borderRadius: 2,
-              display: 'flex',
-              alignItems: 'center',
-              gap: 8,
-              minWidth: 320,
-            }}
-          >
-            <span style={{ color: '#d4a017', fontWeight: 900 }}>WINDOW</span>
-            <span title="From (hours ago)" style={{ color: '#6b7280' }}>{trailWindowFromH.toFixed(1)}h</span>
-            <input
-              type="range"
-              min={0}
-              max={breadcrumbHours}
-              step={0.25}
-              value={trailWindowFromH}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                setTrailWindowFromH(Math.max(v, trailWindowToH + 0.1));
-              }}
-              aria-label="Trail window start (hours ago)"
-              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
-            />
-            <span style={{ color: '#6b7280' }}>now</span>
-            <input
-              type="range"
-              min={0}
-              max={breadcrumbHours}
-              step={0.25}
-              value={trailWindowToH}
-              onChange={(e) => {
-                const v = parseFloat(e.target.value);
-                setTrailWindowToH(Math.min(v, trailWindowFromH - 0.1));
-              }}
-              aria-label="Trail window end (hours ago)"
-              style={{ flex: 1, accentColor: '#d4a017', cursor: 'ew-resize' }}
-            />
-            <span title="To (hours ago)" style={{ color: '#6b7280' }}>{trailWindowToH.toFixed(1)}h</span>
-            <button
-              type="button"
-              onClick={() => { setTrailWindowFromH(breadcrumbHours); setTrailWindowToH(0); }}
-              style={{
-                padding: '1px 5px',
-                background: '#88888820',
-                border: '1px solid #88888850',
-                color: '#a0a0a0',
-                fontSize: 8,
-                fontWeight: 900,
-                fontFamily: 'inherit',
-                cursor: 'pointer',
-                letterSpacing: '0.08em',
-                borderRadius: 2,
-              }}
-              title="Reset window to full fetched range"
-            >
-              RESET
-            </button>
-          </div>
-        )}
-
-        {/* ── Heatmap Legend (bottom-right) ── */}
-        {/* Visible whenever any heatmap variant is on; swaps gradient for
-            the "risk" mode so the legend always matches what's on the map. */}
-        {showHeatmap && (
-          <HeatmapLegend
-            mode={heatmapMode === 'risk' ? 'risk' : 'calls'}
-            hint={`last ${heatmapDays} day${heatmapDays === 1 ? '' : 's'}`}
-            position="bottom-right"
-          />
-        )}
-
         {/* ── Route Info Panel (bottom-left, top on mobile) ── */}
-        {/* Lists one row per active unit route; colors match the polylines
-            (green=fastest, amber=mid, red=slowest) for instant "who's closest"
-            read. Single Clear All action collapses the whole set. */}
-        {activeRoutes.length > 0 && (
+        {activeRoute && (
           <div
             className="absolute z-[1000] backdrop-blur-md"
             style={{
               ...(isMobile
                 ? { top: 56, left: 8, right: 8 }
-                : { bottom: 48, left: 16, minWidth: 220 }),
+                : { bottom: 48, left: 16, minWidth: 200 }),
               background: isLightMapStyle(mapStyle) ? 'rgba(255,255,255,0.92)' : 'rgba(6,12,20,0.95)',
               border: isLightMapStyle(mapStyle) ? '1px solid rgba(136, 136, 136,0.3)' : '1px solid #88888850',
               padding: '8px 14px',
@@ -6046,51 +5544,22 @@ export default function MapPage() {
               boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
               <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em' }}>
-                ROUTES ({activeRoutes.length})
+                {activeRoute.unitCallSign} → {activeRoute.callNumber}
               </span>
               <button
-                onClick={clearAllRoutes}
+                onClick={clearRoute}
                 style={{ background: 'none', border: 'none', color: '#666666', cursor: 'pointer', fontSize: 12, padding: '0 0 0 8px' }}
-                title="Clear all routes"
+                title="Clear route"
               >
                 ✕
               </button>
             </div>
-            {activeRoutes
-              .slice()
-              .sort((a, b) => a.durationSec - b.durationSec)
-              .map((r) => (
-                <div
-                  key={r.unitCallSign}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 8,
-                    padding: '3px 0',
-                    borderTop: '1px solid ' + (isLightMapStyle(mapStyle) ? 'rgba(0,0,0,0.06)' : 'rgba(255,255,255,0.06)'),
-                  }}
-                >
-                  <span
-                    style={{
-                      width: 10,
-                      height: 10,
-                      background: r.color,
-                      display: 'inline-block',
-                      borderRadius: 2,
-                      flexShrink: 0,
-                      boxShadow: `0 0 6px ${r.color}80`,
-                    }}
-                    title="Route color"
-                  />
-                  <span style={{ fontSize: 10, color: '#888888', fontWeight: 900, letterSpacing: '0.05em', minWidth: 70 }}>
-                    {r.unitCallSign}
-                  </span>
-                  <span style={{ fontSize: 13, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{r.eta}</span>
-                  <span style={{ fontSize: 10, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999', marginLeft: 'auto' }}>{r.distance}</span>
-                </div>
-              ))}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
+              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
+            </div>
             {routeLoading && (
               <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
             )}
@@ -6538,18 +6007,18 @@ export default function MapPage() {
                 {/* Breadcrumb time range + color mode */}
                 {showBreadcrumbs && (
                   <div className="px-3 py-2 space-y-2" style={{ background: '#050505', border: '1px solid #2b2b2b' }}>
-                    <div className="flex gap-1 flex-wrap">
-                      {BREADCRUMB_HOUR_PRESETS.map(({ hours: h, label }) => (
+                    <div className="flex gap-1">
+                      {[2, 4, 8, 12, 24].map((h) => (
                         <button
                           key={h}
                           onClick={() => setBreadcrumbHours(h)}
-                          className={`flex-1 min-w-[44px] py-2 text-xs font-bold rounded-sm ${
+                          className={`flex-1 py-2 text-xs font-bold rounded-sm ${
                             breadcrumbHours === h
                               ? 'bg-gray-600 text-white'
                               : 'bg-rmpg-800 text-rmpg-400 hover:bg-rmpg-700'
                           }`}
                         >
-                          {label}
+                          {h}h
                         </button>
                       ))}
                     </div>

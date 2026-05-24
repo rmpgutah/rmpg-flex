@@ -5,12 +5,10 @@
 // ban zones, watch lists, and alert trigger workflows.
 // ============================================================
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { formatEnumValue } from '../utils/formatters';
-import RichTextArea from '../components/RichTextArea';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
-  UserX, Search, Plus, AlertTriangle, Shield, MapPin, User, X, Save, Loader2,
-  Ban, ShieldAlert, ShieldCheck,
+  UserX, Search, Plus, AlertTriangle, Shield, MapPin, Clock, User,
+  X, Save, Loader2, Eye, Ban, ShieldAlert, ShieldCheck,
 } from 'lucide-react';
 import type { OffenderAlert, OffenderAlertType, AlertSeverity } from '../types';
 import PanelTitleBar from '../components/PanelTitleBar';
@@ -137,7 +135,7 @@ function CdocSearchPanel() {
                     selectedOffender.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                     'bg-gray-900/40 text-gray-400 border-gray-700/40'
                   }`}>
-                    {formatEnumValue(selectedOffender.status)}
+                    {selectedOffender.status.toUpperCase()}
                   </span>
                 )}
               </div>
@@ -179,7 +177,7 @@ function CdocSearchPanel() {
                     r.status.toLowerCase().includes('parol') ? 'bg-amber-900/50 text-amber-400 border-amber-700/50' :
                     'bg-rmpg-700 text-rmpg-300 border-rmpg-600'
                   }`}>
-                    {formatEnumValue(r.status)}
+                    {r.status.toUpperCase()}
                   </span>
                 )}
               </div>
@@ -205,6 +203,20 @@ function CdocSearchPanel() {
     </>
   );
 }
+
+const timeAgo = (date: string): string => {
+  if (!date) return '—';
+  const parsed = new Date(date).getTime();
+  if (Number.isNaN(parsed)) return '—';
+  const ms = Date.now() - parsed;
+  const mins = Math.floor(ms / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  const days = Math.floor(hrs / 24);
+  return `${days}d ago`;
+};
 
 export default function OffenderRegistryPage() {
   const isMobile = useIsMobile();
@@ -467,7 +479,7 @@ export default function OffenderRegistryPage() {
                     </span>
                   </div>
                   <span className={`text-[9px] px-1.5 py-0.5 border ${SEVERITY_COLORS[alert.severity] || ''}`}>
-                    {formatEnumValue(alert.severity)}
+                    {alert.severity.toUpperCase()}
                   </span>
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
@@ -504,7 +516,7 @@ export default function OffenderRegistryPage() {
               {/* Badges */}
               <div className="flex items-center gap-2 flex-wrap">
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${SEVERITY_COLORS[selected.severity] || ''}`}>
-                  {formatEnumValue(selected.severity)}
+                  {selected.severity.toUpperCase()}
                 </span>
                 <span className={`text-[10px] px-2 py-1 border rounded-sm font-bold ${TYPE_COLORS[selected.alert_type] || ''}`}>
                   {selected.alert_type.replace(/_/g, ' ').toUpperCase()}
@@ -663,7 +675,7 @@ export default function OffenderRegistryPage() {
 
               <div>
                 <label className="field-label">Description *</label>
-                <RichTextArea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
+                <textarea value={formData.description} onChange={e => setFormData(p => ({ ...p, description: e.target.value }))} rows={3} className={`w-full mt-1 px-2 py-1.5 text-xs bg-surface-sunken border text-white outline-none resize-none ${formErrors.description ? 'border-red-500' : 'border-rmpg-700'}`} />
                 {formErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.description}</p>}
               </div>
 

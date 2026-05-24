@@ -9,7 +9,6 @@ import FormModal from '../../../components/FormModal';
 import type { LeaveRequest, LeaveType } from '../../../types';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 
-import RichTextArea from '../../../components/RichTextArea';
 interface LeaveRequestModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -207,9 +206,9 @@ export default function LeaveRequestModal({
       {/* Reason */}
       <div>
         <label className={labelClass}>Reason</label>
-        <RichTextArea
-          value={reason}
-          onChange={e => setReason(e.target.value)}
+        <textarea
+          value={form.reason}
+          onChange={e => setForm(f => ({ ...f, reason: e.target.value }))}
           rows={3}
           placeholder="Optional — provide context for your request"
           maxLength={2000}

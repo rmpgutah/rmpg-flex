@@ -1,9 +1,8 @@
-import { useId, useEffect } from 'react';
-import { Car } from 'lucide-react';
+import React, { useId, useEffect } from 'react';
+import { Car, Clock } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FleetVehicleStatus } from '../../../types';
 
-import RichTextArea from '../../../components/RichTextArea';
 export interface VehicleFormState {
   vehicle_number: string;
   make: string;
@@ -189,7 +188,7 @@ export default function VehicleFormModal({ isOpen, mode, form, onChange, onSave,
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-              <RichTextArea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
+              <textarea className="input-dark w-full text-[10px] h-16 resize-none min-h-[36px]" value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)} maxLength={3000} />
               <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
             </div>

@@ -1,4 +1,7 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, type MutableRefObject } from 'react';
+import mapboxgl from 'mapbox-gl';
+import { escapeHtml } from '../../../utils/sanitize';
+import { apiFetch } from '../../../hooks/useApi';
 
 const RECENT_SEARCHES_KEY = 'rmpg_map_recent_searches';
 const MAX_RECENT_SEARCHES = 5;

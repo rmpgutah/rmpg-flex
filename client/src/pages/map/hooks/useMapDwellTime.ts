@@ -1,10 +1,5 @@
-// ============================================================
-// RMPG Flex — useMapDwellTime Hook
-// Unit dwell time halos: color-coded rings around units that
-// have been stationary for extended periods.
-// ============================================================
-
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 
 interface DwellTimeRecord {

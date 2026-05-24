@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
+import { mapboxgl } from '../../../utils/mapboxLoader';
 
 interface MapCompassRoseProps {
   mapInstance: mapboxgl.Map | null;

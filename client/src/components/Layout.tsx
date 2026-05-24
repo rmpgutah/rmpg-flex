@@ -1,13 +1,53 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
-  LayoutDashboard, Radio, Map, FileText, Database, Users, MessageSquare,
-  BarChart3, Settings, LogOut, Phone, QrCode, ScrollText, Search, Car,
-  AlertTriangle, FileWarning, Video, ClipboardList, ShieldBan, Monitor, User, Lock,
-  ChevronDown, Shield, X, Calendar, Briefcase, Package, TrendingUp, Construction,
-  ClipboardCheck, UserX, Gavel, Terminal, ExternalLink, CreditCard, Network,
-  Camera, ChevronLeft, ChevronRight, Mail, GraduationCap, Microscope, FolderOpen,
-  Upload,
+  LayoutDashboard,
+  Radio,
+  Map,
+  FileText,
+  Database,
+  Users,
+  MessageSquare,
+  BarChart3,
+  Settings,
+  LogOut,
+  Phone,
+  QrCode,
+  ScrollText,
+  Search,
+  Car,
+  AlertTriangle,
+  FileWarning,
+  Video,
+  ClipboardList,
+  ShieldBan,
+  Monitor,
+  User,
+  Lock,
+  ChevronDown,
+  Shield,
+  Menu,
+  X,
+  Calendar,
+  Briefcase,
+  Package,
+  TrendingUp,
+  Landmark,
+  Construction,
+  Truck,
+  ClipboardCheck,
+  UserX,
+  Gavel,
+  Terminal,
+  ExternalLink,
+  CreditCard,
+  Network,
+  Camera,
+  ChevronLeft,
+  ChevronRight,
+  Mail,
+  GraduationCap,
+  Microscope,
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -40,8 +80,6 @@ import LocationGate from './LocationGate';
 import DispatchAlertBanner, { type AlertBannerItem } from './DispatchAlertBanner';
 import { useDispatchVoiceAlerts } from '../hooks/useDispatchVoiceAlerts';
 import { applyThemePreference } from '../utils/theme';
-// RadioConsole sidebar was removed; radio is accessed via the Comms > Radio menu.
-// Component still exists at ./radio/RadioConsole for use inside RadioPage.
 
 const PAGE_TITLES: Record<string, string> = {
   '/': 'Dashboard',
@@ -58,7 +96,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/warrants': 'Warrants',
   '/citations': 'Citations',
   '/field-interviews': 'Field Interviews',
-  '/document-intake': 'Document Intake',
   '/trespass-orders': 'Trespass Orders',
   '/mdt': 'MDT',
   '/ncic': 'NCIC Terminal',
@@ -83,7 +120,6 @@ const PAGE_TITLES: Record<string, string> = {
   '/training': 'Training Management',
   '/training-docs': 'Training Documents',
   '/serve': 'Process Server',
-  '/documents': 'Documents',
   '/hr': 'HR Console',
   '/admin': 'Admin',
   '/use-of-force': 'Use of Force',
@@ -124,7 +160,6 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/incidents', icon: FileText, label: 'Incidents' },
     { path: '/records', icon: Database, label: 'Records' },
     { path: '/field-interviews', icon: ClipboardList, label: 'Field Interviews' },
-    { path: '/document-intake', icon: Upload, label: 'Document Intake' },
     { path: '/criminal-history', icon: Search, label: 'Criminal History' },
     { path: '/dl-search', icon: CreditCard, label: 'DL Search' },
     { path: '/microbilt', icon: Search, label: 'MicroBilt' },
@@ -141,8 +176,6 @@ const TOOLBAR_NAV: NavItem[] = [
     { path: '/court', icon: Gavel, label: 'Court Tracker' },
     { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
     { path: '/serve', icon: Briefcase, label: 'Process Server' },
-    { path: '/documents', icon: FolderOpen, label: 'Documents' },
-    { path: '/pdf-editor', icon: FileText, label: 'PDF Editor' },
   ]},
   { path: '/personnel', icon: Users, label: 'Personnel', group: 'records', shortcut: 'F8', children: [
     { path: '/personnel', icon: Users, label: 'Personnel' },
@@ -187,7 +220,7 @@ const CONTRACT_MANAGER_BLOCKED_PATHS = new Set([
 
 export default function Layout() {
   const { user, logout, refreshUser } = useAuth();
-  const { isConnected, connectionLost, subscribe } = useWebSocket();
+  const { isConnected, subscribe } = useWebSocket();
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -1463,7 +1496,6 @@ export default function Layout() {
       {!isMobile && (
         <StatusBar
           isConnected={isConnected}
-          connectionLost={connectionLost}
           user={user}
           activeCallCount={activeCallCount}
           callsByPriority={callsByPriority}

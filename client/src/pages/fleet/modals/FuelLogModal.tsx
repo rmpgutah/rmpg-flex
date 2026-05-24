@@ -1,9 +1,8 @@
-import { useId, useEffect } from 'react';
-import { Fuel, DollarSign } from 'lucide-react';
+import React, { useId, useEffect } from 'react';
+import { Fuel, DollarSign, Clock } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import type { FuelType } from '../../../types';
 
-import RichTextArea from '../../../components/RichTextArea';
 export interface FuelFormState {
   fuel_date: string;
   gallons: string;
@@ -172,7 +171,7 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
             </div>
             <div className="col-span-2">
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Notes</label>
-              <RichTextArea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
+              <textarea className="input-dark w-full text-[10px] h-14 resize-none min-h-[36px]" value={form.notes}
                 onChange={(e) => setField('notes', e.target.value)} maxLength={2000} />
               <div className="text-[8px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/2000</div>
             </div>

@@ -8,11 +8,24 @@
 
 import React, { useMemo, useCallback } from 'react';
 import {
-  SlidersHorizontal, Loader2, X, BarChart3, AlertTriangle, Clock, GitCompare,
-  Play, Pause, RotateCw, Check, Zap,
+  SlidersHorizontal,
+  Loader2,
+  X,
+  BarChart3,
+  AlertTriangle,
+  Clock,
+  GitCompare,
+  Play,
+  Pause,
+  RotateCw,
+  Check,
+  Minus,
+  Zap,
 } from 'lucide-react';
 import type {
-  HeatmapAdvancedMode, HeatmapResolution, HeatmapColorScheme,
+  HeatmapAdvancedMode,
+  HeatmapResolution,
+  HeatmapColorScheme,
 } from '../hooks/useMapHeatmapAdvanced';
 
 // ─── Props ──────────────────────────────────────────────────
