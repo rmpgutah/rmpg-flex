@@ -344,6 +344,12 @@ import { mountMicrobiltRoutes } from './routes/microbilt-worker';
 import { mountSexOffenderRegistryRoutes } from './routes/sexOffenderRegistry-worker';
 import { mountAdminMapConfigRoutes } from './routes/adminMapConfig-worker';
 import { mountHowenRoutes } from './routes/howen-worker';
+import { mountAuditRoutes } from './routes/audit-worker';
+import { mountSubjectSearchRoutes } from './routes/subjectSearch-worker';
+import { mountBusinessVehiclesRoutes } from './routes/businessVehicles-worker';
+import { mountBusinessVisitsRoutes } from './routes/businessVisits-worker';
+import { mountBusinessPhotosRoutes } from './routes/businessPhotos-worker';
+import { mountDocumentFoldersRoutes } from './routes/documentFolders-worker';
 
 mountAuthRoutes(app);
 mountDownloadsRoutes(app);
@@ -412,6 +418,12 @@ mountMicrobiltRoutes(app);
 mountSexOffenderRegistryRoutes(app);
 mountAdminMapConfigRoutes(app);
 mountHowenRoutes(app);
+mountAuditRoutes(app);
+mountSubjectSearchRoutes(app);
+mountBusinessVehiclesRoutes(app);
+mountBusinessVisitsRoutes(app);
+mountBusinessPhotosRoutes(app);
+mountDocumentFoldersRoutes(app);
 
 // ─── SPA Fallback (Pages Proxy) ──────────────────────────
 // Non-API requests are proxied to the Pages project (rmpg-flex.pages.dev)
