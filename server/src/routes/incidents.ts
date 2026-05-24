@@ -9,6 +9,7 @@ import { localNow } from '../utils/timeUtils';
 import { identifyBeat } from '../utils/geofence';
 import { geocodeAddress } from '../utils/geocode';
 import { paramStr } from '../utils/reqHelpers';
+import { validateIncidentForNibrs } from '../utils/nibrsValidator';
 
 const router = Router();
 
@@ -830,6 +831,20 @@ router.post('/:id/unarchive', (req: Request, res: Response) => {
   }
 });
 
+// GET /api/incidents/:id/nibrs-validate - Dry-run validator for the submit gate
+router.get('/:id/nibrs-validate', (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const id = Number(paramStr(req.params.id));
+    if (!id) { res.status(400).json({ error: 'Invalid id', code: 'INVALID_ID' }); return; }
+    const result = validateIncidentForNibrs(db, id);
+    res.json(result);
+  } catch (err: any) {
+    console.error('NIBRS validate error:', err);
+    res.status(500).json({ error: 'Failed to run NIBRS validator', code: 'NIBRS_VALIDATE_ERROR' });
+  }
+});
+
 // PUT /api/incidents/:id/submit - Submit for review
 router.put('/:id/submit', (req: Request, res: Response) => {
   try {
@@ -851,6 +866,22 @@ router.put('/:id/submit', (req: Request, res: Response) => {
     if (!incident.narrative || incident.narrative.trim().length === 0) {
       res.status(400).json({ error: 'Narrative is required before submitting', code: 'NARRATIVE_IS_REQUIRED_BEFORE' });
       return;
+    }
+
+    // NIBRS gate — hard block on errors unless admin passes ?force=1.
+    const validation = validateIncidentForNibrs(db, incident.id);
+    const forced = paramStr(req.query.force) === '1' && req.user?.role === 'admin';
+    if (!validation.ok && !forced) {
+      res.status(422).json({
+        error: 'Incident fails NIBRS validation. Resolve errors or, if you are admin, re-submit with ?force=1.',
+        code: 'NIBRS_VALIDATION_FAILED',
+        errors: validation.errors,
+        warnings: validation.warnings,
+      });
+      return;
+    }
+    if (forced && !validation.ok) {
+      auditLog(req, 'ADMIN_OVERRIDE', 'incident', incident.id, `Admin forced NIBRS-invalid submit; ${validation.errors.length} errors bypassed`);
     }
 
     db.prepare(`

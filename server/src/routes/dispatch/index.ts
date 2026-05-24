@@ -9,6 +9,10 @@ import gpsRouter from './gps';
 import aggregatesRouter from './aggregates';
 import panicRouter from './panic';
 import geographyRouter from './geography';
+import runCardsRouter from './runCards';
+import welfareRouter from './welfare';
+import audioModeRouter from './audioMode';
+import recommendedUnitsRouter from './recommendedUnits';
 
 const router = Router();
 
@@ -25,5 +29,9 @@ router.use('/', gpsRouter);
 router.use('/', aggregatesRouter);
 router.use('/', panicRouter);
 router.use('/', geographyRouter);
+router.use('/', runCardsRouter);
+router.use('/', welfareRouter);
+router.use('/', audioModeRouter);
+router.use('/', recommendedUnitsRouter);
 
 export default router;

@@ -9,6 +9,7 @@ import { localNow } from '../utils/timeUtils';
 import { seedUtahStatutes } from '../seeds/utahStatutes';
 // DISPATCH_DISTRICTS legacy constant import removed (Phase 2 of geography rebuild)
 import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
+import { seedNibrsCodes, seedRunCards } from '../seeds/nibrsCodes';
 import { ensureTraccarSchema } from './traccarSchema';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
@@ -1483,6 +1484,182 @@ function createTables(): void {
   `).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_stale_open ON gps_stale_alerts(unit_id, recovered_at)`).run();
   db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_stale_time ON gps_stale_alerts(stale_detected_at)`).run();
+
+  // ─── DI/NB BUNDLE TABLES (added 2026-05-24) ────────────────
+  // Dispatch run cards: priority/flag/backup defaults per incident_type.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS dispatch_run_cards (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_type TEXT NOT NULL UNIQUE,
+      label TEXT NOT NULL,
+      priority TEXT,
+      flags TEXT DEFAULT '[]',
+      min_units INTEGER DEFAULT 1,
+      backup_units INTEGER DEFAULT 0,
+      requires_supervisor INTEGER DEFAULT 0,
+      caution_text TEXT,
+      auto_link_premise INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_run_cards_type ON dispatch_run_cards(incident_type)`).run();
+
+  // NIBRS code tables — reference data for offense, location, weapon, bias, property, loss type.
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS nibrs_offense_codes (
+      code TEXT PRIMARY KEY,
+      description TEXT NOT NULL,
+      crime_against TEXT NOT NULL CHECK(crime_against IN ('Person','Property','Society')),
+      group_class TEXT NOT NULL CHECK(group_class IN ('A','B')),
+      attempted_completed_required INTEGER NOT NULL DEFAULT 1,
+      victim_required INTEGER NOT NULL DEFAULT 1,
+      property_required INTEGER NOT NULL DEFAULT 0,
+      active INTEGER NOT NULL DEFAULT 1
+    )
+  `).run();
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS nibrs_location_codes (
+      code TEXT PRIMARY KEY,
+      description TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1
+    )
+  `).run();
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS nibrs_weapon_codes (
+      code TEXT PRIMARY KEY,
+      description TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1
+    )
+  `).run();
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS nibrs_bias_codes (
+      code TEXT PRIMARY KEY,
+      description TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1
+    )
+  `).run();
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS nibrs_property_codes (
+      code TEXT PRIMARY KEY,
+      description TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1
+    )
+  `).run();
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS nibrs_loss_type_codes (
+      code TEXT PRIMARY KEY,
+      description TEXT NOT NULL,
+      active INTEGER NOT NULL DEFAULT 1
+    )
+  `).run();
+
+  // NIBRS export audit trail (one row per generated flat-file).
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS nibrs_exports (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      ori TEXT NOT NULL,
+      date_from TEXT NOT NULL,
+      date_to TEXT NOT NULL,
+      incident_count INTEGER NOT NULL,
+      segment_count INTEGER NOT NULL,
+      byte_size INTEGER NOT NULL,
+      generated_by INTEGER NOT NULL,
+      forced INTEGER NOT NULL DEFAULT 0,
+      file_sha256 TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (generated_by) REFERENCES users(id)
+    )
+  `).run();
+
+  // DV Lethality supplement (after Maryland Lethality Assessment Program — 22 cols).
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS incident_dv_supplements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_id INTEGER NOT NULL UNIQUE,
+      relationship TEXT,
+      living_situation TEXT,
+      victim_age INTEGER,
+      suspect_age INTEGER,
+      children_present INTEGER DEFAULT 0,
+      children_count INTEGER,
+      weapon_threatened INTEGER DEFAULT 0,
+      weapon_type TEXT,
+      strangulation INTEGER DEFAULT 0,
+      threats_to_kill INTEGER DEFAULT 0,
+      controls_daily_activities INTEGER DEFAULT 0,
+      jealousy INTEGER DEFAULT 0,
+      prior_dv_history INTEGER DEFAULT 0,
+      prior_dv_calls INTEGER,
+      protective_order_active INTEGER DEFAULT 0,
+      protective_order_violations INTEGER,
+      lethality_score INTEGER,
+      lethality_high_danger INTEGER DEFAULT 0,
+      hotline_referral INTEGER DEFAULT 0,
+      shelter_referral INTEGER DEFAULT 0,
+      notes TEXT,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_dv_supp_incident ON incident_dv_supplements(incident_id)`).run();
+
+  // Pursuit supplement (CALEA 41.2.2 — 37 cols).
+  db.prepare(`
+    CREATE TABLE IF NOT EXISTS incident_pursuit_supplements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      incident_id INTEGER NOT NULL UNIQUE,
+      pursuit_initiated_at TEXT,
+      pursuit_terminated_at TEXT,
+      initiating_offense TEXT,
+      offense_classification TEXT,
+      pursuit_outcome TEXT,
+      termination_reason TEXT,
+      pursuing_units TEXT,
+      primary_unit_id INTEGER,
+      supervisor_id INTEGER,
+      supervisor_authorized INTEGER DEFAULT 0,
+      supervisor_terminated INTEGER DEFAULT 0,
+      max_speed_mph INTEGER,
+      total_distance_miles REAL,
+      total_duration_seconds INTEGER,
+      jurisdictions_crossed TEXT,
+      weather_conditions TEXT,
+      road_conditions TEXT,
+      traffic_density TEXT,
+      time_of_day TEXT,
+      tactics_used TEXT,
+      stop_sticks_deployed INTEGER DEFAULT 0,
+      pit_maneuver_attempted INTEGER DEFAULT 0,
+      pit_maneuver_successful INTEGER DEFAULT 0,
+      roadblock_used INTEGER DEFAULT 0,
+      ramming_used INTEGER DEFAULT 0,
+      injuries_officer INTEGER DEFAULT 0,
+      injuries_suspect INTEGER DEFAULT 0,
+      injuries_bystander INTEGER DEFAULT 0,
+      fatalities INTEGER DEFAULT 0,
+      vehicle_damage_estimate REAL,
+      property_damage_estimate REAL,
+      suspect_apprehended INTEGER DEFAULT 0,
+      use_of_force INTEGER DEFAULT 0,
+      review_status TEXT DEFAULT 'pending' CHECK(review_status IN ('pending','reviewed','within_policy','out_of_policy')),
+      reviewer_id INTEGER,
+      reviewed_at TEXT,
+      narrative TEXT,
+      created_by INTEGER NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+      FOREIGN KEY (primary_unit_id) REFERENCES units(id),
+      FOREIGN KEY (supervisor_id) REFERENCES users(id),
+      FOREIGN KEY (reviewer_id) REFERENCES users(id),
+      FOREIGN KEY (created_by) REFERENCES users(id)
+    )
+  `).run();
+  db.prepare(`CREATE INDEX IF NOT EXISTS idx_pursuit_supp_incident ON incident_pursuit_supplements(incident_id)`).run();
 }
 
 /**
@@ -5498,6 +5675,41 @@ function migrateSchema(): void {
   addCol('units', 'gps_source', 'TEXT');           // 'device'|'manual'|'dispatch'|'mdtWebSocket' — GPS source priority
   addCol('units', 'gps_updated_at', 'TEXT');        // ISO timestamp of last GPS position update
 
+  // ── DI-5 silent dispatch: per-unit audio mode (normal | silent | vibrate) ──
+  addCol('units', 'audio_mode', "TEXT DEFAULT 'normal'");
+
+  // ── NB-5 incident_links: allow 'field_interview' linked_type ──
+  // The original CHECK constraint omits 'field_interview'. SQLite can't ALTER a CHECK in place,
+  // so rebuild the table. Idempotent: only runs if the constraint is missing the new value.
+  try {
+    const sql = db.prepare(`SELECT sql FROM sqlite_master WHERE type='table' AND name='incident_links'`).get() as { sql: string } | undefined;
+    if (sql && !sql.sql.includes('field_interview')) {
+      const rebuild = db.transaction(() => {
+        db.prepare(`
+          CREATE TABLE incident_links_new (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            incident_id INTEGER NOT NULL,
+            linked_type TEXT NOT NULL CHECK(linked_type IN ('incident','call','case','warrant','citation','arrest','field_interview')),
+            linked_id INTEGER NOT NULL,
+            link_reason TEXT,
+            added_by INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+            FOREIGN KEY (incident_id) REFERENCES incidents(id) ON DELETE CASCADE,
+            FOREIGN KEY (added_by) REFERENCES users(id),
+            UNIQUE(incident_id, linked_type, linked_id)
+          )
+        `).run();
+        db.prepare(`INSERT INTO incident_links_new SELECT * FROM incident_links`).run();
+        db.prepare(`DROP TABLE incident_links`).run();
+        db.prepare(`ALTER TABLE incident_links_new RENAME TO incident_links`).run();
+      });
+      rebuild();
+      console.log('[migrate] incident_links CHECK rebuilt to include field_interview');
+    }
+  } catch (err: any) {
+    console.warn('[migrate] incident_links CHECK rebuild skipped:', err?.message);
+  }
+
   // ── Traccar device-to-unit mapping table ──
   db.prepare(`
     CREATE TABLE IF NOT EXISTS traccar_device_map (
@@ -7054,6 +7266,10 @@ function seedData(): void {
   }
 
   console.log('Seed data initialized (admin user + system config).');
+
+  // ─── DI/NB BUNDLE SEEDS (idempotent — only seed empty tables) ────
+  try { seedRunCards(db); } catch (err: any) { console.warn('[seed] run cards skipped:', err?.message); }
+  try { seedNibrsCodes(db); } catch (err: any) { console.warn('[seed] NIBRS codes skipped:', err?.message); }
 
   // ─── AI MODEL PRESETS (seed defaults if empty) ────
   const existingPresets = db.prepare('SELECT COUNT(*) as count FROM ai_model_presets').get() as { count: number };

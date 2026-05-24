@@ -11,7 +11,7 @@
 //   const name = paramStr(req.query.name, 'Unknown');
 
 export function paramStr(
-  value: string | string[] | undefined,
+  value: unknown,
   fallback = ''
 ): string {
   if (typeof value === 'string') return value;
@@ -20,7 +20,7 @@ export function paramStr(
 }
 
 export function paramNum(
-  value: string | string[] | undefined,
+  value: unknown,
   fallback = 0
 ): number {
   const s = paramStr(value);

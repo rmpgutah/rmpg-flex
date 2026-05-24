@@ -9,6 +9,7 @@ import { generateIncidentNumber } from '../../utils/caseNumbers';
 import { createNotification, createNotificationForRoles } from '../notifications';
 import { universalWarrantCheck } from '../../utils/universalWarrantScanner';
 import { auditLog } from '../../utils/auditLogger';
+import { pushPremiseAlertsToUnit } from '../../utils/premiseAlertsForCall';
 import { createServeQueueFromCall } from '../../utils/serveQueueLinker';
 import { sendCsv } from '../../utils/csvExport';
 import { isLegalTransition, LEGAL_TRANSITIONS } from './callLifecycle';
@@ -324,6 +325,11 @@ router.post('/calls/:id/assign-unit', validateParamIdMiddleware, requireRole('ad
       WHERE u.id = ?
     `).get(unit_id);
     if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
+
+    // DI-3: Push any premise alerts at the call location to the assigned officer's MDT.
+    // Best-effort: silent on failure (don't fail the assign because alerting hiccupped).
+    try { pushPremiseAlertsToUnit(db, Number(unit_id), call.id); }
+    catch (e: any) { console.warn('[Dispatch] premise alert push failed:', e?.message); }
 
     res.json(updated);
   } catch (error: any) {

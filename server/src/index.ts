@@ -46,6 +46,8 @@ try {
 import authRoutes from './routes/auth';
 import dispatchRoutes from './routes/dispatch';
 import incidentRoutes from './routes/incidents';
+import nibrsRoutes from './routes/nibrs';
+import incidentSupplementsRoutes from './routes/incidentSupplements';
 import recordsRoutes from './routes/records';
 import businessVehiclesRoutes from './routes/businessVehicles';
 import subjectSearchRoutes from './routes/subjectSearch';
@@ -383,7 +385,10 @@ app.use('/owntracks', owntracksDeprecatedRouter);
 // ─── API Routes ───────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/dispatch', dispatchRoutes);
+// Supplements mount first so /:id/supplements/* doesn't get shadowed by /:id handlers in incidentRoutes.
+app.use('/api/incidents', incidentSupplementsRoutes);
 app.use('/api/incidents', incidentRoutes);
+app.use('/api/nibrs', nibrsRoutes);
 app.use('/api/records/subjects', subjectSearchRoutes);
 app.use('/api/records', recordsRoutes);
 app.use('/api/business-vehicles', businessVehiclesRoutes);

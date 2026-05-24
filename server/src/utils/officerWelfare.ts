@@ -207,3 +207,47 @@ export function acknowledgeWelfareCheck(userId: number): string | null {
 export function getActiveWatchCount(): number {
   return watches.size;
 }
+
+/**
+ * Officer requested help — immediately escalates to stage 3 (all-units broadcast)
+ * regardless of how long they've been silent. Returns the watch info, or null
+ * if the user has no active welfare watch.
+ */
+export function requestHelp(userId: number): { callSign: string; callNumber: string; callId: number } | null {
+  const watch = watches.get(userId);
+  if (!watch) return null;
+
+  watch.checksSent = 3;
+  watch.escalated = true;
+  const silentMs = Date.now() - watch.lastActivity;
+  const message = `OFFICER REQUESTING HELP: ${watch.callSign} on call ${watch.callNumber}. All units respond.`;
+
+  broadcastDispatchUpdate({
+    action: 'welfare_emergency',
+    userId,
+    callSign: watch.callSign,
+    callId: watch.callId,
+    callNumber: watch.callNumber,
+    message,
+    silentMinutes: Math.round(silentMs / 60000),
+    helpRequested: true,
+  });
+
+  return { callSign: watch.callSign, callNumber: watch.callNumber, callId: watch.callId };
+}
+
+/**
+ * Snooze the welfare timer — pushes lastActivity forward by `minutes`
+ * and clears the current prompt state. Capped at 30 minutes to prevent
+ * runaway snoozing. Returns the new "next check at" time, or null if
+ * no active watch.
+ */
+export function snoozeWelfareWatch(userId: number, minutes: number): number | null {
+  const watch = watches.get(userId);
+  if (!watch) return null;
+  const capped = Math.max(1, Math.min(minutes, 30));
+  watch.lastActivity = Date.now() + capped * 60 * 1000;
+  watch.checksSent = 0;
+  watch.escalated = false;
+  return watch.lastActivity + INITIAL_CHECK_MS;
+}
