@@ -206,6 +206,12 @@ app.use('/api/integrations/*', authMiddleware);
 app.use('/api/audit', authMiddleware);
 app.use('/api/audit/*', authMiddleware);
 app.route('/api/audit', audit);
+// Document folders — hierarchical browser backed by document_folders +
+// attachments. Migration 0024_document_folders adds the folders table
+// + a folder_id column to attachments (NULL = unfoldered, legacy).
+app.use('/api/documents', authMiddleware);
+app.use('/api/documents/*', authMiddleware);
+app.route('/api/documents', documentFolders);
 // geocode proxy — must mount BEFORE the /api/integrations stubs
 // catch-all so /api/integrations/mapbox/client-token resolves here
 // instead of returning a stub. /api/geocode/search is the Nominatim
