@@ -79,6 +79,7 @@ import patrol from './routes/patrol';
 import serveIntake from './routes/serveIntake';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
+import serve from './routes/serve';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -205,6 +206,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
+  { prefix: '/api/serve', router: serve, auth: 'required',
+    note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
