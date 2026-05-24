@@ -19,8 +19,21 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../types';
+import { authMiddleware } from '../middleware/auth';
 
 const geocode = new Hono<Env>();
+
+// Auth lives inside this router (not at the registry level) because
+// the router mounts at the bare /api prefix to expose both
+// /api/geocode/* and /api/integrations/mapbox/client-token. If we
+// marked the registry entry as `auth: 'required'`, the loop in
+// src/index.ts would call `app.use('/api/*', authMiddleware)` which
+// blanket-blocks EVERY /api/* path — including /api/auth/login.
+// Login then 401s with "Authentication required" and nobody can sign
+// in. (Incident 2026-05-24: that's exactly what happened to the
+// admin recovery flow.) Move the auth concern inside so the registry
+// can keep this entry as `public` without leaving the routes open.
+geocode.use('*', authMiddleware);
 
 const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 const USER_AGENT = 'RMPG-Flex-Dispatch/1.0 (https://rmpgutah.us)';

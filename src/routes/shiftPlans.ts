@@ -21,8 +21,20 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { authMiddleware } from '../middleware/auth';
 
 const sp = new Hono<Env>();
+
+// Auth is enforced INSIDE the router instead of via the registry's
+// per-prefix loop. The router mounts at the bare `/api` prefix so it
+// can serve `/api/shift-plans/*`, `/api/shift-swaps/*`, etc. under a
+// single mount — but `auth: 'required'` in the registry would cause
+// the loop in `src/index.ts` to register `app.use('/api/*',
+// authMiddleware)`, blanket-blocking every public route including
+// `/api/auth/login` (see PR #627 incident). Same pattern the geocode
+// router uses post-#627: register here, mark the registry entry
+// `auth: 'public'`.
+sp.use('*', authMiddleware);
 
 // ── Helpers ─────────────────────────────────────────────────
 

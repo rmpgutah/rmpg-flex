@@ -67,6 +67,7 @@ import documentFolders from './routes/documents/folders';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import trespassOrders from './routes/trespassOrders';
+import forensics from './routes/forensics';
 import shiftPlans from './routes/shiftPlans';
 import stubs from './routes/stubs';
 // Dispatch domain
@@ -179,8 +180,10 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/citations', router: citations, auth: 'required' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
-  { prefix: '/api', router: shiftPlans, auth: 'required',
-    note: 'Mounts at /api to serve /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications' },
+  { prefix: '/api/forensics', router: forensics, auth: 'required',
+    note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api', router: shiftPlans, auth: 'public',
+    note: 'Mounts at /api to serve /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. auth: "public" here is deliberate — the router enforces auth INSIDE itself via `sp.use("*", authMiddleware)`. Using `auth: "required"` would make the registry loop register `app.use("/api/*", authMiddleware)`, blanket-blocking every public route including /api/auth/login (see PR #627 incident, same pattern as geocode).' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
 
   // ── Documents ──────────────────────────────────────────────
@@ -194,8 +197,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
 
   // ── Geocode (BEFORE /api/integrations stubs catch-all) ─────
-  { prefix: '/api', router: geocode, auth: 'required',
-    note: 'Mounts at root /api to serve /api/geocode/* and /api/integrations/mapbox/client-token' },
+  { prefix: '/api', router: geocode, auth: 'public',
+    note: 'Mounts at root /api to serve /api/geocode/* and /api/integrations/mapbox/client-token. MUST be public at the registry level — marking `required` here would make the auth loop add app.use(/api/*, authMiddleware) which blanket-blocks every /api/* path including /api/auth/login. The geocode router self-applies authMiddleware on its own routes; see src/routes/geocode.ts.' },
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants', router: warrants, auth: 'required' },
