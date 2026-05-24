@@ -4,6 +4,7 @@ import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken, requireRole } from '../worker-middleware/auth';
 import { D1Db, localNow } from '../worker-middleware/d1Helpers';
 import { auditLog } from '../worker-middleware/auditLogger';
+import { deriveCryptoKey } from './integrations-worker';
 
 const CONFIG_KEY = 'map_settings';
 const CATEGORY = 'map_settings';
@@ -79,14 +80,41 @@ export function mountAdminMapConfigRoutes(app: Hono<{ Bindings: Env; Variables: 
   });
 
   // GET /api/admin/mapbox-config - Fix dead endpoint in mapboxLoader.ts
+  // Checks env var first, then DB (which stores raw on Worker — no encryption).
   api.get('/mapbox-config', async (c) => {
     try {
+      const envToken = ((c.env as any).MAPBOX_ACCESS_TOKEN || '').trim();
+      if (envToken) {
+        return c.json({ mapbox_access_token: envToken });
+      }
+
       const db = new D1Db(c.env.DB);
       const row = await db.prepare(
         "SELECT config_value FROM system_config WHERE config_key = 'mapbox_access_token' AND is_active = 1 LIMIT 1"
       ).get() as { config_value: string } | null;
 
-      return c.json({ mapbox_access_token: row?.config_value || '' });
+      // Attempt decryption in case token was stored in encrypted format,
+      // fall back to raw value
+      let token = row?.config_value || '';
+      if (token && token.includes(':') && c.env.JWT_SECRET) {
+        try {
+          const key = await deriveCryptoKey(String(c.env.JWT_SECRET));
+          const parts = token.split(':');
+          if (parts.length === 3) {
+            const fromHex = (hex: string) => new Uint8Array(hex.match(/.{2}/g)!.map(b => parseInt(b, 16)));
+            const iv = fromHex(parts[0]);
+            const authTag = fromHex(parts[1]);
+            const ciphertext = fromHex(parts[2]);
+            const combined = new Uint8Array(ciphertext.length + authTag.length);
+            combined.set(ciphertext);
+            combined.set(authTag, ciphertext.length);
+            const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, combined);
+            token = new TextDecoder().decode(decrypted);
+          }
+        } catch { /* not encrypted — use raw */ }
+      }
+
+      return c.json({ mapbox_access_token: token });
     } catch (error: any) {
       return c.json({ mapbox_access_token: '' });
     }

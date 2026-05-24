@@ -19,6 +19,26 @@ export interface MapSettings {
   clustering_enabled: boolean;
   cluster_radius: number;
   cluster_max_zoom: number;
+  default_pitch: number;
+  default_bearing: number;
+  min_pitch: number;
+  max_pitch: number;
+  scroll_zoom: boolean;
+  box_zoom: boolean;
+  drag_rotate: boolean;
+  drag_pan: boolean;
+  double_click_zoom: boolean;
+  touch_zoom_rotate: boolean;
+  cooperative_gestures: boolean;
+  show_compass: boolean;
+  show_zoom_controls: boolean;
+  keyboard_enabled: boolean;
+  language: string;
+  render_world_copies: boolean;
+  fade_duration: number;
+  click_tolerance: number;
+  local_ideograph_font_family: string;
+  cross_source_collisions: boolean;
 }
 
 const DEFAULT_MAP_SETTINGS: MapSettings = {
@@ -39,6 +59,26 @@ const DEFAULT_MAP_SETTINGS: MapSettings = {
   clustering_enabled: true,
   cluster_radius: 50,
   cluster_max_zoom: 14,
+  default_pitch: 0,
+  default_bearing: 0,
+  min_pitch: 0,
+  max_pitch: 85,
+  scroll_zoom: true,
+  box_zoom: true,
+  drag_rotate: true,
+  drag_pan: true,
+  double_click_zoom: true,
+  touch_zoom_rotate: true,
+  cooperative_gestures: false,
+  show_compass: true,
+  show_zoom_controls: true,
+  keyboard_enabled: true,
+  language: '',
+  render_world_copies: true,
+  fade_duration: 300,
+  click_tolerance: 3,
+  local_ideograph_font_family: '',
+  cross_source_collisions: true,
 };
 
 let cachedConfig: MapSettings | null = null;

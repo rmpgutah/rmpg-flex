@@ -563,10 +563,11 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
         },
       }, 201);
     } catch (err: any) {
+      const detail = err instanceof Error ? err.message : String(err);
       return c.json({
-        error: 'Intake processing failed',
+        error: `Intake processing failed — ${detail}`,
         code: 'INTAKE_PROCESSING_FAILED',
-        detail: err instanceof Error ? err.message : String(err),
+        detail,
       }, 500);
     }
   });

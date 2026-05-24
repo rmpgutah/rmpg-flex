@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { getDb } from '../models/database';
 import { authenticateToken, requireRole } from '../middleware/auth';
 import { localNow } from '../utils/timeUtils';
+import { decryptApiKey } from '../utils/serveManagerClient';
 
 const router = Router();
 router.use(authenticateToken);
@@ -27,6 +28,26 @@ const DEFAULT_SETTINGS = {
   clustering_enabled: true,
   cluster_radius: 50,
   cluster_max_zoom: 14,
+  default_pitch: 0,
+  default_bearing: 0,
+  min_pitch: 0,
+  max_pitch: 85,
+  scroll_zoom: true,
+  box_zoom: true,
+  drag_rotate: true,
+  drag_pan: true,
+  double_click_zoom: true,
+  touch_zoom_rotate: true,
+  cooperative_gestures: false,
+  show_compass: true,
+  show_zoom_controls: true,
+  keyboard_enabled: true,
+  language: '',
+  render_world_copies: true,
+  fade_duration: 300,
+  click_tolerance: 3,
+  local_ideograph_font_family: '',
+  cross_source_collisions: true,
 };
 
 // GET /api/admin/map-config - Get full map settings

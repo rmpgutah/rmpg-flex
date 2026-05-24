@@ -7,7 +7,7 @@ import { D1Db, paramNum, localNow } from '../worker-middleware/d1Helpers';
 
 // ── Web Crypto helpers (Workers-compatible AES-256-GCM + HMAC) ──
 
-async function deriveCryptoKey(jwtSecret: string): Promise<CryptoKey> {
+export async function deriveCryptoKey(jwtSecret: string): Promise<CryptoKey> {
   const encoder = new TextEncoder();
   const keyMaterial = await crypto.subtle.digest('SHA-256', encoder.encode(jwtSecret));
   return await crypto.subtle.importKey('raw', keyMaterial, 'AES-256-GCM', false, ['encrypt', 'decrypt']);
