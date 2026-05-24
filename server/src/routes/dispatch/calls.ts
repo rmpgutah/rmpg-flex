@@ -5,7 +5,7 @@ import { validateParamId, validateParamIdMiddleware, escapeLike } from '../../mi
 import { generateCallNumber, generateCaseNumber } from '../../utils/caseNumbers';
 import { sendCsv } from '../../utils/csvExport';
 import { localNow, localToday } from '../../utils/timeUtils';
-import { geocodeCallIfNeeded } from '../../utils/geocode';
+import { geocodeCallIfNeeded, regeocodeCallAddress } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
@@ -1193,6 +1193,21 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('caller_relationship', caller_relationship);
     addField('location_address', location_address);
     addField('property_id', property_id);
+    // Detect address change with no explicit coords — keep the existing
+    // lat/lng in place (so the marker stays visible at the old location)
+    // and queue an out-of-band force-re-geocode. On success, the helper
+    // updates coords + beat + broadcasts call_updated and the marker
+    // moves. On failure, the marker stays at the old location rather
+    // than disappearing.
+    const addressChanged =
+      location_address !== undefined &&
+      location_address !== null &&
+      String(location_address).trim() !== String(call.location_address || '').trim();
+    const explicitCoordsProvided =
+      (latitude !== undefined && latitude !== null && latitude !== '') ||
+      (longitude !== undefined && longitude !== null && longitude !== '');
+    const shouldRegeocode = addressChanged && !explicitCoordsProvided;
+
     // Protect lat/lng from being wiped — only update if a real numeric value is provided
     if (latitude !== undefined && latitude !== null && latitude !== '') {
       updates.push('latitude = ?'); params.push(Number(latitude));
@@ -1397,9 +1412,16 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       WHERE c.id = ?
     `).get(req.params.id) as any;
 
-    // If location changed but no coordinates provided, geocode asynchronously
-    if (location_address && latitude == null && longitude == null) {
-      geocodeCallIfNeeded(updated.id, location_address, updated.latitude, updated.longitude);
+    // If location_address changed and the caller didn't supply explicit
+    // coords, force-re-geocode out of band. geocodeCallIfNeeded bails when
+    // coords already exist (which is correct for the create path), so for
+    // address edits on an already-geocoded call we use the force variant.
+    if (shouldRegeocode) {
+      regeocodeCallAddress(updated.id, String(location_address));
+    } else if (location_address && updated.latitude == null && updated.longitude == null) {
+      // Address present but row never got geocoded (e.g. created without
+      // coords, never edited). Use the if-needed variant.
+      geocodeCallIfNeeded(updated.id, String(location_address), updated.latitude, updated.longitude);
     }
 
     broadcastDispatchUpdate({ action: 'call_updated', call: updated });

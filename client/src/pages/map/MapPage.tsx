@@ -795,20 +795,45 @@ export default function MapPage() {
     // Server broadcasts 'dispatch_update' type for call events
     // Unit state is now fully handled by 'unit_update' events (enriched with call details),
     // so no need to re-fetch all units on every dispatch event.
+    // Statuses excluded from /dispatch/queue (the map's source-of-truth fetch) —
+    // keep this in sync with aggregates.ts queue endpoint's WHERE clause.
+    const INACTIVE_STATUSES = new Set(['closed', 'completed', 'cleared', 'cancelled']);
+    const isInactive = (s: any) => typeof s === 'string' && INACTIVE_STATUSES.has(s.toLowerCase());
+
     const unsubscribeCall = subscribe('dispatch_update', (msg: any) => {
       const evtData = msg.data || msg;
+
+      // Handle deletions explicitly — call_deleted broadcasts carry call_id, not call
+      if (evtData?.action === 'call_deleted') {
+        const deletedId = evtData.call_id ?? evtData.call?.id;
+        if (deletedId != null) {
+          setCalls((prev) => prev.filter((c) => c.id !== deletedId));
+        }
+        return;
+      }
+
+      // Bulk operations don't carry per-call data — fall back to a silent refresh
+      if (
+        evtData?.action === 'calls_bulk_updated' ||
+        evtData?.action === 'calls_bulk_archived' ||
+        evtData?.action === 'calls_auto_closed'
+      ) {
+        fetchAllDataRef.current?.({ silent: true });
+        return;
+      }
+
       if (evtData && evtData.call) {
         setCalls((prev) => {
           const index = prev.findIndex((c) => c.id === evtData.call.id);
           if (index >= 0) {
             const updated = [...prev];
             updated[index] = { ...updated[index], ...evtData.call };
-            if (evtData.call.status === 'closed' || evtData.call.status === 'completed') {
+            if (isInactive(evtData.call.status)) {
               return updated.filter((c) => c.id !== evtData.call.id);
             }
             return updated;
           }
-          if (evtData.call.status !== 'closed' && evtData.call.status !== 'completed') {
+          if (!isInactive(evtData.call.status)) {
             return [...prev, evtData.call];
           }
           return prev;
