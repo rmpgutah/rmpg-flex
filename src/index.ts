@@ -43,6 +43,7 @@ import documentIntake from './routes/documentIntake';
 import documentFolders from './routes/documents/folders';
 import audit from './routes/audit';
 import citations from './routes/citations';
+import arrests from './routes/arrests';
 import cases from './routes/cases';
 import fieldInterviews from './routes/fieldInterviews';
 import businessVehicles from './routes/business/vehicles';
@@ -243,6 +244,13 @@ app.route('/api/audit', audit);
 app.use('/api/citations', authMiddleware);
 app.use('/api/citations/*', authMiddleware);
 app.route('/api/citations', citations);
+// Arrests — manual booking subset only. JailBase poller endpoints
+// (credentials/toggle/poller/sync/etc) deferred to Phase 2 per plan.
+// Inline role checks inside the route file (officer+ for most writes,
+// admin/manager for delete, supervisor+ for CSV export).
+app.use('/api/arrests', authMiddleware);
+app.use('/api/arrests/*', authMiddleware);
+app.route('/api/arrests', arrests);
 // Cases (investigative case management). MVP scope: core CRUD,
 // workflow (submit-review/approve/status/archive), notes,
 // solvability scoring, persons junction, export. Entity junction
