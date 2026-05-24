@@ -50,16 +50,18 @@ const TOKEN_KEY = 'rmpg_token';
  * compatibility (but this is what caused TOKEN_EXPIRED errors).
  */
 export function authUrl(path: string, sig?: string, exp?: number): string {
-  const separator = path.includes('?') ? '&' : '?';
+  // Strip any existing token= param to prevent duplicates on re-render
+  const cleanPath = path.replace(/([?&])token=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+  const separator = cleanPath.includes('?') ? '&' : '?';
 
   // Prefer HMAC signature — session-independent, 24h TTL
   if (sig && exp) {
-    return `${path}${separator}sig=${encodeURIComponent(sig)}&exp=${exp}`;
+    return `${cleanPath}${separator}sig=${encodeURIComponent(sig)}&exp=${exp}`;
   }
 
   // Fallback to JWT token (short-lived, same session only)
   const token = localStorage.getItem(TOKEN_KEY) || '';
-  return `${path}${separator}token=${encodeURIComponent(token)}`;
+  return `${cleanPath}${separator}token=${encodeURIComponent(token)}`;
 }
 
 /**

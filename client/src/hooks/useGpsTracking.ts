@@ -828,7 +828,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       }
     };
 
-    requestWakeLock();
+    // Only request when page is visible — prevents NotAllowedError on browsers
+    // that require a user gesture for WakeLock permission
+    if (document.visibilityState === 'visible') {
+      requestWakeLock();
+    }
 
     // Re-acquire wake lock when page becomes visible again
     const handleVisibility = () => {

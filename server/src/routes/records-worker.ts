@@ -1749,6 +1749,348 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     return c.json({ results, total: results.length });
   });
 
+  // ═══════════════════════════════════════════════════════════
+  // SYSTEM HISTORY
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/persons/:id/system-history - Aggregated system history
+  api.get('/persons/:id/system-history', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const person = await db.prepare('SELECT * FROM persons WHERE id = ?').get(id) as any;
+      if (!person) return c.json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }, 404);
+
+      const [warrantsResult, incidentsResult, citationsResult] = await Promise.all([
+        db.prepare(`
+          SELECT id, warrant_number, type, status, charge_description,
+            offense_level, statute_citation, created_at as date_issued, expires_at
+          FROM warrants WHERE subject_person_id = ?
+          ORDER BY CASE WHEN status = 'active' THEN 0 ELSE 1 END, created_at DESC LIMIT 1000
+        `).all(id).catch(() => []),
+        db.prepare(`
+          SELECT i.id, i.incident_number, i.incident_type, i.status, i.priority,
+            i.narrative as description, i.created_at, ip.role
+          FROM incident_persons ip JOIN incidents i ON ip.incident_id = i.id
+          WHERE ip.person_id = ? ORDER BY i.created_at DESC LIMIT 1000
+        `).all(id).catch(() => []),
+        db.prepare(`
+          SELECT id, citation_number, type, status, statute_citation,
+            violation_description, offense_level, fine_amount,
+            violation_date, violation_time, location,
+            issuing_officer_name, court_date, court_name
+          FROM citations WHERE person_id = ?
+          ORDER BY CASE WHEN status = 'issued' THEN 0 WHEN status = 'contested' THEN 1 ELSE 2 END,
+            violation_date DESC LIMIT 1000
+        `).all(id).catch(() => []),
+      ]);
+
+      const warrants = (warrantsResult as any[]) || [];
+      const incidents = (incidentsResult as any[]) || [];
+      const citations = (citationsResult as any[]) || [];
+
+      let calls: any[] = [];
+      try {
+        calls = await db.prepare(`
+          SELECT DISTINCT c.id, c.call_number, c.incident_type, c.priority,
+            c.status, c.location_address as location, c.created_at
+          FROM incident_persons ip JOIN incidents i ON ip.incident_id = i.id
+          JOIN calls_for_service c ON i.call_id = c.id
+          WHERE ip.person_id = ? AND i.call_id IS NOT NULL
+          ORDER BY c.created_at DESC LIMIT 1000
+        `).all(id) as any[];
+      } catch { calls = []; }
+
+      let bolo_active = false;
+      try {
+        const flags = person.flags ? JSON.parse(person.flags) : [];
+        bolo_active = Array.isArray(flags) && flags.some((f: string) => typeof f === 'string' && f.toLowerCase() === 'bolo');
+      } catch { bolo_active = false; }
+
+      const active_warrants = warrants.filter((w: any) => w.status === 'active').length;
+      const active_citations = citations.filter((c: any) => c.status === 'issued' || c.status === 'contested').length;
+
+      return c.json({
+        warrants, incidents, calls, citations, bolo_active,
+        summary: {
+          total_warrants: warrants.length, active_warrants,
+          total_incidents: incidents.length, total_calls: calls.length,
+          total_citations: citations.length, active_citations,
+        },
+      });
+    } catch (err: any) {
+      console.error('Get person system-history error:', err);
+      return c.json({ error: 'Failed to get person system-history', code: 'GET_PERSON_SYSTEMHISTORY_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // CRIMINAL HISTORY
+  // ═══════════════════════════════════════════════════════════
+
+  function getRecordLabel(db: D1Db, type: string, id: number): string {
+    try {
+      switch (type) {
+        case 'person': {
+          const p = db.prepare('SELECT first_name, last_name FROM persons WHERE id = ?').get(id) as any;
+          return p ? `${p.first_name} ${p.last_name}` : `Person #${id}`;
+        }
+        case 'vehicle': {
+          const v = db.prepare('SELECT make, model, plate_number FROM vehicles_records WHERE id = ?').get(id) as any;
+          return v ? `${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() : `Vehicle #${id}`;
+        }
+        case 'property': {
+          const pr = db.prepare('SELECT name FROM properties WHERE id = ?').get(id) as any;
+          return pr ? pr.name : `Property #${id}`;
+        }
+        case 'evidence': {
+          const e = db.prepare('SELECT evidence_number, description FROM evidence WHERE id = ?').get(id) as any;
+          return e ? `${e.evidence_number || ''} ${e.description || ''}`.trim() : `Evidence #${id}`;
+        }
+        default:
+          return `${type} #${id}`;
+      }
+    } catch {
+      return `${type} #${id}`;
+    }
+  }
+
+  // GET /api/records/persons/:id/criminal-history
+  api.get('/persons/:id/criminal-history', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const rows = await db.prepare(`
+        SELECT ch.*, u.first_name || ' ' || u.last_name as created_by_name
+        FROM criminal_history ch LEFT JOIN users u ON ch.created_by = u.id
+        WHERE ch.person_id = ? ORDER BY ch.offense_date DESC, ch.created_at DESC LIMIT 1000
+      `).all(id);
+      return c.json(rows);
+    } catch (err: any) {
+      console.error('Get criminal history error:', err);
+      return c.json({ error: 'Failed to get criminal history', code: 'GET_CRIMINAL_HISTORY_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/persons/:id/criminal-history
+  api.post('/persons/:id/criminal-history', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const personId = paramNum(c.req.param('id'));
+      const body = await c.req.json();
+      const {
+        record_type, offense, offense_level, statute, case_number,
+        agency, jurisdiction, offense_date, disposition, disposition_date,
+        sentence, source, notes,
+      } = body;
+
+      if (!offense) return c.json({ error: 'Offense is required', code: 'OFFENSE_IS_REQUIRED' }, 400);
+
+      const result = await db.prepare(`
+        INSERT INTO criminal_history
+          (person_id, record_type, offense, offense_level, statute, case_number,
+           agency, jurisdiction, offense_date, disposition, disposition_date,
+           sentence, source, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        personId, record_type || 'other', offense, offense_level || null,
+        statute || null, case_number || null, agency || null,
+        jurisdiction || null, offense_date || null, disposition || null,
+        disposition_date || null, sentence || null, source || null,
+        notes || null, user.userId,
+      );
+
+      const newRecord = await db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(Number(result.meta.last_row_id));
+      return c.json(newRecord, 201);
+    } catch (err: any) {
+      console.error('Create criminal history error:', err);
+      return c.json({ error: 'Failed to create criminal history', code: 'CREATE_CRIMINAL_HISTORY_ERROR' }, 500);
+    }
+  });
+
+  // PUT /api/records/criminal-history/:id
+  api.put('/criminal-history/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const body = await c.req.json();
+
+      const fieldMap: Record<string, (v: any) => any> = {
+        record_type: v => v ?? null, offense: v => v ?? null,
+        offense_level: v => v ?? null, statute: v => v ?? null,
+        case_number: v => v ?? null, agency: v => v ?? null,
+        jurisdiction: v => v ?? null, offense_date: v => v ?? null,
+        disposition: v => v ?? null, disposition_date: v => v ?? null,
+        sentence: v => v ?? null, source: v => v ?? null, notes: v => v ?? null,
+      };
+      const sets: string[] = [];
+      const values: any[] = [];
+      for (const [key, transform] of Object.entries(fieldMap)) {
+        if (Object.prototype.hasOwnProperty.call(body, key)) {
+          sets.push(`${key} = ?`);
+          values.push(transform(body[key]));
+        }
+      }
+      if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }, 400);
+      sets.push("updated_at = datetime('now','localtime')");
+      values.push(id);
+      await db.prepare(`UPDATE criminal_history SET ${sets.join(', ')} WHERE id = ?`).run(...values);
+
+      const updated = await db.prepare('SELECT * FROM criminal_history WHERE id = ?').get(id);
+      return c.json(updated);
+    } catch (err: any) {
+      console.error('Update criminal history error:', err);
+      return c.json({ error: 'Failed to update criminal history', code: 'UPDATE_CRIMINAL_HISTORY_ERROR' }, 500);
+    }
+  });
+
+  // DELETE /api/records/criminal-history/:id
+  api.delete('/criminal-history/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      await db.prepare('DELETE FROM criminal_history WHERE id = ?').run(id);
+      return c.json({ success: true });
+    } catch (err: any) {
+      console.error('Delete criminal history error:', err);
+      return c.json({ error: 'Failed to delete criminal history', code: 'DELETE_CRIMINAL_HISTORY_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // CLIENT-PERSON LINKS (person-specific)
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/persons/:id/clients - Get clients linked to a person
+  api.get('/persons/:id/clients', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const rows = await db.prepare(`
+        SELECT cp.*, c.name as client_name, c.contact_name, c.contact_phone,
+               c.status as client_status, c.address as client_address,
+               u.full_name as created_by_name
+        FROM client_persons cp
+        JOIN clients c ON cp.client_id = c.id
+        LEFT JOIN users u ON cp.created_by = u.id
+        WHERE cp.person_id = ?
+        ORDER BY cp.is_primary DESC, c.name LIMIT 1000
+      `).all(id);
+      return c.json(rows);
+    } catch (err: any) {
+      console.error('Get person clients error:', err);
+      return c.json({ error: 'Failed to get person clients', code: 'GET_PERSON_CLIENTS_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // RECORD LINKS
+  // ═══════════════════════════════════════════════════════════
+
+  // GET /api/records/links - Get all links for an entity (both directions)
+  api.get('/links', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const type = c.req.query('type');
+      const idStr = c.req.query('id');
+
+      if (!type || !idStr) {
+        return c.json({ error: 'type and id query parameters are required', code: 'TYPE_AND_ID_QUERY' }, 400);
+      }
+
+      const id = Number(idStr);
+      const links = await db.prepare(`
+        SELECT rl.*, u.full_name as created_by_name
+        FROM record_links rl LEFT JOIN users u ON rl.created_by = u.id
+        WHERE (rl.source_type = ? AND rl.source_id = ?) OR (rl.target_type = ? AND rl.target_id = ?)
+        ORDER BY rl.created_at DESC LIMIT 1000
+      `).all(type, id, type, id) as any[];
+
+      const enriched = links.map((link: any) => {
+        const isSource = link.source_type === type && String(link.source_id) === String(id);
+        const linkedType = isSource ? link.target_type : link.source_type;
+        const linkedId = isSource ? link.target_id : link.source_id;
+        return {
+          ...link,
+          linked_type: linkedType,
+          linked_id: linkedId,
+          linked_label: getRecordLabel(db, linkedType, linkedId),
+        };
+      });
+
+      return c.json(enriched);
+    } catch (err: any) {
+      console.error('Get record links error:', err);
+      return c.json({ error: 'Failed to get record links', code: 'GET_RECORD_LINKS_ERROR' }, 500);
+    }
+  });
+
+  // POST /api/records/links - Create a record link
+  api.post('/links', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const body = await c.req.json();
+      const { source_type, source_id, target_type, target_id, relationship, notes } = body;
+
+      if (!source_type || !source_id || !target_type || !target_id) {
+        return c.json({ error: 'source_type, source_id, target_type, and target_id are required', code: 'SOURCETYPE_SOURCEID_TARGETTYPE_AND' }, 400);
+      }
+
+      if (source_type === target_type && String(source_id) === String(target_id)) {
+        return c.json({ error: 'Cannot link a record to itself', code: 'CANNOT_LINK_A_RECORD' }, 400);
+      }
+
+      const result = await db.prepare(`
+        INSERT INTO record_links (source_type, source_id, target_type, target_id, relationship, notes, created_by)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(source_type, source_id, target_type, target_id, relationship || 'associated', notes || null, user.userId);
+
+      const sourceLabel = getRecordLabel(db, source_type, Number(source_id));
+      const targetLabel = getRecordLabel(db, target_type, Number(target_id));
+      await db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'record_linked', 'record_link', ?, ?, ?, ?)
+      `).run(user.userId, result.meta.last_row_id ?? 0, `Linked ${source_type} "${sourceLabel}" to ${target_type} "${targetLabel}"`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      const created = await db.prepare(`
+        SELECT rl.*, u.full_name as created_by_name
+        FROM record_links rl LEFT JOIN users u ON rl.created_by = u.id WHERE rl.id = ?
+      `).get(Number(result.meta.last_row_id));
+
+      return c.json(created, 201);
+    } catch (err: any) {
+      if (err?.message?.includes('UNIQUE constraint failed')) {
+        return c.json({ error: 'This link already exists', code: 'THIS_LINK_ALREADY_EXISTS' }, 409);
+      }
+      console.error('Create record link error:', err);
+      return c.json({ error: 'Failed to create record link', code: 'CREATE_RECORD_LINK_ERROR' }, 500);
+    }
+  });
+
+  // DELETE /api/records/links/:id - Remove a record link
+  api.delete('/links/:id', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      const link = await db.prepare('SELECT * FROM record_links WHERE id = ?').get(id) as any;
+      if (!link) return c.json({ error: 'Link not found', code: 'LINK_NOT_FOUND' }, 404);
+
+      const user = c.get('user');
+      await db.prepare('DELETE FROM record_links WHERE id = ?').run(id);
+      await db.prepare(`
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+        VALUES (?, 'record_unlinked', 'record_link', ?, ?, ?, ?)
+      `).run(user.userId, id, `Removed link between ${link.source_type} #${link.source_id} and ${link.target_type} #${link.target_id}`, c.req.header('x-forwarded-for') || 'unknown', localNow());
+
+      return c.json({ success: true });
+    } catch (err: any) {
+      console.error('Delete record link error:', err);
+      return c.json({ error: 'Failed to delete record link', code: 'DELETE_RECORD_LINK_ERROR' }, 500);
+    }
+  });
+
   // Mount all records routes under /records
   app.route('/api/records', api);
 }
