@@ -55,6 +55,9 @@ crons = ["0 */4 * * *"]
 # from main until we either re-export the class or explicitly authorize
 # dropping the orphan instances. Authorizing the drop since the class
 # was never live on main.
+# Tag must be unique vs any previously-applied migration on this Worker.
+# Wrangler skips already-applied tags — a fresh distinctive tag forces
+# the deletion through.
 [[migrations]]
-tag = "v1"
+tag = "drop-welfare-watch-do-2026-05-24"
 deleted_classes = ["WelfareWatchDO"]
