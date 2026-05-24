@@ -22,6 +22,7 @@ import type { Env } from '../worker';
 import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken, requireRole } from '../worker-middleware/auth';
 import { D1Db, localNow } from '../worker-middleware/d1Helpers';
+import { broadcastDispatchUpdate, sendToUser } from '../worker-middleware/websocket';
 
 const ALL_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'] as const;
 
@@ -42,13 +43,13 @@ export function mountWelfareRoutes(app: Hono<{ Bindings: Env; Variables: { user:
         `).run(user.userId, user.userId, 'Code 4 ack received', c.req.header('cf-connecting-ip') || 'unknown');
       } catch { /* non-fatal */ }
 
-      // TODO(DO): when WelfareWatchDO lands, also call its acknowledge()
-      // method to clear the in-memory watch for this user.
-
-      return c.json({
-        success: true,
-        message: 'Code 4 ack received.',
+      broadcastDispatchUpdate({
+        action: 'welfare_cleared',
+        user_id: user.userId,
+        at: localNow(),
       });
+
+      return c.json({ success: true, message: 'Code 4 ack received.' });
     } catch (err) {
       console.error('[welfare] ack error', err);
       return c.json({ error: 'Failed to ack welfare check', code: 'WELFARE_ACK_ERR' }, 500);
@@ -90,10 +91,8 @@ export function mountWelfareRoutes(app: Hono<{ Bindings: Env; Variables: { user:
           c.req.header('cf-connecting-ip') || 'unknown');
       } catch { /* non-fatal */ }
 
-      // TODO(DO): broadcast 'welfare_emergency' to every connected client.
-      // Until the websocket DO is wired up, the help event is logged and
-      // returned in the response; supervisor dashboards can poll
-      // activity_log for 'welfare_help_requested' rows as a fallback.
+      // Emergency broadcast — every connected client hears this.
+      broadcastDispatchUpdate(payload);
 
       return c.json({ success: true, broadcast: payload });
     } catch (err) {
@@ -102,16 +101,54 @@ export function mountWelfareRoutes(app: Hono<{ Bindings: Env; Variables: { user:
     }
   });
 
-  // POST /welfare/snooze — Reset activity timer only
+  // POST /welfare/snooze — Officer dismisses prompt; record audit row.
+  // Automated escalation timer (Express setInterval+Map) deferred to a
+  // future Durable Object. Client-side modal dismiss moves the UI forward.
   api.post('/welfare/snooze', requireRole(...ALL_ROLES), async (c) => {
     try {
-      // TODO(DO): call WelfareWatchDO.recordActivity(userId) to bump the
-      // in-memory lastActivity timestamp. On the no-DO interim path this
-      // is a no-op so the officer can still dismiss the modal client-side.
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user') as JwtPayload;
+      try {
+        await db.prepare(`
+          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+          VALUES (?, 'welfare_snooze', 'user', ?, ?, ?)
+        `).run(user.userId, user.userId, 'Welfare prompt snoozed (5 min)', c.req.header('cf-connecting-ip') || 'unknown');
+      } catch { /* non-fatal */ }
       return c.json({ success: true, message: 'Welfare timer reset.' });
     } catch (err) {
       console.error('[welfare] snooze error', err);
       return c.json({ error: 'Failed to snooze welfare check', code: 'WELFARE_SNOOZE_ERR' }, 500);
+    }
+  });
+
+  // POST /welfare/prompt/:userId — manual prompt trigger (Spillman parity).
+  // Dispatcher pushes a welfare check to an officer's MDT, which opens the
+  // takeover modal client-side. The human-driven path replaces the deferred
+  // timer-driven one until WelfareWatchDO lands.
+  api.post('/welfare/prompt/:userId', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const targetUserId = parseInt(c.req.param('userId') || '', 10);
+      if (!Number.isFinite(targetUserId) || targetUserId <= 0) {
+        return c.json({ error: 'Invalid userId', code: 'INVALID_USERID' }, 400);
+      }
+      const unit = await db.prepare('SELECT id, call_sign, current_call_id FROM units WHERE officer_id = ?').get(targetUserId) as any;
+      const callContext = unit?.current_call_id
+        ? await db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(unit.current_call_id) as any
+        : null;
+
+      const delivered = sendToUser(targetUserId, 'welfare_check', {
+        action: 'welfare_prompt',
+        callSign: unit?.call_sign || null,
+        callId: callContext?.id ?? null,
+        callNumber: callContext?.call_number ?? null,
+        message: `Welfare check: ${unit?.call_sign || 'unit'}, are you code 4${callContext ? ` on call ${callContext.call_number}` : ''}?`,
+      });
+
+      return c.json({ success: true, delivered, callSign: unit?.call_sign });
+    } catch (err) {
+      console.error('[welfare] prompt error', err);
+      return c.json({ error: 'Failed to send welfare prompt', code: 'WELFARE_PROMPT_ERR' }, 500);
     }
   });
 

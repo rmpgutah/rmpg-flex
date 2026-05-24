@@ -373,12 +373,43 @@ export function mountIncidentRoutes(app: Hono<{ Bindings: Env; Variables: { user
       if (!['draft', 'returned'].includes(incident.status) && user.role !== 'admin') return c.json({ error: 'Can only submit draft or returned incidents', code: 'CAN_ONLY_SUBMIT_DRAFT' }, 400);
       if (!incident.narrative?.trim()) return c.json({ error: 'Narrative is required before submitting', code: 'NARRATIVE_IS_REQUIRED_BEFORE' }, 400);
 
+      // NB-2: NIBRS validation gate. Errors block submit; warnings pass
+      // through and are returned in the response for the UI. Admin
+      // bypass with ?force=1 is logged as ADMIN_OVERRIDE.
+      const { validateIncidentForNibrs } = await import('../worker-middleware/nibrsValidator');
+      const validation = await validateIncidentForNibrs(db, id!);
+      const force = c.req.query('force') === '1' && user.role === 'admin';
+      if (!validation.valid && !force) {
+        return c.json({
+          error: 'Incident fails NIBRS validation',
+          code: 'NIBRS_VALIDATION_FAILED',
+          validation,
+        }, 422);
+      }
+      if (!validation.valid && force) {
+        await auditLog(db, c, 'ADMIN_OVERRIDE', 'incident', id!,
+          `Admin God Mode: bypassed NIBRS validation (${validation.errors.length} errors)`);
+      }
+
       await db.prepare("UPDATE incidents SET status = 'submitted', updated_at = ? WHERE id = ?").run(localNow(), id);
-      await auditLog(db, c, 'incident_submitted', 'incident', id, `Submitted ${incident.incident_number} for review`);
+      await auditLog(db, c, 'incident_submitted', 'incident', id!, `Submitted ${incident.incident_number} for review`);
       const updated = await db.prepare('SELECT * FROM incidents WHERE id = ?').get(id);
-      return c.json(updated);
+      return c.json({ ...(updated as any), validation });
     } catch (err: any) {
       return c.json({ error: 'Failed to submit incident', code: 'SUBMIT_INCIDENT_ERROR' }, 500);
+    }
+  });
+
+  // GET /:id/nibrs-validate — Preview NIBRS validation (no state change)
+  api.get('/:id/nibrs-validate', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const id = paramNum(c.req.param('id'));
+      if (id == null) return c.json({ error: 'Invalid incident id', code: 'INVALID_ID' }, 400);
+      const { validateIncidentForNibrs } = await import('../worker-middleware/nibrsValidator');
+      return c.json(await validateIncidentForNibrs(db, id));
+    } catch {
+      return c.json({ error: 'Failed to validate', code: 'NIBRS_VALIDATE_ERR' }, 500);
     }
   });
 

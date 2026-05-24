@@ -86,9 +86,35 @@ export async function getPremiseAlertsNear(db: D1Db, lat: number, lng: number): 
   }
 }
 
-// TODO(DO): pushPremiseAlertsToUnit(unitId, callId, callNumber, alerts)
-// requires a Durable Object that holds connected MDT WebSockets keyed
-// by user_id. When that lands, this module gets a second export that
-// looks up the unit's officer_id and forwards via the DO. Until then,
-// the dispatcher's /api/dispatch/calls/:id/warnings response is the
-// only delivery surface for premise hazards.
+/**
+ * Look up the user_id for a given unit (units.officer_id) and push the
+ * premise alerts to that officer's MDT via the per-isolate WebSocket
+ * connection map. Returns the number of WS clients that received the
+ * payload (0 if the officer is offline or signed into a different
+ * isolate).
+ */
+export async function pushPremiseAlertsToUnit(args: {
+  db: D1Db;
+  unitId: number | string;
+  callId: number | string;
+  callNumber: string;
+  alerts: PremiseAlertNear[];
+}): Promise<number> {
+  if (args.alerts.length === 0) return 0;
+  try {
+    const row = await args.db.prepare('SELECT officer_id FROM units WHERE id = ?').get(args.unitId) as { officer_id: number | null } | undefined;
+    const userId = row?.officer_id;
+    if (userId == null) return 0;
+    // Inline import to avoid circular dependency at module-init time
+    const { sendToUser } = await import('./websocket');
+    return sendToUser(userId, 'premise_alert_for_unit', {
+      call_id: args.callId,
+      call_number: args.callNumber,
+      unit_id: args.unitId,
+      alerts: args.alerts,
+      pushed_at: new Date().toISOString(),
+    });
+  } catch {
+    return 0;
+  }
+}
