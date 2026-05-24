@@ -504,7 +504,11 @@ export async function apiFetch<T>(
     // got rendered as just "Failed to update call".
     const base = errData.error || errData.message || `Request failed with status ${res.status}`;
     const diag = errData.details || errData.detail;
-    throw new Error(diag ? `${base}: ${diag}` : base);
+    const error = new Error(diag ? `${base}: ${diag}` : base) as Error & { status?: number; payload?: any; code?: string };
+    error.status = res.status;
+    error.payload = errData;
+    error.code = errData.code;
+    throw error;
   }
 
   return res.json();

@@ -88,17 +88,62 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
   // All dispatch routes require auth
   api.use('/*', authenticateToken);
 
-  // ── Index creation (runs on first request) ──────────────
-  let indexesCreated = false;
-  async function ensureIndexes(db: D1Db): Promise<void> {
-    if (indexesCreated) return;
+  // ── Schema + index reconciliation (runs on first request) ───
+  // D1 migrations don't define the call_persons/call_vehicles/call_businesses
+  // link tables (they were better-sqlite3-only in the legacy stack). Worker
+  // self-heals at first request so the dispatch ↔ records bridge works on a
+  // freshly-bootstrapped D1.
+  let schemaReady = false;
+  async function ensureSchema(db: D1Db): Promise<void> {
+    if (schemaReady) return;
     try {
       await db.prepare(`CREATE INDEX IF NOT EXISTS idx_calls_lat_lng_created ON calls_for_service(latitude, longitude, created_at)`).run();
       await db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_breadcrumbs_unit_recorded ON gps_breadcrumbs(unit_id, recorded_at)`).run();
       await db.prepare(`CREATE INDEX IF NOT EXISTS idx_gps_breadcrumbs_call_sign_recorded ON gps_breadcrumbs(call_sign, recorded_at)`).run();
-      indexesCreated = true;
-    } catch { /* non-fatal */ }
+
+      await db.prepare(`CREATE TABLE IF NOT EXISTS call_persons (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        call_id INTEGER NOT NULL,
+        person_id INTEGER NOT NULL,
+        role TEXT,
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+      )`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_call_persons_call ON call_persons(call_id)`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_call_persons_person ON call_persons(person_id)`).run();
+      await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_persons_unique ON call_persons(call_id, person_id)`).run();
+
+      await db.prepare(`CREATE TABLE IF NOT EXISTS call_vehicles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        call_id INTEGER NOT NULL,
+        vehicle_id INTEGER NOT NULL,
+        role TEXT,
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+      )`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_call_vehicles_call ON call_vehicles(call_id)`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_call_vehicles_vehicle ON call_vehicles(vehicle_id)`).run();
+      await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_vehicles_unique ON call_vehicles(call_id, vehicle_id)`).run();
+
+      await db.prepare(`CREATE TABLE IF NOT EXISTS call_businesses (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        call_id INTEGER NOT NULL,
+        business_id INTEGER NOT NULL,
+        role TEXT DEFAULT 'involved',
+        notes TEXT,
+        added_by INTEGER,
+        created_at TEXT DEFAULT (datetime('now','localtime'))
+      )`).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_call_businesses_call ON call_businesses(call_id)`).run();
+      await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS idx_call_businesses_unique ON call_businesses(call_id, business_id)`).run();
+
+      schemaReady = true;
+    } catch { /* non-fatal — every CREATE is IF NOT EXISTS */ }
   }
+  // Back-compat alias for existing callers in this file.
+  const ensureIndexes = ensureSchema;
 
   // ═══════════════════════════════════════════════════════════
   // CALLS
@@ -1392,26 +1437,759 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
   // CALL ACTIONS (read-only endpoints)
   // ═══════════════════════════════════════════════════════════
 
-  // GET /api/dispatch/calls/:id/persons - Persons linked to a call
+  // ── Shared row-shape SELECTs (kept in one place for parity between GET/POST/PUT) ──
+  const SELECT_CALL_PERSON = `
+    SELECT cp.id, cp.call_id, cp.person_id, cp.role, cp.notes, cp.added_by, cp.created_at,
+      p.first_name, p.last_name, p.middle_name, p.dob, p.phone,
+      p.address, p.city, p.state, p.zip, p.race, p.gender, p.height, p.weight,
+      p.hair_color, p.eye_color, p.flags, p.dl_number, p.dl_state,
+      p.caution_flags, p.is_sex_offender, p.gang_affiliation, p.probation_parole,
+      u.full_name AS added_by_name
+    FROM call_persons cp
+    LEFT JOIN persons p ON cp.person_id = p.id
+    LEFT JOIN users u ON cp.added_by = u.id
+  `;
+  const SELECT_CALL_VEHICLE = `
+    SELECT cv.id, cv.call_id, cv.vehicle_id, cv.role, cv.notes, cv.added_by, cv.created_at,
+      v.make, v.model, v.year, v.color, v.plate_number, v.state AS plate_state,
+      v.vin, v.body_style, v.secondary_color, v.stolen_status, v.stolen_date,
+      op.first_name AS owner_first_name, op.last_name AS owner_last_name,
+      u.full_name AS added_by_name
+    FROM call_vehicles cv
+    LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+    LEFT JOIN persons op ON v.owner_person_id = op.id
+    LEFT JOIN users u ON cv.added_by = u.id
+  `;
+
+  // ── PERSONS on a call ─────────────────────────────────────────
   api.get('/calls/:id/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
+    await ensureSchema(db);
     const callId = paramNum(c.req.param('id'));
-    const persons = await db.prepare(`
-      SELECT cp.*, p.* FROM call_persons cp
-      JOIN persons p ON cp.person_id = p.id WHERE cp.call_id = ?
-    `).all(callId);
-    return c.json(persons);
+    const rows = await db.prepare(`${SELECT_CALL_PERSON} WHERE cp.call_id = ? ORDER BY cp.created_at ASC LIMIT 1000`).all(callId);
+    return c.json(rows);
   });
 
-  // GET /api/dispatch/calls/:id/vehicles - Vehicles linked to a call
+  api.post('/calls/:id/persons', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      await ensureSchema(db);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      const body = await c.req.json<any>();
+      const { person_id, role, notes } = body || {};
+
+      const call = await db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+      if (!person_id || !role) return c.json({ error: 'person_id and role are required', code: 'PERSON_ID_AND_ROLE_REQUIRED' }, 400);
+
+      const person = await db.prepare(
+        'SELECT id, first_name, last_name, caution_flags, is_sex_offender, gang_affiliation, probation_parole, flags FROM persons WHERE id = ?'
+      ).get(person_id) as any;
+      if (!person) return c.json({ error: 'Person not found', code: 'PERSON_NOT_FOUND' }, 404);
+
+      const existing = await db.prepare('SELECT id FROM call_persons WHERE call_id = ? AND person_id = ?').get(call.id, person_id);
+      if (existing) return c.json({ error: 'Person already linked to this call', code: 'PERSON_ALREADY_LINKED' }, 409);
+
+      // Other active calls this person is currently linked to (operator hint)
+      let otherCallLinks: any[] = [];
+      try {
+        otherCallLinks = await db.prepare(`
+          SELECT cp.call_id, c.call_number, c.incident_type, c.status, cp.role
+          FROM call_persons cp
+          JOIN calls_for_service c ON cp.call_id = c.id
+          WHERE cp.person_id = ? AND cp.call_id != ?
+            AND c.status NOT IN ('cleared','closed','cancelled','archived')
+          LIMIT 5
+        `).all(person_id, call.id) as any[];
+      } catch { /* non-fatal */ }
+
+      const result = await db.prepare(
+        'INSERT INTO call_persons (call_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+      ).run(call.id, person_id, role, notes || null, user?.userId ?? null);
+
+      const linked = (await db.prepare(`${SELECT_CALL_PERSON} WHERE cp.id = ?`).get(Number(result.meta.last_row_id))) as any
+        || { id: Number(result.meta.last_row_id) };
+
+      await auditLog(db, c, 'person_linked', 'call', call.id,
+        `Linked ${person.first_name ?? ''} ${person.last_name ?? ''} as ${role} to call ${call.call_number}`.trim());
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_person_linked', call_id: call.id, person: linked });
+      } catch { /* non-fatal */ }
+
+      // Surface safety alerts so the dispatcher sees them in the same toast
+      const responseData: any = { ...linked };
+      const alerts: string[] = [];
+      if (person.caution_flags) alerts.push(`CAUTION: ${person.caution_flags}`);
+      if (person.is_sex_offender) alerts.push('SEX OFFENDER');
+      if (person.gang_affiliation && String(person.gang_affiliation).trim() && String(person.gang_affiliation).toLowerCase() !== 'none') {
+        alerts.push(`GANG: ${person.gang_affiliation}`);
+      }
+      if (person.probation_parole && String(person.probation_parole).trim() && String(person.probation_parole).toLowerCase() !== 'none') {
+        alerts.push('PROBATION/PAROLE');
+      }
+      if (person.flags && String(person.flags).includes('ACTIVE_WARRANT')) alerts.push('ACTIVE WARRANT');
+      if (alerts.length > 0) responseData._safety_alerts = alerts;
+      if (otherCallLinks.length > 0) {
+        responseData._active_call_links = otherCallLinks;
+        responseData._warning = `Person is also linked to ${otherCallLinks.length} other active call(s)`;
+      }
+
+      return c.json(responseData, 201);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to link call person', code: 'LINK_CALL_PERSON_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  // POST /api/dispatch/calls/:id/persons/quick-add
+  // Fused find-or-create-then-link. Lets a dispatcher type a name + DOB and
+  // attach the person to a CFS in a single round-trip, with duplicate
+  // detection so MNI doesn't fragment.
+  //
+  // Body: { first_name, last_name, dob?, role (required), notes?,
+  //         ...any other PERSON_FIELD_MAP field,
+  //         merge_into_id?: number,   // pick an existing candidate
+  //         force_create?: boolean }  // create new despite duplicates
+  //
+  // Outcomes:
+  //   201 { created: true,  person, link }  — new person created and linked
+  //   201 { created: false, person, link }  — existing person linked (merge_into_id)
+  //   409 { code: 'DUPLICATE_CANDIDATES', candidates: [...] } — caller must choose
+  //   400 / 404 / 409 (already linked) as appropriate
+  api.post('/calls/:id/persons/quick-add', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      await ensureSchema(db);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      const body = await c.req.json<any>();
+      const { role, notes, merge_into_id, force_create, ...personFields } = body || {};
+
+      const call = await db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+      if (!role) return c.json({ error: 'role is required', code: 'ROLE_REQUIRED' }, 400);
+
+      let personId: number;
+      let createdNew = false;
+
+      if (merge_into_id) {
+        const existing = await db.prepare('SELECT id FROM persons WHERE id = ?').get(merge_into_id) as any;
+        if (!existing) return c.json({ error: 'merge_into_id not found', code: 'MERGE_TARGET_NOT_FOUND' }, 404);
+        personId = existing.id;
+      } else {
+        if (!personFields.first_name || !personFields.last_name) {
+          return c.json({ error: 'first_name and last_name are required', code: 'FIRSTNAME_AND_LASTNAME_REQUIRED' }, 400);
+        }
+
+        // Duplicate detection — last_name + first_name (case-insensitive), and DOB if provided
+        const dupConditions: string[] = ['LOWER(last_name) = LOWER(?)', 'LOWER(first_name) = LOWER(?)'];
+        const dupParams: any[] = [personFields.last_name, personFields.first_name];
+        if (personFields.dob) {
+          dupConditions.push('dob = ?');
+          dupParams.push(personFields.dob);
+        }
+        const candidates = await db.prepare(`
+          SELECT id, first_name, last_name, middle_name, dob, address, city, state, dl_number, phone,
+            caution_flags, is_sex_offender, flags
+          FROM persons WHERE ${dupConditions.join(' AND ')}
+          ORDER BY last_name, first_name LIMIT 10
+        `).all(...dupParams) as any[];
+
+        if (candidates.length > 0 && !force_create) {
+          return c.json({
+            code: 'DUPLICATE_CANDIDATES',
+            message: `Found ${candidates.length} possible match(es). Resend with merge_into_id to link an existing record, or force_create:true to create a new one.`,
+            candidates,
+          }, 409);
+        }
+
+        // Create — reuse PERSON_FIELD_MAP shape from records-worker.ts so any column the
+        // records side accepts is also accepted here. Kept inline (not exported) to avoid
+        // cross-file coupling; the field set is intentionally conservative for dispatch
+        // quick-add (the dispatcher can fill in the rest later via the full edit screen).
+        const allowed = new Set([
+          'first_name', 'last_name', 'middle_name', 'suffix', 'dob', 'gender', 'race', 'sex',
+          'height', 'weight', 'hair_color', 'eye_color', 'build', 'complexion',
+          'address', 'city', 'state', 'zip', 'phone', 'phone_secondary', 'email',
+          'dl_number', 'dl_state', 'ssn_last4', 'ncic_number',
+          'employer', 'occupation', 'language', 'place_of_birth',
+          'caution_flags', 'gang_affiliation', 'probation_parole',
+          'scars_marks_tattoos', 'clothing_description', 'notes',
+          'aka_names', 'aliases', 'alias_nickname',
+        ]);
+        const cols: string[] = [];
+        const placeholders: string[] = [];
+        const vals: any[] = [];
+        for (const [k, v] of Object.entries(personFields)) {
+          if (allowed.has(k) && v !== undefined) {
+            cols.push(k);
+            placeholders.push('?');
+            vals.push(v ?? null);
+          }
+        }
+        const now = localNow();
+        cols.push('created_at', 'updated_at');
+        placeholders.push('?', '?');
+        vals.push(now, now);
+
+        const insertResult = await db.prepare(
+          `INSERT INTO persons (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`
+        ).run(...vals);
+        personId = Number(insertResult.meta.last_row_id);
+        createdNew = true;
+
+        await auditLog(db, c, 'CREATE', 'person', personId,
+          `Quick-added ${personFields.first_name} ${personFields.last_name}${personFields.dob ? ` DOB:${personFields.dob}` : ''} via call ${call.call_number}${force_create ? ' (force_create overrode duplicate check)' : ''}`);
+      }
+
+      // Link (or return 409 if already linked)
+      const alreadyLinked = await db.prepare('SELECT id FROM call_persons WHERE call_id = ? AND person_id = ?').get(call.id, personId);
+      if (alreadyLinked) {
+        return c.json({ error: 'Person already linked to this call', code: 'PERSON_ALREADY_LINKED', person_id: personId }, 409);
+      }
+      const linkResult = await db.prepare(
+        'INSERT INTO call_persons (call_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+      ).run(call.id, personId, role, notes || null, user?.userId ?? null);
+
+      const person = await db.prepare('SELECT * FROM persons WHERE id = ?').get(personId);
+      const link = await db.prepare(`${SELECT_CALL_PERSON} WHERE cp.id = ?`).get(Number(linkResult.meta.last_row_id));
+
+      await auditLog(db, c, 'person_linked', 'call', call.id,
+        `Linked person ${personId} as ${role} to call ${call.call_number}${createdNew ? ' (auto-created)' : merge_into_id ? ' (merged into existing)' : ''}`);
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_person_linked', call_id: call.id, person: link });
+      } catch { /* non-fatal */ }
+
+      return c.json({ created: createdNew, person, link }, 201);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to quick-add person', code: 'QUICK_ADD_PERSON_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  api.put('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const callId = paramNum(c.req.param('id'));
+      const linkId = paramNum(c.req.param('linkId'));
+      const body = await c.req.json<any>();
+
+      const link = await db.prepare('SELECT * FROM call_persons WHERE id = ? AND call_id = ?').get(linkId, callId) as any;
+      if (!link) return c.json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' }, 404);
+
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const f of ['role', 'notes']) {
+        if (body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(body[f] ?? null); }
+      }
+      if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
+      vals.push(link.id);
+      await db.prepare(`UPDATE call_persons SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+
+      const updated = await db.prepare(`${SELECT_CALL_PERSON} WHERE cp.id = ?`).get(link.id);
+      await auditLog(db, c, 'person_link_updated', 'call', callId, `Updated link ${link.id} on call ${callId}`);
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_person_updated', call_id: callId, link_id: link.id });
+      } catch { /* non-fatal */ }
+
+      return c.json(updated);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to update call person', code: 'UPDATE_CALL_PERSON_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  api.delete('/calls/:id/persons/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const callId = paramNum(c.req.param('id'));
+      const linkId = paramNum(c.req.param('linkId'));
+
+      const link = await db.prepare(`
+        SELECT cp.id, cp.person_id, p.first_name, p.last_name
+        FROM call_persons cp LEFT JOIN persons p ON cp.person_id = p.id
+        WHERE cp.id = ? AND cp.call_id = ?
+      `).get(linkId, callId) as any;
+      if (!link) return c.json({ error: 'Person link not found', code: 'PERSON_LINK_NOT_FOUND' }, 404);
+
+      const call = await db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(callId) as any;
+      await db.prepare('DELETE FROM call_persons WHERE id = ?').run(link.id);
+      await auditLog(db, c, 'person_unlinked', 'call', callId,
+        `Unlinked ${link.first_name ?? ''} ${link.last_name ?? ''} from call ${call?.call_number ?? callId}`.trim());
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_person_unlinked', call_id: callId, link_id: link.id });
+      } catch { /* non-fatal */ }
+
+      return c.json({ success: true });
+    } catch (err: any) {
+      return c.json({ error: 'Failed to unlink call person', code: 'UNLINK_CALL_PERSON_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  // ── VEHICLES on a call ────────────────────────────────────────
   api.get('/calls/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
     const db = new D1Db(c.env.DB);
+    await ensureSchema(db);
     const callId = paramNum(c.req.param('id'));
-    const vehicles = await db.prepare(`
-      SELECT cv.*, v.* FROM call_vehicles cv
-      JOIN vehicles_records v ON cv.vehicle_id = v.id WHERE cv.call_id = ?
+    const rows = await db.prepare(`${SELECT_CALL_VEHICLE} WHERE cv.call_id = ? ORDER BY cv.created_at ASC LIMIT 1000`).all(callId);
+    return c.json(rows);
+  });
+
+  api.post('/calls/:id/vehicles', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      await ensureSchema(db);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      const body = await c.req.json<any>();
+      const { vehicle_id, role, notes } = body || {};
+
+      const call = await db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+      if (!vehicle_id || !role) return c.json({ error: 'vehicle_id and role are required', code: 'VEHICLE_ID_AND_ROLE_REQUIRED' }, 400);
+
+      const vehicle = await db.prepare(
+        'SELECT id, make, model, year, plate_number, stolen_status FROM vehicles_records WHERE id = ?'
+      ).get(vehicle_id) as any;
+      if (!vehicle) return c.json({ error: 'Vehicle not found', code: 'VEHICLE_NOT_FOUND' }, 404);
+
+      const existing = await db.prepare('SELECT id FROM call_vehicles WHERE call_id = ? AND vehicle_id = ?').get(call.id, vehicle_id);
+      if (existing) return c.json({ error: 'Vehicle already linked to this call', code: 'VEHICLE_ALREADY_LINKED' }, 409);
+
+      const result = await db.prepare(
+        'INSERT INTO call_vehicles (call_id, vehicle_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+      ).run(call.id, vehicle_id, role, notes || null, user?.userId ?? null);
+
+      const linked = (await db.prepare(`${SELECT_CALL_VEHICLE} WHERE cv.id = ?`).get(Number(result.meta.last_row_id))) as any
+        || { id: Number(result.meta.last_row_id) };
+
+      const vehLabel = `${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''} PLT:${vehicle.plate_number ?? 'N/A'}`.trim();
+      await auditLog(db, c, 'vehicle_linked', 'call', call.id, `Linked ${vehLabel} as ${role} to call ${call.call_number}`);
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_vehicle_linked', call_id: call.id, vehicle: linked });
+      } catch { /* non-fatal */ }
+
+      const responseData: any = { ...linked };
+      if (vehicle.stolen_status && vehicle.stolen_status !== 'none' && vehicle.stolen_status !== '') {
+        responseData._stolen_alert = true;
+        responseData._warning = `STOLEN VEHICLE ALERT: ${vehLabel} is reported stolen (${vehicle.stolen_status})`;
+      }
+      return c.json(responseData, 201);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to link call vehicle', code: 'LINK_CALL_VEHICLE_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  // POST /api/dispatch/calls/:id/vehicles/quick-add
+  // Fused find-or-create-then-link for vehicles. Dedup key: VIN if provided
+  // (strong), otherwise plate_number + state (weaker — same plate can be
+  // re-issued across years, but for active dispatch the false-positive cost
+  // is low compared to the MNI-fragmentation cost of skipping the check).
+  //
+  // Body: { plate_number?, state?, vin?, make?, model?, year?, color?, body_style?,
+  //         secondary_color?, owner_person_id?, role (required), notes?,
+  //         merge_into_id?, force_create? }
+  //
+  // Outcomes mirror the persons quick-add endpoint.
+  api.post('/calls/:id/vehicles/quick-add', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      await ensureSchema(db);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      const body = await c.req.json<any>();
+      const { role, notes, merge_into_id, force_create, ...vehFields } = body || {};
+
+      const call = await db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+      if (!role) return c.json({ error: 'role is required', code: 'ROLE_REQUIRED' }, 400);
+
+      let vehicleId: number;
+      let createdNew = false;
+
+      if (merge_into_id) {
+        const existing = await db.prepare('SELECT id FROM vehicles_records WHERE id = ?').get(merge_into_id) as any;
+        if (!existing) return c.json({ error: 'merge_into_id not found', code: 'MERGE_TARGET_NOT_FOUND' }, 404);
+        vehicleId = existing.id;
+      } else {
+        // Require at least one identifier — pure make/model is too loose to be a record
+        if (!vehFields.plate_number && !vehFields.vin) {
+          return c.json({ error: 'plate_number or vin is required', code: 'PLATE_OR_VIN_REQUIRED' }, 400);
+        }
+
+        // Duplicate detection
+        let candidates: any[] = [];
+        if (vehFields.vin) {
+          candidates = await db.prepare(`
+            SELECT id, make, model, year, color, plate_number, state, vin, stolen_status, owner_person_id
+            FROM vehicles_records WHERE UPPER(vin) = UPPER(?) LIMIT 10
+          `).all(vehFields.vin) as any[];
+        } else if (vehFields.plate_number) {
+          const dupConditions: string[] = ['UPPER(plate_number) = UPPER(?)'];
+          const dupParams: any[] = [vehFields.plate_number];
+          if (vehFields.state) {
+            dupConditions.push('UPPER(state) = UPPER(?)');
+            dupParams.push(vehFields.state);
+          }
+          candidates = await db.prepare(`
+            SELECT id, make, model, year, color, plate_number, state, vin, stolen_status, owner_person_id
+            FROM vehicles_records WHERE ${dupConditions.join(' AND ')} LIMIT 10
+          `).all(...dupParams) as any[];
+        }
+
+        if (candidates.length > 0 && !force_create) {
+          return c.json({
+            code: 'DUPLICATE_CANDIDATES',
+            message: `Found ${candidates.length} possible match(es). Resend with merge_into_id to link an existing record, or force_create:true to create a new one.`,
+            candidates,
+          }, 409);
+        }
+
+        const allowed = new Set([
+          'plate_number', 'state', 'vin', 'make', 'model', 'year', 'color',
+          'body_style', 'secondary_color', 'owner_person_id',
+          'stolen_status', 'stolen_date', 'notes',
+        ]);
+        const cols: string[] = [];
+        const placeholders: string[] = [];
+        const vals: any[] = [];
+        for (const [k, v] of Object.entries(vehFields)) {
+          if (allowed.has(k) && v !== undefined) {
+            cols.push(k);
+            placeholders.push('?');
+            vals.push(v ?? null);
+          }
+        }
+        const now = localNow();
+        cols.push('created_at', 'updated_at');
+        placeholders.push('?', '?');
+        vals.push(now, now);
+
+        const insertResult = await db.prepare(
+          `INSERT INTO vehicles_records (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`
+        ).run(...vals);
+        vehicleId = Number(insertResult.meta.last_row_id);
+        createdNew = true;
+
+        const label = `${vehFields.year ?? ''} ${vehFields.make ?? ''} ${vehFields.model ?? ''} PLT:${vehFields.plate_number ?? vehFields.vin ?? 'N/A'}`.trim();
+        await auditLog(db, c, 'CREATE', 'vehicle', vehicleId,
+          `Quick-added ${label} via call ${call.call_number}${force_create ? ' (force_create overrode duplicate check)' : ''}`);
+      }
+
+      const alreadyLinked = await db.prepare('SELECT id FROM call_vehicles WHERE call_id = ? AND vehicle_id = ?').get(call.id, vehicleId);
+      if (alreadyLinked) {
+        return c.json({ error: 'Vehicle already linked to this call', code: 'VEHICLE_ALREADY_LINKED', vehicle_id: vehicleId }, 409);
+      }
+      const linkResult = await db.prepare(
+        'INSERT INTO call_vehicles (call_id, vehicle_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+      ).run(call.id, vehicleId, role, notes || null, user?.userId ?? null);
+
+      const vehicle = await db.prepare('SELECT * FROM vehicles_records WHERE id = ?').get(vehicleId) as any;
+      const link = await db.prepare(`${SELECT_CALL_VEHICLE} WHERE cv.id = ?`).get(Number(linkResult.meta.last_row_id));
+
+      await auditLog(db, c, 'vehicle_linked', 'call', call.id,
+        `Linked vehicle ${vehicleId} as ${role} to call ${call.call_number}${createdNew ? ' (auto-created)' : merge_into_id ? ' (merged into existing)' : ''}`);
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_vehicle_linked', call_id: call.id, vehicle: link });
+      } catch { /* non-fatal */ }
+
+      const responseData: any = { created: createdNew, vehicle, link };
+      if (vehicle?.stolen_status && vehicle.stolen_status !== 'none' && vehicle.stolen_status !== '') {
+        responseData._stolen_alert = true;
+        responseData._warning = `STOLEN VEHICLE ALERT: ${vehicle.year ?? ''} ${vehicle.make ?? ''} ${vehicle.model ?? ''} PLT:${vehicle.plate_number ?? 'N/A'} is reported stolen (${vehicle.stolen_status})`;
+      }
+      return c.json(responseData, 201);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to quick-add vehicle', code: 'QUICK_ADD_VEHICLE_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  api.put('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const callId = paramNum(c.req.param('id'));
+      const linkId = paramNum(c.req.param('linkId'));
+      const body = await c.req.json<any>();
+
+      const link = await db.prepare('SELECT * FROM call_vehicles WHERE id = ? AND call_id = ?').get(linkId, callId) as any;
+      if (!link) return c.json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' }, 404);
+
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const f of ['role', 'notes']) {
+        if (body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(body[f] ?? null); }
+      }
+      if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
+      vals.push(link.id);
+      await db.prepare(`UPDATE call_vehicles SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+
+      const updated = await db.prepare(`${SELECT_CALL_VEHICLE} WHERE cv.id = ?`).get(link.id);
+      await auditLog(db, c, 'vehicle_link_updated', 'call', callId, `Updated vehicle link ${link.id} on call ${callId}`);
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_vehicle_updated', call_id: callId, link_id: link.id });
+      } catch { /* non-fatal */ }
+
+      return c.json(updated);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to update call vehicle', code: 'UPDATE_CALL_VEHICLE_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  api.delete('/calls/:id/vehicles/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const callId = paramNum(c.req.param('id'));
+      const linkId = paramNum(c.req.param('linkId'));
+
+      const link = await db.prepare(`
+        SELECT cv.id, v.make, v.model, v.year, v.plate_number
+        FROM call_vehicles cv LEFT JOIN vehicles_records v ON cv.vehicle_id = v.id
+        WHERE cv.id = ? AND cv.call_id = ?
+      `).get(linkId, callId) as any;
+      if (!link) return c.json({ error: 'Vehicle link not found', code: 'VEHICLE_LINK_NOT_FOUND' }, 404);
+
+      const call = await db.prepare('SELECT call_number FROM calls_for_service WHERE id = ?').get(callId) as any;
+      await db.prepare('DELETE FROM call_vehicles WHERE id = ?').run(link.id);
+      await auditLog(db, c, 'vehicle_unlinked', 'call', callId,
+        `Unlinked ${link.year ?? ''} ${link.make ?? ''} ${link.model ?? ''} from call ${call?.call_number ?? callId}`.trim());
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_vehicle_unlinked', call_id: callId, link_id: link.id });
+      } catch { /* non-fatal */ }
+
+      return c.json({ success: true });
+    } catch (err: any) {
+      return c.json({ error: 'Failed to unlink call vehicle', code: 'UNLINK_CALL_VEHICLE_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  // ── BUSINESSES on a call (parity with legacy callActions.ts) ──
+  api.get('/calls/:id/businesses', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    const db = new D1Db(c.env.DB);
+    await ensureSchema(db);
+    const callId = paramNum(c.req.param('id'));
+    const rows = await db.prepare(`
+      SELECT cb.*, b.name AS business_name, b.address AS business_address,
+        b.city AS business_city, b.phone AS business_phone,
+        u.full_name AS added_by_name
+      FROM call_businesses cb
+      LEFT JOIN businesses b ON cb.business_id = b.id
+      LEFT JOIN users u ON cb.added_by = u.id
+      WHERE cb.call_id = ?
+      ORDER BY cb.created_at ASC
+      LIMIT 1000
     `).all(callId);
-    return c.json(vehicles);
+    return c.json(rows);
+  });
+
+  api.post('/calls/:id/businesses', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      await ensureSchema(db);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      const body = await c.req.json<any>();
+      const { business_id, role, notes } = body || {};
+
+      const call = await db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(callId);
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+      if (!business_id) return c.json({ error: 'business_id is required', code: 'BUSINESS_ID_REQUIRED' }, 400);
+      const business = await db.prepare('SELECT id FROM businesses WHERE id = ?').get(business_id);
+      if (!business) return c.json({ error: 'Business not found', code: 'BUSINESS_NOT_FOUND' }, 404);
+
+      const existing = await db.prepare('SELECT id FROM call_businesses WHERE call_id = ? AND business_id = ?').get(callId, business_id);
+      if (existing) return c.json({ error: 'Business already linked to this call', code: 'BUSINESS_ALREADY_LINKED' }, 409);
+
+      const result = await db.prepare(
+        'INSERT INTO call_businesses (call_id, business_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+      ).run(callId, business_id, role ?? 'involved', notes || null, user?.userId ?? null);
+
+      const row = await db.prepare('SELECT * FROM call_businesses WHERE id = ?').get(Number(result.meta.last_row_id));
+      await auditLog(db, c, 'CREATE', 'call_business_link', Number(result.meta.last_row_id), `Linked business ${business_id} to call ${callId}`);
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      } catch { /* non-fatal */ }
+
+      return c.json(row, 201);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to link call business', code: 'LINK_CALL_BUSINESS_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  // POST /api/dispatch/calls/:id/businesses/quick-add
+  // Fused find-or-create-then-link for businesses. Dedup key: EIN (strong, but
+  // rarely available to dispatch), else LOWER(name) + LOWER(address) (weaker
+  // but matches the "Walmart on State St" mental model dispatchers actually use).
+  //
+  // Body: { name (required), address?, city?, state?, zip?, phone?, dba_name?,
+  //         business_type?, ein?, role?, notes?, merge_into_id?, force_create? }
+  api.post('/calls/:id/businesses/quick-add', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      await ensureSchema(db);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      const body = await c.req.json<any>();
+      const { role, notes, merge_into_id, force_create, ...bizFields } = body || {};
+
+      const call = await db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+      let businessId: number;
+      let createdNew = false;
+
+      if (merge_into_id) {
+        const existing = await db.prepare('SELECT id FROM businesses WHERE id = ?').get(merge_into_id) as any;
+        if (!existing) return c.json({ error: 'merge_into_id not found', code: 'MERGE_TARGET_NOT_FOUND' }, 404);
+        businessId = existing.id;
+      } else {
+        if (!bizFields.name) return c.json({ error: 'name is required', code: 'NAME_REQUIRED' }, 400);
+
+        let candidates: any[] = [];
+        if (bizFields.ein) {
+          candidates = await db.prepare(`
+            SELECT id, name, dba_name, address, city, state, phone, ein
+            FROM businesses WHERE ein = ? LIMIT 10
+          `).all(bizFields.ein) as any[];
+        } else {
+          const dupConditions: string[] = ['LOWER(name) = LOWER(?)'];
+          const dupParams: any[] = [bizFields.name];
+          if (bizFields.address) {
+            dupConditions.push('LOWER(COALESCE(address, "")) = LOWER(?)');
+            dupParams.push(bizFields.address);
+          }
+          candidates = await db.prepare(`
+            SELECT id, name, dba_name, address, city, state, phone, ein
+            FROM businesses WHERE ${dupConditions.join(' AND ')} LIMIT 10
+          `).all(...dupParams) as any[];
+        }
+
+        if (candidates.length > 0 && !force_create) {
+          return c.json({
+            code: 'DUPLICATE_CANDIDATES',
+            message: `Found ${candidates.length} possible match(es). Resend with merge_into_id to link an existing record, or force_create:true to create a new one.`,
+            candidates,
+          }, 409);
+        }
+
+        const allowed = new Set([
+          'name', 'dba_name', 'business_type', 'ein', 'license_number',
+          'address', 'city', 'state', 'zip', 'phone', 'email', 'website',
+          'owner_name', 'owner_phone', 'contact_name', 'contact_phone', 'contact_email',
+          'industry', 'employee_count',
+        ]);
+        const cols: string[] = [];
+        const placeholders: string[] = [];
+        const vals: any[] = [];
+        for (const [k, v] of Object.entries(bizFields)) {
+          if (allowed.has(k) && v !== undefined) {
+            cols.push(k); placeholders.push('?'); vals.push(v ?? null);
+          }
+        }
+        const insertResult = await db.prepare(
+          `INSERT INTO businesses (${cols.join(', ')}) VALUES (${placeholders.join(', ')})`
+        ).run(...vals);
+        businessId = Number(insertResult.meta.last_row_id);
+        createdNew = true;
+
+        await auditLog(db, c, 'CREATE', 'business', businessId,
+          `Quick-added ${bizFields.name}${bizFields.address ? ` @ ${bizFields.address}` : ''} via call ${call.call_number}${force_create ? ' (force_create overrode duplicate check)' : ''}`);
+      }
+
+      const alreadyLinked = await db.prepare('SELECT id FROM call_businesses WHERE call_id = ? AND business_id = ?').get(callId, businessId);
+      if (alreadyLinked) {
+        return c.json({ error: 'Business already linked to this call', code: 'BUSINESS_ALREADY_LINKED', business_id: businessId }, 409);
+      }
+      const linkResult = await db.prepare(
+        'INSERT INTO call_businesses (call_id, business_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)'
+      ).run(callId, businessId, role ?? 'involved', notes || null, user?.userId ?? null);
+
+      const business = await db.prepare('SELECT * FROM businesses WHERE id = ?').get(businessId);
+      const link = await db.prepare('SELECT * FROM call_businesses WHERE id = ?').get(Number(linkResult.meta.last_row_id));
+
+      await auditLog(db, c, 'CREATE', 'call_business_link', Number(linkResult.meta.last_row_id),
+        `Linked business ${businessId} to call ${call.call_number}${createdNew ? ' (auto-created)' : merge_into_id ? ' (merged into existing)' : ''}`);
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      } catch { /* non-fatal */ }
+
+      return c.json({ created: createdNew, business, link }, 201);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to quick-add business', code: 'QUICK_ADD_BUSINESS_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  api.put('/calls/:id/businesses/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const callId = paramNum(c.req.param('id'));
+      const linkId = paramNum(c.req.param('linkId'));
+      const body = await c.req.json<any>();
+
+      const existing = await db.prepare('SELECT * FROM call_businesses WHERE id = ? AND call_id = ?').get(linkId, callId) as any;
+      if (!existing) return c.json({ error: 'Call-business link not found', code: 'BUSINESS_LINK_NOT_FOUND' }, 404);
+
+      const sets: string[] = [];
+      const vals: any[] = [];
+      for (const f of ['role', 'notes']) {
+        if (body[f] !== undefined) { sets.push(`${f} = ?`); vals.push(body[f] ?? null); }
+      }
+      if (sets.length === 0) return c.json({ error: 'No fields to update', code: 'NO_FIELDS' }, 400);
+      vals.push(linkId);
+      await db.prepare(`UPDATE call_businesses SET ${sets.join(', ')} WHERE id = ?`).run(...vals);
+
+      const row = await db.prepare('SELECT * FROM call_businesses WHERE id = ?').get(linkId);
+      await auditLog(db, c, 'UPDATE', 'call_business_link', linkId, `Updated business link ${linkId} on call ${callId}`);
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      } catch { /* non-fatal */ }
+
+      return c.json(row);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to update call business', code: 'UPDATE_CALL_BUSINESS_ERROR', detail: err?.message }, 500);
+    }
+  });
+
+  api.delete('/calls/:id/businesses/:linkId', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const callId = paramNum(c.req.param('id'));
+      const linkId = paramNum(c.req.param('linkId'));
+
+      const existing = await db.prepare('SELECT id FROM call_businesses WHERE id = ? AND call_id = ?').get(linkId, callId);
+      if (!existing) return c.json({ error: 'Call-business link not found', code: 'BUSINESS_LINK_NOT_FOUND' }, 404);
+
+      await db.prepare('DELETE FROM call_businesses WHERE id = ?').run(linkId);
+      await auditLog(db, c, 'DELETE', 'call_business_link', linkId, `Unlinked business link ${linkId} from call ${callId}`);
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_businesses_updated', call_id: callId });
+      } catch { /* non-fatal */ }
+
+      return c.json({ success: true });
+    } catch (err: any) {
+      return c.json({ error: 'Failed to unlink call business', code: 'UNLINK_CALL_BUSINESS_ERROR', detail: err?.message }, 500);
+    }
   });
 
   // GET /api/dispatch/calls/search - Search calls

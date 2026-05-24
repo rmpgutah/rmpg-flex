@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
 import CallCard from '../../components/CallCard';
+import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/DuplicateCandidatesModal';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
@@ -462,51 +463,84 @@ export default function DispatchPage() {
     }
   }, []);
 
-  // Create new person from dispatch, auto-link to current call
-  const handleCreatePersonFromDispatch = useCallback(async (data: PersonFormData) => {
+  // Quick-add (fused find-or-create-then-link) for persons and vehicles.
+  // The server returns 409 DUPLICATE_CANDIDATES when name+DOB (persons) or
+  // VIN/plate+state (vehicles) matches one or more existing records — at that
+  // point we open the picker modal. The dispatcher either picks an existing
+  // row (resends with merge_into_id) or clicks "Create New Anyway" (resends
+  // with force_create:true). The submitted form data is held in state so the
+  // resolution call sends the same fields the dispatcher originally typed.
+  const [personDupState, setPersonDupState] = useState<{ data: PersonFormData; candidates: DuplicateCandidate[] } | null>(null);
+  const [vehicleDupState, setVehicleDupState] = useState<{ data: VehicleFormData; candidates: DuplicateCandidate[] } | null>(null);
+
+  const submitPersonQuickAdd = useCallback(async (
+    data: PersonFormData,
+    opts?: { merge_into_id?: number; force_create?: boolean },
+  ) => {
     if (!selectedCall) return;
     setIsCreatingRecord(true);
     try {
-      const result = await apiFetch<{ id: number }>('/records/persons', {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/persons/quick-add`, {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, role: linkPersonRole, ...(opts || {}) }),
       });
-      // Auto-link to current call
-      await linkPersonToCall(selectedCall.id, result.id, linkPersonRole);
-      // Update subject_description field
       const desc = `${data.last_name || ''}, ${data.first_name || ''}`.trim().replace(/^,\s*/, '').replace(/,\s*$/, '') + (data.dob ? ` DOB:${data.dob}` : '');
       setEditData(prev => ({ ...prev, subject_description: desc }));
       setShowCreatePersonModal(false);
-      addToast('Person created and linked', 'success');
+      setPersonDupState(null);
+      fetchCallPersons(selectedCall.id);
+      addToast(result?.created ? 'Person created and linked' : 'Existing person linked', 'success');
+      if (result?._safety_alerts?.length) addToast(`Safety alerts: ${result._safety_alerts.join(' • ')}`, 'warning');
+      if (result?._warning) addToast(result._warning, 'warning');
     } catch (err: any) {
-      addToast(err?.message || 'Failed to create person', 'error');
+      if (err?.code === 'DUPLICATE_CANDIDATES' && Array.isArray(err?.payload?.candidates)) {
+        setPersonDupState({ data, candidates: err.payload.candidates });
+      } else {
+        addToast(err?.message || 'Failed to create person', 'error');
+      }
     } finally {
       setIsCreatingRecord(false);
     }
-  }, [selectedCall, linkPersonToCall, linkPersonRole, addToast]);
+  }, [selectedCall, linkPersonRole, addToast, fetchCallPersons]);
 
-  // Create new vehicle from dispatch, auto-link to current call
-  const handleCreateVehicleFromDispatch = useCallback(async (data: VehicleFormData) => {
+  const handleCreatePersonFromDispatch = useCallback(
+    (data: PersonFormData) => submitPersonQuickAdd(data),
+    [submitPersonQuickAdd],
+  );
+
+  const submitVehicleQuickAdd = useCallback(async (
+    data: VehicleFormData,
+    opts?: { merge_into_id?: number; force_create?: boolean },
+  ) => {
     if (!selectedCall) return;
     setIsCreatingRecord(true);
     try {
-      const result = await apiFetch<{ id: number }>('/records/vehicles', {
+      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}/vehicles/quick-add`, {
         method: 'POST',
-        body: JSON.stringify(data),
+        body: JSON.stringify({ ...data, role: linkVehicleRole, ...(opts || {}) }),
       });
-      // Auto-link to current call
-      await linkVehicleToCall(selectedCall.id, result.id, linkVehicleRole);
-      // Update vehicle_description field
       const desc = [data.color, data.year, data.make, data.model].filter(Boolean).join(' ') + (data.plate_number ? ` PLT:${data.plate_number}` : '') + (data.state ? `/${data.state}` : '');
       setEditData(prev => ({ ...prev, vehicle_description: desc }));
       setShowCreateVehicleModal(false);
-      addToast('Vehicle created and linked', 'success');
+      setVehicleDupState(null);
+      fetchCallVehicles(selectedCall.id);
+      addToast(result?.created ? 'Vehicle created and linked' : 'Existing vehicle linked', 'success');
+      if (result?._stolen_alert) addToast(result._warning || 'STOLEN VEHICLE ALERT', 'warning');
     } catch (err: any) {
-      addToast(err?.message || 'Failed to create vehicle', 'error');
+      if (err?.code === 'DUPLICATE_CANDIDATES' && Array.isArray(err?.payload?.candidates)) {
+        setVehicleDupState({ data, candidates: err.payload.candidates });
+      } else {
+        addToast(err?.message || 'Failed to create vehicle', 'error');
+      }
     } finally {
       setIsCreatingRecord(false);
     }
-  }, [selectedCall, linkVehicleToCall, linkVehicleRole, addToast]);
+  }, [selectedCall, linkVehicleRole, addToast, fetchCallVehicles]);
+
+  const handleCreateVehicleFromDispatch = useCallback(
+    (data: VehicleFormData) => submitVehicleQuickAdd(data),
+    [submitVehicleQuickAdd],
+  );
 
   // Navigation guard — warn when editing unsaved changes
   useUnsavedChanges(isEditing);
@@ -6017,6 +6051,76 @@ export default function DispatchPage() {
         onClose={() => setShowCreateVehicleModal(false)}
         onSubmit={handleCreateVehicleFromDispatch}
         isSubmitting={isCreatingRecord}
+      />
+
+      {/* Duplicate-candidate pickers — opened when server returns 409 DUPLICATE_CANDIDATES */}
+      <DuplicateCandidatesModal
+        isOpen={!!personDupState}
+        title="Possible existing person"
+        entityLabel="person"
+        candidates={personDupState?.candidates ?? []}
+        isSubmitting={isCreatingRecord}
+        renderRow={(c) => (
+          <div>
+            <div className="font-bold text-rmpg-100">
+              {c.last_name}, {c.first_name}{c.middle_name ? ` ${c.middle_name}` : ''}
+              {c.dob && <span className="ml-2 text-amber-300 font-mono text-[10px]">DOB:{c.dob}</span>}
+            </div>
+            <div className="text-[10px] text-rmpg-400 mt-0.5">
+              {[c.address, c.city, c.state].filter(Boolean).join(', ') || 'No address on file'}
+              {c.dl_number && <span className="ml-2">DL: {c.dl_number}</span>}
+              {c.phone && <span className="ml-2">{c.phone}</span>}
+            </div>
+            {(c.caution_flags || c.is_sex_offender || (c.flags && String(c.flags).includes('ACTIVE_WARRANT'))) && (
+              <div className="text-[10px] text-red-400 font-bold mt-0.5">
+                {c.caution_flags && `⚠ ${c.caution_flags} `}
+                {c.is_sex_offender && '⚠ SEX OFFENDER '}
+                {c.flags && String(c.flags).includes('ACTIVE_WARRANT') && '⚠ ACTIVE WARRANT'}
+              </div>
+            )}
+          </div>
+        )}
+        onClose={() => setPersonDupState(null)}
+        onResolve={(r) => {
+          if (!personDupState) return;
+          const data = personDupState.data;
+          if (r.action === 'merge') submitPersonQuickAdd(data, { merge_into_id: r.id });
+          else submitPersonQuickAdd(data, { force_create: true });
+        }}
+      />
+
+      <DuplicateCandidatesModal
+        isOpen={!!vehicleDupState}
+        title="Possible existing vehicle"
+        entityLabel="vehicle"
+        candidates={vehicleDupState?.candidates ?? []}
+        isSubmitting={isCreatingRecord}
+        renderRow={(c) => (
+          <div>
+            <div className="font-bold text-rmpg-100">
+              {[c.year, c.color, c.make, c.model].filter(Boolean).join(' ') || 'Unknown vehicle'}
+              {c.plate_number && (
+                <span className="ml-2 text-amber-300 font-mono text-[10px]">
+                  PLT:{c.plate_number}{c.state ? `/${c.state}` : ''}
+                </span>
+              )}
+            </div>
+            <div className="text-[10px] text-rmpg-400 mt-0.5">
+              {c.vin && <span>VIN: {c.vin}</span>}
+              {c.owner_person_id && <span className="ml-2">Owner #{c.owner_person_id}</span>}
+            </div>
+            {c.stolen_status && c.stolen_status !== 'none' && c.stolen_status !== '' && (
+              <div className="text-[10px] text-red-400 font-bold mt-0.5">⚠ STOLEN: {c.stolen_status}</div>
+            )}
+          </div>
+        )}
+        onClose={() => setVehicleDupState(null)}
+        onResolve={(r) => {
+          if (!vehicleDupState) return;
+          const data = vehicleDupState.data;
+          if (r.action === 'merge') submitVehicleQuickAdd(data, { merge_into_id: r.id });
+          else submitVehicleQuickAdd(data, { force_create: true });
+        }}
       />
 
       {/* Feature 5: Shift Handoff Notes Modal */}
