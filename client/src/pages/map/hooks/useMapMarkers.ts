@@ -52,8 +52,9 @@ function createMapboxMarker(
   zIndex: number,
   title: string,
   onClick?: () => void,
+  anchor: mapboxgl.Anchor = 'bottom',
 ): mapboxgl.Marker {
-  const marker = new mapboxgl.Marker({ element: content })
+  const marker = new mapboxgl.Marker({ element: content, anchor })
     .setLngLat([lng, lat])
     .addTo(map);
   if (onClick) {
@@ -327,6 +328,8 @@ export function useMapMarkers({
           buildSelfPositionMarker(gps.accuracy, gps.heading),
           9999,
           `Your Position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`,
+          undefined,
+          'center',
         );
       }
     } else {
