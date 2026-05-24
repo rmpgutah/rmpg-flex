@@ -17,6 +17,24 @@
 import { getDb } from '../models/database';
 import { localNow } from './timeUtils';
 import { escapeLike } from '../middleware/sanitize';
+import { broadcast } from './websocket';
+
+// Mirrors the emitScraperEvent pattern in multiStateWarrantScraper.ts so the
+// Phase 5 ScrapersTab live feed surfaces Utah Warrant Watch runs in real
+// time. Without this the hourly Utah bulk scan was invisible to operators
+// (only multi-state scrapes appeared in the feed). Try/catch wraps the
+// broadcast so a WS subsystem hiccup can never disrupt an in-flight scan.
+const UTAH_SOURCE_KEY = 'utah-warrant-watch';
+const UTAH_DISPLAY_NAME = 'Utah Warrant Watch';
+const UTAH_PRIORITY = 2; // HIGH — officer-safety relevant
+
+function emitScraperEvent(event: string, data: Record<string, unknown>): void {
+  try {
+    broadcast('scraper_events', 'scraper_event', { event, ...data });
+  } catch (e) {
+    console.warn(`[Utah Warrants] WS broadcast failed for ${event}:`, (e as Error).message);
+  }
+}
 
 // ── API endpoints ────────────────────────────────────────────
 const BASE_URL = 'https://warrants.utah.gov/api/v1';
@@ -584,6 +602,13 @@ async function _runWarrantWatchScanImpl(): Promise<{
     VALUES (?, ?, 'running')
   `).run(runId, now);
 
+  emitScraperEvent('run_started', {
+    source_key: UTAH_SOURCE_KEY,
+    display_name: UTAH_DISPLAY_NAME,
+    priority: UTAH_PRIORITY,
+    started_at: now,
+  });
+
   console.log(`[Warrant Watch] ═══ Starting bulk scan ${runId} ═══`);
 
   let personsChecked = 0;
@@ -760,6 +785,19 @@ async function _runWarrantWatchScanImpl(): Promise<{
 
     console.log(`[Warrant Watch] ═══ Scan complete: ${personsChecked} checked, ${newWarrants} new, ${clearedWarrants} cleared, ${errors} errors ═══`);
 
+    emitScraperEvent('run_completed', {
+      source_key: UTAH_SOURCE_KEY,
+      display_name: UTAH_DISPLAY_NAME,
+      http_status: 200,
+      parsed: personsChecked,
+      inserted: newWarrants,
+      // Utah watcher reports cleared warrants distinct from updates; surface
+      // them as `updated` in the WS event so the live feed shows the work.
+      updated: clearedWarrants,
+      unchanged: newWarrants === 0 && clearedWarrants === 0,
+      parser_used: 'custom',
+    });
+
   } catch (err: any) {
     console.error(`[Warrant Watch] Scan failed:`, err.message);
     db.prepare(`
@@ -768,6 +806,12 @@ async function _runWarrantWatchScanImpl(): Promise<{
           warrants_cleared = ?, errors = ?, status = 'failed', error_message = ?
       WHERE run_id = ?
     `).run(localNow(), personsChecked, newWarrants, clearedWarrants, errors, err.message, runId);
+
+    emitScraperEvent('run_failed', {
+      source_key: UTAH_SOURCE_KEY,
+      display_name: UTAH_DISPLAY_NAME,
+      error: String(err?.message ?? err).slice(0, 500),
+    });
   }
 
   return { personsChecked, newWarrants, clearedWarrants, errors };
@@ -789,7 +833,7 @@ let cleanupIntervalHandle: ReturnType<typeof setInterval> | null = null;
 
 export function scheduleUtahWarrantSync(): void {
   console.log('[Utah Warrants] Live search mode active — queries warrants.utah.gov on demand');
-  console.log('[Warrant Watch] Automated bulk scan enabled — runs every hour for officer safety');
+  console.log('[Warrant Watch] Automated bulk scan enabled — runs every 4h for officer safety');
 
   // Initial scan after startup delay
   startupTimer = setTimeout(async () => {
