@@ -32,7 +32,13 @@ import { ROUTE_REGISTRY } from './routesConfig';
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
 export { WelfareWatchDO, PdfToolsContainer };
 
-const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
+// Exported so sub-routers that need to dispatch internal subrequests
+// (e.g. src/routes/offline.ts replaying queued offline writes through
+// the canonical handlers) can call `app.fetch(...)` without
+// duplicating route logic. Sub-routers must lazy-import this to avoid
+// the module-load cycle index.ts → routesConfig.ts → <subrouter> →
+// index.ts; at request time the cycle is fully resolved.
+export const app = new Hono<{ Bindings: Bindings; Variables: Variables }>();
 
 // ─── Global middleware ───────────────────────────────────────
 app.use('*', logger());
