@@ -78,6 +78,7 @@ import forensics from './routes/forensics';
 import patrol from './routes/patrol';
 import serveIntake from './routes/serveIntake';
 import shiftPlans from './routes/shiftPlans';
+import court from './routes/court';
 import serve from './routes/serve';
 import stubs from './routes/stubs';
 // Dispatch domain
@@ -198,6 +199,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/cases', router: cases, auth: 'required',
     note: 'MVP core; entity-junction tables in a follow-up PR' },
   { prefix: '/api/citations', router: citations, auth: 'required' },
+  { prefix: '/api/court', router: court, auth: 'required',
+    note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
