@@ -480,7 +480,12 @@ export interface PersonPdfData {
   first_name: string;
   last_name: string;
   middle_name?: string;
+  suffix?: string;
   alias_nickname?: string;
+  aliases?: string;
+  sex?: string;
+  nationality?: string;
+  photo_url?: string;
   date_of_birth?: string;
   gender?: string;
   race?: string;
@@ -2468,18 +2473,24 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   { const sec = openAutoSection(doc, 'Subject Identification', y); y = sec.contentY;
     const fifthW = ffw / 5;
 
-    // Row 1: Last Name, First Name, Middle Name — full width, normal layout
-    const fy1 = addFieldPair(doc, 'Last Name', data.last_name || '', lx, y, ffw * 0.4);
-    const fy2 = addFieldPair(doc, 'First Name', data.first_name || '', lx + ffw * 0.4, y, ffw * 0.35);
-    const fy3 = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + ffw * 0.75, y, ffw * 0.25);
-    y = Math.max(fy1, fy2, fy3);
-    // Row 2: Alias, DOB, Gender, Race — full width
+    // Row 1: Last, First, Middle, Suffix
+    const fy1 = addFieldPair(doc, 'Last Name', data.last_name || '', lx, y, ffw * 0.35);
+    const fy2 = addFieldPair(doc, 'First Name', data.first_name || '', lx + ffw * 0.35, y, ffw * 0.3);
+    const fy3 = addFieldPair(doc, 'Middle Name', data.middle_name || '', lx + ffw * 0.65, y, ffw * 0.2);
+    const fy3b = addFieldPair(doc, 'Suffix', data.suffix || '', lx + ffw * 0.85, y, ffw * 0.15);
+    y = Math.max(fy1, fy2, fy3, fy3b);
+    // Row 2: Alias / Nickname, Aliases (other AKAs), Alias DOB
     const fy4 = addFieldPair(doc, 'Alias / Nickname', data.alias_nickname || '', lx, y, hfw);
-    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), rx, y, ffw * 0.2);
-    const fy6 = addFieldPair(doc, 'Gender', data.gender || '', rx + ffw * 0.2, y, ffw * 0.15);
-    const fy7 = addFieldPair(doc, 'Race', data.race || '', rx + ffw * 0.35, y, ffw * 0.15);
-    y = Math.max(fy4, fy5, fy6, fy7);
-    // Row 3: Marital Status, Citizenship, Place of Birth, Language, Record ID
+    const fy4b = addFieldPair(doc, 'Other Aliases (AKAs)', data.aliases || '', rx, y, hfw);
+    y = Math.max(fy4, fy4b);
+    // Row 3: DOB, Sex, Gender, Race, Nationality
+    const fy5 = addFieldPair(doc, 'Date of Birth', fmtDate(data.date_of_birth), lx, y, fifthW);
+    const fy5b = addFieldPair(doc, 'Sex (Legal)', data.sex || '', lx + fifthW, y, fifthW);
+    const fy6 = addFieldPair(doc, 'Gender', data.gender || '', lx + 2 * fifthW, y, fifthW);
+    const fy7 = addFieldPair(doc, 'Race', data.race || '', lx + 3 * fifthW, y, fifthW);
+    const fy7b = addFieldPair(doc, 'Nationality', data.nationality || '', lx + 4 * fifthW, y, fifthW);
+    y = Math.max(fy5, fy5b, fy6, fy7, fy7b);
+    // Row 4: Marital Status, Citizenship, Place of Birth, Language, Record ID
     const fy8 = addFieldPair(doc, 'Marital Status', data.marital_status || '', lx, y, fifthW);
     const fy9 = addFieldPair(doc, 'Citizenship', data.citizenship || '', lx + fifthW, y, fifthW);
     const fy10 = addFieldPair(doc, 'Place of Birth', data.place_of_birth || '', lx + 2 * fifthW, y, fifthW);

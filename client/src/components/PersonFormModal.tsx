@@ -18,9 +18,8 @@ import {
   EDUCATION_OPTIONS, OCCUPATION_OPTIONS,
   MILITARY_BRANCH_OPTIONS, MILITARY_STATUS_OPTIONS,
   DISABILITY_OPTIONS, GANG_OPTIONS,
-  TRIBAL_AFFILIATION_OPTIONS, RELIGION_OPTIONS,
-  DIETARY_RESTRICTION_OPTIONS,
-  EMERGENCY_CONTACT_RELATIONSHIPS, VOICE_OPTIONS,
+  TRIBAL_AFFILIATION_OPTIONS,
+  EMERGENCY_CONTACT_RELATIONSHIPS,
 } from '../constants/lawEnforcementEnums';
 interface PersonFormModalProps {
   isOpen: boolean;
@@ -117,10 +116,12 @@ export interface PersonFormData {
   alias_dob: string;
   home_phone: string;
   work_phone: string;
-  // F3 advanced detail (jail-intake + descriptor)
-  voice_description: string;
-  religion: string;
-  dietary_restrictions: string;
+  // Newly surfaced — all accepted by PERSON_FIELD_MAP in the live Worker.
+  suffix: string;
+  sex: string;
+  nationality: string;
+  aliases: string;
+  photo_url: string;
 }
 
 const EMPTY_FORM: PersonFormData = {
@@ -209,10 +210,11 @@ const EMPTY_FORM: PersonFormData = {
   alias_dob: '',
   home_phone: '',
   work_phone: '',
-  // F3 advanced detail (jail-intake + descriptor)
-  voice_description: '',
-  religion: '',
-  dietary_restrictions: '',
+  suffix: '',
+  sex: '',
+  nationality: '',
+  aliases: '',
+  photo_url: '',
 };
 
 // Inline _OPTIONS arrays migrated to client/src/constants/lawEnforcementEnums.ts
@@ -337,10 +339,11 @@ export default function PersonFormModal({
           alias_dob: (editingPerson as any).alias_dob || '',
           home_phone: (editingPerson as any).home_phone || '',
           work_phone: (editingPerson as any).work_phone || '',
-          // F3 advanced detail
-          voice_description: (editingPerson as any).voice_description || '',
-          religion: (editingPerson as any).religion || '',
-          dietary_restrictions: (editingPerson as any).dietary_restrictions || '',
+          suffix: (editingPerson as any).suffix || '',
+          sex: (editingPerson as any).sex || '',
+          nationality: (editingPerson as any).nationality || '',
+          aliases: (editingPerson as any).aliases || '',
+          photo_url: (editingPerson as any).photo_url || '',
         };
         setForm(initial);
         snapshot();
@@ -671,11 +674,15 @@ export default function PersonFormModal({
               <input name="shoe_size" type="text" className="input-dark mt-1" placeholder="e.g. 10.5" value={form.shoe_size} onChange={handleChange} />
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Voice Description</label>
-              <select name="voice_description" className="select-dark mt-1" value={form.voice_description} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {VOICE_OPTIONS.map((v) => <option key={v} value={v}>{v}</option>)}
-              </select>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Aliases (comma-separated)</label>
+              <input
+                name="aliases"
+                type="text"
+                className="input-dark mt-1"
+                placeholder="Doc Holiday, JT, Slim"
+                value={form.aliases}
+                onChange={handleChange}
+              />
             </div>
           </div>
 
@@ -897,6 +904,12 @@ export default function PersonFormModal({
                   <label className="text-[9px] text-rmpg-500 uppercase font-semibold">Or enter image URL directly</label>
                   <input name="id_image_url" type="text" className="input-dark mt-0.5 text-xs" placeholder="https://..." value={form.id_image_url} onChange={handleChange} />
                 </div>
+                {/* Separate face/mugshot photo. id_image_url is the
+                    scanned ID document; photo_url is the subject's face. */}
+                <div className="mt-2">
+                  <label className="text-[9px] text-rmpg-500 uppercase font-semibold">Face Photo / Mugshot URL</label>
+                  <input name="photo_url" type="text" className="input-dark mt-0.5 text-xs" placeholder="https://..." value={form.photo_url} onChange={handleChange} />
+                </div>
               </div>
             </div>
           </div>
@@ -1071,26 +1084,44 @@ export default function PersonFormModal({
             </div>
           </div>
 
-          {/* ── Jail Intake / Custodial Considerations ─────────────────
-              Religion drives chaplaincy + holiday observance + dietary
-              defaults. Dietary restrictions cover religious + medical +
-              personal-choice intersections. Both fields are optional —
-              "Decline to State" is a first-class option in each list to
-              respect operator-side dignity defaults. */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* ── Additional Identifiers ─────────────────────────────────
+              suffix / sex / nationality fields are all accepted by the live
+              Worker's PERSON_FIELD_MAP and have corresponding columns on
+              persons (verified 2026-05-24). Religion + dietary_restrictions
+              were removed because PERSON_FIELD_MAP doesn't include them —
+              the live Worker silently dropped them on save. */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Religion (Jail Intake)</label>
-              <select name="religion" className="select-dark mt-1" value={form.religion} onChange={handleChange}>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Suffix</label>
+              <input
+                name="suffix"
+                type="text"
+                className="input-dark mt-1"
+                placeholder="Jr / Sr / III"
+                value={form.suffix}
+                onChange={handleChange}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Sex (Birth/Legal)</label>
+              <select name="sex" className="select-dark mt-1" value={form.sex} onChange={handleChange}>
                 <option value="">-- Select --</option>
-                {RELIGION_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+                <option value="M">M</option>
+                <option value="F">F</option>
+                <option value="X">X / Non-binary</option>
+                <option value="U">Unknown</option>
               </select>
             </div>
             <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Dietary Restrictions</label>
-              <select name="dietary_restrictions" className="select-dark mt-1" value={form.dietary_restrictions} onChange={handleChange}>
-                <option value="">-- Select --</option>
-                {DIETARY_RESTRICTION_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
-              </select>
+              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Nationality</label>
+              <input
+                name="nationality"
+                type="text"
+                className="input-dark mt-1"
+                placeholder="e.g. American, Mexican, Filipino"
+                value={form.nationality}
+                onChange={handleChange}
+              />
             </div>
           </div>
 
