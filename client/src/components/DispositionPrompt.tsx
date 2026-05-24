@@ -21,6 +21,25 @@ interface DispositionPromptProps {
   onCancel: () => void;
 }
 
+// Built-in fallback when the admin-configured codes haven't loaded
+// (or the prop is empty). Keeps the Clear-call dropdown usable on a
+// fresh database — same defaults the inline edit dropdown uses so a
+// dispatcher's muscle memory matches across both surfaces.
+const FALLBACK_DISPOSITIONS: DispositionCode[] = [
+  { code: 'Report Taken',     description: 'Report Taken' },
+  { code: 'Unfounded',        description: 'Unfounded' },
+  { code: 'GOA',              description: 'Gone on Arrival' },
+  { code: 'Referred',         description: 'Referred to other agency' },
+  { code: 'No Action',        description: 'No Action Required' },
+  { code: 'Arrest',           description: 'Arrest Made' },
+  { code: 'Warning',          description: 'Warning Issued' },
+  { code: 'Citation',         description: 'Citation Issued' },
+  { code: 'Trespass Warning', description: 'Trespass Warning Issued' },
+  { code: 'Civil Matter',     description: 'Civil Matter — No Action' },
+  { code: 'Resolved',         description: 'Resolved on Scene' },
+  { code: 'Cancelled',        description: 'Call Cancelled' },
+];
+
 export default function DispositionPrompt({
   callNumber,
   dispositionCodes,
@@ -29,6 +48,7 @@ export default function DispositionPrompt({
 }: DispositionPromptProps) {
   const [selected, setSelected] = useState('');
   const [createIncident, setCreateIncident] = useState(false);
+  const codes = dispositionCodes.length > 0 ? dispositionCodes : FALLBACK_DISPOSITIONS;
 
   // 39: role="alert" for screen reader announcement; 40: aria-live polite
   return (
@@ -71,7 +91,7 @@ export default function DispositionPrompt({
           autoFocus
         >
           <option value="">— Select Disposition Code —</option>
-          {dispositionCodes.map((d) => (
+          {codes.map((d) => (
             <option key={d.code} value={d.code}>
               {d.code} — {d.description}
             </option>

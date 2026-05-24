@@ -4030,7 +4030,8 @@ export default function DispatchPage() {
                 </div>
 
                 {/* ── MILEAGE (primary unit) — Info tab ─── */}
-                {detailTab === 'info' && (isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && (
+                {/* Boolean() — numeric mileage 0 would otherwise render "0". */}
+                {detailTab === 'info' && Boolean(isEditing || selectedCall.starting_mileage || selectedCall.ending_mileage) && (
                   <div className="border-t border-[#2b2b2b] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <MapPin className="w-3 h-3" /> Primary Unit Mileage
@@ -4144,7 +4145,8 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── SUBJECT/THREAT INFO — Persons tab ─── */}
-                {(detailTab === 'info' || detailTab === 'persons') && (isEditing || (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') || selectedCall.injuries_reported || selectedCall.num_subjects || selectedCall.subject_description || selectedCall.vehicle_description || selectedCall.direction_of_travel || callPersons.length > 0 || callVehicles.length > 0) && (
+                {/* Boolean() — num_subjects/num_victims 0 would otherwise leak as "0". */}
+                {(detailTab === 'info' || detailTab === 'persons') && Boolean(isEditing || (selectedCall.weapons_involved && selectedCall.weapons_involved !== 'None') || selectedCall.injuries_reported || selectedCall.num_subjects || selectedCall.subject_description || selectedCall.vehicle_description || selectedCall.direction_of_travel || callPersons.length > 0 || callVehicles.length > 0) && (
                   <div className="border-t border-[#2b2b2b] pt-3 mb-3">
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Subject / Threat Info
@@ -4669,7 +4671,10 @@ export default function DispatchPage() {
                 )}
 
                 {/* ── PROCESS SERVICE DETAILS — Info tab (always visible for PSO/process calls) ─── */}
-                {detailTab === 'info' && (isEditing
+                {/* Boolean() coerces the numeric process_attempts=0 case to false
+                    so React doesn't render a bare "0" when the OR chain falls
+                    through to a falsy number. */}
+                {detailTab === 'info' && Boolean(isEditing
                   ? ['pso_client_request', 'process_service'].includes(editData.incident_type || selectedCall.incident_type)
                   : (['pso_client_request', 'process_service'].includes(selectedCall.incident_type) || selectedCall.process_service_type || selectedCall.process_served_to || selectedCall.process_attempts)
                 ) && (
@@ -4989,14 +4994,23 @@ export default function DispatchPage() {
                             }
                             onClick={async () => {
                               const newVal = !isOn;
+                              // Functional setState — rapid-fire flag toggles
+                              // would otherwise stomp each other: each closure
+                              // captured the selectedCall snapshot at render time
+                              // and spread it, reverting any flag toggled mid-flight.
+                              // Updating from `prev` keeps every prior toggle.
+                              const callId = selectedCall.id;
                               try {
-                                await apiFetch(`/dispatch/calls/${selectedCall.id}`, {
+                                await apiFetch(`/dispatch/calls/${callId}`, {
                                   method: 'PUT',
                                   body: JSON.stringify({ [field]: newVal }),
                                 });
-                                const updated = { ...selectedCall, [field]: newVal ? 1 : 0 };
-                                setSelectedCall(updated);
-                                setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
+                                setSelectedCall(prev => prev && prev.id === callId
+                                  ? { ...prev, [field]: newVal ? 1 : 0 }
+                                  : prev);
+                                setCalls(prev => prev.map(c =>
+                                  c.id === callId ? { ...c, [field]: newVal ? 1 : 0 } : c
+                                ));
                               } catch { addToast(`Failed to update ${label}`, 'error'); }
                             }}
                             title={`Toggle ${label}`}
