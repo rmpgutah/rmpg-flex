@@ -149,7 +149,7 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
       return c.json({ error: 'Officers may only change their own unit audio mode', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
 
-    await execute(db, "UPDATE units SET audio_mode = ?, updated_at = datetime('now') WHERE id = ?", mode, unitId);
+    await execute(db, "UPDATE units SET audio_mode = ?, updated_at = datetime('now', '-6 hours') WHERE id = ?", mode, unitId);
     return c.json({ success: true, unit_id: unitId, audio_mode: mode });
   } catch (err) {
     console.error('[dispatch] PUT audio-mode error', err);
@@ -172,7 +172,7 @@ premiseAlerts.get('/', requireRole(...READ_ROLES), async (c) => {
       SELECT pa.*, u.full_name AS created_by_name
       FROM premise_alerts pa
       LEFT JOIN users u ON u.id = pa.created_by
-      ${activeOnly ? "WHERE pa.active = 1 AND (pa.expires_at IS NULL OR pa.expires_at >= datetime('now'))" : ''}
+      ${activeOnly ? "WHERE pa.active = 1 AND (pa.expires_at IS NULL OR pa.expires_at >= datetime('now', '-6 hours'))" : ''}
       ORDER BY pa.alert_level = 'critical' DESC, pa.alert_level = 'warning' DESC, pa.created_at DESC
     `);
     return c.json(rows.map((r) => ({ ...r, flags: safeJson(r.flags as string, []) })));
@@ -249,7 +249,7 @@ premiseAlerts.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
       UPDATE premise_alerts SET
         address = ?, latitude = ?, longitude = ?, alert_type = ?, alert_level = ?,
         title = ?, description = ?, flags = ?, expires_at = ?, active = ?,
-        updated_at = datetime('now')
+        updated_at = datetime('now', '-6 hours')
       WHERE id = ?`,
       b.address ?? before.address,
       b.latitude !== undefined ? (b.latitude != null ? Number(b.latitude) : null) : before.latitude,
@@ -302,7 +302,7 @@ premiseAlerts.get('/near/scan', requireRole(...READ_ROLES), async (c) => {
       WHERE active = 1
         AND latitude BETWEEN ? AND ?
         AND longitude BETWEEN ? AND ?
-        AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
+        AND (expires_at IS NULL OR expires_at >= datetime('now', '-6 hours'))`,
       lat - dLat, lat + dLat, lng - dLng, lng + dLng);
     const within = candidates
       .map((p: any) => ({ ...p, flags: safeJson(p.flags, []), distance_meters: Math.round(haversineMeters(lat, lng, p.latitude, p.longitude)) }))
@@ -354,7 +354,7 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
           WHERE active = 1
             AND latitude BETWEEN ? AND ?
             AND longitude BETWEEN ? AND ?
-            AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
+            AND (expires_at IS NULL OR expires_at >= datetime('now', '-6 hours'))`,
           call.latitude - dLat, call.latitude + dLat,
           call.longitude - dLng, call.longitude + dLng);
         for (const a of candidates) {
@@ -466,7 +466,7 @@ unitStatus.put('/:id/status', requireRole(...READ_ROLES), async (c) => {
       return c.json({ error: 'Officers may only change their own unit status', code: 'FORBIDDEN_NOT_OWN_UNIT' }, 403);
     }
 
-    await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now'), updated_at = datetime('now') WHERE id = ?", status, unitId);
+    await execute(db, "UPDATE units SET status = ?, last_status_change = datetime('now', '-6 hours'), updated_at = datetime('now', '-6 hours') WHERE id = ?", status, unitId);
     const updated = await queryFirst<any>(db, 'SELECT * FROM units WHERE id = ?', unitId);
     return c.json(updated);
   } catch (err) {
