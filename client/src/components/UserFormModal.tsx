@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { UserRole } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
@@ -145,8 +145,18 @@ export default function UserFormModal({
   isSubmitting,
   editingUser,
 }: UserFormModalProps) {
-  const [form, setForm] = useState<UserFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<UserFormData>({
+    storageKey: 'rmpg_user_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<SectionId>('account');
 
   useEffect(() => {
@@ -190,10 +200,10 @@ export default function UserFormModal({
           profile_image: editingUser.profile_image || '',
         };
         setForm(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         setForm(EMPTY_FORM);
-        snapshot(EMPTY_FORM);
+        snapshot();
       }
     }
   // Depend on editingUser?.id (not object reference) to prevent LiveSync
@@ -223,6 +233,8 @@ export default function UserFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Section Tabs */}
       <div className="flex flex-wrap gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
@@ -392,7 +404,7 @@ export default function UserFormModal({
               onSelect={(addr: ParsedAddress) => {
                 setForm((prev) => ({
                   ...prev,
-                  address: addr.street || addr.formatted,
+                  address: addr.formatted || addr.street,
                   city: addr.city || prev.city,
                   state: addr.state || prev.state,
                   zip: addr.zip || prev.zip,
@@ -400,20 +412,42 @@ export default function UserFormModal({
               }}
             />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className={labelCls}>City</label>
-              <input type="text" value={form.city} onChange={e => set('city', e.target.value)} placeholder="Salt Lake City" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>State</label>
-              <input type="text" value={form.state} onChange={e => set('state', e.target.value)} maxLength={2} placeholder="UT" className={inputCls} />
-            </div>
-            <div>
-              <label className={labelCls}>Zip Code</label>
-              <input type="text" value={form.zip} onChange={e => set('zip', e.target.value)} maxLength={10} placeholder="84101" pattern="\d{5}(-\d{4})?" className={inputCls} />
-            </div>
-          </div>
+           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+             <div>
+               <label className={labelCls}>City</label>
+               <AddressAutocomplete
+                 className={inputCls}
+                 placeholder="Salt Lake City"
+                 value={form.city}
+                 onChange={(val) => set('city', val)}
+                 name="city"
+                 addressOnly={false}
+               />
+             </div>
+             <div>
+               <label className={labelCls}>State</label>
+               <AddressAutocomplete
+                 className={inputCls}
+                 placeholder="UT"
+                 value={form.state}
+                 onChange={(val) => set('state', val)}
+                 name="state"
+                 addressOnly={false}
+                 country="us"
+               />
+             </div>
+             <div>
+               <label className={labelCls}>Zip Code</label>
+               <AddressAutocomplete
+                 className={inputCls}
+                 placeholder="84101"
+                 value={form.zip}
+                 onChange={(val) => set('zip', val)}
+                 name="zip"
+                 addressOnly={false}
+               />
+             </div>
+           </div>
         </div>
       )}
 

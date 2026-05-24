@@ -17,6 +17,9 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidPlate, isValidDate } from '../utils/validate';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
@@ -101,7 +104,18 @@ export default function FieldInterviewsPage() {
   // Form
   const [formOpen, setFormOpen] = useState(false);
   const [editingFi, setEditingFi] = useState<FieldInterview | null>(null);
-  const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_fi_form',
+    defaultValue: EMPTY_FORM,
+    isActive: formOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Person search
@@ -182,6 +196,7 @@ export default function FieldInterviewsPage() {
     setPersonSearch('');
     clearAllErrors();
     setFormOpen(true);
+    snapshotForm();
   };
 
   const handleEdit = (fi: FieldInterview) => {
@@ -214,6 +229,7 @@ export default function FieldInterviewsPage() {
       gang_affiliation: (fi as any).gang_affiliation || '',
     });
     setFormOpen(true);
+    snapshotForm();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -239,6 +255,7 @@ export default function FieldInterviewsPage() {
         await apiFetch('/field-interviews', { method: 'POST', body: JSON.stringify(body) });
         addToast('Field interview created', 'success');
       }
+      clearFormDraft();
       setFormOpen(false);
       setEditingFi(null);
       await fetchFis();
@@ -505,13 +522,29 @@ export default function FieldInterviewsPage() {
 
       {/* Form Modal */}
       {formOpen && (
-        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-label={`${editingFi ? 'Edit' : 'New'} Field Interview`} onClick={() => setFormOpen(false)}>
+        <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm animate-fade-in" role="dialog" aria-modal="true" aria-label={`${editingFi ? 'Edit' : 'New'} Field Interview`} onClick={() => { clearFormDraft(); setFormOpen(false); }}>
           <div className="bg-surface-raised border border-rmpg-600 w-full max-w-2xl max-h-[90vh] overflow-y-auto scrollbar-dark shadow-md" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-4 py-2 border-b border-rmpg-700" style={{ background: '#0a0a0a' }}>
-              <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
-              <IconButton onClick={() => setFormOpen(false)} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-bold text-white uppercase">{editingFi ? 'Edit' : 'New'} Field Interview</span>
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+              </div>
+              <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="text-rmpg-400 hover:text-white" aria-label="Close form"><X style={{ width: 14, height: 14 }} /></IconButton>
             </div>
             <form onSubmit={handleSubmit} className="p-4 space-y-3">
+              {formWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               {repeatWarning && (
                 <div className="bg-amber-900/40 border border-amber-700/50 px-3 py-2 text-xs text-amber-300 flex items-center gap-2">
                   <AlertTriangle style={{ width: 14, height: 14 }} className="flex-shrink-0 text-amber-400" /> {repeatWarning}
@@ -646,12 +679,21 @@ export default function FieldInterviewsPage() {
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: isMobile ? 14 : 10, height: isMobile ? 14 : 10 }} />}
                   {editingFi ? 'Update' : 'Create'} FI Card
                 </button>
-                <button type="button" onClick={() => setFormOpen(false)} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
+                <button type="button" onClick={() => { clearFormDraft(); setFormOpen(false); }} className={`toolbar-btn ${isMobile ? 'w-full justify-center' : ''}`} style={isMobile ? { minHeight: 48, fontSize: 14 } : undefined}>Cancel</button>
               </div>
             </form>
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={formOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={formOpen && formIsDirty}
+        onSave={() => { const e = { preventDefault: () => {} } as React.FormEvent; handleSubmit(e); }}
+        onCancel={() => { clearFormDraft(); setFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel={editingFi ? 'Update FI Card' : 'Create FI Card'}
+      />
     </div>
   );
 }

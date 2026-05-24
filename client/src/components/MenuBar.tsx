@@ -5,7 +5,7 @@
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { printWithLightMaps } from '../utils/googleMapsLoader';
+import { printWithLightMaps } from '../utils/mapboxLoader';
 import { APP_VERSION } from '../utils/version';
 import {
   Radio, FileText, Database, Users, MessageSquare, BarChart3, Map,
@@ -694,7 +694,7 @@ export default function MenuBar({
           { type: 'action', label: 'Issue BOLO', icon: AlertTriangle, action: () => navigate('/communications') },
           { type: 'action', label: 'View Active BOLOs', icon: Eye, action: () => navigate('/communications') },
           { type: 'separator' },
-          { type: 'action', label: 'Radio Console', icon: Radio, action: () => navigate('/radio') },
+
         ],
       },
       {
@@ -833,12 +833,14 @@ export default function MenuBar({
       { type: 'separator' },
       { type: 'action', label: 'Report a Problem', icon: Bug, action: () => navigate('/admin') },
       { type: 'action', label: 'About RMPG Flex', icon: Info, action: () => navigate('/help') },
+      { type: 'separator' },
+      { type: 'action', label: 'Download Desktop App', icon: Download, action: () => navigate('/downloads') },
       // Version string with monospace for alignment
       { type: 'action', label: `Version ${APP_VERSION}`, icon: Shield, disabled: true, action: () => {} },
     ],
   };
 
-  const menus = [fileMenu, viewMenu, toolsMenu, helpMenu];
+  const menus = [fileMenu, helpMenu];
 
   // ============================================================
   // Rendering

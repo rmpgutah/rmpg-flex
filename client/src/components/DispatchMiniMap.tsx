@@ -1,18 +1,18 @@
 // ============================================================
 // RMPG Flex — Dispatch Mini-Map
-// Lightweight embeddable Google Maps panel showing the selected
+// Lightweight embeddable Mapbox GL JS panel showing the selected
 // call location and assigned unit positions. Used inline in the
 // Dispatch right column.
 //
-// When Google Maps fails to load (vehicle WiFi dead zones), falls
-// back to a compact Leaflet map using pre-cached offline tiles.
+// Mapbox GL JS handles its own offline caching via the browser's
+// tile cache — no separate Leaflet fallback needed.
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
 import { Maximize2, MapPin, RefreshCw } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import { loadGoogleMaps, DARK_MAP_STYLE, registerMapInstance, unregisterMapInstance, onOnlineRetryMaps, monitorTileLoading } from '../utils/googleMapsLoader';
-import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../utils/googleMapsApiKey';
+import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
+import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
 import type { CallForService, Unit } from '../types';
 
@@ -26,46 +26,14 @@ interface DispatchMiniMapProps {
   onRouteUpdate?: (info: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null) => void;
 }
 
-const DEFAULT_CENTER = { lat: 40.7608, lng: -111.891 }; // Salt Lake City fallback
+const DEFAULT_CENTER: [number, number] = [-111.891, 40.7608]; // Salt Lake City fallback [lng, lat]
 const MINI_ZOOM = 15;
-
-/** Build a call marker DOM element (red label with caret) */
-function buildCallMarker(label: string): HTMLElement {
-  const wrapper = document.createElement('div');
-  wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;';
-
-  const tag = document.createElement('div');
-  /* #54: Call marker with subtle shadow for depth */
-  tag.style.cssText =
-    'background:#ef4444;color:#fff;font-size:7px;font-weight:900;' +
-    "padding:1px 3px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
-  tag.textContent = label;
-
-  const caret = document.createElement('div');
-  caret.style.cssText =
-    'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-top:6px solid #ef4444;';
-
-  wrapper.appendChild(tag);
-  wrapper.appendChild(caret);
-  return wrapper;
-}
-
-/** Build a unit marker DOM element (blue chip) */
-function buildUnitMarker(callSign: string): HTMLElement {
-  const el = document.createElement('div');
-  /* #55: Unit marker with shadow */
-  el.style.cssText =
-    'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
-    "padding:1px 4px;border:1px solid #363636;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
-  el.textContent = callSign;
-  return el;
-}
 
 export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRouteUpdate }: DispatchMiniMapProps) {
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
-  const markersRef = useRef<any[]>([]);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tilesStalled, setTilesStalled] = useState(false);
@@ -81,66 +49,46 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapRef.current });
   const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
 
-  // Load Google Maps script with retry + online auto-recovery
+  // Load Mapbox token + init map
   useEffect(() => {
     let cancelled = false;
-    let unsubOnline = () => {};
     setError(null);
     setLoaded(false);
 
-    function attemptLoad(apiKey: string, attempt: number) {
-      if (cancelled) return;
-      loadGoogleMaps(apiKey)
-        .then(() => { if (!cancelled) { setLoaded(true); setError(null); } })
-        .catch(() => {
-          if (cancelled) return;
-          if (attempt < 3) {
-            setTimeout(() => attemptLoad(apiKey, attempt + 1), [3000, 6000, 12000][attempt]);
-          } else {
-            setError('Map load failed — check connection');
-          }
-        });
-    }
-
     (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
+        const token = await getMapboxAccessToken();
         if (cancelled) return;
-        attemptLoad(apiKey, 0);
-        unsubOnline = onOnlineRetryMaps(apiKey, () => {
-          if (!cancelled) {
-            setError(null);
-            setLoaded(true);
-          }
-        });
+        initMapbox(token);
+        if (cancelled) return;
+        setLoaded(true);
+        setError(null);
       } catch (err: any) {
         if (!cancelled) {
           setLoaded(false);
-          setError(err?.message || getGoogleMapsApiKeyErrorMessage());
+          setError(err?.message || getMapboxTokenErrorMessage());
         }
       }
     })();
 
-    return () => { cancelled = true; unsubOnline(); };
-  }, [gmapsRetry]);
+    return () => { cancelled = true; };
+  }, [mapTokenRetry]);
 
   // Initialize or update map
   useEffect(() => {
     if (!loaded || !mapContainerRef.current) return;
 
-    const center = call?.latitude != null && call?.longitude != null
-      ? { lat: call.latitude, lng: call.longitude }
+    const center: [number, number] = call?.latitude != null && call?.longitude != null
+      ? [call.longitude, call.latitude]
       : DEFAULT_CENTER;
 
     if (!mapRef.current) {
-      const map = new google.maps.Map(mapContainerRef.current, {
+      const map = new mapboxgl.Map({
+        container: mapContainerRef.current,
+        style: MAPBOX_STYLE_DARK,
         center,
         zoom: MINI_ZOOM,
-        styles: DARK_MAP_STYLE,
-        disableDefaultUI: true,
-        zoomControl: true,
-        zoomControlOptions: { position: google.maps.ControlPosition.RIGHT_TOP },
-        gestureHandling: 'cooperative',
+        attributionControl: false,
       });
       // Auth/quota failure leaves a stub Map whose getDiv() is undefined —
       // route to the offline fallback rather than crashing the error boundary.
@@ -151,76 +99,57 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       mapRef.current = map;
       registerMapInstance(map);
 
-      // Monitor tile loading for vehicle WiFi resilience
-      if (tileMonitorRef.current) tileMonitorRef.current();
-      tileMonitorRef.current = monitorTileLoading(map, {
-        onStalled: () => setTilesStalled(true),
-        onLoaded: () => setTilesStalled(false),
-        onRecovering: () => {},
-      });
+      // Monitor tile loading
+      map.on('idle', () => setTilesStalled(false));
+      const stallCheck = setInterval(() => {
+        if (!map.loaded()) setTilesStalled(true);
+      }, 15000);
+
+      map.on('remove', () => clearInterval(stallCheck));
     } else {
       mapRef.current.setCenter(center);
     }
 
     // Clear old markers
-    markersRef.current.forEach(m => {
-      if (typeof m.setMap === 'function') m.setMap(null);
-      else if (typeof m.remove === 'function') m.remove();
-    });
+    markersRef.current.forEach(m => m.remove());
     markersRef.current = [];
 
-    // Helper: create an OverlayView-based marker
-    const createOverlay = (map: google.maps.Map, pos: google.maps.LatLngLiteral, content: HTMLElement, zIndex: number) => {
-      const overlay = new google.maps.OverlayView();
-      let container: HTMLDivElement | null = null;
-      overlay.onAdd = () => {
-        container = document.createElement('div');
-        container.style.position = 'absolute';
-        container.style.zIndex = String(zIndex);
-        container.appendChild(content);
-        overlay.getPanes()?.overlayMouseTarget.appendChild(container);
-      };
-      overlay.draw = () => {
-        if (!container) return;
-        const proj = overlay.getProjection();
-        if (!proj) return;
-        const pt = proj.fromLatLngToDivPixel(new google.maps.LatLng(pos.lat, pos.lng));
-        if (pt) {
-          container.style.left = `${pt.x}px`;
-          container.style.top = `${pt.y}px`;
-          container.style.transform = 'translate(-50%, -100%)';
-        }
-      };
-      overlay.onRemove = () => { container?.parentElement?.removeChild(container); container = null; };
-      overlay.setMap(map);
-      return overlay;
-    };
-
-    // Call marker (red pin)
+    // Call marker (red)
     if (call?.latitude != null && call?.longitude != null && mapRef.current) {
-      const m = createOverlay(mapRef.current, { lat: call.latitude, lng: call.longitude }, buildCallMarker(call.call_number || 'CALL'), 100);
-      markersRef.current.push(m);
+      const el = document.createElement('div');
+      el.style.cssText =
+        'background:#ef4444;color:#fff;font-size:9px;font-weight:900;' +
+        "padding:1px 4px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
+      el.textContent = call.call_number || 'CALL';
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([call.longitude, call.latitude])
+        .addTo(mapRef.current);
+      markersRef.current.push(marker);
     }
 
-    // Assigned unit markers (blue dots)
-    // assigned_units contains numeric unit IDs as strings (from mapDbCall parsing assigned_unit_ids)
+    // Assigned unit markers
     const assignedUnits = units.filter(u =>
       call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
     );
 
     for (const unit of assignedUnits) {
-      if (mapRef.current) {
-        const m = createOverlay(mapRef.current, { lat: unit.latitude!, lng: unit.longitude! }, buildUnitMarker(unit.call_sign), 50);
-        markersRef.current.push(m);
-      }
+      if (!mapRef.current) continue;
+      const el = document.createElement('div');
+      el.style.cssText =
+        'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
+        "padding:1px 4px;border:1px solid #363636;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
+      el.textContent = unit.call_sign;
+      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+        .setLngLat([unit.longitude!, unit.latitude!])
+        .addTo(mapRef.current);
+      markersRef.current.push(marker);
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
 
-  // Track whether we have an active route via ref to avoid double-render from state dependency
+  // Auto-route: show driving route when exactly 1 assigned unit has GPS
   const hasActiveRouteRef = useRef(false);
   hasActiveRouteRef.current = !!activeRoute;
 
-  // Auto-route: show driving route when exactly 1 assigned unit has GPS
   useEffect(() => {
     if (!loaded || !mapRef.current || call?.latitude == null || call?.longitude == null) {
       if (hasActiveRouteRef.current) clearRoute();
@@ -235,16 +164,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       const u = assignedWithGps[0];
       const combo = `${u.call_sign}:${call.call_number}`;
 
-      // Only re-show if the assignment changed
       if (combo !== lastAutoRouteRef.current) {
         lastAutoRouteRef.current = combo;
         showRoute(u.call_sign, call.call_number || 'CALL', u.latitude!, u.longitude!, call.latitude, call.longitude);
       } else {
-        // Same unit+call — just update GPS origin for re-routing
         updateOrigin(u.latitude!, u.longitude!);
       }
     } else {
-      // Multiple or zero assigned units — clear route
       if (hasActiveRouteRef.current) {
         clearRoute();
         lastAutoRouteRef.current = '';
@@ -264,10 +190,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
   }, [activeRoute, onRouteUpdate]);
 
-  // Cleanup: unregister map instance + tile monitor on unmount
+  // Cleanup: unregister map instance on unmount
   useEffect(() => {
     return () => {
-      if (tileMonitorRef.current) { tileMonitorRef.current(); tileMonitorRef.current = null; }
       if (mapRef.current) unregisterMapInstance(mapRef.current);
     };
   }, []);

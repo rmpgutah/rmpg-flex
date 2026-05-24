@@ -20,6 +20,8 @@ import { useNavigate } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 
+GlobalWorkerOptions.workerSrc = workerUrl;
+
 interface UploadedFile {
   name: string;
   type: 'court_docket' | 'field_sheet' | 'info_sheet' | 'unknown';
@@ -226,20 +228,34 @@ export default function ServeIntakePage() {
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const resp = await fetch('/api/serve-intake/extract-text', {
+      const pdf = await getDocument({ data: arrayBuffer }).promise;
+      const pages: string[] = [];
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const content = await page.getTextContent();
+        pages.push(content.items.map(item => (item as any).str).join(' '));
+      }
+      return pages.join('\n');
+    } catch {
+      return '';
+    }
+  }, []);
+
+  const ocrScanImage = useCallback(async (file: File): Promise<OcrScanResult | null> => {
+    try {
+      const formData = new FormData();
+      formData.append('image', file);
+      const token = localStorage.getItem('rmpg_token');
+      const resp = await fetch('/api/ocr/scan-document', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${localStorage.getItem('rmpg_token')}`,
-          'Content-Type': 'application/octet-stream',
-        },
-        body: arrayBuffer,
+        headers: { 'Authorization': `Bearer ${token}` },
+        body: formData,
       });
       if (resp.ok) {
-        const data = await resp.json();
-        return data.text || '';
+        return await resp.json();
       }
-    } catch { /* fallback */ }
-    return '';
+    } catch { }
+    return null;
   }, []);
 
   const handleFiles = useCallback(async (fileList: FileList | File[]) => {
@@ -282,6 +298,15 @@ export default function ServeIntakePage() {
   }, [handleFiles]);
 
   const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
+  const changeFileType = (idx: number, type: string) => setFiles(prev => prev.map((f, i) => i === idx ? { ...f, type } : f));
+
+  const openOcrPreview = (file: UploadedFile) => {
+    if (file.ocrResult?.fields) {
+      setOcrPreview(file.ocrResult);
+      setEditingFields({});
+      setShowOcrPreview(true);
+    }
+  };
 
   const changeDocType = (idx: number, newType: UploadedFile['type']) => {
     setFiles(prev => prev.map((f, i) => i === idx ? { ...f, type: newType } : f));
@@ -468,6 +493,10 @@ export default function ServeIntakePage() {
       return () => clearTimeout(t);
     }
   }, [step, folderQueue.length, advanceFolderQueue]);
+
+  const previewFields = ocrPreview?.fields
+    ? Object.entries(ocrPreview.fields).filter(([, f]) => f.value && f.confidence > 0).sort((a, b) => b[1].confidence - a[1].confidence)
+    : [];
 
   return (
     <div className="p-4 space-y-4 max-w-5xl mx-auto">
@@ -1006,7 +1035,7 @@ export default function ServeIntakePage() {
               <div className="panel-beveled bg-surface-raised p-3">
                 <div className="flex items-center gap-1.5 mb-2">
                   <Phone className="w-3.5 h-3.5 text-rmpg-400" />
-                  <span className="text-[10px] text-rmpg-400 uppercase font-bold">Dispatch Call</span>
+                  <span className="text-[10px] text-rmpg-400 uppercase font-bold">Serve Queue</span>
                 </div>
                 <p className="text-sm font-bold text-white font-mono">{result.call_number}</p>
                 <p className="text-[10px] text-rmpg-400">PSO Client Request — Pending</p>
@@ -1042,5 +1071,21 @@ export default function ServeIntakePage() {
         </div>
       )}
     </div>
+  );
+}
+
+function rawTextPreview(text: string): React.ReactNode {
+  if (!text || text.length < 10) return null;
+  const preview = text.substring(0, 1000);
+  return (
+    <details className="mt-3">
+      <summary className="text-[9px] text-rmpg-500 cursor-pointer hover:text-rmpg-300 uppercase tracking-wider">
+        Raw OCR Text ({text.length} chars)
+      </summary>
+      <pre className="mt-1 p-2 bg-[#050505] border border-[#1a1a1a] rounded-sm text-[9px] text-rmpg-400 font-mono whitespace-pre-wrap max-h-40 overflow-y-auto">
+        {preview}
+        {text.length > 1000 && <span className="text-red-400">\n...truncated ({text.length - 1000} more chars)</span>}
+      </pre>
+    </details>
   );
 }

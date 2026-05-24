@@ -115,9 +115,9 @@ router.post('/ocr-scan', requireRole('admin', 'manager', 'officer'), dlUpload.si
     let ocrText = '';
     let ocrData: any = {};
 
-    // Try Google Vision TEXT_DETECTION first (uses same Maps API key)
+    // Try Google Vision TEXT_DETECTION first (uses Maps/Vision API key)
     // Prefer admin-configured key from system_config, fall back to env var
-    const { resolveGoogleMapsApiKey: resolveKey } = await import('../utils/configEncryption');
+    const { resolveMapboxAccessToken: resolveKey } = await import('../utils/configEncryption');
     const visionKey = resolveKey();
     if (visionKey) {
       try {

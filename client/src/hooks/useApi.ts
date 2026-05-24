@@ -118,35 +118,33 @@ export function authedImageUrl(url: string | null | undefined): string {
   if (url.includes('/api/uploads') || url.startsWith('/api/')) {
     const token = localStorage.getItem('rmpg_token');
     if (!token) return url;
-    const sep = url.includes('?') ? '&' : '?';
-    return `${url}${sep}token=${encodeURIComponent(token)}`;
+    // Strip any existing token= param to prevent duplicates
+    const cleanUrl = url.replace(/([?&])token=[^&]*&?/g, '$1').replace(/[?&]$/, '');
+    const sep = cleanUrl.includes('?') ? '&' : '?';
+    return `${cleanUrl}${sep}token=${encodeURIComponent(token)}`;
   }
   return url;
 }
 
 // ─── Mutation deduplication (prevent rapid double-click) ────
 const inflightMutations = new Map<string, { promise: Promise<Response>; ts: number }>();
-const DEDUP_WINDOW_MS = 500; // 500ms dedup window
+const DEDUP_WINDOW_MS = 500;
 
 // ─── Retry config for 502/503 (server restart recovery) ────
-// When nginx returns 502/503 during a deploy restart, the request never
-// reached Express. Safe to retry ALL methods (including POST/PUT/DELETE)
-// because the server never processed the original request.
 const RETRY_STATUS_CODES = [502, 503];
 const MAX_RETRIES = 3;
-const RETRY_DELAY_MS = 2000; // 2 seconds between retries
+const RETRY_DELAY_MS = 2000;
 
 async function fetchWithRetry(
   url: string,
   init: RequestInit & { timeoutMs?: number },
   retries = MAX_RETRIES,
 ): Promise<Response> {
-  // Skip retries for large bodies (file uploads) — re-sending large payloads is wasteful
   const bodySize = init.body instanceof Blob ? init.body.size
-    : init.body instanceof FormData ? Infinity  // FormData is always large-ish
+    : init.body instanceof FormData ? Infinity
     : typeof init.body === 'string' ? init.body.length
     : 0;
-  if (bodySize > 1_000_000) retries = 0; // 1MB threshold
+  if (bodySize > 1_000_000) retries = 0;
 
   // Mutation deduplication — return existing in-flight promise for same URL+method.
   // Each caller gets a fresh .clone() of the underlying Response so they can each
@@ -164,7 +162,6 @@ async function fetchWithRetry(
     }
   }
 
-  // Track in-flight mutations for deduplication
   const isMutation = ['POST', 'PUT', 'DELETE', 'PATCH'].includes(method.toUpperCase());
   const dedupKey = isMutation ? `${method}:${url}` : '';
 
@@ -176,17 +173,14 @@ async function fetchWithRetry(
         // attempt hangs for `timeoutMs`, abort it and try again.
         const res = await fetchWithTimeout(url, init);
         if (RETRY_STATUS_CODES.includes(res.status) && attempt < retries) {
-          // Server is restarting — wait with exponential backoff and retry
-          const delay = RETRY_DELAY_MS * Math.pow(2, attempt); // 2s → 4s → 8s
+          const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
           console.warn(`[API] ${init.method || 'GET'} ${url} → ${res.status}, retrying in ${delay / 1000}s (${attempt + 1}/${retries})...`);
           await new Promise(r => setTimeout(r, delay));
           continue;
         }
         return res;
       } catch (err) {
-        // Don't retry intentional aborts (component unmount, navigation, etc.)
         if (err instanceof DOMException && err.name === 'AbortError') throw err;
-        // Network error (connection refused / failed to fetch) — retry with backoff
         lastError = err instanceof Error ? err : new Error(String(err));
         if (attempt < retries) {
           const delay = RETRY_DELAY_MS * Math.pow(2, attempt);
@@ -503,7 +497,14 @@ export async function apiFetch<T>(
 
   if (!res.ok) {
     const errData = await res.json().catch(() => ({}));
-    throw new Error(errData.error || errData.message || `Request failed with status ${res.status}`);
+    // Append server-side `details`/`detail` diagnostic when present — otherwise
+    // every 500 looks identical to the user even when the server told us
+    // exactly what failed (e.g. SQL "no such column: foo"). See dispatch
+    // PUT /calls/:id, which returns `details: <real error>` but historically
+    // got rendered as just "Failed to update call".
+    const base = errData.error || errData.message || `Request failed with status ${res.status}`;
+    const diag = errData.details || errData.detail;
+    throw new Error(diag ? `${base}: ${diag}` : base);
   }
 
   return res.json();

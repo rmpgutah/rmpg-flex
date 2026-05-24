@@ -7,6 +7,8 @@ import { useState, useEffect } from 'react';
 import { X, AlertTriangle } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { localToday } from '../../../utils/dateUtils';
+import { useFormDraft } from '../../../hooks/useFormDraft';
+import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface UserOption {
@@ -49,15 +51,30 @@ const SEVERITY_LEVELS = [
   { value: 'critical', label: 'Critical' },
 ];
 
+const EMPTY_FORM = {
+  employee_id: '',
+  action_type: 'verbal_warning' as string,
+  severity: 'minor' as string,
+  incident_date: localToday(),
+  description: '',
+  corrective_action: '',
+  follow_up_date: '',
+};
+
 export default function DisciplinaryActionModal({ onClose, onSaved, action }: DisciplinaryActionModalProps) {
   const [users, setUsers] = useState<UserOption[]>([]);
-  const [employeeId, setEmployeeId] = useState(action?.employee_id || '');
-  const [actionType, setActionType] = useState(action?.action_type || 'verbal_warning');
-  const [severity, setSeverity] = useState(action?.severity || 'minor');
-  const [incidentDate, setIncidentDate] = useState(action?.incident_date || localToday());
-  const [description, setDescription] = useState(action?.description || '');
-  const [correctiveAction, setCorrectiveAction] = useState(action?.corrective_action || '');
-  const [followUpDate, setFollowUpDate] = useState(action?.follow_up_date || '');
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_hr_disciplinary_action_form',
+    defaultValue: EMPTY_FORM,
+    isActive: true,
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -65,15 +82,38 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
     apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
   }, []);
 
+  useEffect(() => {
+    if (action) {
+      setForm({
+        employee_id: action.employee_id || '',
+        action_type: action.action_type || 'verbal_warning',
+        severity: action.severity || 'minor',
+        incident_date: action.incident_date || localToday(),
+        description: action.description || '',
+        corrective_action: action.corrective_action || '',
+        follow_up_date: action.follow_up_date || '',
+      });
+    }
+    snapshot();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   // Escape to close
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) {
+        if (isDirty) {
+          if (window.confirm('You have unsaved changes. Close anyway?')) onClose();
+        } else {
+          onClose();
+        }
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [saving, onClose]);
+  }, [saving, onClose, isDirty]);
 
   const handleSubmit = async () => {
-    if (!employeeId || !description.trim()) {
+    if (!form.employee_id || !form.description.trim()) {
       setError('Employee and description are required.');
       return;
     }
@@ -81,13 +121,13 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
     setError('');
     try {
       const payload = {
-        employee_id: employeeId,
-        action_type: actionType,
-        severity,
-        incident_date: incidentDate,
-        description: description.trim(),
-        corrective_action: correctiveAction.trim(),
-        follow_up_date: followUpDate || null,
+        employee_id: form.employee_id,
+        action_type: form.action_type,
+        severity: form.severity,
+        incident_date: form.incident_date,
+        description: form.description.trim(),
+        corrective_action: form.corrective_action.trim(),
+        follow_up_date: form.follow_up_date || null,
       };
       if (action?.id) {
         await apiFetch(`/hr/disciplinary-actions/${action.id}`, {
@@ -100,6 +140,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
           body: JSON.stringify(payload),
         });
       }
+      clearDraft();
       onSaved();
     } catch (err: any) {
       setError(err.message || 'Failed to save disciplinary action');
@@ -112,7 +153,9 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
   const labelClass = 'block text-xs text-rmpg-400 mb-1';
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+    <>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
+      <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-lg mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-4 py-2 border-b border-rmpg-700 flex items-center justify-between">
@@ -129,6 +172,17 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
         {/* Body */}
         <div className="p-4 space-y-3">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={() => { setForm({ ...EMPTY_FORM }); snapshot(); }} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                Discard
+              </button>
+            </div>
+          )}
           {error && (
             <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-sm px-2 py-1.5">
               {error}
@@ -137,7 +191,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
 
           <div>
             <label className={labelClass}>Employee *</label>
-            <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} className={inputClass}>
+            <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={inputClass}>
               <option value="">Select employee...</option>
               {users.map(u => (
                 <option key={u.id} value={u.id}>
@@ -150,7 +204,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>Action Type *</label>
-              <select value={actionType} onChange={e => setActionType(e.target.value)} className={inputClass}>
+              <select value={form.action_type} onChange={e => setForm(f => ({ ...f, action_type: e.target.value }))} className={inputClass}>
                 {ACTION_TYPES.map(t => (
                   <option key={t.value} value={t.value}>{t.label}</option>
                 ))}
@@ -158,7 +212,7 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
             </div>
             <div>
               <label className={labelClass}>Severity *</label>
-              <select value={severity} onChange={e => setSeverity(e.target.value)} className={inputClass}>
+              <select value={form.severity} onChange={e => setForm(f => ({ ...f, severity: e.target.value }))} className={inputClass}>
                 {SEVERITY_LEVELS.map(s => (
                   <option key={s.value} value={s.value}>{s.label}</option>
                 ))}
@@ -171,8 +225,8 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
               <label className={labelClass}>Incident Date *</label>
               <input
                 type="date"
-                value={incidentDate}
-                onChange={e => setIncidentDate(e.target.value)}
+                value={form.incident_date}
+                onChange={e => setForm(f => ({ ...f, incident_date: e.target.value }))}
                 className={inputClass}
               />
             </div>
@@ -180,8 +234,8 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
               <label className={labelClass}>Follow-Up Date</label>
               <input
                 type="date"
-                value={followUpDate}
-                onChange={e => setFollowUpDate(e.target.value)}
+                value={form.follow_up_date}
+                onChange={e => setForm(f => ({ ...f, follow_up_date: e.target.value }))}
                 className={inputClass}
               />
             </div>
@@ -223,5 +277,6 @@ export default function DisciplinaryActionModal({ onClose, onSaved, action }: Di
         </div>
       </div>
     </div>
+    </>
   );
 }

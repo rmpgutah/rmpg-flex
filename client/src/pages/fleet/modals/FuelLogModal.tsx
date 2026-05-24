@@ -40,17 +40,31 @@ interface Props {
   onSave: () => void;
   onClose: () => void;
   saving: boolean;
+  isDirty?: boolean;
+  draftRestored?: boolean;
+  onDiscardDraft?: () => void;
 }
 
-export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving }: Props) {
+export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving, isDirty, draftRestored, onDiscardDraft }: Props) {
   const titleId = useId();
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) {
+        if (isDirty) {
+          if (window.confirm('You have unsaved changes. Discard them?')) {
+            onDiscardDraft?.();
+            onClose();
+          }
+        } else {
+          onClose();
+        }
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, saving, onClose]);
+  }, [isOpen, saving, onClose, isDirty, onDiscardDraft]);
 
   if (!isOpen) return null;
 
@@ -69,13 +83,34 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
 
   const grade = FUEL_GRADE[form.fuel_type] || FUEL_GRADE.regular;
 
+  const guardedClose = () => {
+    if (isDirty && !saving) {
+      if (window.confirm('You have unsaved changes. Discard them?')) {
+        onDiscardDraft?.();
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : guardedClose}>
       <div className="panel-beveled w-[520px] max-w-full mx-4 max-h-[80vh] flex flex-col bg-surface-raised" onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT FUEL ENTRY' : 'LOG FUEL ENTRY'} icon={Fuel} id={titleId}>
-          <button type="button" className="toolbar-btn text-[9px]" onClick={onClose}>X</button>
+          {isDirty && <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider mr-2">UNSAVED</span>}
+          <button type="button" className="toolbar-btn text-[9px]" onClick={guardedClose}>X</button>
         </PanelTitleBar>
         <div className="flex-1 overflow-y-auto p-4">
+          {draftRestored && onDiscardDraft && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30 mb-3" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={onDiscardDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">Discard</button>
+            </div>
+          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[9px] text-rmpg-500 uppercase font-semibold block mb-0.5">Date / Time *</label>
@@ -144,7 +179,7 @@ export default function FuelLogModal({ isOpen, mode = 'create', form, onChange, 
           </div>
         </div>
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
-          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" className="toolbar-btn" onClick={guardedClose} disabled={saving}>Cancel</button>
           <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onSave} disabled={saving || !form.fuel_date || !form.gallons}>
             {saving ? 'Saving...' : mode === 'edit' ? 'Update Fuel' : 'Log Fuel'}
           </button>

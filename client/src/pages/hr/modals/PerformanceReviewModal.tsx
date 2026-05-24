@@ -7,6 +7,8 @@ import { useState, useEffect } from 'react';
 import { X, TrendingUp, Star } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { localToday } from '../../../utils/dateUtils';
+import { useFormDraft } from '../../../hooks/useFormDraft';
+import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface UserOption {
@@ -40,34 +42,69 @@ interface PerformanceReviewModalProps {
   review?: PerformanceReview | null;
 }
 
+const EMPTY_FORM = {
+  employee_id: '',
+  cycle_id: null as number | null,
+  review_date: localToday(),
+  overall_rating: 0,
+  strengths: '',
+  areas_for_improvement: '',
+  goals: '',
+  comments: '',
+};
+
 export default function PerformanceReviewModal({ onClose, onSaved, review }: PerformanceReviewModalProps) {
   const [users, setUsers] = useState<UserOption[]>([]);
   const [cycles, setCycles] = useState<ReviewCycle[]>([]);
-  const [employeeId, setEmployeeId] = useState(review?.employee_id || '');
-  const [cycleId, setCycleId] = useState<number | null>(review?.cycle_id || null);
-  const [reviewDate, setReviewDate] = useState(review?.review_date || localToday());
-  const [overallRating, setOverallRating] = useState(review?.overall_rating || 0);
-  const [strengths, setStrengths] = useState(review?.strengths || '');
-  const [areasForImprovement, setAreasForImprovement] = useState(review?.areas_for_improvement || '');
-  const [goals, setGoals] = useState(review?.goals || '');
-  const [comments, setComments] = useState(review?.comments || '');
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_hr_performance_review_form',
+    defaultValue: EMPTY_FORM,
+    isActive: true,
+  });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     apiFetch<UserOption[]>('/hr/employees').then(setUsers).catch(err => { console.warn('[HR] Employee load failed:', err); setError('Failed to load employee list'); });
     apiFetch<ReviewCycle[]>('/hr/review-cycles').then(setCycles).catch(err => { console.warn('[HR] Review cycles load failed:', err); });
-  }, []);
+    if (review) {
+      setForm({
+        employee_id: review.employee_id || '',
+        cycle_id: review.cycle_id || null,
+        review_date: review.review_date || localToday(),
+        overall_rating: review.overall_rating || 0,
+        strengths: review.strengths || '',
+        areas_for_improvement: review.areas_for_improvement || '',
+        goals: review.goals || '',
+        comments: review.comments || '',
+      });
+    }
+    snapshot();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Escape to close
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) {
+        if (isDirty) {
+          if (window.confirm('You have unsaved changes. Close anyway?')) onClose();
+        } else {
+          onClose();
+        }
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [saving, onClose]);
+  }, [saving, onClose, isDirty]);
 
   const handleSubmit = async () => {
-    if (!employeeId || !reviewDate || overallRating < 1) {
+    if (!form.employee_id || !form.review_date || form.overall_rating < 1) {
       setError('Employee, review date, and rating are required.');
       return;
     }
@@ -75,14 +112,14 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
     setError('');
     try {
       const payload = {
-        employee_id: employeeId,
-        cycle_id: cycleId,
-        review_date: reviewDate,
-        overall_rating: overallRating,
-        strengths: strengths.trim(),
-        areas_for_improvement: areasForImprovement.trim(),
-        goals: goals.trim(),
-        comments: comments.trim(),
+        employee_id: form.employee_id,
+        cycle_id: form.cycle_id,
+        review_date: form.review_date,
+        overall_rating: form.overall_rating,
+        strengths: form.strengths.trim(),
+        areas_for_improvement: form.areas_for_improvement.trim(),
+        goals: form.goals.trim(),
+        comments: form.comments.trim(),
       };
       if (review?.id) {
         await apiFetch(`/hr/performance-reviews/${review.id}`, {
@@ -95,6 +132,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           body: JSON.stringify(payload),
         });
       }
+      clearDraft();
       onSaved();
     } catch (err: any) {
       setError(err.message || 'Failed to save review');
@@ -107,7 +145,9 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
   const labelClass = 'block text-xs text-rmpg-400 mb-1';
 
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
+    <>
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
+      <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60" role="dialog" aria-modal="true" onClick={onClose}>
       <div className="bg-surface-base border border-rmpg-700 rounded-sm w-full max-w-xl mx-4 max-h-[90vh] overflow-auto" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-4 py-2 border-b border-rmpg-700 flex items-center justify-between">
@@ -124,6 +164,17 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
 
         {/* Body */}
         <div className="p-4 space-y-3">
+          {wasRestored && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={() => { setForm({ ...EMPTY_FORM }); snapshot(); }} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                Discard
+              </button>
+            </div>
+          )}
           {error && (
             <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/30 rounded-sm px-2 py-1.5">
               {error}
@@ -133,7 +184,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
           <div className="grid grid-cols-2 gap-3">
             <div>
               <label className={labelClass}>Employee *</label>
-              <select value={employeeId} onChange={e => setEmployeeId(e.target.value)} className={inputClass}>
+              <select value={form.employee_id} onChange={e => setForm(f => ({ ...f, employee_id: e.target.value }))} className={inputClass}>
                 <option value="">Select employee...</option>
                 {users.map(u => (
                   <option key={u.id} value={u.id}>
@@ -144,7 +195,7 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
             </div>
             <div>
               <label className={labelClass}>Review Cycle</label>
-              <select value={cycleId ?? ''} onChange={e => setCycleId(e.target.value ? Number(e.target.value) : null)} className={inputClass}>
+              <select value={form.cycle_id ?? ''} onChange={e => setForm(f => ({ ...f, cycle_id: e.target.value ? Number(e.target.value) : null }))} className={inputClass}>
                 <option value="">None</option>
                 {cycles.map(c => (
                   <option key={c.id} value={c.id}>{c.name}</option>
@@ -158,8 +209,8 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
               <label className={labelClass}>Review Date *</label>
               <input
                 type="date"
-                value={reviewDate}
-                onChange={e => setReviewDate(e.target.value)}
+                value={form.review_date}
+                onChange={e => setForm(f => ({ ...f, review_date: e.target.value }))}
                 className={inputClass}
               />
             </div>
@@ -170,15 +221,15 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
                   <button
                     key={n}
                     type="button"
-                    onClick={() => setOverallRating(n)}
+                    onClick={() => setForm(f => ({ ...f, overall_rating: n }))}
                     className="focus:outline-none"
                   >
                     <Star
-                      className={`w-5 h-5 ${n <= overallRating ? 'text-yellow-400 fill-yellow-400' : 'text-rmpg-600'}`}
+                      className={`w-5 h-5 ${n <= form.overall_rating ? 'text-yellow-400 fill-yellow-400' : 'text-rmpg-600'}`}
                     />
                   </button>
                 ))}
-                <span className="ml-2 text-xs text-rmpg-400">{overallRating > 0 ? `${overallRating}/5` : ''}</span>
+                <span className="ml-2 text-xs text-rmpg-400">{form.overall_rating > 0 ? `${form.overall_rating}/5` : ''}</span>
               </div>
             </div>
           </div>
@@ -239,5 +290,6 @@ export default function PerformanceReviewModal({ onClose, onSaved, review }: Per
         </div>
       </div>
     </div>
+    </>
   );
 }

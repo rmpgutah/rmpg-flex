@@ -6,7 +6,7 @@
 import { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
-import StatusBarRadio from './StatusBarRadio';
+
 import { safeTimeStr } from '../utils/dateUtils';
 
 const APP_VERSION: string =

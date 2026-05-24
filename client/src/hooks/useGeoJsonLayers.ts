@@ -1,9 +1,9 @@
 // ============================================================
-// RMPG Flex — GeoJSON Layer Manager Hook
+// RMPG Flex — GeoJSON Layer Manager Hook (Mapbox GL JS)
 // ============================================================
 // Loads split GeoJSON layer files from /geojson/ and renders
-// them as Google Maps Data layers. Supports lazy loading,
-// per-layer toggle, click info windows, style theming,
+// them as Mapbox GL JS source + layer pairs. Supports lazy
+// loading, per-layer toggle, click popups, style theming,
 // and interactive selection mode for shift planning.
 // ============================================================
 
@@ -17,7 +17,6 @@ export interface GeoLayerConfig {
   label: string;
   file: string;
   visible: boolean;
-  /** Whether features in this layer can be selected for shift planning */
   selectable: boolean;
   style: {
     fillColor: string;
@@ -25,16 +24,11 @@ export interface GeoLayerConfig {
     strokeColor: string;
     strokeOpacity: number;
     strokeWeight: number;
-    /** For Point geometry */
     iconScale?: number;
   };
-  /** Which property to display as the primary label in info windows */
   labelProp: string;
-  /** Property used as the unique feature key for selection tracking */
   featureKeyProp: string;
-  /** Optional secondary detail props */
   detailProps?: string[];
-  /** Minimum zoom to show this layer (performance) */
   minZoom?: number;
 }
 
@@ -116,27 +110,18 @@ export const GEO_LAYER_CONFIGS: GeoLayerConfig[] = [
   },
 ];
 
-// ── Selection highlight colors ───────────────────────────────
+const SELECTION_FILL_COLOR = '#f59e0b';
+const SELECTION_FILL_OPACITY = 0.25;
+const SELECTION_STROKE_COLOR = '#f59e0b';
+const SELECTION_STROKE_OPACITY = 0.9;
+const SELECTION_STROKE_WEIGHT = 2.5;
 
-const SELECTION_STYLE = {
-  fillColor: '#f59e0b',
-  fillOpacity: 0.25,
-  strokeColor: '#f59e0b',
-  strokeOpacity: 0.9,
-  strokeWeight: 2.5,
-};
+const ASSIGNED_FILL_COLOR = '#22c55e';
+const ASSIGNED_FILL_OPACITY = 0.18;
+const ASSIGNED_STROKE_COLOR = '#22c55e';
+const ASSIGNED_STROKE_OPACITY = 0.8;
+const ASSIGNED_STROKE_WEIGHT = 2;
 
-const ASSIGNED_STYLE = {
-  fillColor: '#22c55e',
-  fillOpacity: 0.18,
-  strokeColor: '#22c55e',
-  strokeOpacity: 0.8,
-  strokeWeight: 2,
-};
-
-// ── Municipality color palette (hash-based for 257 municipalities) ──
-// No blues (#3b82f6, #06b6d4, #6366f1, #0ea5e9 removed) per Spillman pure-black
-// theme — replaced with gold/amber/orange/magenta variants.
 const MUNI_COLORS = [
   '#22c55e', '#d4a017', '#ef4444', '#f59e0b', '#a855f7', '#ec4899',
   '#14b8a6', '#f97316', '#8b5cf6', '#10b981', '#facc15', '#e11d48',
@@ -148,8 +133,6 @@ function getMuniColor(name: string): string {
   for (let i = 0; i < name.length; i++) hash = ((hash << 5) - hash + name.charCodeAt(i)) | 0;
   return MUNI_COLORS[Math.abs(hash) % MUNI_COLORS.length];
 }
-
-// ── Section color palette (12 distinct hues for beat sections) ──
 
 export const SECTION_COLORS: Record<string, string> = {
   SL1: '#22c55e', SL2: '#d4a017', SL3: '#a855f7', SL4: '#f59e0b', SL5: '#ef4444', SL6: '#fbbf24',
@@ -167,7 +150,6 @@ export function getSectionColor(sectionId: string): string {
   return SECTION_COLOR_FALLBACKS[Math.abs(hash) % SECTION_COLOR_FALLBACKS.length];
 }
 
-/** Per-city color — 24 medium-bright hues visible on dark map tiles */
 const CITY_COLORS = [
   '#4ade80', '#60a5fa', '#f87171', '#fbbf24', '#c084fc', '#f472b6',
   '#2dd4bf', '#fb923c', '#a78bfa', '#34d399', '#22d3ee', '#fb7185',
@@ -181,8 +163,6 @@ export function getCityColor(cityCode: string): string {
   return CITY_COLORS[Math.abs(hash) % CITY_COLORS.length];
 }
 
-// ── Beat-District enrichment data ────────────────────────────
-
 export interface BeatDistrictEntry {
   sectionId: string;
   sectionName: string;
@@ -194,13 +174,10 @@ export interface BeatDistrictEntry {
   dispatchCode: string;
 }
 
-/** Pre-computed style for a beat polygon, keyed by "city_code::district_letter" */
 interface BeatStyleEntry {
   style: GeoLayerConfig['style'];
   entry: BeatDistrictEntry;
 }
-
-// ── Exported Feature Info type ───────────────────────────────
 
 export interface GeoFeatureInfo {
   layerId: string;
@@ -209,20 +186,13 @@ export interface GeoFeatureInfo {
   properties: Record<string, any>;
 }
 
-// ── Hook ─────────────────────────────────────────────────────
-
 interface UseGeoJsonLayersOptions {
-  map: google.maps.Map | null;
-  infoWindow: google.maps.InfoWindow | null;
-  /** When true, clicking a selectable feature calls onFeatureClick instead of showing info */
+  map: mapboxgl.Map | null;
+  popup: mapboxgl.Popup | null;
   selectionMode?: boolean;
-  /** Called when a feature is clicked in selection mode */
   onFeatureClick?: (info: GeoFeatureInfo) => void;
-  /** Set of "layerId::featureKey" strings currently selected */
   selectedFeatures?: Set<string>;
-  /** Set of "layerId::featureKey" strings that have been assigned */
   assignedFeatures?: Set<string>;
-  /** Beat-district enrichment: Map<city_code, Map<district_letter, BeatDistrictEntry>> */
   beatDistrictMap?: Map<string, Map<string, BeatDistrictEntry>>;
   /** Hierarchy color lookups for tier-aware beat polygon styling (Section fill + Zone border). When null, falls back to existing single-color path. */
   hierarchyColors?: {
@@ -239,8 +209,6 @@ export interface GeoLayerState {
   featureCount: number;
 }
 
-// ── Shared district lookup helper ────────────────────────────
-
 function lookupBeatDistrict(
   beatDistrictMap: Map<string, Map<string, BeatDistrictEntry>> | undefined,
   cityCode: string | undefined,
@@ -251,8 +219,6 @@ function lookupBeatDistrict(
   if (!zoneMap) return undefined;
   return distLetter ? zoneMap.get(distLetter) : undefined;
 }
-
-// ── Default info window HTML builder ─────────────────────────
 
 function buildDefaultInfoHtml(name: string, cfg: GeoLayerConfig, props: Record<string, any>): string {
   let html = `<div style="font-weight:bold;font-size:12px;color:#fff;margin-bottom:4px;border-bottom:1px solid #444;padding-bottom:3px;">${escapeForHtml(String(name))}</div>`;
@@ -268,9 +234,13 @@ function buildDefaultInfoHtml(name: string, cfg: GeoLayerConfig, props: Record<s
   return html;
 }
 
+function getLayerSourceId(layerId: string): string { return `geojson-${layerId}`; }
+function getFillLayerId(layerId: string): string { return `geojson-${layerId}-fill`; }
+function getLineLayerId(layerId: string): string { return `geojson-${layerId}-line`; }
+
 export function useGeoJsonLayers({
   map,
-  infoWindow,
+  popup,
   selectionMode = false,
   onFeatureClick,
   selectedFeatures,
@@ -278,7 +248,6 @@ export function useGeoJsonLayers({
   beatDistrictMap,
   hierarchyColors,
 }: UseGeoJsonLayersOptions) {
-  // Per-layer visibility state
   const [layerStates, setLayerStates] = useState<Record<string, GeoLayerState>>(() => {
     const initial: Record<string, GeoLayerState> = {};
     for (const cfg of GEO_LAYER_CONFIGS) {
@@ -287,9 +256,6 @@ export function useGeoJsonLayers({
     return initial;
   });
 
-  // Google Maps Data layer instances (one per GeoJSON layer)
-  const dataLayersRef = useRef<Record<string, google.maps.Data>>({});
-  // Cache loaded GeoJSON objects so we don't re-fetch
   const geojsonCacheRef = useRef<Record<string, object>>({});
   // Track listeners for cleanup
   const listenersRef = useRef<google.maps.MapsEventListener[]>([]);
@@ -302,7 +268,6 @@ export function useGeoJsonLayers({
   // to re-walk the data layer when hierarchyColors resolves after beats.
   const beatFeaturesCacheRef = useRef<import('geojson').Feature<import('geojson').Polygon>[] | null>(null);
 
-  // Refs for latest callback/selection state (avoids re-creating data layers)
   const selectionModeRef = useRef(selectionMode);
   const onFeatureClickRef = useRef(onFeatureClick);
   const selectedFeaturesRef = useRef(selectedFeatures);
@@ -313,7 +278,6 @@ export function useGeoJsonLayers({
   useEffect(() => { selectedFeaturesRef.current = selectedFeatures; }, [selectedFeatures]);
   useEffect(() => { assignedFeaturesRef.current = assignedFeatures; }, [assignedFeatures]);
 
-  // Beat-district enrichment ref
   const beatDistrictMapRef = useRef(beatDistrictMap);
   useEffect(() => { beatDistrictMapRef.current = beatDistrictMap; }, [beatDistrictMap]);
 
@@ -373,21 +337,18 @@ export function useGeoJsonLayers({
   const beatStyleLookupRef = useRef(beatStyleLookup);
   useEffect(() => { beatStyleLookupRef.current = beatStyleLookup; }, [beatStyleLookup]);
 
-  // ── Build feature key from a Data.Feature ──────────────────
-
-  const getFeatureKey = useCallback((feature: google.maps.Data.Feature, cfg: GeoLayerConfig): string => {
-    const val = feature.getProperty(cfg.featureKeyProp);
-    return val != null ? String(val) : '';
-  }, []);
-
   const makeCompositeKey = (layerId: string, featureKey: string) => `${layerId}::${featureKey}`;
 
-  // ── Restyle data layers when selection changes ─────────────
+  const setLayerPaint = useCallback((cfg: GeoLayerConfig, isSelected: boolean, isAssigned: boolean) => {
+    if (!map) return;
+    const fillId = getFillLayerId(cfg.id);
+    const lineId = getLineLayerId(cfg.id);
 
-  const restyleLayers = useCallback(() => {
-    for (const cfg of GEO_LAYER_CONFIGS) {
-      const dl = dataLayersRef.current[cfg.id];
-      if (!dl) continue;
+    let fillColor = cfg.style.fillColor;
+    let fillOpacity = cfg.style.fillOpacity;
+    let strokeColor = cfg.style.strokeColor;
+    let strokeOpacity = cfg.style.strokeOpacity;
+    let strokeWeight = cfg.style.strokeWeight;
 
       dl.setStyle((feature) => {
         if (!feature) return {};
@@ -478,30 +439,34 @@ export function useGeoJsonLayers({
         };
       });
     }
-  }, [getFeatureKey]);
 
-  // Re-style when selection/assigned sets change
-  // Note: beatDistrictMap is static after initial load — restyleLayers reads it via ref
-  useEffect(() => {
-    restyleLayers();
-  }, [selectedFeatures, assignedFeatures, selectionMode, restyleLayers]);
-
-  // Re-style once when beat district data arrives (static, fires only once)
-  useEffect(() => {
-    if (beatStyleLookup) restyleLayers();
-  }, [beatStyleLookup, restyleLayers]);
-
-  // ── Load a single GeoJSON layer onto the map ───────────────
+    if (map.getLayer(fillId)) {
+      map.setPaintProperty(fillId, 'fill-color', fillColor);
+      map.setPaintProperty(fillId, 'fill-opacity', fillOpacity);
+    }
+    if (map.getLayer(lineId)) {
+      map.setPaintProperty(lineId, 'line-color', strokeColor);
+      map.setPaintProperty(lineId, 'line-opacity', strokeOpacity);
+      map.setPaintProperty(lineId, 'line-width', strokeWeight);
+    }
+  }, [map]);
 
   const loadLayer = useCallback(async (cfg: GeoLayerConfig) => {
     if (!map) return;
-    // Already have a Data layer for this id? Just show/style it.
-    if (dataLayersRef.current[cfg.id]) {
-      dataLayersRef.current[cfg.id].setMap(map);
-      return;
+
+    const sourceId = getLayerSourceId(cfg.id);
+    if (map.getSource(sourceId)) {
+      // Safe check: If layers were somehow removed but source remained, or vice versa, handle it
+      if (!map.getLayer(getFillLayerId(cfg.id)) && !map.getLayer(getLineLayerId(cfg.id))) {
+        // Let it fall through or clean up the source first to re-add safely
+        try { map.removeSource(sourceId); } catch { /* ignore */ }
+      } else {
+        // Already fully loaded — just set visibility
+        setLayerStates(prev => ({ ...prev, [cfg.id]: { ...prev[cfg.id], visible: true } }));
+        return;
+      }
     }
 
-    // Fetch the GeoJSON
     let geojson = geojsonCacheRef.current[cfg.id];
     if (!geojson) {
       try {
@@ -515,24 +480,48 @@ export function useGeoJsonLayers({
       }
     }
 
-    // Create a Data layer
-    const dataLayer = new google.maps.Data({ map });
-    dataLayer.addGeoJson(geojson as object);
+    map.addSource(sourceId, {
+      type: 'geojson',
+      data: geojson as any,
+    });
 
-    // Initial style (will be overridden by restyleLayers)
-    dataLayer.setStyle(() => ({ clickable: true }));
+    // Add fill layer for polygon features
+    map.addLayer({
+      id: getFillLayerId(cfg.id),
+      type: 'fill',
+      source: sourceId,
+      paint: {
+        'fill-color': cfg.style.fillColor,
+        'fill-opacity': cfg.style.fillOpacity,
+      },
+      layout: {
+        visibility: cfg.visible ? 'visible' : 'none',
+      },
+    });
 
-    // Click handler — either selection or info window
-    const clickListener = dataLayer.addListener('click', (event: google.maps.Data.MouseEvent) => {
-      if (!map) return;
-      const feat = event.feature;
-      const props: Record<string, any> = {};
-      feat.forEachProperty((val, key) => { props[key] = val; });
+    // Add line layer for stroke
+    map.addLayer({
+      id: getLineLayerId(cfg.id),
+      type: 'line',
+      source: sourceId,
+      paint: {
+        'line-color': cfg.style.strokeColor,
+        'line-opacity': cfg.style.strokeOpacity,
+        'line-width': cfg.style.strokeWeight,
+      },
+      layout: {
+        visibility: cfg.visible ? 'visible' : 'none',
+      },
+    });
 
-      const fKey = getFeatureKey(feat, cfg);
+    // Click handler
+    map.on('click', getFillLayerId(cfg.id), (e) => {
+      if (!e.features || e.features.length === 0) return;
+      const feat = e.features[0];
+      const props = feat.properties || {};
+      const fKey = props[cfg.featureKeyProp] != null ? String(props[cfg.featureKeyProp]) : '';
       const name = props[cfg.labelProp] || props.name || props.NAME || cfg.label;
 
-      // Selection mode — delegate to callback
       if (selectionModeRef.current && cfg.selectable && onFeatureClickRef.current) {
         onFeatureClickRef.current({
           layerId: cfg.id,
@@ -543,11 +532,10 @@ export function useGeoJsonLayers({
         return;
       }
 
-      // Normal mode — show info window
-      if (!infoWindow) return;
+      if (!popup) return;
+
       let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
 
-      // Enhanced beat info window with district data
       const entry = cfg.id === 'beat'
         ? lookupBeatDistrict(beatDistrictMapRef.current, props.city_code, props.district_letter)
         : undefined;
@@ -575,27 +563,18 @@ export function useGeoJsonLayers({
         html += buildDefaultInfoHtml(name, cfg, props);
       }
 
-      // Show assigned officer info if available
       const compositeKey = makeCompositeKey(cfg.id, fKey);
       if (assignedFeaturesRef.current?.has(compositeKey)) {
         html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #333;font-size:9px;color:#22c55e;font-weight:bold;">● ASSIGNED</div>`;
       }
 
       html += `</div>`;
-      infoWindow.setContent(html);
-      infoWindow.setPosition(event.latLng!);
-      infoWindow.open(map);
+      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
 
-    listenersRef.current.push(clickListener);
-    dataLayersRef.current[cfg.id] = dataLayer;
-
-    // Update feature count
-    let count = 0;
-    dataLayer.forEach(() => count++);
     setLayerStates((prev) => ({
       ...prev,
-      [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: count },
+      [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
     }));
 
     // ── Beat label overlays — show dispatch codes at polygon centroids ──
@@ -698,67 +677,7 @@ export function useGeoJsonLayers({
         }
       }
     }
-
-    // ── County label overlays — show county names at polygon centroids ──
-    if (cfg.id === 'county') {
-      dataLayer.forEach((feature) => {
-        const name = feature.getProperty('NAME') as string;
-        if (!name) return;
-        const geom = feature.getGeometry();
-        if (!geom) return;
-        let latSum = 0, lngSum = 0, pointCount = 0;
-        geom.forEachLatLng((latLng) => { latSum += latLng.lat(); lngSum += latLng.lng(); pointCount++; });
-        if (pointCount === 0) return;
-        const centroid = new google.maps.LatLng(latSum / pointCount, lngSum / pointCount);
-        const marker = new google.maps.Marker({
-          position: centroid,
-          map,
-          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-          label: {
-            text: name.toUpperCase() + ' CO.',
-            color: '#88888880',
-            fontSize: '10px',
-            fontWeight: 'bold',
-            fontFamily: 'JetBrains Mono, Courier New, monospace',
-          },
-          clickable: false,
-          zIndex: 0,
-        });
-        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
-        labelMarkersRef.current[cfg.id].push(marker);
-      });
-    }
-
-    // ── Municipality label overlays — show municipality names at polygon centroids ──
-    if (cfg.id === 'municipality') {
-      dataLayer.forEach((feature) => {
-        const name = feature.getProperty('NAME') as string;
-        if (!name) return;
-        const geom = feature.getGeometry();
-        if (!geom) return;
-        let latSum = 0, lngSum = 0, pointCount = 0;
-        geom.forEachLatLng((latLng) => { latSum += latLng.lat(); lngSum += latLng.lng(); pointCount++; });
-        if (pointCount === 0) return;
-        const centroid = new google.maps.LatLng(latSum / pointCount, lngSum / pointCount);
-        const mc = getMuniColor(name);
-        const marker = new google.maps.Marker({
-          position: centroid,
-          map,
-          icon: { path: google.maps.SymbolPath.CIRCLE, scale: 0 },
-          label: { text: name.toUpperCase(), color: mc, fontSize: '8px', fontWeight: 'bold', fontFamily: 'JetBrains Mono, Courier New, monospace' },
-          clickable: false,
-          zIndex: 0,
-        });
-        if (!labelMarkersRef.current[cfg.id]) labelMarkersRef.current[cfg.id] = [];
-        labelMarkersRef.current[cfg.id].push(marker);
-      });
-    }
-
-    // Apply current styles after load
-    restyleLayers();
-  }, [map, infoWindow, getFeatureKey, restyleLayers]);
-
-  // ── Ensure layer is loaded (for shift planning) ────────────
+  }, [map, popup]);
 
   const ensureLayerLoaded = useCallback(async (layerId: string) => {
     const cfg = GEO_LAYER_CONFIGS.find((c) => c.id === layerId);
@@ -766,14 +685,11 @@ export function useGeoJsonLayers({
     const state = layerStates[cfg.id];
     if (state?.loaded) return;
     await loadLayer(cfg);
-    // Also mark as visible
     setLayerStates((prev) => ({
       ...prev,
       [cfg.id]: { ...prev[cfg.id], visible: true },
     }));
   }, [map, layerStates, loadLayer]);
-
-  // ── Toggle layer visibility ────────────────────────────────
 
   const toggleGeoLayer = useCallback((layerId: string) => {
     setLayerStates((prev) => {
@@ -781,27 +697,30 @@ export function useGeoJsonLayers({
       if (!curr) return prev;
       const nowVisible = !curr.visible;
 
-      // Show/hide the Data layer
-      const dl = dataLayersRef.current[layerId];
-      if (dl) {
-        dl.setMap(nowVisible ? map : null);
+      const fillId = getFillLayerId(layerId);
+      const lineId = getLineLayerId(layerId);
+      const vis = nowVisible ? 'visible' : 'none';
+
+      if (map) {
+        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', vis); } catch {}
+        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', vis); } catch {}
       }
 
-      // Show/hide label markers for this layer
-      const labels = labelMarkersRef.current[layerId];
+      // Show/hide label markers
+      const labels = labelMarkerRefs.current[layerId];
       if (labels) {
-        for (const m of labels) m.setMap(nowVisible ? map : null);
+        for (const m of labels) {
+          if (nowVisible) m.addTo(map!); else m.remove();
+        }
       }
 
       return { ...prev, [layerId]: { ...curr, visible: nowVisible } };
     });
   }, [map]);
 
-  // ── Auto-load visible layers when map is ready ─────────────
-
+  // Auto-load visible layers when map is ready
   useEffect(() => {
     if (!map) return;
-
     for (const cfg of GEO_LAYER_CONFIGS) {
       const state = layerStates[cfg.id];
       if (state?.visible && !state.loaded) {
@@ -810,42 +729,30 @@ export function useGeoJsonLayers({
     }
   }, [map, layerStates, loadLayer]);
 
-  // ── Zoom-based visibility management ───────────────────────
-
+  // Zoom-based visibility management
   useEffect(() => {
     if (!map) return;
-
-    const zoomListener = map.addListener('zoom_changed', () => {
-      const zoom = map.getZoom() ?? 12;
+    const onZoom = () => {
+      const zoom = map.getZoom();
       for (const cfg of GEO_LAYER_CONFIGS) {
         const state = layerStates[cfg.id];
-        const dl = dataLayersRef.current[cfg.id];
-        if (!dl || !state?.visible) continue;
-
-        const visible = !cfg.minZoom || zoom >= cfg.minZoom;
-        dl.setMap(visible ? map : null);
-
-        // Also toggle label markers visibility with zoom
-        const labels = labelMarkersRef.current[cfg.id];
-        if (labels) {
-          // Show labels at zoom 10+ (same as beat layer minZoom)
-          const showLabels = visible && zoom >= 10;
-          for (const m of labels) m.setMap(showLabels ? map : null);
-        }
+        if (!state?.visible) continue;
+        const fillId = getFillLayerId(cfg.id);
+        const lineId = getLineLayerId(cfg.id);
+        const viz = !cfg.minZoom || zoom >= cfg.minZoom ? 'visible' : 'none';
+        try { if (map.getLayer(fillId)) map.setLayoutProperty(fillId, 'visibility', viz); } catch {}
+        try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch {}
       }
-    });
-
-    return () => {
-      google.maps.event.removeListener(zoomListener);
     };
+    map.on('zoom', onZoom);
+    return () => { map.off('zoom', onZoom); };
   }, [map, layerStates]);
 
-  // ── Cleanup on unmount ─────────────────────────────────────
-
+  // Cleanup on unmount
   useEffect(() => {
     return () => {
-      for (const listener of listenersRef.current) {
-        google.maps.event.removeListener(listener);
+      for (const markers of Object.values(labelMarkerRefs.current)) {
+        for (const m of markers) m.remove();
       }
       for (const dl of Object.values(dataLayersRef.current)) {
         dl.setMap(null);
@@ -870,8 +777,6 @@ export function useGeoJsonLayers({
     configs: GEO_LAYER_CONFIGS,
   };
 }
-
-// ── Utility ──────────────────────────────────────────────────
 
 function escapeForHtml(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');

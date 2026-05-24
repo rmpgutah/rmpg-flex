@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import {
   Plus, Trash2, Copy, CheckCircle2, XCircle, Key, AlertTriangle,
   Loader2, RotateCcw, ShieldCheck, ShieldOff, Globe, Eye, EyeOff, Save, Link2,
-  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin,
+  Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin, Navigation, Server,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
 import { safeDateStr } from '../../utils/dateUtils';
@@ -131,8 +131,7 @@ const GPS_WEBHOOK_KEYS: ApiKeyConfig[] = [
 
 const FREE_OPEN_APIS: ApiKeyConfig[] = [
   { key: 'openweathermap_api_key', label: 'OpenWeatherMap', desc: 'Free tier: 1000 calls/day — current weather, forecasts, alerts for dispatch scene conditions', formatHint: '32-character hex key from openweathermap.org' },
-  { key: 'mapbox_api_key', label: 'Mapbox', desc: 'Free tier: 50k loads/month — satellite imagery, routing, isochrones, offline maps', pattern: /^pk\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/, formatHint: 'Starts with pk. — from account.mapbox.com' },
-  { key: 'nominatim_api_key', label: 'OpenStreetMap Nominatim', desc: 'Free geocoding — address-to-coordinates fallback when Google quota exceeded (email as key)' },
+  { key: 'nominatim_api_key', label: 'OpenStreetMap Nominatim', desc: 'Free geocoding — address-to-coordinates fallback (email as key)' },
   { key: 'opencage_api_key', label: 'OpenCage Geocoder', desc: 'Free tier: 2500 calls/day — reverse geocoding, address parsing, timezone lookup' },
   { key: 'ipinfo_api_key', label: 'IPinfo', desc: 'Free tier: 50k/month — IP geolocation for login audit, session tracking, threat intel' },
   { key: 'virustotal_api_key', label: 'VirusTotal', desc: 'Free tier: 4 lookups/min — file hash checks, URL scanning for evidence/forensics' },
@@ -603,8 +602,8 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
       <ApiKeyPanel title="GPS Background Tracking — Traccar (PRIMARY)" icon={<MapPin className="w-4 h-4 text-emerald-400" />} keys={GPS_WEBHOOK_KEYS} />
       <TraccarPullStatusCard />
 
-      {/* ── Google Cloud Console Keys ── */}
-      <ApiKeyPanel title="Google Cloud Console" icon={<Globe className="w-4 h-4 text-gray-400" />} keys={GOOGLE_CLOUD_KEYS} />
+      {/* ── Mapbox API (DOMINANT MAP SOURCE) ── */}
+      <ApiKeyPanel title="Mapbox API — Primary Map System" icon={<Navigation className="w-4 h-4 text-brand-400" />} keys={MAPBOX_KEYS} />
 
       {/* ── Law Enforcement / Government APIs ── */}
       <ApiKeyPanel title="Law Enforcement / Government" icon={<Shield className="w-4 h-4 text-red-400" />} keys={LAW_ENFORCEMENT_KEYS} />

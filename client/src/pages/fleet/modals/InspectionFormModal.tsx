@@ -88,17 +88,31 @@ interface Props {
   onSave: () => void;
   onClose: () => void;
   saving: boolean;
+  isDirty?: boolean;
+  draftRestored?: boolean;
+  onDiscardDraft?: () => void;
 }
 
-export default function InspectionFormModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving }: Props) {
+export default function InspectionFormModal({ isOpen, mode = 'create', form, onChange, onSave, onClose, saving, isDirty, draftRestored, onDiscardDraft }: Props) {
   const titleId = useId();
 
   useEffect(() => {
     if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !saving) onClose(); };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !saving) {
+        if (isDirty) {
+          if (window.confirm('You have unsaved changes. Discard them?')) {
+            onDiscardDraft?.();
+            onClose();
+          }
+        } else {
+          onClose();
+        }
+      }
+    };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [isOpen, saving, onClose]);
+  }, [isOpen, saving, onClose, isDirty, onDiscardDraft]);
 
   if (!isOpen) return null;
 
@@ -123,17 +137,38 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
     needs_attention: 'text-amber-400 bg-amber-900/30 border-amber-700/40',
   };
 
+  const guardedClose = () => {
+    if (isDirty && !saving) {
+      if (window.confirm('You have unsaved changes. Discard them?')) {
+        onDiscardDraft?.();
+        onClose();
+      }
+    } else {
+      onClose();
+    }
+  };
+
   return (
-    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : onClose}>
+    <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center" role="dialog" aria-modal="true" aria-labelledby={titleId} style={{ background: 'rgba(0,0,0,0.6)' }} onClick={saving ? undefined : guardedClose}>
       <div className="panel-beveled w-[680px] max-w-full mx-4 max-h-[85vh] flex flex-col bg-surface-raised" onClick={(e) => e.stopPropagation()}>
         <PanelTitleBar title={mode === 'edit' ? 'EDIT INSPECTION' : 'VEHICLE INSPECTION'} icon={ClipboardCheck} id={titleId}>
+          {isDirty && <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider mr-2">UNSAVED</span>}
           <span className={`px-2 py-0.5 text-[9px] font-bold uppercase border ${resultColor[form.overall_result]}`}>
             {resultLabel[form.overall_result]}
           </span>
-          <button type="button" className="toolbar-btn text-[9px] ml-2" onClick={onClose}>X</button>
+          <button type="button" className="toolbar-btn text-[9px] ml-2" onClick={guardedClose}>X</button>
         </PanelTitleBar>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {draftRestored && onDiscardDraft && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={onDiscardDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">Discard</button>
+            </div>
+          )}
           {/* Top form fields */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
@@ -202,7 +237,7 @@ export default function InspectionFormModal({ isOpen, mode = 'create', form, onC
         </div>
 
         <div className="flex items-center justify-end gap-2 px-4 py-2 border-t border-rmpg-700">
-          <button type="button" className="toolbar-btn" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" className="toolbar-btn" onClick={guardedClose} disabled={saving}>Cancel</button>
           <button type="button" className="toolbar-btn toolbar-btn-primary print:hidden" onClick={onSave} disabled={saving || !form.inspector_name.trim() || !form.inspection_date}>
             {saving ? 'Saving...' : mode === 'edit' ? 'Update Inspection' : 'Submit Inspection'}
           </button>

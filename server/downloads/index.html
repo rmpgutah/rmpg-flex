@@ -531,7 +531,7 @@
 
   <div class="container">
     <div class="hero">
-      <div class="version-badge" id="version-badge">v5.3.9</div>
+      <div class="version-badge" id="version-badge">v5.8.0</div>
       <h2>Download RMPG Flex</h2>
       <p>Install RMPG Flex on your computer or phone. The full CAD/RMS dispatch system — available as a desktop app, Android app, or in any web browser.</p>
     </div>
@@ -591,7 +591,7 @@
       <ul>
         <li><span class="check">&#10003;</span> Full CAD/RMS dispatch system</li>
         <li><span class="check">&#10003;</span> Real-time WebSocket dispatch updates</li>
-        <li><span class="check">&#10003;</span> Google Maps tactical map integration</li>
+        <li><span class="check">&#10003;</span> Mapbox GL JS + OpenLayers tactical map integration</li>
         <li><span class="check">&#10003;</span> Incident, records, warrants, citations management</li>
         <li><span class="check">&#10003;</span> Fleet management & patrol checkpoints</li>
         <li><span class="check">&#10003;</span> Personnel, training & equipment tracking</li>
@@ -637,7 +637,7 @@
         </div>
         <div class="step">
           <div class="step-num">2</div>
-          <div class="step-text"><strong>Important — Remove quarantine before opening:</strong> Open <strong>Terminal</strong> (press <strong>Cmd+Space</strong>, type "Terminal") and run:<br /><code>xattr -d com.apple.quarantine ~/Downloads/RMPG\ Flex-5.3.9-arm64.dmg</code><br />This clears the macOS download flag so the installer can open.</div>
+          <div class="step-text"><strong>Important — Remove quarantine before opening:</strong> Open <strong>Terminal</strong> (press <strong>Cmd+Space</strong>, type "Terminal") and run:<br /><code>xattr -d com.apple.quarantine ~/Downloads/RMPG\ Flex-5.8.0-arm64.dmg</code><br />This clears the macOS download flag so the installer can open.</div>
         </div>
         <div class="step">
           <div class="step-num">3</div>
@@ -657,7 +657,7 @@
         </div>
         <div class="warning-box">
           <strong>Getting "damaged and can't be opened" or asked to delete?</strong> This is normal for apps outside the App Store. Run both commands in Terminal:<br />
-          <code>xattr -d com.apple.quarantine ~/Downloads/RMPG\ Flex-5.3.9-arm64.dmg</code><br />
+          <code>xattr -d com.apple.quarantine ~/Downloads/RMPG\ Flex-5.8.0-arm64.dmg</code><br />
           <code>sudo xattr -cr /Applications/RMPG\ Flex.app</code><br />
           The first clears the DMG download flag, the second clears the app flag. After that, it opens normally.
         </div>
@@ -755,7 +755,7 @@
   </div>
 
   <div class="footer">
-    <span id="footer-version">RMPG Flex v5.3.9</span> &mdash; Rocky Mountain Protective Group, LLC<br />
+    <span id="footer-version">RMPG Flex v5.8.0</span> &mdash; Rocky Mountain Protective Group, LLC<br />
     <a href="/">Open Flex Web App</a> &middot; <a href="https://crm.rmpgutah.us">Open CRM</a>
   </div>
 
@@ -774,7 +774,7 @@
           for (var i = 0; i < 3; i++) { if ((pa[i]||0) !== (pb[i]||0)) return (pb[i]||0) - (pa[i]||0); }
           return 0;
         });
-        var version = versions[0] || '5.3.9';
+        var version = versions[0] || '5.8.0';
         document.getElementById('version-badge').textContent = 'v' + version;
         document.getElementById('footer-version').textContent = 'RMPG Flex v' + version;
 

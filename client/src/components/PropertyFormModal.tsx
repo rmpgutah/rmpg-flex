@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import type { Property } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
@@ -144,8 +144,18 @@ export default function PropertyFormModal({
   clients = [],
   submitError,
 }: PropertyFormModalProps) {
-  const [form, setForm] = useState<PropertyFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<PropertyFormData>({
+    storageKey: 'rmpg_property_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen) {
@@ -198,10 +208,10 @@ export default function PropertyFormModal({
           closing_hours: (editingProperty as any).closing_hours || '',
         };
         setForm(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         setForm(EMPTY_FORM);
-        snapshot(EMPTY_FORM);
+        snapshot();
       }
     }
   }, [isOpen, editingProperty]);
@@ -231,6 +241,8 @@ export default function PropertyFormModal({
       isSubmitting={isSubmitting}
       maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Submit Error */}
       {submitError && (
@@ -271,7 +283,7 @@ export default function PropertyFormModal({
           onSelect={(addr: ParsedAddress) => {
             setForm((prev) => ({
               ...prev,
-              address: addr.street || addr.formatted,
+              address: addr.formatted || addr.street,
               city: addr.city || prev.city,
               state: addr.state || prev.state,
               zip: addr.zip || prev.zip,

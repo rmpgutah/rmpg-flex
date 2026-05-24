@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Building2 } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import AddressAutocomplete from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
@@ -134,8 +134,18 @@ export default function ClientFormModal({
   isSubmitting,
   editingClient,
 }: ClientFormModalProps) {
-  const [form, setForm] = useState<ClientFormData>(EMPTY_FORM);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<ClientFormData>({
+    storageKey: 'rmpg_client_form',
+    defaultValue: EMPTY_FORM,
+    isActive: isOpen,
+  });
   const [activeSection, setActiveSection] = useState<'general' | 'billing' | 'contract' | 'account'>('general');
 
   useEffect(() => {
@@ -172,10 +182,10 @@ export default function ClientFormModal({
           notes: editingClient.notes || '',
         };
         setForm(initial);
-        snapshot(initial);
+        snapshot();
       } else {
         setForm(EMPTY_FORM);
-        snapshot(EMPTY_FORM);
+        snapshot();
       }
     }
   }, [isOpen, editingClient]);
@@ -199,8 +209,10 @@ export default function ClientFormModal({
       icon={Building2}
       submitLabel={isEdit ? 'Update Client' : 'Create Client'}
       isSubmitting={isSubmitting}
-      maxWidth="max-w-3xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
+      maxWidth="max-w-3xl"
     >
       {/* Section Tabs */}
       <div className="flex gap-1 -mt-2 mb-3 border-b border-rmpg-700 pb-2">
@@ -300,6 +312,7 @@ export default function ClientFormModal({
               className="input-dark text-xs w-full"
               value={form.address}
               onChange={(val) => set('address', val)}
+              onSelect={(addr) => set('address', addr.formatted || addr.street)}
               placeholder="145 S State St, SLC, UT 84111"
             />
           </div>
@@ -353,6 +366,7 @@ export default function ClientFormModal({
                 className="input-dark text-xs w-full"
                 value={form.billing_address}
                 onChange={(val) => set('billing_address', val)}
+                onSelect={(addr) => set('billing_address', addr.formatted || addr.street)}
                 placeholder="Same as above or different"
               />
             </div>

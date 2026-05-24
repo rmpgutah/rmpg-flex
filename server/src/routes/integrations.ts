@@ -173,31 +173,29 @@ router.get('/status', requireRole('admin', 'manager'), (_req: Request, res: Resp
   }
 });
 
-// GET /api/integrations/google-maps/client-key
-// Exposes the browser-safe Maps JS key to authenticated app users so
-// live production maps do not depend on a build-time Vite env var.
-router.get('/google-maps/client-key', (_req: Request, res: Response) => {
+// GET /api/integrations/mapbox/client-token
+// Exposes the browser-safe Mapbox access token to authenticated app users.
+router.get('/mapbox/client-token', (_req: Request, res: Response) => {
   try {
     const db = getDb();
-    const envKey = (process.env.GOOGLE_MAPS_API_KEY || '').trim();
-    const storedKey =
-      getIntegrationConfigValue(db, 'google_maps_api_key')
-      || getIntegrationConfigValue(db, 'google_maps_browser_key')
+    const envToken = (process.env.MAPBOX_ACCESS_TOKEN || '').trim();
+    const storedToken =
+      getIntegrationConfigValue(db, 'mapbox_access_token')
       || null;
 
-    const apiKey = envKey || storedKey || '';
+    const accessToken = envToken || storedToken || '';
 
     res.json({
-      configured: apiKey.length > 0,
-      apiKey: apiKey || undefined,
-      source: envKey ? 'env' : storedKey ? 'system_config' : 'missing',
+      configured: accessToken.length > 0,
+      accessToken: accessToken || undefined,
+      source: envToken ? 'env' : storedToken ? 'system_config' : 'missing',
     });
   } catch (error: any) {
-    console.error('Google Maps key fetch error:', error);
+    console.error('Mapbox token fetch error:', error);
     res.status(500).json({
       configured: false,
-      error: 'Failed to fetch Google Maps key',
-      code: 'FAILED_TO_FETCH_GOOGLE_MAPS_KEY',
+      error: 'Failed to fetch Mapbox access token',
+      code: 'FAILED_TO_FETCH_MAPBOX_TOKEN',
     });
   }
 });

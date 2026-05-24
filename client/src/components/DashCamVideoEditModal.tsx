@@ -8,7 +8,8 @@
 import React, { useState, useEffect } from 'react';
 import { Car } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
+import AddressAutocomplete from './AddressAutocomplete';
 import type { DashCamVideo, VideoClassification } from '../types';
 
 import RichTextArea from './RichTextArea';
@@ -50,8 +51,18 @@ const EMPTY: DashCamVideoEditData = {
 };
 
 export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, isSubmitting }: Props) {
-  const [form, setForm] = useState<DashCamVideoEditData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<DashCamVideoEditData>({
+    storageKey: 'rmpg_dashcam_video_edit_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && video) {
@@ -66,7 +77,7 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
         notes: video.notes || '',
       };
       setForm(init);
-      snapshot(init);
+      snapshot();
     }
   }, [isOpen, video, snapshot]);
 
@@ -89,6 +100,8 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
       submitLabel="Save Changes"
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
       maxWidth="max-w-lg"
     >
       {/* Title */}
@@ -144,16 +157,21 @@ export default function DashCamVideoEditModal({ isOpen, onClose, onSave, video, 
             step="1"
           />
         </div>
-        <div>
-          <label className="field-label mb-1 block">Address</label>
-          <input
-            type="text"
-            className="input-dark"
-            value={form.address}
-            onChange={e => set('address', e.target.value)}
-            placeholder="e.g. 1200 N Main St, Vernal"
-          />
-        </div>
+         <div>
+           <label className="field-label mb-1 block">Address</label>
+           <AddressAutocomplete
+             value={form.address}
+             onChange={(value) => set('address', value)}
+             placeholder="Enter address..."
+             className="input-dark"
+             name="address"
+             onSelect={(addr) => {
+               set('address', addr.formatted);
+               set('latitude', addr.latitude != null ? String(addr.latitude) : '');
+               set('longitude', addr.longitude != null ? String(addr.longitude) : '');
+             }}
+           />
+         </div>
       </div>
 
       {/* Latitude + Longitude */}

@@ -7,13 +7,15 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
-import { useUnsavedChanges } from '../../hooks/useUnsavedChanges';
+import { useFormDraft } from '../../hooks/useFormDraft';
 import { useToast } from '../../components/ToastProvider';
 import { useAuth } from '../../context/AuthContext';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import PanelTitleBar from '../../components/PanelTitleBar';
 import RmpgLogo from '../../components/RmpgLogo';
 import PrintButton from '../../components/PrintButton';
+import FloatingSaveBar from '../../components/FloatingSaveBar';
+import UnsavedChangesGuard from '../../components/UnsavedChangesGuard';
 import { nowLocalISO, toDatetimeLocal } from './utils/fleetFormatters';
 import GaugeRing from './components/GaugeRing';
 import FleetDetailPanel, { type DetailTab } from './FleetDetailPanel';
@@ -88,10 +90,34 @@ export default function FleetPage() {
   // Tab & modal state
   const [activeTab, setActiveTab] = usePersistedTab('rmpg_fleet_tab', 'overview' as DetailTab, ['overview', 'fuel', 'inspections', 'assignments', 'personnel', 'tires', 'damage', 'recalls', 'analytics'] as const);
   const [modal, setModal] = useState<ModalMode>('none');
-  const [vehicleForm, setVehicleForm] = useState<VehicleFormState>(EMPTY_VEHICLE_FORM);
-  const [maintForm, setMaintForm] = useState<MaintenanceFormState>(EMPTY_MAINT_FORM);
-  const [fuelForm, setFuelForm] = useState<FuelFormState>(EMPTY_FUEL_FORM);
-  const [inspectionForm, setInspectionForm] = useState<InspectionFormState>(EMPTY_INSPECTION_FORM);
+  const v = useFormDraft<VehicleFormState>({
+    storageKey: 'rmpg_fleet_vehicle_form',
+    defaultValue: EMPTY_VEHICLE_FORM,
+    isActive: modal === 'new_vehicle' || modal === 'edit_vehicle',
+  });
+  const m = useFormDraft<MaintenanceFormState>({
+    storageKey: 'rmpg_fleet_maintenance_form',
+    defaultValue: EMPTY_MAINT_FORM,
+    isActive: modal === 'log_maintenance' || modal === 'edit_maintenance',
+  });
+  const f = useFormDraft<FuelFormState>({
+    storageKey: 'rmpg_fleet_fuel_log_form',
+    defaultValue: EMPTY_FUEL_FORM,
+    isActive: modal === 'log_fuel' || modal === 'edit_fuel',
+  });
+  const i = useFormDraft<InspectionFormState>({
+    storageKey: 'rmpg_fleet_inspection_form',
+    defaultValue: EMPTY_INSPECTION_FORM,
+    isActive: modal === 'new_inspection' || modal === 'edit_inspection',
+  });
+  const vehicleForm = v.form;
+  const setVehicleForm = v.setForm;
+  const maintForm = m.form;
+  const setMaintForm = m.setForm;
+  const fuelForm = f.form;
+  const setFuelForm = f.setForm;
+  const inspectionForm = i.form;
+  const setInspectionForm = i.setForm;
   const [saving, setSaving] = useState(false);
 
   // New feature data
@@ -157,7 +183,13 @@ export default function FleetPage() {
     finally { setPretripSaving(false); }
   }, [detail, pretripForm, addToast]);
 
-  useUnsavedChanges(modal !== 'none');
+  // Snapshot form as clean baseline after modal opens and form is populated
+  useEffect(() => {
+    if (modal === 'new_vehicle' || modal === 'edit_vehicle') v.snapshot();
+  }, [modal]);
+
+  // Combined dirty state for any open form
+  const isDirtyAny = v.isDirty || m.isDirty || f.isDirty || i.isDirty;
 
   // ----------------------------------------------------------
   // Data fetching
@@ -360,6 +392,7 @@ export default function FleetPage() {
         addToast('Vehicle updated successfully', 'success');
         fetchDetail(selectedId);
       }
+      v.clearDraft();
       setModal('none');
       fetchVehicles({ silent: true });
     } catch (err) {
@@ -389,6 +422,7 @@ export default function FleetPage() {
         await apiFetch(`/fleet/${selectedId}/maintenance`, { method: 'POST', body: JSON.stringify(payload) });
         addToast('Maintenance logged successfully', 'success');
       }
+      m.clearDraft();
       setModal('none');
       setEditingMaintenanceId(null);
       fetchDetail(selectedId);
@@ -419,6 +453,7 @@ export default function FleetPage() {
         await apiFetch(`/fleet/${selectedId}/fuel`, { method: 'POST', body: JSON.stringify(payload) });
         addToast('Fuel entry logged successfully', 'success');
       }
+      f.clearDraft();
       setModal('none');
       setEditingFuelId(null);
       fetchFuelLogs(selectedId);
@@ -449,6 +484,7 @@ export default function FleetPage() {
         await apiFetch(`/fleet/${selectedId}/inspections`, { method: 'POST', body: JSON.stringify(payload) });
         addToast('Inspection submitted successfully', 'success');
       }
+      i.clearDraft();
       setModal('none');
       setEditingInspectionId(null);
       fetchInspections(selectedId);
@@ -699,14 +735,29 @@ export default function FleetPage() {
   // Keyboard shortcut: Escape to close modals
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { setShowPretripModal(false); setEditingMaintenanceId(null); }
+      if (e.key === 'Escape') { setShowPretripModal(false); }
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
   }, []);
 
+  // Active save/cancel for FloatingSaveBar
+  const activeSaveHandler = () => {
+    if (modal === 'new_vehicle' || modal === 'edit_vehicle') handleSaveVehicle();
+    else if (modal === 'log_maintenance' || modal === 'edit_maintenance') handleSaveMaintenance();
+    else if (modal === 'log_fuel' || modal === 'edit_fuel') handleSaveFuel();
+    else if (modal === 'new_inspection' || modal === 'edit_inspection') handleSaveInspection();
+  };
+
+  const activeCancelHandler = () => {
+    v.clearDraft(); m.clearDraft(); f.clearDraft(); i.clearDraft();
+    setModal('none');
+  };
+
   return (
     <div className="flex flex-col h-full animate-fade-in bg-surface-base">
+      <UnsavedChangesGuard hasUnsavedChanges={isDirtyAny} />
+      <FloatingSaveBar visible={isDirtyAny} onSave={activeSaveHandler} onCancel={activeCancelHandler} isSaving={saving} saveLabel="Save" />
 
       {/* ====== FLEET STATS DASHBOARD ====== */}
       <div className="flex-shrink-0 border-b border-rmpg-700 bg-surface-sunken">
@@ -1075,8 +1126,11 @@ export default function FleetPage() {
         form={vehicleForm}
         onChange={setVehicleForm}
         onSave={handleSaveVehicle}
-        onClose={() => setModal('none')}
+        onClose={() => { v.clearDraft(); setModal('none'); }}
         saving={saving}
+        isDirty={v.isDirty}
+        draftRestored={v.wasRestored}
+        onDiscardDraft={v.clearDraft}
       />
       <MaintenanceFormModal
         isOpen={modal === 'log_maintenance' || modal === 'edit_maintenance'}
@@ -1084,8 +1138,11 @@ export default function FleetPage() {
         form={maintForm}
         onChange={setMaintForm}
         onSave={handleSaveMaintenance}
-        onClose={() => { setModal('none'); setEditingMaintenanceId(null); }}
+        onClose={() => { m.clearDraft(); setModal('none'); setEditingMaintenanceId(null); }}
         saving={saving}
+        isDirty={m.isDirty}
+        draftRestored={m.wasRestored}
+        onDiscardDraft={m.clearDraft}
       />
       <FuelLogModal
         isOpen={modal === 'log_fuel' || modal === 'edit_fuel'}
@@ -1093,8 +1150,11 @@ export default function FleetPage() {
         form={fuelForm}
         onChange={setFuelForm}
         onSave={handleSaveFuel}
-        onClose={() => { setModal('none'); setEditingFuelId(null); }}
+        onClose={() => { f.clearDraft(); setModal('none'); setEditingFuelId(null); }}
         saving={saving}
+        isDirty={f.isDirty}
+        draftRestored={f.wasRestored}
+        onDiscardDraft={f.clearDraft}
       />
       <InspectionFormModal
         isOpen={modal === 'new_inspection' || modal === 'edit_inspection'}
@@ -1102,8 +1162,11 @@ export default function FleetPage() {
         form={inspectionForm}
         onChange={setInspectionForm}
         onSave={handleSaveInspection}
-        onClose={() => { setModal('none'); setEditingInspectionId(null); }}
+        onClose={() => { i.clearDraft(); setModal('none'); setEditingInspectionId(null); }}
         saving={saving}
+        isDirty={i.isDirty}
+        draftRestored={i.wasRestored}
+        onDiscardDraft={i.clearDraft}
       />
 
       {/* Delete Vehicle Confirmation */}

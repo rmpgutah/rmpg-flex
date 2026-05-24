@@ -1,5 +1,5 @@
 // ============================================================
-// Map Page — Types & Constants
+// Map Page — Types & Constants (Mapbox GL JS)
 // ============================================================
 
 import type { UnitStatus } from '../../../types';

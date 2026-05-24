@@ -51,7 +51,6 @@ const CitationsPage = lazyRetry(() => import('./pages/CitationsPage'));
 const FieldInterviewsPage = lazyRetry(() => import('./pages/FieldInterviewsPage'));
 const DocumentIntakePage = lazyRetry(() => import('./pages/DocumentIntakePage'));
 const TrespassOrdersPage = lazyRetry(() => import('./pages/TrespassOrdersPage'));
-const RadioPage = lazyRetry(() => import('./pages/RadioPage'));
 const MdtPage = lazyRetry(() => import('./pages/MdtPage'));
 const ShiftPlansPage = lazyRetry(() => import('./pages/ShiftPlansPage'));
 const StatuteAnalyticsPage = lazyRetry(() => import('./pages/StatuteAnalyticsPage'));
@@ -91,6 +90,17 @@ const WebResearchPage = lazyRetry(() => import('./pages/WebResearchPage'));
 const HRPage = lazyRetry(() => import('./pages/hr/HrPage'));
 const GeographyPage = lazyRetry(() => import('./pages/GeographyPage'));
 const ConnectionsPage = lazyRetry(() => import('./pages/ConnectionsPage'));
+const UseOfForcePage = lazyRetry(() => import('./pages/UseOfForcePage'));
+const SecurityDashboardPage = lazyRetry(() => import('./pages/SecurityDashboardPage'));
+const HelpPage = lazyRetry(() => import('./pages/HelpPage'));
+const NotificationsPage = lazyRetry(() => import('./pages/NotificationsPage'));
+const ColoradoDocPage = lazyRetry(() => import('./pages/ColoradoDocPage'));
+const CommandCenterPage = lazyRetry(() => import('./pages/CommandCenterPage'));
+const GeoDataViewerPage = lazyRetry(() => import('./pages/GeoDataViewerPage'));
+const InvoicesPage = lazyRetry(() => import('./pages/InvoicesPage'));
+const IpedPage = lazyRetry(() => import('./pages/IpedPage'));
+const NationalWarrantSearchPage = lazyRetry(() => import('./pages/NationalWarrantSearchPage'));
+const DashcamPage = lazyRetry(() => import('./pages/DashcamPage'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 const MobileHomePage = lazyRetry(() => import('./pages/mobile'));
@@ -224,11 +234,75 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 /** 404 Not Found page */
 function NotFoundPage() {
   return (
-    <div className="flex items-center justify-center h-full p-8">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-rmpg-300 mb-2">404</h1>
-        <p className="text-sm text-rmpg-400 mb-4">Page not found</p>
-        <a href="/" className="btn-primary">Return to Dashboard</a>
+    <div className="flex items-center justify-center h-full p-8" style={{ background: '#0a0a0a' }}>
+      <div className="text-center max-w-md">
+        {/* Logo with fallback */}
+        <img
+          src="/rmpg flex.png"
+          alt="RMPG Flex"
+          className="mx-auto mb-6 opacity-20"
+          style={{ height: 80, width: 80, objectFit: 'contain' }}
+          draggable={false}
+          onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+        />
+
+        {/* Error code */}
+        <div className="mb-4">
+          <span
+            className="text-6xl font-black tracking-tight"
+            style={{ color: '#1a1a1a', textShadow: '0 0 40px rgba(212,160,23,0.15)' }}
+          >
+            404
+          </span>
+        </div>
+
+        {/* Status bar — mimics CAD console */}
+        <div
+          className="inline-flex items-center gap-2 px-4 py-2 mb-6 border"
+          style={{
+            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
+            borderColor: '#222222',
+            borderRadius: 2,
+          }}
+        >
+          <div
+            className="w-2 h-2 rounded-full"
+            style={{ background: '#dc2626', boxShadow: '0 0 6px rgba(220,38,38,0.6)' }}
+          />
+          <span className="text-[10px] uppercase tracking-[0.15em] font-bold text-[#888888]">
+            Route Not Found
+          </span>
+        </div>
+
+        {/* Message */}
+        <p className="text-sm text-[#888888] mb-2 leading-relaxed">
+          The requested page does not exist or has been moved.
+        </p>
+        <p className="text-[11px] text-[#555555] mb-6">
+          If you believe this is an error, contact your system administrator.
+        </p>
+
+        {/* Action */}
+        <a
+          href="/"
+          className="inline-flex items-center gap-2 px-4 py-2 text-xs font-bold uppercase tracking-wide transition-colors"
+          style={{
+            background: 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)',
+            border: '1px solid #d4a017',
+            color: '#d4a017',
+            borderRadius: 2,
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(180deg, #242424 0%, #1a1a1a 100%)';
+            e.currentTarget.style.borderColor = '#e8b52a';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = 'linear-gradient(180deg, #1a1a1a 0%, #141414 100%)';
+            e.currentTarget.style.borderColor = '#d4a017';
+          }}
+        >
+          Return to Dashboard
+        </a>
       </div>
     </div>
   );
@@ -260,7 +334,8 @@ function AppRoutes() {
       {isAuthenticated && <InstallCoachingModal />}
       <Suspense fallback={<LoadingSplash message="Loading module" />}>
         <Routes>
-          {/* Public */}
+          {/* Public routes */}
+          <Route path="/downloads" element={<DownloadsPage />} />
           <Route
             path="/login"
             element={isAuthenticated ? <Navigate to={window.location.hostname === 'crm.rmpgutah.us' ? '/crm' : '/'} replace /> : <LoginPage />}
@@ -289,7 +364,6 @@ function AppRoutes() {
             <Route path="/records" element={<RouteErrorBoundary><RecordsPage /></RouteErrorBoundary>} />
             <Route path="/personnel" element={<RouteErrorBoundary><PersonnelPage /></RouteErrorBoundary>} />
             <Route path="/communications" element={<RouteErrorBoundary><CommunicationsPage /></RouteErrorBoundary>} />
-            <Route path="/radio" element={<RouteErrorBoundary><RadioPage /></RouteErrorBoundary>} />
             <Route path="/reports" element={<RouteErrorBoundary><ReportsPage /></RouteErrorBoundary>} />
             <Route path="/pdf-editor" element={<RouteErrorBoundary><PdfEditorPage /></RouteErrorBoundary>} />
             <Route path="/historical-tracks" element={<RouteErrorBoundary><HistoricalTracksPage /></RouteErrorBoundary>} />
@@ -340,6 +414,17 @@ function AppRoutes() {
             <Route path="/web-research" element={<RouteErrorBoundary><WebResearchPage /></RouteErrorBoundary>} />
             <Route path="/hr" element={<RouteErrorBoundary><HRPage /></RouteErrorBoundary>} />
             <Route path="/admin" element={<RouteErrorBoundary><AdminPage /></RouteErrorBoundary>} />
+            <Route path="/dashcams" element={<RouteErrorBoundary><DashcamPage /></RouteErrorBoundary>} />
+            <Route path="/use-of-force" element={<RouteErrorBoundary><UseOfForcePage /></RouteErrorBoundary>} />
+            <Route path="/security-dashboard" element={<RouteErrorBoundary><SecurityDashboardPage /></RouteErrorBoundary>} />
+            <Route path="/help" element={<RouteErrorBoundary><HelpPage /></RouteErrorBoundary>} />
+            <Route path="/notifications" element={<RouteErrorBoundary><NotificationsPage /></RouteErrorBoundary>} />
+            <Route path="/colorado-doc" element={<RouteErrorBoundary><ColoradoDocPage /></RouteErrorBoundary>} />
+            <Route path="/command-center" element={<RouteErrorBoundary><CommandCenterPage /></RouteErrorBoundary>} />
+            <Route path="/geo-data-viewer" element={<RouteErrorBoundary><GeoDataViewerPage /></RouteErrorBoundary>} />
+            <Route path="/invoices" element={<RouteErrorBoundary><InvoicesPage /></RouteErrorBoundary>} />
+            <Route path="/iped" element={<RouteErrorBoundary><IpedPage /></RouteErrorBoundary>} />
+            <Route path="/national-warrant-search" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>

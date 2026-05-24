@@ -1,22 +1,22 @@
 /**
- * Google Places API Lead Scraper
+ * Mapbox Places Lead Scraper
  *
- * Uses the Google Places Text Search API to find businesses in Utah
+ * Uses the Mapbox Geocoding API (forward geocoding) to find businesses in Utah
  * that are potential clients for RMPG's process serving, repo security,
  * and skip tracing services. Searches multiple business categories
- * and extracts verified contact info (phone, website, address).
+ * and extracts available contact info (address, coordinates).
  *
- * Uses the same GOOGLE_MAPS_API_KEY already configured for geocoding.
- * Cost: ~$32 per 1,000 text search requests.
+ * Uses the MAPBOX_ACCESS_TOKEN configured via Admin or env var.
+ * Cost: Free tier includes 100,000 requests/month.
  */
 import {
   sleep, upsertLead, registerScraper,
   getSourceConfig, type ScrapeResult,
 } from './leadScraperBase';
-import { resolveGoogleMapsApiKey } from './configEncryption';
+import { resolveMapboxAccessToken } from './configEncryption';
 
 const SOURCE_KEY = 'google_places';
-const REQUEST_DELAY_MS = 1_000;
+const REQUEST_DELAY_MS = 300;
 
 // Search queries and their RMPG service mappings
 const SEARCH_QUERIES = [
@@ -32,69 +32,62 @@ const SEARCH_QUERIES = [
   { query: 'landlord tenant attorney', location: 'Utah', service: 'repo_security,process_serving', industry: 'Landlord-Tenant Law', bizType: 'Law Firm' },
 ];
 
-interface PlacesResult {
-  place_id: string;
-  name: string;
-  formatted_address?: string;
-  formatted_phone_number?: string;
-  international_phone_number?: string;
-  website?: string;
-  business_status?: string;
-  geometry?: {
-    location: { lat: number; lng: number };
+interface MapboxFeature {
+  id: string;
+  text: string;
+  place_name: string;
+  center: [number, number]; // [lng, lat]
+  properties?: {
+    foursquare?: string;
+    landmark?: boolean;
+    category?: string;
   };
-  types?: string[];
-}
-
-interface TextSearchResponse {
-  results: Array<{
-    place_id: string;
-    name: string;
-    formatted_address?: string;
-    geometry?: { location: { lat: number; lng: number } };
-    business_status?: string;
-    types?: string[];
+  context?: Array<{
+    id: string;
+    text: string;
+    short_code?: string;
   }>;
-  next_page_token?: string;
-  status: string;
 }
 
-interface PlaceDetailResponse {
-  result: PlacesResult;
-  status: string;
+interface MapboxGeocodeResponse {
+  type: string;
+  features: MapboxFeature[];
 }
 
 /**
- * Parse address components from a Google formatted_address string.
- * Typical format: "123 Main St, Salt Lake City, UT 84101, USA"
+ * Parse address components from a Mapbox place_name string.
+ * Typical format: "123 Main St, Salt Lake City, Utah 84101, United States"
  */
-function parseAddress(formatted: string): { street: string; city: string; state: string; zip: string } {
-  const parts = formatted.split(',').map(s => s.trim());
+function parseAddress(placeName: string): { street: string; city: string; state: string; zip: string } {
+  const parts = placeName.split(',').map(s => s.trim());
   const street = parts[0] || '';
   const city = parts[1] || '';
-  // "UT 84101" or "Utah 84101"
+  // "Utah 84101" or "UT 84101"
   const stateZip = (parts[2] || '').trim();
-  const stateMatch = stateZip.match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)/);
-  const state = stateMatch?.[1] || 'UT';
+  const stateMatch = stateZip.match(/^([\w\s]+?)\s+(\d{5}(?:-\d{4})?)/);
+  const stateRaw = stateMatch?.[1] || 'UT';
+  // Normalize full state names to abbreviations
+  const stateAbbr: Record<string, string> = { utah: 'UT', 'Utah': 'UT' };
+  const state = stateAbbr[stateRaw] || stateRaw.slice(0, 2).toUpperCase();
   const zip = stateMatch?.[2] || '';
   return { street, city, state, zip };
 }
 
-export async function scrapeGooglePlaces(): Promise<ScrapeResult> {
+export async function scrapeMapboxPlaces(): Promise<ScrapeResult> {
   const startTime = Date.now();
   let totalFound = 0, totalImported = 0, totalSkipped = 0;
   let lastError: string | undefined;
-  const seen = new Set<string>(); // track place_ids across queries
+  const seen = new Set<string>(); // track feature IDs across queries
 
-  const apiKey = resolveGoogleMapsApiKey();
-  if (!apiKey) {
+  const accessToken = resolveMapboxAccessToken();
+  if (!accessToken) {
     return {
       source_key: SOURCE_KEY,
       status: 'error',
       records_found: 0,
       records_imported: 0,
       records_skipped: 0,
-      error_message: 'Google Maps API key not configured (set via Admin → Integrations or GOOGLE_MAPS_API_KEY env var)',
+      error_message: 'Mapbox access token not configured (set via Admin → Integrations or MAPBOX_ACCESS_TOKEN env var)',
       duration_ms: Date.now() - startTime,
     };
   }
@@ -102,109 +95,78 @@ export async function scrapeGooglePlaces(): Promise<ScrapeResult> {
   const config = getSourceConfig(SOURCE_KEY);
   const extraConfig = config?.extra_config ? JSON.parse(config.extra_config) : {};
   const queries = extraConfig.search_queries || SEARCH_QUERIES;
-  const maxPagesPerQuery = extraConfig.max_pages || 2; // Each page = 20 results, max 3 pages (60 results per query)
+  const limitPerQuery = extraConfig.limit_per_query || 10; // Mapbox max is 10 per request
 
   try {
     for (const q of queries) {
       try {
-        console.log(`[GooglePlaces] Searching: "${q.query}" near ${q.location}`);
-        let nextPageToken: string | undefined;
-        let page = 0;
+        console.log(`[MapboxPlaces] Searching: "${q.query}" near ${q.location}`);
+        await sleep(REQUEST_DELAY_MS);
 
-        do {
-          await sleep(REQUEST_DELAY_MS);
+        const searchText = encodeURIComponent(q.query + ' ' + q.location);
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${searchText}.json?access_token=${accessToken}&country=us&limit=${limitPerQuery}&types=poi`;
 
-          // Text Search API
-          let searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(q.query + ' ' + q.location)}&key=${apiKey}`;
-          if (nextPageToken) {
-            // Google requires 2s delay before using next_page_token
-            await sleep(2_000);
-            searchUrl = `https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken=${nextPageToken}&key=${apiKey}`;
+        const res = await fetch(url, { signal: AbortSignal.timeout(15_000) });
+        if (!res.ok) {
+          console.warn(`[MapboxPlaces] HTTP ${res.status} for "${q.query}"`);
+          continue;
+        }
+
+        const data: MapboxGeocodeResponse = await res.json();
+        const features = data.features || [];
+        console.log(`[MapboxPlaces] ${features.length} results for "${q.query}"`);
+        totalFound += features.length;
+
+        for (const feat of features) {
+          if (seen.has(feat.id)) {
+            totalSkipped++;
+            continue;
           }
+          seen.add(feat.id);
 
-          const res = await fetch(searchUrl, { signal: AbortSignal.timeout(15_000) });
-          if (!res.ok) {
-            console.warn(`[GooglePlaces] HTTP ${res.status} for "${q.query}"`);
-            break;
+          try {
+            const [lng, lat] = feat.center || [0, 0];
+            const addr = parseAddress(feat.place_name || '');
+
+            const result = upsertLead({
+              source: SOURCE_KEY,
+              source_id: feat.id,
+              source_url: `https://www.google.com/maps/place/?q=place_id:${feat.id}`,
+              business_name: feat.text,
+              contact_phone: undefined,
+              address: addr.street || undefined,
+              city: addr.city || undefined,
+              state: addr.state || 'UT',
+              zip: addr.zip || undefined,
+              latitude: lat || undefined,
+              longitude: lng || undefined,
+              industry: q.industry,
+              business_type: q.bizType,
+              service_interest: q.service,
+              notes: undefined,
+            });
+
+            if (result.inserted) totalImported++;
+            else totalSkipped++;
+          } catch (err: any) {
+            totalSkipped++;
+            console.warn(`[MapboxPlaces] Failed to process ${feat.id}: ${err.message}`);
           }
-
-          const data: TextSearchResponse = await res.json();
-          if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-            console.warn(`[GooglePlaces] API status: ${data.status} for "${q.query}"`);
-            break;
-          }
-
-          const results = data.results || [];
-          console.log(`[GooglePlaces] Page ${page + 1}: ${results.length} results for "${q.query}"`);
-          totalFound += results.length;
-
-          for (const place of results) {
-            if (seen.has(place.place_id)) {
-              totalSkipped++;
-              continue;
-            }
-            seen.add(place.place_id);
-
-            // Skip permanently closed businesses
-            if (place.business_status === 'CLOSED_PERMANENTLY') {
-              totalSkipped++;
-              continue;
-            }
-
-            try {
-              // Fetch place details for phone number and website
-              await sleep(200); // Light delay for detail requests
-              const detailUrl = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=formatted_phone_number,website,name,formatted_address&key=${apiKey}`;
-              const detailRes = await fetch(detailUrl, { signal: AbortSignal.timeout(15_000) });
-              const detailData: PlaceDetailResponse = await detailRes.json();
-              const detail = detailData.result || {};
-
-              const addr = parseAddress(detail.formatted_address || place.formatted_address || '');
-
-              const result = upsertLead({
-                source: SOURCE_KEY,
-                source_id: place.place_id,
-                source_url: detail.website || `https://www.google.com/maps/place/?q=place_id:${place.place_id}`,
-                business_name: detail.name || place.name,
-                contact_phone: detail.formatted_phone_number || undefined,
-                address: addr.street || undefined,
-                city: addr.city || undefined,
-                state: addr.state || 'UT',
-                zip: addr.zip || undefined,
-                latitude: place.geometry?.location?.lat,
-                longitude: place.geometry?.location?.lng,
-                industry: q.industry,
-                business_type: q.bizType,
-                service_interest: q.service,
-                notes: detail.website ? `Website: ${detail.website}` : undefined,
-              });
-
-              if (result.inserted) totalImported++;
-              else totalSkipped++;
-            } catch (err: any) {
-              totalSkipped++;
-              console.warn(`[GooglePlaces] Failed to process ${place.place_id}: ${err.message}`);
-            }
-          }
-
-          nextPageToken = data.next_page_token;
-          page++;
-        } while (nextPageToken && page < maxPagesPerQuery);
-
+        }
       } catch (err: any) {
         lastError = `${q.query}: ${err.message}`;
-        console.error(`[GooglePlaces] Error searching "${q.query}": ${err.message}`);
+        console.error(`[MapboxPlaces] Error searching "${q.query}": ${err.message}`);
       }
     }
   } catch (err: any) {
     lastError = err.message;
-    console.error(`[GooglePlaces] Fatal error: ${err.message}`);
+    console.error(`[MapboxPlaces] Fatal error: ${err.message}`);
   }
 
   const durationMs = Date.now() - startTime;
   const status = lastError && totalImported === 0 ? 'error' : totalImported > 0 ? 'success' : 'partial';
 
-  console.log(`[GooglePlaces] Complete: found=${totalFound} imported=${totalImported} skipped=${totalSkipped} (${durationMs}ms)`);
+  console.log(`[MapboxPlaces] Complete: found=${totalFound} imported=${totalImported} skipped=${totalSkipped} (${durationMs}ms)`);
 
   return {
     source_key: SOURCE_KEY,
@@ -217,4 +179,4 @@ export async function scrapeGooglePlaces(): Promise<ScrapeResult> {
   };
 }
 
-registerScraper(SOURCE_KEY, scrapeGooglePlaces);
+registerScraper(SOURCE_KEY, scrapeMapboxPlaces);

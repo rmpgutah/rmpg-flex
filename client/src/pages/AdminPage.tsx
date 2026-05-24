@@ -16,7 +16,6 @@ import {
   Link2,
   Shield,
   GraduationCap,
-  Radio,
   WifiOff,
   DatabaseZap,
   Lock,
@@ -55,7 +54,6 @@ import AdminNotifRulesTab from './admin/AdminNotifRulesTab';
 import AdminServeManagerTab from './admin/AdminServeManagerTab';
 import AdminSessionsTab from './admin/AdminSessionsTab';
 import AdminTrainingTab from './admin/AdminTrainingTab';
-import AdminRadioTab from './admin/AdminRadioTab';
 import AdminOfflineTab from './admin/AdminOfflineTab';
 import AdminMicrobiltTab from './admin/AdminMicrobiltTab';
 import AdminClearPathGpsTab from './admin/AdminClearPathGpsTab';
@@ -64,6 +62,7 @@ import AdminArrestsTab from './admin/AdminArrestsTab';
 import AdminWarrantScrapersTab from './admin/AdminWarrantScrapersTab';
 import AdminIPEDTab from './admin/AdminIPEDTab';
 import AdminSkipTracerTab from './admin/AdminSkipTracerTab';
+import AdminSkipTracerV2Tab from './admin/AdminSkipTracerV2Tab';
 import AdminSecurityTab from './admin/AdminSecurityTab';
 import AdminBrandingTab from './admin/AdminBrandingTab';
 import AdminEmailTab from './admin/AdminEmailTab';
@@ -647,6 +646,7 @@ export default function AdminPage() {
       category: 'System',
       tabs: [
         { id: 'system', label: 'System Config', icon: Cog },
+        { id: 'map_settings', label: 'Map Settings', icon: Map },
         { id: 'health', label: 'System Health', icon: Activity },
         { id: 'branding', label: 'Branding & Reports', icon: Palette },
         { id: 'retention', label: 'Data Retention', icon: Archive },
@@ -664,7 +664,7 @@ export default function AdminPage() {
       tabs: [
         { id: 'announcements', label: 'Announcements', icon: Megaphone },
         { id: 'notif_rules', label: 'Alert Rules', icon: Zap },
-        { id: 'radio', label: 'Radio Config', icon: Radio },
+
       ],
     },
     {
@@ -676,6 +676,7 @@ export default function AdminPage() {
         { id: 'arrests', label: 'Arrest Records', icon: Fingerprint },
         { id: 'warrant_scrapers', label: 'Warrant Scrapers', icon: Shield },
         { id: 'skiptracer', label: 'Skip Tracker', icon: Search },
+        { id: 'skiptracer_v2', label: 'Skip Tracer V2', icon: Search },
         { id: 'email', label: 'Microsoft Email', icon: Mail },
         { id: 'integrations', label: 'API Integrations', icon: Plug },
         { id: 'training', label: 'Training', icon: GraduationCap },
@@ -877,9 +878,17 @@ export default function AdminPage() {
         {activeTab === 'system' && (
           <AdminSystemTab
             users={users}
+            LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}
+          />
+        )}
+
+        {activeTab === 'map_settings' && (
+          <AdminMapSettingsTab
             LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
           />
         )}
 
@@ -989,6 +998,14 @@ export default function AdminPage() {
           />
         )}
 
+        {activeTab === 'skiptracer_v2' && (
+          <AdminSkipTracerV2Tab
+            LoadingSpinner={LoadingSpinner}
+            error={error}
+            setError={setError}
+          />
+        )}
+
         {activeTab === 'sessions' && (
           <AdminSessionsTab
             LoadingSpinner={LoadingSpinner}
@@ -999,14 +1016,6 @@ export default function AdminPage() {
 
         {activeTab === 'training' && (
           <AdminTrainingTab
-            LoadingSpinner={LoadingSpinner}
-            error={error}
-            setError={setError}
-          />
-        )}
-
-        {activeTab === 'radio' && (
-          <AdminRadioTab
             LoadingSpinner={LoadingSpinner}
             error={error}
             setError={setError}

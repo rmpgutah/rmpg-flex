@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Camera } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
-import { useFormDirty } from '../../../hooks/useFormDirty';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { CameraStatus } from '../../../types';
 
 import RichTextArea from '../../../components/RichTextArea';
@@ -62,17 +62,27 @@ const EMPTY: BodyCameraFormData = {
 export default function BodyCameraFormModal({
   isOpen, onClose, onSubmit, isSubmitting, officers, initialData, mode = 'create',
 }: Props) {
-  const [form, setForm] = useState<BodyCameraFormData>(EMPTY);
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<BodyCameraFormData>({
+    storageKey: 'rmpg_personnel_bodycam_form',
+    defaultValue: EMPTY,
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen && initialData) {
       const initial = { ...EMPTY, ...initialData, storage_capacity_gb: String(initialData.storage_capacity_gb || '32') };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else if (isOpen) {
       setForm(EMPTY);
-      snapshot(EMPTY);
+      snapshot();
     }
   }, [isOpen, initialData]);
 
@@ -94,6 +104,8 @@ export default function BodyCameraFormModal({
       submitLabel={mode === 'edit' ? 'Update' : 'Assign Camera'}
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {/* Assignment */}
       <div className="panel-inset p-3 space-y-3">

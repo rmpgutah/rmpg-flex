@@ -15,8 +15,8 @@ const { ConnectivityMonitor } = require('./connectivityMonitor');
 // ─── Chromium Geolocation ────────────────────────────────────
 // Electron strips Chrome's bundled Google API key. Without it,
 // navigator.geolocation silently fails on desktop (no GPS hardware).
-// Provide the same key used for Google Maps so Chromium's Network
-// Location Provider can resolve WiFi/IP-based positions.
+// Chromium's Network Location Provider uses this key to resolve
+// WiFi/IP-based positions. This is a generic Geolocation API key.
 process.env.GOOGLE_API_KEY = 'AIzaSyCfKRUuJkUFlfuc9FvjJiVpm6_p5kASCtM';
 
 // ─── Configuration ──────────────────────────────────────────

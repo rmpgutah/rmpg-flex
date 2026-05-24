@@ -18,6 +18,7 @@ import { useState, useId, useRef } from 'react';
 import { Upload, FileText, AlertCircle, Check, Loader2, Car } from 'lucide-react';
 import PanelTitleBar from '../../../components/PanelTitleBar';
 import { apiFetch } from '../../../hooks/useApi';
+import { useFormDraft } from '../../../hooks/useFormDraft';
 
 interface FleetVehicle {
   id: string | number;
@@ -60,15 +61,40 @@ interface Props {
   vehicles: FleetVehicle[];
 }
 
+interface ImportDraftState {
+  rows: PreviewRow[];
+}
+
+const EMPTY_IMPORT_DRAFT: ImportDraftState = { rows: [] };
+
 export default function FuelImportModal({ isOpen, onClose, onImported, vehicles }: Props) {
   const titleId = useId();
   const [phase, setPhase] = useState<'file' | 'preview' | 'committing' | 'done'>('file');
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<PreviewResponse | null>(null);
-  const [rows, setRows] = useState<PreviewRow[]>([]);
   const [error, setError] = useState('');
   const [commitResult, setCommitResult] = useState<{ inserted: number; errors: any[] } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const {
+    form: draft,
+    setForm: setDraft,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<ImportDraftState>({
+    storageKey: 'rmpg_fleet_fuel_import_form',
+    defaultValue: EMPTY_IMPORT_DRAFT,
+    isActive: isOpen && phase === 'preview',
+  });
+
+  const rows = draft.rows.length > 0 ? draft.rows : [];
+
+  // Snapshot rows after they're loaded from server
+  useEffect(() => {
+    if (phase === 'preview' && rows.length > 0) {
+      snapshot();
+    }
+  }, [phase]);
 
   if (!isOpen) return null;
 
@@ -76,7 +102,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
     setPhase('file');
     setFile(null);
     setPreview(null);
-    setRows([]);
+    setDraft(EMPTY_IMPORT_DRAFT);
     setError('');
     setCommitResult(null);
   };
@@ -102,7 +128,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setPreview(data);
-      setRows(data.rows);
+      setDraft({ rows: data.rows });
       setPhase('preview');
     } catch (err: any) {
       setError(err?.message || 'Failed to parse CSV');
@@ -110,7 +136,9 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
   };
 
   const updateRow = (index: number, patch: Partial<PreviewRow>) => {
-    setRows((prev) => prev.map((r, i) => (i === index ? { ...r, ...patch } : r)));
+    setDraft((prev: ImportDraftState) => ({
+      rows: prev.rows.map((r, i) => (i === index ? { ...r, ...patch } : r)),
+    }));
   };
 
   const rowIsCommittable = (r: PreviewRow) =>
@@ -132,6 +160,7 @@ export default function FuelImportModal({ isOpen, onClose, onImported, vehicles 
       });
       setCommitResult(result);
       setPhase('done');
+      clearDraft();
       if (result.inserted > 0) onImported();
     } catch (err: any) {
       setError(err?.message || 'Commit failed');

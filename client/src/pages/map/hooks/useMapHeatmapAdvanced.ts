@@ -1,14 +1,6 @@
-// ============================================================
-// RMPG Flex — useMapHeatmapAdvanced Hook
-// Enhanced heatmap with multi-type filtering, color schemes,
-// adjustable radius/opacity, cluster overlays, comparison mode,
-// temporal animation, and floating stats panel.
-// ============================================================
-
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-
-// ─── Types ──────────────────────────────────────────────────
 
 export type HeatmapAdvancedMode = 'density' | 'risk' | 'temporal' | 'comparison';
 export type HeatmapColorScheme = 'heat' | 'risk' | 'gold' | 'green' | 'purple';
@@ -23,8 +15,8 @@ export interface HeatmapAdvancedOptions {
   dayFilter: number[];
   resolution: HeatmapResolution;
   colorScheme: HeatmapColorScheme;
-  opacity: number;       // 10-100
-  radius: number;        // 10-50 px
+  opacity: number;
+  radius: number;
   showClusters: boolean;
   comparisonDays: number;
 }
@@ -66,7 +58,6 @@ export interface UseMapHeatmapAdvancedReturn {
   pointCount: number;
   comparisonPointCount: number;
   refreshHeatmap: () => void;
-  // Temporal animation state
   temporalHour: number;
   setTemporalHour: (h: number) => void;
   temporalPlaying: boolean;
@@ -75,89 +66,74 @@ export interface UseMapHeatmapAdvancedReturn {
   setTemporalSpeed: (v: 1 | 2 | 4) => void;
 }
 
-// ─── Color Scheme Gradients ────────────────────────────────
-
-const GRADIENTS: Record<HeatmapColorScheme, string[]> = {
+const GRADIENTS: Record<HeatmapColorScheme, [number, string][]> = {
   heat: [
-    'rgba(0,0,0,0)',
-    'rgba(0,128,255,0.25)',
-    'rgba(0,200,100,0.4)',
-    'rgba(200,200,0,0.6)',
-    'rgba(255,140,0,0.8)',
-    'rgba(255,50,0,0.95)',
+    [0, 'rgba(0,0,0,0)'],
+    [0.2, 'rgba(0,128,255,0.25)'],
+    [0.4, 'rgba(0,200,100,0.4)'],
+    [0.6, 'rgba(200,200,0,0.6)'],
+    [0.8, 'rgba(255,140,0,0.8)'],
+    [1, 'rgba(255,50,0,0.95)'],
   ],
   risk: [
-    'rgba(0,0,0,0)',
-    'rgba(76,175,80,0.25)',
-    'rgba(255,235,59,0.4)',
-    'rgba(255,152,0,0.6)',
-    'rgba(244,67,54,0.8)',
-    'rgba(183,28,28,1)',
+    [0, 'rgba(0,0,0,0)'],
+    [0.2, 'rgba(76,175,80,0.25)'],
+    [0.4, 'rgba(255,235,59,0.4)'],
+    [0.6, 'rgba(255,152,0,0.6)'],
+    [0.8, 'rgba(244,67,54,0.8)'],
+    [1, 'rgba(183,28,28,1)'],
   ],
   gold: [
-    'rgba(0,0,0,0)',
-    'rgba(253,224,71,0.2)',
-    'rgba(250,204,21,0.4)',
-    'rgba(212,160,23,0.6)',
-    'rgba(180,130,15,0.8)',
-    'rgba(133,77,14,1)',
+    [0, 'rgba(0,0,0,0)'],
+    [0.2, 'rgba(253,224,71,0.2)'],
+    [0.4, 'rgba(250,204,21,0.4)'],
+    [0.6, 'rgba(212,160,23,0.6)'],
+    [0.8, 'rgba(180,130,15,0.8)'],
+    [1, 'rgba(133,77,14,1)'],
   ],
   green: [
-    'rgba(0,0,0,0)',
-    'rgba(144,238,144,0.2)',
-    'rgba(60,179,113,0.4)',
-    'rgba(34,139,34,0.6)',
-    'rgba(0,100,0,0.8)',
-    'rgba(0,60,0,1)',
+    [0, 'rgba(0,0,0,0)'],
+    [0.2, 'rgba(144,238,144,0.2)'],
+    [0.4, 'rgba(60,179,113,0.4)'],
+    [0.6, 'rgba(34,139,34,0.6)'],
+    [0.8, 'rgba(0,100,0,0.8)'],
+    [1, 'rgba(0,60,0,1)'],
   ],
   purple: [
-    'rgba(0,0,0,0)',
-    'rgba(216,191,216,0.2)',
-    'rgba(186,85,211,0.4)',
-    'rgba(148,103,189,0.6)',
-    'rgba(106,13,173,0.8)',
-    'rgba(75,0,130,1)',
+    [0, 'rgba(0,0,0,0)'],
+    [0.2, 'rgba(216,191,216,0.2)'],
+    [0.4, 'rgba(186,85,211,0.4)'],
+    [0.6, 'rgba(148,103,189,0.6)'],
+    [0.8, 'rgba(106,13,173,0.8)'],
+    [1, 'rgba(75,0,130,1)'],
   ],
 };
 
-// Comparison mode uses neutral tones for previous period (no blue per pure-black theme)
-const COMPARISON_GRADIENT = [
-  'rgba(0,0,0,0)',
-  'rgba(170,170,170,0.2)',
-  'rgba(140,140,140,0.35)',
-  'rgba(110,110,110,0.5)',
-  'rgba(85,85,85,0.7)',
-  'rgba(60,60,60,0.9)',
+const COMPARISON_GRADIENT: [number, string][] = [
+  [0, 'rgba(0,0,0,0)'],
+  [0.2, 'rgba(170,170,170,0.2)'],
+  [0.4, 'rgba(140,140,140,0.35)'],
+  [0.6, 'rgba(110,110,110,0.5)'],
+  [0.8, 'rgba(85,85,85,0.7)'],
+  [1, 'rgba(60,60,60,0.9)'],
 ];
 
-// ─── Hook ───────────────────────────────────────────────────
-
 export function useMapHeatmapAdvanced(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   options: HeatmapAdvancedOptions,
 ): UseMapHeatmapAdvancedReturn {
-  // Diagnostic: log every render to trace enabled state
-
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<HeatmapStats | null>(null);
   const [clusters, setClusters] = useState<HeatmapCluster[]>([]);
   const [points, setPoints] = useState<HeatmapAdvancedPoint[]>([]);
   const [comparisonPoints, setComparisonPoints] = useState<HeatmapAdvancedPoint[]>([]);
 
-  // Temporal animation state
   const [temporalHour, setTemporalHour] = useState(0);
   const [temporalPlaying, setTemporalPlaying] = useState(false);
   const [temporalSpeed, setTemporalSpeed] = useState<1 | 2 | 4>(1);
 
-  // Refs for map objects
-  const heatmapLayerRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
-  const comparisonLayerRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
-  const clusterMarkersRef = useRef<google.maps.Circle[]>([]);
-  const clusterLabelsRef = useRef<google.maps.Marker[]>([]);
   const temporalIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fetchCounterRef = useRef(0);
-
-  // ── Build query URL ─────────────────────────────────────
 
   const buildUrl = useCallback((hourOverride?: number) => {
     const p = new URLSearchParams();
@@ -183,8 +159,6 @@ export function useMapHeatmapAdvanced(
     }
     return `/dispatch/heatmap/advanced?${p.toString()}`;
   }, [options]);
-
-  // ── Fetch data ──────────────────────────────────────────
 
   const fetchData = useCallback((hourOverride?: number) => {
     if (!options.enabled) return;
@@ -214,8 +188,6 @@ export function useMapHeatmapAdvanced(
       });
   }, [options.enabled, buildUrl]);
 
-  // ── Main data fetch (non-temporal or initial) ───────────
-
   useEffect(() => {
     if (!options.enabled) {
       setPoints([]);
@@ -230,12 +202,8 @@ export function useMapHeatmapAdvanced(
     } else {
       fetchData();
     }
-    // fetchData captures buildUrl which captures all options — include it
-    // so that switching modes/filters triggers a fresh fetch with the correct URL.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fetchData, options.enabled, options.mode, temporalHour]);
-
-  // ── Temporal auto-advance ───────────────────────────────
 
   useEffect(() => {
     if (temporalIntervalRef.current) {
@@ -251,7 +219,6 @@ export function useMapHeatmapAdvanced(
       setTemporalHour((prev) => {
         const next = (prev + 1) % 24;
         if (next === 0 && prev === 23) {
-          // Completed full cycle
           setTemporalPlaying(false);
         }
         return next;
@@ -266,151 +233,126 @@ export function useMapHeatmapAdvanced(
     };
   }, [temporalPlaying, temporalSpeed, options.mode, options.enabled]);
 
-  // ── Render primary heatmap layer ────────────────────────
-
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
 
-    // Remove existing primary layer
-    if (heatmapLayerRef.current) {
-      heatmapLayerRef.current.setMap(null);
-      heatmapLayerRef.current = null;
-    }
+    const sourceId = 'adv-heatmap';
+    const layerId = 'adv-heatmap-layer';
+    const compSourceId = 'adv-heatmap-comparison';
+    const compLayerId = 'adv-heatmap-comparison-layer';
+    const clusterSourceId = 'adv-heatmap-clusters';
+    const clusterLayerId = 'adv-heatmap-clusters-layer';
 
-    if (!options.enabled || points.length === 0) {
-      return;
-    }
+    // Remove existing
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+    if (map.getLayer(compLayerId)) map.removeLayer(compLayerId);
+    if (map.getSource(compSourceId)) map.removeSource(compSourceId);
+    if (map.getLayer(clusterLayerId)) map.removeLayer(clusterLayerId);
+    if (map.getSource(clusterSourceId)) map.removeSource(clusterSourceId);
+
+    if (!options.enabled || points.length === 0) return;
 
     const weightedData = points
       .filter((p) => p.lat != null && p.lng != null)
       .map((point) => ({
-        location: new google.maps.LatLng(point.lat, point.lng),
-        weight: point.weight || 1,
-      }));
-
-    if (weightedData.length === 0) {
-      return;
-    }
-
-
-    const gradient = GRADIENTS[options.colorScheme] || GRADIENTS.heat;
-
-    const heatmap = new google.maps.visualization.HeatmapLayer({
-      data: weightedData,
-      map,
-      radius: options.radius,
-      opacity: options.opacity / 100,
-      gradient,
-      dissipating: true,
-    });
-
-    heatmapLayerRef.current = heatmap;
-
-    return () => {
-      if (heatmapLayerRef.current) {
-        heatmapLayerRef.current.setMap(null);
-        heatmapLayerRef.current = null;
-      }
-    };
-  }, [map, options.enabled, points, options.colorScheme, options.opacity, options.radius]);
-
-  // ── Render comparison heatmap layer ─────────────────────
-
-  useEffect(() => {
-    if (!map || !window.google?.maps) return;
-
-    if (comparisonLayerRef.current) {
-      comparisonLayerRef.current.setMap(null);
-      comparisonLayerRef.current = null;
-    }
-
-    if (!options.enabled || options.mode !== 'comparison' || comparisonPoints.length === 0) return;
-
-    const weightedData = comparisonPoints
-      .filter((p) => p.lat != null && p.lng != null)
-      .map((point) => ({
-        location: new google.maps.LatLng(point.lat, point.lng),
-        weight: point.weight || 1,
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [point.lng, point.lat] as [number, number] },
+        properties: { weight: point.weight || 1 },
       }));
 
     if (weightedData.length === 0) return;
 
-    const heatmap = new google.maps.visualization.HeatmapLayer({
-      data: weightedData,
-      map,
-      radius: options.radius,
-      opacity: (options.opacity / 100) * 0.7, // slightly dimmer
-      gradient: COMPARISON_GRADIENT,
-      dissipating: true,
+    const gradient = GRADIENTS[options.colorScheme] || GRADIENTS.heat;
+
+    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: weightedData } });
+    map.addLayer({
+      id: layerId,
+      type: 'heatmap',
+      source: sourceId,
+      maxzoom: 15,
+      paint: {
+        'heatmap-weight': ['get', 'weight'],
+        'heatmap-intensity': 0.8,
+        'heatmap-radius': options.radius,
+        'heatmap-opacity': options.opacity / 100,
+        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], ...gradient.flat()],
+      },
     });
 
-    comparisonLayerRef.current = heatmap;
+    if (options.mode === 'comparison' && comparisonPoints.length > 0) {
+      const compData = comparisonPoints
+        .filter((p) => p.lat != null && p.lng != null)
+        .map((point) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [point.lng, point.lat] as [number, number] },
+          properties: { weight: point.weight || 1 },
+        }));
 
-    return () => {
-      if (comparisonLayerRef.current) {
-        comparisonLayerRef.current.setMap(null);
-        comparisonLayerRef.current = null;
+      if (compData.length > 0) {
+        map.addSource(compSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: compData } });
+        map.addLayer({
+          id: compLayerId,
+          type: 'heatmap',
+          source: compSourceId,
+          maxzoom: 15,
+          paint: {
+            'heatmap-weight': ['get', 'weight'],
+            'heatmap-intensity': 0.8,
+            'heatmap-radius': options.radius,
+            'heatmap-opacity': (options.opacity / 100) * 0.7,
+            'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], ...COMPARISON_GRADIENT.flat()],
+          },
+        });
       }
-    };
-  }, [map, options.enabled, options.mode, comparisonPoints, options.opacity, options.radius]);
+    }
 
-  // ── Render cluster overlays ─────────────────────────────
-
-  useEffect(() => {
-    // Clear existing cluster markers
-    clusterMarkersRef.current.forEach((c) => c.setMap(null));
-    clusterMarkersRef.current = [];
-    clusterLabelsRef.current.forEach((m) => m.setMap(null));
-    clusterLabelsRef.current = [];
-
-    if (!map || !options.enabled || !options.showClusters || clusters.length === 0) return;
-
-    clusters.forEach((cluster) => {
-      // Draw circle
-      const circle = new google.maps.Circle({
-        center: cluster.center,
-        radius: cluster.radius,
-        map,
-        fillColor: cluster.avgRisk > 5 ? '#ef4444' : cluster.avgRisk > 2 ? '#f59e0b' : '#888888',
-        fillOpacity: 0.08,
-        strokeColor: cluster.avgRisk > 5 ? '#ef4444' : cluster.avgRisk > 2 ? '#f59e0b' : '#888888',
-        strokeOpacity: 0.5,
-        strokeWeight: 1.5,
-        clickable: false,
-        zIndex: 10,
-      });
-      clusterMarkersRef.current.push(circle);
-
-      // Add label marker
-      const label = new google.maps.Marker({
-        position: cluster.center,
-        map,
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 0, // invisible icon
+    if (options.showClusters && clusters.length > 0) {
+      const clusterFeatures = clusters.map((cluster) => ({
+        type: 'Feature' as const,
+        geometry: { type: 'Point' as const, coordinates: [cluster.center.lng, cluster.center.lat] as [number, number] },
+        properties: {
+          count: cluster.count,
+          avgRisk: cluster.avgRisk,
+          radius: cluster.radius,
         },
-        label: {
-          text: `${cluster.count}`,
-          color: '#ffffff',
-          fontSize: '10px',
-          fontWeight: 'bold',
-          fontFamily: 'JetBrains Mono, monospace',
+      }));
+
+      map.addSource(clusterSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: clusterFeatures } });
+      map.addLayer({
+        id: clusterLayerId,
+        type: 'circle',
+        source: clusterSourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['>', ['get', 'avgRisk'], 5], '#ef4444',
+            ['>', ['get', 'avgRisk'], 2], '#f59e0b',
+            '#888888',
+          ],
+          'circle-radius': ['get', 'radius'],
+          'circle-opacity': 0.08,
+          'circle-stroke-color': [
+            'case',
+            ['>', ['get', 'avgRisk'], 5], '#ef4444',
+            ['>', ['get', 'avgRisk'], 2], '#f59e0b',
+            '#888888',
+          ],
+          'circle-stroke-width': 1.5,
+          'circle-stroke-opacity': 0.5,
         },
-        clickable: false,
-        zIndex: 11,
       });
-      clusterLabelsRef.current.push(label);
-    });
+    }
 
     return () => {
-      clusterMarkersRef.current.forEach((c) => c.setMap(null));
-      clusterMarkersRef.current = [];
-      clusterLabelsRef.current.forEach((m) => m.setMap(null));
-      clusterLabelsRef.current = [];
+      if (map.getLayer(layerId)) map.removeLayer(layerId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
+      if (map.getLayer(compLayerId)) map.removeLayer(compLayerId);
+      if (map.getSource(compSourceId)) map.removeSource(compSourceId);
+      if (map.getLayer(clusterLayerId)) map.removeLayer(clusterLayerId);
+      if (map.getSource(clusterSourceId)) map.removeSource(clusterSourceId);
     };
-  }, [map, options.enabled, options.showClusters, clusters]);
-
-  // ── Cleanup on unmount / disable ────────────────────────
+  }, [map, options.enabled, points, options.colorScheme, options.opacity, options.radius, options.mode, comparisonPoints, options.showClusters, clusters]);
 
   useEffect(() => {
     if (!options.enabled) {
@@ -418,34 +360,12 @@ export function useMapHeatmapAdvanced(
         clearInterval(temporalIntervalRef.current);
         temporalIntervalRef.current = null;
       }
-      if (heatmapLayerRef.current) {
-        heatmapLayerRef.current.setMap(null);
-        heatmapLayerRef.current = null;
-      }
-      if (comparisonLayerRef.current) {
-        comparisonLayerRef.current.setMap(null);
-        comparisonLayerRef.current = null;
-      }
-      clusterMarkersRef.current.forEach((c) => c.setMap(null));
-      clusterMarkersRef.current = [];
-      clusterLabelsRef.current.forEach((m) => m.setMap(null));
-      clusterLabelsRef.current = [];
     }
   }, [options.enabled]);
 
   useEffect(() => {
     return () => {
       if (temporalIntervalRef.current) clearInterval(temporalIntervalRef.current);
-      if (heatmapLayerRef.current) {
-        heatmapLayerRef.current.setMap(null);
-        heatmapLayerRef.current = null;
-      }
-      if (comparisonLayerRef.current) {
-        comparisonLayerRef.current.setMap(null);
-        comparisonLayerRef.current = null;
-      }
-      clusterMarkersRef.current.forEach((c) => c.setMap(null));
-      clusterLabelsRef.current.forEach((m) => m.setMap(null));
     };
   }, []);
 

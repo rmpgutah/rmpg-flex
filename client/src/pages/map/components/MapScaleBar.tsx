@@ -1,7 +1,7 @@
 import { useEffect, useState, useRef } from 'react';
 
 interface MapScaleBarProps {
-  mapInstance: google.maps.Map | null;
+  mapInstance: mapboxgl.Map | null;
 }
 
 /** Meters per pixel at a given latitude and zoom level */
@@ -39,7 +39,7 @@ const TARGET_BAR_WIDTH = 120; // pixels - target width for the bar
 export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
   const [barWidth, setBarWidth] = useState(0);
   const [label, setLabel] = useState('');
-  const listenerRefs = useRef<google.maps.MapsEventListener[]>([]);
+  const listenerRefs = useRef<{ map: mapboxgl.Map; onUpdate: () => void }[]>([]);
 
   useEffect(() => {
     if (!mapInstance) return;
@@ -49,15 +49,13 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
       const zoom = mapInstance.getZoom();
       if (!center || zoom == null) return;
 
-      const lat = center.lat();
+      const lat = center.lat;
       const metersPerPixel = getMetersPerPixel(lat, zoom);
       const feetPerPixel = metersPerPixel * 3.28084;
 
-      // How many feet would TARGET_BAR_WIDTH pixels represent?
       const maxFeet = feetPerPixel * TARGET_BAR_WIDTH;
       const niceFeet = pickNiceDistance(maxFeet);
 
-      // Compute exact pixel width for the nice distance
       const exactWidth = niceFeet / feetPerPixel;
 
       setBarWidth(Math.round(exactWidth));
@@ -66,13 +64,12 @@ export default function MapScaleBar({ mapInstance }: MapScaleBarProps) {
 
     update();
 
-    const zoomListener = google.maps.event.addListener(mapInstance, 'zoom_changed', update);
-    const boundsListener = google.maps.event.addListener(mapInstance, 'bounds_changed', update);
-    listenerRefs.current = [zoomListener, boundsListener];
+    mapInstance.on('zoom', update);
+    mapInstance.on('move', update);
 
     return () => {
-      listenerRefs.current.forEach((l) => google.maps.event.removeListener(l));
-      listenerRefs.current = [];
+      mapInstance.off('zoom', update);
+      mapInstance.off('move', update);
     };
   }, [mapInstance]);
 

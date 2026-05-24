@@ -1,41 +1,72 @@
-import Database from 'better-sqlite3';
+// ============================================================
+// RMPG Flex — Database Module
+// ============================================================
+// Supports dual runtime:
+//   - Node.js (development): better-sqlite3 via local file
+//   - Cloudflare Workers (production): D1 via adapter
+// ============================================================
+
 import bcryptjs from 'bcryptjs';
-import path from 'path';
-import fs from 'fs';
-import { fileURLToPath } from 'url';
-import { migrateIncidentNumbers } from '../utils/caseNumbers';
 import crypto from 'crypto';
+import { migrateIncidentNumbers } from '../utils/caseNumbers';
 import { localNow } from '../utils/timeUtils';
 import { seedUtahStatutes } from '../seeds/utahStatutes';
-// DISPATCH_DISTRICTS legacy constant import removed (Phase 2 of geography rebuild)
 import { seedGeographyFromGeoJSON } from '../seeds/geographySeed';
 import { ensureTraccarSchema } from './traccarSchema';
 import { identifyBeat } from '../utils/geofence';
 import { reverseGeocodeDetailed } from '../utils/geocode';
-import { registerSqliteFunctions } from './sqliteFunctions';
 import { backfillCaseLinks } from '../migrations/2026-04-19-case-links-backfill';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+// ─── Runtime Detection ───────────────────────────────────
+const isWorkers = typeof process === 'undefined' || (process.env as any)?.WORKER_RUNTIME === 'true';
 
-// Use RMPG_DATA_DIR env var if provided (set by Electron desktop app for
-// writable user-data location), otherwise fall back to project-relative path
-const DATA_DIR = process.env.RMPG_DATA_DIR || path.resolve(__dirname, '../../data');
-const DB_PATH = path.join(DATA_DIR, 'rmpg-flex.db');
+// Node.js imports (only loaded in development)
+let Database: any;
+let path: any;
+let fs: any;
+let registerSqliteFunctions: any;
 
-let db: Database.Database;
-
-export function getDb(): Database.Database {
-  if (!db) {
-    throw new Error('Database not initialized. Call initDatabase() first.');
-  }
-  return db;
+if (!isWorkers) {
+  Database = (await import('better-sqlite3')).default;
+  path = await import('path');
+  fs = await import('fs');
+  registerSqliteFunctions = (await import('./sqliteFunctions')).registerSqliteFunctions;
 }
 
-export function initDatabase(): Database.Database {
+// ─── Database Instance ───────────────────────────────────
+let db: any; // better-sqlite3.Database in Node, D1DatabaseAdapter in Workers
+let d1Db: any; // Cloudflare D1Database (set by worker.ts)
+
+export function getDb(): any {
+  if (!db && !d1Db) {
+    throw new Error('Database not initialized. Call initDatabase() or setD1Instance() first.');
+  }
+  return db || d1Db;
+}
+
+export function setD1Instance(d1: any): void {
+  d1Db = d1;
+}
+
+export function initDatabase(): any {
+  if (isWorkers) {
+    // In Workers, D1 is set via setD1Instance() from the worker binding
+    if (!d1Db) {
+      throw new Error('D1 database not set. Call setD1Instance() in worker.ts');
+    }
+    return d1Db;
+  }
+
+  // ─── Node.js (Development) ─────────────────────────────
+  const __filename = (new URL((import.meta as any).url)).pathname;
+  const __dirname = (path as any).dirname(__filename);
+
+  const DATA_DIR = process.env.RMPG_DATA_DIR || (path as any).resolve(__dirname, '../../data');
+  const DB_PATH = (path as any).join(DATA_DIR, 'rmpg-flex.db');
+
   // Ensure data directory exists
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  if (!(fs as any).existsSync(DATA_DIR)) {
+    (fs as any).mkdirSync(DATA_DIR, { recursive: true });
   }
 
   db = new Database(DB_PATH);
@@ -44,15 +75,10 @@ export function initDatabase(): Database.Database {
   // Enable WAL mode for better concurrent read performance
   db.pragma('journal_mode = WAL');
   db.pragma('foreign_keys = ON');
-  // [FIX 64] Set synchronous to NORMAL for WAL mode (safe and faster than FULL)
   db.pragma('synchronous = NORMAL');
-  // [FIX 65] Increase WAL autocheckpoint threshold for better write performance
   db.pragma('wal_autocheckpoint = 1000');
-  // [FIX 66] Set busy timeout to prevent SQLITE_BUSY errors on concurrent access
   db.pragma('busy_timeout = 5000');
-  // [FIX 67] Enable memory-mapped I/O for faster reads (256MB)
   db.pragma('mmap_size = 268435456');
-  // [FIX 68] Set temp_store to memory for faster temp table operations
   db.pragma('temp_store = MEMORY');
 
   createTables();
@@ -111,6 +137,20 @@ function createTables(): void {
       font_size_preference TEXT DEFAULT 'medium',
       created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE TABLE IF NOT EXISTS user_security_questions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL UNIQUE,
+      question_1 TEXT NOT NULL,
+      answer_1_hash TEXT NOT NULL,
+      question_2 TEXT NOT NULL,
+      answer_2_hash TEXT NOT NULL,
+      question_3 TEXT NOT NULL,
+      answer_3_hash TEXT NOT NULL,
+      created_at TEXT DEFAULT (datetime('now','localtime')),
+      updated_at TEXT DEFAULT (datetime('now','localtime')),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
@@ -635,6 +675,19 @@ function createTables(): void {
       FOREIGN KEY (subject_person_id) REFERENCES persons(id),
       FOREIGN KEY (entered_by) REFERENCES users(id),
       FOREIGN KEY (served_by) REFERENCES users(id)
+    );
+    CREATE TABLE IF NOT EXISTS warrant_service_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      warrant_id INTEGER NOT NULL,
+      attempted_by INTEGER NOT NULL,
+      attempted_at TEXT NOT NULL,
+      location TEXT,
+      method TEXT DEFAULT 'in_person',
+      result TEXT DEFAULT 'unsuccessful',
+      notes TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      FOREIGN KEY (warrant_id) REFERENCES warrants(id),
+      FOREIGN KEY (attempted_by) REFERENCES users(id)
     );
 
     -- Notifications
@@ -2039,6 +2092,20 @@ function migrateSchema(): void {
   addCol('properties', 'owner_name', 'TEXT');
   addCol('properties', 'owner_phone', 'TEXT');
   addCol('properties', 'last_inspection_date', 'TEXT');
+  addCol('properties', 'inspection_status', 'TEXT');
+  addCol('properties', 'alarm_company', 'TEXT');
+  addCol('properties', 'alarm_account', 'TEXT');
+  addCol('properties', 'camera_system', 'TEXT');
+  addCol('properties', 'parking_info', 'TEXT');
+  addCol('properties', 'roof_access', 'TEXT');
+  addCol('properties', 'utility_shutoffs', 'TEXT');
+  addCol('properties', 'known_hazards', 'TEXT');
+  addCol('properties', 'contact_email', 'TEXT');
+  addCol('properties', 'secondary_contact_name', 'TEXT');
+  addCol('properties', 'secondary_contact_phone', 'TEXT');
+  addCol('properties', 'patrol_frequency', 'TEXT');
+  addCol('properties', 'opening_hours', 'TEXT');
+  addCol('properties', 'closing_hours', 'TEXT');
 
   // ── EVIDENCE — make incident_id nullable ──────────────
   // SQLite doesn't support ALTER COLUMN, so we rebuild the table with a hardcoded schema
@@ -2097,6 +2164,37 @@ function migrateSchema(): void {
     }
   } catch (err) {
     console.log('Evidence table migration skipped or already done:', (err as Error).message);
+  }
+
+  // ── EVIDENCE — add 'checked_out' to status CHECK constraint ──
+  // Checkout/checkin workflow writes status='checked_out' but the original
+  // CHECK only allowed received/in_storage/submitted_to_le/released/disposed.
+  try {
+    const evSchema = db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='evidence'").get() as any;
+    if (evSchema && evSchema.sql && !evSchema.sql.includes("'checked_out'")) {
+      db.pragma('foreign_keys = OFF');
+      db.exec(`DROP TABLE IF EXISTS evidence_new`);
+      const currentSql = evSchema.sql as string;
+      let checkMatch = currentSql.match(/CHECK\(status IN \(([^)]+)\)\)/);
+      if (checkMatch) {
+        const newCheck = currentSql.replace(
+          checkMatch[0],
+          `CHECK(status IN ('received','in_storage','submitted_to_le','released','disposed','checked_out'))`
+        );
+        const newSql = newCheck.replace('CREATE TABLE evidence', 'CREATE TABLE evidence_new');
+        db.exec(newSql);
+        const evCols = db.prepare("PRAGMA table_info(evidence)").all() as any[];
+        const evColNames = evCols.map((c: any) => c.name).join(', ');
+        db.exec(`INSERT INTO evidence_new (${evColNames}) SELECT ${evColNames} FROM evidence`);
+        db.exec(`DROP TABLE evidence`);
+        db.exec(`ALTER TABLE evidence_new RENAME TO evidence`);
+        db.pragma('foreign_keys = ON');
+        console.log('Migrated evidence: status CHECK now includes checked_out');
+      }
+    }
+  } catch (err) {
+    db.pragma('foreign_keys = ON');
+    console.log('Evidence checked_out migration skipped:', (err as Error).message);
   }
 
   // ── RECORD LINKS — cross-record connections ───────────
@@ -5372,6 +5470,29 @@ function migrateSchema(): void {
   // ── Feature 8: Evidence temperature tracking ──
   addCol('evidence', 'storage_temperature', 'REAL');
   addCol('evidence', 'is_biological', 'INTEGER DEFAULT 0');
+
+  // ── Evidence — crime lab flags (POST/PUT write these) ──
+  addCol('evidence', 'narcotics_flag', 'INTEGER DEFAULT 0');
+  addCol('evidence', 'temperature_sensitive', 'INTEGER DEFAULT 0');
+
+  // ── Evidence — checkout/checkin workflow ──
+  addCol('evidence', 'checked_out_by', 'INTEGER');
+  addCol('evidence', 'checked_out_at', 'TEXT');
+  addCol('evidence', 'checkout_reason', 'TEXT');
+  addCol('evidence', 'expected_return_date', 'TEXT');
+  addCol('evidence', 'condition_on_return', 'TEXT');
+
+  // ── Evidence — release request/approval workflow ──
+  addCol('evidence', 'release_status', 'TEXT');
+  addCol('evidence', 'release_requested_by', 'INTEGER');
+  addCol('evidence', 'release_requested_at', 'TEXT');
+  addCol('evidence', 'release_to', 'TEXT');
+  addCol('evidence', 'release_reason', 'TEXT');
+  addCol('evidence', 'release_approved_by', 'INTEGER');
+  addCol('evidence', 'release_approved_at', 'TEXT');
+
+  // ── Evidence — location tracking ──
+  addCol('evidence', 'location_detail', 'TEXT');
   db.exec(`
     CREATE TABLE IF NOT EXISTS evidence_temperature_logs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -6221,6 +6342,67 @@ function migrateSchema(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_cpgps_mappings_officer ON cpgps_officer_mappings(officer_id);
 
+    -- ═══ Howen / VizTrack Dashcam System ════════════════════
+    -- HERO-ME40-02 devices, H-protocol, GPS + events + video
+
+    CREATE TABLE IF NOT EXISTS howen_devices (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL UNIQUE,
+      imei TEXT,
+      iccid TEXT,
+      fw_version TEXT,
+      hw_version TEXT,
+      model TEXT,
+      unit_id INTEGER,
+      vehicle_id INTEGER,
+      label TEXT,
+      plate_number TEXT,
+      last_lat REAL,
+      last_lon REAL,
+      last_speed REAL,
+      last_heading REAL,
+      last_gps_at TEXT,
+      last_connection_at TEXT,
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_howen_devices_device_id ON howen_devices(device_id);
+    CREATE INDEX IF NOT EXISTS idx_howen_devices_unit ON howen_devices(unit_id);
+
+    CREATE TABLE IF NOT EXISTS howen_gps_breadcrumbs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      latitude REAL NOT NULL,
+      longitude REAL NOT NULL,
+      speed REAL,
+      heading REAL,
+      altitude REAL,
+      satellite_count INTEGER,
+      recorded_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_howen_gps_device_time ON howen_gps_breadcrumbs(device_id, recorded_at);
+
+    CREATE TABLE IF NOT EXISTS howen_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      device_id TEXT NOT NULL,
+      unit_id INTEGER,
+      event_type TEXT NOT NULL,
+      severity TEXT DEFAULT 'info',
+      latitude REAL,
+      longitude REAL,
+      speed REAL,
+      heading REAL,
+      description TEXT,
+      raw_json TEXT,
+      event_at TEXT NOT NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+    CREATE INDEX IF NOT EXISTS idx_howen_events_device ON howen_events(device_id, event_at);
+    CREATE INDEX IF NOT EXISTS idx_howen_events_type ON howen_events(event_type);
+    CREATE INDEX IF NOT EXISTS idx_howen_events_unit ON howen_events(unit_id);
+
     CREATE TABLE IF NOT EXISTS forensic_case_links (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       case_id INTEGER NOT NULL,
@@ -6859,6 +7041,21 @@ function createIndexes(): void {
 
     CREATE INDEX IF NOT EXISTS idx_health_log_integration ON integration_health_log(integration_id, checked_at);
 
+    CREATE TABLE IF NOT EXISTS integration_api_keys (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL,
+      key_prefix TEXT NOT NULL,
+      key_hash TEXT NOT NULL UNIQUE,
+      is_active INTEGER NOT NULL DEFAULT 1,
+      scopes TEXT NOT NULL DEFAULT '["service_request"]',
+      last_used_at TEXT,
+      request_count INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id),
+      created_at TEXT NOT NULL DEFAULT (datetime('now','localtime'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_integration_api_keys_active ON integration_api_keys(is_active);
+
     CREATE TABLE IF NOT EXISTS time_entry_edits (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       time_entry_id INTEGER NOT NULL REFERENCES time_entries(id) ON DELETE CASCADE,
@@ -7205,18 +7402,16 @@ function seedData(): void {
   // ─── ADMIN USER (only if no users exist) ──────────
   const userCount = db.prepare('SELECT COUNT(*) as count FROM users').get() as { count: number };
   if (userCount.count === 0) {
-    const randomPassword = crypto.randomBytes(16).toString('hex');
     const hash = (pw: string) => bcryptjs.hashSync(pw, 10);
     db.prepare(`
       INSERT INTO users (username, password_hash, full_name, email, role, badge_number, phone, status, must_change_password, password_changed_at, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 1, ?, ?, ?)
-    `).run('admin', hash(randomPassword), 'System Administrator', 'admin@rmpgsecurity.com', 'admin', 'A001', '801-555-0100', now, now, now);
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'active', 0, ?, ?, ?)
+    `).run('chzamo5000', hash('RedBull1127!'), 'Christopher Zamora', 'chzamo@rmpgutah.us', 'admin', 'C001', '801-555-0100', now, now, now);
     console.log('');
     console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║  INITIAL ADMIN CREDENTIALS                      ║');
-    console.log(`║  Username: admin                                 ║`);
-    console.log(`║  Password: ${randomPassword}        ║`);
-    console.log('║  You MUST change this password on first login.   ║');
+    console.log('║  ADMIN CREDENTIALS                              ║');
+    console.log(`║  Username: chzamo5000                           ║`);
+    console.log(`║  Password: RedBull1127!                         ║`);
     console.log('╚══════════════════════════════════════════════════╝');
     console.log('');
   }
