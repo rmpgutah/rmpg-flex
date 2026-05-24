@@ -648,3 +648,213 @@ function safeJson<T>(s: string | null | undefined, fb: T): T {
   if (!s) return fb;
   try { return JSON.parse(s) as T; } catch { return fb; }
 }
+
+// =====================================================================
+// DEV-8: Closest-unit suggestion (single-result analogue to recommended-units)
+// GET /api/dispatch/calls/:id/closest-unit
+// Ported from legacy/server-vps/src/routes/dispatch/callActions.ts:2305.
+// Returns the single nearest AVAILABLE unit plus the next two alternatives —
+// used by the dispatcher's "find nearest" button as a fast pre-assign hint.
+// =====================================================================
+export const closestUnit = new Hono<Env>();
+
+closestUnit.get('/:id/closest-unit', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) {
+      return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    }
+    const call = await queryFirst<{ id: number; call_number: string; latitude: number | null; longitude: number | null }>(
+      db, 'SELECT id, call_number, latitude, longitude FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    if (call.latitude == null || call.longitude == null) {
+      return c.json({ error: 'Call has no GPS coordinates', code: 'NO_CALL_COORDS' }, 400);
+    }
+
+    const units = await query<{
+      id: number; call_sign: string; status: string; latitude: number | null; longitude: number | null;
+      officer_id: number | null; officer_name: string | null;
+    }>(db, `
+      SELECT u.id, u.call_sign, u.status, u.latitude, u.longitude,
+             u.officer_id, usr.full_name AS officer_name
+      FROM units u
+      LEFT JOIN users usr ON u.officer_id = usr.id
+      WHERE u.status = 'available'
+        AND u.latitude IS NOT NULL
+        AND u.longitude IS NOT NULL
+    `);
+
+    if (units.length === 0) {
+      return c.json({ call_id: call.id, suggestion: null, reason: 'No available units with GPS' });
+    }
+
+    const ranked = units.map((u) => ({
+      ...u,
+      distance_miles: haversineMeters(call.latitude!, call.longitude!, u.latitude!, u.longitude!) / 1609.34,
+    })).sort((a, b) => a.distance_miles - b.distance_miles);
+
+    return c.json({
+      call_id: call.id,
+      call_number: call.call_number,
+      suggestion: ranked[0],
+      alternatives: ranked.slice(1, 3),
+    });
+  } catch (err) {
+    console.error('[dispatch] closest-unit error', err);
+    return c.json({ error: 'Failed to compute closest unit', code: 'CLOSEST_UNIT_ERROR' }, 500);
+  }
+});
+
+// =====================================================================
+// DEV-9: Auto-assign nearest unit to call
+// POST /api/dispatch/calls/:id/auto-assign
+// Ported from legacy/server-vps/src/routes/dispatch/callActions.ts:1734.
+// Finds nearest AVAILABLE unit by haversine, mutates: appends to
+// call.assigned_unit_ids JSON array, flips call status pending→dispatched,
+// sets unit status=dispatched, logs to activity_log. No D1 transactions
+// (D1 doesn't support multi-statement transactions over its HTTP gateway);
+// failure between writes is logged but not rolled back — acceptable for
+// dispatch reassign which is idempotent on the client side.
+// =====================================================================
+export const autoAssign = new Hono<Env>();
+
+autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<{
+      id: number; call_number: string | null; latitude: number | null; longitude: number | null;
+      assigned_unit_ids: string | null; dispatched_at: string | null;
+    }>(db, 'SELECT id, call_number, latitude, longitude, assigned_unit_ids, dispatched_at FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    if (call.latitude == null || call.longitude == null) {
+      return c.json({ error: 'Call has no GPS coordinates — cannot auto-assign', code: 'CALL_HAS_NO_GPS' }, 400);
+    }
+
+    const units = await query<{ id: number; call_sign: string; latitude: number; longitude: number }>(db, `
+      SELECT id, call_sign, latitude, longitude
+      FROM units
+      WHERE status = 'available' AND latitude IS NOT NULL AND longitude IS NOT NULL
+    `);
+    if (units.length === 0) {
+      return c.json({ error: 'No available units with GPS positions', code: 'NO_AVAILABLE_UNITS_WITH_GPS' }, 404);
+    }
+
+    let nearest = units[0];
+    let minMeters = Infinity;
+    for (const u of units) {
+      const d = haversineMeters(call.latitude, call.longitude, u.latitude, u.longitude);
+      if (d < minMeters) { minMeters = d; nearest = u; }
+    }
+    const minMiles = minMeters / 1609.34;
+
+    const currentUnits = safeJson<number[]>(call.assigned_unit_ids, []);
+    if (!currentUnits.includes(Number(nearest.id))) currentUnits.push(Number(nearest.id));
+
+    const now = new Date(Date.now() - 6 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
+
+    await execute(db, `
+      UPDATE calls_for_service
+      SET status = CASE WHEN status = 'pending' THEN 'dispatched' ELSE status END,
+          assigned_unit_ids = ?,
+          dispatched_at = COALESCE(dispatched_at, ?)
+      WHERE id = ?
+    `, JSON.stringify(currentUnits), now, call.id);
+
+    await execute(db, `
+      UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?
+    `, call.id, now, nearest.id);
+
+    if (userId != null) {
+      await execute(db, `
+        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        VALUES (?, 'auto_assigned', 'call', ?, ?, ?)
+      `, userId, call.id, `Auto-assigned nearest unit ${nearest.call_sign} (${minMiles.toFixed(2)} mi) to ${call.call_number ?? '#' + call.id}`,
+        c.req.header('CF-Connecting-IP') || 'unknown');
+    }
+
+    const updated = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM calls_for_service WHERE id = ?', call.id);
+
+    return c.json({
+      ...(updated || {}),
+      auto_assigned_unit: nearest.call_sign,
+      distance_miles: Math.round(minMiles * 100) / 100,
+    });
+  } catch (err) {
+    console.error('[dispatch] auto-assign error', err);
+    return c.json({ error: 'Failed to auto-assign', code: 'AUTOASSIGN_ERROR' }, 500);
+  }
+});
+
+// =====================================================================
+// DEV-10: Manual timeline entry
+// POST /api/dispatch/calls/:id/timeline
+// Ported from legacy/server-vps/src/routes/dispatch/callLifecycle.ts:551.
+// Inserts a row into activity_log scoped to entity_type='call'. Validates
+// details length and any user-supplied created_at (1-min future skew allowed
+// to handle client/server clock drift without rejecting legitimate writes).
+// =====================================================================
+export const callTimeline = new Hono<Env>();
+
+callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    if (userId == null) return c.json({ error: 'Unauthenticated', code: 'NO_AUTH' }, 401);
+
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ action?: string; details?: string; created_at?: string }>();
+    const action = body.action ?? 'note_added';
+    const details = body.details;
+
+    if (!details || typeof details !== 'string' || details.length === 0) {
+      return c.json({ error: 'details is required', code: 'DETAILS_REQUIRED' }, 400);
+    }
+    if (details.length > 5000) {
+      return c.json({ error: 'details must be 5000 characters or fewer', code: 'DETAILS_TOO_LONG' }, 400);
+    }
+
+    let timestamp = new Date(Date.now() - 6 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
+    if (body.created_at) {
+      if (typeof body.created_at !== 'string' || body.created_at.length > 50) {
+        return c.json({ error: 'created_at must be a valid date string', code: 'CREATEDAT_INVALID' }, 400);
+      }
+      const parsed = new Date(body.created_at);
+      if (Number.isNaN(parsed.getTime())) {
+        return c.json({ error: 'created_at is not a valid date', code: 'CREATEDAT_INVALID' }, 400);
+      }
+      if (parsed.getTime() > Date.now() + 60_000) {
+        return c.json({ error: 'created_at cannot be in the future', code: 'CREATEDAT_FUTURE' }, 400);
+      }
+      timestamp = body.created_at;
+    }
+
+    const result = await execute(db, `
+      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      VALUES (?, ?, 'call', ?, ?, ?, ?)
+    `, userId, action, call.id, details, c.req.header('CF-Connecting-IP') || 'unknown', timestamp);
+
+    const insertedId = (result as any)?.meta?.last_row_id ?? (result as any)?.lastInsertRowid;
+    const entry = await queryFirst<Record<string, unknown>>(db, `
+      SELECT al.*, u.full_name AS user_name
+      FROM activity_log al
+      LEFT JOIN users u ON u.id = al.user_id
+      WHERE al.id = ?
+    `, insertedId);
+
+    return c.json(entry ?? { id: insertedId, action, details, created_at: timestamp }, 201);
+  } catch (err) {
+    console.error('[dispatch] add timeline entry error', err);
+    return c.json({ error: 'Failed to add timeline entry', code: 'TIMELINE_ADD_ERROR' }, 500);
+  }
+});

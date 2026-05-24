@@ -73,6 +73,7 @@ import fieldInterviews from './routes/fieldInterviews';
 import documentFolders from './routes/documents/folders';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
+import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import forensics from './routes/forensics';
 import patrol from './routes/patrol';
@@ -95,6 +96,7 @@ import welfare from './routes/welfare';
 import {
   recommendedUnits, audioMode, premiseAlerts, callWarnings,
   unitStatus, bolos as bolosRouter, welfareActive,
+  closestUnit, autoAssign, callTimeline,
 } from './routes/dispatch/extensions';
 // Business records
 import businessVehicles from './routes/business/vehicles';
@@ -150,6 +152,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // paths (/calls/:id/recommended-units, /units/:id/status, etc) must
   // match before the catch-all /:id handler in dispatchCalls/dispatchUnits.
   { prefix: '/api/dispatch/calls', router: recommendedUnits, auth: 'required' },
+  { prefix: '/api/dispatch/calls', router: closestUnit, auth: 'required' },
+  { prefix: '/api/dispatch/calls', router: autoAssign, auth: 'required' },
+  { prefix: '/api/dispatch/calls', router: callTimeline, auth: 'required' },
   { prefix: '/api/dispatch/calls', router: callWarnings, auth: 'required' },
   { prefix: '/api/dispatch/units', router: audioMode, auth: 'required' },
   { prefix: '/api/dispatch/units', router: unitStatus, auth: 'required' },
@@ -217,6 +222,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/documents', router: documentFolders, auth: 'required' },
   { prefix: '/api/pdf-tools', router: pdfTools, auth: 'required' },
   { prefix: '/api/document-intake', router: documentIntake, auth: 'required' },
+  { prefix: '/api/tts', router: tts, auth: 'required' },
 
   // ── Business records ───────────────────────────────────────
   { prefix: '/api/business-vehicles', router: businessVehicles, auth: 'required' },

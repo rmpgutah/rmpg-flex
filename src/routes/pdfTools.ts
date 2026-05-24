@@ -84,4 +84,44 @@ pdfTools.post('/encrypt', async (c) => {
   }
 });
 
+// POST /api/pdf-tools/sign-payload — signs a (formKey, caseNumber, payloadHash)
+// triple with the server's Ed25519 key so a generated PDF can be later verified
+// offline (court/exhibit chain-of-custody). Matches the legacy response shape
+// at legacy/server-vps/src/routes/pdfTools.ts:60.
+//
+// Until PDF_SIGNING_KEY is provisioned as a Worker secret, returns 503 with
+// the same SIGNING_NOT_CONFIGURED code the legacy server uses when its key
+// isn't set. That code path is exercised by clients already (the legacy
+// server has the same fallback), so they degrade gracefully without changes.
+pdfTools.post('/sign-payload', async (c) => {
+  try {
+    const body = await c.req.json<{ formKey?: string; caseNumber?: string; payloadHash?: string }>();
+    const formKey = typeof body.formKey === 'string' ? body.formKey.trim() : '';
+    const caseNumber = typeof body.caseNumber === 'string' ? body.caseNumber.trim() : '';
+    const payloadHash = typeof body.payloadHash === 'string' ? body.payloadHash.trim().toLowerCase() : '';
+
+    if (!formKey || !payloadHash) {
+      return c.json({ error: 'formKey and payloadHash are required' }, 400);
+    }
+    // SHA-256 hex sanity check (mirror legacy validation) — reject obvious
+    // typos before paying the signature cost.
+    if (!/^[0-9a-f]{64}$/.test(payloadHash)) {
+      return c.json({ error: 'payloadHash must be a 64-char lowercase SHA-256 hex string' }, 400);
+    }
+
+    // No signing key configured on this Worker yet. Return the same 503 the
+    // legacy server returns in the not-configured branch — the client already
+    // handles this code by falling back to an unsigned PDF.
+    return c.json({
+      error: 'PDF signing is not configured on this server',
+      code: 'SIGNING_NOT_CONFIGURED',
+      formKey,
+      caseNumber: caseNumber || '',
+      payloadHash,
+    }, 503);
+  } catch (err) {
+    return c.json({ error: 'Signing failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
 export default pdfTools;

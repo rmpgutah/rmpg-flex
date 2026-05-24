@@ -55,6 +55,19 @@ jobs:
           # sidecar stays inactive (/api/pdf-tools/* will 500 if called).
           command: deploy --containers-rollout=none
 
+      # Deploy the routing proxy (rmpg-api-proxy) AFTER the API Worker is up.
+      # The proxy has service bindings to rmpg-flex-api and rmpg-flex; if we
+      # deployed it before rmpg-flex-api here the binding would point at the
+      # previous script for the few seconds until rmpg-flex-api finishes its
+      # rollout. Sequencing keeps the strangler seam consistent across deploys.
+      - name: Deploy proxy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: proxy
+          command: deploy
+
       # Client SPA build + deploy to Cloudflare Pages.
       # Without these steps the Worker (API) ships but the React app
       # at https://rmpgutah.us stays stuck on whatever bundle was

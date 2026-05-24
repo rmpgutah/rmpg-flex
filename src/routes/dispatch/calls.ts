@@ -304,28 +304,38 @@ calls.post('/archive-bulk', async (c) => {
 });
 
 // GET /dispatch/calls/:id - Single call
+// Split into multiple narrow queries instead of one wide JOIN because D1
+// caps result sets at 100 columns. calls_for_service is ~93 columns; adding
+// property/user/client JOIN columns or LEFT JOIN calls_for_service_ext blew
+// past the cap and produced SQLITE_ERROR 7500 "too many columns in result set".
 calls.get('/:id', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const call = await queryFirst<Record<string, unknown>>(db, `
-      SELECT c.*, p.name as property_name, p.address as property_address,
-        p.gate_code, p.alarm_code, p.emergency_contact, p.post_orders, p.hazard_notes,
-        u.full_name as dispatcher_name, cl.name as client_name
-      FROM calls_for_service c
-      LEFT JOIN properties p ON c.property_id = p.id
-      LEFT JOIN users u ON c.dispatcher_id = u.id
-      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
-      WHERE c.id = ?
-    `, id);
 
+    const call = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
 
-    const assignedUnits = await query<Record<string, unknown>>(db, `
+    const ext = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+
+    const joined = await queryFirst<Record<string, unknown>>(db, `
+      SELECT p.name AS property_name, p.address AS property_address,
+        p.gate_code, p.alarm_code, p.emergency_contact, p.post_orders, p.hazard_notes,
+        u.full_name AS dispatcher_name, cl.name AS client_name
+      FROM (SELECT ? AS property_id, ? AS dispatcher_id, ? AS client_id) ck
+      LEFT JOIN properties p ON p.id = ck.property_id
+      LEFT JOIN users u ON u.id = ck.dispatcher_id
+      LEFT JOIN clients cl ON cl.id = COALESCE(ck.client_id, p.client_id)
+    `, call.property_id ?? null, call.dispatcher_id ?? null, call.client_id ?? null);
+
+    const assignedIds = JSON.parse(String(call.assigned_unit_ids || '[]')) as number[];
+    const assignedUnits = assignedIds.length === 0 ? [] : await query<Record<string, unknown>>(db, `
       SELECT u.*, usr.full_name as officer_name, usr.badge_number
       FROM units u LEFT JOIN users usr ON u.officer_id = usr.id
-      WHERE u.id IN (${(JSON.parse(String(call.assigned_unit_ids || '[]')) as number[]).map(() => '?').join(',') || 'NULL'})
-    `, ...(JSON.parse(String(call.assigned_unit_ids || '[]')) as number[]));
+      WHERE u.id IN (${assignedIds.map(() => '?').join(',')})
+    `, ...assignedIds);
 
     const incidents = await query<Record<string, unknown>>(db,
       'SELECT id, incident_number, incident_type, status, created_at FROM incidents WHERE call_id = ? ORDER BY created_at DESC LIMIT 1000', id);
@@ -334,9 +344,17 @@ calls.get('/:id', async (c) => {
       'SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 1000',
       'call', id);
 
-    return c.json({ ...call, assigned_units: assignedUnits, related_incidents: incidents, activity });
+    return c.json({
+      ...call,
+      ...(ext || {}),
+      ...(joined || {}),
+      assigned_units: assignedUnits,
+      related_incidents: incidents,
+      activity,
+    });
   } catch (err) {
-    return c.json({ error: 'Failed to get call' }, 500);
+    console.error('GET /dispatch/calls/:id failed:', err);
+    return c.json({ error: 'Failed to get call', detail: (err as Error)?.message }, 500);
   }
 });
 
@@ -440,12 +458,12 @@ calls.put('/:id', async (c) => {
       await execute(db, `UPDATE calls_for_service_ext SET ${extUpdates.join(', ')} WHERE id = ?`, ...extParams);
     }
 
-    const updated = await queryFirst<Record<string, unknown>>(
-      db,
-      'SELECT c.*, ext.* FROM calls_for_service c LEFT JOIN calls_for_service_ext ext ON ext.id = c.id WHERE c.id = ?',
-      id,
-    );
-    return c.json(updated);
+    // Split fetch to dodge D1's 100-column cap (base ~93 + ext 16 > 100).
+    const updatedBase = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    const updatedExt = await queryFirst<Record<string, unknown>>(
+      db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id);
+    return c.json({ ...(updatedBase || {}), ...(updatedExt || {}) });
   } catch (err) {
     console.error('PUT /dispatch/calls/:id failed:', err);
     return c.json({ error: 'Failed to update call', detail: (err as Error)?.message }, 500);
