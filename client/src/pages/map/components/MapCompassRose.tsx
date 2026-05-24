@@ -1,32 +1,26 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
 
 interface MapCompassRoseProps {
-  mapInstance: google.maps.Map | null;
+  mapInstance: mapboxgl.Map | null;
 }
 
 export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
   const [heading, setHeading] = useState(0);
   const [hovered, setHovered] = useState(false);
-  const listenerRef = useRef<google.maps.MapsEventListener | null>(null);
 
   useEffect(() => {
     if (!mapInstance) return;
 
     const update = () => {
-      const h = mapInstance.getHeading?.() || 0;
-      setHeading(h);
+      setHeading(mapInstance.getBearing());
     };
 
     update();
-
-    // heading_changed fires when the user rotates the map (tilt mode or 45-degree imagery)
-    listenerRef.current = google.maps.event.addListener(mapInstance, 'heading_changed', update);
+    mapInstance.on('rotate', update);
 
     return () => {
-      if (listenerRef.current) {
-        google.maps.event.removeListener(listenerRef.current);
-        listenerRef.current = null;
-      }
+      mapInstance.off('rotate', update);
     };
   }, [mapInstance]);
 
@@ -53,7 +47,7 @@ export default function MapCompassRose({ mapInstance }: MapCompassRoseProps) {
         boxShadow: hovered ? '0 0 12px rgba(212,160,23,0.3)' : undefined,
         transition: 'box-shadow 0.2s ease',
       }}
-      onClick={() => { if (mapInstance) mapInstance.setHeading?.(0); }}
+      onClick={() => { if (mapInstance) mapInstance.setBearing(0); }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
     >

@@ -5,8 +5,8 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -53,7 +53,7 @@ function createDiamondMarker(reason: string, createdAt?: string): HTMLDivElement
     const createdTime = new Date(createdAt).getTime();
     const ageMs = isNaN(createdTime) ? 0 : Date.now() - createdTime;
     const ageDays = ageMs / (1000 * 60 * 60 * 24);
-    opacity = Math.max(0.4, 1 - (ageDays / 60)); // fade over 60 days
+    opacity = Math.max(0.4, 1 - (ageDays / 60));
   }
 
   const el = document.createElement('div');
@@ -116,21 +116,21 @@ function buildFIInfoContent(fi: FIRecord): HTMLDivElement {
 // ─── Hook ───────────────────────────────────────────────────
 
 export function useMapFieldInterviews(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
   days: number = 30,
 ): UseMapFieldInterviewsReturn {
   const [count, setCount] = useState(0);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<google.maps.OverlayView[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
 
   // ── Clear markers ─────────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach((m) => {
-      m.setMap(null);
+      m.remove();
     });
     markersRef.current = [];
   }, []);
@@ -138,13 +138,17 @@ export function useMapFieldInterviews(
   // ── Render markers ────────────────────────────────────────
 
   const renderMarkers = useCallback((records: FIRecord[]) => {
-    const OverlayMarkerClass = getOverlayMarkerClass();
-    if (!map || !OverlayMarkerClass) return;
+    if (!map) return;
 
     clearMarkers();
 
     if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
+      infoWindowRef.current = new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+        maxWidth: '360px',
+        offset: 15,
+      });
     }
 
     const withCoords = records.filter(
@@ -157,30 +161,31 @@ export function useMapFieldInterviews(
       const lat = Number(fi.latitude);
       const lng = Number(fi.longitude);
 
-      const content = createDiamondMarker(fi.contact_reason, fi.created_at); // Fix 74: pass date for recency
+      const content = createDiamondMarker(fi.contact_reason, fi.created_at);
+      content.style.cursor = 'pointer';
+      content.title = `FI ${fi.fi_number}`;
 
-      const marker = new OverlayMarkerClass({
-        map,
-        position: { lat, lng },
-        content,
-        title: `FI ${fi.fi_number}`,
-        zIndex: 18,
-        onClick: () => {
-          const infoContent = buildFIInfoContent(fi);
-          infoWindowRef.current?.setContent(infoContent);
-          infoWindowRef.current?.setPosition({ lat, lng });
-          infoWindowRef.current?.open(map);
-        },
+      content.addEventListener('click', () => {
+        const infoContent = buildFIInfoContent(fi);
+        const popup = infoWindowRef.current;
+        if (popup) {
+          popup.remove();
+          popup.setLngLat([lng, lat]).setDOMContent(infoContent).addTo(map);
+        }
       });
 
-      markersRef.current.push(marker as unknown as google.maps.OverlayView);
+      const marker = new mapboxgl.Marker({ element: content })
+        .setLngLat([lng, lat])
+        .addTo(map);
+
+      markersRef.current.push(marker);
     });
   }, [map, clearMarkers]);
 
   // ── Fetch and render ──────────────────────────────────────
 
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
 
     if (!enabled) {
       clearMarkers();
@@ -212,10 +217,10 @@ export function useMapFieldInterviews(
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.setMap(null); });
+      markersRef.current.forEach((m) => { m.remove(); });
       markersRef.current = [];
       if (infoWindowRef.current) {
-        infoWindowRef.current.close();
+        infoWindowRef.current.remove();
         infoWindowRef.current = null;
       }
     };

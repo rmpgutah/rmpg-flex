@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -25,18 +26,17 @@ interface UseMapEnforcementClustersReturn {
 }
 
 // ─── Color config ───────────────────────────────────────────
-// Fix 70: color code by enforcement type (citations vs arrests vs warnings)
 
 const TYPE_COLORS: Record<string, string> = {
-  citations: '#888888',   // blue
-  arrests: '#dc2626',     // red
-  warnings: '#f59e0b',    // amber
+  citations: '#888888',
+  arrests: '#dc2626',
+  warnings: '#f59e0b',
 };
 
 // ─── Hook ───────────────────────────────────────────────────
 
 export function useMapEnforcementClusters(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
   type: 'citations' | 'arrests',
   days: number,
@@ -44,8 +44,8 @@ export function useMapEnforcementClusters(
   const [clusters, setClusters] = useState<EnforcementCluster[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const circlesRef = useRef<google.maps.Circle[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   // ── Fetch enforcement data ────────────────────────────────
 
@@ -79,16 +79,16 @@ export function useMapEnforcementClusters(
   // ── Render circles ────────────────────────────────────────
 
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
 
     // Clear existing
-    circlesRef.current.forEach((c) => c.setMap(null));
-    circlesRef.current = [];
+    markersRef.current.forEach((m) => m.remove());
+    markersRef.current = [];
 
     if (!enabled || clusters.length === 0) return;
 
-    if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '360px', offset: 15 });
     }
 
     const color = TYPE_COLORS[type] || '#888888';
@@ -96,22 +96,20 @@ export function useMapEnforcementClusters(
     clusters.forEach((cluster) => {
       if (cluster.lat == null || cluster.lng == null) return;
 
-      const radius = Math.max(100, Math.min(500, cluster.total * 30));
+      const radiusPx = Math.max(10, Math.min(50, cluster.total * 3));
 
-      const circle = new google.maps.Circle({
-        center: { lat: cluster.lat, lng: cluster.lng },
-        radius,
-        fillColor: color,
-        fillOpacity: 0.2,
-        strokeColor: color,
-        strokeWeight: 2,
-        strokeOpacity: 0.6,
-        map,
-        clickable: true,
-        zIndex: 7,
-      });
+      const el = document.createElement('div');
+      el.style.cssText = `
+        width: ${radiusPx * 2}px;
+        height: ${radiusPx * 2}px;
+        border-radius: 50%;
+        background: ${color}33;
+        border: 2px solid ${color};
+        cursor: pointer;
+      `;
+      el.style.zIndex = '7';
 
-      circle.addListener('click', () => {
+      el.addEventListener('click', () => {
         const label = type === 'citations' ? 'Citation Cluster' : 'Arrest Cluster';
         const statutes = cluster.top_statutes
           ? cluster.top_statutes.split(',').slice(0, 5).join(', ')
@@ -149,36 +147,30 @@ export function useMapEnforcementClusters(
 
         addRow('Count', String(cluster.total));
         addRow('Top Statutes', statutes);
-        addRow('Date Range', `${firstDate} — ${lastDate}`);
+        addRow('Date Range', `${firstDate} \u2014 ${lastDate}`);
 
         container.appendChild(table);
 
-        infoWindowRef.current?.setContent(container);
-        infoWindowRef.current?.setPosition({ lat: cluster.lat, lng: cluster.lng });
-        infoWindowRef.current?.open(map);
+        popupRef.current?.setLngLat([cluster.lng, cluster.lat]).setDOMContent(container).addTo(map);
       });
 
-      circlesRef.current.push(circle);
+      const marker = new mapboxgl.Marker({ element: el })
+        .setLngLat([cluster.lng, cluster.lat])
+        .addTo(map);
+
+      markersRef.current.push(marker);
     });
-
-    return () => {
-      circlesRef.current.forEach((c) => {
-        google.maps.event.clearInstanceListeners(c);
-        c.setMap(null);
-      });
-      circlesRef.current = [];
-    };
   }, [map, enabled, clusters, type]);
 
   // ── Cleanup on unmount ────────────────────────────────────
 
   useEffect(() => {
     return () => {
-      circlesRef.current.forEach((c) => c.setMap(null));
-      circlesRef.current = [];
-      if (infoWindowRef.current) {
-        infoWindowRef.current.close();
-        infoWindowRef.current = null;
+      markersRef.current.forEach((m) => m.remove());
+      markersRef.current = [];
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
       }
     };
   }, []);

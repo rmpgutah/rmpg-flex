@@ -2,7 +2,7 @@
 //   Android Capacitor → native Organic Maps via Intent (turn-by-turn once
 //     the api-android signup is wired up in OrganicMapsPlugin.java;
 //     geo: pin fallback in the meantime).
-//   Everything else (desktop browser, Electron, iOS web) → Google Maps
+//   Everything else (desktop browser, Electron, iOS web) → OpenStreetMap
 //     directions URL opened in a new tab. Reliable cross-platform routing
 //     so desktop dispatchers can hand off to officers or check a route.
 //
@@ -43,11 +43,9 @@ export async function isOrganicMapsInstalled(): Promise<boolean> {
   }
 }
 
-/** Google Maps directions URL — works in any browser, any OS. */
+/** OpenStreetMap directions URL — works in any browser, any OS. */
 function googleMapsDirectionsUrl(lat: number, lng: number, label?: string): string {
-  const dest = `${lat},${lng}`;
-  const q = label ? `&destination_place_id=${encodeURIComponent(label)}` : '';
-  return `https://www.google.com/maps/dir/?api=1&destination=${dest}${q}`;
+  return `https://www.openstreetmap.org/directions?from=&to=${lat}%2C${lng}`;
 }
 
 /**
@@ -55,7 +53,7 @@ function googleMapsDirectionsUrl(lat: number, lng: number, label?: string): stri
  * Returns { ok, mode } — mode reports which path was used so callers can log/telemetry.
  *   mode = "turn-by-turn"   → native OM Intent with registered API
  *   mode = "pin-fallback"   → native OM via geo: URI (pre-signup)
- *   mode = "google-web"     → Google Maps directions URL opened in new tab
+ *   mode = "osm-web"        → OpenStreetMap directions URL opened in new tab
  */
 export async function navigateTo(
   lat: number,
@@ -74,7 +72,7 @@ export async function navigateTo(
   try {
     const url = googleMapsDirectionsUrl(lat, lng, label);
     window.open(url, '_blank', 'noopener,noreferrer');
-    return { ok: true, mode: 'google-web' };
+    return { ok: true, mode: 'osm-web' };
   } catch (e: any) {
     return { ok: false, reason: e?.message || 'launch-failed' };
   }

@@ -37,6 +37,7 @@
     "jsbarcode": "^3.12.3",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.577.0",
+    "mapbox-gl": "^3.24.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^5.7.284",
     "qrcode": "^1.5.4",

@@ -1,12 +1,5 @@
-// ============================================================
-// RMPG Flex — useMapMeasurement Hook
-// Provides distance and area measurement on Google Maps.
-// Click to add vertices, double-click to finish.
-// ============================================================
-
 import { useRef, useState, useCallback, useEffect } from 'react';
-
-// ─── Types ──────────────────────────────────────────────────
+import mapboxgl from 'mapbox-gl';
 
 export type MeasureMode = 'distance' | 'area';
 
@@ -29,42 +22,26 @@ export interface MeasurementState {
   perimeterDisplay: string;
   areaDisplay: string;
   pointCount: number;
-  startMeasure: (map: google.maps.Map, mode: MeasureMode) => void;
+  startMeasure: (map: mapboxgl.Map, mode: MeasureMode) => void;
   finishMeasurement: () => void;
   clearMeasurement: () => void;
   undoLastPoint: () => void;
 }
 
-// ─── Haversine distance (meters) ────────────────────────────
-
-function haversineMeters(
-  lat1: number, lng1: number,
-  lat2: number, lng2: number,
-): number {
+function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return 0;
   const R = 6371000;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
   const dLng = ((lng2 - lng1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos((lat1 * Math.PI) / 180) *
-    Math.cos((lat2 * Math.PI) / 180) *
-    Math.sin(dLng / 2) ** 2;
+  const a = Math.sin(dLat / 2) ** 2 + Math.cos((lat1 * Math.PI) / 180) * Math.cos((lat2 * Math.PI) / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// ─── Spherical area via Shoelace on lat/lng (sq meters) ─────
-// Approximation using spherical excess formula.
-
-function computeSphericalArea(path: google.maps.LatLngLiteral[]): number {
-  // Filter out non-finite coordinates
+function computeSphericalArea(path: { lat: number; lng: number }[]): number {
   const validPath = path.filter(p => Number.isFinite(p.lat) && Number.isFinite(p.lng));
   if (validPath.length < 3) return 0;
-
-  // Spherical excess formula
   const R = 6371000;
   const toRad = (deg: number) => (deg * Math.PI) / 180;
-
   let total = 0;
   for (let i = 0; i < validPath.length; i++) {
     const j = (i + 1) % validPath.length;
@@ -77,13 +54,9 @@ function computeSphericalArea(path: google.maps.LatLngLiteral[]): number {
   return Math.abs((total * R * R) / 2);
 }
 
-// ─── Display formatting ─────────────────────────────────────
-
 function formatDistance(meters: number): { value: number; unit: string; display: string } {
   const feet = meters * 3.28084;
-  if (feet < 1000) {
-    return { value: feet, unit: 'ft', display: `${Math.round(feet).toLocaleString()} ft` };
-  }
+  if (feet < 1000) return { value: feet, unit: 'ft', display: `${Math.round(feet).toLocaleString()} ft` };
   const miles = feet / 5280;
   return { value: miles, unit: 'mi', display: `${miles.toFixed(2)} mi` };
 }
@@ -100,39 +73,24 @@ function formatAreaMetric(sqMeters: number): string {
 
 function formatArea(sqMeters: number): { value: number; unit: string; display: string } {
   const sqFeet = sqMeters * 10.7639;
-  if (sqFeet < 43560) {
-    return { value: sqFeet, unit: 'sq ft', display: `${Math.round(sqFeet).toLocaleString()} sq ft` };
-  }
+  if (sqFeet < 43560) return { value: sqFeet, unit: 'sq ft', display: `${Math.round(sqFeet).toLocaleString()} sq ft` };
   const acres = sqFeet / 43560;
   return { value: acres, unit: 'acres', display: `${acres.toFixed(2)} acres` };
 }
 
-// ─── Vertex marker style ────────────────────────────────────
+const LINE_SOURCE = 'measure-line-source';
+const LINE_LAYER = 'measure-line-layer';
+const POLYGON_SOURCE = 'measure-polygon-source';
+const POLYGON_LAYER = 'measure-polygon-layer';
+const VERTEX_SOURCE = 'measure-vertex-source';
+const VERTEX_LAYER = 'measure-vertex-layer';
 
-const VERTEX_ICON = {
-  path: 0, // google.maps.SymbolPath.CIRCLE
-  scale: 5,
-  fillColor: '#d4a017',
-  fillOpacity: 1,
-  strokeColor: '#050505',
-  strokeWeight: 2,
-};
-
-const LINE_OPTIONS: google.maps.PolylineOptions = {
-  strokeColor: '#d4a017',
-  strokeWeight: 3,
-  strokeOpacity: 0.9,
-};
-
-const POLYGON_OPTIONS: google.maps.PolygonOptions = {
-  strokeColor: '#d4a017',
-  strokeWeight: 3,
-  strokeOpacity: 0.9,
-  fillColor: '#d4a017',
-  fillOpacity: 0.15,
-};
-
-// ─── Hook ───────────────────────────────────────────────────
+function removeSourceAndLayer(map: mapboxgl.Map, layerId: string, sourceId: string) {
+  try {
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+  } catch { /* ignore */ }
+}
 
 export function useMapMeasurement(): MeasurementState {
   const [measuring, setMeasuring] = useState(false);
@@ -146,45 +104,34 @@ export function useMapMeasurement(): MeasurementState {
   const [areaDisplay, setAreaDisplay] = useState('');
   const [pointCount, setPointCount] = useState(0);
 
-  const pathRef = useRef<google.maps.LatLngLiteral[]>([]);
-  const polylineRef = useRef<google.maps.Polyline | null>(null);
-  const polygonRef = useRef<google.maps.Polygon | null>(null);
-  const vertexMarkersRef = useRef<google.maps.Marker[]>([]);
-  const segmentLabelsRef = useRef<google.maps.InfoWindow[]>([]);
-  const clickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
-  const dblClickListenerRef = useRef<google.maps.MapsEventListener | null>(null);
-  const mapRef = useRef<google.maps.Map | null>(null);
+  const pathRef = useRef<{ lat: number; lng: number }[]>([]);
+  const segmentLabelsRef = useRef<mapboxgl.Popup[]>([]);
+  const clickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
+  const dblClickHandlerRef = useRef<((e: mapboxgl.MapMouseEvent) => void) | null>(null);
+  const mapRef = useRef<mapboxgl.Map | null>(null);
   const modeRef = useRef<MeasureMode | null>(null);
 
-  // ── Update measurement display ─────────────────────────
-
-  // ── Clear segment labels ─────────────────────────────────
   const clearSegmentLabels = useCallback(() => {
-    segmentLabelsRef.current.forEach(iw => iw.close());
+    segmentLabelsRef.current.forEach(iw => iw.remove());
     segmentLabelsRef.current = [];
   }, []);
 
-  // ── Render segment distance labels on map ─────────────────
   const renderSegmentLabels = useCallback((segs: SegmentInfo[]) => {
     clearSegmentLabels();
-    const map = mapRef.current;
+    const m = mapRef.current;
     const path = pathRef.current;
-    if (!map || segs.length === 0) return;
-
+    if (!m || segs.length === 0) return;
     segs.forEach((seg) => {
       const p1 = path[seg.fromIdx];
       const p2 = path[seg.toIdx];
       if (!p1 || !p2) return;
-      const midLat = (p1.lat + p2.lat) / 2;
       const midLng = (p1.lng + p2.lng) / 2;
-
-      const iw = new google.maps.InfoWindow({
-        content: `<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#d4a017;background:#0c0c0c;padding:2px 6px;border:1px solid #d4a01740;border-radius:2px;white-space:nowrap;">${seg.displayFt} / ${seg.displayM}</div>`,
-        position: { lat: midLat, lng: midLng },
-        disableAutoPan: true,
-      });
-      iw.open(map);
-      segmentLabelsRef.current.push(iw);
+      const midLat = (p1.lat + p2.lat) / 2;
+      const popup = new mapboxgl.Popup({ closeButton: false, closeOnClick: false, closeOnMove: false })
+        .setLngLat([midLng, midLat])
+        .setHTML(`<div style="font-family:'JetBrains Mono',monospace;font-size:9px;color:#d4a017;background:#0c0c0c;padding:2px 6px;border:1px solid #d4a01740;border-radius:2px;white-space:nowrap;">${seg.displayFt} / ${seg.displayM}</div>`)
+        .addTo(m);
+      segmentLabelsRef.current.push(popup);
     });
   }, [clearSegmentLabels]);
 
@@ -197,16 +144,11 @@ export function useMapMeasurement(): MeasurementState {
       let totalMeters = 0;
       const segs: SegmentInfo[] = [];
       for (let i = 1; i < path.length; i++) {
-        const segMeters = haversineMeters(
-          path[i - 1].lat, path[i - 1].lng,
-          path[i].lat, path[i].lng,
-        );
+        const segMeters = haversineMeters(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng);
         totalMeters += segMeters;
         const segFeet = segMeters * 3.28084;
         segs.push({
-          fromIdx: i - 1,
-          toIdx: i,
-          meters: segMeters,
+          fromIdx: i - 1, toIdx: i, meters: segMeters,
           displayFt: segFeet < 1000 ? `${Math.round(segFeet)} ft` : `${(segFeet / 5280).toFixed(2)} mi`,
           displayM: formatDistanceMetric(segMeters),
         });
@@ -217,17 +159,11 @@ export function useMapMeasurement(): MeasurementState {
       setMeasureUnit(fmt.unit);
       setMeasureDisplay(fmt.display);
       setMeasureDisplayMetric(formatDistanceMetric(totalMeters));
-
-      // Show perimeter + area if path is closed (3+ points)
       if (path.length >= 3) {
-        const closingMeters = haversineMeters(
-          path[path.length - 1].lat, path[path.length - 1].lng,
-          path[0].lat, path[0].lng,
-        );
+        const closingMeters = haversineMeters(path[path.length - 1].lat, path[path.length - 1].lng, path[0].lat, path[0].lng);
         const perimMeters = totalMeters + closingMeters;
         const perimFmt = formatDistance(perimMeters);
         setPerimeterDisplay(`Perimeter: ${perimFmt.display} / ${formatDistanceMetric(perimMeters)}`);
-
         const sqm = computeSphericalArea(path);
         const areaFmt = formatArea(sqm);
         setAreaDisplay(`Area: ${areaFmt.display} / ${formatAreaMetric(sqm)}`);
@@ -235,8 +171,6 @@ export function useMapMeasurement(): MeasurementState {
         setPerimeterDisplay('');
         setAreaDisplay('');
       }
-
-      // Render segment labels on map
       renderSegmentLabels(segs);
     } else if (mode === 'area') {
       const sqm = computeSphericalArea(path);
@@ -245,30 +179,20 @@ export function useMapMeasurement(): MeasurementState {
       setMeasureUnit(fmt.unit);
       setMeasureDisplay(fmt.display);
       setMeasureDisplayMetric(formatAreaMetric(sqm));
-
-      // Calculate perimeter for area mode
       let perimMeters = 0;
       const segs: SegmentInfo[] = [];
       for (let i = 1; i < path.length; i++) {
-        const segMeters = haversineMeters(
-          path[i - 1].lat, path[i - 1].lng,
-          path[i].lat, path[i].lng,
-        );
+        const segMeters = haversineMeters(path[i - 1].lat, path[i - 1].lng, path[i].lat, path[i].lng);
         perimMeters += segMeters;
         const segFeet = segMeters * 3.28084;
         segs.push({
-          fromIdx: i - 1,
-          toIdx: i,
-          meters: segMeters,
+          fromIdx: i - 1, toIdx: i, meters: segMeters,
           displayFt: segFeet < 1000 ? `${Math.round(segFeet)} ft` : `${(segFeet / 5280).toFixed(2)} mi`,
           displayM: formatDistanceMetric(segMeters),
         });
       }
       if (path.length >= 3) {
-        const closingMeters = haversineMeters(
-          path[path.length - 1].lat, path[path.length - 1].lng,
-          path[0].lat, path[0].lng,
-        );
+        const closingMeters = haversineMeters(path[path.length - 1].lat, path[path.length - 1].lng, path[0].lat, path[0].lng);
         perimMeters += closingMeters;
       }
       setSegments(segs);
@@ -279,130 +203,100 @@ export function useMapMeasurement(): MeasurementState {
     }
   }, [renderSegmentLabels]);
 
-  // ── Add a vertex ───────────────────────────────────────
+  const removeOverlays = useCallback(() => {
+    const m = mapRef.current;
+    if (m) {
+      removeSourceAndLayer(m, LINE_LAYER, LINE_SOURCE);
+      removeSourceAndLayer(m, POLYGON_LAYER, POLYGON_SOURCE);
+      removeSourceAndLayer(m, VERTEX_LAYER, VERTEX_SOURCE);
+    }
+    clearSegmentLabels();
+  }, [clearSegmentLabels]);
 
-  const addVertex = useCallback((latLng: google.maps.LatLng) => {
-    const point = { lat: latLng.lat(), lng: latLng.lng() };
+  const removeListeners = useCallback(() => {
+    const m = mapRef.current;
+    if (clickHandlerRef.current) { m?.off('click', clickHandlerRef.current); clickHandlerRef.current = null; }
+    if (dblClickHandlerRef.current) { m?.off('dblclick', dblClickHandlerRef.current); dblClickHandlerRef.current = null; }
+  }, []);
+
+  const addVertex = useCallback((lngLat: mapboxgl.LngLat) => {
+    const point = { lat: lngLat.lat, lng: lngLat.lng };
     pathRef.current = [...pathRef.current, point];
     const mode = modeRef.current;
+    const m = mapRef.current;
+    if (!m) return;
 
-    // Add vertex marker
-    if (mapRef.current) {
-      const marker = new google.maps.Marker({
-        position: point,
-        map: mapRef.current,
-        icon: VERTEX_ICON,
-        clickable: false,
-        zIndex: 9999,
-      });
-      vertexMarkersRef.current.push(marker);
-    }
+    // Update shape layers
+    removeSourceAndLayer(m, LINE_LAYER, LINE_SOURCE);
+    removeSourceAndLayer(m, POLYGON_LAYER, POLYGON_SOURCE);
 
-    // Update shape
     if (mode === 'distance') {
-      if (!polylineRef.current && mapRef.current) {
-        polylineRef.current = new google.maps.Polyline({
-          ...LINE_OPTIONS,
-          map: mapRef.current,
-          path: pathRef.current,
-          zIndex: 9998,
-        });
-      } else {
-        polylineRef.current?.setPath(pathRef.current);
-      }
-    } else if (mode === 'area') {
-      if (!polygonRef.current && mapRef.current) {
-        polygonRef.current = new google.maps.Polygon({
-          ...POLYGON_OPTIONS,
-          map: mapRef.current,
-          paths: pathRef.current,
-          zIndex: 9998,
-        });
-      } else {
-        polygonRef.current?.setPaths(pathRef.current);
-      }
+      const coords = pathRef.current.map(p => [p.lng, p.lat] as [number, number]);
+      const lineFeature: GeoJSON.Feature = {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'LineString', coordinates: coords },
+      };
+      m.addSource(LINE_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [lineFeature] } });
+      m.addLayer({
+        id: LINE_LAYER, type: 'line', source: LINE_SOURCE,
+        paint: { 'line-color': '#d4a017', 'line-width': 3, 'line-opacity': 0.9 },
+      });
+    } else if (mode === 'area' && pathRef.current.length >= 3) {
+      const coords = [...pathRef.current.map(p => [p.lng, p.lat] as [number, number]), [pathRef.current[0].lng, pathRef.current[0].lat]];
+      const polyFeature: GeoJSON.Feature = {
+        type: 'Feature',
+        properties: {},
+        geometry: { type: 'Polygon', coordinates: [coords] },
+      };
+      m.addSource(POLYGON_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: [polyFeature] } });
+      m.addLayer({
+        id: POLYGON_LAYER, type: 'fill', source: POLYGON_SOURCE,
+        paint: { 'fill-color': '#d4a017', 'fill-opacity': 0.15, 'fill-outline-color': '#d4a017' },
+      });
     }
+
+    // Update vertex layer
+    removeSourceAndLayer(m, VERTEX_LAYER, VERTEX_SOURCE);
+    const vertexFeatures: GeoJSON.Feature[] = pathRef.current.map(p => ({
+      type: 'Feature',
+      properties: {},
+      geometry: { type: 'Point', coordinates: [p.lng, p.lat] },
+    }));
+    m.addSource(VERTEX_SOURCE, { type: 'geojson', data: { type: 'FeatureCollection', features: vertexFeatures } });
+    m.addLayer({
+      id: VERTEX_LAYER, type: 'circle', source: VERTEX_SOURCE,
+      paint: { 'circle-color': '#d4a017', 'circle-radius': 5, 'circle-stroke-color': '#050505', 'circle-stroke-width': 2 },
+    });
 
     updateMeasurement();
   }, [updateMeasurement]);
 
-  // ── Remove all overlays ────────────────────────────────
-
-  const removeOverlays = useCallback(() => {
-    if (polylineRef.current) {
-      polylineRef.current.setMap(null);
-      polylineRef.current = null;
-    }
-    if (polygonRef.current) {
-      polygonRef.current.setMap(null);
-      polygonRef.current = null;
-    }
-    for (const m of vertexMarkersRef.current) {
-      m.setMap(null);
-    }
-    vertexMarkersRef.current = [];
-    clearSegmentLabels();
-  }, [clearSegmentLabels]);
-
-  // ── Remove listeners ───────────────────────────────────
-
-  const removeListeners = useCallback(() => {
-    if (clickListenerRef.current) {
-      google.maps.event.removeListener(clickListenerRef.current);
-      clickListenerRef.current = null;
-    }
-    if (dblClickListenerRef.current) {
-      google.maps.event.removeListener(dblClickListenerRef.current);
-      dblClickListenerRef.current = null;
-    }
-  }, []);
-
-  // ── Finish measurement (keep shape, stop adding points) ─
-
   const finishMeasurement = useCallback(() => {
     removeListeners();
     setMeasuring(false);
-    // Restore map double-click zoom
-    if (mapRef.current) {
-      mapRef.current.setOptions({ disableDoubleClickZoom: false });
-    }
   }, [removeListeners]);
-
-  // ── Undo last point ────────────────────────────────────
 
   const undoLastPoint = useCallback(() => {
     if (pathRef.current.length === 0) return;
-
-    // Remove last point
     pathRef.current = pathRef.current.slice(0, -1);
-
-    // Remove last vertex marker
-    const lastMarker = vertexMarkersRef.current.pop();
-    if (lastMarker) lastMarker.setMap(null);
-
-    // Update shape
-    const mode = modeRef.current;
-    if (mode === 'distance') {
-      polylineRef.current?.setPath(pathRef.current);
-    } else if (mode === 'area') {
-      polygonRef.current?.setPaths(pathRef.current);
+    const m = mapRef.current;
+    if (m) {
+      removeSourceAndLayer(m, LINE_LAYER, LINE_SOURCE);
+      removeSourceAndLayer(m, POLYGON_LAYER, POLYGON_SOURCE);
+      removeSourceAndLayer(m, VERTEX_LAYER, VERTEX_SOURCE);
     }
-
+    if (pathRef.current.length > 0 && m) addVertex(new mapboxgl.LngLat(pathRef.current[pathRef.current.length - 1].lng, pathRef.current[pathRef.current.length - 1].lat));
     updateMeasurement();
-
-    // If no points remain, reset display
     if (pathRef.current.length === 0) {
-      const m = modeRef.current;
-      setMeasureDisplay(m === 'distance' ? '0 ft' : '0 sq ft');
-      setMeasureDisplayMetric(m === 'distance' ? '0 m' : '0 sq m');
+      setMeasureDisplay('');
+      setMeasureDisplayMetric('');
       setSegments([]);
       setPerimeterDisplay('');
       setAreaDisplay('');
       clearSegmentLabels();
     }
-  }, [updateMeasurement, clearSegmentLabels]);
-
-  // ── Clear everything ───────────────────────────────────
+  }, [updateMeasurement, clearSegmentLabels, addVertex]);
 
   const clearMeasurement = useCallback(() => {
     removeListeners();
@@ -422,15 +316,11 @@ export function useMapMeasurement(): MeasurementState {
     setPointCount(0);
   }, [removeListeners, removeOverlays]);
 
-  // ── Start measurement ──────────────────────────────────
-
-  const startMeasure = useCallback((map: google.maps.Map, mode: MeasureMode) => {
-    // Reset any existing measurement
+  const startMeasure = useCallback((m: mapboxgl.Map, mode: MeasureMode) => {
     removeListeners();
     removeOverlays();
     pathRef.current = [];
-
-    mapRef.current = map;
+    mapRef.current = m;
     modeRef.current = mode;
     setMeasureMode(mode);
     setMeasuring(true);
@@ -438,46 +328,25 @@ export function useMapMeasurement(): MeasurementState {
     setMeasureUnit(mode === 'distance' ? 'ft' : 'sq ft');
     setMeasureDisplay(mode === 'distance' ? '0 ft' : '0 sq ft');
 
-    // Disable double-click zoom while measuring
-    map.setOptions({ disableDoubleClickZoom: true });
+    const onClick = (e: mapboxgl.MapMouseEvent) => addVertex(e.lngLat);
+    const onDblClick = () => finishMeasurement();
 
-    // Click to add vertex
-    clickListenerRef.current = map.addListener('click', (e: google.maps.MapMouseEvent) => {
-      if (e.latLng) addVertex(e.latLng);
-    });
-
-    // Double-click to finish
-    dblClickListenerRef.current = map.addListener('dblclick', () => {
-      finishMeasurement();
-    });
+    clickHandlerRef.current = onClick;
+    dblClickHandlerRef.current = onDblClick;
+    m.on('click', onClick);
+    m.on('dblclick', onDblClick);
   }, [addVertex, finishMeasurement, removeListeners, removeOverlays]);
-
-  // ── Cleanup on unmount ─────────────────────────────────
 
   useEffect(() => {
     return () => {
       removeListeners();
       removeOverlays();
-      if (mapRef.current) {
-        mapRef.current.setOptions({ disableDoubleClickZoom: false });
-      }
     };
   }, [removeListeners, removeOverlays]);
 
   return {
-    measuring,
-    measureMode,
-    measureValue,
-    measureUnit,
-    measureDisplay,
-    measureDisplayMetric,
-    segments,
-    perimeterDisplay,
-    areaDisplay,
-    pointCount,
-    startMeasure,
-    finishMeasurement,
-    clearMeasurement,
-    undoLastPoint,
+    measuring, measureMode, measureValue, measureUnit, measureDisplay, measureDisplayMetric,
+    segments, perimeterDisplay, areaDisplay, pointCount,
+    startMeasure, finishMeasurement, clearMeasurement, undoLastPoint,
   };
 }

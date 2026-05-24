@@ -1,24 +1,33 @@
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
+import mapboxgl from 'mapbox-gl';
 import {
-  loadGoogleMaps,
-  DARK_MAP_STYLE,
-  NIGHT_NAV_STYLE,
-  TERRAIN_STYLE,
+  DARK_STYLE,
+  STREETS_STYLE,
+  SATELLITE_STYLE,
+  SATELLITE_STREETS_STYLE,
+  OUTDOORS_STYLE,
+  NAVIGATION_NIGHT_STYLE,
+  LIGHT_STYLE,
+  resolveMapStyleUrl,
+  getMapboxToken,
+} from '../../../utils/mapboxClient';
+import {
+  createMapboxMap,
   registerMapInstance,
   unregisterMapInstance,
   updateMapStyles,
   onOnlineRetryMaps,
-  monitorTileLoading,
-} from '../../../utils/googleMapsLoader';
-import { getGoogleMapsApiKey, getGoogleMapsApiKeyErrorMessage } from '../../../utils/googleMapsApiKey';
+  monitorMapTiles,
+  injectMapStyles,
+} from '../../../utils/mapboxMap';
 import { devLog, devWarn } from '../../../utils/devLog';
 import { injectKeyframes } from '../utils/mapMarkerBuilders';
 import type { MapStyleId } from '../utils/mapConstants';
 
 export interface UseMapInitResult {
   mapRef: MutableRefObject<HTMLDivElement | null>;
-  mapInstanceRef: MutableRefObject<google.maps.Map | null>;
-  infoWindowRef: MutableRefObject<google.maps.InfoWindow | null>;
+  mapInstanceRef: MutableRefObject<mapboxgl.Map | null>;
+  infoWindowRef: MutableRefObject<mapboxgl.Popup | null>;
   markersRef: MutableRefObject<any[]>;
   useAdvancedMarkersRef: MutableRefObject<boolean>;
   mapLoaded: boolean;
@@ -33,10 +42,9 @@ export interface UseMapInitResult {
 
 export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
   const mapRef = useRef<HTMLDivElement>(null);
-  const mapInstanceRef = useRef<google.maps.Map | null>(null);
-  // NOTE: typed as any[] because markers can be AdvancedMarkerElement or OverlayView instances
+  const mapInstanceRef = useRef<mapboxgl.Map | null>(null);
   const markersRef = useRef<any[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
   const useAdvancedMarkersRef = useRef(false);
 
   const [mapLoaded, setMapLoaded] = useState(false);
@@ -45,16 +53,17 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
   const [tilesStalled, setTilesStalled] = useState(false);
   const [retryingGmaps, setRetryingGmaps] = useState(false);
 
-  const isAuthError = mapError != null && (mapError.includes('API key') || mapError.includes('authentication') || mapError.includes('not configured'));
+  const isAuthError = mapError != null && (mapError.includes('token') || mapError.includes('authentication') || mapError.includes('not configured'));
   const showOfflineFallback = mapError != null && !isAuthError;
 
   const tileMonitorCleanupRef = useRef<(() => void) | null>(null);
 
-  // Google Maps Initialization
+  // Mapbox Initialization
   useEffect(() => {
     if (!mapRef.current) return;
 
     injectKeyframes();
+    injectMapStyles();
     setMapError(null);
 
     if (mapInstanceRef.current) {
@@ -62,118 +71,58 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       return;
     }
 
-    let authFailed = false;
-    (window as any).gm_authFailure = () => {
-      authFailed = true;
-      console.error('[MapPage] Google Maps authentication failure — API key rejected');
-      setMapError(
-        'Google Maps API key was rejected.\n\n' +
-        'Fix these in Google Cloud Console (console.cloud.google.com):\n\n' +
-        '1. BILLING: Link a billing account to the project\n' +
-        '   (Google Maps requires billing — free tier covers most usage)\n\n' +
-        '2. ENABLE APIs: Go to APIs & Services → Library → enable:\n' +
-        '   • Maps JavaScript API\n' +
-        '   • Places API (New)\n\n' +
-        '3. KEY RESTRICTIONS: Go to Credentials → click your key:\n' +
-        '   • API restrictions: "Don\'t restrict key" (or add Maps JS + Places APIs)\n' +
-        '   • Website restrictions: set to "None" for dev, or add:\n' +
-        '     http://localhost:3001/*\n' +
-        '     http://localhost:5173/*\n' +
-        '     http://localhost:4173/*'
-      );
-    };
-
     let cancelled = false;
     let pendingOnlineListener: (() => void) | null = null;
     const MAX_RETRIES = 8;
     const RETRY_DELAYS = [2000, 4000, 8000, 12000, 16000, 20000, 25000, 30000];
-    let dismissObserver: MutationObserver | null = null;
-    let dismissTimer: ReturnType<typeof setTimeout> | null = null;
 
-    function initMap() {
-      if (!mapRef.current || authFailed || cancelled) return;
+    function initMap(token: string) {
+      if (!mapRef.current || cancelled) return;
       if (mapInstanceRef.current) { setMapLoaded(true); return; }
 
-      const map = new google.maps.Map(mapRef.current, {
-        center: { lat: 40.7608, lng: -111.8910 },
-        zoom: 12,
-        disableDefaultUI: true,
-        zoomControl: false,
-        styles: DARK_MAP_STYLE,
-        backgroundColor: '#171717',
-        renderingType: 'RASTER' as any,
-        isFractionalZoomEnabled: false,
-        gestureHandling: 'greedy',
-      });
+      mapboxgl.accessToken = token;
 
-      // Auth/quota failure can return a stub Map with no div — bail early
-      // so the existing setMapError path takes over instead of crashing in monitorTileLoading.
-      if (!map || typeof map.getDiv !== 'function' || !map.getDiv()) {
-        setMapError('Google Maps failed to initialize — check API key / billing.');
-        return;
+      try {
+        const map = createMapboxMap(mapRef.current, token, resolveMapStyleUrl(mapStyle));
+        mapInstanceRef.current = map;
+        registerMapInstance(map);
+
+        infoWindowRef.current = new mapboxgl.Popup({
+          closeButton: true,
+          closeOnClick: false,
+          maxWidth: '360px',
+          offset: 15,
+        });
+
+        useAdvancedMarkersRef.current = false;
+        devLog('[MapPage] Using Mapbox GL JS markers');
+
+        if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
+        tileMonitorCleanupRef.current = monitorMapTiles(map, {
+          onStalled: () => {
+            devWarn('[MapPage] Map tiles stalled');
+            setTilesStalled(true);
+          },
+          onLoaded: () => {
+            devLog('[MapPage] Map tiles loaded successfully');
+            setTilesStalled(false);
+          },
+          onRecovering: () => {
+            devLog('[MapPage] Attempting tile recovery...');
+          },
+        });
+
+        setMapLoaded(true);
+      } catch (err: any) {
+        console.error('[MapPage] Mapbox initialization failed:', err);
+        setMapError(
+          'Failed to initialize map.\n\n' +
+          (err?.message || String(err))
+        );
       }
-
-      mapInstanceRef.current = map;
-      registerMapInstance(map);
-
-      infoWindowRef.current = new google.maps.InfoWindow();
-
-      const hideStyleId = '__rmpg_hide_gm_dialog__';
-      if (!document.getElementById(hideStyleId)) {
-        const s = document.createElement('style');
-        s.id = hideStyleId;
-        s.textContent = '[role="alertdialog"] { display: none !important; }';
-        document.head.appendChild(s);
-      }
-
-      dismissObserver = new MutationObserver(() => {
-        if (authFailed) return;
-        const hardErr = mapRef.current?.querySelector('.gm-err-container');
-        if (hardErr) {
-          console.error('[MapPage] Google Maps hard error overlay detected');
-          authFailed = true;
-          dismissObserver?.disconnect();
-          setMapError(
-            'Google Maps failed to load.\n\n' +
-            'Check Google Cloud Console:\n' +
-            '1. Billing account linked to the project\n' +
-            '2. Maps JavaScript API enabled\n' +
-            '3. API key restrictions allow this domain'
-          );
-          return;
-        }
-        const dialog = document.querySelector('[role="alertdialog"]');
-        if (dialog) {
-          const btn = dialog.querySelector('button');
-          if (btn) btn.click();
-          dialog.remove();
-        }
-      });
-      dismissObserver.observe(document.body, { childList: true, subtree: true });
-      dismissTimer = setTimeout(() => dismissObserver?.disconnect(), 10000);
-
-      useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using OverlayView markers (no mapId configured)');
-
-      if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
-      tileMonitorCleanupRef.current = monitorTileLoading(map, {
-        onStalled: () => {
-          devWarn('[MapPage] Map tiles stalled');
-          setTilesStalled(true);
-        },
-        onLoaded: () => {
-          devLog('[MapPage] Map tiles loaded successfully');
-          setTilesStalled(false);
-        },
-        onRecovering: () => {
-          devLog('[MapPage] Attempting tile recovery...');
-        },
-      });
-
-      if (!authFailed) setMapLoaded(true);
     }
 
-    function attemptLoad(apiKey: string, attempt: number) {
+    function attemptLoad(token: string, attempt: number) {
       if (cancelled) return;
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
@@ -183,7 +132,7 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
           pendingOnlineListener = null;
           if (!cancelled) {
             devLog('[MapPage] Back online — resuming map load');
-            attemptLoad(apiKey, attempt);
+            attemptLoad(token, attempt);
           }
         };
         pendingOnlineListener = onBack;
@@ -191,46 +140,53 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
         return;
       }
 
-      loadGoogleMaps(apiKey)
-        .then(() => initMap())
-        .catch((err: any) => {
-          if (cancelled) return;
-          const errMsg = err?.message || String(err);
-          devWarn(`[MapPage] Google Maps load attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, errMsg);
+      try {
+        initMap(token);
+      } catch (err: any) {
+        if (cancelled) return;
+        const errMsg = err?.message || String(err);
+        devWarn(`[MapPage] Mapbox load attempt ${attempt + 1}/${MAX_RETRIES + 1} failed:`, errMsg);
 
-          if (attempt < MAX_RETRIES) {
-            const delay = RETRY_DELAYS[attempt] || 30000;
-            devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
-            setTimeout(() => attemptLoad(apiKey, attempt + 1), delay);
-          } else {
-            console.error('[MapPage] Google Maps load failed after all retries');
-            setMapError(
-              'Failed to load Google Maps after multiple attempts.\n\n' +
-              'If you are on a slow or intermittent connection (vehicle WiFi),\n' +
-              'wait for a stronger signal and click Retry below.\n\n' +
-              (errMsg ? `Technical details: ${errMsg}` : '')
-            );
-          }
-        });
+        if (attempt < MAX_RETRIES) {
+          const delay = RETRY_DELAYS[attempt] || 30000;
+          devLog(`[MapPage] Retrying in ${delay / 1000}s...`);
+          setTimeout(() => attemptLoad(token, attempt + 1), delay);
+        } else {
+          console.error('[MapPage] Mapbox load failed after all retries');
+          setMapError(
+            'Failed to load map after multiple attempts.\n\n' +
+            'If you are on a slow or intermittent connection (vehicle WiFi),\n' +
+            'wait for a stronger signal and click Retry below.\n\n' +
+            (errMsg ? `Technical details: ${errMsg}` : '')
+          );
+        }
+      }
     }
 
     let unsubOnline = () => {};
 
     (async () => {
       try {
-        const apiKey = await getGoogleMapsApiKey();
+        const token = await getMapboxToken();
         if (cancelled) return;
-        attemptLoad(apiKey, 0);
-        unsubOnline = onOnlineRetryMaps(apiKey, () => {
+        if (!token) {
+          setMapError(
+            'Mapbox token not configured.\n\n' +
+            'Ask an admin to set the Mapbox API key in Admin Settings.'
+          );
+          return;
+        }
+        attemptLoad(token, 0);
+        unsubOnline = onOnlineRetryMaps(token, () => {
           if (!cancelled && !mapInstanceRef.current) {
             devLog('[MapPage] Online auto-retry triggered — reinitializing map');
             setMapError(null);
-            initMap();
+            initMap(token);
           }
         });
       } catch (err: any) {
         if (!cancelled) {
-          setMapError(err?.message || getGoogleMapsApiKeyErrorMessage());
+          setMapError(err?.message || 'Failed to get Mapbox token');
           setMapLoaded(false);
         }
       }
@@ -240,20 +196,16 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
       cancelled = true;
       if (pendingOnlineListener) { window.removeEventListener('online', pendingOnlineListener); pendingOnlineListener = null; }
       unsubOnline();
-      if (dismissTimer) clearTimeout(dismissTimer);
-      if (dismissObserver) dismissObserver.disconnect();
       if (tileMonitorCleanupRef.current) { tileMonitorCleanupRef.current(); tileMonitorCleanupRef.current = null; }
-      // Remove injected style element to prevent DOM leaks across re-mounts
-      const hideStyle = document.getElementById('__rmpg_hide_gm_dialog__');
-      if (hideStyle) hideStyle.remove();
-      if (mapInstanceRef.current) unregisterMapInstance(mapInstanceRef.current);
+      if (mapInstanceRef.current) {
+        unregisterMapInstance(mapInstanceRef.current);
+        mapInstanceRef.current.remove();
+      }
       markersRef.current.forEach((m) => {
         if (m && typeof m.remove === 'function') m.remove();
-        else if (m) m.map = null;
       });
       markersRef.current = [];
       mapInstanceRef.current = null;
-      delete (window as any).gm_authFailure;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRetry, mapStyle]);
@@ -263,31 +215,23 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
     const map = mapInstanceRef.current;
     if (!map) return;
 
+    let styleUrl: string;
     if (mapStyle === 'dark') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: DARK_MAP_STYLE });
-      updateMapStyles(map, DARK_MAP_STYLE);
+      styleUrl = DARK_STYLE;
     } else if (mapStyle === 'night_nav') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: NIGHT_NAV_STYLE });
-      updateMapStyles(map, NIGHT_NAV_STYLE);
+      styleUrl = NAVIGATION_NIGHT_STYLE;
     } else if (mapStyle === 'satellite') {
-      map.setMapTypeId('satellite');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
+      styleUrl = SATELLITE_STYLE;
     } else if (mapStyle === 'hybrid') {
-      map.setMapTypeId('hybrid');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
+      styleUrl = SATELLITE_STREETS_STYLE;
     } else if (mapStyle === 'terrain') {
-      map.setMapTypeId('terrain');
-      map.setOptions({ styles: TERRAIN_STYLE });
-      updateMapStyles(map, TERRAIN_STYLE);
-    } else if (mapStyle === 'streets') {
-      map.setMapTypeId('roadmap');
-      map.setOptions({ styles: [] });
-      updateMapStyles(map, []);
+      styleUrl = OUTDOORS_STYLE;
+    } else {
+      styleUrl = STREETS_STYLE;
     }
+
+    map.setStyle(styleUrl);
+    updateMapStyles(map, styleUrl);
   }, [mapStyle, mapLoaded]);
 
   return {

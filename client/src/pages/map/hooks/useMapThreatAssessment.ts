@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -69,10 +70,39 @@ const THREAT_COLORS: Record<string, string> = {
   critical: '#7f1d1d',
 };
 
+// ─── Circle polygon approximation ───────────────────────────
+
+function circleCoords(center: [number, number], radiusM: number, segments = 64): [number, number][] {
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos(center[1] * Math.PI / 180);
+  const dLat = radiusM / metersPerDegLat;
+  const dLng = radiusM / metersPerDegLng;
+  const coords: [number, number][] = [];
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * 2 * Math.PI;
+    coords.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
+  }
+  return coords;
+}
+
+// ─── Source/layer helpers ───────────────────────────────────
+
+function removeSourceAndLayer(map: mapboxgl.Map, layerId: string, sourceId: string) {
+  try {
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+  } catch { /* ignore */ }
+}
+
+const THREAT_CIRCLE_SOURCE = 'threat-circle-source';
+const THREAT_CIRCLE_LAYER = 'threat-circle-layer';
+const APPROACH_SOURCE = 'threat-approach-source';
+const APPROACH_LAYER = 'threat-approach-layer';
+
 // ─── Hook ───────────────────────────────────────────────────
 
 export function useMapThreatAssessment(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
   _units?: any[],
 ): UseMapThreatAssessmentReturn {
@@ -81,108 +111,115 @@ export function useMapThreatAssessment(
   const [loading, setLoading] = useState(false);
 
   // Refs for map overlays
-  const threatCircleRef = useRef<google.maps.Circle | null>(null);
-  const approachLinesRef = useRef<google.maps.Polyline[]>([]);
-  const hazardMarkersRef = useRef<google.maps.Marker[]>([]);
-  const armedMarkersRef = useRef<google.maps.Marker[]>([]);
-  const dvMarkersRef = useRef<google.maps.Marker[]>([]);
+  const hazardMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const armedMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const dvMarkersRef = useRef<mapboxgl.Marker[]>([]);
 
   // ── Clear all map overlays ────────────────────────────────
 
   const clearOverlays = useCallback(() => {
-    if (threatCircleRef.current) {
-      threatCircleRef.current.setMap(null);
-      threatCircleRef.current = null;
+    if (map) {
+      removeSourceAndLayer(map, THREAT_CIRCLE_LAYER, THREAT_CIRCLE_SOURCE);
+      removeSourceAndLayer(map, APPROACH_LAYER, APPROACH_SOURCE);
     }
-    approachLinesRef.current.forEach((l) => l.setMap(null));
-    approachLinesRef.current = [];
-    hazardMarkersRef.current.forEach((m) => m.setMap(null));
+    hazardMarkersRef.current.forEach((m) => m.remove());
     hazardMarkersRef.current = [];
-    armedMarkersRef.current.forEach((m) => m.setMap(null));
+    armedMarkersRef.current.forEach((m) => m.remove());
     armedMarkersRef.current = [];
-    dvMarkersRef.current.forEach((m) => m.setMap(null));
+    dvMarkersRef.current.forEach((m) => m.remove());
     dvMarkersRef.current = [];
-  }, []);
+  }, [map]);
 
   // ── Render assessment overlays ────────────────────────────
 
   const renderAssessment = useCallback(
     (assessment: ThreatAssessment) => {
-      if (!map || !window.google?.maps) return;
+      if (!map) return;
 
       clearOverlays();
 
       const color = THREAT_COLORS[assessment.level] || THREAT_COLORS.moderate;
 
-      // Threat score circle
-      threatCircleRef.current = new google.maps.Circle({
-        center: { lat: assessment.lat, lng: assessment.lng },
-        radius: 200,
-        fillColor: color,
-        fillOpacity: 0.18,
-        strokeColor: color,
-        strokeWeight: 2,
-        strokeOpacity: 0.7,
-        map,
-        clickable: false,
-        zIndex: 10,
+      // Threat score circle (polygon approximation)
+      const circlePoly = circleCoords([assessment.lng, assessment.lat], 200);
+      map.addSource(THREAT_CIRCLE_SOURCE, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [circlePoly],
+          },
+        },
+      });
+      map.addLayer({
+        id: THREAT_CIRCLE_LAYER,
+        type: 'fill',
+        source: THREAT_CIRCLE_SOURCE,
+        paint: {
+          'fill-color': color,
+          'fill-opacity': 0.18,
+          'fill-outline-color': color,
+        },
       });
 
       // Hazard markers
       assessment.hazards.forEach((h) => {
-        const marker = new google.maps.Marker({
-          position: { lat: h.lat, lng: h.lng },
-          map,
-          icon: {
-            path: google.maps.SymbolPath.BACKWARD_CLOSED_ARROW,
-            scale: 5,
-            fillColor: '#f59e0b',
-            fillOpacity: 0.9,
-            strokeColor: '#92400e',
-            strokeWeight: 1,
-          },
-          title: `Hazard: ${h.type} — ${h.description}`,
-          zIndex: 12,
-        });
+        const el = document.createElement('div');
+        el.title = `Hazard: ${h.type} — ${h.description}`;
+        el.style.cssText = `
+          width: 20px; height: 20px; display: flex; align-items: center;
+          justify-content: center; cursor: pointer;
+          font-size: 16px; color: #f59e0e;
+        `;
+        el.textContent = '\u25C0'; // left-pointing triangle as arrow proxy
+        el.style.zIndex = '12';
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([h.lng, h.lat])
+          .addTo(map);
         hazardMarkersRef.current.push(marker);
       });
 
-      // Armed-history markers (gun icon shape)
+      // Armed-history markers (simple gun-shape via SVG)
       assessment.armed_history.forEach((a) => {
-        const marker = new google.maps.Marker({
-          position: { lat: a.lat, lng: a.lng },
-          map,
-          icon: {
-            path: 'M2 4h4v2H2V4zm6 0h12v2H8V4zM2 8h18v2H2V8z',
-            scale: 1.2,
-            fillColor: '#ef4444',
-            fillOpacity: 0.85,
-            strokeColor: '#7f1d1d',
-            strokeWeight: 1,
-            anchor: new google.maps.Point(10, 5),
-          },
-          title: `Armed History: ${a.incident_count} weapon call(s), last ${a.last_date}`,
-          zIndex: 13,
-        });
+        const svgNS = 'http://www.w3.org/2000/svg';
+        const svg = document.createElementNS(svgNS, 'svg');
+        svg.setAttribute('width', '20');
+        svg.setAttribute('height', '12');
+        svg.setAttribute('viewBox', '0 0 20 12');
+        const path = document.createElementNS(svgNS, 'path');
+        path.setAttribute('d', 'M2 4h4v2H2V4zm6 0h12v2H8V4zM2 8h18v2H2V8z');
+        path.setAttribute('fill', '#ef4444');
+        path.setAttribute('stroke', '#7f1d1d');
+        path.setAttribute('stroke-width', '1');
+        svg.appendChild(path);
+
+        const el = document.createElement('div');
+        el.title = `Armed History: ${a.incident_count} weapon call(s), last ${a.last_date}`;
+        el.style.cssText = 'cursor:pointer;display:flex;align-items:center;justify-content:center;';
+        el.style.zIndex = '13';
+        el.appendChild(svg);
+
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([a.lng, a.lat])
+          .addTo(map);
         armedMarkersRef.current.push(marker);
       });
 
       // DV-repeat location markers
       assessment.dv_repeat_locations.forEach((dv) => {
-        const marker = new google.maps.Marker({
-          position: { lat: dv.lat, lng: dv.lng },
-          map,
-          icon: {
-            path: google.maps.SymbolPath.CIRCLE,
-            scale: 7,
-            fillColor: '#a855f7',
-            fillOpacity: 0.8,
-            strokeColor: '#581c87',
-            strokeWeight: 2,
-          },
-          title: `DV Repeat: ${dv.call_count} calls — ${dv.address}`,
-          zIndex: 11,
-        });
+        const el = document.createElement('div');
+        el.title = `DV Repeat: ${dv.call_count} calls — ${dv.address}`;
+        el.style.cssText = `
+          width: 14px; height: 14px; border-radius: 50%;
+          background: #a855f7; border: 2px solid #581c87;
+          cursor: pointer;
+        `;
+        el.style.zIndex = '11';
+        const marker = new mapboxgl.Marker({ element: el })
+          .setLngLat([dv.lng, dv.lat])
+          .addTo(map);
         dvMarkersRef.current.push(marker);
       });
     },
@@ -193,11 +230,10 @@ export function useMapThreatAssessment(
 
   const renderApproachRoutes = useCallback(
     (routes: ApproachRoute[]) => {
-      if (!map || !window.google?.maps) return;
+      if (!map) return;
 
       // Clear previous approach lines only
-      approachLinesRef.current.forEach((l) => l.setMap(null));
-      approachLinesRef.current = [];
+      removeSourceAndLayer(map, APPROACH_LAYER, APPROACH_SOURCE);
 
       const routeColors: Record<string, string> = {
         low: '#22c55e',
@@ -205,33 +241,31 @@ export function useMapThreatAssessment(
         high: '#ef4444',
       };
 
-      routes.forEach((route) => {
+      const features: GeoJSON.Feature[] = routes.map((route) => {
         const color = routeColors[route.risk_level] || '#f59e0b';
-        const path = route.path.map((p) => ({ lat: p.lat, lng: p.lng }));
+        const coords: [number, number][] = route.path.map((p) => [p.lng, p.lat]);
+        return {
+          type: 'Feature',
+          properties: { color },
+          geometry: { type: 'LineString', coordinates: coords },
+        };
+      });
 
-        const line = new google.maps.Polyline({
-          path,
-          strokeColor: color,
-          strokeWeight: 3,
-          strokeOpacity: 0.8,
-          icons: [
-            {
-              icon: {
-                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 3,
-                fillColor: color,
-                fillOpacity: 1,
-                strokeWeight: 0,
-              },
-              offset: '50%',
-              repeat: '80px',
-            },
-          ],
-          map,
-          clickable: false,
-          zIndex: 9,
-        });
-        approachLinesRef.current.push(line);
+      if (features.length === 0) return;
+
+      map.addSource(APPROACH_SOURCE, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      });
+      map.addLayer({
+        id: APPROACH_LAYER,
+        type: 'line',
+        source: APPROACH_SOURCE,
+        paint: {
+          'line-width': 3,
+          'line-opacity': 0.8,
+          'line-color': ['get', 'color'],
+        },
       });
     },
     [map],

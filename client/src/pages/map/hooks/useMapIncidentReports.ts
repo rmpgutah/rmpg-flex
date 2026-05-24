@@ -1,13 +1,13 @@
 // ============================================================
 // RMPG Flex — useMapIncidentReports Hook
 // Incident report data layer: diamond-shaped markers with
-// status-coded colors and rich InfoWindow details.
+// status-coded colors and rich info window details.
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-import { buildIncidentReportMarkerContent, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
-import type { OverlayMarker } from '../utils/mapMarkerBuilders';
+import { buildIncidentReportMarkerContent } from '../utils/mapMarkerBuilders';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { escapeHtml } from '../../../utils/sanitize';
 
@@ -30,7 +30,7 @@ export interface MapIncidentReport {
 }
 
 interface UseMapIncidentReportsOptions {
-  map: google.maps.Map | null;
+  map: mapboxgl.Map | null;
   enabled: boolean;
   days: number;
   statuses: string[];
@@ -41,7 +41,6 @@ interface UseMapIncidentReportsReturn {
   incidents: MapIncidentReport[];
   loading: boolean;
   count: number;
-  // Fix 86: counts by status for display
   countsByStatus: Record<string, number>;
 }
 
@@ -89,72 +88,77 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
   const [incidents, setIncidents] = useState<MapIncidentReport[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<(OverlayMarker & google.maps.OverlayView)[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
 
   // ── Clear markers ───────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
-    markersRef.current.forEach((m) => m.setMap(null));
+    markersRef.current.forEach((m) => m.remove());
     markersRef.current = [];
   }, []);
 
   // ── Render markers ──────────────────────────────────────
 
   const renderMarkers = useCallback((data: MapIncidentReport[]) => {
-    const OverlayMarkerClass = getOverlayMarkerClass();
-    if (!map || !OverlayMarkerClass) return;
+    if (!map) return;
 
     clearMarkers();
 
     if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
+      infoWindowRef.current = new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+        maxWidth: '360px',
+        offset: 15,
+      });
     }
 
     data.forEach((incident) => {
       if (incident.latitude == null || incident.longitude == null) return;
 
       const content = buildIncidentReportMarkerContent(incident.status);
+      content.style.cursor = 'pointer';
+      content.title = `${incident.incident_number} - ${formatIncidentType(incident.incident_type)}`;
 
-      const marker = new OverlayMarkerClass({
-        map,
-        position: { lat: incident.latitude, lng: incident.longitude },
-        content,
-        title: `${incident.incident_number} - ${formatIncidentType(incident.incident_type)}`,
-        zIndex: 40,
-        onClick: () => {
+      content.addEventListener('click', () => {
         const sColor = STATUS_COLORS[incident.status] || '#666666';
         const pColor = PRIORITY_COLORS[incident.priority] || '#666666';
         const sLabel = STATUS_LABELS[incident.status] || incident.status;
 
-        infoWindowRef.current?.setContent(`
-          <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${sColor}40;border-radius:4px;">
-            <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
-              <span style="font-weight:900;font-size:13px;color:#e5e7eb;">${escapeHtml(incident.incident_number)}</span>
+        const popup = infoWindowRef.current;
+        if (popup) {
+          popup.remove();
+          popup.setLngLat([incident.longitude, incident.latitude]).setHTML(`
+            <div style="min-width:220px;max-width:320px;font-family:'Courier New',monospace;background:#0c0c0c;color:#e5e7eb;padding:10px;border:1px solid ${sColor}40;border-radius:4px;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px;">
+                <span style="font-weight:900;font-size:13px;color:#e5e7eb;">${escapeHtml(incident.incident_number)}</span>
+              </div>
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+                <span style="font-size:10px;color:#d1d5db;font-weight:bold;">${escapeHtml(formatIncidentType(incident.incident_type))}</span>
+                ${incident.priority ? `<span style="background:${pColor};color:white;padding:1px 6px;font-size:8px;font-weight:900;letter-spacing:0.5px;border-radius:1px;">${escapeHtml(incident.priority)}</span>` : ''}
+              </div>
+              <div style="margin-bottom:6px;">
+                <span style="font-size:9px;text-transform:uppercase;color:${sColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${sColor}20;border:1px solid ${sColor}30;border-radius:2px;">${escapeHtml(sLabel)}</span>
+              </div>
+              <div style="font-size:10px;color:#d1d5db;">${escapeHtml(incident.location_address || '')}</div>
+              ${incident.narrative_preview ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #2b2b2b;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(incident.narrative_preview)}</div>` : ''}
+              <div style="margin-top:8px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;">
+                ${incident.officer_name ? `<div style="color:#9ca3af;margin-bottom:2px;">${escapeHtml(incident.officer_name)}</div>` : ''}
+                <div style="color:#545454;">${escapeHtml(formatDate(incident.created_at))}</div>
+                ${incident.call_number ? `<div style="color:#a0a0a0;margin-top:3px;font-weight:bold;">CFS: ${escapeHtml(incident.call_number)}</div>` : ''}
+                ${incident.case_number ? `<div style="color:#d4a017;margin-top:2px;font-weight:bold;">Case: ${escapeHtml(incident.case_number)}</div>` : ''}
+              </div>
             </div>
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-              <span style="font-size:10px;color:#d1d5db;font-weight:bold;">${escapeHtml(formatIncidentType(incident.incident_type))}</span>
-              ${incident.priority ? `<span style="background:${pColor};color:white;padding:1px 6px;font-size:8px;font-weight:900;letter-spacing:0.5px;border-radius:1px;">${escapeHtml(incident.priority)}</span>` : ''}
-            </div>
-            <div style="margin-bottom:6px;">
-              <span style="font-size:9px;text-transform:uppercase;color:${sColor};font-weight:800;letter-spacing:1px;padding:1px 6px;background:${sColor}20;border:1px solid ${sColor}30;border-radius:2px;">${escapeHtml(sLabel)}</span>
-            </div>
-            <div style="font-size:10px;color:#d1d5db;">${escapeHtml(incident.location_address || '')}</div>
-            ${incident.narrative_preview ? `<div style="font-size:9px;color:#6b7280;margin-top:6px;padding-top:4px;border-top:1px solid #2b2b2b;max-height:40px;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(incident.narrative_preview)}</div>` : ''}
-            <div style="margin-top:8px;padding-top:6px;border-top:1px solid #2b2b2b;font-size:9px;">
-              ${incident.officer_name ? `<div style="color:#9ca3af;margin-bottom:2px;">${escapeHtml(incident.officer_name)}</div>` : ''}
-              <div style="color:#545454;">${escapeHtml(formatDate(incident.created_at))}</div>
-              ${incident.call_number ? `<div style="color:#a0a0a0;margin-top:3px;font-weight:bold;">CFS: ${escapeHtml(incident.call_number)}</div>` : ''}
-              ${incident.case_number ? `<div style="color:#d4a017;margin-top:2px;font-weight:bold;">Case: ${escapeHtml(incident.case_number)}</div>` : ''}
-            </div>
-          </div>
-        `);
-        infoWindowRef.current?.setPosition({ lat: incident.latitude, lng: incident.longitude });
-        infoWindowRef.current?.open(map);
-      },
+          `).addTo(map);
+        }
       });
 
-      markersRef.current.push(marker as OverlayMarker & google.maps.OverlayView);
+      const marker = new mapboxgl.Marker({ element: content })
+        .setLngLat([incident.longitude, incident.latitude])
+        .addTo(map);
+
+      markersRef.current.push(marker);
     });
   }, [map, clearMarkers]);
 
@@ -191,7 +195,6 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
       });
 
     return () => { cancelled = true; };
-  // Memoize join strings to stabilize dependency references
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, enabled, days, statuses.join(','), types.join(','), clearMarkers, renderMarkers]);
 
@@ -199,16 +202,15 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => m.setMap(null));
+      markersRef.current.forEach((m) => m.remove());
       markersRef.current = [];
       if (infoWindowRef.current) {
-        infoWindowRef.current.close();
+        infoWindowRef.current.remove();
         infoWindowRef.current = null;
       }
     };
   }, []);
 
-  // Fix 86: counts by status for display
   const countsByStatus = incidents.reduce<Record<string, number>>((acc, inc) => {
     acc[inc.status] = (acc[inc.status] || 0) + 1;
     return acc;

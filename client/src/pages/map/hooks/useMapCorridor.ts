@@ -6,6 +6,7 @@
 // ============================================================
 
 import { useState, useRef, useCallback, useEffect } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -84,10 +85,26 @@ function destinationPoint(
   };
 }
 
+// ─── Source/layer helpers ───────────────────────────────────
+
+function removeSourceAndLayer(map: mapboxgl.Map, layerId: string, sourceId: string) {
+  try {
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+  } catch { /* ignore */ }
+}
+
+const SEGMENTS_SOURCE = 'corridor-segments-source';
+const SEGMENTS_LAYER = 'corridor-segments-layer';
+const PURSUIT_SOURCE = 'corridor-pursuit-source';
+const PURSUIT_LAYER = 'corridor-pursuit-layer';
+const ESCAPE_SOURCE = 'corridor-escape-source';
+const ESCAPE_LAYER = 'corridor-escape-layer';
+
 // ─── Hook ───────────────────────────────────────────────────
 
 export function useMapCorridor(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
 ): UseMapCorridorReturn {
   const [loading, setLoading] = useState(false);
@@ -99,39 +116,37 @@ export function useMapCorridor(
   } | null>(null);
 
   // Map object refs
-  const segmentLinesRef = useRef<google.maps.Polyline[]>([]);
-  const incidentMarkersRef = useRef<google.maps.Marker[]>([]);
-  const trafficLabelsRef = useRef<google.maps.Marker[]>([]);
-  const pursuitPolyRef = useRef<google.maps.Polygon | null>(null);
-  const escapeRouteLinesRef = useRef<google.maps.Polyline[]>([]);
+  const incidentMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const trafficLabelsRef = useRef<mapboxgl.Marker[]>([]);
 
   // ── Clear corridor overlays ─────────────────────────────────
 
   const clearCorridorOverlays = useCallback(() => {
-    segmentLinesRef.current.forEach((l) => l.setMap(null));
-    segmentLinesRef.current = [];
-    incidentMarkersRef.current.forEach((m) => m.setMap(null));
+    if (map) {
+      removeSourceAndLayer(map, SEGMENTS_LAYER, SEGMENTS_SOURCE);
+    }
+    incidentMarkersRef.current.forEach((m) => m.remove());
     incidentMarkersRef.current = [];
-    trafficLabelsRef.current.forEach((m) => m.setMap(null));
+    trafficLabelsRef.current.forEach((m) => m.remove());
     trafficLabelsRef.current = [];
-  }, []);
+  }, [map]);
 
   // ── Clear pursuit projection ────────────────────────────────
 
   const clearPursuit = useCallback(() => {
-    if (pursuitPolyRef.current) {
-      pursuitPolyRef.current.setMap(null);
-      pursuitPolyRef.current = null;
+    if (map) {
+      removeSourceAndLayer(map, PURSUIT_LAYER, PURSUIT_SOURCE);
     }
     setPursuitProjection(null);
-  }, []);
+  }, [map]);
 
   // ── Clear escape routes ─────────────────────────────────────
 
   const clearEscapeRoutes = useCallback(() => {
-    escapeRouteLinesRef.current.forEach((l) => l.setMap(null));
-    escapeRouteLinesRef.current = [];
-  }, []);
+    if (map) {
+      removeSourceAndLayer(map, ESCAPE_LAYER, ESCAPE_SOURCE);
+    }
+  }, [map]);
 
   // ── Clear all ───────────────────────────────────────────────
 
@@ -146,7 +161,7 @@ export function useMapCorridor(
 
   const analyzeCorridor = useCallback(
     async (lat1: number, lng1: number, lat2: number, lng2: number) => {
-      if (!enabled || !map || !window.google?.maps) return;
+      if (!enabled || !map) return;
       setLoading(true);
       try {
         const data = await apiFetch<CorridorData>(
@@ -157,36 +172,55 @@ export function useMapCorridor(
         clearCorridorOverlays();
         setCorridorData(data);
 
-        // Render risk-colored polyline segments
-        data.segments.forEach((seg) => {
-          const color = riskColor(seg.risk_score);
-          const line = new google.maps.Polyline({
-            path: [seg.start, seg.end],
-            strokeColor: color,
-            strokeWeight: 4,
-            strokeOpacity: 0.85,
-            map,
-            clickable: false,
-            zIndex: 10,
-          });
-          segmentLinesRef.current.push(line);
+        // Render risk-colored polyline segments via GeoJSON source
+        const segmentFeatures: GeoJSON.Feature[] = data.segments.map((seg) => ({
+          type: 'Feature',
+          properties: { risk_score: seg.risk_score },
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [seg.start.lng, seg.start.lat],
+              [seg.end.lng, seg.end.lat],
+            ],
+          },
+        }));
 
-          // Incident markers along the corridor
+        if (segmentFeatures.length > 0) {
+          map.addSource(SEGMENTS_SOURCE, {
+            type: 'geojson',
+            data: { type: 'FeatureCollection', features: segmentFeatures },
+          });
+          map.addLayer({
+            id: SEGMENTS_LAYER,
+            type: 'line',
+            source: SEGMENTS_SOURCE,
+            paint: {
+              'line-width': 4,
+              'line-opacity': 0.85,
+              'line-color': [
+                'case',
+                ['<=', ['get', 'risk_score'], 3], '#22c55e',
+                ['<=', ['get', 'risk_score'], 6], '#f59e0b',
+                '#ef4444',
+              ],
+            },
+          });
+        }
+
+        // Incident markers and traffic annotations
+        data.segments.forEach((seg) => {
           seg.incidents.forEach((inc) => {
-            const marker = new google.maps.Marker({
-              position: { lat: inc.lat, lng: inc.lng },
-              map,
-              icon: {
-                path: google.maps.SymbolPath.CIRCLE,
-                scale: 3,
-                fillColor: '#ef4444',
-                fillOpacity: 0.8,
-                strokeColor: '#7f1d1d',
-                strokeWeight: 1,
-              },
-              title: `${inc.type} — ${inc.date}`,
-              zIndex: 11,
-            });
+            const el = document.createElement('div');
+            el.style.cssText = `
+              width: 6px; height: 6px; border-radius: 50%;
+              background: #ef4444; border: 1px solid #7f1d1d;
+              cursor: pointer;
+            `;
+            el.title = `${inc.type} — ${inc.date}`;
+            el.style.zIndex = '11';
+            const marker = new mapboxgl.Marker({ element: el })
+              .setLngLat([inc.lng, inc.lat])
+              .addTo(map);
             incidentMarkersRef.current.push(marker);
           });
 
@@ -213,17 +247,13 @@ export function useMapCorridor(
               return;
             }
 
-            const label = new google.maps.Marker({
-              position: { lat: midLat, lng: midLng },
-              map,
-              icon: {
-                url: canvasDataUrl,
-                scaledSize: new google.maps.Size(100, 20),
-                anchor: new google.maps.Point(50, 10),
-              },
-              clickable: false,
-              zIndex: 12,
-            });
+            const img = document.createElement('img');
+            img.src = canvasDataUrl;
+            img.style.cssText = 'width:100px;height:20px;pointer-events:none;';
+            img.style.zIndex = '12';
+            const label = new mapboxgl.Marker({ element: img })
+              .setLngLat([midLng, midLat])
+              .addTo(map);
             trafficLabelsRef.current.push(label);
           }
         });
@@ -241,26 +271,41 @@ export function useMapCorridor(
 
   const showPursuitProjection = useCallback(
     (lat: number, lng: number, heading: number) => {
-      if (!map || !window.google?.maps) return;
+      if (!map) return;
 
       clearPursuit();
       setPursuitProjection({ lat, lng, heading });
 
-      const origin = { lat, lng };
       const leftEdge = destinationPoint(lat, lng, heading - 30, 2);
       const rightEdge = destinationPoint(lat, lng, heading + 30, 2);
       const tip = destinationPoint(lat, lng, heading, 2);
 
-      pursuitPolyRef.current = new google.maps.Polygon({
-        paths: [origin, leftEdge, tip, rightEdge],
-        strokeColor: '#f59e0b',
-        strokeWeight: 2,
-        strokeOpacity: 0.8,
-        fillColor: '#f59e0b',
-        fillOpacity: 0.1,
-        map,
-        clickable: false,
-        zIndex: 14,
+      map.addSource(PURSUIT_SOURCE, {
+        type: 'geojson',
+        data: {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Polygon',
+            coordinates: [[
+              [lng, lat],
+              [leftEdge.lng, leftEdge.lat],
+              [tip.lng, tip.lat],
+              [rightEdge.lng, rightEdge.lat],
+              [lng, lat],
+            ]],
+          },
+        },
+      });
+      map.addLayer({
+        id: PURSUIT_LAYER,
+        type: 'fill',
+        source: PURSUIT_SOURCE,
+        paint: {
+          'fill-color': '#f59e0b',
+          'fill-opacity': 0.1,
+          'fill-outline-color': '#f59e0b',
+        },
       });
     },
     [map, clearPursuit],
@@ -270,7 +315,7 @@ export function useMapCorridor(
 
   const showEscapeRoutes = useCallback(
     (lat: number, lng: number) => {
-      if (!map || !window.google?.maps) return;
+      if (!map) return;
 
       clearEscapeRoutes();
 
@@ -282,30 +327,34 @@ export function useMapCorridor(
         { heading: 270, label: 'W' },
       ];
 
-      directions.forEach((dir) => {
+      const features: GeoJSON.Feature[] = directions.map((dir) => {
         const endpoint = destinationPoint(lat, lng, dir.heading, DISTANCE_MI);
-        const line = new google.maps.Polyline({
-          path: [{ lat, lng }, endpoint],
-          strokeColor: '#a855f7',
-          strokeWeight: 2,
-          strokeOpacity: 0.7,
-          icons: [
-            {
-              icon: {
-                path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                scale: 3,
-                fillColor: '#a855f7',
-                fillOpacity: 1,
-                strokeWeight: 0,
-              },
-              offset: '100%',
-            },
-          ],
-          map,
-          clickable: false,
-          zIndex: 13,
-        });
-        escapeRouteLinesRef.current.push(line);
+        return {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'LineString',
+            coordinates: [
+              [lng, lat],
+              [endpoint.lng, endpoint.lat],
+            ],
+          },
+        };
+      });
+
+      map.addSource(ESCAPE_SOURCE, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features },
+      });
+      map.addLayer({
+        id: ESCAPE_LAYER,
+        type: 'line',
+        source: ESCAPE_SOURCE,
+        paint: {
+          'line-color': '#a855f7',
+          'line-width': 2,
+          'line-opacity': 0.7,
+        },
       });
     },
     [map, clearEscapeRoutes],
@@ -326,20 +375,17 @@ export function useMapCorridor(
 
   useEffect(() => {
     return () => {
-      segmentLinesRef.current.forEach((l) => l.setMap(null));
-      segmentLinesRef.current = [];
-      incidentMarkersRef.current.forEach((m) => m.setMap(null));
-      incidentMarkersRef.current = [];
-      trafficLabelsRef.current.forEach((m) => m.setMap(null));
-      trafficLabelsRef.current = [];
-      if (pursuitPolyRef.current) {
-        pursuitPolyRef.current.setMap(null);
-        pursuitPolyRef.current = null;
+      if (map) {
+        removeSourceAndLayer(map, SEGMENTS_LAYER, SEGMENTS_SOURCE);
+        removeSourceAndLayer(map, PURSUIT_LAYER, PURSUIT_SOURCE);
+        removeSourceAndLayer(map, ESCAPE_LAYER, ESCAPE_SOURCE);
       }
-      escapeRouteLinesRef.current.forEach((l) => l.setMap(null));
-      escapeRouteLinesRef.current = [];
+      incidentMarkersRef.current.forEach((m) => m.remove());
+      incidentMarkersRef.current = [];
+      trafficLabelsRef.current.forEach((m) => m.remove());
+      trafficLabelsRef.current = [];
     };
-  }, []);
+  }, [map]);
 
   return {
     analyzeCorridor,

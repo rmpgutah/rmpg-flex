@@ -8,6 +8,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { useWebSocket } from '../../../context/WebSocketContext';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -51,17 +52,43 @@ const STATUS_COLORS: Record<PanicStatus, {
   },
 };
 
+const INNER_LAYER = 'panic-inner-layer';
+const INNER_SOURCE = 'panic-inner-source';
+const OUTER_LAYER = 'panic-outer-layer';
+const OUTER_SOURCE = 'panic-outer-source';
+
+function circleToPolygon(center: [number, number], radiusM: number, segments = 32): [number, number][] {
+  const coords: [number, number][] = [];
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos(center[1] * Math.PI / 180);
+  const dLat = radiusM / metersPerDegLat;
+  const dLng = radiusM / metersPerDegLng;
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * 2 * Math.PI;
+    coords.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
+  }
+  return coords;
+}
+
+function removePanicLayers(map: mapboxgl.Map | null) {
+  if (!map) return;
+  try {
+    if (map.getLayer(INNER_LAYER)) map.removeLayer(INNER_LAYER);
+    if (map.getSource(INNER_SOURCE)) map.removeSource(INNER_SOURCE);
+    if (map.getLayer(OUTER_LAYER)) map.removeLayer(OUTER_LAYER);
+    if (map.getSource(OUTER_SOURCE)) map.removeSource(OUTER_SOURCE);
+  } catch { /* ignore */ }
+}
+
 // ─── Hook ───────────────────────────────────────────────────
 
 export function useMapPanicZone(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
 ): UseMapPanicZoneReturn {
   const [activePanic, setActivePanic] = useState<PanicData | null>(null);
   const { subscribe } = useWebSocket();
 
-  const innerCircleRef = useRef<google.maps.Circle | null>(null);
-  const outerCircleRef = useRef<google.maps.Circle | null>(null);
   const pulseTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -81,15 +108,8 @@ export function useMapPanicZone(
       clearInterval(fadeIntervalRef.current);
       fadeIntervalRef.current = null;
     }
-    if (innerCircleRef.current) {
-      innerCircleRef.current.setMap(null);
-      innerCircleRef.current = null;
-    }
-    if (outerCircleRef.current) {
-      outerCircleRef.current.setMap(null);
-      outerCircleRef.current = null;
-    }
-  }, []);
+    removePanicLayers(map);
+  }, [map]);
 
   // ── Dismiss function ──────────────────────────────────────
 
@@ -102,33 +122,22 @@ export function useMapPanicZone(
 
   const updateCircleStatus = useCallback((status: PanicStatus) => {
     const colors = STATUS_COLORS[status];
+    if (!map) return;
 
-    if (innerCircleRef.current) {
-      innerCircleRef.current.setOptions({
-        fillColor: colors.innerFill,
-        fillOpacity: colors.innerFillOpacity,
-        strokeColor: colors.innerStroke,
-      });
+    if (map.getLayer(INNER_LAYER)) {
+      map.setPaintProperty(INNER_LAYER, 'fill-color', colors.innerFill);
+      map.setPaintProperty(INNER_LAYER, 'fill-opacity', colors.innerFillOpacity);
     }
-    if (outerCircleRef.current) {
-      outerCircleRef.current.setOptions({
-        fillColor: colors.outerFill,
-        fillOpacity: colors.outerFillOpacity,
-        strokeColor: colors.outerStroke,
-      });
+    if (map.getLayer(OUTER_LAYER)) {
+      map.setPaintProperty(OUTER_LAYER, 'fill-color', colors.outerFill);
+      map.setPaintProperty(OUTER_LAYER, 'fill-opacity', colors.outerFillOpacity);
     }
 
-    // Stop pulsing for non-active statuses
     if (status !== 'active' && pulseTimerRef.current) {
       clearInterval(pulseTimerRef.current);
       pulseTimerRef.current = null;
-      // Reset stroke opacity to solid
-      if (innerCircleRef.current) {
-        innerCircleRef.current.setOptions({ strokeOpacity: 1.0 });
-      }
     }
 
-    // Fade out and remove for resolved status
     if (status === 'resolved') {
       let opacity = 1.0;
       fadeIntervalRef.current = setInterval(() => {
@@ -138,80 +147,72 @@ export function useMapPanicZone(
           setActivePanic(null);
           return;
         }
-        if (innerCircleRef.current) {
-          innerCircleRef.current.setOptions({
-            strokeOpacity: opacity,
-            fillOpacity: opacity * 0.12,
-          });
+        if (map.getLayer(INNER_LAYER)) {
+          map.setPaintProperty(INNER_LAYER, 'fill-opacity', opacity * 0.12);
         }
-        if (outerCircleRef.current) {
-          outerCircleRef.current.setOptions({
-            strokeOpacity: opacity * 0.6,
-            fillOpacity: opacity * 0.06,
-          });
+        if (map.getLayer(OUTER_LAYER)) {
+          map.setPaintProperty(OUTER_LAYER, 'fill-opacity', opacity * 0.06);
         }
-      }, 500); // 10 steps * 500ms = 5 seconds total fade
+      }, 500);
 
-      // Safety net: force remove after 6 seconds
       fadeTimerRef.current = setTimeout(() => {
         clearOverlays();
         setActivePanic(null);
       }, 6000);
     }
-  }, [clearOverlays]);
+  }, [map, clearOverlays]);
 
   // ── Draw panic zone circles ───────────────────────────────
 
   const drawPanicZone = useCallback((lat: number, lng: number, status: PanicStatus = 'active') => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
     clearOverlays();
 
-    const center = { lat, lng };
     const colors = STATUS_COLORS[status];
 
-    // Inner circle — 200m radius
-    innerCircleRef.current = new google.maps.Circle({
-      center,
-      radius: 200,
-      fillColor: colors.innerFill,
-      fillOpacity: colors.innerFillOpacity,
-      strokeColor: colors.innerStroke,
-      strokeWeight: 3,
-      strokeOpacity: 1.0,
-      map,
-      clickable: false,
-      zIndex: 50,
+    const innerPoly = circleToPolygon([lng, lat], 200);
+    map.addSource(INNER_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [innerPoly] } }] },
+    });
+    map.addLayer({
+      id: INNER_LAYER,
+      type: 'fill',
+      source: INNER_SOURCE,
+      paint: {
+        'fill-color': colors.innerFill,
+        'fill-opacity': colors.innerFillOpacity,
+        'fill-outline-color': colors.innerStroke,
+      },
     });
 
-    // Outer circle — 400m radius
-    outerCircleRef.current = new google.maps.Circle({
-      center,
-      radius: 400,
-      fillColor: colors.outerFill,
-      fillOpacity: colors.outerFillOpacity,
-      strokeColor: colors.outerStroke,
-      strokeWeight: 2,
-      strokeOpacity: 0.6,
-      map,
-      clickable: false,
-      zIndex: 49,
+    const outerPoly = circleToPolygon([lng, lat], 400);
+    map.addSource(OUTER_SOURCE, {
+      type: 'geojson',
+      data: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [outerPoly] } }] },
+    });
+    map.addLayer({
+      id: OUTER_LAYER,
+      type: 'fill',
+      source: OUTER_SOURCE,
+      paint: {
+        'fill-color': colors.outerFill,
+        'fill-opacity': colors.outerFillOpacity,
+        'fill-outline-color': colors.outerStroke,
+      },
     });
 
-    // Auto-zoom to panic location
-    map.setCenter(center);
+    map.setCenter([lng, lat]);
     map.setZoom(15);
 
-    // Pulsing animation only for active status
     if (status === 'active') {
       let pulseHigh = true;
       pulseTimerRef.current = setInterval(() => {
-        if (innerCircleRef.current) {
-          pulseHigh = !pulseHigh;
-          innerCircleRef.current.setOptions({
-            strokeOpacity: pulseHigh ? 1.0 : 0.3,
-          });
+        pulseHigh = !pulseHigh;
+        if (map && map.getLayer(INNER_LAYER)) {
+          map.setPaintProperty(INNER_LAYER, 'fill-opacity', pulseHigh ? colors.innerFillOpacity : colors.innerFillOpacity * 0.3);
         }
       }, 500);
     }
@@ -225,7 +226,6 @@ export function useMapPanicZone(
       return;
     }
 
-    // New panic alert — draw active (red pulsing) circles
     const unsubAlert = subscribe('panic_alert', (message) => {
       const data = (message.data || message.payload) as any;
       if (!data) return;
@@ -233,7 +233,6 @@ export function useMapPanicZone(
       const lat = Number(data.latitude);
       const lng = Number(data.longitude);
 
-      // Only draw if we have valid coordinates
       if (isNaN(lat) || isNaN(lng) || (lat === 0 && lng === 0)) return;
 
       const panicData: PanicData = {
@@ -255,25 +254,21 @@ export function useMapPanicZone(
       }
     });
 
-    // Acknowledged — switch to amber solid circles
     const unsubAck = subscribe('panic_acknowledged', (_message) => {
       setActivePanic(prev => prev ? { ...prev, status: 'acknowledged' } : prev);
       updateCircleStatus('acknowledged');
     });
 
-    // Resolved — switch to green fading circles
     const unsubResolved = subscribe('panic_resolved', (_message) => {
       setActivePanic(prev => prev ? { ...prev, status: 'resolved' } : prev);
       updateCircleStatus('resolved');
     });
 
-    // Cancelled — immediately remove circles
     const unsubCancelled = subscribe('panic_cancelled', (_message) => {
       clearOverlays();
       setActivePanic(null);
     });
 
-    // False alarm — immediately remove circles
     const unsubFalse = subscribe('panic_false_alarm', (_message) => {
       clearOverlays();
       setActivePanic(null);
@@ -304,16 +299,10 @@ export function useMapPanicZone(
         clearInterval(fadeIntervalRef.current);
         fadeIntervalRef.current = null;
       }
-      if (innerCircleRef.current) {
-        innerCircleRef.current.setMap(null);
-        innerCircleRef.current = null;
-      }
-      if (outerCircleRef.current) {
-        outerCircleRef.current.setMap(null);
-        outerCircleRef.current = null;
-      }
+      removePanicLayers(map);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map]);
 
   return { activePanic, dismiss };
 }

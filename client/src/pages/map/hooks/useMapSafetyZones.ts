@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -29,10 +30,23 @@ interface UseMapSafetyZonesReturn {
   setDays: (d: number) => void;
 }
 
+function circleToPolygon(center: [number, number], radiusM: number, segments = 32): [number, number][] {
+  const coords: [number, number][] = [];
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos(center[1] * Math.PI / 180);
+  const dLat = radiusM / metersPerDegLat;
+  const dLng = radiusM / metersPerDegLng;
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * 2 * Math.PI;
+    coords.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
+  }
+  return coords;
+}
+
 // ─── Hook ───────────────────────────────────────────────────
 
 export function useMapSafetyZones(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
 ): UseMapSafetyZonesReturn {
   const [zones, setZones] = useState<SafetyZone[]>([]);
@@ -40,10 +54,28 @@ export function useMapSafetyZones(
   const [days, setDays] = useState(90);
   const [fetchTrigger, setFetchTrigger] = useState(0);
 
-  const circlesRef = useRef<google.maps.Circle[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const layerIdsRef = useRef<string[]>([]);
+  const sourceIdsRef = useRef<string[]>([]);
+  const pulseIntervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   const refresh = useCallback(() => setFetchTrigger(n => n + 1), []);
+
+  function removeZoneLayers() {
+    if (!map) return;
+    layerIdsRef.current.forEach((id) => {
+      try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* ignore */ }
+    });
+    sourceIdsRef.current.forEach((id) => {
+      try { if (map.getSource(id)) map.removeSource(id); } catch { /* ignore */ }
+    });
+    layerIdsRef.current = [];
+    sourceIdsRef.current = [];
+    pulseIntervalsRef.current.forEach((id) => clearInterval(id));
+    pulseIntervalsRef.current = [];
+    popupRef.current?.remove();
+    popupRef.current = null;
+  }
 
   // ── Fetch safety zones ──────────────────────────────────
 
@@ -59,7 +91,6 @@ export function useMapSafetyZones(
     apiFetch<{ zones: SafetyZone[]; total: number } | SafetyZone[]>(`/dispatch/heatmap/safety-zones?days=${days}`)
       .then((data) => {
         if (cancelled) return;
-        // Handle both { zones: [...] } and [...] response formats
         const zoneList = Array.isArray(data) ? data : (data?.zones || []);
         setZones(zoneList);
         setLoading(false);
@@ -77,60 +108,59 @@ export function useMapSafetyZones(
   // ── Render circles ──────────────────────────────────────
 
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    removeZoneLayers();
 
-    // Clear existing
-    circlesRef.current.forEach((c) => c.setMap(null));
-    circlesRef.current = [];
+    if (!map || !enabled || zones.length === 0) return;
 
-    if (!enabled || zones.length === 0) return;
-
-    if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
-    }
-
-    zones.forEach((zone) => {
+    zones.forEach((zone, index) => {
       if (zone.latitude == null || zone.longitude == null) return;
-      // Validate finite coordinates
       if (!isFinite(zone.latitude) || !isFinite(zone.longitude)) return;
 
       const isHigh = zone.risk_level === 'high';
-      // Fix 59: zone type indicator (color by risk level)
       const color = isHigh ? '#dc2626' : '#f59e0b';
       const radius = isHigh ? 200 : 150;
-
-      // Fix 61: scale zone opacity by severity (more flagged = more opaque)
       const severity = Math.min(1, zone.total_flagged / 20);
       const fillOpacity = 0.06 + severity * 0.15;
       const strokeOpacity = 0.3 + severity * 0.4;
 
-      const circle = new google.maps.Circle({
-        center: { lat: zone.latitude, lng: zone.longitude },
-        radius,
-        fillColor: color,
-        fillOpacity,
-        strokeColor: color,
-        strokeWeight: isHigh ? 3 : 2,
-        strokeOpacity,
-        map,
-        clickable: true,
-        zIndex: 8,
+      const sourceId = `safety-source-${index}`;
+      const layerId = `safety-layer-${index}`;
+
+      const poly = circleToPolygon([zone.longitude, zone.latitude], radius);
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [poly] } }] },
+      });
+      map.addLayer({
+        id: layerId,
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': color,
+          'fill-opacity': fillOpacity,
+          'fill-outline-color': color,
+        },
       });
 
-      // Fix 62: pulsing border on active (high-risk) safety zones
+      sourceIdsRef.current.push(sourceId);
+      layerIdsRef.current.push(layerId);
+
+      // Pulsing border on high-risk zones
       if (isHigh) {
-        let pulseOp = strokeOpacity;
+        let pulseOp = fillOpacity;
         let dir = -1;
         const pulseInterval = setInterval(() => {
           pulseOp += dir * 0.04;
           if (pulseOp <= 0.2) { pulseOp = 0.2; dir = 1; }
           if (pulseOp >= 0.9) { pulseOp = 0.9; dir = -1; }
-          circle.setOptions({ strokeOpacity: pulseOp });
+          if (map && map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, 'fill-opacity', pulseOp);
+          }
         }, 500);
-        (circle as any)._pulseInterval = pulseInterval;
+        pulseIntervalsRef.current.push(pulseInterval);
       }
 
-      circle.addListener('click', () => {
+      map.on('click', layerId, () => {
         const riskLabel = isHigh ? 'HIGH' : 'MODERATE';
         const lastDate = zone.last_incident
           ? new Date(zone.last_incident).toLocaleDateString()
@@ -168,36 +198,27 @@ export function useMapSafetyZones(
 
         container.appendChild(table);
 
-        infoWindowRef.current?.setContent(container);
-        infoWindowRef.current?.setPosition({ lat: zone.latitude, lng: zone.longitude });
-        infoWindowRef.current?.open(map);
+        popupRef.current?.remove();
+        popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '360px', offset: 15 })
+          .setLngLat([zone.longitude, zone.latitude])
+          .setDOMContent(container)
+          .addTo(map);
       });
-
-      circlesRef.current.push(circle);
     });
 
     return () => {
-      circlesRef.current.forEach((c) => {
-        // Fix 62: clean up pulse intervals
-        if ((c as any)._pulseInterval) clearInterval((c as any)._pulseInterval);
-        google.maps.event.clearInstanceListeners(c);
-        c.setMap(null);
-      });
-      circlesRef.current = [];
+      removeZoneLayers();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, enabled, zones]);
 
   // ── Cleanup on unmount ──────────────────────────────────
 
   useEffect(() => {
     return () => {
-      circlesRef.current.forEach((c) => c.setMap(null));
-      circlesRef.current = [];
-      if (infoWindowRef.current) {
-        infoWindowRef.current.close();
-        infoWindowRef.current = null;
-      }
+      removeZoneLayers();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return { zones, loading, refresh, days, setDays };

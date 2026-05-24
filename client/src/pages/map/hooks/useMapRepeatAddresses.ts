@@ -5,8 +5,8 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -26,21 +26,19 @@ interface UseMapRepeatAddressesReturn {
 }
 
 // ─── Color thresholds ───────────────────────────────────────
-// Fix 72: color code by severity (more repeats = redder)
 
 function getColor(count: number): string {
-  if (count >= 20) return '#991b1b'; // dark red (very severe)
-  if (count >= 11) return '#dc2626'; // red
-  if (count >= 6) return '#f97316';  // orange
-  if (count >= 4) return '#f59e0b';  // amber
-  return '#eab308';                  // yellow (3)
+  if (count >= 20) return '#991b1b';
+  if (count >= 11) return '#dc2626';
+  if (count >= 6) return '#f97316';
+  if (count >= 4) return '#f59e0b';
+  return '#eab308';
 }
 
 // ─── Create circle marker element using DOM API ─────────────
 
 function createCountMarker(count: number): HTMLDivElement {
   const color = getColor(count);
-  // Fix 71: scale marker size by repeat count
   const size = count >= 20 ? 38 : count >= 11 ? 32 : count >= 6 ? 28 : 24;
 
   const el = document.createElement('div');
@@ -97,13 +95,11 @@ function buildInfoContent(addr: RepeatAddress): HTMLDivElement {
   addRow('Address', addr.location_address || 'Unknown');
   addRow('Call Count', String(addr.call_count), color);
 
-  // Incident types breakdown
   if (addr.incident_types) {
     const types = addr.incident_types.split(',').map((t) => t.trim());
     addRow('Incident Types', types.join(', '));
   }
 
-  // Last call date
   if (addr.last_call) {
     const lastDate = new Date(addr.last_call).toLocaleDateString();
     addRow('Last Call', lastDate);
@@ -116,7 +112,7 @@ function buildInfoContent(addr: RepeatAddress): HTMLDivElement {
 // ─── Hook ───────────────────────────────────────────────────
 
 export function useMapRepeatAddresses(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
   days: number,
   minCount: number,
@@ -124,14 +120,14 @@ export function useMapRepeatAddresses(
   const [addresses, setAddresses] = useState<RepeatAddress[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<google.maps.OverlayView[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
 
   // ── Clear markers ─────────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach((m) => {
-      m.setMap(null);
+      m.remove();
     });
     markersRef.current = [];
   }, []);
@@ -168,18 +164,20 @@ export function useMapRepeatAddresses(
   // ── Render markers ────────────────────────────────────────
 
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
 
     clearMarkers();
 
     if (!enabled || addresses.length === 0) return;
 
     if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
+      infoWindowRef.current = new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+        maxWidth: '360px',
+        offset: 15,
+      });
     }
-
-    const OverlayMarkerClass = getOverlayMarkerClass();
-    if (!OverlayMarkerClass) return;
 
     addresses.forEach((addr) => {
       if (addr.lat == null || addr.lng == null) return;
@@ -189,22 +187,23 @@ export function useMapRepeatAddresses(
       if (isNaN(lat) || isNaN(lng)) return;
 
       const content = createCountMarker(addr.call_count);
+      content.style.cursor = 'pointer';
+      content.title = `${addr.call_count} calls — ${addr.location_address || 'Unknown'}`;
 
-      const marker = new OverlayMarkerClass({
-        map,
-        position: { lat, lng },
-        content,
-        title: `${addr.call_count} calls — ${addr.location_address || 'Unknown'}`,
-        zIndex: 25,
-        onClick: () => {
-          const infoContent = buildInfoContent(addr);
-          infoWindowRef.current?.setContent(infoContent);
-          infoWindowRef.current?.setPosition({ lat, lng });
-          infoWindowRef.current?.open(map);
-        },
+      content.addEventListener('click', () => {
+        const infoContent = buildInfoContent(addr);
+        const popup = infoWindowRef.current;
+        if (popup) {
+          popup.remove();
+          popup.setLngLat([lng, lat]).setDOMContent(infoContent).addTo(map);
+        }
       });
 
-      markersRef.current.push(marker as unknown as google.maps.OverlayView);
+      const marker = new mapboxgl.Marker({ element: content })
+        .setLngLat([lng, lat])
+        .addTo(map);
+
+      markersRef.current.push(marker);
     });
 
     return () => {
@@ -216,10 +215,10 @@ export function useMapRepeatAddresses(
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.setMap(null); });
+      markersRef.current.forEach((m) => { m.remove(); });
       markersRef.current = [];
       if (infoWindowRef.current) {
-        infoWindowRef.current.close();
+        infoWindowRef.current.remove();
         infoWindowRef.current = null;
       }
     };

@@ -1,13 +1,6 @@
-// ============================================================
-// RMPG Flex — useMapHeatmapTimelapse Hook
-// Time-lapse heatmap animation — animates through hourly/daily
-// slices of incident data as a heatmap layer.
-// ============================================================
-
 import { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-
-// ─── Types ──────────────────────────────────────────────────
 
 interface TimelapseSlice {
   start: string;
@@ -27,27 +20,8 @@ interface UseMapHeatmapTimelapseReturn {
   loading: boolean;
 }
 
-// ─── Gradient configs (matches useMapHeatmap) ───────────────
-
-const RISK_GRADIENT = [
-  'rgba(0,0,0,0)',
-  'rgba(255,165,0,0.3)',
-  'rgba(255,100,0,0.5)',
-  'rgba(255,50,0,0.7)',
-  'rgba(255,0,0,0.85)',
-  'rgba(200,0,0,1)',
-];
-
-const ALL_GRADIENT = [
-  'rgba(0,0,0,0)',
-  'rgba(0,128,255,0.2)',
-  'rgba(0,200,100,0.4)',
-  'rgba(200,200,0,0.6)',
-  'rgba(255,140,0,0.8)',
-  'rgba(255,50,0,0.95)',
-];
-
-// ─── Label formatting ───────────────────────────────────────
+const SOURCE_ID = 'map-heatmap-timelapse-source';
+const LAYER_ID = 'map-heatmap-timelapse-layer';
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -55,21 +29,72 @@ const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Se
 function formatSliceLabel(slice: TimelapseSlice, days: number): string {
   const d = new Date(slice.start);
   if (isNaN(d.getTime())) return slice.start;
-
-  // For short ranges (<=7 days), show hourly format: "Mon 14:00"
   if (days <= 7) {
     const hours = d.getHours().toString().padStart(2, '0');
     return `${DAY_NAMES[d.getDay()]} ${hours}:00`;
   }
-
-  // For longer ranges, show daily format: "Mar 15"
   return `${MONTH_NAMES[d.getMonth()]} ${d.getDate()}`;
 }
 
-// ─── Hook ───────────────────────────────────────────────────
+function renderHeatmapLayer(
+  map: mapboxgl.Map,
+  points: { latitude: number; longitude: number; count: number; risk_weight?: number }[],
+  mode: 'all' | 'risk',
+) {
+  if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+  if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+
+  if (!points || points.length === 0) return;
+
+  const features = points
+    .filter((p) => p.latitude != null && p.longitude != null)
+    .map((point) => ({
+      type: 'Feature' as const,
+      properties: { weight: mode === 'risk' ? (point.risk_weight || point.count || 1) : (point.count || 1) },
+      geometry: { type: 'Point' as const, coordinates: [point.longitude, point.latitude] },
+    }));
+
+  if (features.length === 0) return;
+
+  map.addSource(SOURCE_ID, {
+    type: 'geojson',
+    data: { type: 'FeatureCollection', features },
+  });
+
+  map.addLayer({
+    id: LAYER_ID,
+    type: 'heatmap',
+    source: SOURCE_ID,
+    paint: {
+      'heatmap-weight': ['get', 'weight'],
+      'heatmap-intensity': 0.8,
+      'heatmap-radius': 30,
+      'heatmap-opacity': 0.7,
+      'heatmap-color': mode === 'risk'
+        ? [
+            'interpolate', ['linear'], ['heatmap-density'],
+            0, 'rgba(0,0,0,0)',
+            0.2, 'rgba(255,165,0,0.3)',
+            0.4, 'rgba(255,100,0,0.5)',
+            0.6, 'rgba(255,50,0,0.7)',
+            0.8, 'rgba(255,0,0,0.85)',
+            1, 'rgba(200,0,0,1)',
+          ]
+        : [
+            'interpolate', ['linear'], ['heatmap-density'],
+            0, 'rgba(0,0,0,0)',
+            0.2, 'rgba(0,128,255,0.2)',
+            0.4, 'rgba(0,200,100,0.4)',
+            0.6, 'rgba(200,200,0,0.6)',
+            0.8, 'rgba(255,140,0,0.8)',
+            1, 'rgba(255,50,0,0.95)',
+          ],
+    },
+  });
+}
 
 export function useMapHeatmapTimelapse(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
   days: number,
   mode: 'all' | 'risk',
@@ -80,10 +105,7 @@ export function useMapHeatmapTimelapse(
   const [speed, setSpeed] = useState<1 | 2 | 4>(1);
   const [loading, setLoading] = useState(false);
 
-  const heatmapLayerRef = useRef<google.maps.visualization.HeatmapLayer | null>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
-  // ── Fetch timelapse data ─────────────────────────────────
 
   useEffect(() => {
     if (!enabled) {
@@ -115,51 +137,24 @@ export function useMapHeatmapTimelapse(
     return () => { cancelled = true; };
   }, [enabled, days, mode]);
 
-  // ── Render current slice as heatmap layer ────────────────
-
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
 
-    // Remove existing layer
-    if (heatmapLayerRef.current) {
-      heatmapLayerRef.current.setMap(null);
-      heatmapLayerRef.current = null;
+    if (!enabled || slices.length === 0) {
+      if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      return;
     }
 
-    if (!enabled || slices.length === 0) return;
-
     const slice = slices[currentIndex];
-    if (!slice || !slice.points || slice.points.length === 0) return;
+    if (!slice || !slice.points || slice.points.length === 0) {
+      if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+      if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+      return;
+    }
 
-    const weightedData = slice.points
-      .filter((p) => p.latitude != null && p.longitude != null)
-      .map((point) => ({
-        location: new google.maps.LatLng(point.latitude, point.longitude),
-        weight: mode === 'risk' ? (point.risk_weight || point.count || 1) : (point.count || 1),
-      }));
-
-    if (weightedData.length === 0) return;
-
-    const heatmap = new google.maps.visualization.HeatmapLayer({
-      data: weightedData,
-      map,
-      radius: 30,
-      opacity: 0.7,
-      gradient: mode === 'risk' ? RISK_GRADIENT : ALL_GRADIENT,
-      dissipating: true,
-    });
-
-    heatmapLayerRef.current = heatmap;
-
-    return () => {
-      if (heatmapLayerRef.current) {
-        heatmapLayerRef.current.setMap(null);
-        heatmapLayerRef.current = null;
-      }
-    };
+    renderHeatmapLayer(map, slice.points, mode);
   }, [map, enabled, slices, currentIndex, mode]);
-
-  // ── Playback animation ──────────────────────────────────
 
   useEffect(() => {
     if (intervalRef.current) {
@@ -174,7 +169,6 @@ export function useMapHeatmapTimelapse(
     intervalRef.current = setInterval(() => {
       setCurrentIndex((prev) => {
         if (prev >= slices.length - 1) {
-          // Move setIsPlaying outside the updater to avoid state update during render
           queueMicrotask(() => setIsPlaying(false));
           return prev;
         }
@@ -190,32 +184,28 @@ export function useMapHeatmapTimelapse(
     };
   }, [isPlaying, speed, slices.length]);
 
-  // ── Cleanup on unmount / disable ────────────────────────
-
   useEffect(() => {
     if (!enabled) {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
         intervalRef.current = null;
       }
-      if (heatmapLayerRef.current) {
-        heatmapLayerRef.current.setMap(null);
-        heatmapLayerRef.current = null;
-      }
+      if (map && map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+      if (map && map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
     }
-  }, [enabled]);
+  }, [enabled, map]);
 
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
-      if (heatmapLayerRef.current) {
-        heatmapLayerRef.current.setMap(null);
-        heatmapLayerRef.current = null;
+      if (map) {
+        try {
+          if (map.getLayer(LAYER_ID)) map.removeLayer(LAYER_ID);
+          if (map.getSource(SOURCE_ID)) map.removeSource(SOURCE_ID);
+        } catch { /* ignore */ }
       }
     };
-  }, []);
-
-  // ── Derived label ───────────────────────────────────────
+  }, [map]);
 
   const currentLabel = slices.length > 0 && slices[currentIndex]
     ? formatSliceLabel(slices[currentIndex], days)

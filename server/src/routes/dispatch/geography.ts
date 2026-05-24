@@ -748,4 +748,42 @@ router.get('/geography/identify', requireRole('admin', 'manager', 'supervisor', 
   }
 });
 
+// ════════════════════════════════════════════════════════════
+// DISTRICTS FLAT LIST — Joined geography for map layer coloring
+// ════════════════════════════════════════════════════════════
+
+router.get('/districts', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (_req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const beats = db.prepare(`
+      SELECT
+        ds.id AS sector_id,
+        ds.section_code AS sector_code,
+        ds.section_name AS sector_name,
+        ds.color AS sector_color,
+        dz.id AS zone_db_id,
+        dz.zone_code AS zone_id,
+        dz.zone_name,
+        db.id AS beat_db_id,
+        db.beat_code AS beat_id,
+        db.beat_name,
+        db.beat_descriptor,
+        db.dispatch_code,
+        da.id AS area_id,
+        da.area_name,
+        da.area_code
+      FROM dispatch_beats db
+      JOIN dispatch_zones dz ON dz.id = db.zone_id
+      JOIN dispatch_sectors ds ON ds.id = dz.sector_id
+      JOIN dispatch_areas da ON da.id = ds.area_id
+      WHERE db.active = 1 AND dz.active = 1 AND ds.active = 1
+      ORDER BY da.sort_order, ds.sort_order, dz.sort_order, db.sort_order
+    `).all();
+    res.json(beats);
+  } catch (err: any) {
+    if (err?.message?.includes('no such table')) { res.json([]); return; }
+    res.status(500).json({ error: 'Failed to load districts', code: 'DISTRICTS_ERROR' });
+  }
+});
+
 export default router;

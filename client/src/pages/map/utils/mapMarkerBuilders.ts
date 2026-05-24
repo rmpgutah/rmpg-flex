@@ -1,7 +1,8 @@
 // ============================================================
 // Map Page — Marker Content Builders
-// DOM-based marker builders for Google Maps AdvancedMarkerElement
-// and a custom OverlayView fallback class.
+// DOM-based marker builders for Mapbox GL JS markers.
+// Each function returns an HTMLElement suitable for use with
+// `new mapboxgl.Marker({ element }).setLngLat(lngLat).addTo(map)`.
 // ============================================================
 
 import type { UnitStatus } from '../../../types';
@@ -312,104 +313,6 @@ export function buildSelfPositionMarker(accuracy: number | null, heading: number
   return el;
 }
 
-// ── Custom Overlay Marker (fallback when AdvancedMarkerElement unavailable) ──
-
-export interface OverlayMarker {
-  updatePosition(lat: number, lng: number): void;
-  updateContent(newContent: HTMLElement): void;
-  remove(): void;
-}
-
-let _OverlayMarkerClass: (new (opts: {
-  map: google.maps.Map;
-  position: google.maps.LatLngLiteral;
-  content: HTMLElement;
-  zIndex?: number;
-  title?: string;
-  onClick?: () => void;
-}) => OverlayMarker) | null = null;
-
-export function getOverlayMarkerClass() {
-  if (_OverlayMarkerClass) return _OverlayMarkerClass;
-  if (typeof google === 'undefined' || !google.maps?.OverlayView) return null;
-
-  _OverlayMarkerClass = class extends google.maps.OverlayView implements OverlayMarker {
-    private position: google.maps.LatLng;
-    private container: HTMLDivElement | null = null;
-    private content: HTMLElement;
-    private zIdx: number;
-    private clickCallback?: () => void;
-
-    constructor(opts: { map: google.maps.Map; position: google.maps.LatLngLiteral; content: HTMLElement; zIndex?: number; title?: string; onClick?: () => void }) {
-      super();
-      this.position = new google.maps.LatLng(opts.position.lat, opts.position.lng);
-      this.content = opts.content;
-      this.zIdx = opts.zIndex ?? 0;
-      this.clickCallback = opts.onClick;
-      if (opts.title) this.content.title = opts.title;
-      this.setMap(opts.map);
-    }
-
-    onAdd() {
-      this.container = document.createElement('div');
-      this.container.style.position = 'absolute';
-      this.container.style.zIndex = String(this.zIdx);
-      this.container.style.cursor = 'pointer';
-      this.container.appendChild(this.content);
-      if (this.clickCallback) {
-        this.container.addEventListener('click', this.clickCallback);
-      }
-      const panes = this.getPanes();
-      panes?.overlayMouseTarget.appendChild(this.container);
-    }
-
-    draw() {
-      if (!this.container) return;
-      const projection = this.getProjection();
-      if (!projection) return;
-      const point = projection.fromLatLngToDivPixel(this.position);
-      if (point) {
-        this.container.style.left = `${point.x}px`;
-        this.container.style.top = `${point.y}px`;
-        this.container.style.transform = 'translate(-50%, -100%)';
-      }
-    }
-
-    onRemove() {
-      if (this.container) {
-        if (this.clickCallback) {
-          this.container.removeEventListener('click', this.clickCallback);
-        }
-        if (this.container.parentElement) {
-          this.container.parentElement.removeChild(this.container);
-        }
-      }
-      this.container = null;
-    }
-
-    updatePosition(lat: number, lng: number) {
-      this.position = new google.maps.LatLng(lat, lng);
-      this.draw();
-    }
-
-    updateContent(newContent: HTMLElement) {
-      if (this.container) {
-        while (this.container.firstChild) {
-          this.container.removeChild(this.container.firstChild);
-        }
-        this.container.appendChild(newContent);
-      }
-      this.content = newContent;
-    }
-
-    remove() {
-      this.setMap(null);
-    }
-  };
-
-  return _OverlayMarkerClass;
-}
-
 // ── CSS Keyframes (injected once) ────────────────────────────
 
 const STYLE_ID = 'rmpg-map-keyframes';
@@ -431,13 +334,9 @@ export function injectKeyframes() {
     .rmpg-marker-hover { transform:scale(1.08); transition:transform 0.2s ease; }
     .rmpg-marker-selected { animation:marker-selected 1.5s ease-in-out infinite; }
     .rmpg-marker-enter { animation:marker-enter 0.3s ease-out forwards; }
-    .gm-style-iw { background:#0c0c0c !important; border:1px solid #2b2b2b !important; border-radius:4px !important; color:#e5e7eb !important; box-shadow:0 4px 24px rgba(0,0,0,0.6) !important; }
-    .gm-style-iw-d { overflow:auto !important; scrollbar-width:thin; scrollbar-color:#2b2b2b transparent; }
-    .gm-style-iw-d::-webkit-scrollbar { width:4px; }
-    .gm-style-iw-d::-webkit-scrollbar-thumb { background:#2b2b2b; border-radius:2px; }
-    .gm-style-iw-d::-webkit-scrollbar-track { background:transparent; }
-    .gm-style-iw button[aria-label="Close"] { filter: invert(1) !important; }
-    .gm-style .gm-style-iw-tc::after { background:#0c0c0c !important; }
+    .mapboxgl-popup-content { background:#0a0a0a !important; border:1px solid #222222 !important; border-radius:2px !important; box-shadow:0 4px 20px rgba(0,0,0,0.5) !important; padding:0 !important; }
+    .mapboxgl-popup-tip { border-top-color:#222222 !important; }
+    .mapboxgl-popup-close-button { color:#666666 !important; font-size:16px !important; padding:4px 8px !important; }
     @media (prefers-reduced-motion: reduce) { .rmpg-marker-enter, .rmpg-marker-selected, [style*=animation] { animation:none !important; } }
   `;
   document.head.appendChild(style);

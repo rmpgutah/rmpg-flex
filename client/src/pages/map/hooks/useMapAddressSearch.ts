@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
+import { getMapboxToken } from '../../../utils/mapboxClient';
 
-// ── Recent searches localStorage key ──
 const RECENT_SEARCHES_KEY = 'rmpg_map_recent_searches';
 const MAX_RECENT_SEARCHES = 5;
 
@@ -19,21 +20,12 @@ function addRecentSearch(description: string, placeId: string) {
   } catch { /* ignore */ }
 }
 
-interface UseMapAddressSearchParams {
-  mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
-  infoWindowRef?: React.MutableRefObject<google.maps.InfoWindow | null>;
-  createMarker: (opts: {
-    map: google.maps.Map;
-    position: google.maps.LatLngLiteral;
-    content: HTMLElement;
-    zIndex?: number;
-    title?: string;
-    onClick?: () => void;
-  }) => any;
-  removeMarker: (m: any) => void;
+interface MapboxFeature {
+  id: string;
+  place_name: string;
+  center: [number, number];
 }
 
-/** Build the address search marker DOM element using safe DOM methods */
 function buildAddressMarkerElement(label: string): HTMLElement {
   const wrapper = document.createElement('div');
   wrapper.style.cssText = 'display:flex;flex-direction:column;align-items:center;cursor:pointer;';
@@ -50,28 +42,29 @@ function buildAddressMarkerElement(label: string): HTMLElement {
   return wrapper;
 }
 
-export function useMapAddressSearch({ mapInstanceRef, infoWindowRef, createMarker, removeMarker }: UseMapAddressSearchParams) {
+export function useMapAddressSearch(map: mapboxgl.Map | null) {
   const [addressSearch, setAddressSearch] = useState('');
-  const [addressResults, setAddressResults] = useState<{ description: string; place_id: string }[]>([]);
+  const [addressResults, setAddressResults] = useState<MapboxFeature[]>([]);
   const [showAddressResults, setShowAddressResults] = useState(false);
   const [recentSearches, setRecentSearches] = useState<{ description: string; place_id: string }[]>(getRecentSearches);
   const addressSearchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const addressMarkerRef = useRef<any>(null);
+  const addressMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const addressPopupRef = useRef<mapboxgl.Popup | null>(null);
   const addressDismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const autocompleteServiceRef = useRef<google.maps.places.AutocompleteService | null>(null);
-  const geocoderRef = useRef<google.maps.Geocoder | null>(null);
+  const tokenRef = useRef<string | null>(null);
 
-  // Clean up timers and address marker on unmount
+  useEffect(() => {
+    getMapboxToken().then(t => { tokenRef.current = t; }).catch(() => {});
+  }, []);
+
   useEffect(() => {
     return () => {
       if (addressSearchTimer.current) clearTimeout(addressSearchTimer.current);
       if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
-      if (addressMarkerRef.current) {
-        removeMarker(addressMarkerRef.current);
-        addressMarkerRef.current = null;
-      }
+      if (addressMarkerRef.current) { addressMarkerRef.current.remove(); addressMarkerRef.current = null; }
+      if (addressPopupRef.current) { addressPopupRef.current.remove(); addressPopupRef.current = null; }
     };
-  }, [removeMarker]);
+  }, []);
 
   const handleAddressSearch = useCallback((query: string) => {
     setAddressSearch(query);
@@ -83,104 +76,66 @@ export function useMapAddressSearch({ mapInstanceRef, infoWindowRef, createMarke
       return;
     }
 
-    addressSearchTimer.current = setTimeout(() => {
-      if (typeof google === 'undefined' || !google.maps?.places) return;
-      if (!autocompleteServiceRef.current) {
-        autocompleteServiceRef.current = new google.maps.places.AutocompleteService();
-      }
-      autocompleteServiceRef.current.getPlacePredictions(
-        { input: query, types: ['geocode', 'establishment'], componentRestrictions: { country: 'us' } },
-        (predictions, status) => {
-          if (status === google.maps.places.PlacesServiceStatus.OK && predictions) {
-            setAddressResults(predictions.map(p => ({ description: p.description, place_id: p.place_id })));
-            setShowAddressResults(true);
-          } else {
-            setAddressResults([]);
-          }
+    addressSearchTimer.current = setTimeout(async () => {
+      const token = tokenRef.current;
+      if (!token) return;
+      try {
+        const url = `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(query)}.json?access_token=${token}&country=us&types=address,place,poi&limit=5`;
+        const res = await fetch(url);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json.features) {
+          setAddressResults(json.features.map((f: any) => ({ id: f.id, place_name: f.place_name, center: f.center })));
+          setShowAddressResults(true);
         }
-      );
+      } catch { setAddressResults([]); }
     }, 300);
   }, []);
 
-  const handleAddressSelect = useCallback((placeId: string, description: string) => {
-    const map = mapInstanceRef.current;
-    if (!map || typeof google === 'undefined') return;
+  const handleAddressSelect = useCallback((feature: MapboxFeature) => {
+    if (!map) return;
+    const { id, place_name, center } = feature;
+    const [lng, lat] = center;
 
-    // Save to recent searches
-    addRecentSearch(description, placeId);
+    addRecentSearch(place_name, id);
     setRecentSearches(getRecentSearches());
 
-    if (!geocoderRef.current) {
-      geocoderRef.current = new google.maps.Geocoder();
-    }
-    geocoderRef.current.geocode({ placeId }, (results, status) => {
-      if (status === 'OK' && results && results[0]) {
-        const loc = results[0].geometry.location;
-        map.panTo(loc);
-        map.setZoom(17);
+    map.panTo([lng, lat]);
+    map.setZoom(17);
 
-        if (addressMarkerRef.current) {
-          removeMarker(addressMarkerRef.current);
-          addressMarkerRef.current = null;
-        }
+    if (addressMarkerRef.current) { addressMarkerRef.current.remove(); addressMarkerRef.current = null; }
 
-        const el = buildAddressMarkerElement(description.split(',')[0]);
+    const el = buildAddressMarkerElement(place_name.split(',')[0]);
+    addressMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+      .setLngLat([lng, lat])
+      .addTo(map);
 
-        const pos = { lat: loc.lat(), lng: loc.lng() };
-        addressMarkerRef.current = createMarker({
-          map,
-          position: pos,
-          content: el,
-          zIndex: 5000,
-          title: description,
-          onClick: () => {
-            // Show address info window on click
-            if (infoWindowRef?.current) {
-              const container = document.createElement('div');
-              container.style.cssText = "font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222";
-              const heading = document.createElement('div');
-              heading.style.cssText = 'font-weight:bold;font-size:12px;margin-bottom:4px;color:#888888';
-              heading.textContent = description.split(',')[0];
-              container.appendChild(heading);
-              const addr = document.createElement('div');
-              addr.style.cssText = 'font-size:9px;color:#9ca3af;margin-bottom:4px;';
-              addr.textContent = description;
-              container.appendChild(addr);
-              const coords = document.createElement('div');
-              coords.style.cssText = 'font-size:8px;color:#6b7280;';
-              coords.textContent = `${loc.lat().toFixed(6)}, ${loc.lng().toFixed(6)}`;
-              container.appendChild(coords);
-              infoWindowRef.current.setContent(container);
-              infoWindowRef.current.setPosition(pos);
-              infoWindowRef.current.open(map);
-            }
-          },
-        });
+    if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
+    addressDismissTimer.current = setTimeout(() => {
+      if (addressMarkerRef.current) { addressMarkerRef.current.remove(); addressMarkerRef.current = null; }
+      addressDismissTimer.current = null;
+    }, 30000);
 
-        if (addressDismissTimer.current) clearTimeout(addressDismissTimer.current);
-        addressDismissTimer.current = setTimeout(() => {
-          if (addressMarkerRef.current) {
-            removeMarker(addressMarkerRef.current);
-            addressMarkerRef.current = null;
-          }
-          addressDismissTimer.current = null;
-        }, 30000);
-      }
+    addressMarkerRef.current.getElement().addEventListener('click', () => {
+      const html = `<div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
+        <div style="font-weight:bold;font-size:12px;margin-bottom:4px;color:#888888">${place_name.split(',')[0]}</div>
+        <div style="font-size:9px;color:#9ca3af;margin-bottom:4px;">${place_name}</div>
+        <div style="font-size:8px;color:#6b7280;">${lat.toFixed(6)}, ${lng.toFixed(6)}</div>
+      </div>`;
+      if (!addressPopupRef.current) addressPopupRef.current = new mapboxgl.Popup({ offset: 25, maxWidth: '300px' });
+      addressPopupRef.current.setLngLat([lng, lat]).setHTML(html).addTo(map);
     });
 
-    setAddressSearch(description.split(',')[0]);
+    setAddressSearch(place_name.split(',')[0]);
     setShowAddressResults(false);
-  }, [mapInstanceRef, infoWindowRef, createMarker, removeMarker]);
+  }, [map]);
 
   const clearAddressSearch = useCallback(() => {
     setAddressSearch('');
     setAddressResults([]);
     setShowAddressResults(false);
-    if (addressMarkerRef.current) {
-      removeMarker(addressMarkerRef.current);
-      addressMarkerRef.current = null;
-    }
-  }, [removeMarker]);
+    if (addressMarkerRef.current) { addressMarkerRef.current.remove(); addressMarkerRef.current = null; }
+  }, []);
 
   return {
     addressSearch,

@@ -1,24 +1,6 @@
-// ============================================================
-// RMPG Flex — useMultiUnitRouting
-// Renders Directions polylines for MULTIPLE units converging on
-// the same call. Each unit gets its own DirectionsRenderer so
-// dispatchers can see all responders' ETAs simultaneously.
-//
-// Polylines are colored by relative ETA:
-//   green  — fastest unit
-//   yellow — mid
-//   red    — slowest
-// This matches officer mental model of "who's closest" without
-// requiring them to read the ETA text on every polyline.
-//
-// Throttling mirrors useMapRouting: at most one re-query per
-// unit per 30s, and only if the unit has moved >100m. Cheap
-// GPS callbacks (every 1s) don't burn Directions quota.
-// ============================================================
-
 import { useRef, useState, useCallback, useEffect } from 'react';
-
-// ─── Types ──────────────────────────────────────────────────
+import mapboxgl from 'mapbox-gl';
+import { getMapboxToken } from '../utils/mapboxClient';
 
 export interface UnitRoute {
   unitCallSign: string;
@@ -27,25 +9,19 @@ export interface UnitRoute {
   distance: string;
   durationSec: number;
   distanceMeters: number;
-  /** Rendered polyline color — determined by relative-ETA bucket */
   color: string;
 }
 
 interface UseMultiUnitRoutingOptions {
-  map: google.maps.Map | null;
+  map: mapboxgl.Map | null;
 }
 
-// ─── Constants ──────────────────────────────────────────────
-
 const REROUTE_THROTTLE_MS = 30_000;
-const REROUTE_DISTANCE_THRESHOLD = 100; // meters
+const REROUTE_DISTANCE_THRESHOLD = 100;
 
-/** ETA-bucket colors (fastest → slowest) */
-const COLOR_FASTEST = '#22c55e'; // green
-const COLOR_MID = '#eab308'; // amber
-const COLOR_SLOWEST = '#ef4444'; // red
-
-// ─── Helpers ────────────────────────────────────────────────
+const COLOR_FASTEST = '#22c55e';
+const COLOR_MID = '#eab308';
+const COLOR_SLOWEST = '#ef4444';
 
 function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number): number {
   if (!Number.isFinite(lat1) || !Number.isFinite(lng1) || !Number.isFinite(lat2) || !Number.isFinite(lng2)) return Infinity;
@@ -58,8 +34,21 @@ function haversineMeters(lat1: number, lng1: number, lat2: number, lng2: number)
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+function parseDuration(seconds: number): string {
+  if (seconds < 60) return '<1 min';
+  const mins = Math.round(seconds / 60);
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m > 0 ? `${h}h ${m}m` : `${h}h`;
+}
+
+function parseDistance(meters: number): string {
+  if (meters < 1000) return `${Math.round(meters)} m`;
+  return `${(meters / 1000).toFixed(1)} km`;
+}
+
 interface RouteState {
-  renderer: google.maps.DirectionsRenderer;
   lastOrigin: { lat: number; lng: number };
   lastQueryTime: number;
   destination: { lat: number; lng: number };
@@ -67,11 +56,6 @@ interface RouteState {
   durationSec: number;
 }
 
-/**
- * Assign ETA-bucket colors based on relative standing across the current
- * active set. One unit → green. Two units → green + red. Three+ → green /
- * amber / red distributed by sorted durationSec.
- */
 function assignColors(statesByCallSign: Map<string, RouteState>): Map<string, string> {
   const colors = new Map<string, string>();
   const sorted = [...statesByCallSign.entries()].sort(
@@ -87,7 +71,6 @@ function assignColors(statesByCallSign: Map<string, RouteState>): Map<string, st
     colors.set(sorted[1][0], COLOR_SLOWEST);
     return colors;
   }
-  // 3+ units: fastest = green, slowest = red, everyone else = amber
   sorted.forEach(([callSign], idx) => {
     if (idx === 0) colors.set(callSign, COLOR_FASTEST);
     else if (idx === sorted.length - 1) colors.set(callSign, COLOR_SLOWEST);
@@ -96,37 +79,65 @@ function assignColors(statesByCallSign: Map<string, RouteState>): Map<string, st
   return colors;
 }
 
-// ─── Hook ───────────────────────────────────────────────────
-
 export function useMultiUnitRouting({ map }: UseMultiUnitRoutingOptions) {
   const [activeRoutes, setActiveRoutes] = useState<UnitRoute[]>([]);
   const [routeLoading, setRouteLoading] = useState(false);
 
-  const serviceRef = useRef<google.maps.DirectionsService | null>(null);
   const statesRef = useRef<Map<string, RouteState>>(new Map());
 
-  const ensureService = useCallback(() => {
-    if (!serviceRef.current) {
-      serviceRef.current = new google.maps.DirectionsService();
+  const ensureUnitLayer = useCallback((callSign: string) => {
+    if (!map) return;
+    const sourceId = `route-unit-${callSign}`;
+    const layerId = `route-line-unit-${callSign}`;
+    if (!map.getSource(sourceId)) {
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [] },
+      });
     }
-    return serviceRef.current;
-  }, []);
+    if (!map.getLayer(layerId)) {
+      map.addLayer({
+        id: layerId,
+        type: 'line',
+        source: sourceId,
+        layout: { 'line-join': 'round', 'line-cap': 'round' },
+        paint: {
+          'line-color': COLOR_FASTEST,
+          'line-width': 4,
+          'line-opacity': 0.85,
+        },
+      });
+    }
+  }, [map]);
 
-  /** Rebuild the public activeRoutes array and recolor polylines. */
+  const removeUnitLayer = useCallback((callSign: string) => {
+    if (!map) return;
+    const sourceId = `route-unit-${callSign}`;
+    const layerId = `route-line-unit-${callSign}`;
+    try { if (map.getLayer(layerId)) map.removeLayer(layerId); } catch { /* ignore */ }
+    try { if (map.getSource(sourceId)) map.removeSource(sourceId); } catch { /* ignore */ }
+  }, [map]);
+
+  const recolorLayers = useCallback(() => {
+    if (!map) return;
+    for (const [callSign] of statesRef.current.entries()) {
+      const layerId = `route-line-unit-${callSign}`;
+      if (!map.getLayer(layerId)) continue;
+    }
+  }, [map]);
+
   const refreshActive = useCallback(() => {
     const colors = assignColors(statesRef.current);
     const next: UnitRoute[] = [];
     for (const [callSign, st] of statesRef.current.entries()) {
       const color = colors.get(callSign) || COLOR_FASTEST;
-      // Recolor the polyline — cheap and keeps visual consistent when a
-      // faster unit joins mid-response.
-      st.renderer.setOptions({
-        polylineOptions: { strokeColor: color, strokeWeight: 4, strokeOpacity: 0.85 },
-      });
+      const layerId = `route-line-unit-${callSign}`;
+      if (map && map.getLayer(layerId)) {
+        map.setPaintProperty(layerId, 'line-color', color);
+      }
       next.push({
         unitCallSign: callSign,
         callNumber: st.callNumber,
-        // Text fields are filled by query; placeholder prevents stale strings
         eta: '—',
         distance: '—',
         durationSec: st.durationSec,
@@ -135,60 +146,50 @@ export function useMultiUnitRouting({ map }: UseMultiUnitRoutingOptions) {
       });
     }
     setActiveRoutes(next);
-  }, []);
+  }, [map]);
 
-  /**
-   * Query Directions for one unit and update that unit's state.
-   * Callers are expected to throttle; we don't throttle here so
-   * re-rendering with updated colors after removeRoute stays snappy.
-   */
   const queryOne = useCallback(
     async (
       callSign: string,
       callNumber: string,
-      origin: google.maps.LatLngLiteral,
-      destination: google.maps.LatLngLiteral,
+      origin: { lat: number; lng: number },
+      destination: { lat: number; lng: number },
     ) => {
       if (!map) return;
-      const svc = ensureService();
       setRouteLoading(true);
       try {
-        const result = await new Promise<google.maps.DirectionsResult>((resolve, reject) => {
-          svc.route(
-            {
-              origin,
-              destination,
-              travelMode: google.maps.TravelMode.DRIVING,
-              drivingOptions: {
-                departureTime: new Date(),
-                trafficModel: google.maps.TrafficModel.BEST_GUESS,
-              },
-              provideRouteAlternatives: false,
-            },
-            (res, status) => {
-              if (status === google.maps.DirectionsStatus.OK && res) resolve(res);
-              else reject(new Error(`Directions ${status}`));
-            },
-          );
-        });
-        const leg = result.routes[0]?.legs[0];
+        const token = await getMapboxToken();
+        if (!token) {
+          console.warn('[useMultiUnitRouting] No Mapbox token available');
+          return;
+        }
+
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${origin.lng},${origin.lat};${destination.lng},${destination.lat}?access_token=${token}&geometries=geojson&overview=full&steps=true&traffic=true`;
+
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`Directions HTTP ${resp.status}`);
+        const data = await resp.json();
+
+        if (!data.routes?.length) return;
+        const route = data.routes[0];
+        const leg = route.legs?.[0];
         if (!leg) return;
 
-        // Reuse an existing renderer for the unit, or create one.
+        ensureUnitLayer(callSign);
+
+        const sourceId = `route-unit-${callSign}`;
+        const geojsonSource = map.getSource(sourceId) as mapboxgl.GeoJSONSource;
+        if (geojsonSource) {
+          geojsonSource.setData({
+            type: 'Feature',
+            geometry: route.geometry,
+            properties: {},
+          });
+        }
+
         let st = statesRef.current.get(callSign);
         if (!st) {
-          const renderer = new google.maps.DirectionsRenderer({
-            suppressMarkers: true,
-            preserveViewport: true,
-            polylineOptions: {
-              strokeColor: COLOR_FASTEST,
-              strokeWeight: 4,
-              strokeOpacity: 0.85,
-            },
-          });
-          renderer.setMap(map);
           st = {
-            renderer,
             lastOrigin: origin,
             lastQueryTime: 0,
             destination,
@@ -197,36 +198,31 @@ export function useMultiUnitRouting({ map }: UseMultiUnitRoutingOptions) {
           };
           statesRef.current.set(callSign, st);
         }
-        st.renderer.setDirections(result);
         st.lastOrigin = origin;
         st.lastQueryTime = Date.now();
         st.destination = destination;
         st.callNumber = callNumber;
-        st.durationSec = leg.duration_in_traffic?.value || leg.duration?.value || 0;
+        st.durationSec = leg.duration || 0;
 
-        // Rebuild public state + recolor
         const colors = assignColors(statesRef.current);
         const next: UnitRoute[] = [];
         for (const [cs, s] of statesRef.current.entries()) {
           const color = colors.get(cs) || COLOR_FASTEST;
-          s.renderer.setOptions({
-            polylineOptions: { strokeColor: color, strokeWeight: 4, strokeOpacity: 0.85 },
-          });
-          // Pull text-based fields from this query for the matching unit,
-          // use previous values for others (they'll be refreshed on their
-          // own update).
+          const lid = `route-line-unit-${cs}`;
+          if (map.getLayer(lid)) {
+            map.setPaintProperty(lid, 'line-color', color);
+          }
           if (cs === callSign) {
             next.push({
               unitCallSign: cs,
               callNumber: s.callNumber,
-              eta: leg.duration_in_traffic?.text || leg.duration?.text || '—',
-              distance: leg.distance?.text || '—',
+              eta: parseDuration(leg.duration || 0),
+              distance: parseDistance(leg.distance || 0),
               durationSec: s.durationSec,
-              distanceMeters: leg.distance?.value || 0,
+              distanceMeters: leg.distance || 0,
               color,
             });
           } else {
-            // Keep previously-known text if present; otherwise placeholder.
             const prev = activeRoutes.find((r) => r.unitCallSign === cs);
             next.push({
               unitCallSign: cs,
@@ -246,10 +242,9 @@ export function useMultiUnitRouting({ map }: UseMultiUnitRoutingOptions) {
         setRouteLoading(false);
       }
     },
-    [map, ensureService, activeRoutes],
+    [map, ensureUnitLayer, activeRoutes],
   );
 
-  /** Show/refresh a route for one unit. */
   const showRoute = useCallback(
     (
       unitCallSign: string,
@@ -269,7 +264,6 @@ export function useMultiUnitRouting({ map }: UseMultiUnitRoutingOptions) {
     [queryOne],
   );
 
-  /** Update origin for one unit when its GPS moves — throttled. */
   const updateOrigin = useCallback(
     (unitCallSign: string, newLat: number, newLng: number) => {
       const st = statesRef.current.get(unitCallSign);
@@ -283,38 +277,33 @@ export function useMultiUnitRouting({ map }: UseMultiUnitRoutingOptions) {
     [queryOne],
   );
 
-  /** Remove a single unit's route. */
   const removeRoute = useCallback(
     (unitCallSign: string) => {
       const st = statesRef.current.get(unitCallSign);
       if (!st) return;
-      st.renderer.setMap(null);
+      removeUnitLayer(unitCallSign);
       statesRef.current.delete(unitCallSign);
       refreshActive();
     },
-    [refreshActive],
+    [refreshActive, removeUnitLayer],
   );
 
-  /** Wipe every active route. */
   const clearAllRoutes = useCallback(() => {
-    for (const st of statesRef.current.values()) {
-      st.renderer.setMap(null);
+    for (const callSign of statesRef.current.keys()) {
+      removeUnitLayer(callSign);
     }
     statesRef.current.clear();
     setActiveRoutes([]);
-  }, []);
-
-  // ── Cleanup on unmount ────────────────────────────────────
+  }, [removeUnitLayer]);
 
   useEffect(() => {
     return () => {
-      for (const st of statesRef.current.values()) {
-        st.renderer.setMap(null);
+      for (const callSign of statesRef.current.keys()) {
+        removeUnitLayer(callSign);
       }
       statesRef.current.clear();
-      serviceRef.current = null;
     };
-  }, []);
+  }, [removeUnitLayer]);
 
   return {
     activeRoutes,

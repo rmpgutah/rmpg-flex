@@ -6,6 +6,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
 import { escapeHtml } from '../../utils/sanitize';
+import mapboxgl from 'mapbox-gl';
 
 // ============================================================
 // Types
@@ -45,7 +46,7 @@ interface UnitOption {
 }
 
 interface Props {
-  map: google.maps.Map | null;
+  map: mapboxgl.Map | null;
   mapLoaded: boolean;
   isOpen: boolean;
   onToggle: () => void;
@@ -55,7 +56,7 @@ interface Props {
 // Constants
 // ============================================================
 
-const TRAIL_COLOR = '#f59e0b'; // amber for history trail (distinct from live cyan trails)
+const TRAIL_COLOR = '#f59e0b';
 
 const MPS_TO_MPH = 2.23694;
 
@@ -144,13 +145,16 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
   const [playbackSpeed, setPlaybackSpeed] = useState(2);
 
   // Map objects refs
-  const polyLinesRef = useRef<google.maps.Polyline[]>([]);
-  const dotMarkersRef = useRef<google.maps.Circle[]>([]);
-  const arrowMarkersRef = useRef<google.maps.Marker[]>([]);
-  const speedAlertMarkersRef = useRef<google.maps.Marker[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
-  const playbackMarkerRef = useRef<google.maps.Marker | null>(null);
+  const sourceIdsRef = useRef<string[]>([]);
+  const layerIdsRef = useRef<string[]>([]);
+  const arrowMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const speedAlertMarkersRef = useRef<mapboxgl.Marker[]>([]);
+  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
+  const playbackMarkerRef = useRef<mapboxgl.Marker | null>(null);
   const playbackAnimRef = useRef<number | null>(null);
+  const dotLayerIdRef = useRef<string | null>(null);
+  const dotClickHandlerRef = useRef<((e: any) => void) | null>(null);
+  const trailRenderIdRef = useRef(0);
 
   // ── Fetch available units on open ──
   useEffect(() => {
@@ -164,19 +168,34 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
   // ── Clear map objects ──
   const clearMapObjects = useCallback(() => {
-    polyLinesRef.current.forEach((l) => l.setMap(null));
-    polyLinesRef.current = [];
-    dotMarkersRef.current.forEach((m) => m.setMap(null));
-    dotMarkersRef.current = [];
-    arrowMarkersRef.current.forEach((a) => a.setMap(null));
+    if (dotLayerIdRef.current && dotClickHandlerRef.current && map) {
+      map.off('click', dotLayerIdRef.current, dotClickHandlerRef.current);
+    }
+    dotLayerIdRef.current = null;
+    dotClickHandlerRef.current = null;
+
+    layerIdsRef.current.forEach((id) => {
+      try { if (map?.getLayer(id)) map.removeLayer(id); } catch (e) { /* */ }
+    });
+    layerIdsRef.current = [];
+
+    sourceIdsRef.current.forEach((id) => {
+      try { if (map?.getSource(id)) map.removeSource(id); } catch (e) { /* */ }
+    });
+    sourceIdsRef.current = [];
+
+    arrowMarkersRef.current.forEach((m) => m.remove());
     arrowMarkersRef.current = [];
-    speedAlertMarkersRef.current.forEach((a) => a.setMap(null));
+    speedAlertMarkersRef.current.forEach((a) => a.remove());
     speedAlertMarkersRef.current = [];
     if (playbackMarkerRef.current) {
-      playbackMarkerRef.current.setMap(null);
+      playbackMarkerRef.current.remove();
       playbackMarkerRef.current = null;
     }
-  }, []);
+    if (infoWindowRef.current) {
+      infoWindowRef.current.remove();
+    }
+  }, [map]);
 
   // ── Clean up on close/unmount ──
   useEffect(() => {
@@ -227,130 +246,148 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     clearMapObjects();
 
     if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
+      infoWindowRef.current = new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+      });
     }
 
     const pts = trailData.points;
     if (pts.length === 0) return;
 
-    // Draw segment polylines with speed-based coloring
+    trailRenderIdRef.current += 1;
+    const renderId = trailRenderIdRef.current;
+    const lineSourceId = `breadcrumb-line-${renderId}`;
+    const lineLayerId = `breadcrumb-line-layer-${renderId}`;
+    const dotSourceId = `breadcrumb-dots-${renderId}`;
+    const dotLayerId = `breadcrumb-dots-layer-${renderId}`;
+
+    // Build line features (one per segment, with speed properties for data-driven styling)
+    const lineFeatures: any[] = [];
     for (let i = 0; i < pts.length - 1; i++) {
       const p1 = pts[i];
       const p2 = pts[i + 1];
       const freshness = (i + 1) / pts.length;
       const opacity = 0.3 + freshness * 0.6;
 
-      const seg = new google.maps.Polyline({
-        path: [{ lat: p1.lat, lng: p1.lng }, { lat: p2.lat, lng: p2.lng }],
-        geodesic: true,
-        strokeColor: speedToColor(p1.speed),
-        strokeOpacity: opacity,
-        strokeWeight: speedToWeight(p1.speed),
-        map,
+      lineFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'LineString', coordinates: [[p1.lng, p1.lat], [p2.lng, p2.lat]] },
+        properties: { color: speedToColor(p1.speed), opacity, width: speedToWeight(p1.speed) },
       });
-      polyLinesRef.current.push(seg);
     }
+
+    // Add line source + layer
+    map.addSource(lineSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: lineFeatures } });
+    map.addLayer({
+      id: lineLayerId, type: 'line', source: lineSourceId,
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-opacity': ['get', 'opacity'],
+        'line-width': ['get', 'width'],
+      },
+    });
+
+    // Build dot features (each point with all TrailPoint data in properties)
+    const dotFeatures: any[] = [];
+    pts.forEach((pt, ptIdx) => {
+      const isFirst = ptIdx === 0;
+      const isLast = ptIdx === pts.length - 1;
+      dotFeatures.push({
+        type: 'Feature',
+        geometry: { type: 'Point', coordinates: [pt.lng, pt.lat] },
+        properties: {
+          lat: pt.lat, lng: pt.lng, accuracy: pt.accuracy, heading: pt.heading,
+          speed: pt.speed, status: pt.status, call_number: pt.call_number,
+          call_type: pt.call_type, time: pt.time, road_name: pt.road_name,
+          intersection: pt.intersection,
+          radius: isFirst || isLast ? 8 : 3,
+          color: isFirst ? '#22c55e' : isLast ? '#ef4444' : speedToColor(pt.speed),
+          pointOpacity: isFirst || isLast ? 1 : 0.5,
+          strokeWidth: isFirst || isLast ? 2 : 0.5,
+        },
+      });
+    });
+
+    // Add dot source + circle layer
+    map.addSource(dotSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: dotFeatures } });
+    map.addLayer({
+      id: dotLayerId, type: 'circle', source: dotSourceId,
+      paint: {
+        'circle-radius': ['get', 'radius'],
+        'circle-color': ['get', 'color'],
+        'circle-opacity': ['get', 'pointOpacity'],
+        'circle-stroke-color': '#ffffff',
+        'circle-stroke-width': ['get', 'strokeWidth'],
+        'circle-stroke-opacity': 0.8,
+      },
+    });
+
+    sourceIdsRef.current = [lineSourceId, dotSourceId];
+    layerIdsRef.current = [lineLayerId, dotLayerId];
+    dotLayerIdRef.current = dotLayerId;
+
+    // Click handler for dots
+    const clickHandler = (e: any) => {
+      const features = e.features;
+      if (!features || !features[0]) return;
+      const props = features[0].properties;
+      const time = new Date(props.time).toLocaleString();
+      const locationRow = props.road_name
+        ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${escapeHtml(props.road_name)}${props.intersection ? ` @ ${escapeHtml(props.intersection)}` : ''}</td></tr>`
+        : '';
+      const html = `
+        <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
+          <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${TRAIL_COLOR}">
+            ${escapeHtml(trailData.call_sign)} \u2014 ${escapeHtml(trailData.officer_name || 'Unknown')}
+          </div>
+          <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trailData.badge_number || '')} \u2022 Historical Playback</div>
+          ${props.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #282828">${escapeHtml(props.road_name)}</div>` : ''}
+          <div style="font-size:18px;font-weight:900;color:${speedToColor(props.speed)};margin-bottom:4px">${formatSpeedMph(props.speed)}</div>
+          <table style="width:100%;font-size:11px;border-collapse:collapse">
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:${statusToColor(props.status)}">${STATUS_LABELS[props.status] || props.status}</td></tr>
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:${speedToColor(props.speed)};font-weight:bold">${formatSpeedMph(props.speed)}</td></tr>
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeadingDir(props.heading)}</td></tr>
+            ${locationRow}
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${props.accuracy != null ? `\u00b1${Math.round(props.accuracy)}m` : '\u2014'}</td></tr>
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${Number(props.lat).toFixed(6)}, ${Number(props.lng).toFixed(6)}</td></tr>
+            ${props.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(props.call_number)} \u2014 ${escapeHtml(props.call_type || '')}</td></tr>` : ''}
+          </table>
+        </div>
+      `;
+      infoWindowRef.current?.remove();
+      infoWindowRef.current?.setLngLat([Number(props.lng), Number(props.lat)]).setHTML(html).addTo(map);
+    };
+    map.on('click', dotLayerId, clickHandler);
+    dotClickHandlerRef.current = clickHandler;
 
     // Directional arrows every 5th point
     pts.forEach((pt, ptIdx) => {
       if (ptIdx % 5 !== 2 || pt.heading == null) return;
-      const arrow = new google.maps.Marker({
-        position: { lat: pt.lat, lng: pt.lng },
-        map,
-        icon: {
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 3,
-          rotation: pt.heading,
-          fillColor: TRAIL_COLOR,
-          fillOpacity: 0.7,
-          strokeColor: '#fff',
-          strokeWeight: 0.5,
-          strokeOpacity: 0.6,
-        },
-        clickable: false,
-        zIndex: 1,
-      });
-      arrowMarkersRef.current.push(arrow);
-    });
-
-    // Dot markers at each point
-    pts.forEach((pt, ptIdx) => {
-      const isFirst = ptIdx === 0;
-      const isLast = ptIdx === pts.length - 1;
-
-      const dot = new google.maps.Circle({
-        center: { lat: pt.lat, lng: pt.lng },
-        radius: isFirst || isLast ? 8 : 3,
-        fillColor: isFirst ? '#22c55e' : isLast ? '#ef4444' : speedToColor(pt.speed),
-        fillOpacity: isFirst || isLast ? 1 : 0.5,
-        strokeColor: '#fff',
-        strokeWeight: isFirst || isLast ? 2 : 0.5,
-        strokeOpacity: 0.8,
-        map,
-        clickable: true,
-        zIndex: ptIdx + 10,
-      });
-
-      dot.addListener('click', () => {
-        const time = new Date(pt.time).toLocaleString();
-        const locationRow = pt.road_name
-          ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${escapeHtml(pt.road_name)}${pt.intersection ? ` @ ${escapeHtml(pt.intersection)}` : ''}</td></tr>`
-          : '';
-        const html = `
-          <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:220px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
-            <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${TRAIL_COLOR}">
-              ${escapeHtml(trailData.call_sign)} \u2014 ${escapeHtml(trailData.officer_name || 'Unknown')}
-            </div>
-            <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trailData.badge_number || '')} \u2022 Historical Playback</div>
-            ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #282828">${escapeHtml(pt.road_name)}</div>` : ''}
-            <div style="font-size:18px;font-weight:900;color:${speedToColor(pt.speed)};margin-bottom:4px">${formatSpeedMph(pt.speed)}</div>
-            <table style="width:100%;font-size:11px;border-collapse:collapse">
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:${statusToColor(pt.status)}">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:${speedToColor(pt.speed)};font-weight:bold">${formatSpeedMph(pt.speed)}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">${formatHeadingDir(pt.heading)}</td></tr>
-              ${locationRow}
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accuracy</td><td style="color:#e0e0e0">${pt.accuracy != null ? `\u00b1${Math.round(pt.accuracy)}m` : '\u2014'}</td></tr>
-              <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
-              ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} \u2014 ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
-            </table>
-          </div>
-        `;
-        infoWindowRef.current?.setContent(html);
-        infoWindowRef.current?.setPosition({ lat: pt.lat, lng: pt.lng });
-        infoWindowRef.current?.open(map);
-      });
-
-      dotMarkersRef.current.push(dot);
+      const el = document.createElement('div');
+      el.style.pointerEvents = 'none';
+      const inner = document.createElement('div');
+      inner.style.transform = `rotate(${pt.heading}deg)`;
+      inner.innerHTML = `<svg width="18" height="18" viewBox="-9 -9 18 18" style="display:block"><polygon points="0,-7 7,6 -7,6" fill="${TRAIL_COLOR}" fill-opacity="0.7" stroke="white" stroke-width="0.5" stroke-opacity="0.6"/></svg>`;
+      el.appendChild(inner);
+      el.style.zIndex = '1';
+      arrowMarkersRef.current.push(
+        new mapboxgl.Marker({ element: el }).setLngLat([pt.lng, pt.lat]).addTo(map)
+      );
     });
 
     // Speed alert markers — exclamation at 80+ mph
     pts.forEach((pt) => {
       if (pt.speed != null && pt.speed * MPS_TO_MPH >= 80) {
         try {
-          const alertMarker = new google.maps.Marker({
-            position: { lat: pt.lat, lng: pt.lng },
-            map,
-            icon: {
-              path: 'M -6,-6 L 6,-6 L 0,6 Z',
-              scale: 1.8,
-              fillColor: '#dc2626',
-              fillOpacity: 0.95,
-              strokeColor: '#fbbf24',
-              strokeWeight: 2,
-              strokeOpacity: 1,
-              anchor: new google.maps.Point(0, 0),
-            },
-            label: {
-              text: '!',
-              color: '#ffffff',
-              fontWeight: '900',
-              fontSize: '11px',
-            },
-            title: `Speed Alert: ${(pt.speed * MPS_TO_MPH).toFixed(0)} mph`,
-            zIndex: 5000,
-          });
-          speedAlertMarkersRef.current.push(alertMarker);
+          const el = document.createElement('div');
+          el.title = `Speed Alert: ${(pt.speed * MPS_TO_MPH).toFixed(0)} mph`;
+          el.innerHTML = `<svg width="24" height="24" viewBox="-12 -12 24 24" style="display:block"><polygon points="0,-10 10,8 -10,8" fill="#dc2626" fill-opacity="0.95" stroke="#fbbf24" stroke-width="2"/><text x="0" y="4" text-anchor="middle" fill="white" font-weight="900" font-size="11" font-family="sans-serif">!</text></svg>`;
+          el.style.zIndex = '5000';
+          speedAlertMarkersRef.current.push(
+            new mapboxgl.Marker({ element: el }).setLngLat([pt.lng, pt.lat]).addTo(map)
+          );
         } catch (err) {
           // ignore individual marker errors
         }
@@ -358,9 +395,9 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     });
 
     // Fit map to trail bounds
-    const bounds = new google.maps.LatLngBounds();
-    pts.forEach((pt) => bounds.extend({ lat: pt.lat, lng: pt.lng }));
-    map.fitBounds(bounds, { top: 50, right: 50, bottom: 50, left: 360 });
+    const bounds = new mapboxgl.LngLatBounds();
+    pts.forEach((pt) => bounds.extend([pt.lng, pt.lat]));
+    map.fitBounds(bounds, { padding: { top: 50, right: 50, bottom: 50, left: 360 } });
   }, [map, clearMapObjects]);
 
   // ── Playback animation ──
@@ -369,21 +406,16 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
 
     if (!playbackMarkerRef.current) {
       const pt = trail.points[playbackIdx] || trail.points[0];
-      playbackMarkerRef.current = new google.maps.Marker({
-        position: { lat: pt.lat, lng: pt.lng },
-        map,
-        icon: {
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 5,
-          rotation: pt.heading || 0,
-          fillColor: '#00ff88',
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        },
-        zIndex: 9999,
-        title: `${trail.call_sign} \u2014 History Playback`,
-      });
+      const el = document.createElement('div');
+      const inner = document.createElement('div');
+      inner.style.transform = `rotate(${pt.heading || 0}deg)`;
+      inner.innerHTML = '<svg width="28" height="28" viewBox="-14 -14 28 28" style="display:block"><polygon points="0,-12 12,10 -12,10" fill="#00ff88" stroke="white" stroke-width="2"/></svg>';
+      el.appendChild(inner);
+      el.style.zIndex = '9999';
+      el.title = `${trail.call_sign} \u2014 History Playback`;
+      playbackMarkerRef.current = new mapboxgl.Marker({ element: el })
+        .setLngLat([pt.lng, pt.lat])
+        .addTo(map);
     }
 
     let currentIdx = playbackIdx;
@@ -395,16 +427,10 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
       }
       const pt = trail.points[currentIdx];
       if (playbackMarkerRef.current) {
-        playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
-        playbackMarkerRef.current.setIcon({
-          path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-          scale: 5,
-          rotation: pt.heading || 0,
-          fillColor: '#00ff88',
-          fillOpacity: 1,
-          strokeColor: '#fff',
-          strokeWeight: 2,
-        });
+        playbackMarkerRef.current.setLngLat([pt.lng, pt.lat]);
+        const markerEl = playbackMarkerRef.current.getElement();
+        const inner = markerEl.firstElementChild as HTMLElement | null;
+        if (inner) inner.style.transform = `rotate(${pt.heading || 0}deg)`;
       }
       setPlaybackIdx(currentIdx);
       currentIdx++;
@@ -554,7 +580,6 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
             <div className="panel-inset bg-surface-deep px-2 py-1.5 space-y-1">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-mono font-bold text-amber-400">{trail.call_sign}</span>
-                {/* #48: Point count with tabular-nums */}
                 <span className="text-[9px] font-mono text-rmpg-400 tabular-nums">{trail.points.length.toLocaleString()} points</span>
               </div>
               {trail.officer_name && (
@@ -743,31 +768,20 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                   if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
                   const pt = trail.points[idx];
                   if (pt && playbackMarkerRef.current) {
-                    playbackMarkerRef.current.setPosition({ lat: pt.lat, lng: pt.lng });
-                    playbackMarkerRef.current.setIcon({
-                      path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                      scale: 5,
-                      rotation: pt.heading || 0,
-                      fillColor: '#00ff88',
-                      fillOpacity: 1,
-                      strokeColor: '#fff',
-                      strokeWeight: 2,
-                    });
+                    playbackMarkerRef.current.setLngLat([pt.lng, pt.lat]);
+                    const markerEl = playbackMarkerRef.current.getElement();
+                    const inner = markerEl.firstElementChild as HTMLElement | null;
+                    if (inner) inner.style.transform = `rotate(${pt.heading || 0}deg)`;
                   } else if (pt && map && !playbackMarkerRef.current) {
-                    playbackMarkerRef.current = new google.maps.Marker({
-                      position: { lat: pt.lat, lng: pt.lng },
-                      map,
-                      icon: {
-                        path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW,
-                        scale: 5,
-                        rotation: pt.heading || 0,
-                        fillColor: '#00ff88',
-                        fillOpacity: 1,
-                        strokeColor: '#fff',
-                        strokeWeight: 2,
-                      },
-                      zIndex: 9999,
-                    });
+                    const el = document.createElement('div');
+                    const inner = document.createElement('div');
+                    inner.style.transform = `rotate(${pt.heading || 0}deg)`;
+                    inner.innerHTML = '<svg width="28" height="28" viewBox="-14 -14 28 28" style="display:block"><polygon points="0,-12 12,10 -12,10" fill="#00ff88" stroke="white" stroke-width="2"/></svg>';
+                    el.appendChild(inner);
+                    el.style.zIndex = '9999';
+                    playbackMarkerRef.current = new mapboxgl.Marker({ element: el })
+                      .setLngLat([pt.lng, pt.lat])
+                      .addTo(map);
                   }
                 }}
                 className="w-full h-1 accent-amber-500"
@@ -780,7 +794,10 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                   onClick={() => {
                     setPlaybackIdx(0);
                     if (trail.points[0] && playbackMarkerRef.current) {
-                      playbackMarkerRef.current.setPosition({ lat: trail.points[0].lat, lng: trail.points[0].lng });
+                      playbackMarkerRef.current.setLngLat([trail.points[0].lng, trail.points[0].lat]);
+                      const markerEl = playbackMarkerRef.current.getElement();
+                      const inner = markerEl.firstElementChild as HTMLElement | null;
+                      if (inner) inner.style.transform = `rotate(${trail.points[0].heading || 0}deg)`;
                     }
                   }}
                   className="p-1.5 rounded-sm hover:bg-[#181818] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
@@ -815,7 +832,10 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                     setPlaybackIdx(lastIdx);
                     setIsPlaying(false);
                     if (trail.points[lastIdx] && playbackMarkerRef.current) {
-                      playbackMarkerRef.current.setPosition({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
+                      playbackMarkerRef.current.setLngLat([trail.points[lastIdx].lng, trail.points[lastIdx].lat]);
+                      const markerEl = playbackMarkerRef.current.getElement();
+                      const inner = markerEl.firstElementChild as HTMLElement | null;
+                      if (inner) inner.style.transform = `rotate(${trail.points[lastIdx].heading || 0}deg)`;
                     }
                   }}
                   className="p-1.5 rounded-sm hover:bg-[#181818] transition-colors duration-150 w-7 h-7 flex items-center justify-center"
@@ -832,10 +852,13 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
                     setIsPlaying(false);
                     if (playbackAnimRef.current) { clearTimeout(playbackAnimRef.current); playbackAnimRef.current = null; }
                     if (trail.points[lastIdx] && playbackMarkerRef.current) {
-                      playbackMarkerRef.current.setPosition({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
+                      playbackMarkerRef.current.setLngLat([trail.points[lastIdx].lng, trail.points[lastIdx].lat]);
+                      const markerEl = playbackMarkerRef.current.getElement();
+                      const inner = markerEl.firstElementChild as HTMLElement | null;
+                      if (inner) inner.style.transform = `rotate(${trail.points[lastIdx].heading || 0}deg)`;
                     }
                     if (trail.points[lastIdx] && map) {
-                      map.panTo({ lat: trail.points[lastIdx].lat, lng: trail.points[lastIdx].lng });
+                      map.panTo([trail.points[lastIdx].lng, trail.points[lastIdx].lat]);
                     }
                   }}
                   className="px-1.5 py-0.5 text-[8px] font-mono font-bold rounded-sm transition-colors text-amber-400 hover:bg-amber-900/30 border border-amber-700/30"

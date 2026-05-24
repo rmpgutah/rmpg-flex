@@ -1,4 +1,5 @@
 import React from 'react';
+import mapboxgl from 'mapbox-gl';
 import { Layers, Eye, EyeOff, Shield, AlertTriangle, Building2, Thermometer, Route, Navigation2 } from 'lucide-react';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import MobileBottomSheet from '../../../components/mobile/MobileBottomSheet';
@@ -29,7 +30,7 @@ interface MapMobileSheetProps {
     latitude: number | null;
     longitude: number | null;
   };
-  mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
+  mapInstanceRef: React.MutableRefObject<mapboxgl.Map | null>;
 }
 
 export default function MapMobileSheet({
@@ -231,7 +232,7 @@ export default function MapMobileSheet({
               onClick={() => {
                 const map = mapInstanceRef.current;
                 if (map && gps.latitude != null && gps.longitude != null) {
-                  map.panTo({ lat: gps.latitude, lng: gps.longitude });
+                  map.panTo([gps.longitude, gps.latitude]);
                   map.setZoom(16);
                 }
               }}

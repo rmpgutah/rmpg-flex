@@ -2297,4 +2297,27 @@ router.get('/calls/:id/risk-score', validateParamIdMiddleware, requireRole('admi
   }
 });
 
+// GET /api/dispatch/queue - Alias for /calls/active for the map page
+router.get('/queue', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), (req: Request, res: Response) => {
+  try {
+    const db = getDb();
+    const rows = db.prepare(`
+      SELECT c.*, u.full_name as dispatcher_name, p.name as property_name,
+        cl.name as client_name
+      FROM calls_for_service c
+      LEFT JOIN users u ON c.dispatcher_id = u.id
+      LEFT JOIN properties p ON c.property_id = p.id
+      LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      WHERE c.status IN ('dispatched', 'enroute', 'onscene', 'pending', 'open')
+      ORDER BY
+        COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC,
+        c.created_at DESC
+      LIMIT 200
+    `).all();
+    res.json(rows);
+  } catch (error: any) {
+    res.status(500).json({ error: 'Failed to get active calls', code: 'ACTIVE_CALLS_ERROR' });
+  }
+});
+
 export default router;

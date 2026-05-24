@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 
 // ─── Types ──────────────────────────────────────────────────
@@ -44,22 +45,53 @@ function getTier(minutes: number): DwellTier | null {
   return DWELL_TIERS.find((t) => minutes >= t.minMinutes && minutes < t.maxMinutes) || null;
 }
 
+function circleToPolygon(center: [number, number], radiusM: number, segments = 32): [number, number][] {
+  const coords: [number, number][] = [];
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos(center[1] * Math.PI / 180);
+  const dLat = radiusM / metersPerDegLat;
+  const dLng = radiusM / metersPerDegLng;
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * 2 * Math.PI;
+    coords.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
+  }
+  return coords;
+}
+
 // ─── Refresh interval ───────────────────────────────────────
 
-const REFRESH_MS = 30_000; // 30 seconds
+const REFRESH_MS = 30_000;
 
 // ─── Hook ───────────────────────────────────────────────────
 
 export function useMapDwellTime(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   _units: Array<{ call_sign: string; latitude?: number; longitude?: number; status?: string }>,
   enabled: boolean,
 ): UseMapDwellTimeReturn {
   const [dwellData, setDwellData] = useState<DwellTimeRecord[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const circlesRef = useRef<google.maps.Circle[]>([]);
+  const layerIdsRef = useRef<string[]>([]);
+  const sourceIdsRef = useRef<string[]>([]);
   const pulseIntervalsRef = useRef<ReturnType<typeof setInterval>[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
+
+  function removeDwellLayers() {
+    if (!map) return;
+    layerIdsRef.current.forEach((id) => {
+      try { if (map.getLayer(id)) map.removeLayer(id); } catch { /* ignore */ }
+    });
+    sourceIdsRef.current.forEach((id) => {
+      try { if (map.getSource(id)) map.removeSource(id); } catch { /* ignore */ }
+    });
+    layerIdsRef.current = [];
+    sourceIdsRef.current = [];
+    pulseIntervalsRef.current.forEach((id) => clearInterval(id));
+    pulseIntervalsRef.current = [];
+    popupRef.current?.remove();
+    popupRef.current = null;
+  }
 
   // ── Fetch dwell times ─────────────────────────────────────
 
@@ -101,45 +133,43 @@ export function useMapDwellTime(
   // ── Render circles ────────────────────────────────────────
 
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    removeDwellLayers();
 
-    // Clear existing circles and pulse intervals
-    circlesRef.current.forEach((c) => c.setMap(null));
-    circlesRef.current = [];
-    pulseIntervalsRef.current.forEach((id) => clearInterval(id));
-    pulseIntervalsRef.current = [];
-
-    if (!enabled || dwellData.length === 0) return;
-
-    // Fix 67: create info window for dwell time details
-    const infoWindow = new google.maps.InfoWindow();
+    if (!map || !enabled || dwellData.length === 0) return;
 
     dwellData.forEach((record) => {
       if (record.latitude == null || record.longitude == null) return;
-      // Validate finite coordinates
       if (!isFinite(record.latitude) || !isFinite(record.longitude)) return;
 
       const tier = getTier(record.dwell_minutes);
       if (!tier) return;
 
-      // Fix 68: scale circle radius by dwell duration
       const scaledRadius = Math.max(tier.radius, Math.min(250, tier.radius + record.dwell_minutes * 0.5));
 
-      const circle = new google.maps.Circle({
-        center: { lat: record.latitude, lng: record.longitude },
-        radius: scaledRadius,
-        fillColor: tier.color,
-        fillOpacity: 0.08,
-        strokeColor: tier.color,
-        strokeWeight: tier.strokeWeight,
-        strokeOpacity: 0.7,
-        map,
-        clickable: true, // Fix 67: make clickable for info window
-        zIndex: 6,
+      const sourceId = `dwell-source-${record.call_sign}-${record.latitude}-${record.longitude}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+      const layerId = `dwell-layer-${record.call_sign}-${record.latitude}-${record.longitude}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+
+      const poly = circleToPolygon([record.longitude, record.latitude], scaledRadius);
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [{ type: 'Feature', properties: {}, geometry: { type: 'Polygon', coordinates: [poly] } }] },
+      });
+      map.addLayer({
+        id: layerId,
+        type: 'fill',
+        source: sourceId,
+        paint: {
+          'fill-color': tier.color,
+          'fill-opacity': 0.08,
+          'fill-outline-color': tier.color,
+        },
       });
 
-      // Fix 67: info window showing dwell duration on click
-      circle.addListener('click', () => {
+      sourceIdsRef.current.push(sourceId);
+      layerIdsRef.current.push(layerId);
+
+      // Info window on click
+      map.on('click', layerId, () => {
         const hours = Math.floor(record.dwell_minutes / 60);
         const mins = Math.round(record.dwell_minutes % 60);
         const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
@@ -165,9 +195,12 @@ export function useMapDwellTime(
         addRow('Status', record.status);
         addRow('Unit', record.call_sign);
         container.appendChild(table);
-        infoWindow.setContent(container);
-        infoWindow.setPosition({ lat: record.latitude, lng: record.longitude });
-        infoWindow.open(map);
+
+        popupRef.current?.remove();
+        popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '360px', offset: 15 })
+          .setLngLat([record.longitude, record.latitude])
+          .setDOMContent(container)
+          .addTo(map);
       });
 
       // Pulsing effect for 60+ min dwell
@@ -178,34 +211,29 @@ export function useMapDwellTime(
           opacity += direction * 0.05;
           if (opacity <= 0.2) { opacity = 0.2; direction = 1; }
           if (opacity >= 0.9) { opacity = 0.9; direction = -1; }
-          circle.setOptions({ strokeOpacity: opacity });
+          if (map && map.getLayer(layerId)) {
+            map.setPaintProperty(layerId, 'fill-opacity', opacity);
+          }
         }, 500);
         pulseIntervalsRef.current.push(pulseInterval);
       }
-
-      circlesRef.current.push(circle);
     });
 
     return () => {
-      circlesRef.current.forEach((c) => c.setMap(null));
-      circlesRef.current = [];
-      pulseIntervalsRef.current.forEach((id) => clearInterval(id));
-      pulseIntervalsRef.current = [];
+      removeDwellLayers();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map, enabled, dwellData]);
 
   // ── Cleanup on unmount ────────────────────────────────────
 
   useEffect(() => {
     return () => {
-      circlesRef.current.forEach((c) => c.setMap(null));
-      circlesRef.current = [];
-      pulseIntervalsRef.current.forEach((id) => clearInterval(id));
-      pulseIntervalsRef.current = [];
+      removeDwellLayers();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // dwellAlertCount = units dwelling > 15 min
   const dwellAlertCount = dwellData.filter((d) => d.dwell_minutes > 15).length;
 
   return { dwellAlertCount, loading };

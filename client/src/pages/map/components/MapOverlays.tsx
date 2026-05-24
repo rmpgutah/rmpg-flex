@@ -1,4 +1,5 @@
 import React from 'react';
+import mapboxgl from 'mapbox-gl';
 import { Siren, Shield, Navigation2, Crosshair, Plus, Minus } from 'lucide-react';
 import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, isLightMapStyle, isSatelliteStyle } from '../utils/mapConstants';
@@ -6,7 +7,7 @@ import type { MapStyleId } from '../utils/mapConstants';
 import MapExportMenu from './MapExportMenu';
 
 interface MapOverlaysProps {
-  mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
+  mapInstanceRef: React.MutableRefObject<mapboxgl.Map | null>;
   mapStyle: MapStyleId;
   isConnected: boolean;
   sidebarOpen: boolean;
@@ -21,7 +22,7 @@ interface MapOverlaysProps {
 
   // Tracking lines
   showTrackingLines: boolean;
-  trackingLinesRef: React.MutableRefObject<google.maps.Polyline[]>;
+  trackingLinesRef: React.MutableRefObject<any[]>;
 
   // Route (routing result from useMapRouting hook)
   activeRoute: { unitCallSign: string; callNumber: string; eta: string; distance: string } | null;
@@ -235,7 +236,7 @@ export default function MapOverlays({
           <button type="button"
             onClick={() => {
               if (gps.latitude != null && gps.longitude != null) {
-                mapInstanceRef.current?.panTo({ lat: gps.latitude, lng: gps.longitude });
+                mapInstanceRef.current?.panTo([gps.longitude, gps.latitude]);
                 mapInstanceRef.current?.setZoom(16);
               }
             }}
@@ -261,7 +262,7 @@ export default function MapOverlays({
         />
         <button type="button"
           onClick={() => {
-            mapInstanceRef.current?.panTo({ lat: 40.7608, lng: -111.8910 });
+            mapInstanceRef.current?.panTo([-111.8910, 40.7608]);
             mapInstanceRef.current?.setZoom(12);
           }}
           className={`backdrop-blur-md shadow-xl transition-colors ${

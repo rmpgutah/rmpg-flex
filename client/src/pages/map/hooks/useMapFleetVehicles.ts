@@ -5,8 +5,8 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -38,22 +38,20 @@ interface UseMapFleetVehiclesReturn {
 // ─── Status color mapping ───────────────────────────────────
 
 function getVehicleColor(status: string, gpsReportedAt: string | null): string {
-  // If GPS data is stale (> 1 hour), show gray regardless of status
   if (gpsReportedAt) {
     const reportedTime = new Date(gpsReportedAt).getTime();
-    if (isNaN(reportedTime)) return '#666666'; // invalid date — gray
+    if (isNaN(reportedTime)) return '#666666';
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
-    if (reportedTime < oneHourAgo) return '#666666'; // gray
+    if (reportedTime < oneHourAgo) return '#666666';
   } else {
-    // No GPS time at all — stale
     return '#666666';
   }
 
   switch (status) {
-    case 'in_service': return '#22c55e';      // green
-    case 'maintenance': return '#f59e0b';      // amber (maintenance_due equivalent)
-    case 'out_of_service': return '#dc2626';   // red
-    default: return '#666666';                 // gray
+    case 'in_service': return '#22c55e';
+    case 'maintenance': return '#f59e0b';
+    case 'out_of_service': return '#dc2626';
+    default: return '#666666';
   }
 }
 
@@ -77,7 +75,6 @@ function createVehicleMarkerElement(vehicle: FleetVehicle): HTMLDivElement {
     position: relative;
   `;
 
-  // Fix 78: add direction arrow based on heading
   if (vehicle.gps_heading != null && vehicle.gps_speed != null && vehicle.gps_speed > 1) {
     const arrow = document.createElement('div');
     arrow.style.cssText = `
@@ -133,7 +130,6 @@ function buildVehicleInfoContent(vehicle: FleetVehicle): HTMLDivElement {
     table.appendChild(tr);
   };
 
-  // Vehicle details
   const makeModel = [vehicle.year, vehicle.make, vehicle.model].filter(Boolean).join(' ');
   addRow('Vehicle', makeModel || undefined);
   addRow('Plate', vehicle.plate_number);
@@ -142,7 +138,6 @@ function buildVehicleInfoContent(vehicle: FleetVehicle): HTMLDivElement {
   addRow('Next Service', vehicle.next_service_due);
   addRow('Assigned Unit', vehicle.assigned_call_sign);
 
-  // GPS info
   if (vehicle.gps_reported_at) {
     const gpsTime = new Date(vehicle.gps_reported_at);
     addRow('GPS Time', gpsTime.toLocaleString());
@@ -157,24 +152,24 @@ function buildVehicleInfoContent(vehicle: FleetVehicle): HTMLDivElement {
 
 // ─── Hook ───────────────────────────────────────────────────
 
-const REFRESH_INTERVAL = 2 * 60 * 1000; // 2 minutes
+const REFRESH_INTERVAL = 2 * 60 * 1000;
 
 export function useMapFleetVehicles(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabled: boolean,
 ): UseMapFleetVehiclesReturn {
   const [vehicles, setVehicles] = useState<FleetVehicle[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const markersRef = useRef<google.maps.OverlayView[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const infoWindowRef = useRef<mapboxgl.Popup | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Clear all markers ─────────────────────────────────────
 
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach((m) => {
-      m.setMap(null);
+      m.remove();
     });
     markersRef.current = [];
   }, []);
@@ -182,13 +177,17 @@ export function useMapFleetVehicles(
   // ── Render markers ────────────────────────────────────────
 
   const renderMarkers = useCallback((data: FleetVehicle[]) => {
-    const OverlayMarkerClass = getOverlayMarkerClass();
-    if (!map || !OverlayMarkerClass) return;
+    if (!map) return;
 
     clearMarkers();
 
     if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
+      infoWindowRef.current = new mapboxgl.Popup({
+        closeButton: true,
+        closeOnClick: false,
+        maxWidth: '360px',
+        offset: 15,
+      });
     }
 
     const withCoords = data.filter(
@@ -200,22 +199,23 @@ export function useMapFleetVehicles(
       const lng = Number(vehicle.gps_lon);
 
       const content = createVehicleMarkerElement(vehicle);
+      content.style.cursor = 'pointer';
+      content.title = `Vehicle ${vehicle.vehicle_number}`;
 
-      const marker = new OverlayMarkerClass({
-        map,
-        position: { lat, lng },
-        content,
-        title: `Vehicle ${vehicle.vehicle_number}`,
-        zIndex: 15,
-        onClick: () => {
-          const infoContent = buildVehicleInfoContent(vehicle);
-          infoWindowRef.current?.setContent(infoContent);
-          infoWindowRef.current?.setPosition({ lat, lng });
-          infoWindowRef.current?.open(map);
-        },
+      content.addEventListener('click', () => {
+        const infoContent = buildVehicleInfoContent(vehicle);
+        const popup = infoWindowRef.current;
+        if (popup) {
+          popup.remove();
+          popup.setLngLat([lng, lat]).setDOMContent(infoContent).addTo(map);
+        }
       });
 
-      markersRef.current.push(marker as unknown as google.maps.OverlayView);
+      const marker = new mapboxgl.Marker({ element: content })
+        .setLngLat([lng, lat])
+        .addTo(map);
+
+      markersRef.current.push(marker);
     });
   }, [map, clearMarkers]);
 
@@ -248,7 +248,7 @@ export function useMapFleetVehicles(
   // ── Enable/disable + refresh cycle ────────────────────────
 
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
 
     if (!enabled) {
       clearMarkers();
@@ -260,10 +260,8 @@ export function useMapFleetVehicles(
       return;
     }
 
-    // Initial fetch
     fetchFleetData();
 
-    // Refresh every 2 minutes
     refreshTimerRef.current = setInterval(fetchFleetData, REFRESH_INTERVAL);
 
     return () => {
@@ -278,10 +276,10 @@ export function useMapFleetVehicles(
 
   useEffect(() => {
     return () => {
-      markersRef.current.forEach((m) => { m.setMap(null); });
+      markersRef.current.forEach((m) => { m.remove(); });
       markersRef.current = [];
       if (infoWindowRef.current) {
-        infoWindowRef.current.close();
+        infoWindowRef.current.remove();
         infoWindowRef.current = null;
       }
       if (refreshTimerRef.current) {

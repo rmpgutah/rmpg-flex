@@ -5,8 +5,8 @@
 // ============================================================
 
 import { useEffect, useRef, useState, useCallback } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
-import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -22,7 +22,7 @@ interface IntelRecord {
 interface UseMapIntelLayersReturn {
   counts: Record<IntelLayer, number>;
   loading: Record<IntelLayer, boolean>;
-  errors: Record<IntelLayer, number>; // Fix 46: error count tracking
+  errors: Record<IntelLayer, number>;
 }
 
 // ─── Layer config ───────────────────────────────────────────
@@ -62,14 +62,13 @@ function createMarkerElement(layer: IntelLayer): HTMLDivElement {
     cursor: pointer;
   `;
 
-  // Use a simple text symbol instead of SVG innerHTML
   const label = document.createElement('span');
   label.style.cssText = 'color: white; font-size: 12px; font-weight: bold; line-height: 1;';
 
   const symbols: Record<IntelLayer, string> = {
-    warrants: '\u26A0',   // warning sign
-    trespass: '\u2298',   // circle slash
-    offenders: '\u2691',  // flag
+    warrants: '\u26A0',
+    trespass: '\u2298',
+    offenders: '\u2691',
     bolos: '!',
   };
   label.textContent = symbols[layer];
@@ -108,7 +107,6 @@ function buildInfoContent(layer: IntelLayer, record: IntelRecord): HTMLDivElemen
     table.appendChild(tr);
   };
 
-  // Common name field
   const name = record.name || record.subject_name || record.full_name ||
     [record.first_name, record.last_name].filter(Boolean).join(' ');
   addRow('Name', name || undefined);
@@ -135,10 +133,34 @@ function buildInfoContent(layer: IntelLayer, record: IntelRecord): HTMLDivElemen
   return container;
 }
 
+// ─── Circle polygon approximation ───────────────────────────
+
+function circleCoords(center: [number, number], radiusM: number, segments = 64): [number, number][] {
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos(center[1] * Math.PI / 180);
+  const dLat = radiusM / metersPerDegLat;
+  const dLng = radiusM / metersPerDegLng;
+  const coords: [number, number][] = [];
+  for (let i = 0; i <= segments; i++) {
+    const angle = (i / segments) * 2 * Math.PI;
+    coords.push([center[0] + dLng * Math.cos(angle), center[1] + dLat * Math.sin(angle)]);
+  }
+  return coords;
+}
+
+// ─── Source/layer helpers ───────────────────────────────────
+
+function removeSourceAndLayer(map: mapboxgl.Map, layerId: string, sourceId: string) {
+  try {
+    if (map.getLayer(layerId)) map.removeLayer(layerId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
+  } catch { /* ignore */ }
+}
+
 // ─── Hook ───────────────────────────────────────────────────
 
 export function useMapIntelLayers(
-  map: google.maps.Map | null,
+  map: mapboxgl.Map | null,
   enabledLayers: Record<IntelLayer, boolean>,
 ): UseMapIntelLayersReturn {
   const [counts, setCounts] = useState<Record<IntelLayer, number>>({
@@ -147,48 +169,47 @@ export function useMapIntelLayers(
   const [loading, setLoading] = useState<Record<IntelLayer, boolean>>({
     warrants: false, trespass: false, offenders: false, bolos: false,
   });
-  // Fix 46: error count tracking
   const [errors, setErrors] = useState<Record<IntelLayer, number>>({
     warrants: 0, trespass: 0, offenders: 0, bolos: 0,
   });
 
-  // Cache fetched data so we don't refetch when toggling off/on
   const dataCache = useRef<Record<IntelLayer, IntelRecord[]>>({
     warrants: [], trespass: [], offenders: [], bolos: [],
   });
 
-  // Map objects per layer (OverlayView-based markers)
-  const markersRef = useRef<Record<IntelLayer, google.maps.OverlayView[]>>({
+  const markersRef = useRef<Record<IntelLayer, mapboxgl.Marker[]>>({
     warrants: [], trespass: [], offenders: [], bolos: [],
   });
-  const circlesRef = useRef<google.maps.Circle[]>([]);
-  const infoWindowRef = useRef<google.maps.InfoWindow | null>(null);
+  const offenderCircleRef = useRef<{ layerId: string; sourceId: string }[]>([]);
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   // ── Clear markers for a specific layer ──────────────────
 
   const clearLayer = useCallback((layer: IntelLayer) => {
-    markersRef.current[layer].forEach((m) => { m.setMap(null); });
+    markersRef.current[layer].forEach((m) => { m.remove(); });
     markersRef.current[layer] = [];
 
     if (layer === 'offenders') {
-      circlesRef.current.forEach((c) => c.setMap(null));
-      circlesRef.current = [];
+      if (map) {
+        offenderCircleRef.current.forEach(({ layerId, sourceId }) => {
+          removeSourceAndLayer(map, layerId, sourceId);
+        });
+      }
+      offenderCircleRef.current = [];
     }
-  }, []);
+  }, [map]);
 
   // ── Render markers for a layer ──────────────────────────
 
   const renderLayer = useCallback((layer: IntelLayer, records: IntelRecord[]) => {
-    const OverlayMarkerClass = getOverlayMarkerClass();
-    if (!map || !OverlayMarkerClass) return;
+    if (!map) return;
 
     clearLayer(layer);
 
-    if (!infoWindowRef.current) {
-      infoWindowRef.current = new google.maps.InfoWindow();
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ closeButton: true, closeOnClick: false, maxWidth: '360px', offset: 15 });
     }
 
-    // Fix 49: validate that records have required fields before rendering
     const withCoords = records.filter(
       (r) => r.latitude != null && r.longitude != null && !isNaN(Number(r.latitude)) && !isNaN(Number(r.longitude)) && isFinite(Number(r.latitude)) && isFinite(Number(r.longitude)) && r.id != null
     );
@@ -200,38 +221,44 @@ export function useMapIntelLayers(
       const lng = Number(record.longitude);
 
       const content = createMarkerElement(layer);
+      content.title = String(record.name || record.subject_name || record.full_name || `${layer} #${record.id}`);
+      content.style.zIndex = '20';
 
-      const marker = new OverlayMarkerClass({
-        map,
-        position: { lat, lng },
-        content,
-        title: String(record.name || record.subject_name || record.full_name || `${layer} #${record.id}`),
-        zIndex: 20,
-        onClick: () => {
-          const infoContent = buildInfoContent(layer, record);
-          infoWindowRef.current?.setContent(infoContent);
-          infoWindowRef.current?.setPosition({ lat, lng });
-          infoWindowRef.current?.open(map);
-        },
+      content.addEventListener('click', () => {
+        const infoContent = buildInfoContent(layer, record);
+        popupRef.current?.setLngLat([lng, lat]).setDOMContent(infoContent).addTo(map);
       });
 
-      markersRef.current[layer].push(marker as unknown as google.maps.OverlayView);
+      const marker = new mapboxgl.Marker({ element: content })
+        .setLngLat([lng, lat])
+        .addTo(map);
+
+      markersRef.current[layer].push(marker);
 
       // Add proximity circle for offenders
       if (layer === 'offenders') {
-        const circle = new google.maps.Circle({
-          center: { lat, lng },
-          radius: 300,
-          fillColor: '#8b5cf6',
-          fillOpacity: 0.06,
-          strokeColor: '#8b5cf6',
-          strokeWeight: 1,
-          strokeOpacity: 0.3,
-          map,
-          clickable: false,
-          zIndex: 5,
+        const circlePoly = circleCoords([lng, lat], 300);
+        const circleSourceId = `offender-circle-${record.id}-source`;
+        const circleLayerId = `offender-circle-${record.id}-layer`;
+        map.addSource(circleSourceId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            properties: {},
+            geometry: { type: 'Polygon', coordinates: [circlePoly] },
+          },
         });
-        circlesRef.current.push(circle);
+        map.addLayer({
+          id: circleLayerId,
+          type: 'fill',
+          source: circleSourceId,
+          paint: {
+            'fill-color': '#8b5cf6',
+            'fill-opacity': 0.06,
+            'fill-outline-color': '#8b5cf6',
+          },
+        });
+        offenderCircleRef.current.push({ layerId: circleLayerId, sourceId: circleSourceId });
       }
     });
   }, [map, clearLayer]);
@@ -239,7 +266,7 @@ export function useMapIntelLayers(
   // ── Fetch and render for each layer ─────────────────────
 
   useEffect(() => {
-    if (!map || !window.google?.maps) return;
+    if (!map) return;
 
     let cancelled = false;
     const layers: IntelLayer[] = ['warrants', 'trespass', 'offenders', 'bolos'];
@@ -251,19 +278,16 @@ export function useMapIntelLayers(
         return;
       }
 
-      // If we have cached data, render from cache
       if (dataCache.current[layer].length > 0) {
         renderLayer(layer, dataCache.current[layer]);
         return;
       }
 
-      // Fetch fresh data
       setLoading((prev) => ({ ...prev, [layer]: true }));
 
       apiFetch<IntelRecord[] | { data?: IntelRecord[]; results?: IntelRecord[] }>(LAYER_ENDPOINTS[layer])
         .then((res) => {
           if (cancelled) return;
-          // Handle both array and paginated responses
           let records: IntelRecord[];
           if (Array.isArray(res)) {
             records = res;
@@ -282,10 +306,8 @@ export function useMapIntelLayers(
         .catch((err) => {
           if (cancelled) return;
           setLoading((prev) => ({ ...prev, [layer]: false }));
-          // Fix 46: track error count per layer
           setErrors((prev) => ({ ...prev, [layer]: (prev[layer] || 0) + 1 }));
           console.warn(`[useMapIntelLayers] Failed to fetch ${layer}:`, err);
-          // Fix 47: retry logic on individual layer fetch failure (max 2 retries)
           if ((errors[layer] || 0) < 2 && enabledLayers[layer]) {
             setTimeout(() => {
               if (!cancelled && enabledLayers[layer]) {
@@ -315,17 +337,21 @@ export function useMapIntelLayers(
     return () => {
       const layers: IntelLayer[] = ['warrants', 'trespass', 'offenders', 'bolos'];
       layers.forEach((layer) => {
-        markersRef.current[layer].forEach((m) => { m.setMap(null); });
+        markersRef.current[layer].forEach((m) => { m.remove(); });
         markersRef.current[layer] = [];
       });
-      circlesRef.current.forEach((c) => c.setMap(null));
-      circlesRef.current = [];
-      if (infoWindowRef.current) {
-        infoWindowRef.current.close();
-        infoWindowRef.current = null;
+      if (map) {
+        offenderCircleRef.current.forEach(({ layerId, sourceId }) => {
+          removeSourceAndLayer(map, layerId, sourceId);
+        });
+      }
+      offenderCircleRef.current = [];
+      if (popupRef.current) {
+        popupRef.current.remove();
+        popupRef.current = null;
       }
     };
-  }, []);
+  }, [map]);
 
-  return { counts, loading, errors }; // Fix 46: expose error counts
+  return { counts, loading, errors };
 }
