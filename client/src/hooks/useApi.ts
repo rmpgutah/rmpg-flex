@@ -395,6 +395,12 @@ async function tryRefreshToken(): Promise<string | null> {
 const CF_WORKER_PREFIXES = [
   '/api/warrants/watch/',
   '/api/warrants/utah/',
+  // 2026-05-24: dispatch routes (calls / units / gps / geography /
+  // aggregates / call-links / panic / premise-history / run-cards /
+  // welfare) are ported to the CF Worker. Routing all /api/dispatch/
+  // here also activates the new /quick-add endpoints with server-side
+  // duplicate detection — see src/routes/dispatch/callLinks.ts.
+  '/api/dispatch/',
 ];
 const CF_WORKER_BASE = 'https://api.rmpgutah.us';
 
@@ -525,7 +531,17 @@ export async function apiFetch<T>(
     // got rendered as just "Failed to update call".
     const base = errData.error || errData.message || `Request failed with status ${res.status}`;
     const diag = errData.details || errData.detail;
-    throw new Error(diag ? `${base}: ${diag}` : base);
+    // Attach status / payload / code so structured error handling (e.g.
+    // 409 DUPLICATE_CANDIDATES from /quick-add) can branch on err.code
+    // instead of regex-matching err.message. Additive — existing
+    // err.message readers are unaffected.
+    const error = new Error(diag ? `${base}: ${diag}` : base) as Error & {
+      status?: number; payload?: any; code?: string;
+    };
+    error.status = res.status;
+    error.payload = errData;
+    error.code = errData.code;
+    throw error;
   }
 
   return res.json();
