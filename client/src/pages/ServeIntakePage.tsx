@@ -314,9 +314,9 @@ export default function ServeIntakePage() {
                   Confidence: {(ocrPreview.confidence * 100).toFixed(0)}%
                 </span>
               </div>
-              <button onClick={() => setShowOcrPreview(false)} className="text-rmpg-500 hover:text-white">
+              <IconButton onClick={() => setShowOcrPreview(false)} aria-label="Close OCR preview">
                 <X className="w-4 h-4" />
-              </button>
+              </IconButton>
             </div>
             <div className="p-4 space-y-2">
               <div className="text-[10px] text-rmpg-400 mb-2">
@@ -348,13 +348,13 @@ export default function ServeIntakePage() {
                       ) : (
                         <div className="flex items-center gap-1">
                           <span className="text-xs text-white truncate">{field.value}</span>
-                          <button
+                          <IconButton
                             onClick={() => setEditingFields(prev => ({ ...prev, [key]: field.value }))}
+                            aria-label={`Edit ${key}`}
                             className="text-rmpg-500 hover:text-brand-400 flex-shrink-0"
-                            title={`Edit ${key}`}
                           >
                             <Edit3 className="w-2.5 h-2.5" />
-                          </button>
+                          </IconButton>
                         </div>
                       )}
                     </div>
@@ -431,7 +431,7 @@ export default function ServeIntakePage() {
                   <span className="text-[10px] text-rmpg-400 uppercase font-bold">Serve Queue</span>
                 </div>
                 <p className="text-sm font-bold text-white font-mono">{result.call_number}</p>
-                <p className="text-[10px] text-rmpg-400">PSO Client Request — Pending</p>
+                <p className="text-[10px] text-rmpg-400">{result.extracted?.processType ? result.extracted.processType.charAt(0).toUpperCase() + result.extracted.processType.slice(1).replace(/_/g, ' ') : 'PSO Client Request'} — Pending</p>
                 <button onClick={() => navigate('/dispatch')} className="text-[9px] text-brand-400 mt-1 hover:underline">
                   View in Dispatch →
                 </button>

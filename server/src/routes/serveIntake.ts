@@ -110,7 +110,11 @@ function extractDocuments(text: string): string {
 
 function extractInstructions(text: string): string {
   const m = text.match(/Instructions\s*\n([\s\S]*?)(?:\n\n|\nMuhammad|\nAddress|\n[A-Z][a-z]+ [A-Z])/i);
-  return m ? m[1].replace(/\n/g, ' ').trim() : '';
+  if (m) return m[1].replace(/\n/g, ' ').trim();
+  // Fallback: flat text — capture from "Instructions" to "Address \d+" or end
+  const flat = text.match(/Instructions\s+([\s\S]*?)(?:\sAddress\s+\d+|$)/i);
+  if (flat) return flat[1].replace(/\s+/g, ' ').trim();
+  return '';
 }
 
 function extractJobNumber(text: string): string {
@@ -152,7 +156,9 @@ function extractAttorney(text: string): { name: string; phone: string; email: st
 }
 
 function extractFee(text: string): string {
-  return extractField(text, 'Fee') || '';
+  const raw = extractField(text, 'Fee') || '';
+  if (!raw) return '';
+  return raw.replace(/\s+(?:Case|Plaintiff|DOB|Phone|Email|Attorney|Server):.*$/i, '').trim();
 }
 
 function extractServer(text: string): string {
@@ -175,9 +181,11 @@ function extractServeInstructions(text: string): string {
   // Get ONLY the serve instructions — not the case details
   const m = text.match(/Instructions\s*\n([\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n)/i);
   if (m) return m[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
-  // Fallback: look for Sub-serve pattern
   const sub = text.match(/(Sub-serve[\s\S]*?)(?:\n\s*\n\s*Address|\n\s*\n\s*\n)/i);
   if (sub) return sub[1].replace(/\n/g, ' ').replace(/\s+/g, ' ').trim();
+  // Fallback: flat text with no newlines — capture from "Sub-serve" to "Address \d+" or end
+  const flat = text.match(/(Sub-serve[\s\S]*?)(?:\sAddress\s+\d+|$)/i);
+  if (flat) return flat[1].replace(/\s+/g, ' ').trim();
   return '';
 }
 

@@ -275,10 +275,10 @@ export default function SafetyDashboardPanel({
             <WelfareRow
               icon={<Users size={10} />}
               label="Lone officers"
-              value={unitSafety.loneOfficers.length}
-              warn={unitSafety.loneOfficers.length > 0}
+              value={unitSafety?.loneOfficers?.length ?? 0}
+              warn={(unitSafety?.loneOfficers?.length ?? 0) > 0}
               detail={
-                unitSafety.loneOfficers.length > 0
+                (unitSafety?.loneOfficers?.length ?? 0) > 0
                   ? unitSafety.loneOfficers.join(', ')
                   : undefined
               }
@@ -293,7 +293,7 @@ export default function SafetyDashboardPanel({
             />
 
             {/* Stationary */}
-            {unitSafety.stationaryUnits.length > 0 && (
+            {(unitSafety?.stationaryUnits?.length ?? 0) > 0 && (
               <WelfareRow
                 icon={<Clock size={10} />}
                 label="Stationary"
@@ -304,7 +304,7 @@ export default function SafetyDashboardPanel({
             )}
 
             {/* Speed anomalies */}
-            {unitSafety.speedAnomalies.map((sa) => (
+            {(unitSafety?.speedAnomalies ?? []).map((sa) => (
               <div
                 key={sa.callSign}
                 className="flex items-center gap-1 text-[10px]"
@@ -318,7 +318,7 @@ export default function SafetyDashboardPanel({
             ))}
 
             {/* Exposure warnings */}
-            {unitSafety.exposureWarnings.map((ew) => (
+            {(unitSafety?.exposureWarnings ?? []).map((ew) => (
               <div
                 key={ew.callSign}
                 className="flex items-center gap-1 text-[10px]"

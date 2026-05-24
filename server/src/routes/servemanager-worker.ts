@@ -96,7 +96,7 @@ function ensureTables(db: D1Db): void {
   try { initSmTables(db); } catch { /* ok */ }
 }
 
-export function upsertJobFromApi(db: D1Db, job: any): void {
+export async function upsertJobFromApi(db: D1Db, job: any): Promise<void> {
   if (!job || !job.id) return;
   const now = localNow();
   const recipientName = job.recipient?.name || null;
@@ -107,7 +107,7 @@ export function upsertJobFromApi(db: D1Db, job: any): void {
   const empServerId = job.employee_process_server?.id || null;
   const courtCaseNumber = job.court_case?.number || null;
   const courtCaseId = job.court_case?.id || null;
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO sm_jobs (id, sm_job_number, job_status, service_status, client_job_number, rush, due_date, service_instructions,
       recipient_name, recipient_description, client_company_name, client_company_id, process_server_name,
       employee_process_server_id, court_case_number, court_case_id, attempt_count, last_attempt_at,
@@ -131,10 +131,10 @@ export function upsertJobFromApi(db: D1Db, job: any): void {
     job.archived_at, job.created_at, job.updated_at, now);
 }
 
-export function upsertAttemptFromApi(db: D1Db, attempt: any): void {
+export async function upsertAttemptFromApi(db: D1Db, attempt: any): Promise<void> {
   if (!attempt || !attempt.id || !attempt.job_id) return;
   const now = localNow();
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO sm_attempts (id, job_id, description, success, service_status, serve_type, served_at, lat, lng,
       gps_timestamp, server_name, recipient_name, attachments_json, sm_created_at, sm_updated_at, synced_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -225,7 +225,7 @@ export function mountServemanagerRoutes(app: Hono<{ Bindings: Env; Variables: { 
         if (q.status) params['filter[job_status][]'] = String(q.status);
         if (q.service_status) params['filter[service_status][]'] = String(q.service_status);
         const result = await smGet(db, c.env.JWT_SECRET, '/jobs', params);
-        if (Array.isArray(result.data)) { for (const job of result.data) upsertJobFromApi(db, job); }
+        if (Array.isArray(result.data)) { for (const job of result.data) await upsertJobFromApi(db, job); }
         return c.json(result);
       }
       const pageNum = Math.max(1, parseInt(q.page || '1', 10) || 1);
@@ -257,8 +257,8 @@ export function mountServemanagerRoutes(app: Hono<{ Bindings: Env; Variables: { 
       if (q.live === 'true') {
         const result = await smGet(db, c.env.JWT_SECRET, `/jobs/${id}`);
         if (!result.data) return c.json({ error: 'Job not found on ServeManager', code: 'SM_JOB_NOT_FOUND' }, 404);
-        upsertJobFromApi(db, result.data);
-        if (Array.isArray(result.data.attempts)) { for (const attempt of result.data.attempts) upsertAttemptFromApi(db, { ...attempt, job_id: result.data.id }); }
+        await upsertJobFromApi(db, result.data);
+        if (Array.isArray(result.data.attempts)) { for (const attempt of result.data.attempts) await upsertAttemptFromApi(db, { ...attempt, job_id: result.data.id }); }
         return c.json({ data: result.data });
       }
       const job = await db.prepare('SELECT * FROM sm_jobs WHERE id = ?').get(id);
@@ -280,7 +280,7 @@ export function mountServemanagerRoutes(app: Hono<{ Bindings: Env; Variables: { 
       const body = await c.req.json();
       const result = await smPost(db, c.env.JWT_SECRET, '/jobs', { type: 'job', ...body });
       if (!result.data) return c.json({ error: 'No data returned from ServeManager' }, 502);
-      upsertJobFromApi(db, result.data);
+      await upsertJobFromApi(db, result.data);
       const user = c.get('user');
       await db.prepare('INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user.userId, 'sm_job_created', 'sm_job', result.data.id, `Created SM job #${result.data.servemanager_job_number}`, c.req.header('CF-Connecting-IP') || 'unknown', now);
       return c.json({ data: result.data }, 201);
@@ -300,7 +300,7 @@ export function mountServemanagerRoutes(app: Hono<{ Bindings: Env; Variables: { 
       const body = await c.req.json();
       const result = await smPut(db, c.env.JWT_SECRET, `/jobs/${id}`, { type: 'job', ...body });
       if (!result.data) return c.json({ error: 'No data returned from ServeManager' }, 502);
-      upsertJobFromApi(db, result.data);
+      await upsertJobFromApi(db, result.data);
       const user = c.get('user');
       await db.prepare('INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user.userId, 'sm_job_updated', 'sm_job', id, `Updated SM job #${result.data.servemanager_job_number}`, c.req.header('CF-Connecting-IP') || 'unknown', now);
       return c.json({ data: result.data });
@@ -319,7 +319,7 @@ export function mountServemanagerRoutes(app: Hono<{ Bindings: Env; Variables: { 
       const id = paramNum(c.req.param('id'));
       const body = await c.req.json();
       const result = await smPost(db, c.env.JWT_SECRET, `/jobs/${id}/cancel`, { type: 'note', cancellation_note_label: body.label || 'Cancelled', cancellation_note_body: body.body || 'Job cancelled via RMPG Flex' });
-      try { const refreshed = await smGet(db, c.env.JWT_SECRET, `/jobs/${id}`); upsertJobFromApi(db, refreshed.data); } catch { /* non-fatal */ }
+      try { const refreshed = await smGet(db, c.env.JWT_SECRET, `/jobs/${id}`); await upsertJobFromApi(db, refreshed.data); } catch { /* non-fatal */ }
       const user = c.get('user');
       await db.prepare('INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user.userId, 'sm_job_cancelled', 'sm_job', id, `Cancelled SM job ${id}`, c.req.header('CF-Connecting-IP') || 'unknown', now);
       return c.json({ success: true, data: result.data || null });
@@ -339,7 +339,7 @@ export function mountServemanagerRoutes(app: Hono<{ Bindings: Env; Variables: { 
       if (q.live === 'true') {
         const jobId = String(c.req.param('jobId'));
         const result = await smGet(db, c.env.JWT_SECRET, '/attempts', { 'filter[job_id]': jobId });
-        if (Array.isArray(result.data)) { for (const attempt of result.data) upsertAttemptFromApi(db, { ...attempt, job_id: parseInt(jobId) }); }
+        if (Array.isArray(result.data)) { for (const attempt of result.data) await upsertAttemptFromApi(db, { ...attempt, job_id: parseInt(jobId) }); }
         return c.json(result);
       }
       const rows = await db.prepare('SELECT * FROM sm_attempts WHERE job_id = ? ORDER BY sm_created_at DESC LIMIT 1000').all(c.req.param('jobId'));
@@ -358,7 +358,7 @@ export function mountServemanagerRoutes(app: Hono<{ Bindings: Env; Variables: { 
       const now = localNow();
       const body = await c.req.json();
       const result = await smPost(db, c.env.JWT_SECRET, '/attempts', { type: 'attempt', ...body });
-      upsertAttemptFromApi(db, result.data);
+      await upsertAttemptFromApi(db, result.data);
       const user = c.get('user');
       await db.prepare('INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)').run(user.userId, 'sm_attempt_created', 'sm_attempt', result.data.id, `Created attempt on SM job ${result.data.job_id}`, c.req.header('CF-Connecting-IP') || 'unknown', now);
       return c.json({ data: result.data }, 201);
@@ -470,9 +470,9 @@ export function mountServemanagerRoutes(app: Hono<{ Bindings: Env; Variables: { 
           const result = await smGet(db, c.env.JWT_SECRET, '/jobs', params);
           if (Array.isArray(result.data)) {
             for (const job of result.data) {
-              upsertJobFromApi(db, job);
+              await upsertJobFromApi(db, job);
               jobsSynced++;
-              if (Array.isArray(job.attempts)) { for (const attempt of job.attempts) { upsertAttemptFromApi(db, { ...attempt, job_id: job.id }); attemptsSynced++; } }
+              if (Array.isArray(job.attempts)) { for (const attempt of job.attempts) { await upsertAttemptFromApi(db, { ...attempt, job_id: job.id }); attemptsSynced++; } }
             }
             hasMore = result.links?.next != null && result.data.length > 0;
             page++;
@@ -601,7 +601,7 @@ export function mountServemanagerRoutes(app: Hono<{ Bindings: Env; Variables: { 
       for (const jobId of job_ids) {
         try {
           const result = await smPut(db, c.env.JWT_SECRET, `/jobs/${jobId}`, { type: 'job', employee_process_server_id });
-          upsertJobFromApi(db, result.data);
+          await upsertJobFromApi(db, result.data);
           results.push({ job_id: jobId, success: true });
         } catch (err: any) {
           results.push({ job_id: jobId, success: false, error: err.message });

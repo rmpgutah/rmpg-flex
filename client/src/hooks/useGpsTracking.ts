@@ -642,14 +642,19 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (denied) {
           if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
           const probePermission = () => {
+            // Guard against orphaned timers firing after unmount
+            if (!mountedRef.current) return;
             retryTimeoutRef.current = setTimeout(() => {
+              if (!mountedRef.current) return;
               navigator.geolocation.getCurrentPosition(
                 () => {
+                  if (!mountedRef.current) return;
                   // Permission restored — restart tracking (once)
                   cleanupTracking(false);
                   startTracking();
                 },
                 () => {
+                  if (!mountedRef.current) return;
                   // Still denied — schedule another probe (not recursive startTracking)
                   probePermission();
                 },
@@ -681,7 +686,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       const staleDuration = Date.now() - lastCallbackTimeRef.current;
       const connType = getConnectionType();
       const threshold = connType === 'wifi' ? HEARTBEAT_STALE_THRESHOLD_WIFI : HEARTBEAT_STALE_THRESHOLD;
-      if (staleDuration > threshold && watchIdRef.current !== null) {
+      if (staleDuration >= threshold && watchIdRef.current !== null) {
         console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
         // On Electron desktop, use IP fallback instead of endlessly restarting
         if (IS_ELECTRON) {
@@ -725,6 +730,10 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // AUTO-START on mount — GPS is mandatory for all logged-in users
   useEffect(() => {
+    // Reset on (re)mount — refs persist across StrictMode double-mount and
+    // route remounts, so without this `mountedRef.current` stays false from
+    // a prior unmount and silently disables `setState` guards.
+    mountedRef.current = true;
     startTracking();
     return () => {
       mountedRef.current = false;

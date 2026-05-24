@@ -31,54 +31,54 @@ interface Connection {
   sourceTable: string;
 }
 
-function getRecordLabel(db: D1Db, type: string, id: number): string {
+async function getRecordLabel(db: D1Db, type: string, id: number): Promise<string> {
   switch (type) {
     case 'person': {
-      const p = db.prepare('SELECT first_name, last_name FROM persons WHERE id = ?').get(id) as any;
+      const p = await db.prepare('SELECT first_name, last_name FROM persons WHERE id = ?').get(id) as any;
       return p ? `${p.first_name} ${p.last_name}` : `Person #${id}`;
     }
     case 'vehicle': {
-      const v = db.prepare('SELECT make, model, plate_number, color FROM vehicles_records WHERE id = ?').get(id) as any;
+      const v = await db.prepare('SELECT make, model, plate_number, color FROM vehicles_records WHERE id = ?').get(id) as any;
       return v ? `${v.color || ''} ${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() : `Vehicle #${id}`;
     }
     case 'property': {
-      const pr = db.prepare('SELECT name FROM properties WHERE id = ?').get(id) as any;
+      const pr = await db.prepare('SELECT name FROM properties WHERE id = ?').get(id) as any;
       return pr ? pr.name : `Property #${id}`;
     }
     case 'evidence': {
-      const e = db.prepare('SELECT evidence_number, description FROM evidence WHERE id = ?').get(id) as any;
+      const e = await db.prepare('SELECT evidence_number, description FROM evidence WHERE id = ?').get(id) as any;
       return e ? `${e.evidence_number || ''} ${e.description || ''}`.trim() : `Evidence #${id}`;
     }
     case 'case': {
-      const c = db.prepare('SELECT case_number, title FROM cases WHERE id = ?').get(id) as any;
+      const c = await db.prepare('SELECT case_number, title FROM cases WHERE id = ?').get(id) as any;
       return c ? `${c.case_number} - ${c.title}` : `Case #${id}`;
     }
     case 'incident': {
-      const i = db.prepare('SELECT incident_number, incident_type FROM incidents WHERE id = ?').get(id) as any;
+      const i = await db.prepare('SELECT incident_number, incident_type FROM incidents WHERE id = ?').get(id) as any;
       return i ? `${i.incident_number || ''} ${i.incident_type}`.trim() : `Incident #${id}`;
     }
     case 'warrant': {
-      const w = db.prepare('SELECT warrant_number, status FROM warrants WHERE id = ?').get(id) as any;
+      const w = await db.prepare('SELECT warrant_number, status FROM warrants WHERE id = ?').get(id) as any;
       return w ? `${w.warrant_number || `W-${id}`} (${w.status || '?'})` : `Warrant #${id}`;
     }
     case 'citation': {
-      const c = db.prepare('SELECT citation_number, status FROM citations WHERE id = ?').get(id) as any;
+      const c = await db.prepare('SELECT citation_number, status FROM citations WHERE id = ?').get(id) as any;
       return c ? `${c.citation_number || `CIT-${id}`} (${c.status || '?'})` : `Citation #${id}`;
     }
     case 'arrest': {
-      const a = db.prepare('SELECT first_name, last_name, booking_date FROM arrest_records WHERE id = ?').get(id) as any;
+      const a = await db.prepare('SELECT first_name, last_name, booking_date FROM arrest_records WHERE id = ?').get(id) as any;
       return a ? `${a.first_name || ''} ${a.last_name || ''} arr. ${a.booking_date || ''}`.trim() : `Arrest #${id}`;
     }
     case 'field_interview': {
-      const f = db.prepare('SELECT fi_number, location FROM field_interviews WHERE id = ?').get(id) as any;
+      const f = await db.prepare('SELECT fi_number, location FROM field_interviews WHERE id = ?').get(id) as any;
       return f ? `${f.fi_number || `FI-${id}`}${f.location ? ` @ ${f.location}` : ''}` : `FI #${id}`;
     }
     case 'trespass_order': {
-      const t = db.prepare('SELECT order_number, status FROM trespass_orders WHERE id = ?').get(id) as any;
+      const t = await db.prepare('SELECT order_number, status FROM trespass_orders WHERE id = ?').get(id) as any;
       return t ? `${t.order_number || `TO-${id}`} (${(t.status || 'unknown').toUpperCase()})` : `Trespass #${id}`;
     }
     case 'serve_job': {
-      const s = db.prepare('SELECT sm_job_id, case_number, document_type, status FROM serve_queue WHERE id = ?').get(id) as any;
+      const s = await db.prepare('SELECT sm_job_id, case_number, document_type, status FROM serve_queue WHERE id = ?').get(id) as any;
       if (!s) return `Serve #${id}`;
       const ref = s.sm_job_id ? `SM-${s.sm_job_id}` : s.case_number || `SJ-${id}`;
       return `${ref}${s.document_type ? ` ${s.document_type}` : ''} (${(s.status || 'pending').toUpperCase()})`;
@@ -88,54 +88,54 @@ function getRecordLabel(db: D1Db, type: string, id: number): string {
   }
 }
 
-function getNodeMetadata(db: D1Db, type: string, id: number): Record<string, any> {
+async function getNodeMetadata(db: D1Db, type: string, id: number): Promise<Record<string, any>> {
   switch (type) {
     case 'person': {
-      const p = db.prepare('SELECT first_name, last_name, dob, address, city, state, phone, flags FROM persons WHERE id = ?').get(id) as any;
+      const p = await db.prepare('SELECT first_name, last_name, dob, address, city, state, phone, flags FROM persons WHERE id = ?').get(id) as any;
       return p || {};
     }
     case 'vehicle': {
-      const v = db.prepare('SELECT plate_number, state, make, model, year, color, vin, owner_person_id, flags FROM vehicles_records WHERE id = ?').get(id) as any;
+      const v = await db.prepare('SELECT plate_number, state, make, model, year, color, vin, owner_person_id, flags FROM vehicles_records WHERE id = ?').get(id) as any;
       return v || {};
     }
     case 'property': {
-      const pr = db.prepare('SELECT name, address, property_type, client_id FROM properties WHERE id = ?').get(id) as any;
+      const pr = await db.prepare('SELECT name, address, property_type, client_id FROM properties WHERE id = ?').get(id) as any;
       return pr || {};
     }
     case 'evidence': {
-      const e = db.prepare('SELECT evidence_number, description, evidence_type, status, incident_id FROM evidence WHERE id = ?').get(id) as any;
+      const e = await db.prepare('SELECT evidence_number, description, evidence_type, status, incident_id FROM evidence WHERE id = ?').get(id) as any;
       return e || {};
     }
     case 'case': {
-      const c = db.prepare('SELECT case_number, title, case_type, status, priority FROM cases WHERE id = ?').get(id) as any;
+      const c = await db.prepare('SELECT case_number, title, case_type, status, priority FROM cases WHERE id = ?').get(id) as any;
       return c || {};
     }
     case 'incident': {
-      const i = db.prepare('SELECT incident_number, incident_type, status, priority, location_address FROM incidents WHERE id = ?').get(id) as any;
+      const i = await db.prepare('SELECT incident_number, incident_type, status, priority, location_address FROM incidents WHERE id = ?').get(id) as any;
       return i || {};
     }
     case 'warrant': {
-      const w = db.prepare('SELECT warrant_number, status, type, offense_level, subject_person_id, charge_description FROM warrants WHERE id = ?').get(id) as any;
+      const w = await db.prepare('SELECT warrant_number, status, type, offense_level, subject_person_id, charge_description FROM warrants WHERE id = ?').get(id) as any;
       return w || {};
     }
     case 'citation': {
-      const c = db.prepare('SELECT citation_number, type, status, person_id, vehicle_id, violation_date, violation_description, offense_level, fine_amount FROM citations WHERE id = ?').get(id) as any;
+      const c = await db.prepare('SELECT citation_number, type, status, person_id, vehicle_id, violation_date, violation_description, offense_level, fine_amount FROM citations WHERE id = ?').get(id) as any;
       return c || {};
     }
     case 'arrest': {
-      const a = db.prepare('SELECT first_name, last_name, booking_date, charges, status, county, source_name FROM arrest_records WHERE id = ?').get(id) as any;
+      const a = await db.prepare('SELECT first_name, last_name, booking_date, charges, status, county, source_name FROM arrest_records WHERE id = ?').get(id) as any;
       return a || {};
     }
     case 'field_interview': {
-      const f = db.prepare('SELECT fi_number, person_id, location, contact_reason, contact_type, action_taken, officer_name, status, created_at FROM field_interviews WHERE id = ?').get(id) as any;
+      const f = await db.prepare('SELECT fi_number, person_id, location, contact_reason, contact_type, action_taken, officer_name, status, created_at FROM field_interviews WHERE id = ?').get(id) as any;
       return f || {};
     }
     case 'trespass_order': {
-      const t = db.prepare('SELECT order_number, person_id, property_id, location, status, order_type, effective_date, expiration_date, issued_by_name FROM trespass_orders WHERE id = ?').get(id) as any;
+      const t = await db.prepare('SELECT order_number, person_id, property_id, location, status, order_type, effective_date, expiration_date, issued_by_name FROM trespass_orders WHERE id = ?').get(id) as any;
       return t || {};
     }
     case 'serve_job': {
-      const s = db.prepare('SELECT sm_job_id, officer_id, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip, document_type, case_number, court_name, client_name, attorney_name, priority, deadline, status, attempt_count, recipient_person_id, property_id, serve_date FROM serve_queue WHERE id = ?').get(id) as any;
+      const s = await db.prepare('SELECT sm_job_id, officer_id, recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip, document_type, case_number, court_name, client_name, attorney_name, priority, deadline, status, attempt_count, recipient_person_id, property_id, serve_date FROM serve_queue WHERE id = ?').get(id) as any;
       return s || {};
     }
     default:
@@ -477,29 +477,30 @@ async function buildGraph(db: D1Db, seedType: string, seedId: number, maxDepth: 
 
   function nodeKey(type: string, id: number): string { return `${type}-${id}`; }
 
-  function cachedLabel(type: string, id: number): string {
+  async function cachedLabel(type: string, id: number): Promise<string> {
     const k = nodeKey(type, id);
     const hit = labelCache.get(k);
     if (hit !== undefined) return hit;
-    const miss = getRecordLabel(db, type, id);
+    const miss = await getRecordLabel(db, type, id);
     labelCache.set(k, miss);
     return miss;
   }
 
-  function cachedMetadata(type: string, id: number): Record<string, any> {
+  async function cachedMetadata(type: string, id: number): Promise<Record<string, any>> {
     const k = nodeKey(type, id);
     const hit = metadataCache.get(k);
     if (hit !== undefined) return hit;
-    const miss = getNodeMetadata(db, type, id);
+    const miss = await getNodeMetadata(db, type, id);
     metadataCache.set(k, miss);
     return miss;
   }
 
-  function addNode(type: string, id: number, depth: number): boolean {
+  async function addNode(type: string, id: number, depth: number): Promise<boolean> {
     if (nodeMap.size >= MAX_NODES) return false;
     const key = nodeKey(type, id);
     if (nodeMap.has(key)) return false;
-    nodeMap.set(key, { id: key, type, entityId: id, label: cachedLabel(type, id), metadata: cachedMetadata(type, id), depth });
+    const [label, metadata] = await Promise.all([cachedLabel(type, id), cachedMetadata(type, id)]);
+    nodeMap.set(key, { id: key, type, entityId: id, label, metadata, depth });
     return true;
   }
 
@@ -512,7 +513,7 @@ async function buildGraph(db: D1Db, seedType: string, seedId: number, maxDepth: 
     edges.push({ source: src, target: tgt, relationship, sourceTable });
   }
 
-  addNode(seedType, seedId, 0);
+  await addNode(seedType, seedId, 0);
   queue.push({ type: seedType, id: seedId, depth: 0 });
 
   while (queue.length > 0) {
@@ -525,7 +526,7 @@ async function buildGraph(db: D1Db, seedType: string, seedId: number, maxDepth: 
 
     for (const conn of connections) {
       if (nodeMap.size >= MAX_NODES) break;
-      const isNew = addNode(conn.type, conn.id, nextDepth);
+      const isNew = await addNode(conn.type, conn.id, nextDepth);
       addEdge(current.type, current.id, conn.type, conn.id, conn.relationship, conn.sourceTable);
       if (isNew && nextDepth < maxDepth) {
         queue.push({ type: conn.type, id: conn.id, depth: nextDepth });
@@ -543,8 +544,9 @@ async function findShortestPath(db: D1Db, fromType: string, fromId: number, toTy
   const toKey = `${toType}-${toId}`;
 
   if (fromKey === toKey) {
+    const [label, metadata] = await Promise.all([getRecordLabel(db, fromType, fromId), getNodeMetadata(db, fromType, fromId)]);
     return {
-      path: [{ id: fromKey, type: fromType, entityId: fromId, label: getRecordLabel(db, fromType, fromId), metadata: getNodeMetadata(db, fromType, fromId), depth: 0 }],
+      path: [{ id: fromKey, type: fromType, entityId: fromId, label, metadata, depth: 0 }],
       edges: [],
     };
   }
@@ -569,7 +571,10 @@ async function findShortestPath(db: D1Db, fromType: string, fromId: number, toTy
         const chain: Entry[] = [];
         let cur: Entry | undefined = entry;
         while (cur) { chain.unshift(cur); cur = cur.parent ? visited.get(cur.parent) : undefined; }
-        const path: GNode[] = chain.map(e => ({ id: e.key, type: e.type, entityId: e.id, label: getRecordLabel(db, e.type, e.id), metadata: getNodeMetadata(db, e.type, e.id), depth: e.depth }));
+        const path: GNode[] = await Promise.all(chain.map(async e => {
+          const [label, metadata] = await Promise.all([getRecordLabel(db, e.type, e.id), getNodeMetadata(db, e.type, e.id)]);
+          return { id: e.key, type: e.type, entityId: e.id, label, metadata, depth: e.depth };
+        }));
         const edges: GEdge[] = chain.slice(1).map(e => ({ source: e.parent!, target: e.key, relationship: e.rel, sourceTable: e.srcTable }));
         return { path, edges };
       }

@@ -166,7 +166,7 @@ export default function AnalysisDashboardPanel({
             </div>
 
             {/* ── Section 2: Overlap Zones ─────────────────── */}
-            {data.overlapZones.count > 0 && (
+            {(data.overlapZones?.count ?? 0) > 0 && (
               <SectionBlock
                 icon={<AlertTriangle size={10} className="text-amber-400" />}
                 title="Risk Convergence"
@@ -175,7 +175,7 @@ export default function AnalysisDashboardPanel({
                   Locations flagged as both safety zones and prediction hotspots
                 </p>
                 <div className="space-y-1">
-                  {data.overlapZones.locations.map((loc, i) => (
+                  {(data.overlapZones?.locations ?? []).map((loc, i) => (
                     <button type="button"
                       key={i}
                       onClick={() => onNavigate(loc.latitude, loc.longitude)}
@@ -217,7 +217,7 @@ export default function AnalysisDashboardPanel({
               </SectionBlock>
             )}
 
-            {data.overlapZones.count === 0 && (
+            {(data.overlapZones?.count ?? 0) === 0 && (
               <SectionBlock
                 icon={<AlertTriangle size={10} className="text-amber-400" />}
                 title="Risk Convergence"
@@ -229,13 +229,13 @@ export default function AnalysisDashboardPanel({
             )}
 
             {/* ── Section 3: Repeat Addresses ─────────────── */}
-            {data.repeatInRiskZones.count > 0 ? (
+            {(data.repeatInRiskZones?.count ?? 0) > 0 ? (
               <SectionBlock
                 icon={<MapPin size={10} className="text-orange-400" />}
                 title="Chronic Locations in Risk Zones"
               >
                 <div className="space-y-1">
-                  {data.repeatInRiskZones.addresses.map((addr, i) => (
+                  {(data.repeatInRiskZones?.addresses ?? []).map((addr, i) => (
                     <div
                       key={i}
                       className="flex items-center gap-2 px-2 py-1.5 rounded-sm"
