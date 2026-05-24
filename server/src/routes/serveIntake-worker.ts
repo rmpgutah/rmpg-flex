@@ -394,23 +394,15 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
         : docType === 'field_sheet' ? 'field_sheet'
         : 'unknown';
 
-      // ── 5. Build structured dispatch description (for D1 which lacks addCol columns) ──
+      // ── 5. Build dispatch description (brief call-card summary) ──
       const descLines: string[] = [];
       descLines.push(`SERVE ${(docs || 'DOCUMENTS').toUpperCase()} TO ${fullName.toUpperCase()}`);
       if (addrParts.address) descLines.push(`AT ${addrParts.address.toUpperCase()}`);
       if (dueDate) descLines.push(`DUE: ${dueDate}`);
-      if (caseNumber) descLines.push(`CASE: ${caseNumber}`);
-      if (jobNumber) descLines.push(`JOB: ${jobNumber}`);
-      if (plaintiff) descLines.push(`PLAINTIFF: ${plaintiff.replace(/\n/g, ' ').trim().toUpperCase()}`);
-      if (court) descLines.push(`COURT: ${court}`);
-      descLines.push(`TYPE: ${processType.toUpperCase()}`);
-      if (subjectDesc) descLines.push(`SUBJECT: ${subjectDesc}`);
-      if (clientAddress) descLines.push(`CLIENT ADDR: ${clientAddress}`);
       if (instructions) {
         const cleaned = instructions.replace(/\r\n/g, ' ').replace(/\n+/g, ' ').replace(/\s+/g, ' ').trim();
         descLines.push(`INSTRUCTIONS: ${cleaned.length > 500 ? cleaned.slice(0, 500) + '...' : cleaned}`);
       }
-      if (serviceWindows) descLines.push(`WINDOWS: ${serviceWindows}`);
       const description = descLines.join('\n');
 
       // ── 6. Build rich system notes ──
@@ -485,23 +477,46 @@ export function mountServeIntakeRoutes(app: Hono<{ Bindings: Env; Variables: { u
 
       const notesJson = noteEntries.length > 0 ? JSON.stringify(noteEntries) : null;
 
-      // ── 7. Create dispatch call with property reference ──
-      // NOTE: Only using D1 base columns — addCol columns (pso_*, process_*, etc.)
-      // don't exist in the D1 production schema. Extra data is embedded in description.
+      // ── 7. Create dispatch call with all structured columns ──
       const callResult = await db.prepare(`
         INSERT INTO calls_for_service (
           call_number, incident_type, priority, status,
           caller_name, caller_phone, caller_relationship,
           location_address, property_id, latitude, longitude,
           description, notes, source, dispatcher_id,
-          created_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          case_number, subject_description,
+          pso_requestor_name, pso_requestor_phone, pso_requestor_email,
+          pso_service_type, pso_billing_code, pso_authorization,
+          pso_attempt_number, pso_service_windows,
+          process_service_type, process_served_to, process_served_address,
+          process_attempts, client_id,
+          secondary_type, contact_method,
+          weather_conditions, lighting_conditions,
+          created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?,
+          ?, ?, ?,
+          ?, ?, ?,
+          ?, ?,
+          ?, ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?,
+          ?, ?)
       `).run(
         callNumber, 'pso_client_request', 'P4', 'pending',
         callerName, callerPhone, 'client',
         addrParts.address || 'Unknown', propertyId, null, null,
         description, notesJson, 'intake', user.userId,
-        now
+        caseNumber || null, subjectDesc || null,
+        callerName || null, callerPhone || null, attorney.email || null,
+        'process_service', fee || null, jobNumber || null,
+        1, serviceWindows || null,
+        processType, fullName || null, addrParts.address || null,
+        0, client_id || null,
+        docTypeLabel, 'email',
+        null, null,
+        now, now
       );
       const callId = Number(callResult.meta.last_row_id);
 
