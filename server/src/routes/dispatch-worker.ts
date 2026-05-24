@@ -217,7 +217,9 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
 
     let visit_history: any[] = [];
     if ((call as any).incident_type === 'pso_client_request') {
-      visit_history = await db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(id);
+      try {
+        visit_history = await db.prepare('SELECT * FROM call_visit_history WHERE call_id = ? ORDER BY visit_number ASC').all(id);
+      } catch { /* table may not exist in D1 */ }
     }
 
     const firstIncidentNumber = (incidents as any[]).length > 0 ? (incidents as any[])[0].incident_number : null;
