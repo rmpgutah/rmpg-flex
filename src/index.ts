@@ -39,6 +39,7 @@ import incidentsRouter from './routes/incidents';
 import warrants from './routes/warrants';
 import pdfTools from './routes/pdfTools';
 import documentIntake from './routes/documentIntake';
+import audit from './routes/audit';
 import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import {
   recommendedUnits,
