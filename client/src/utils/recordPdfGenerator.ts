@@ -680,6 +680,9 @@ export interface VehiclePdfData {
   incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
   calls?: { call_number: string; incident_type: string; status: string; location: string; created_at: string }[];
   citations?: { citation_number: string; type: string; status: string; violation_date: string }[];
+  // Linked records (from /records/links?source_type=vehicle&source_id=ID)
+  linked_persons?: { name: string; dob?: string; flags?: string; relationship?: string }[];
+  linked_properties?: { name: string; address?: string; relationship?: string }[];
   // Cross-reference dossier appendix payload (Phase B). See PersonPdfData.
   _dossier?: import('./pdfDossierRenderer').VehicleDossierData;
 }
@@ -1029,6 +1032,9 @@ export interface PropertyPdfData {
   incidents?: { incident_number: string; incident_type: string; status: string; created_at: string }[];
   calls?: { call_number: string; incident_type: string; status: string; created_at: string }[];
   trespass_orders?: { order_number: string; subject_name: string; status: string; issued_date: string; expires_date: string }[];
+  // Linked records (from /records/links?source_type=property&source_id=ID)
+  linked_persons?: { name: string; dob?: string; flags?: string; relationship?: string }[];
+  linked_vehicles?: { license_plate: string; year?: string; make?: string; model?: string; color?: string; relationship?: string }[];
 }
 
 export interface CitationPdfData {
@@ -3270,6 +3276,35 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
       citRows, y, [lx, lx + 40, lx + 90, lx + 140]);
   }
 
+  // ── Linked Persons (cross-reference from record_links) ──
+  if (data.linked_persons && data.linked_persons.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const personRows = data.linked_persons.map(p => [
+      p.name || 'N/A',
+      fmtDate(p.dob),
+      (p.flags || '').toUpperCase(),
+      titleCase(p.relationship || 'linked'),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'NAME', x: lx }, { label: 'DOB', x: lx + 70 }, { label: 'FLAGS', x: lx + 105 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      personRows, y, [lx, lx + 70, lx + 105, lx + 140]);
+  }
+
+  // ── Linked Properties (cross-reference from record_links) ──
+  if (data.linked_properties && data.linked_properties.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Properties', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const propRows = data.linked_properties.map(p => [
+      p.name || 'N/A',
+      p.address || '',
+      titleCase(p.relationship || 'linked'),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'PROPERTY', x: lx }, { label: 'ADDRESS', x: lx + 50 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      propRows, y, [lx, lx + 50, lx + 140]);
+  }
+
   y = addNarrativeSection(doc, 'Notes', data.notes || '', y);
 
   // ── Record Metadata ──
@@ -4944,6 +4979,36 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
     y = addTableWithShading(doc,
       [{ label: 'ORDER #', x: lx }, { label: 'SUBJECT', x: lx + 30 }, { label: 'STATUS', x: lx + 85 }, { label: 'ISSUED', x: lx + 120 }, { label: 'EXPIRES', x: lx + 150 }],
       toRows, y, [lx, lx + 30, lx + 85, lx + 120, lx + 150]);
+  }
+
+  // ── Linked Persons (cross-reference from record_links) ──
+  if (data.linked_persons && data.linked_persons.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Persons', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const personRows = data.linked_persons.map(p => [
+      p.name || 'N/A',
+      fmtDate(p.dob),
+      (p.flags || '').toUpperCase(),
+      titleCase(p.relationship || 'linked'),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'NAME', x: lx }, { label: 'DOB', x: lx + 70 }, { label: 'FLAGS', x: lx + 105 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      personRows, y, [lx, lx + 70, lx + 105, lx + 140]);
+  }
+
+  // ── Linked Vehicles (cross-reference from record_links) ──
+  if (data.linked_vehicles && data.linked_vehicles.length > 0) {
+    y = checkPageBreak(doc, y, 25);
+    { const sec = openAutoSection(doc, 'Linked Vehicles', y); y = sec.sectionY + SPACING.SECTION_HEADER_H; }
+    const vehRows = data.linked_vehicles.map(v => [
+      v.license_plate || 'N/A',
+      [v.year, v.make, v.model].filter(Boolean).join(' ') || 'N/A',
+      (v.color || '').toUpperCase(),
+      titleCase(v.relationship || 'linked'),
+    ]);
+    y = addTableWithShading(doc,
+      [{ label: 'PLATE', x: lx }, { label: 'VEHICLE', x: lx + 35 }, { label: 'COLOR', x: lx + 110 }, { label: 'RELATIONSHIP', x: lx + 140 }],
+      vehRows, y, [lx, lx + 35, lx + 110, lx + 140]);
   }
 
   // Access Instructions
