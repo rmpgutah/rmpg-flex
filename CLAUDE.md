@@ -242,8 +242,63 @@ grep CACHE_NAME client/public/sw.js                              # local SW vers
 14. **The VPS is gone.** Any instruction, script, or doc that references `root@194.113.64.90`, `/opt/rmpg-flex`, `systemctl restart rmpg-flex`, `bash deploy/deploy.sh` writing via rsync, `/var/log/rmpg-deploy.log`, `/opt/deploy-rmpg-v2.sh`, or the webhook on port 9000 is **obsolete**. The new `deploy/deploy.sh` wraps `wrangler deploy` against Cloudflare.
 15. **edge-tts-universal lazy load** — `Function('return import("edge-tts-universal")')()` to avoid tsx ESM resolver crash. Still applies in local dev; on Workers the same code path needs adapting (no `Function`-based dynamic import; use a top-level `await import`).
 
+## Port Completion Status (audited 2026-05-24)
+
+The Express→Hono port shipped each subsystem as a separate `<base>-worker.ts` file mounted via `mountXRoutes`. **Most subsystems are partial ports** — the original sweep commit `a802d87a "Fix remaining API endpoints: all 18 critical routes operational"` was explicitly a stop-the-bleeding pass to get 200 responses, not faithful implementations. Several files reached production with heavy functionality silently missing.
+
+Approximate completion (Worker LOC ÷ Express LOC), sorted by gap severity:
+
+| Subsystem | Worker / Express | % | Status |
+|---|---|---|---|
+| **fleet** | 128 / 6142 | **2%** | 🔴 Stub — damage-reports returns `[]`; most CRUD disabled |
+| **notifications** | 54 / 636 | 8% | 🔴 Heavy stub |
+| **email** | 153 / 1900 | 8% | 🔴 Stub — returns hardcoded "requires desktop application" |
+| **personnel** | 357 / 4386 | 8% | 🔴 Most endpoints missing |
+| **warrants** | 382 / 2515 | 15% | 🟡 Root GET fixed 2026-05-24; many secondary routes still absent |
+| **reports** | 393 / 2592 | 15% | 🟡 Heavy gap |
+| **comms** | 278 / 1477 | 18% | 🟡 |
+| **admin** | 924 / 3722 | 24% | 🟡 58→10 auditLog calls; 40+ broadcast() missing |
+| **dlRecords** | 294 / 976 | 30% | 🟡 |
+| **incidents** | 746 / 2397 | 31% | 🟡 |
+| **records** | 1758 / 4537 | 38% | 🟡 Dropped JOIN columns |
+| **auth** | 779 / 2090 | 37% | 🟡 |
+| **citations** | 706 / 983 | 71% | 🟡 5→0 auditLog calls |
+| **court** | 602 / 1065 | 56% | 🟡 4→0 auditLog calls |
+| **cases** | 927 / 1223 | 75% | 🟡 12→1 auditLog calls |
+| (40+ others) | varies | 50-95% | Most are tolerable but unaudited for parity bugs |
+| **(green)** | useOfForce, geocode, voicePersona, adminMapConfig, pdfEngine, companyDocuments | ≥100% | Port is at least as large as Express (no obvious gap) |
+
+Run the live audit any time:
+
+```bash
+for w in server/src/routes/*-worker.ts; do
+  base=$(basename "$w" -worker.ts)
+  exp="server/src/routes/${base}.ts"; [ -f "$exp" ] || exp="server/src/routes/dispatch/${base}.ts"
+  [ -f "$exp" ] || continue
+  wl=$(wc -l < "$w"); el=$(wc -l < "$exp"); pct=$(echo "scale=0; $wl*100/$el" | bc)
+  printf "%3d%%  %5d / %5d  %s\n" "$pct" "$wl" "$el" "$base"
+done | sort -n
+```
+
+LOC ratio is a crude proxy — a faithful port can legitimately be shorter (less boilerplate) or longer (more `await` ceremony). Use it as a *triage signal*, then diff endpoint-by-endpoint against the Express source.
+
+### Common port-time bug classes (see PR #556)
+
+1. **`SELECT *` simplification** loses JOINed columns + computed subqueries the UI relies on (e.g., counts, FK labels).
+2. **`ORDER BY name`** when Express uses `ORDER BY <thing>_name` — both columns may exist; the wrong one sorts unexpectedly.
+3. **Wrong response shape** — bare array vs `{key1, key2}` object; client parser breaks.
+4. **Missing query parameters** — filter/search/pagination params silently dropped from the destructure.
+5. **Stub placeholders disguised as code** — e.g. `LIKE '%<lat*100>%'` instead of real geofence; returns 200 with wrong data.
+6. **Dropped audit logs** — compliance gap, especially serious for citations / warrants / court / use-of-force / evidence.
+7. **Dropped WebSocket broadcasts** — real-time UI updates silently die.
+8. **Lost transaction wrapping on cascading DELETEs** — `D1Db.transaction` is currently a no-op stub; orphan-row risk.
+
 ## Open Questions / Tech Debt
 
 - The Cloudflare D1 production database is sparsely populated (single-digit rows in `calls_for_service`, `incidents`, `citations`). Confirm whether RMPG is in pilot/staging use or whether a data migration from the dead Hostinger VPS is still pending.
 - Decide whether to back up D1 to R2 on a schedule (`wrangler d1 export` + R2 PUT in a Cron Trigger). Currently no automated backups exist.
 - Stale Workers and the orphan D1 should be deleted once confirmed unused — five `rmpg-flex*` Workers and two D1 instances inflate cost and confuse `wrangler` defaults.
+- Pre-existing macOS-duplicate `* 2.ts` files litter `server/src/routes/` (auth-worker 2.ts, records-worker 2.ts, etc.). They compile and confuse `tsc` output. Bulk delete: `find server/src/routes -name '* 2.ts' -delete`.
+- Finish the heavy-stub subsystems (fleet, email, notifications, personnel, reports). Each is multi-day work; the 2026-05-21 sweep commit explicitly deferred them.
+- `D1Db.transaction` in `worker-middleware/d1Helpers.ts` is `fn => fn()` — no actual transaction. D1 supports batches via `db.batch([stmt1, stmt2])`. Convert cascading DELETEs / multi-statement writes to use it.
+- Restore audit logging across citations/court/admin/cases (68 missing `auditLog` call sites). Defer to a focused compliance PR; the Express source has the exact call signatures.

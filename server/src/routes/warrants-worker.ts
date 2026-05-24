@@ -86,12 +86,35 @@ export function mountWarrantRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   api.get('/', async (c) => {
     const db = new D1Db(c.env.DB);
     const q = c.req.query();
-    const { status, type, archived, page = '1', per_page = '100000' } = q;
+    const {
+      status, type, severity, source, subject_name, archived,
+      court, charge, date_from, date_to, expiring_days, person_id,
+      page = '1', per_page = '100000',
+    } = q;
 
     let whereClause = 'WHERE 1=1';
     const params: any[] = [];
     if (status) { whereClause += ' AND w.status = ?'; params.push(status); }
     if (type) { whereClause += ' AND w.type = ?'; params.push(type); }
+    if (severity) { whereClause += ' AND w.offense_level = ?'; params.push(severity); }
+    if (source) { whereClause += " AND COALESCE(w.source, 'manual') = ?"; params.push(source); }
+    if (subject_name) {
+      const s = `%${subject_name}%`;
+      whereClause += " AND ((p.first_name || ' ' || p.last_name) LIKE ? OR w.warrant_number LIKE ? OR w.charge_description LIKE ?)";
+      params.push(s, s, s);
+    }
+    if (court) { whereClause += ' AND w.issuing_court LIKE ?'; params.push(`%${court}%`); }
+    if (charge) { whereClause += ' AND w.charge_description LIKE ?'; params.push(`%${charge}%`); }
+    if (date_from) { whereClause += ' AND w.created_at >= ?'; params.push(date_from); }
+    if (date_to) { whereClause += ' AND w.created_at <= ?'; params.push(date_to); }
+    if (expiring_days) {
+      const eDays = parseInt(expiring_days, 10);
+      if (!isNaN(eDays) && eDays > 0) {
+        whereClause += " AND w.expires_at IS NOT NULL AND w.expires_at <= date('now', '+' || ? || ' days') AND w.expires_at >= date('now')";
+        params.push(eDays);
+      }
+    }
+    if (person_id) { whereClause += ' AND w.subject_person_id = ?'; params.push(person_id); }
     if (archived === 'true') {
       whereClause += ' AND w.archived_at IS NOT NULL';
     } else if (archived !== 'all') {
@@ -106,7 +129,9 @@ export function mountWarrantRoutes(app: Hono<{ Bindings: Env; Variables: { user:
 
     const warrants = await db.prepare(`
       SELECT w.*, p.first_name as subject_first_name, p.last_name as subject_last_name,
-        u.full_name as entered_by_name
+        (p.first_name || ' ' || p.last_name) as subject_name,
+        u.full_name as entered_by_name,
+        (SELECT COUNT(*) FROM warrant_service_attempts WHERE warrant_id = w.id) as service_attempt_count
       FROM warrants w
       LEFT JOIN persons p ON w.subject_person_id = p.id
       LEFT JOIN users u ON w.entered_by = u.id
@@ -117,7 +142,7 @@ export function mountWarrantRoutes(app: Hono<{ Bindings: Env; Variables: { user:
 
     return c.json({
       data: warrants,
-      pagination: { page: pageNum, per_page: perPageNum, total: (countRow as any)?.total ?? 0, totalPages: Math.ceil(((countRow as any)?.total ?? 0) / perPageNum) },
+      pagination: { page: pageNum, per_page: perPageNum, total: countRow?.total ?? 0, totalPages: Math.ceil((countRow?.total ?? 0) / perPageNum) },
     });
   });
 
