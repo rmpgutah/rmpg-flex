@@ -75,7 +75,9 @@ import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import trespassOrders from './routes/trespassOrders';
 import forensics from './routes/forensics';
+import patrol from './routes/patrol';
 import serveIntake from './routes/serveIntake';
+import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import stubs from './routes/stubs';
 // Dispatch domain
@@ -201,6 +203,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/patrol', router: patrol, auth: 'required',
+    note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
@@ -216,9 +220,18 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-visits', router: businessVisits, auth: 'required' },
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
 
-  // ── Geocode (BEFORE /api/integrations stubs catch-all) ─────
+  // ── Bare /api mounts (router owns sub-paths) ───────────────
+  // Each entry here mounts at the bare /api prefix so the router can
+  // own multiple disjoint sub-paths under one mount (a Hono.route()
+  // limitation workaround). MUST be `auth: 'public'` at the registry
+  // level — `required` would make the auth loop register
+  // `app.use('/api/*', authMiddleware)`, blanket-blocking every
+  // /api/* path including /api/auth/login. Auth is enforced INSIDE
+  // each router via `router.use('*', authMiddleware)`.
   { prefix: '/api', router: geocode, auth: 'public',
-    note: 'Mounts at root /api to serve /api/geocode/* and /api/integrations/mapbox/client-token. MUST be public at the registry level — marking `required` here would make the auth loop add app.use(/api/*, authMiddleware) which blanket-blocks every /api/* path including /api/auth/login. The geocode router self-applies authMiddleware on its own routes; see src/routes/geocode.ts.' },
+    note: 'Serves /api/geocode/* and /api/integrations/mapbox/client-token. See src/routes/geocode.ts for the in-router auth setup.' },
+  { prefix: '/api', router: shiftPlans, auth: 'public',
+    note: 'Serves /api/shift-plans/*, /api/shift-swaps/*, /api/shift-overtime, /api/staffing-levels, /api/shift-notifications. See src/routes/shiftPlans.ts for the in-router auth setup.' },
 
   // ── Warrants — real implementation ─────────────────────────
   { prefix: '/api/warrants', router: warrants, auth: 'required' },
