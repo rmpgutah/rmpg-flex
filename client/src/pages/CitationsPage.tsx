@@ -40,7 +40,7 @@ import type { CitationPdfData } from '../utils/recordPdfGenerator';
 import { localToday, formatDate } from '../utils/dateUtils';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
-import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
+import SectorZoneBeatPicker from '../components/SectorZoneBeatPicker';
 import ExportButton from '../components/ExportButton';
 import { formatAddressDisplay } from '../utils/statusLabels';
 
@@ -283,8 +283,8 @@ export default function CitationsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const isMobile = useIsMobile();
-  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
-  const { identify: identifyDistrict } = useDistrictIdentify();
+  // Sector/Zone/Beat selection moved into shared <SectorZoneBeatPicker />,
+  // which owns the useDistrictOptions()/useDistrictIdentify() calls itself.
 
   // List state
   const [citations, setCitations] = useState<Citation[]>([]);
@@ -1450,33 +1450,20 @@ export default function CitationsPage() {
               <label className="field-label">Location</label>
               <input type="text" value={form.location} onChange={e => updateField('location', e.target.value)} placeholder="Address or intersection" className="input-dark w-full py-2 text-xs min-h-[36px]" />
             </div>
-            {/* Section / Zone / Beat — cascading */}
-            <div className="grid grid-cols-3 gap-2">
-              <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Section</label>
-                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                  value={form.section_id || ''} onChange={(e) => { updateField('section_id', e.target.value); updateField('zone_id', ''); updateField('beat_id', ''); }}>
-                  <option value="">—</option>
-                  {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Zone</label>
-                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                  value={form.zone_id || ''} onChange={(e) => { updateField('zone_id', e.target.value); updateField('beat_id', ''); }}>
-                  <option value="">—</option>
-                  {zonesForSection(form.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-rmpg-400 mb-1">Beat</label>
-                <select className="w-full bg-[#181818] border border-[#2a2a2a] rounded-sm px-2 py-1.5 text-sm text-white"
-                  value={form.beat_id || ''} onChange={(e) => updateField('beat_id', e.target.value)}>
-                  <option value="">—</option>
-                  {beatsForZone(form.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(form.zone_id, b)}</option>)}
-                </select>
-              </div>
-            </div>
+            {/* Sector / Zone / Beat — shared picker.
+                Citations DB column is `section_id` (matches FI legacy naming).
+                The picker emits `sector_id`; we map at this seam. */}
+            <SectorZoneBeatPicker
+              sectorId={form.section_id || ''}
+              zoneId={form.zone_id || ''}
+              beatId={form.beat_id || ''}
+              onChange={(next) => {
+                updateField('section_id', next.sector_id);
+                updateField('zone_id', next.zone_id);
+                updateField('beat_id', next.beat_id);
+              }}
+              className="grid grid-cols-3 gap-2"
+            />
           </div>
         </section>
 

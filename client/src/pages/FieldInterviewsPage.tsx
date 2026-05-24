@@ -19,7 +19,7 @@ import { useAuth } from '../context/AuthContext';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidPlate, isValidDate } from '../utils/validate';
 import { formatDate, formatDateTime } from '../utils/dateUtils';
-import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
+import SectorZoneBeatPicker from '../components/SectorZoneBeatPicker';
 import WarrantBadge from '../components/WarrantBadge';
 import { formatAddressDisplay } from '../utils/statusLabels';
 
@@ -81,8 +81,8 @@ export default function FieldInterviewsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'admin'; // Admin God Mode — unrestricted access
   const { errors: formErrors, validate: validateForm, clearAllErrors } = useFormValidation();
-  const { sections: sectionOptions, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
-  const { identify: identifyDistrict } = useDistrictIdentify();
+  // Sector/Zone/Beat selection moved into the shared <SectorZoneBeatPicker />,
+  // which owns the useDistrictOptions()/useDistrictIdentify() calls internally.
 
   // Data state
   const [fis, setFis] = useState<FieldInterview[]>([]);
@@ -596,33 +596,26 @@ export default function FieldInterviewsPage() {
                 </div>
               </div>
 
-              {/* Section / Zone / Beat — cascading: zone scoped to section, beat scoped to zone */}
-              <div className="grid grid-cols-3 gap-2">
-                <div>
-                  <label className="field-label">Section</label>
-                  <select className="select-dark text-xs w-full"
-                    value={formData.section_id || ''} onChange={e => { update('section_id', e.target.value); update('zone_id', ''); update('beat_id', ''); }}>
-                    <option value="">—</option>
-                    {sectionOptions.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="field-label">Zone</label>
-                  <select className="select-dark text-xs w-full"
-                    value={formData.zone_id || ''} onChange={e => { update('zone_id', e.target.value); update('beat_id', ''); }}>
-                    <option value="">—</option>
-                    {zonesForSection(formData.section_id).map(z => <option key={z} value={z}>{zoneLabels.get(z) || z}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className="field-label">Beat</label>
-                  <select className="select-dark text-xs w-full"
-                    value={formData.beat_id || ''} onChange={e => update('beat_id', e.target.value)}>
-                    <option value="">—</option>
-                    {beatsForZone(formData.zone_id).map(b => <option key={b} value={b}>{getBeatLabel(formData.zone_id, b)}</option>)}
-                  </select>
-                </div>
-              </div>
+              {/* Sector / Zone / Beat — shared picker.
+                  FI's DB column is `section_id` (legacy naming, pre-dates the
+                  rest-of-system standardization on `sector_id`). The picker
+                  emits `sector_id`; we map it to `section_id` at this seam
+                  rather than migrating the column, since SQLite ALTER COLUMN
+                  isn't supported and the queries reading this column are local
+                  to FI. */}
+              <SectorZoneBeatPicker
+                sectorId={formData.section_id || ''}
+                zoneId={formData.zone_id || ''}
+                beatId={formData.beat_id || ''}
+                onChange={(next) => {
+                  update('section_id', next.sector_id);
+                  update('zone_id', next.zone_id);
+                  update('beat_id', next.beat_id);
+                }}
+                latitude={null}
+                longitude={null}
+                className="grid grid-cols-3 gap-2"
+              />
 
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 <div><label className="field-label">Action Taken</label>
