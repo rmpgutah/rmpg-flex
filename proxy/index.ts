@@ -51,21 +51,13 @@ interface StubRule {
 }
 
 const STUBS: StubRule[] = [
-  // GET /api/statutes/search?q=… — legacy handler 500s because the
-  // utah_statutes table is missing on live D1 (785de7ae). The rewrite
-  // doesn't implement statutes at all. Returns {data: []} so the
-  // report-writer's statute-autocomplete dropdown shows "no results"
-  // cleanly instead of throwing. Real fix needs:
-  //   (1) Apply utah_statutes schema to live D1 (idempotent)
-  //   (2) Seed from upstream — utah.gov or VPS backup
-  //   (3) Reconcile handler's SELECT (`citation_fine` col missing)
-  // See incident report 2026-05-24 for details.
-  {
-    match: /^\/api\/statutes\/search(\?|$)/,
-    methods: ['GET'],
-    body: { data: [] },
-    reason: 'utah_statutes table missing on live D1',
-  },
+  // (intentionally empty — no current stubs)
+  //
+  // History:
+  //   2026-05-24: Added stub for /api/statutes/search after live D1
+  //   was found missing the utah_statutes table. Removed the same day
+  //   after schema was applied (PR #637) AND 1387 sections were seeded
+  //   from le.utah.gov XML downloads. See scripts/seed/utah_statutes.sql.
 ];
 
 const API_ROUTES: RouteRule[] = [
