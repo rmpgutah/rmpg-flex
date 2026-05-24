@@ -395,6 +395,9 @@ async function tryRefreshToken(): Promise<string | null> {
 const CF_WORKER_PREFIXES = [
   '/api/warrants/watch/',
   '/api/warrants/utah/',
+  // Audit log viewer (admin/manager only on the server side; admin-only
+  // for retention enforce + policy edit + compress + index-stats).
+  '/api/audit/',
 ];
 const CF_WORKER_BASE = 'https://api.rmpgutah.us';
 
