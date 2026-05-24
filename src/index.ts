@@ -30,6 +30,15 @@ import incidentSupplements from './routes/incidentSupplements';
 import incidentsRouter from './routes/incidents';
 import warrants from './routes/warrants';
 import { runUtahWarrantSmokePoll } from './utils/utahWarrantPoller';
+import {
+  recommendedUnits,
+  audioMode,
+  premiseAlerts,
+  callWarnings,
+  unitStatus,
+  bolos as bolosRouter,
+  welfareActive,
+} from './routes/dispatch/extensions';
 
 type Bindings = {
   DB: D1Database;
@@ -72,6 +81,10 @@ app.use('/api/dispatch/run-cards', authMiddleware);
 app.use('/api/dispatch/run-cards/*', authMiddleware);
 app.use('/api/dispatch/welfare', authMiddleware);
 app.use('/api/dispatch/welfare/*', authMiddleware);
+app.use('/api/dispatch/premise-alerts', authMiddleware);
+app.use('/api/dispatch/premise-alerts/*', authMiddleware);
+app.use('/api/dispatch/bolos', authMiddleware);
+app.use('/api/dispatch/bolos/*', authMiddleware);
 app.use('/api/nibrs', authMiddleware);
 app.use('/api/nibrs/*', authMiddleware);
 app.use('/api/incidents', authMiddleware);
@@ -97,6 +110,26 @@ app.route('/api/records/properties', properties);
 app.route('/api/records', records);
 app.route('/api/dispatch/run-cards', runCards);
 app.route('/api/dispatch/welfare', welfare);
+// Dispatch extensions — Spillman-parity gaps filled in DEV-1..7:
+//   recommendedUnits  → GET /api/dispatch/calls/:id/recommended-units
+//   audioMode         → GET /api/dispatch/units/mine/audio-mode
+//                       PUT /api/dispatch/units/:id/audio-mode
+//   premiseAlerts     → GET/POST/PUT/DELETE /api/dispatch/premise-alerts
+//                       GET /api/dispatch/premise-alerts/near/scan
+//   callWarnings      → GET /api/dispatch/calls/:id/warnings
+//   unitStatus        → PUT /api/dispatch/units/:id/status
+//   bolosRouter       → GET/POST/PUT/DELETE /api/dispatch/bolos
+//   welfareActive     → GET /api/dispatch/welfare/active
+// IMPORTANT: extensions mount BEFORE the existing calls/units routers
+// so the more-specific paths (/calls/:id/recommended-units,
+// /units/:id/status, /units/:id/audio-mode) match first.
+app.route('/api/dispatch/calls', recommendedUnits);
+app.route('/api/dispatch/calls', callWarnings);
+app.route('/api/dispatch/units', audioMode);
+app.route('/api/dispatch/units', unitStatus);
+app.route('/api/dispatch/premise-alerts', premiseAlerts);
+app.route('/api/dispatch/bolos', bolosRouter);
+app.route('/api/dispatch/welfare', welfareActive);
 app.route('/api/nibrs', nibrs);
 // IMPORTANT: incidentsRouter MUST mount BEFORE incidentSupplements.
 // Both share the /api/incidents prefix; supplements catches paths like
