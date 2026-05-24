@@ -64,6 +64,12 @@ export interface MapSettings {
   layer_state_boundary_stroke: string;
   layer_state_boundary_stroke_opacity: number;
   layer_state_boundary_stroke_weight: number;
+  layer_place_fill: string;
+  layer_place_fill_opacity: number;
+  layer_place_stroke: string;
+  layer_place_stroke_opacity: number;
+  layer_place_stroke_weight: number;
+  layer_place_min_zoom: number;
   gps_batch_interval_ms: number;
   gps_max_accuracy_meters: number;
   gps_max_speed_ms: number;
@@ -139,6 +145,12 @@ const DEFAULT_MAP_SETTINGS: MapSettings = {
   layer_state_boundary_stroke: '#ffffff',
   layer_state_boundary_stroke_opacity: 0.3,
   layer_state_boundary_stroke_weight: 2,
+  layer_place_fill: '#22c55e',
+  layer_place_fill_opacity: 0.7,
+  layer_place_stroke: '#22c55e',
+  layer_place_stroke_opacity: 0.9,
+  layer_place_stroke_weight: 1,
+  layer_place_min_zoom: 10,
   gps_batch_interval_ms: 5000,
   gps_max_accuracy_meters: 100,
   gps_max_speed_ms: 80,

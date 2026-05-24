@@ -10,7 +10,7 @@ import type { Env } from '../worker';
 import type { JwtPayload } from '../worker-middleware/auth';
 import { authenticateToken, requireRole } from '../worker-middleware/auth';
 import { auditLog } from '../worker-middleware/auditLogger';
-import { D1Db, paramStr, paramNum } from '../worker-middleware/d1Helpers';
+import { D1Db, paramStr, paramNum, filterFieldMap } from '../worker-middleware/d1Helpers';
 import { localNow } from '../worker-middleware/timeUtils';
 
 // ── Helpers ─────────────────────────────────────────────────
@@ -22,6 +22,63 @@ function toBoolInt(val: any): number {
   if (val === undefined || val === null) return 0;
   if (typeof val === 'string') return val === 'false' || val === '0' || val === '' ? 0 : 1;
   return val ? 1 : 0;
+}
+
+type ServiceWindow = 'early_morning' | 'daytime' | 'evening';
+function classifyServiceWindow(isoTimestamp: string): { window: ServiceWindow; isWeekend: boolean } {
+  const d = new Date(isoTimestamp);
+  const mt = new Date(d.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const hour = mt.getHours();
+  const day = mt.getDay();
+  const isWeekend = day === 0 || day === 6;
+  let window: ServiceWindow;
+  if (hour >= 6 && hour < 9) window = 'early_morning';
+  else if (hour >= 9 && hour < 18) window = 'daytime';
+  else if (hour >= 18 && hour < 21) window = 'evening';
+  else window = hour < 6 ? 'early_morning' : 'evening';
+  return { window, isWeekend };
+}
+
+const INCIDENT_TYPE_CODES: Record<string, string> = {
+  alarm_response: 'ALR', access_control: 'ACC', patrol_check: 'PTL', lock_unlock: 'LCK',
+  property_damage: 'PDM', lost_found: 'LFP', theft: 'THF', burglary: 'BRG', robbery: 'ROB',
+  assault: 'ASL', battery: 'BAT', vandalism: 'VAN', criminal_mischief: 'CRM',
+  drug_activity: 'DRG', weapons_offense: 'WPN', fraud_forgery: 'FRD',
+  kidnapping: 'KID', arson: 'ARS', sexual_assault: 'SXA', stalking: 'STK',
+  identity_theft: 'IDT', extortion: 'EXT', criminal_trespass: 'CTR',
+  disorderly_conduct: 'DIS', public_intoxication: 'PIX', indecent_exposure: 'INX',
+  shoplifting: 'SHP', auto_theft: 'ATH', receiving_stolen: 'RST',
+  poss_stolen_vehicle: 'PSV', criminal_threat: 'CTH', illegal_dumping: 'ILD',
+  prostitution: 'PRS', trespass: 'TRS', disturbance: 'DST', noise_complaint: 'NOI',
+  loitering: 'LOI', panhandling: 'PNH', domestic_dispute: 'DOM',
+  prowler: 'PRW', harassment: 'HRS', curfew_violation: 'CRF', illegal_camping: 'ILC',
+  traffic_accident: 'TAC', hit_and_run: 'HNR', dui_dwi: 'DUI', parking_violation: 'PKV',
+  traffic_hazard: 'THZ', abandoned_vehicle: 'ABV', reckless_driving: 'RKD',
+  suspended_license: 'SLI', no_insurance: 'NIN', expired_registration: 'EXR',
+  speed_violation: 'SPD', traffic_stop: 'TST', medical_emergency: 'MED', overdose: 'OVD',
+  mental_health_crisis: 'MHC', fire: 'FIR', fire_alarm: 'FAR', hazmat: 'HAZ',
+  escort: 'ESC', welfare_check: 'WCK', citizen_assist: 'CTA', civil_standby: 'CSB',
+  animal_complaint: 'ANM', utility_problem: 'UTI', pso_client_request: 'PSO',
+  death_investigation: 'DTH', juvenile_runaway: 'JRN', missing_person: 'MSP',
+  found_person: 'FDP', repo_notice: 'REP', civil_dispute: 'CVD',
+  daily_activity: 'DAR', special_event: 'SPE', training_exercise: 'TRN',
+  equipment_issue: 'EQP', suspicious_activity: 'SUS', other: 'OTH',
+};
+function getIncidentTypeCode(type: string): string {
+  return INCIDENT_TYPE_CODES[type] || 'OTH';
+}
+
+async function generateIncidentNumber(db: D1Db, incidentType: string): Promise<string> {
+  const yy = String(new Date().getFullYear()).slice(-2);
+  const code = getIncidentTypeCode(incidentType);
+  const prefix = `RKY${yy}-`;
+  const lastInc = await db.prepare('SELECT incident_number FROM incidents WHERE incident_number LIKE ? ORDER BY id DESC LIMIT 1').get(`${prefix}%`) as any;
+  let nextNum = 1;
+  if (lastInc) {
+    const match = lastInc.incident_number?.match(/RKY\d{2}-(\d{5})-/);
+    if (match) nextNum = parseInt(match[1], 10) + 1;
+  }
+  return `${prefix}${String(nextNum).padStart(5, '0')}-${code}`;
 }
 
 // ── App ─────────────────────────────────────────────────────
@@ -1374,23 +1431,23 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
      const callNumber = `${prefix}${String(nextNum).padStart(5, '0')}`;
 
      // Define field mappings for D1 insert (only include columns that exist in D1 table)
-     const fieldMap = {
-       incident_type: (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, '_'),
-       priority: (v) => String(v).toUpperCase(),
-       status: (v) => v,
-       location_address: (v) => String(v || ''),
-       latitude: (v) => latitude != null ? Number(latitude) : null,
-       longitude: (v) => longitude != null ? Number(longitude) : null,
-       description: (v) => description || null,
-       caller_name: (v) => caller_name || null,
-       caller_phone: (v) => caller_phone || null,
-       property_id: (v) => property_id != null ? Number(property_id) : null,
-       dispatcher_id: (v) => user.userId,
-       created_at: (v) => customCreatedAt || now,
-       notes: (v) => notes || null,
-       source: (v) => 'phone', // Default source
-       assigned_unit_ids: (v) => '[]',
-     };
+     const fieldMap: Record<string, (v: any) => any> = {
+        incident_type: (v: any) => String(v || '').trim().toLowerCase().replace(/\s+/g, '_'),
+        priority: (v: any) => String(v).toUpperCase(),
+        status: (v: any) => v,
+        location_address: (v: any) => String(v || ''),
+        latitude: () => latitude != null ? Number(latitude) : null,
+        longitude: () => longitude != null ? Number(longitude) : null,
+        description: () => description || null,
+        caller_name: () => caller_name || null,
+        caller_phone: () => caller_phone || null,
+        property_id: () => property_id != null ? Number(property_id) : null,
+        dispatcher_id: () => user.userId,
+        created_at: () => customCreatedAt || now,
+        notes: () => initial_notes || null,
+        source: () => 'phone',
+        assigned_unit_ids: () => '[]',
+      };
 
      // Add client_id mapping if the column exists in D1 (it doesn't in current schema, so we skip it for now)
      // The D1 schema will need to be updated to include this column for full compatibility
@@ -2081,6 +2138,785 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
       return c.json(updated);
     } catch (err: any) {
       return c.json({ error: 'Failed to update unit status', code: 'UNITS_STATUS_UPDATE_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // DELETE /calls/:id — Hard delete a call (admin/manager only)
+  // ═══════════════════════════════════════════════════════════
+  api.delete('/calls/:id', requireRole('admin', 'manager'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+      const now = localNow();
+
+      // Free units, nullify FKs, delete call
+      let unitIds: number[] = [];
+      try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
+      for (const unitId of unitIds) {
+        await db.prepare('UPDATE units SET status = ?, current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?')
+          .run('available', now, unitId, call.id);
+      }
+
+      try { await db.prepare('UPDATE incidents SET call_id = NULL WHERE call_id = ?').run(call.id); } catch { /* non-critical */ }
+      try { await db.prepare('UPDATE units SET current_call_id = NULL WHERE current_call_id = ?').run(call.id); } catch { /* non-critical */ }
+      try { await db.prepare('DELETE FROM record_links WHERE (source_type = ? AND source_id = ?) OR (target_type = ? AND target_id = ?)').run('call', String(call.id), 'call', String(call.id)); } catch { /* non-critical */ }
+      try { await db.prepare('DELETE FROM call_visit_history WHERE call_id = ?').run(call.id); } catch { /* non-critical */ }
+      try { await db.prepare('DELETE FROM call_persons WHERE call_id = ?').run(call.id); } catch { /* non-critical */ }
+      try { await db.prepare('DELETE FROM call_vehicles WHERE call_id = ?').run(call.id); } catch { /* non-critical */ }
+      try { await db.prepare('DELETE FROM call_units WHERE call_id = ?').run(call.id); } catch { /* non-critical */ }
+      try { await db.prepare('DELETE FROM serve_queue WHERE call_id = ?').run(call.id); } catch { /* non-critical */ }
+      try { await db.prepare('UPDATE calls_for_service SET parent_call_id = NULL WHERE parent_call_id = ?').run(call.id); } catch { /* non-critical */ }
+      try { await db.prepare("DELETE FROM activity_log WHERE entity_type = 'call' AND entity_id = ?").run(call.id); } catch { /* non-critical */ }
+
+      await db.prepare('DELETE FROM calls_for_service WHERE id = ?').run(call.id);
+      await db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_deleted', 'call', ?, ?, ?)`)
+        .run(user.userId, call.id, `Deleted call ${call.call_number}`, 'worker');
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_deleted', call_id: call.id });
+      } catch { /* non-critical */ }
+
+      return c.json({ success: true, id: callId });
+    } catch (err: any) {
+      return c.json({ error: 'Failed to delete call', code: 'CALLLIFECYCLE_DELETE_CALL_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // POST /calls/:id/archive — Archive a single call
+  // ═══════════════════════════════════════════════════════════
+  api.post('/calls/:id/archive', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+      if (call.status === 'archived') return c.json({ error: 'Call is already archived', code: 'CALL_IS_ALREADY_ARCHIVED' }, 400);
+
+      const now = localNow();
+      await db.prepare('UPDATE calls_for_service SET status = ?, archived_at = ?, updated_at = ? WHERE id = ?').run('archived', now, now, call.id);
+
+      let unitIds: number[] = [];
+      try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
+      for (const unitId of unitIds) {
+        await db.prepare("UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?").run(now, unitId, call.id);
+      }
+
+      await db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_archived', 'call', ?, ?, ?)`)
+        .run(user.userId, call.id, `${call.call_number} archived`, 'worker');
+
+      const updated = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_archived', call: updated });
+      } catch { /* non-critical */ }
+
+      return c.json(updated);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to archive call', code: 'CALLLIFECYCLE_ARCHIVE_CALL_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // POST /calls/archive-bulk — Archive multiple calls at once
+  // ═══════════════════════════════════════════════════════════
+  api.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const { call_ids, statuses } = await c.req.json();
+      const now = localNow();
+      let callsToArchive: any[] = [];
+
+      if (call_ids && Array.isArray(call_ids) && call_ids.length > 0) {
+        if (user.role !== 'admin' && call_ids.length > 500) return c.json({ error: 'Cannot archive more than 500 calls at once', code: 'CANNOT_ARCHIVE_MORE_THAN' }, 400);
+        for (const id of call_ids) { const n = parseInt(String(id), 10); if (isNaN(n) || n < 1) return c.json({ error: 'All call_ids must be positive integers', code: 'ALL_CALLIDS_MUST_BE' }, 400); }
+        const placeholders = call_ids.map(() => '?').join(',');
+        callsToArchive = await db.prepare(`SELECT * FROM calls_for_service WHERE id IN (${placeholders}) AND status != 'archived'`).all(...call_ids) as any[];
+      } else {
+        const validArchiveStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled'];
+        const targetStatuses = Array.isArray(statuses) && statuses.length > 0
+          ? statuses.filter((s: any) => typeof s === 'string' && validArchiveStatuses.includes(s))
+          : ['cleared', 'closed', 'cancelled'];
+        const placeholders = targetStatuses.map(() => '?').join(',');
+        callsToArchive = await db.prepare(`SELECT * FROM calls_for_service WHERE status IN (${placeholders})`).all(...targetStatuses) as any[];
+      }
+
+      if (callsToArchive.length === 0) return c.json({ archived_count: 0, message: 'No calls to archive' });
+
+      for (const call of callsToArchive) {
+        await db.prepare('UPDATE calls_for_service SET status = ?, archived_at = ?, updated_at = ? WHERE id = ?').run('archived', now, now, call.id);
+        let unitIds: number[] = [];
+        try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds = Array.isArray(p) ? p : []; } catch { /* ignore */ }
+        for (const unitId of unitIds) {
+          await db.prepare("UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ? AND current_call_id = ?").run(now, unitId, call.id);
+        }
+        await db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_archived', 'call', ?, ?, ?)`)
+          .run(user.userId, call.id, `${call.call_number} bulk archived`, 'worker');
+      }
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'calls_bulk_archived', count: callsToArchive.length });
+      } catch { /* non-critical */ }
+
+      return c.json({ archived_count: callsToArchive.length, message: `${callsToArchive.length} call(s) archived` });
+    } catch (err: any) {
+      return c.json({ error: 'Failed to bulk archive', code: 'CALLLIFECYCLE_BULK_ARCHIVE_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // POST /calls/:id/le-notification — Notify external agency
+  // ═══════════════════════════════════════════════════════════
+  api.post('/calls/:id/le-notification', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+      const { agency, case_number, notes } = await c.req.json();
+      const now = localNow();
+
+      if (agency && (typeof agency !== 'string' || agency.length > 200)) return c.json({ error: 'Agency must be 200 characters or less', code: 'INVALID_AGENCY' }, 400);
+      if (case_number && (typeof case_number !== 'string' || case_number.length > 100)) return c.json({ error: 'Case number must be 100 characters or less', code: 'INVALID_CASE_NUMBER' }, 400);
+
+      await db.prepare('UPDATE calls_for_service SET le_notified = 1, le_agency = ?, le_case_number = ?, le_notified_at = ?, le_notified_by = ?, updated_at = ? WHERE id = ?')
+        .run(agency || 'Local PD', case_number || null, now, user.userId, now, call.id);
+
+      await db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at) VALUES (?, 'le_notification', 'call', ?, ?, ?, ?)`)
+        .run(user.userId, call.id, `LE notified: ${agency || 'Local PD'}${case_number ? ` (Case #${case_number})` : ''}`, 'worker', now);
+
+      const updated = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_updated', call: updated });
+      } catch { /* non-critical */ }
+
+      return c.json(updated);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to le notification', code: 'LE_NOTIFICATION_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // GET /gps/speed-heatmap — Grid-based speed aggregation
+  // ═══════════════════════════════════════════════════════════
+  api.get('/gps/speed-heatmap', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
+      const gridSize = Math.min(Math.max(parseFloat(c.req.query('grid_size') || '0.002') || 0.002, 0.0005), 0.01);
+
+      const rows = await db.prepare(`
+        SELECT ROUND(latitude / ?) * ? AS grid_lat, ROUND(longitude / ?) * ? AS grid_lng,
+          AVG(speed * 2.23694) AS avg_speed, MAX(speed * 2.23694) AS max_speed, COUNT(*) AS point_count
+        FROM gps_breadcrumbs
+        WHERE recorded_at >= datetime('now','localtime','-${hours} hours')
+          AND latitude IS NOT NULL AND longitude IS NOT NULL
+          AND speed IS NOT NULL AND speed > 0.2
+        GROUP BY grid_lat, grid_lng HAVING point_count >= 3
+        ORDER BY avg_speed DESC LIMIT 5000
+      `).all(gridSize, gridSize, gridSize, gridSize) as any[];
+
+      const result = (rows || []).map((r: any) => ({
+        grid_lat: r.grid_lat, grid_lng: r.grid_lng,
+        avg_speed: Math.round(r.avg_speed * 10) / 10,
+        max_speed: Math.round(r.max_speed * 10) / 10,
+        point_count: r.point_count,
+      }));
+
+      return c.json(result);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      return c.json({ error: 'Failed to generate speed heatmap', code: 'GPS_SPEED_HEATMAP_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // GET /gps/call-trail/:id — GPS breadcrumbs for a call's units
+  // ═══════════════════════════════════════════════════════════
+  api.get('/gps/call-trail/:id', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ points: [], stats: { total_points: 0, total_distance_miles: 0, duration_minutes: 0, avg_speed_mph: 0, max_speed_mph: 0 } });
+
+      // Find units assigned to this call
+      const unitIds: number[] = [];
+      try { const p = JSON.parse(call.assigned_unit_ids || '[]'); unitIds.push(...(Array.isArray(p) ? p : [])); } catch { /* ignore */ }
+      if (unitIds.length === 0) {
+        const unitRows = await db.prepare('SELECT id FROM units WHERE current_call_id = ?').all(call.id) as any[];
+        for (const u of unitRows) unitIds.push(u.id);
+      }
+      if (unitIds.length === 0) return c.json({ points: [], stats: { total_points: 0, total_distance_miles: 0, duration_minutes: 0, avg_speed_mph: 0, max_speed_mph: 0 } });
+
+      const timeFrom = call.created_at ? new Date(new Date(call.created_at).getTime() - 30 * 60 * 1000).toISOString() : new Date(Date.now() - 4 * 60 * 60 * 1000).toISOString();
+      const placeholders = unitIds.map(() => '?').join(',');
+
+      const points = await db.prepare(`
+        SELECT latitude, longitude, speed, heading, recorded_at, call_sign, officer_name, badge_number
+        FROM gps_breadcrumbs WHERE unit_id IN (${placeholders}) AND recorded_at >= ?
+        ORDER BY recorded_at ASC LIMIT 10000
+      `).all(...unitIds, timeFrom) as any[];
+
+      if (!points || points.length === 0) return c.json({ points: [], stats: { total_points: 0, total_distance_miles: 0, duration_minutes: 0, avg_speed_mph: 0, max_speed_mph: 0 } });
+
+      let totalDistMiles = 0;
+      let maxSpeedMph = 0;
+      let speedSum = 0;
+      for (let i = 1; i < points.length; i++) {
+        const p1 = points[i - 1], p2 = points[i];
+        if (p1.latitude && p1.longitude && p2.latitude && p2.longitude) {
+          const R = 3959;
+          const dLat = (p2.latitude - p1.latitude) * Math.PI / 180;
+          const dLng = (p2.longitude - p1.longitude) * Math.PI / 180;
+          const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1.latitude * Math.PI / 180) * Math.cos(p2.latitude * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+          totalDistMiles += R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        }
+        if (p2.speed) { const mph = p2.speed * 2.23694; speedSum += mph; if (mph > maxSpeedMph) maxSpeedMph = mph; }
+      }
+
+      const durationMs = points.length >= 2 ? new Date(points[points.length - 1].recorded_at).getTime() - new Date(points[0].recorded_at).getTime() : 0;
+      const sourceBreakdown: Record<string, number> = {};
+      for (const p of points) { const src = p.source || 'gps_breadcrumbs'; sourceBreakdown[src] = (sourceBreakdown[src] || 0) + 1; }
+
+      return c.json({
+        points: points.map((p: any) => ({
+          lat: p.latitude, lng: p.longitude, speed_mph: p.speed ? Math.round(p.speed * 2.23694 * 10) / 10 : 0,
+          heading: p.heading, recorded_at: p.recorded_at, call_sign: p.call_sign, officer_name: p.officer_name,
+        })),
+        stats: {
+          total_points: points.length,
+          total_distance_miles: Math.round(totalDistMiles * 100) / 100,
+          duration_minutes: Math.round(durationMs / 60000 * 10) / 10,
+          avg_speed_mph: points.length > 0 ? Math.round(speedSum / points.length * 10) / 10 : 0,
+          max_speed_mph: Math.round(maxSpeedMph * 10) / 10,
+          source_breakdown: sourceBreakdown,
+        },
+      });
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json({ points: [], stats: { total_points: 0, total_distance_miles: 0, duration_minutes: 0, avg_speed_mph: 0, max_speed_mph: 0 } });
+      return c.json({ error: 'Failed to get call trail', code: 'GPS_CALL_TRAIL_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // GET /gps/zone-speed-stats — Speed stats per beat polygon
+  // ═══════════════════════════════════════════════════════════
+  api.get('/gps/zone-speed-stats', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
+
+      const beats = await db.prepare(`
+        SELECT b.id AS beat_id, COALESCE(b.beat_name, b.name) AS beat_name, b.beat_code AS beat_code,
+               b.polygon_coords, z.zone_name AS zone_name, s.sector_name AS sector_name
+        FROM dispatch_beats b
+        LEFT JOIN dispatch_zones z ON b.zone_id = z.id
+        LEFT JOIN dispatch_sectors s ON z.sector_id = s.id
+        WHERE b.polygon_coords IS NOT NULL AND b.polygon_coords != ''
+      `).all() as any[];
+
+      if (!beats || beats.length === 0) return c.json([]);
+
+      const beatPolygons: { beat: any; polygon: { lat: number; lng: number }[] }[] = [];
+      for (const beat of beats) {
+        try { const coords = JSON.parse(beat.polygon_coords); if (Array.isArray(coords) && coords.length >= 3) beatPolygons.push({ beat, polygon: coords }); } catch { /* skip */ }
+      }
+
+      const breadcrumbs = await db.prepare(`
+        SELECT latitude, longitude, speed FROM gps_breadcrumbs
+        WHERE recorded_at >= datetime('now','localtime','-${hours} hours')
+          AND latitude IS NOT NULL AND longitude IS NOT NULL AND speed IS NOT NULL AND speed > 0.2
+        ORDER BY recorded_at DESC LIMIT 50000
+      `).all() as any[];
+
+      if (!breadcrumbs) return c.json([]);
+
+      function pointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+          const xi = polygon[i].lng, yi = polygon[i].lat;
+          const xj = polygon[j].lng, yj = polygon[j].lat;
+          if ((yi > lng) !== (yj > lng) && lat < ((xj - xi) * (lng - yi)) / (yj - yi) + xi) inside = !inside;
+        }
+        return inside;
+      }
+
+      const beatStats: Record<number, { speeds: number[]; beat: any }> = {};
+      for (const bc of breadcrumbs) {
+        for (const { beat, polygon } of beatPolygons) {
+          if (pointInPolygon(bc.latitude, bc.longitude, polygon)) {
+            if (!beatStats[beat.beat_id]) beatStats[beat.beat_id] = { speeds: [], beat };
+            beatStats[beat.beat_id].speeds.push(bc.speed * 2.23694);
+            break;
+          }
+        }
+      }
+
+      const result = Object.values(beatStats).map(({ speeds, beat }: any) => {
+        speeds.sort((a: number, b: number) => a - b);
+        const sum = speeds.reduce((s: number, v: number) => s + v, 0);
+        const p95Idx = Math.min(Math.floor(speeds.length * 0.95), speeds.length - 1);
+        return {
+          beat_id: beat.beat_id, beat_name: beat.beat_name, beat_code: beat.beat_code,
+          zone_name: beat.zone_name, sector_name: beat.sector_name,
+          avg_speed_mph: Math.round((sum / speeds.length) * 10) / 10,
+          max_speed_mph: Math.round(speeds[speeds.length - 1] * 10) / 10,
+          p95_speed_mph: Math.round(speeds[p95Idx] * 10) / 10,
+          point_count: speeds.length,
+        };
+      });
+
+      return c.json(result);
+    } catch (err: any) {
+      if (err?.message?.includes('no such table')) return c.json([]);
+      return c.json({ error: 'Failed to generate zone speed stats', code: 'GPS_ZONE_SPEED_STATS_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // GET /shift-handoff — Get current shift handoff notes
+  // ═══════════════════════════════════════════════════════════
+  api.get('/shift-handoff', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const row = await db.prepare("SELECT config_value FROM system_config WHERE config_key = 'shift_handoff_notes' ORDER BY updated_at DESC LIMIT 1").get() as any;
+      const notes = row ? JSON.parse(row.config_value) : { text: '', updated_by: '', updated_at: '' };
+      return c.json(notes);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to get shift handoff', code: 'GET_SHIFT_HANDOFF_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // PUT /shift-handoff — Save/upsert shift handoff notes
+  // ═══════════════════════════════════════════════════════════
+  api.put('/shift-handoff', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const { text } = await c.req.json();
+      const now = localNow();
+      const value = JSON.stringify({
+        text: text || '',
+        updated_by: user.username || 'Unknown',
+        updated_by_id: user.userId,
+        updated_at: now,
+      });
+
+      const existing = await db.prepare("SELECT id FROM system_config WHERE config_key = 'shift_handoff_notes'").get() as any;
+      if (existing) {
+        await db.prepare('UPDATE system_config SET config_value = ?, updated_at = ? WHERE id = ?').run(value, now, existing.id);
+      } else {
+        await db.prepare("INSERT INTO system_config (config_key, config_value, category, updated_at) VALUES ('shift_handoff_notes', ?, 'dispatch', ?)").run(value, now);
+      }
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'shift_handoff_updated', notes: JSON.parse(value) });
+      } catch { /* non-critical */ }
+
+      return c.json({ success: true });
+    } catch (err: any) {
+      return c.json({ error: 'Failed to save shift handoff', code: 'SAVE_SHIFT_HANDOFF_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // POST /calls/:id/redispatch — Create a re-dispatch from a PSO/process_service call
+  // ═══════════════════════════════════════════════════════════
+  api.post('/calls/:id/redispatch', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const parentCall = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!parentCall) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+      if (!['pso_client_request', 'process_service'].includes(parentCall.incident_type)) {
+        return c.json({ error: 'Re-dispatch is only available for PSO Client Request and Process Service calls', code: 'REDISPATCH_TYPE_INVALID' }, 400);
+      }
+      if (!['cleared', 'closed', 'cancelled', 'on_hold', 'archived'].includes(parentCall.status)) {
+        return c.json({ error: 'Call must be cleared, closed, cancelled, on hold, or archived to re-dispatch', code: 'CALL_MUST_BE_INACTIVE' }, 400);
+      }
+
+      const now = localNow();
+      const currentAttempt = parentCall.pso_attempt_number || 1;
+      const newAttempt = currentAttempt + 1;
+
+      let rootCallId = parentCall.id;
+      let rootCallNumber = parentCall.call_number;
+      if (parentCall.parent_call_id) {
+        const rootCall = await db.prepare('SELECT id, call_number FROM calls_for_service WHERE id = ?').get(parentCall.parent_call_id) as any;
+        if (rootCall) { rootCallId = rootCall.id; rootCallNumber = rootCall.call_number; }
+      }
+
+      let assignedCallSigns: string[] = [];
+      try {
+        const parsedIds = JSON.parse(parentCall.assigned_unit_ids || '[]');
+        const unitIds = (Array.isArray(parsedIds) ? parsedIds : []).filter((id: any) => typeof id === 'number' && !isNaN(id));
+        if (unitIds.length) {
+          const units = await db.prepare(`SELECT call_sign FROM units WHERE id IN (${unitIds.map(() => '?').join(',')}) LIMIT 100`).all(...unitIds) as any[];
+          assignedCallSigns = units.map((u: any) => u.call_sign).filter(Boolean);
+        }
+      } catch { /* ignore */ }
+
+      const attemptTime = parentCall.onscene_at || parentCall.cleared_at || parentCall.closed_at || now;
+      const { window: timeWindow, isWeekend } = classifyServiceWindow(attemptTime);
+
+      await db.prepare(`
+        INSERT INTO call_visit_history
+          (call_id, visit_number, status, dispatched_at, enroute_at, onscene_at, cleared_at, closed_at,
+           assigned_units, responding_vehicle_id, starting_mileage, ending_mileage, disposition, note, created_by, created_at,
+           time_window, is_weekend)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        parentCall.id, currentAttempt, parentCall.status,
+        parentCall.dispatched_at, parentCall.enroute_at, parentCall.onscene_at, parentCall.cleared_at, parentCall.closed_at,
+        JSON.stringify(assignedCallSigns), parentCall.responding_vehicle_id || null,
+        parentCall.starting_mileage ?? null, parentCall.ending_mileage ?? null,
+        parentCall.disposition || null, null, user.username || 'Dispatch', now,
+        timeWindow, isWeekend ? 1 : 0
+      );
+
+      // Generate new call number
+      const year = new Date().getFullYear().toString().slice(-2);
+      const lastCall = await db.prepare('SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1').get(`${year}-CFS%`) as any;
+      let nextSeq = 1;
+      if (lastCall?.call_number) {
+        const parsed = parseInt(lastCall.call_number.replace(`${year}-CFS`, ''), 10);
+        if (!isNaN(parsed)) nextSeq = parsed + 1;
+      }
+      const newCallNumber = `${year}-CFS${String(nextSeq).padStart(5, '0')}`;
+
+      const { scheduled_note } = await c.req.json().catch(() => ({}));
+      const ordinal = (n: number) => { const s = ['th','st','nd','rd']; const v = n%100; return n + (v>=11&&v<=13 ? 'th' : (s[n%10]||s[0])); };
+      const noteText = scheduled_note
+        ? `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt. Note: ${scheduled_note}`
+        : `Re-dispatch from ${parentCall.call_number} — ${ordinal(newAttempt)} attempt`;
+
+      const initialNotes = JSON.stringify([{
+        id: String(Date.now()),
+        author: user.username || 'Dispatch',
+        text: noteText,
+        timestamp: now,
+      }]);
+
+      const result = await db.prepare(`
+        INSERT INTO calls_for_service (
+          call_number, incident_type, priority, status, source,
+          caller_name, caller_phone, caller_relationship, caller_address,
+          location_address, property_id, client_id, latitude, longitude,
+          cross_street, location_building, location_floor, location_room,
+          description, notes, parent_call_id, pso_attempt_number,
+          pso_requestor_name, pso_requestor_phone, pso_requestor_email,
+          pso_service_type, pso_billing_code, pso_authorization,
+          pso_service_windows,
+          process_service_type, process_served_to, process_served_address,
+          dispatch_code, sector_id, sector_name, zone_id, zone_name,
+          beat_id, beat_name, beat_descriptor, contract_id,
+          num_subjects, num_victims, direction_of_travel,
+          subject_description, vehicle_description,
+          scene_safety, weather_conditions, lighting_conditions,
+          injuries_reported, alcohol_involved, domestic_violence, drugs_involved,
+          weapons_involved, mental_health_crisis, juvenile_involved,
+          felony_in_progress, officer_safety_caution, gang_related,
+          k9_requested, ems_requested, fire_requested, hazmat,
+          case_number, le_agency, le_case_number, le_notified,
+          secondary_type, contact_method, tags,
+          dispatcher_id, created_at, updated_at, received_at
+        ) VALUES (
+          ?, ?, ?, 'pending', ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?,
+          ?,
+          ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?
+        )
+      `).run(
+        newCallNumber, parentCall.incident_type, parentCall.priority, parentCall.source || 'dispatch',
+        parentCall.caller_name, parentCall.caller_phone, parentCall.caller_relationship, parentCall.caller_address,
+        parentCall.location_address, parentCall.property_id, parentCall.client_id, parentCall.latitude, parentCall.longitude,
+        parentCall.cross_street, parentCall.location_building, parentCall.location_floor, parentCall.location_room,
+        parentCall.description, initialNotes, rootCallId, newAttempt,
+        parentCall.pso_requestor_name, parentCall.pso_requestor_phone, parentCall.pso_requestor_email,
+        parentCall.pso_service_type, parentCall.pso_billing_code, parentCall.pso_authorization,
+        parentCall.pso_service_windows,
+        parentCall.process_service_type, parentCall.process_served_to, parentCall.process_served_address,
+        parentCall.dispatch_code, parentCall.sector_id, parentCall.sector_name, parentCall.zone_id, parentCall.zone_name,
+        parentCall.beat_id, parentCall.beat_name, parentCall.beat_descriptor, parentCall.contract_id,
+        parentCall.num_subjects, parentCall.num_victims, parentCall.direction_of_travel,
+        parentCall.subject_description, parentCall.vehicle_description,
+        parentCall.scene_safety, parentCall.weather_conditions, parentCall.lighting_conditions,
+        parentCall.injuries_reported, parentCall.alcohol_involved, parentCall.domestic_violence, parentCall.drugs_involved,
+        parentCall.weapons_involved, parentCall.mental_health_crisis, parentCall.juvenile_involved,
+        parentCall.felony_in_progress, parentCall.officer_safety_caution, parentCall.gang_related,
+        parentCall.k9_requested, parentCall.ems_requested, parentCall.fire_requested, parentCall.hazmat,
+        parentCall.case_number, parentCall.le_agency, parentCall.le_case_number, parentCall.le_notified,
+        parentCall.secondary_type, parentCall.contact_method, parentCall.tags,
+        user.userId, now, now, now
+      );
+
+      const newCallId = Number(result.meta?.last_row_id || result.meta?.changes || 0);
+
+      // Copy linked persons
+      try {
+        const parentPersons = await db.prepare('SELECT person_id, role, notes FROM call_persons WHERE call_id = ?').all(parentCall.id) as any[];
+        for (const p of (parentPersons as any[])) {
+          try { await db.prepare('INSERT INTO call_persons (call_id, person_id, role, notes) VALUES (?, ?, ?, ?)').run(newCallId, p.person_id, p.role, p.notes); } catch { /* skip */ }
+        }
+      } catch { /* ignore */ }
+
+      // Copy linked vehicles
+      try {
+        const parentVehicles = await db.prepare('SELECT vehicle_id, role, notes FROM call_vehicles WHERE call_id = ?').all(parentCall.id) as any[];
+        for (const v of (parentVehicles as any[])) {
+          try { await db.prepare('INSERT INTO call_vehicles (call_id, vehicle_id, role, notes) VALUES (?, ?, ?, ?)').run(newCallId, v.vehicle_id, v.role, v.notes); } catch { /* skip */ }
+        }
+      } catch { /* ignore */ }
+
+      // Mark parent call with back-link note
+      let parentNotes: any[] = [];
+      try { parentNotes = JSON.parse(parentCall.notes || '[]'); } catch { parentNotes = []; }
+      parentNotes.push({
+        id: String(Date.now() + 1),
+        author: 'System',
+        text: `Re-dispatched → new call ${newCallNumber}`,
+        timestamp: now,
+      });
+      await db.prepare('UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?')
+        .run(JSON.stringify(parentNotes), now, parentCall.id);
+
+      await db.prepare('INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(user.userId, 'call_redispatched', 'call', parentCall.id, `Re-dispatched → ${newCallNumber} (${ordinal(newAttempt)} attempt)`, 'worker');
+      await db.prepare('INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(user.userId, 'call_created_from_redispatch', 'call', newCallId, `Created from re-dispatch of ${parentCall.call_number} (${ordinal(newAttempt)} attempt)`, 'worker');
+
+      const newCall = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(newCallId) as any;
+
+      const chainCalls = await db.prepare(`
+        SELECT id, call_number, status, pso_attempt_number, created_at, cleared_at, disposition, parent_call_id
+        FROM calls_for_service WHERE id = ? OR parent_call_id = ? ORDER BY pso_attempt_number ASC, id ASC
+      `).all(rootCallId, rootCallId) as any[];
+
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_created', call: newCall });
+        broadcastDispatchUpdate({ action: 'call_updated', call: { ...parentCall, notes: JSON.stringify(parentNotes) } });
+      } catch { /* non-critical */ }
+
+      return c.json({
+        ...newCall,
+        chain: chainCalls,
+        parent_call_number: parentCall.call_number,
+      }, 201);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to re-dispatch call', code: 'REDISPATCH_CALL_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // POST /calls/:id/generate-incident — Generate incident from a cleared/closed call
+  // ═══════════════════════════════════════════════════════════
+  api.post('/calls/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const call = await db.prepare(`
+        SELECT c.*, p.name as property_name, p.address as property_address
+        FROM calls_for_service c
+        LEFT JOIN properties p ON c.property_id = p.id
+        WHERE c.id = ?
+      `).get(callId) as any;
+
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+      if (!['cleared', 'closed'].includes(call.status)) {
+        return c.json({ error: 'Can only generate incident reports from cleared or closed calls', code: 'CAN_ONLY_GENERATE_INCIDENT' }, 400);
+      }
+
+      const existingIncident = await db.prepare('SELECT id, incident_number FROM incidents WHERE call_id = ?').get(call.id) as any;
+      if (existingIncident) {
+        return c.json({
+          error: 'An incident report already exists for this call',
+          incident_id: existingIncident.id,
+          incident_number: existingIncident.incident_number
+        }, 409);
+      }
+
+      const incidentNumber = await generateIncidentNumber(db, call.incident_type);
+
+      const narrativeParts: string[] = [];
+      narrativeParts.push(`Incident generated from dispatch call ${call.call_number}.`);
+      narrativeParts.push(`\nCall Type: ${(call.incident_type || '').replace(/_/g, ' ').toUpperCase()}`);
+      narrativeParts.push(`Priority: ${call.priority}`);
+      narrativeParts.push(`Location: ${call.location_address || 'Unknown'}`);
+      if (call.property_name) narrativeParts.push(`Property: ${call.property_name}`);
+      if (call.caller_name) narrativeParts.push(`Caller: ${call.caller_name}${call.caller_phone ? ` (${call.caller_phone})` : ''}`);
+      if (call.description) narrativeParts.push(`\nCall Description: ${call.description}`);
+      if (call.disposition) narrativeParts.push(`Disposition: ${call.disposition}`);
+      narrativeParts.push(`\nCall Timeline:`);
+      if (call.created_at) narrativeParts.push(`  Created: ${call.created_at}`);
+      if (call.dispatched_at) narrativeParts.push(`  Dispatched: ${call.dispatched_at}`);
+      if (call.enroute_at) narrativeParts.push(`  En Route: ${call.enroute_at}`);
+      if (call.onscene_at) narrativeParts.push(`  On Scene: ${call.onscene_at}`);
+      if (call.cleared_at) narrativeParts.push(`  Cleared: ${call.cleared_at}`);
+      narrativeParts.push(`\n--- Officer narrative below ---\n`);
+      const narrative = narrativeParts.join('\n');
+
+      const toMountain = (iso: string | null) => {
+        if (!iso) return { date: '', time: '' };
+        const d = new Date(iso.includes('T') ? iso : iso.replace(' ', 'T') + 'Z');
+        if (isNaN(d.getTime())) return { date: '', time: '' };
+        const mt = d.toLocaleString('en-US', { timeZone: 'America/Denver', hour12: false });
+        const [datePart, timePart] = mt.split(', ');
+        const [m, day, yr] = datePart.split('/');
+        return {
+          date: `${yr}-${m.padStart(2, '0')}-${day.padStart(2, '0')}`,
+          time: timePart?.slice(0, 5) || '',
+        };
+      };
+      const started = toMountain(call.created_at);
+      const ended = toMountain(call.cleared_at);
+
+      const result = await db.prepare(`
+        INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address,
+          property_id, latitude, longitude, narrative, officer_id, client_id, contract_id,
+          occurred_date, occurred_time, end_date, end_time,
+          pso_service_type, pso_attempt_number, pso_requestor_name, pso_requestor_phone,
+          pso_requestor_email, pso_billing_code, pso_authorization,
+          process_service_type, process_served_to, process_served_address, process_service_result, process_served_at, process_attempts,
+          alcohol_involved, drugs_involved, domestic_violence, weapons_involved,
+          injuries_reported, mental_health_crisis, juvenile_involved, felony_in_progress,
+          officer_safety_caution, k9_requested, ems_requested, fire_requested,
+          hazmat, gang_related, evidence_collected, body_camera_active, photos_taken,
+          trespass_issued, vehicle_pursuit, foot_pursuit, le_notified, supervisor_notified,
+          sector_id, zone_id, beat_id, disposition)
+        VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?,
+          ?, ?, ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?, ?,
+          ?, ?, ?, ?)
+      `).run(
+        incidentNumber, call.id, call.incident_type, call.priority,
+        call.location_address || call.property_address || null,
+        call.property_id || null, call.latitude ?? null, call.longitude ?? null,
+        narrative, user.userId, call.client_id || null, call.contract_id || null,
+        started.date || null, started.time || null, ended.date || null, ended.time || null,
+        call.pso_service_type || null, call.pso_attempt_number || null,
+        call.pso_requestor_name || null, call.pso_requestor_phone || null,
+        call.pso_requestor_email || null, call.pso_billing_code || null,
+        call.pso_authorization || null,
+        call.process_service_type || null, call.process_served_to || null,
+        call.process_served_address || null, call.process_service_result || null,
+        call.process_served_at || null, call.process_attempts || null,
+        call.alcohol_involved ? 1 : 0, call.drugs_involved ? 1 : 0,
+        call.domestic_violence ? 1 : 0, call.weapons_involved || null,
+        call.injuries_reported ? 1 : 0, call.mental_health_crisis ? 1 : 0,
+        call.juvenile_involved ? 1 : 0, call.felony_in_progress ? 1 : 0,
+        call.officer_safety_caution ? 1 : 0, call.k9_requested ? 1 : 0,
+        call.ems_requested ? 1 : 0, call.fire_requested ? 1 : 0,
+        call.hazmat ? 1 : 0, call.gang_related ? 1 : 0,
+        call.evidence_collected ? 1 : 0, call.body_camera_active ? 1 : 0,
+        call.photos_taken ? 1 : 0, call.trespass_issued ? 1 : 0,
+        call.vehicle_pursuit ? 1 : 0, call.foot_pursuit ? 1 : 0,
+        call.le_notified ? 1 : 0, call.supervisor_notified ? 1 : 0,
+        call.sector_id || null, call.zone_id || null, call.beat_id || null,
+        call.disposition || null
+      );
+
+      const incidentId = Number(result.meta?.last_row_id || result.meta?.changes || 0);
+
+      // Auto-link persons from the dispatch call
+      const callPersons = await db.prepare('SELECT person_id, role, notes FROM call_persons WHERE call_id = ?').all(call.id) as any[];
+      for (const cp of (callPersons as any[])) {
+        try { await db.prepare('INSERT OR IGNORE INTO incident_persons (incident_id, person_id, role, notes, added_by) VALUES (?, ?, ?, ?, ?)').run(incidentId, cp.person_id, cp.role, cp.notes, user.userId); } catch { /* skip */ }
+      }
+
+      const incident = await db.prepare(`
+        SELECT i.*, o.full_name as officer_name, o.badge_number, c.call_number
+        FROM incidents i
+        LEFT JOIN users o ON i.officer_id = o.id
+        LEFT JOIN calls_for_service c ON i.call_id = c.id
+        WHERE i.id = ?
+      `).get(incidentId) as any;
+      if (!incident) return c.json({ error: 'Failed to retrieve created incident', code: 'FAILED_TO_RETRIEVE_CREATED' }, 500);
+
+      await db.prepare('INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, ?, ?, ?, ?, ?)')
+        .run(user.userId, 'incident_created', 'incident', incidentId, `Generated ${incidentNumber} from call ${call.call_number}`, 'worker');
+
+      // Link all chained calls
+      let rootId = call.id;
+      if (call.parent_call_id) {
+        const root = await db.prepare('SELECT id FROM calls_for_service WHERE id = ?').get(call.parent_call_id) as any;
+        if (root) rootId = root.id;
+      }
+      const chainedCalls = await db.prepare(`
+        SELECT id, call_number FROM calls_for_service
+        WHERE id = ? OR parent_call_id = ?
+        ORDER BY id ASC
+      `).all(rootId, rootId) as any[];
+
+      if (chainedCalls.length > 1) {
+        const linkNarrative: string[] = [`\n--- Linked Calls (${chainedCalls.length} in chain) ---`];
+        for (const cc of chainedCalls) {
+          await db.prepare('UPDATE calls_for_service SET case_number = ? WHERE id = ? AND (case_number IS NULL OR case_number = ?)').run(incidentNumber, cc.id, '');
+          if (cc.id !== call.id) {
+            linkNarrative.push(`  ${cc.call_number} (linked)`);
+          }
+        }
+        await db.prepare('UPDATE incidents SET narrative = narrative || ?, linked_incidents = ? WHERE id = ?')
+          .run(linkNarrative.join('\n'), JSON.stringify(chainedCalls.map((c: any) => c.call_number)), incidentId);
+      }
+
+      return c.json(incident, 201);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to generate incident', code: 'CALLLIFECYCLE_GENERATE_INCIDENT_ERROR' }, 500);
     }
   });
 

@@ -1398,6 +1398,27 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
   // UNIVERSAL SEARCH
   // ═══════════════════════════════════════════════════════════
 
+  // GET /api/records/persons/search - Search persons
+  api.get('/persons/search', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const q = c.req.query('q') || '';
+      if (q.length < 2) return c.json({ error: 'Search query must be at least 2 characters', code: 'SEARCH_QUERY_MUST_BE' }, 400);
+
+      const searchTerm = `%${q}%`;
+      const persons = await db.prepare(`
+        SELECT * FROM persons
+        WHERE first_name LIKE ? OR last_name LIKE ? OR phone LIKE ? OR email LIKE ?
+          OR address LIKE ? OR (first_name || ' ' || last_name) LIKE ?
+        ORDER BY last_name, first_name LIMIT 50
+      `).all(searchTerm, searchTerm, searchTerm, searchTerm, searchTerm, searchTerm);
+
+      return c.json(persons || []);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to search persons', code: 'SEARCH_PERSONS_ERROR' }, 500);
+    }
+  });
+
   // GET /api/records/universal-search
   api.get('/universal-search', async (c) => {
     const db = new D1Db(c.env.DB);
