@@ -185,14 +185,21 @@ export default function AddressAutocomplete({
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const skipNextChangeRef = useRef(false);
 
-  // Fetch Mapbox token on mount
+  // Fetch Mapbox token on mount + on tab-visible.
+  // Previous behavior: token was tried once on mount; if the endpoint
+  // returned "not configured", useNominatim=true latched forever in
+  // that tab. After the operator added the MAPBOX_ACCESS_TOKEN secret,
+  // tabs that loaded before the secret never picked up Mapbox.
+  // Now: also re-probe when the tab becomes visible (user came back),
+  // and force-refresh the token cache so a stale "not configured"
+  // response doesn't poison the recovery path.
   useEffect(() => {
     let cancelled = false;
     setLoadError(false);
 
-    (async () => {
+    const probe = async (force = false) => {
       try {
-        const token = await getMapboxAccessToken();
+        const token = await getMapboxAccessToken(force);
         if (cancelled) return;
         if (!token) {
           setUseNominatim(true);
@@ -200,14 +207,31 @@ export default function AddressAutocomplete({
           injectAutocompleteStyles();
           return;
         }
+        // Token available — switch back to Mapbox path even if we
+        // had previously latched to Nominatim.
+        setUseNominatim(false);
         setTokenReady(true);
         injectAutocompleteStyles();
       } catch {
         if (!cancelled) { setUseNominatim(true); injectAutocompleteStyles(); }
       }
-    })();
+    };
 
-    return () => { cancelled = true; };
+    probe();
+
+    const onVisible = () => {
+      if (document.visibilityState === 'visible') {
+        // Force refresh — bypass the module-level token cache so we
+        // discover newly-configured Mapbox keys without a hard reload.
+        probe(true);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisible);
+
+    return () => {
+      cancelled = true;
+      document.removeEventListener('visibilitychange', onVisible);
+    };
   }, []);
 
   // Geocode query via Mapbox or Nominatim fallback
@@ -293,12 +317,23 @@ export default function AddressAutocomplete({
     onChange(suggestion.place_name);
 
     if (suggestion.source === 'nominatim') {
-      const raw = suggestion.raw || {};
-      const addr = raw;
-      const street = addr.street || '';
-      const city = addr.city || '';
-      const state = addr.state || '';
-      const zip = addr.zip || '';
+      // Nominatim raw shape:
+      //   { lat: "40.76...", lon: "-111.89...",
+      //     address: { house_number, road, city|town|village, state, postcode, ... } }
+      // Previous code read addr.street/addr.zip/addr.latitude — all undefined.
+      // Result: autofill silently dropped lat/lng and the district lookup
+      // (which keys off lat/lng) never fired. Bug fix: read the actual
+      // Nominatim field names.
+      const raw: any = suggestion.raw || {};
+      const a = raw.address || {};
+      const houseNumber = a.house_number || '';
+      const road = a.road || a.pedestrian || a.cycleway || '';
+      const street = [houseNumber, road].filter(Boolean).join(' ');
+      const city = a.city || a.town || a.village || a.hamlet || a.suburb || '';
+      const state = a.state || '';
+      const zip = a.postcode || '';
+      const lat = raw.lat != null ? Number(raw.lat) : null;
+      const lng = raw.lon != null ? Number(raw.lon) : null;
       if (onSelect) {
         onSelect({
           formatted: suggestion.place_name,
@@ -306,9 +341,9 @@ export default function AddressAutocomplete({
           city,
           state,
           zip,
-          country: 'United States',
-          latitude: addr.latitude ?? null,
-          longitude: addr.longitude ?? null,
+          country: a.country || 'United States',
+          latitude: Number.isFinite(lat) ? lat : null,
+          longitude: Number.isFinite(lng) ? lng : null,
         });
       }
       return;
