@@ -61,6 +61,7 @@ import incidentsRouter from './routes/incidents';
 import audit from './routes/audit';
 import arrests from './routes/arrests';
 import cases from './routes/cases';
+import citations from './routes/citations';
 import fieldInterviews from './routes/fieldInterviews';
 import documentFolders from './routes/documents/folders';
 import documentIntake from './routes/documentIntake';
@@ -174,8 +175,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Manual booking subset only; JailBase poller endpoints in a Phase 2 PR' },
   { prefix: '/api/cases', router: cases, auth: 'required',
     note: 'MVP core; entity-junction tables in a follow-up PR' },
-  { prefix: '/api/citations', router: stubs, auth: 'required',
-    note: 'TEMPORARY: stub until #617 (citations port) merges. Once merged, change to citations router' },
+  { prefix: '/api/citations', router: citations, auth: 'required' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
