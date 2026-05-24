@@ -42,7 +42,7 @@
     "edge-tts-universal": "^1.4.0",
     "express": "^5.2.1",
     "express-rate-limit": "^8.5.1",
-    "groq-sdk": "^1.1.1",
+    "groq-sdk": "^1.2.0",
     "hono": "^4.12.22",
     "html-to-text": "^10.0.0",
     "jose": "^6.2.3",
