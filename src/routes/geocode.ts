@@ -43,15 +43,32 @@ geocode.get('/geocode/search', async (c) => {
   const cached = await c.env.KV.get(cacheKey, 'json').catch(() => null);
   if (cached) return c.json(cached);
 
+  // Strong Utah bias — RMPG operates statewide with the bulk of
+  // calls in the Wasatch Front (SLC metro). Without a viewbox,
+  // "South 200 East" returns Berne, Indiana before any Utah match.
+  //
+  //   viewbox      = left,top,right,bottom  (west,north,east,south)
+  //                  covers all of Utah with a small border buffer
+  //   bounded=1    = HARD restrict to the viewbox (Nominatim ignores
+  //                  matches outside it; keeps Indiana results away)
+  //   countrycodes = belt + suspenders since bounded=1 is the harder
+  //                  constraint
+  //
+  // Explicit ?statewide=0 query flag lets a caller opt OUT of the
+  // bounded restriction (e.g. premise check on an out-of-state
+  // address). Default behavior is bounded to Utah.
+  const statewideOnly = c.req.query('statewide') !== '0';
   const params = new URLSearchParams({
     q,
     format: 'json',
     addressdetails: '1',
     limit: String(limit),
-    // Bias to US — dispatchers in Utah aren't looking up Paris cafés.
-    // Removing countrycodes would broaden but spam suggestions.
     countrycodes: 'us',
   });
+  if (statewideOnly) {
+    params.set('viewbox', '-114.052,42.001,-109.041,36.998');
+    params.set('bounded', '1');
+  }
   const url = `${NOMINATIM_BASE}?${params}`;
 
   try {
