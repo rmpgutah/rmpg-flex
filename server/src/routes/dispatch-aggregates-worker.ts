@@ -291,16 +291,26 @@ export function mountDispatchAggregatesRoutes(app: Hono<{ Bindings: Env; Variabl
     }
 
     try {
-      // Find containing beat via bounding box + exact polygon match
+      // Find containing beat via bounding box + exact polygon match.
+      // Fixed `dc.*` -> `dz.*` typo (the JOIN alias is `dz`, not `dc`);
+      // previously every exact-match call threw `no such column: dc.zone_code`
+      // and silently fell through to the nearest-beat fallback below.
       const beat = await db.prepare(`
         SELECT db2.beat_code, db2.beat_name, db2.beat_descriptor,
-               dc.zone_code, dc.zone_name, ds.sector_code, ds.sector_name
+               dz.zone_code, dz.zone_name, ds.sector_code, ds.sector_name
         FROM dispatch_beats db2
         LEFT JOIN dispatch_zones dz ON dz.id = db2.zone_id
         LEFT JOIN dispatch_sectors ds ON ds.id = dz.sector_id
         WHERE db2.min_lat IS NOT NULL AND db2.max_lat IS NOT NULL
           AND ? BETWEEN db2.min_lat AND db2.max_lat
           AND ? BETWEEN db2.min_lng AND db2.max_lng
+        -- City/municipal beats win over county-unincorp catch-alls.
+        -- Pattern: 29 unincorp beats per county are all named XXX-UNINC
+        -- with "Co. Unincorp." in beat_name. Anything not matching is treated
+        -- as municipal. If RMPG ever adds an unincorp beat that does not
+        -- follow this naming convention, both this CASE and the seed would
+        -- need updating - alternative is adding an is_unincorp flag column.
+        ORDER BY (CASE WHEN db2.beat_name LIKE '%Unincorp%' OR db2.beat_code LIKE '%UNINC%' THEN 1 ELSE 0 END) ASC
         LIMIT 1
       `).get(lat, lng) as any;
 
