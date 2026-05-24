@@ -164,6 +164,123 @@ links.patch('/calls/:id/persons/:linkId', async (c) => {
   return c.json(updated);
 });
 
+// POST /dispatch/calls/:id/persons/quick-add
+//
+// Fused find-or-create-then-link: caller posts person fields + role, server
+// runs duplicate detection BEFORE creating a new persons row. Stops MNI
+// fragmentation from a dispatcher typing "John Doe DOB:1985" into a new
+// person row when a matching one already exists.
+//
+// Dedup key: LOWER(last_name) + LOWER(first_name), plus dob when supplied.
+// Returns 409 with the candidate list. Caller picks via merge_into_id
+// (link the existing record) or force_create:true (create new anyway).
+//
+// Static segment beats :linkId in Hono's router, so this path takes
+// precedence over PATCH /calls/:id/persons/:linkId without explicit order.
+links.post('/calls/:id/persons/quick-add', async (c) => {
+  const db = getDb(c.env);
+  const callId = c.req.param('id');
+  const userId = c.get('userId') as number;
+  const body = await c.req.json<{
+    first_name?: string; last_name?: string; dob?: string;
+    role?: string; notes?: string;
+    merge_into_id?: number; force_create?: boolean;
+    // Optional extras carried through to the persons row on create:
+    gender?: string; race?: string; phone?: string; address?: string;
+  }>();
+
+  let personId: number;
+  let createdNew = false;
+
+  if (body.merge_into_id) {
+    const existing = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM persons WHERE id = ?', body.merge_into_id,
+    );
+    if (!existing) return c.json({ error: 'merge_into_id not found' }, 404);
+    personId = existing.id;
+  } else {
+    if (!body.first_name || !body.last_name) {
+      return c.json({ error: 'first_name and last_name required' }, 400);
+    }
+
+    // Duplicate scan. Phone gives a strong false-positive signal too but the
+    // existing persons schema doesn't enforce normalization, so we stick to
+    // (last_name, first_name [, dob]) — same heuristic Spillman uses.
+    const dupConditions: string[] = [
+      'LOWER(last_name) = LOWER(?)',
+      'LOWER(first_name) = LOWER(?)',
+    ];
+    const dupParams: unknown[] = [body.last_name, body.first_name];
+    if (body.dob) { dupConditions.push('dob = ?'); dupParams.push(body.dob); }
+    const candidates = await query<Record<string, unknown>>(
+      db,
+      `SELECT id, first_name, last_name, dob, address, phone,
+              caution_flags, is_sex_offender, gang_affiliation, probation_parole
+       FROM persons WHERE ${dupConditions.join(' AND ')}
+       ORDER BY last_name, first_name LIMIT 10`,
+      ...dupParams,
+    );
+
+    if (candidates.length > 0 && !body.force_create) {
+      return c.json({
+        code: 'DUPLICATE_CANDIDATES',
+        message: `Found ${candidates.length} possible existing person(s). Resend with merge_into_id to link an existing record, or force_create:true to create a new one.`,
+        candidates,
+      }, 409);
+    }
+
+    const result = await execute(
+      db,
+      `INSERT INTO persons (first_name, last_name, dob, gender, race, address, phone)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      body.first_name, body.last_name, body.dob ?? null,
+      body.gender ?? null, body.race ?? null,
+      body.address ?? null, body.phone ?? null,
+    );
+    personId = Number(result.meta.last_row_id);
+    createdNew = true;
+  }
+
+  // Reuse main's link insertion pattern (INSERT OR IGNORE + -6h MDT timestamp).
+  const role = body.role || 'subject';
+  await execute(
+    db,
+    `INSERT OR IGNORE INTO call_persons (call_id, person_id, role, notes, added_by, added_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now', '-6 hours'))`,
+    callId, personId, role, body.notes ?? null, userId,
+  );
+  const link = await queryFirst<Record<string, unknown>>(
+    db,
+    `SELECT cp.*, p.first_name, p.last_name, p.dob,
+            p.caution_flags, p.is_sex_offender, p.gang_affiliation
+     FROM call_persons cp JOIN persons p ON cp.person_id = p.id
+     WHERE cp.call_id = ? AND cp.person_id = ? AND cp.role = ?`,
+    callId, personId, role,
+  );
+
+  broadcastAll('dispatch_update', {
+    action: 'call_person_added', call_id: Number(callId), link,
+  });
+
+  // Same officer-safety push the regular POST does — quick-add path
+  // shouldn't bypass the MDT voice warning.
+  const officerIds = await getOfficerUserIdsForCall(db, callId);
+  if (officerIds.length > 0 && link) {
+    const flag = link as any;
+    const hasSafety = flag?.caution_flags || flag?.is_sex_offender || flag?.gang_affiliation;
+    const short = hasSafety
+      ? `Subject added with caution flag: ${flag?.last_name ?? ''}`
+      : `Subject added: ${flag?.last_name ?? ''}`;
+    for (const uid of officerIds) {
+      sendToUser(uid, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), short,
+      });
+    }
+  }
+
+  return c.json({ created: createdNew, person_id: personId, link }, 201);
+});
+
 // ═══════════════════════════════════════════════════════════════════
 // VEHICLES
 // ═══════════════════════════════════════════════════════════════════
@@ -267,6 +384,114 @@ links.patch('/calls/:id/vehicles/:linkId', async (c) => {
     action: 'call_vehicle_updated', call_id: Number(callId), link: updated,
   });
   return c.json(updated);
+});
+
+// POST /dispatch/calls/:id/vehicles/quick-add
+//
+// Same protocol as persons/quick-add. Dedup priority: VIN (strong, unique
+// across the fleet by design) over plate_number+state (weaker — same plate
+// can be re-issued across years, but the false-positive cost in active
+// dispatch is low vs the fragmentation cost of creating duplicate vehicles
+// for the same physical car).
+links.post('/calls/:id/vehicles/quick-add', async (c) => {
+  const db = getDb(c.env);
+  const callId = c.req.param('id');
+  const userId = c.get('userId') as number;
+  const body = await c.req.json<{
+    plate_number?: string; state?: string; vin?: string;
+    make?: string; model?: string; year?: number | string;
+    color?: string; owner_person_id?: number;
+    role?: string; notes?: string;
+    merge_into_id?: number; force_create?: boolean;
+  }>();
+
+  let vehicleId: number;
+  let createdNew = false;
+
+  if (body.merge_into_id) {
+    const existing = await queryFirst<{ id: number }>(
+      db, 'SELECT id FROM vehicles_records WHERE id = ?', body.merge_into_id,
+    );
+    if (!existing) return c.json({ error: 'merge_into_id not found' }, 404);
+    vehicleId = existing.id;
+  } else {
+    if (!body.plate_number && !body.vin) {
+      return c.json({ error: 'plate_number or vin required' }, 400);
+    }
+
+    let candidates: Record<string, unknown>[] = [];
+    if (body.vin) {
+      candidates = await query<Record<string, unknown>>(
+        db,
+        `SELECT id, make, model, year, color, plate_number, state, vin, owner_person_id
+         FROM vehicles_records WHERE UPPER(vin) = UPPER(?) LIMIT 10`,
+        body.vin,
+      );
+    } else if (body.plate_number) {
+      const dupConditions: string[] = ['UPPER(plate_number) = UPPER(?)'];
+      const dupParams: unknown[] = [body.plate_number];
+      if (body.state) { dupConditions.push('UPPER(state) = UPPER(?)'); dupParams.push(body.state); }
+      candidates = await query<Record<string, unknown>>(
+        db,
+        `SELECT id, make, model, year, color, plate_number, state, vin, owner_person_id
+         FROM vehicles_records WHERE ${dupConditions.join(' AND ')} LIMIT 10`,
+        ...dupParams,
+      );
+    }
+
+    if (candidates.length > 0 && !body.force_create) {
+      return c.json({
+        code: 'DUPLICATE_CANDIDATES',
+        message: `Found ${candidates.length} possible existing vehicle(s). Resend with merge_into_id to link an existing record, or force_create:true to create a new one.`,
+        candidates,
+      }, 409);
+    }
+
+    const result = await execute(
+      db,
+      `INSERT INTO vehicles_records (plate_number, state, vin, make, model, year, color, owner_person_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      body.plate_number ?? null, body.state ?? null, body.vin ?? null,
+      body.make ?? null, body.model ?? null, body.year ?? null,
+      body.color ?? null, body.owner_person_id ?? null,
+    );
+    vehicleId = Number(result.meta.last_row_id);
+    createdNew = true;
+  }
+
+  const role = body.role || 'subject';
+  await execute(
+    db,
+    `INSERT OR IGNORE INTO call_vehicles (call_id, vehicle_id, role, notes, added_by, added_at)
+     VALUES (?, ?, ?, ?, ?, datetime('now', '-6 hours'))`,
+    callId, vehicleId, role, body.notes ?? null, userId,
+  );
+  const link = await queryFirst<Record<string, unknown>>(
+    db,
+    `SELECT cv.*, v.plate_number, v.state, v.make, v.model, v.year, v.color
+     FROM call_vehicles cv JOIN vehicles_records v ON cv.vehicle_id = v.id
+     WHERE cv.call_id = ? AND cv.vehicle_id = ? AND cv.role = ?`,
+    callId, vehicleId, role,
+  );
+
+  broadcastAll('dispatch_update', {
+    action: 'call_vehicle_added', call_id: Number(callId), link,
+  });
+
+  const officerIds = await getOfficerUserIdsForCall(db, callId);
+  if (officerIds.length > 0 && link) {
+    const v = link as any;
+    const short = v.plate_number
+      ? `Vehicle added: plate ${v.plate_number}`
+      : (`Vehicle added: ${v.make || ''} ${v.model || ''}`.trim() || 'Vehicle added');
+    for (const uid of officerIds) {
+      sendToUser(uid, 'call_status_for_officer', {
+        action: 'note_added', call_id: Number(callId), short,
+      });
+    }
+  }
+
+  return c.json({ created: createdNew, vehicle_id: vehicleId, link }, 201);
 });
 
 // ═══════════════════════════════════════════════════════════════════
