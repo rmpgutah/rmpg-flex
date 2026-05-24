@@ -1,0 +1,19 @@
+# Cloudflare Pages _headers
+# https://developers.cloudflare.com/pages/configuration/headers/
+#
+# CRITICAL: A header CSP overrides the index.html <meta http-equiv> CSP.
+# Previously this header was set in the Pages dashboard custom-headers
+# UI without `https://api.rmpgutah.us` in connect-src, which blocked
+# every cross-origin API call from the SPA to the Worker subdomain
+# (warrants, refresh, etc.). Defining the CSP here makes the source of
+# truth code-controlled instead of dashboard-controlled.
+
+/*
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com; img-src 'self' data: blob: https: http:; font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com; connect-src 'self' ws: wss: https://api.rmpgutah.us https://*.rmpgutah.us https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io https://static.cloudflareinsights.com; frame-src 'self' blob: https://*.arcgis.com; media-src 'self' blob: data:; worker-src 'self' blob:; child-src 'self' blob:; manifest-src 'self'; frame-ancestors 'self'; base-uri 'self'; form-action 'self'; object-src 'none'
+  Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+  Permissions-Policy: camera=(self), microphone=(self), geolocation=(self), payment=()
+  X-Frame-Options: SAMEORIGIN
+  Referrer-Policy: strict-origin-when-cross-origin
+  X-Content-Type-Options: nosniff
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Resource-Policy: same-origin
