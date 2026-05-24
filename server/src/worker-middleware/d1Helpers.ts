@@ -5,7 +5,7 @@
 // Express routes. All methods return Promises.
 // ============================================================
 
-import type { D1Database, D1Result } from '@cloudflare/workers-types';
+import type { D1Database, D1PreparedStatement, D1Result } from '@cloudflare/workers-types';
 
 export interface D1Row {
   [key: string]: any;
@@ -50,6 +50,15 @@ export class D1Stmt {
       },
     };
   }
+
+  /**
+   * Returns a bound D1PreparedStatement suitable for `D1Db.batch([...])`.
+   * Use this when you need atomic execution across multiple statements
+   * (D1's only atomicity primitive — see D1Db.batch docs).
+   */
+  bind(...params: any[]): D1PreparedStatement {
+    return this.db.prepare(this.sql).bind(...params);
+  }
 }
 
 export class D1Db {
@@ -67,6 +76,33 @@ export class D1Db {
     await this.db.exec(sql);
   }
 
+  /**
+   * D1's only atomicity primitive. Statements in the array run sequentially
+   * in a single transaction; if any statement fails, all preceding statements
+   * roll back. Returns one D1Result per statement.
+   *
+   * Build statements via `db.prepare(sql).bind(...params)` so the binding
+   * happens before the batch call. Use this anywhere the Express source
+   * used `db.transaction(() => {...})()` — cascading DELETEs, multi-row
+   * writes that must succeed or fail together, etc. Do NOT use
+   * `D1Db.transaction(fn)` for atomicity (see its JSDoc).
+   */
+  async batch(statements: D1PreparedStatement[]): Promise<D1Result[]> {
+    return this.db.batch(statements);
+  }
+
+  /**
+   * **NOT a real transaction.** Calls `fn()` and returns its result. D1 has
+   * no callback-based transaction API — atomicity requires the explicit
+   * `batch([stmt1, stmt2, ...])` form (see `D1Db.batch`).
+   *
+   * This method exists to ease porting from better-sqlite3 (`db.transaction(fn)`)
+   * but provides NO atomicity guarantees. If `fn` throws after a write
+   * already committed, you get orphan data. New code should call `batch()`
+   * directly. Marked `@deprecated` so editors flag accidental use.
+   *
+   * @deprecated Use `D1Db.batch([stmts])` for atomic multi-statement writes.
+   */
   transaction<T>(fn: () => Promise<T>): Promise<T> {
     return fn();
   }
