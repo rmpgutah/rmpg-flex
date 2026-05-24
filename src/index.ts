@@ -42,6 +42,7 @@ import pdfTools from './routes/pdfTools';
 import documentIntake from './routes/documentIntake';
 import documentFolders from './routes/documents/folders';
 import audit from './routes/audit';
+import citations from './routes/citations';
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
@@ -207,6 +208,12 @@ app.use('/api/integrations/*', authMiddleware);
 app.use('/api/audit', authMiddleware);
 app.use('/api/audit/*', authMiddleware);
 app.route('/api/audit', audit);
+// Citations (traffic / criminal / parking / warning). Niche endpoints
+// deferred to follow-up: /statutes/lookup, /calculate-fine,
+// /stats/by-officer, /:id/full, /:id/completeness, /batch/*.
+app.use('/api/citations', authMiddleware);
+app.use('/api/citations/*', authMiddleware);
+app.route('/api/citations', citations);
 // Document folders — hierarchical browser backed by document_folders +
 // attachments. Migration 0024_document_folders adds the folders table
 // + a folder_id column to attachments (NULL = unfoldered, legacy).
