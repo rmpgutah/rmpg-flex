@@ -149,12 +149,17 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/personnel/coverage-gaps' },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
-  // PUT /api/personnel/:id — new Worker has the write handler
-  // (src/routes/personnel.ts). Method-gated to PUT only because
-  // GET /api/personnel/:id and DELETE /api/personnel/:id still
-  // live on legacy; broadening would silently break those until
-  // the new Worker gains feature parity.
+  // PUT /api/personnel/:id — rewrite implements edit handler (manager-tier
+  // roles can edit anyone, self-edit allowed on a narrow contact/prefs subset).
+  // Legacy returns 404. Scoped to PUT only so GET/POST/DELETE keep flowing
+  // to legacy until the rewrite has feature parity (delete + create).
   { kind: 'regex', value: /^\/api\/personnel\/\d+$/, methods: ['PUT'] },
+  // Dedicated audited surfaces for role/password/status changes — rewrite-only.
+  // Each is locked to a tighter role tier than the general PUT (admin-only
+  // for role and password; manager-tier for status). See src/routes/personnel.ts.
+  { kind: 'regex', value: /^\/api\/personnel\/\d+\/role$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/personnel\/\d+\/reset-password$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/personnel\/\d+\/status$/, methods: ['POST'] },
   // Fleet — entire namespace
   { kind: 'prefix', value: '/api/fleet' },
   // Comms BOLOs + message priority stats (legacy has /comms/messages
