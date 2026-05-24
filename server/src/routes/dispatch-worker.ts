@@ -1314,83 +1314,83 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
   // WRITE ROUTES
   // ═══════════════════════════════════════════════════════════
 
-  // POST /api/dispatch/calls - Create a new call
-  api.post('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
-    const db = new D1Db(c.env.DB);
-    const user = c.get('user');
-    let body: any;
-    try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
+   // POST /api/dispatch/calls - Create a new call
+   api.post('/calls', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+     const db = new D1Db(c.env.DB);
+     const user = c.get('user');
+     let body: any;
+     try { body = await c.req.json(); } catch { return c.json({ error: 'Invalid JSON body', code: 'INVALID_JSON' }, 400); }
 
-    const {
-      incident_type, priority, location_address,
-      latitude, longitude, narrative, caller_name, caller_phone, caller_address,
-      description, property_id, client_id, reported_by, initial_notes,
-      created_at: customCreatedAt, status: customStatus,
-    } = body;
+     const {
+       incident_type, priority, location_address,
+       latitude, longitude, narrative, caller_name, caller_phone, caller_address,
+       description, property_id, client_id, reported_by, initial_notes,
+       created_at: customCreatedAt, status: customStatus,
+     } = body;
 
-    if (!incident_type || !priority || !location_address) {
-      return c.json({ error: 'incident_type, priority, and location_address are required', code: 'MISSING_FIELDS' }, 400);
-    }
+     if (!incident_type || !priority || !location_address) {
+       return c.json({ error: 'incident_type, priority, and location_address are required', code: 'MISSING_FIELDS' }, 400);
+     }
 
-    const normalizedPriority = String(priority).toUpperCase();
-    if (!['P1', 'P2', 'P3', 'P4'].includes(normalizedPriority)) {
-      return c.json({ error: 'Invalid priority. Must be P1, P2, P3, or P4', code: 'INVALID_PRIORITY' }, 400);
-    }
+     const normalizedPriority = String(priority).toUpperCase();
+     if (!['P1', 'P2', 'P3', 'P4'].includes(normalizedPriority)) {
+       return c.json({ error: 'Invalid priority. Must be P1, P2, P3, or P4', code: 'INVALID_PRIORITY' }, 400);
+     }
 
-    const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
-    const status = customStatus && validStatuses.includes(customStatus) ? customStatus : 'pending';
+     const validStatuses = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+     const status = customStatus && validStatuses.includes(customStatus) ? customStatus : 'pending';
 
-    const now = localNow();
+     const now = localNow();
 
-    // Generate call number: CFS-YY-NNNNN
-    const yy = String(new Date().getFullYear()).slice(-2);
-    const prefix = `${yy}-CFS`;
-    const lastRow = await db.prepare(
-      `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
-    ).get(`${prefix}%`) as any;
-    let nextNum = 1;
-    if (lastRow) {
-      const match = (lastRow.call_number || '').match(/\d{2}-CFS(\d{5})/);
-      if (match) nextNum = parseInt(match[1], 10) + 1;
-    }
-    const callNumber = `${prefix}${String(nextNum).padStart(5, '0')}`;
+     // Generate call number: CFS-YY-NNNNN
+     const yy = String(new Date().getFullYear()).slice(-2);
+     const prefix = `${yy}-CFS`;
+     const lastRow = await db.prepare(
+       `SELECT call_number FROM calls_for_service WHERE call_number LIKE ? ORDER BY id DESC LIMIT 1`
+     ).get(`${prefix}%`) as any;
+     let nextNum = 1;
+     if (lastRow) {
+       const match = (lastRow.call_number || '').match(/\d{2}-CFS(\d{5})/);
+       if (match) nextNum = parseInt(match[1], 10) + 1;
+     }
+     const callNumber = `${prefix}${String(nextNum).padStart(5, '0')}`;
 
-    const result = await db.prepare(`
-      INSERT INTO calls_for_service (
-        call_number, incident_type, priority, status,
-        location_address, latitude, longitude,
-        narrative, caller_name, caller_phone, caller_address,
-        description, property_id, client_id, reported_by, initial_notes,
-        created_by, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(
-      callNumber,
-      String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_'),
-      normalizedPriority,
-      status,
-      String(location_address || ''),
-      latitude != null ? Number(latitude) : null,
-      longitude != null ? Number(longitude) : null,
-      narrative || null,
-      caller_name || null,
-      caller_phone || null,
-      caller_address || null,
-      description || null,
-      property_id != null ? Number(property_id) : null,
-      client_id != null ? Number(client_id) : null,
-      reported_by || null,
-      initial_notes || null,
-      user.userId,
-      customCreatedAt || now,
-    );
+     // Define field mappings for D1 insert (only include columns that exist in D1 table)
+     const fieldMap = {
+       incident_type: (v) => String(v || '').trim().toLowerCase().replace(/\s+/g, '_'),
+       priority: (v) => String(v).toUpperCase(),
+       status: (v) => v,
+       location_address: (v) => String(v || ''),
+       latitude: (v) => latitude != null ? Number(latitude) : null,
+       longitude: (v) => longitude != null ? Number(longitude) : null,
+       description: (v) => description || null,
+       caller_name: (v) => caller_name || null,
+       caller_phone: (v) => caller_phone || null,
+       property_id: (v) => property_id != null ? Number(property_id) : null,
+       dispatcher_id: (v) => user.userId,
+       created_at: (v) => customCreatedAt || now,
+       notes: (v) => notes || null,
+       source: (v) => 'phone', // Default source
+       assigned_unit_ids: (v) => '[]',
+     };
 
-    const callId = result.meta.last_row_id;
-    const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+     // Add client_id mapping if the column exists in D1 (it doesn't in current schema, so we skip it for now)
+     // The D1 schema will need to be updated to include this column for full compatibility
+     // For now, we omit it from the insert to avoid "no such column" errors
 
-    await auditLog(db, c, 'CREATE', 'call', callId!, `Created call ${callNumber}`);
+     const { columns, placeholders, values } = await filterFieldMap(db, 'calls_for_service', fieldMap, body);
 
-    return c.json(call, 201);
-  });
+     const result = await db.prepare(`
+       INSERT INTO calls_for_service (${columns.join(', ')}) VALUES (${placeholders.join(', ')})
+     `).run(...values);
+
+     const callId = result.meta.last_row_id;
+     const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+
+     await auditLog(db, c, 'CREATE', 'call', callId!, `Created call ${callNumber}`);
+
+     return c.json(call, 201);
+   });
 
   // POST /api/dispatch/calls/:id/assign-unit - Assign a unit to a call
   api.post('/calls/:id/assign-unit', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {

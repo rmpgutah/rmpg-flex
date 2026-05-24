@@ -50,6 +50,21 @@ interface OcrScanResult {
   allDates: string[];
 }
 
+const DOCUMENT_TYPES = [
+  { value: 'court_filing', label: 'Court Filing/Docket', color: 'bg-red-900/40 text-red-400 border-red-700/40' },
+  { value: 'field_sheet', label: 'Field Sheet', color: 'bg-amber-900/40 text-amber-400 border-amber-700/40' },
+  { value: 'info_page', label: 'Information Page', color: 'bg-green-900/40 text-green-400 border-green-700/40' },
+  { value: 'affidavit', label: 'Affidavit of Service', color: 'bg-purple-900/40 text-purple-400 border-purple-700/40' },
+  { value: 'summons', label: 'Summons', color: 'bg-blue-900/40 text-blue-400 border-blue-700/40' },
+  { value: 'complaint', label: 'Complaint', color: 'bg-orange-900/40 text-orange-400 border-orange-700/40' },
+  { value: 'subpoena', label: 'Subpoena', color: 'bg-pink-900/40 text-pink-400 border-pink-700/40' },
+  { value: 'eviction', label: 'Eviction/UD', color: 'bg-yellow-900/40 text-yellow-400 border-yellow-700/40' },
+  { value: 'restraining_order', label: 'Restraining Order', color: 'bg-rose-900/40 text-rose-400 border-rose-700/40' },
+  { value: 'identification', label: 'ID/Passport', color: 'bg-cyan-900/40 text-cyan-400 border-cyan-700/40' },
+  { value: 'correspondence', label: 'Correspondence', color: 'bg-slate-900/40 text-slate-400 border-slate-700/40' },
+  { value: 'other', label: 'Other', color: 'bg-neutral-900/40 text-neutral-400 border-neutral-700/40' },
+];
+
 function confidenceColor(conf: number): string {
   if (conf >= 0.7) return 'text-green-400';
   if (conf >= 0.4) return 'text-amber-400';
@@ -120,8 +135,16 @@ export default function ServeIntakePage() {
 
       if (isPdf) {
         text = await extractPdfText(file);
-        type = file.name.toLowerCase().includes('court') ? 'court_filing'
-          : file.name.toLowerCase().includes('field') ? 'field_sheet'
+        const name = file.name.toLowerCase();
+        type = name.includes('court') || name.includes('docket') ? 'court_filing'
+          : name.includes('field') ? 'field_sheet'
+          : name.includes('affidavit') ? 'affidavit'
+          : name.includes('summons') ? 'summons'
+          : name.includes('complaint') ? 'complaint'
+          : name.includes('subpoena') ? 'subpoena'
+          : name.includes('eviction') || name.includes('unlawful') ? 'eviction'
+          : name.includes('restraining') || name.includes('protective') ? 'restraining_order'
+          : name.includes('id') || name.includes('passport') || name.includes('license') ? 'identification'
           : 'info_page';
       } else if (isImage) {
         const scan = await ocrScanImage(file);
@@ -158,6 +181,7 @@ export default function ServeIntakePage() {
   }, []);
 
   const removeFile = (idx: number) => setFiles(prev => prev.filter((_, i) => i !== idx));
+  const changeFileType = (idx: number, type: string) => setFiles(prev => prev.map((f, i) => i === idx ? { ...f, type } : f));
 
   const openOcrPreview = (file: UploadedFile) => {
     if (file.ocrResult?.fields) {
@@ -233,13 +257,19 @@ export default function ServeIntakePage() {
             <div key={i} className="flex items-center gap-2 px-3 py-2 panel-beveled bg-surface-raised text-xs">
               <FileText className="w-4 h-4 text-rmpg-400 flex-shrink-0" />
               <span className="text-white font-medium truncate flex-1">{f.name}</span>
-              <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm ${
-                f.type === 'court_filing' ? 'bg-red-900/40 text-red-400 border border-red-700/40' :
-                f.type === 'field_sheet' ? 'bg-amber-900/40 text-amber-400 border border-amber-700/40' :
-                'bg-green-900/40 text-green-400 border border-green-700/40'
-              }`}>
-                {f.type.replace(/_/g, ' ')}
-              </span>
+              <select
+                value={f.type}
+                onChange={e => changeFileType(i, e.target.value)}
+                onClick={e => e.stopPropagation()}
+                className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded-sm border cursor-pointer appearance-none text-center min-w-[90px] ${
+                  DOCUMENT_TYPES.find(dt => dt.value === f.type)?.color || 'bg-neutral-900/40 text-neutral-400 border-neutral-700/40'
+                }`}
+                aria-label={`Document type for ${f.name}`}
+              >
+                {DOCUMENT_TYPES.map(dt => (
+                  <option key={dt.value} value={dt.value} className="bg-surface-raised text-white text-[9px]">{dt.label}</option>
+                ))}
+              </select>
               {f.ocrResult && (
                 <span className={`text-[9px] font-bold ${confidenceColor(f.ocrResult.confidence)}`}>
                   {(f.ocrResult.confidence * 100).toFixed(0)}%
