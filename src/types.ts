@@ -5,6 +5,8 @@ export type Bindings = {
   JWT_SECRET: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
+  // WelfareWatchDO namespace — DI-4 automated escalation timer
+  WELFARE_WATCH: DurableObjectNamespace;
 };
 
 export type Variables = {

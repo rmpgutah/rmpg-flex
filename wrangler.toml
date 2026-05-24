@@ -16,6 +16,20 @@ binding = "DB"
 database_name = "rmpg-flex-db"
 database_id = "8893480a-6dd5-4790-a11f-1fb6fac13f02"
 
+# ─── Durable Objects ─────────────────────────────────────
+# WelfareWatchDO — automated officer welfare escalation timer
+# (Spillman parity, DI-4 follow-up). One instance per officer
+# via env.WELFARE_WATCH.idFromName(`u-${userId}`).
+[[durable_objects.bindings]]
+name = "WELFARE_WATCH"
+class_name = "WelfareWatchDO"
+
+[[migrations]]
+tag = "v1"
+# new_sqlite_classes (not new_classes) — free-plan compatible.
+# SQLite-backed DO storage; same API surface for our use case.
+new_sqlite_classes = ["WelfareWatchDO"]
+
 # KV for sessions and caching
 [[kv_namespaces]]
 binding = "KV"
@@ -47,17 +61,7 @@ SERVER_TIMEZONE = "America/Denver"
 [triggers]
 crons = ["0 */4 * * *"]
 
-# Durable Object class migrations.
-# WelfareWatchDO was deployed at some point from the fix/mount-nibrs-route
-# branch (commit f71aae43, never merged to main). Main's src/index.ts has
-# never exported the class, so the deployed DO instances are orphaned
-# (no live code reads/writes them). Cloudflare blocks subsequent deploys
-# from main until we either re-export the class or explicitly authorize
-# dropping the orphan instances. Authorizing the drop since the class
-# was never live on main.
-# Tag must be unique vs any previously-applied migration on this Worker.
-# Wrangler skips already-applied tags — a fresh distinctive tag forces
-# the deletion through.
-[[migrations]]
-tag = "drop-welfare-watch-do-2026-05-24"
-deleted_classes = ["WelfareWatchDO"]
+# (Removed obsolete deleted_classes migration. The class is now properly
+# defined upstream (commit ccb3881b on main added src/durable-objects/
+# WelfareWatchDO.ts + the new_sqlite_classes migration above). Deleting
+# it after main creates it would defeat the whole point.)
