@@ -29,6 +29,7 @@ import personnel from './routes/personnel';
 import presence from './routes/presence';
 import properties from './routes/properties';
 import records from './routes/records';
+import subjects from './routes/records/subjects';
 import mapData from './routes/mapData';
 import stubs from './routes/stubs';
 import runCards from './routes/runCards';
@@ -39,6 +40,7 @@ import incidentsRouter from './routes/incidents';
 import warrants from './routes/warrants';
 import pdfTools from './routes/pdfTools';
 import documentIntake from './routes/documentIntake';
+import audit from './routes/audit';
 import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import {
   recommendedUnits,
@@ -132,6 +134,10 @@ app.route('/api/admin', admin);
 app.route('/api/personnel', personnel);
 app.route('/api/presence', presence);
 app.route('/api/records/properties', properties);
+// subjects MUST mount BEFORE records so /api/records/subjects/search
+// matches this router, not the records catch-all. Same pattern as
+// /api/records/properties above.
+app.route('/api/records/subjects', subjects);
 app.route('/api/records', records);
 app.route('/api/dispatch/run-cards', runCards);
 app.route('/api/dispatch/welfare', welfare);
