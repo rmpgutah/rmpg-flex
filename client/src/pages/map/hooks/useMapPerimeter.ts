@@ -134,7 +134,7 @@ export function useMapPerimeter(
     setLoading(true);
     try {
       const data = await apiFetch<PerimeterData>(`/map/safety/perimeter-check/${lat}/${lng}`);
-      if (!data?.quadrants) return;
+      if (!data || !Array.isArray(data.quadrants)) return;
 
       clearSource(quadrantSourceId);
       clearSource(gapSourceId);

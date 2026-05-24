@@ -1853,7 +1853,8 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
 
       return c.json(updated);
     } catch (err: any) {
-      return c.json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR' }, 500);
+      console.error('PUT /calls/:id error:', err?.message || err);
+      return c.json({ error: 'Failed to update call', code: 'UPDATE_CALL_ERROR', details: err?.message }, 500);
     }
   });
 
@@ -2229,6 +2230,41 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
   });
 
   // ═══════════════════════════════════════════════════════════
+  // POST /calls/:id/unarchive - Restore archived call back to closed
+  // ═══════════════════════════════════════════════════════════
+  api.post('/calls/:id/unarchive', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const user = c.get('user');
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+      if (call.status !== 'archived') {
+        return c.json({ error: 'Call is not archived', code: 'CALL_IS_NOT_ARCHIVED' }, 400);
+      }
+
+      await db.prepare('UPDATE calls_for_service SET status = ?, archived_at = NULL, updated_at = ? WHERE id = ?').run('closed', localNow(), call.id);
+
+      await db.prepare(`INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address) VALUES (?, 'call_unarchived', 'call', ?, ?, ?)`)
+        .run(user.userId, call.id, `${call.call_number} restored from archive`, 'worker');
+
+      const updated = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(call.id);
+      try {
+        const { broadcastDispatchUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_unarchived', call: updated });
+      } catch { /* non-critical */ }
+
+      return c.json(updated);
+    } catch (err: any) {
+      console.error('[DispatchWorker] unarchive call error:', err);
+      return c.json({ error: 'Failed to unarchive call', code: 'CALLLIFECYCLE_UNARCHIVE_CALL_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
   // POST /calls/archive-bulk — Archive multiple calls at once
   // ═══════════════════════════════════════════════════════════
   api.post('/calls/archive-bulk', requireRole('admin', 'manager', 'dispatcher'), async (c) => {
@@ -2478,7 +2514,7 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
         const sum = speeds.reduce((s: number, v: number) => s + v, 0);
         const p95Idx = Math.min(Math.floor(speeds.length * 0.95), speeds.length - 1);
         return {
-          beat_id: beat.beat_id, beat_name: beat.beat_name, beat_code: beat.beat_code,
+          beat_id: beat.beat_id, beat_name: beat.beat_name || beat.name || '', beat_code: beat.beat_code,
           zone_name: beat.zone_name, sector_name: beat.sector_name,
           avg_speed_mph: Math.round((sum / speeds.length) * 10) / 10,
           max_speed_mph: Math.round(speeds[speeds.length - 1] * 10) / 10,
@@ -2491,6 +2527,115 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     } catch (err: any) {
       if (err?.message?.includes('no such table')) return c.json([]);
       return c.json({ error: 'Failed to generate zone speed stats', code: 'GPS_ZONE_SPEED_STATS_ERROR' }, 500);
+    }
+  });
+
+  // ═══════════════════════════════════════════════════════════
+  // GET /gps/coverage-timeline — Beat coverage over time intervals
+  // ═══════════════════════════════════════════════════════════
+  api.get('/gps/coverage-timeline', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '8', 10) || 8, 1), 72);
+      const intervalMin = Math.min(Math.max(parseInt(c.req.query('interval') || '30', 10) || 30, 10), 120);
+
+      // Load beats with polygon data
+      const beats = await db.prepare(`
+        SELECT b.id AS beat_id, COALESCE(b.beat_name, b.name) AS beat_name, b.beat_code AS beat_code, b.polygon_coords
+        FROM dispatch_beats b
+        WHERE b.polygon_coords IS NOT NULL AND b.polygon_coords != ''
+      `).all() as any[];
+
+      const beatPolygons: { beatId: number; beatName: string; beatCode: string; polygon: { lat: number; lng: number }[] }[] = [];
+      for (const beat of beats) {
+        try {
+          const coords = JSON.parse(beat.polygon_coords);
+          if (Array.isArray(coords) && coords.length >= 3) {
+            beatPolygons.push({ beatId: beat.beat_id, beatName: beat.beat_name, beatCode: beat.beat_code, polygon: coords });
+          }
+        } catch { /* skip */ }
+      }
+
+      // Fetch breadcrumbs with unit_id and timestamp
+      const breadcrumbs = await db.prepare(`
+        SELECT unit_id, latitude, longitude, speed, recorded_at
+        FROM gps_breadcrumbs
+        WHERE recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')
+          AND latitude IS NOT NULL AND longitude IS NOT NULL
+        ORDER BY recorded_at ASC
+        LIMIT 50000
+      `).all(hours) as any[];
+
+      // Build time intervals
+      const now = new Date();
+      const startTime = new Date(now.getTime() - hours * 60 * 60 * 1000);
+      const intervalMs = intervalMin * 60 * 1000;
+      const intervals: { start: string; end: string; beats: Record<number, { unit_ids: Set<number>; speeds: number[] }> }[] = [];
+
+      for (let t = startTime.getTime(); t < now.getTime(); t += intervalMs) {
+        intervals.push({
+          start: new Date(t).toISOString(),
+          end: new Date(t + intervalMs).toISOString(),
+          beats: {},
+        });
+      }
+
+      function pointInPolygon(lat: number, lng: number, polygon: { lat: number; lng: number }[]): boolean {
+        let inside = false;
+        for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+          const xi = polygon[i].lng, yi = polygon[i].lat;
+          const xj = polygon[j].lng, yj = polygon[j].lat;
+          if ((yi > lng) !== (yj > lng) && lat < ((xj - xi) * (lng - yi)) / (yj - yi) + xi) inside = !inside;
+        }
+        return inside;
+      }
+
+      // Classify each breadcrumb into an interval and beat
+      for (const bc of breadcrumbs) {
+        const bcTime = new Date(bc.recorded_at).getTime();
+        const intervalIdx = Math.floor((bcTime - startTime.getTime()) / intervalMs);
+        if (intervalIdx < 0 || intervalIdx >= intervals.length) continue;
+
+        const interval = intervals[intervalIdx];
+
+        for (const { beatId, polygon } of beatPolygons) {
+          if (pointInPolygon(bc.latitude, bc.longitude, polygon)) {
+            if (!interval.beats[beatId]) {
+              interval.beats[beatId] = { unit_ids: new Set(), speeds: [] };
+            }
+            interval.beats[beatId].unit_ids.add(bc.unit_id);
+            if (bc.speed != null && bc.speed > 0.2) {
+              interval.beats[beatId].speeds.push(bc.speed * 2.23694);
+            }
+            break;
+          }
+        }
+      }
+
+      // Format response
+      const result = intervals.map(interval => ({
+        start: interval.start,
+        end: interval.end,
+        beats: Object.entries(interval.beats).map(([beatIdStr, data]) => {
+          const beatId = parseInt(beatIdStr, 10);
+          const beatInfo = beatPolygons.find(b => b.beatId === beatId);
+          const avgSpeed = data.speeds.length > 0
+            ? Math.round((data.speeds.reduce((s, v) => s + v, 0) / data.speeds.length) * 10) / 10
+            : 0;
+          return {
+            beat_id: beatId,
+            beat_name: beatInfo?.beatName || '',
+            beat_code: beatInfo?.beatCode || '',
+            unique_units: data.unit_ids.size,
+            avg_speed_mph: avgSpeed,
+          };
+        }),
+      }));
+
+      return c.json({ intervals: result, total_beats: beatPolygons.length });
+    } catch (error: any) {
+      if (error?.message?.includes('no such table')) return c.json({ intervals: [], total_beats: 0 });
+      return c.json({ error: 'Failed to generate coverage timeline', code: 'GPS_COVERAGE_TIMELINE_ERROR' }, 500);
     }
   });
 

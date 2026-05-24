@@ -349,5 +349,30 @@ export function mountFieldInterviewRoutes(app: Hono<{ Bindings: Env; Variables: 
     return c.body(csv);
   });
 
+  // GET /api/field-interviews/map
+  api.get('/map', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const days = Math.max(1, Math.min(365, parseInt(c.req.query('days') || '30', 10) || 30));
+
+      const rows = await db.prepare(`
+        SELECT fi.id, fi.fi_number, fi.subject_first_name, fi.subject_last_name,
+               fi.latitude, fi.longitude, fi.contact_reason, fi.action_taken,
+               u.full_name as officer_name, fi.created_at, fi.location
+        FROM field_interviews fi
+        LEFT JOIN users u ON fi.officer_id = u.id
+        WHERE fi.latitude IS NOT NULL AND fi.longitude IS NOT NULL
+          AND fi.created_at >= datetime('now', 'localtime', '-${days} days')
+          AND fi.archived_at IS NULL
+        ORDER BY fi.created_at DESC
+        LIMIT 1000
+      `).all() as any[];
+
+      return c.json(rows);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to get field interviews map data', code: 'GET_FI_MAP_ERROR' }, 500);
+    }
+  });
+
   app.route('/api/field-interviews', api);
 }

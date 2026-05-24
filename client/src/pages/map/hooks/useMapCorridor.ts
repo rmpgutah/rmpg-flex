@@ -71,6 +71,7 @@ export function useMapCorridor(
 
   const clearSource = useCallback((id: string) => {
     if (!map) return;
+    if (map.getLayer(`${id}-outline`)) map.removeLayer(`${id}-outline`);
     if (map.getLayer(id)) map.removeLayer(id);
     if (map.getSource(id)) map.removeSource(id);
   }, [map]);
@@ -109,6 +110,7 @@ export function useMapCorridor(
         });
 
         seg.incidents.forEach((inc) => {
+          if (!inc || typeof inc.lng !== 'number' || typeof inc.lat !== 'number') return;
           incidentFeatures.push({
             type: 'Feature' as const,
             geometry: { type: 'Point' as const, coordinates: [inc.lng, inc.lat] as [number, number] },
@@ -227,6 +229,7 @@ export function useMapCorridor(
   useEffect(() => {
     return () => {
       [segmentSourceId, incidentSourceId, pursuitSourceId, escapeSourceId].forEach(id => {
+        if (map?.getLayer(`${id}-outline`)) map.removeLayer(`${id}-outline`);
         if (map?.getLayer(id)) map.removeLayer(id);
         if (map?.getSource(id)) map.removeSource(id);
       });

@@ -1,7 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 
-const API_URL =
-  'https://api.open-meteo.com/v1/forecast?latitude=40.7608&longitude=-111.8910&current=temperature_2m,weather_code,wind_speed_10m,wind_direction_10m,relative_humidity_2m,apparent_temperature,uv_index,visibility&daily=sunrise,sunset&temperature_unit=fahrenheit&wind_speed_unit=mph&timezone=America%2FDenver&forecast_days=1';
+const API_URL = '/api/weather';
 
 const CACHE_TTL = 15 * 60 * 1000;
 

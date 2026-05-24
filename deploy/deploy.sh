@@ -39,6 +39,14 @@ echo ""
 # ─── Pre-deploy Quality Gates ────────────────────────────
 echo ">>> Running pre-deploy quality gates..."
 
+# Parse special flags
+UPLOAD_DOWNLOADS=false
+for arg in "$@"; do
+  if [ "$arg" = "--downloads" ]; then
+    UPLOAD_DOWNLOADS=true
+  fi
+done
+
 # Ensure dependencies
 ensure_deps() {
   local dir="$1"
@@ -99,6 +107,12 @@ else
   # Deploy client to Cloudflare Pages
   echo "    [3/3] Deploying client to Pages..."
   npx wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main
+
+  # Deploy downloads to R2 if requested
+  if [ "$UPLOAD_DOWNLOADS" = true ]; then
+    echo "    [Extra] Syncing installers to R2..."
+    bash deploy/deploy-downloads-r2.sh
+  fi
 
   echo ""
   echo "╔══════════════════════════════════════════════════╗"

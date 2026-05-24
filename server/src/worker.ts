@@ -278,6 +278,7 @@ app.get('/api/weather', async (c) => {
 
 // ─── Route Imports ─────────────────────────────────────────
 import { mountAuthRoutes } from './routes/auth-worker';
+import { mountDownloadsRoutes } from './routes/downloads-worker';
 import { mountDispatchRoutes } from './routes/dispatch-worker';
 import { mountAdminRoutes } from './routes/admin-worker';
 import { mountPersonnelRoutes } from './routes/personnel-worker';
@@ -341,6 +342,7 @@ import { mountAdminMapConfigRoutes } from './routes/adminMapConfig-worker';
 import { mountHowenRoutes } from './routes/howen-worker';
 
 mountAuthRoutes(app);
+mountDownloadsRoutes(app);
 mountDispatchRoutes(app);
 mountSystemConfigRoutes(app);
 mountAdminRoutes(app);

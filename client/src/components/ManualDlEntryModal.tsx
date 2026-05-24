@@ -246,7 +246,7 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
                  // Street column holds the street line only (city/state/zip are
                  // separate fields below). Fall back to the full formatted
                  // string only if Mapbox didn't return a parsed street.
-                 set('address', addr.street || addr.formatted);
+                 set('address', addr.formatted || addr.street);
                  if (addr.city) set('city', addr.city);
                  if (addr.state) set('address_state', addr.state);
                  if (addr.zip) set('postal_code', addr.zip);

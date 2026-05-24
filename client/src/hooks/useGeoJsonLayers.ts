@@ -321,9 +321,15 @@ export function useGeoJsonLayers({
 
     const sourceId = getLayerSourceId(cfg.id);
     if (map.getSource(sourceId)) {
-      // Already loaded — just set visibility
-      setLayerStates(prev => ({ ...prev, [cfg.id]: { ...prev[cfg.id], visible: true } }));
-      return;
+      // Safe check: If layers were somehow removed but source remained, or vice versa, handle it
+      if (!map.getLayer(getFillLayerId(cfg.id)) && !map.getLayer(getLineLayerId(cfg.id))) {
+        // Let it fall through or clean up the source first to re-add safely
+        try { map.removeSource(sourceId); } catch { /* ignore */ }
+      } else {
+        // Already fully loaded — just set visibility
+        setLayerStates(prev => ({ ...prev, [cfg.id]: { ...prev[cfg.id], visible: true } }));
+        return;
+      }
     }
 
     let geojson = geojsonCacheRef.current[cfg.id];

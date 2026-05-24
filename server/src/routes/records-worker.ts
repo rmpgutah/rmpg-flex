@@ -734,8 +734,12 @@ export function mountRecordsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
           return v ? `${v.make || ''} ${v.model || ''} ${v.plate_number ? `(${v.plate_number})` : ''}`.trim() : `Vehicle #${id}`;
         }
         case 'property': {
-          const pr = await db.prepare('SELECT name FROM properties WHERE id = ?').get(id) as any;
-          return pr ? pr.name : `Property #${id}`;
+          try {
+            const pr = await db.prepare('SELECT name FROM properties WHERE id = ?').get(id) as any;
+            return pr ? pr.name : `Property #${id}`;
+          } catch {
+            return `Property #${id}`;
+          }
         }
         case 'evidence': {
           const e = await db.prepare('SELECT evidence_number, description FROM evidence WHERE id = ?').get(id) as any;

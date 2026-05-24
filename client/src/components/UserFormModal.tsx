@@ -403,7 +403,7 @@ export default function UserFormModal({
               onSelect={(addr: ParsedAddress) => {
                 setForm((prev) => ({
                   ...prev,
-                  address: addr.street || addr.formatted,
+                  address: addr.formatted || addr.street,
                   city: addr.city || prev.city,
                   state: addr.state || prev.state,
                   zip: addr.zip || prev.zip,

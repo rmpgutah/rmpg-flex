@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../worker';
 import type { JwtPayload } from '../worker-middleware/auth';
-import { authenticateToken } from '../worker-middleware/auth';
+import { authenticateToken, requireRole } from '../worker-middleware/auth';
 import { D1Db } from '../worker-middleware/d1Helpers';
 
 export function mountReportsRoutes(app: Hono<{ Bindings: Env; Variables: { user: JwtPayload } }>): void {
@@ -195,6 +195,198 @@ export function mountReportsRoutes(app: Hono<{ Bindings: Env; Variables: { user:
       db.prepare("SELECT i.id, i.incident_number, i.incident_type, i.created_at, u.full_name as officer_name FROM incidents i LEFT JOIN users u ON i.officer_id = u.id WHERE i.status = 'draft' AND i.created_at <= DATE('now', '-3 days') ORDER BY i.created_at ASC LIMIT 20").all(),
     ]);
     return c.json({ count: overdue?.count || 0, overdueList });
+  });
+
+  // GET /api/reports/patrol-tracking
+  api.get('/patrol-tracking', requireRole('admin', 'manager', 'supervisor'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const unitId = c.req.query('unitId');
+      const officerId = c.req.query('officerId');
+      const startDate = c.req.query('startDate');
+      const endDate = c.req.query('endDate');
+      const hours = parseInt(c.req.query('hours') || '8', 10) || 8;
+
+      const haversineM = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+        const R = 6371000;
+        const toRad = (d: number) => (d * Math.PI) / 180;
+        const dLat = toRad(lat2 - lat1);
+        const dLng = toRad(lng2 - lng1);
+        const a =
+          Math.sin(dLat / 2) ** 2 +
+          Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      };
+
+      const headingCardinal = (deg: number | null): string | null => {
+        if (deg == null) return null;
+        const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+        return dirs[Math.round(((deg % 360) + 360) % 360 / 45) % 8];
+      };
+
+      let dateClause: string;
+      const params: any[] = [];
+
+      if (startDate && endDate) {
+        dateClause = `b.recorded_at >= ? AND b.recorded_at <= ?`;
+        params.push(startDate, endDate);
+      } else {
+        dateClause = `b.recorded_at >= datetime('now', 'localtime', '-' || ? || ' hours')`;
+        params.push(hours);
+      }
+
+      let whereExtra = '';
+      if (unitId) {
+        whereExtra += ' AND b.unit_id = ?';
+        params.push(parseInt(unitId, 10));
+      }
+      if (officerId) {
+        whereExtra += ' AND b.officer_id = ?';
+        params.push(parseInt(officerId, 10));
+      }
+
+      const rows = await db.prepare(`
+        SELECT b.id, b.unit_id, b.officer_id, b.latitude, b.longitude, b.accuracy,
+          b.heading, b.speed, b.unit_status, b.call_sign, b.officer_name,
+          b.badge_number, b.current_call_id, b.current_call_number,
+          b.current_call_type, b.road_name, b.nearest_intersection,
+          b.recorded_at, COALESCE(b.source, 'unknown') as source
+        FROM gps_breadcrumbs b
+        WHERE ${dateClause} ${whereExtra}
+        ORDER BY b.unit_id, b.recorded_at ASC
+        LIMIT 1000
+      `).all(...params) as any[];
+
+      const trailMap: Record<number, { raw: any[]; info: { call_sign: string; officer_name: string; badge_number: string; officer_id: number } }> = {};
+
+      for (const row of rows) {
+        if (!trailMap[row.unit_id]) {
+          trailMap[row.unit_id] = {
+            raw: [],
+            info: {
+              call_sign: row.call_sign || '',
+              officer_name: row.officer_name || '',
+              badge_number: row.badge_number || '',
+              officer_id: row.officer_id,
+            }
+          };
+        }
+        trailMap[row.unit_id].raw.push(row);
+      }
+
+      const trails: any[] = [];
+      const MAX_ACCURACY = 150;
+      const MAX_SPEED = 80;
+      const MIN_DISTANCE = 3;
+
+      for (const [unitIdStr, data] of Object.entries(trailMap)) {
+        const uId = parseInt(unitIdStr, 10);
+        const processedPoints: any[] = [];
+        let totalDistanceM = 0;
+        let maxSpeed = 0;
+        let movingPoints = 0;
+        let stationaryPoints = 0;
+        const sourceBreakdown: Record<string, number> = {};
+
+        for (let i = 0; i < data.raw.length; i++) {
+          const curr = data.raw[i];
+          if (curr.accuracy && curr.accuracy > MAX_ACCURACY) continue;
+
+          const prev = processedPoints[processedPoints.length - 1];
+          let dist = null;
+          let timeDelta = null;
+          let speedMps = curr.speed || 0;
+
+          if (prev) {
+            dist = haversineM(prev.lat, prev.lng, curr.latitude, curr.longitude);
+            timeDelta = (new Date(curr.recorded_at).getTime() - new Date(prev.time).getTime()) / 1000;
+
+            if (dist > 0 && timeDelta > 0) {
+              const derivedSpeed = dist / timeDelta;
+              if (derivedSpeed < MAX_SPEED && !curr.speed) {
+                speedMps = derivedSpeed;
+              }
+            }
+          }
+
+          const speedMph = speedMps * 2.23694;
+          if (speedMph > maxSpeed && speedMph < 120) {
+            maxSpeed = speedMph;
+          }
+
+          const isStationary = dist !== null && dist < MIN_DISTANCE;
+          if (isStationary) stationaryPoints++;
+          else movingPoints++;
+
+          if (dist !== null && !isStationary) {
+            totalDistanceM += dist;
+          }
+
+          const source = curr.source || 'unknown';
+          sourceBreakdown[source] = (sourceBreakdown[source] || 0) + 1;
+
+          processedPoints.push({
+            id: curr.id,
+            lat: curr.latitude,
+            lng: curr.longitude,
+            accuracy: curr.accuracy,
+            heading: curr.heading,
+            heading_cardinal: headingCardinal(curr.heading),
+            speed: speedMps,
+            speed_mph: Math.round(speedMph * 10) / 10,
+            status: curr.unit_status,
+            call_sign: curr.call_sign || data.info.call_sign,
+            officer_name: curr.officer_name || data.info.officer_name,
+            badge_number: curr.badge_number || data.info.badge_number,
+            current_call_id: curr.current_call_id,
+            current_call_number: curr.current_call_number,
+            current_call_type: curr.current_call_type,
+            time: curr.recorded_at,
+            distance_from_prev_meters: dist !== null ? Math.round(dist * 10) / 10 : null,
+            time_delta_seconds: timeDelta,
+            is_stationary: isStationary,
+            road_name: curr.road_name,
+            nearest_intersection: curr.nearest_intersection,
+            source,
+            cumulative_distance_miles: Math.round((totalDistanceM / 1609.34) * 100) / 100,
+          });
+        }
+
+        let durationMin = 0;
+        if (processedPoints.length >= 2) {
+          const first = new Date(processedPoints[0].time).getTime();
+          const last = new Date(processedPoints[processedPoints.length - 1].time).getTime();
+          durationMin = Math.round((last - first) / (60000));
+        }
+
+        const avgSpeed = movingPoints > 0
+          ? processedPoints.reduce((acc, p) => acc + (p.is_stationary ? 0 : p.speed_mph || 0), 0) / movingPoints
+          : 0;
+
+        trails.push({
+          unit_id: uId,
+          call_sign: data.info.call_sign,
+          officer_name: data.info.officer_name,
+          badge_number: data.info.badge_number,
+          officer_id: data.info.officer_id,
+          points: processedPoints,
+          stats: {
+            total_points: processedPoints.length,
+            stationary_points: stationaryPoints,
+            moving_points: movingPoints,
+            total_distance_miles: Math.round((totalDistanceM / 1609.34) * 100) / 100,
+            max_speed_mph: Math.round(maxSpeed * 10) / 10,
+            avg_speed_mph: Math.round(avgSpeed * 10) / 10,
+            duration_minutes: durationMin,
+            source_breakdown: sourceBreakdown,
+          },
+        });
+      }
+
+      return c.json(trails);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to generate patrol tracking report', code: 'PATROL_TRACKING_ERROR' }, 500);
+    }
   });
 
   app.route('/api/reports', api);

@@ -75,5 +75,54 @@ export function mountFleetRoutes(app: Hono<{ Bindings: Env; Variables: { user: J
     return c.json([]);
   });
 
+  // GET /api/fleet/map
+  api.get('/map', async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      let hasCpgps = false;
+      try {
+        await db.prepare("SELECT 1 FROM cpgps_vehicles LIMIT 0").run();
+        hasCpgps = true;
+      } catch { /* Table doesn't exist — return vehicles without GPS */ }
+
+      let rows: any[];
+
+      if (hasCpgps) {
+        rows = await db.prepare(`
+          SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.plate_number,
+                 fv.status, fv.current_mileage, fv.next_service_due, fv.assigned_unit_id,
+                 u.call_sign AS assigned_call_sign,
+                 cv.last_lat AS gps_lat, cv.last_lon AS gps_lon,
+                 cv.last_speed AS gps_speed, cv.last_heading AS gps_heading,
+                 cv.last_reported_at AS gps_reported_at
+          FROM fleet_vehicles fv
+          LEFT JOIN units u ON u.id = fv.assigned_unit_id
+          LEFT JOIN cpgps_vehicles cv ON cv.vehicle_id = fv.id
+          WHERE fv.status != 'retired'
+          ORDER BY fv.vehicle_number
+          LIMIT 1000
+        `).all() as any[];
+      } else {
+        rows = await db.prepare(`
+          SELECT fv.id, fv.vehicle_number, fv.make, fv.model, fv.year, fv.plate_number,
+                 fv.status, fv.current_mileage, fv.next_service_due, fv.assigned_unit_id,
+                 u.call_sign AS assigned_call_sign,
+                 NULL AS gps_lat, NULL AS gps_lon,
+                 NULL AS gps_speed, NULL AS gps_heading,
+                 NULL AS gps_reported_at
+          FROM fleet_vehicles fv
+          LEFT JOIN units u ON u.id = fv.assigned_unit_id
+          WHERE fv.status != 'retired'
+          ORDER BY fv.vehicle_number
+          LIMIT 1000
+        `).all() as any[];
+      }
+
+      return c.json(rows);
+    } catch (err: any) {
+      return c.json({ error: 'Failed to fetch fleet map data', code: 'FAILED_TO_FETCH_FLEET' }, 500);
+    }
+  });
+
   app.route('/api/fleet', api);
 }
