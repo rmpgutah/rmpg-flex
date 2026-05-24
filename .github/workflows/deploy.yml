@@ -40,3 +40,22 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           command: deploy
+
+      # Client SPA build + deploy to Cloudflare Pages.
+      # Without these steps the Worker (API) ships but the React app
+      # at https://rmpgutah.us stays stuck on whatever bundle was
+      # last pushed manually. Incident 2026-05-24: SW v321 lived in
+      # prod for weeks while source moved to v563 because deploy.yml
+      # only ran the Worker step. All UI fixes silently rotted.
+      - name: Install client dependencies
+        run: cd client && npm ci
+
+      - name: Build client
+        run: cd client && npm run build
+
+      - name: Deploy client to Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: pages deploy client/dist --project-name=rmpg-flex --branch=main --commit-dirty=true
