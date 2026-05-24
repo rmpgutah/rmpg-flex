@@ -16,6 +16,7 @@ through the Worker fetch handler.
 """
 
 import base64
+import logging
 import os
 import secrets
 import shutil
@@ -29,6 +30,7 @@ from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.responses import FileResponse, JSONResponse
 
 app = FastAPI(title="rmpg-pdf-tools", version="1.0.0")
+logger = logging.getLogger(__name__)
 
 # Size cap matches the existing client-side PDF editor limit. Cloudflare
 # Container disk on the `basic` instance is 4 GB, but holding a 50 MB PDF in
@@ -276,9 +278,11 @@ async def extract_text(
                 else:
                     ocr_skipped_reason = "OCR didn't improve extraction"
             except (ocrmypdf.exceptions.MissingDependencyError, ocrmypdf.exceptions.PriorOcrFoundError) as e:
-                ocr_skipped_reason = f"ocrmypdf: {type(e).__name__}: {e}"
-            except Exception as e:  # noqa: BLE001 — surface as JSON, don't 500
-                ocr_skipped_reason = f"ocrmypdf failed: {type(e).__name__}: {str(e)[:200]}"
+                logger.warning("OCR skipped due to known ocrmypdf condition", exc_info=True)
+                ocr_skipped_reason = f"ocrmypdf unavailable ({type(e).__name__})"
+            except Exception:  # noqa: BLE001 — surface as JSON, don't 500
+                logger.exception("OCR failed unexpectedly")
+                ocr_skipped_reason = "ocrmypdf failed"
 
         # Page count via pdftotext side-channel: count form-feed characters
         # in the layout-mode output. Faster than re-shelling pdfinfo.
