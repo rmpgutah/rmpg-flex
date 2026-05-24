@@ -642,14 +642,19 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
         if (denied) {
           if (retryTimeoutRef.current) clearTimeout(retryTimeoutRef.current);
           const probePermission = () => {
+            // Guard against orphaned timers firing after unmount
+            if (!mountedRef.current) return;
             retryTimeoutRef.current = setTimeout(() => {
+              if (!mountedRef.current) return;
               navigator.geolocation.getCurrentPosition(
                 () => {
+                  if (!mountedRef.current) return;
                   // Permission restored — restart tracking (once)
                   cleanupTracking(false);
                   startTracking();
                 },
                 () => {
+                  if (!mountedRef.current) return;
                   // Still denied — schedule another probe (not recursive startTracking)
                   probePermission();
                 },
@@ -681,7 +686,7 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       const staleDuration = Date.now() - lastCallbackTimeRef.current;
       const connType = getConnectionType();
       const threshold = connType === 'wifi' ? HEARTBEAT_STALE_THRESHOLD_WIFI : HEARTBEAT_STALE_THRESHOLD;
-      if (staleDuration > threshold && watchIdRef.current !== null) {
+      if (staleDuration >= threshold && watchIdRef.current !== null) {
         console.warn(`[GPS] No position callback in ${Math.round(staleDuration / 1000)}s (connection: ${connType})`);
         // On Electron desktop, use IP fallback instead of endlessly restarting
         if (IS_ELECTRON) {
@@ -723,11 +728,46 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }
   }, [isTracking, startTracking]);
 
-  // AUTO-START on mount — GPS is mandatory for all logged-in users
+  // AUTO-START on first user gesture — modern browsers gate Geolocation
+  // (and WakeLock) behind a user-activation token. Calling watchPosition on
+  // mount without a gesture causes the browser to silently withhold
+  // callbacks (symptom: "No position callback in 45s" watchdog warnings)
+  // and emit a "[Violation] geolocation in response to a user gesture" log.
+  // We wait for the first click/keydown/touch, then start. If the user has
+  // already granted location permission in a prior session, the Permissions
+  // API short-circuits the wait so officers don't need to click before GPS
+  // resumes.
   useEffect(() => {
-    startTracking();
+    // Reset on (re)mount — refs persist across StrictMode double-mount and
+    // route remounts, so without this `mountedRef.current` stays false from
+    // a prior unmount and silently disables `setState` guards.
+    mountedRef.current = true;
+
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      window.removeEventListener('click', start);
+      window.removeEventListener('keydown', start);
+      window.removeEventListener('touchstart', start);
+      startTracking();
+    };
+
+    const permApi = (navigator as any).permissions;
+    if (permApi?.query) {
+      permApi.query({ name: 'geolocation' }).then((res: any) => {
+        if (res.state === 'granted') start();
+      }).catch(() => { /* Permissions API absent — wait for gesture */ });
+    }
+    window.addEventListener('click', start, { once: true });
+    window.addEventListener('keydown', start, { once: true });
+    window.addEventListener('touchstart', start, { once: true });
+
     return () => {
       mountedRef.current = false;
+      window.removeEventListener('click', start);
+      window.removeEventListener('keydown', start);
+      window.removeEventListener('touchstart', start);
       // Flush remaining points and clean up all timers/watchers
       cleanupTracking(true);
     };

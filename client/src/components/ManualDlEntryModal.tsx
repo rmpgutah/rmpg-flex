@@ -7,7 +7,8 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { CreditCard } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
+import AddressAutocomplete from './AddressAutocomplete';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -77,14 +78,24 @@ interface ManualDlEntryModalProps {
 }
 
 export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmitting }: ManualDlEntryModalProps) {
-  const [form, setForm] = useState<ManualDlFormData>({ ...EMPTY_FORM });
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<ManualDlFormData>({
+    storageKey: 'rmpg_manual_dl_entry_form',
+    defaultValue: { ...EMPTY_FORM },
+    isActive: isOpen,
+  });
 
   useEffect(() => {
     if (isOpen) {
       const initial = { ...EMPTY_FORM };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     }
   }, [isOpen, snapshot]);
 
@@ -107,6 +118,8 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
       submitLabel="Save DL Record"
       isSubmitting={isSubmitting}
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
       maxWidth="max-w-3xl"
     >
       {/* License Information */}
@@ -216,34 +229,50 @@ export default function ManualDlEntryModal({ isOpen, onClose, onSubmit, isSubmit
         </div>
       </fieldset>
 
-      {/* Address */}
-      <fieldset>
-        <legend className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-2">Address</legend>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="col-span-2">
-            <label className="field-label">Street Address</label>
-            <input className="input-dark w-full" value={form.address} onChange={e => set('address', e.target.value)} />
-          </div>
-          <div>
-            <label className="field-label">Apt / Unit</label>
-            <input className="input-dark w-full" value={form.address2} onChange={e => set('address2', e.target.value)} />
-          </div>
-          <div>
-            <label className="field-label">City</label>
-            <input className="input-dark w-full" value={form.city} onChange={e => set('city', e.target.value)} />
-          </div>
-          <div>
-            <label className="field-label">State</label>
-            <select className="select-dark w-full" value={form.address_state} onChange={e => set('address_state', e.target.value)}>
-              {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="field-label">ZIP</label>
-            <input className="input-dark w-full" value={form.postal_code} onChange={e => set('postal_code', e.target.value)} placeholder="84101" />
-          </div>
-        </div>
-      </fieldset>
+       {/* Address */}
+       <fieldset>
+         <legend className="text-[10px] font-bold text-rmpg-200 uppercase tracking-wider mb-2">Address</legend>
+         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+           <div className="col-span-2">
+             <label className="field-label">Street Address</label>
+             <AddressAutocomplete
+               value={form.address}
+               onChange={(value) => set('address', value)}
+               placeholder="Enter street address..."
+               className="input-dark w-full"
+               name="address"
+               onSelect={(addr) => {
+                 // Auto-fill related fields when address is selected.
+                 // Street column holds the street line only (city/state/zip are
+                 // separate fields below). Fall back to the full formatted
+                 // string only if Mapbox didn't return a parsed street.
+                 set('address', addr.formatted || addr.street);
+                 if (addr.city) set('city', addr.city);
+                 if (addr.state) set('address_state', addr.state);
+                 if (addr.zip) set('postal_code', addr.zip);
+               }}
+             />
+           </div>
+           <div>
+             <label className="field-label">Apt / Unit</label>
+             <input className="input-dark w-full" value={form.address2} onChange={e => set('address2', e.target.value)} />
+           </div>
+           <div>
+             <label className="field-label">City</label>
+             <input className="input-dark w-full" value={form.city} onChange={e => set('city', e.target.value)} />
+           </div>
+           <div>
+             <label className="field-label">State</label>
+             <select className="select-dark w-full" value={form.address_state} onChange={e => set('address_state', e.target.value)}>
+               {US_STATES.map(s => <option key={s} value={s}>{s}</option>)}
+             </select>
+           </div>
+           <div>
+             <label className="field-label">ZIP</label>
+             <input className="input-dark w-full" value={form.postal_code} onChange={e => set('postal_code', e.target.value)} placeholder="84101" />
+           </div>
+         </div>
+       </fieldset>
     </FormModal>
   );
 }

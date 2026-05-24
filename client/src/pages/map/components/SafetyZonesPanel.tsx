@@ -5,7 +5,8 @@
 // and navigate-to-zone capability.
 // ============================================================
 
-import { X, ShieldAlert, AlertTriangle, Loader2, RefreshCw, MapPin, Swords, Heart, Scale } from 'lucide-react';
+import React from 'react';
+import { X, ShieldAlert, AlertTriangle, Loader2, RefreshCw, MapPin, Crosshair, Swords, Heart, Scale } from 'lucide-react';
 
 // ─── Types ──────────────────────────────────────────────────
 

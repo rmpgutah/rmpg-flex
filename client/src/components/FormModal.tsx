@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useId, useState, useCallback } from 'react';
-import { X, Loader2, AlertTriangle } from 'lucide-react';
+import { X, Loader2, AlertTriangle, Clock } from 'lucide-react';
 import { useUnsavedChanges } from '../hooks/useUnsavedChanges';
 
 interface FormModalProps {
@@ -14,6 +14,10 @@ interface FormModalProps {
   children: React.ReactNode;
   /** When true, closing the modal triggers a "Discard changes?" confirmation. */
   isDirty?: boolean;
+  /** Optional: show a banner indicating a draft was restored */
+  draftRestored?: boolean;
+  /** Optional: callback to discard draft */
+  onDiscardDraft?: () => void;
 }
 
 export default function FormModal({
@@ -27,6 +31,8 @@ export default function FormModal({
   maxWidth = 'max-w-2xl',
   children,
   isDirty = false,
+  draftRestored = false,
+  onDiscardDraft,
 }: FormModalProps) {
   const titleId = useId();
   const dialogRef = useRef<HTMLDivElement>(null);
@@ -129,6 +135,17 @@ export default function FormModal({
           </div>
         </div>
         <form onSubmit={onSubmit} noValidate className="p-4 sm:p-6 space-y-4 overflow-y-auto" style={{ overscrollBehavior: 'contain', maxHeight: 'calc(100dvh - 120px)' }}>
+          {draftRestored && onDiscardDraft && (
+            <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-400" />
+                <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+              </div>
+              <button type="button" onClick={onDiscardDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                Discard
+              </button>
+            </div>
+          )}
           {children}
           <div className="flex items-center justify-end gap-3 pt-4 mt-2" style={{ borderTop: '1px solid var(--border-default)' }}>
             <button type="button" onClick={guardedClose} className="toolbar-btn" disabled={isSubmitting} style={{ padding: '8px 16px', minHeight: 44 }}>

@@ -2321,6 +2321,7 @@ body.fx-noise::after {
   height: calc(100vh - 56px); /* fallback for older browsers */
   z-index: 35;
   touch-action: pan-y;
+  pointer-events: none;
 }
 
 /* Extra small screens (< 400px) */

@@ -34,7 +34,7 @@ You are both a development assistant and an intelligence analyst. You:
 - Backend: Express 4 + TypeScript (tsx runtime) + better-sqlite3 (SQLite)
 - Auth: JWT (access + refresh) + WebAuthn (FIDO2) + TOTP 2FA
 - Real-time: WebSocket (ws) for live dispatch, GPS, presence
-- Maps: Google Maps JS API + offline CartoDB tiles
+- Maps: Mapbox GL JS + OpenLayers + offline CartoDB tiles
 - Desktop: Electron (macOS + Windows)
 - Mobile: Capacitor (Android)
 - Styling: Dark theme — surfaces #141e2b/#1a2636/#0d1520, brand blue #1a5a9e, gold #d4a017

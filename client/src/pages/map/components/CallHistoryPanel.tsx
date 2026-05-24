@@ -5,7 +5,7 @@
 // and a scrollable list of recent calls.
 // ============================================================
 
-import { useMemo } from 'react';
+import React, { useMemo } from 'react';
 import { X, Clock, Phone, TrendingUp, MapPin } from 'lucide-react';
 
 interface CallHistoryPanelProps {

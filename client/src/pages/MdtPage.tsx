@@ -22,6 +22,10 @@ import { mapDbCall } from './dispatch/utils/dispatchMappers';
 import StatusBadge from '../components/StatusBadge';
 import PremiseHistory from '../components/PremiseHistory';
 import NcicQueryPanel from '../components/NcicQueryPanel';
+import PremiseAlertModal from '../components/PremiseAlertModal';
+import WelfareCheckModal from '../components/WelfareCheckModal';
+import { Volume2, VolumeX, Vibrate } from 'lucide-react';
+import { type AudioMode, getLocalAudioMode, persistAudioMode, syncAudioModeFromServer } from '../utils/audioMode';
 import { formatDateTime, localToday, safeTimeStr } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
 
@@ -228,6 +232,30 @@ export default function MdtPage() {
   const { addToast } = useToast();
   const gps = useGpsTracking();
   const [myUnit, setMyUnit] = useState<Unit | null>(null);
+  // DI-5: per-unit audio mode (silent dispatch). Source of truth = server,
+  // localStorage mirror keeps the voice hook gate latency-free.
+  const [audioMode, setAudioMode] = useState<AudioMode>(getLocalAudioMode());
+  useEffect(() => {
+    syncAudioModeFromServer().then(setAudioMode).catch(() => { /* keep local */ });
+    const onChange = (e: Event) => {
+      const ce = e as CustomEvent<AudioMode>;
+      if (ce.detail) setAudioMode(ce.detail);
+    };
+    window.addEventListener('rmpg:audio-mode-changed', onChange);
+    return () => window.removeEventListener('rmpg:audio-mode-changed', onChange);
+  }, []);
+  const cycleAudioMode = useCallback(async () => {
+    if (!myUnit) return;
+    const next: AudioMode = audioMode === 'audible' ? 'silent' : audioMode === 'silent' ? 'vibrate' : 'audible';
+    try {
+      await persistAudioMode(myUnit.id, next);
+      setAudioMode(next);
+      addToast(`Audio mode: ${next.toUpperCase()}`, 'success');
+    } catch (err) {
+      console.error('[MDT] audio mode change failed', err);
+      addToast('Failed to change audio mode', 'error');
+    }
+  }, [audioMode, myUnit, addToast]);
   const [myCalls, setMyCalls] = useState<CallForService[]>([]);
   const [pendingCalls, setPendingCalls] = useState<CallForService[]>([]);
   const [selectedCall, setSelectedCall] = useState<CallForService | null>(null);
@@ -498,6 +526,10 @@ export default function MdtPage() {
 
   return (
     <div className="h-full flex flex-col bg-surface-base text-white overflow-hidden animate-fade-in">
+      {/* DI-3: Premise alert auto-push modal — listens for premise_alert_for_unit WS event */}
+      <PremiseAlertModal />
+      {/* DI-4: Welfare-check ack modal — listens for welfare_check WS event */}
+      <WelfareCheckModal />
       {/* ── Error Toast ── */}
       {errorToast && (
         <div className="absolute top-2 right-2 z-50 flex items-center gap-2 px-3 py-2 bg-red-900/90 border border-red-700 text-red-200 text-[10px] font-bold shadow-lg"
@@ -547,6 +579,28 @@ export default function MdtPage() {
             title="Quick Field Interview"
           >
             FI
+          </button>
+          {/* DI-5: Silent dispatch toggle (3-way cycle: audible → silent → vibrate) */}
+          <button type="button"
+            onClick={cycleAudioMode}
+            disabled={!myUnit}
+            aria-label={`Audio mode: ${audioMode}. Click to cycle.`}
+            className={`px-2 py-1 text-[9px] font-bold uppercase tracking-wider transition-colors border mr-0.5 flex items-center gap-1 ${
+              audioMode === 'silent' ? 'border-red-500 text-red-400 bg-red-900/20'
+              : audioMode === 'vibrate' ? 'border-amber-500 text-amber-400 bg-amber-900/20'
+              : 'border-green-600 text-green-400'
+            }`}
+            title={
+              audioMode === 'silent' ? 'SILENT — TTS suppressed. Click for vibrate.'
+              : audioMode === 'vibrate' ? 'VIBRATE — Haptic only. Click for audible.'
+              : 'AUDIBLE — Full TTS. Click for silent.'
+            }
+            style={{ opacity: myUnit ? 1 : 0.4 }}
+          >
+            {audioMode === 'silent' ? <VolumeX style={{ width: 10, height: 10 }} />
+              : audioMode === 'vibrate' ? <Vibrate style={{ width: 10, height: 10 }} />
+              : <Volume2 style={{ width: 10, height: 10 }} />}
+            <span>{audioMode === 'silent' ? 'SIL' : audioMode === 'vibrate' ? 'VIB' : 'AUD'}</span>
           </button>
           <button type="button"
             onClick={handleGenerateShiftReport}

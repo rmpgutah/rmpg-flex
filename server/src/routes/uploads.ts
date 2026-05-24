@@ -127,7 +127,12 @@ function authenticateTokenOrQuery(req: Request, res: Response, next: NextFunctio
   const headerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.substring(7) : null;
 
   // ── 3. Legacy ?token= query parameter (for img/iframe/a tags) ──
-  const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+  // Handle both single token and duplicate/array-valued token params
+  const queryToken = Array.isArray(req.query.token)
+    ? String(req.query.token[req.query.token.length - 1])
+    : typeof req.query.token === 'string'
+      ? req.query.token
+      : null;
 
   const token = headerToken || queryToken;
 

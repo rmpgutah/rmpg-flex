@@ -49,7 +49,8 @@
     "jspdf": "^4.2.1",
     "otpauth": "^9.5.1",
     "pdf-parse": "^2.4.5",
-    "qrcode": "^1.5.4"
+    "qrcode": "^1.5.4",
+    "typescript": "^6.0.3"
   },
   "devDependencies": {
     "@types/qrcode": "^1.5.6",

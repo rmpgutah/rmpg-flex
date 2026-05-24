@@ -3,6 +3,9 @@ import { Plus, AlertOctagon, CheckCircle, Search, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
+import { useFormDraft } from '../../../hooks/useFormDraft';
+import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../../../components/FloatingSaveBar';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface Grievance {
@@ -44,6 +47,8 @@ function fmtDate(d: string | null | undefined): string {
   try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
 }
 
+const EMPTY_FORM = { type: 'general', subject: '', description: '', priority: 'normal' };
+
 export default function GrievancesTab() {
   const { user } = useAuth();
   const { addToast } = useToast();
@@ -53,7 +58,18 @@ export default function GrievancesTab() {
   const [submitting, setSubmitting] = useState(false);
   const [filterStatus, setFilterStatus] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
-  const [form, setForm] = useState({ type: 'general', subject: '', description: '', priority: 'normal' });
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_hr_grievance_tab_form',
+    defaultValue: EMPTY_FORM,
+    isActive: showForm,
+  });
 
   const isManager = ['admin', 'manager', 'supervisor'].includes(user?.role || '');
 
@@ -82,7 +98,7 @@ export default function GrievancesTab() {
     setSubmitting(true);
     try {
       await apiFetch('/hr/grievances', { method: 'POST', body: JSON.stringify(form) });
-      addToast('Grievance filed successfully', 'success'); setShowForm(false); setForm({ type: 'general', subject: '', description: '', priority: 'normal' }); load();
+      addToast('Grievance filed successfully', 'success'); setShowForm(false); clearDraft(); load();
     } catch { addToast('Failed to file grievance', 'error'); } finally { setSubmitting(false); }
   };
 
@@ -103,6 +119,14 @@ export default function GrievancesTab() {
 
   return (
     <div className="p-4 space-y-4">
+      <UnsavedChangesGuard hasUnsavedChanges={isDirty} />
+      <FloatingSaveBar
+        visible={showForm && isDirty}
+        onSave={handleSubmit}
+        onCancel={() => { if (isDirty && !window.confirm('Discard unsaved changes?')) return; setShowForm(false); clearDraft(); }}
+        isSaving={submitting}
+        saveLabel="Submit Grievance"
+      />
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h2 className="text-sm font-bold text-white flex items-center gap-2"><AlertOctagon className="w-4 h-4" /> Grievances</h2>
         <div className="flex items-center gap-2">
@@ -114,7 +138,7 @@ export default function GrievancesTab() {
             <option value="all">All Statuses</option>
             {Object.keys(STATUS_COLORS).map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
           </select>
-          <button type="button" onClick={() => setShowForm(!showForm)} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
+          <button type="button" onClick={() => { setShowForm(!showForm); if (!showForm) snapshot(); }} className="toolbar-btn toolbar-btn-success text-xs"><Plus className="w-3 h-3" /> File Grievance</button>
         </div>
       </div>
 

@@ -1,82 +1,98 @@
 import { useEffect, useRef, useState } from 'react';
+import mapboxgl from 'mapbox-gl';
 import { UNIT_STATUS_COLORS } from '../utils/mapConstants';
 import type { MapUnit as Unit, ActiveCall } from '../utils/mapConstants';
 
 interface UseMapTrackingLinesParams {
-  mapInstanceRef: React.MutableRefObject<google.maps.Map | null>;
+  map: mapboxgl.Map | null;
   mapLoaded: boolean;
   units: Unit[];
   calls: ActiveCall[];
 }
 
-export function useMapTrackingLines({ mapInstanceRef, mapLoaded, units, calls }: UseMapTrackingLinesParams) {
-  const trackingLinesRef = useRef<google.maps.Polyline[]>([]);
+export function useMapTrackingLines({ map, mapLoaded, units, calls }: UseMapTrackingLinesParams) {
   const [showTrackingLines, setShowTrackingLines] = useState(true);
+  const sourceId = 'tracking-lines';
+  const popupRef = useRef<mapboxgl.Popup | null>(null);
 
   useEffect(() => {
-    const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Clear existing lines
-    trackingLinesRef.current.forEach((line) => line.setMap(null));
-    trackingLinesRef.current = [];
+    if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+    if (map.getSource(sourceId)) map.removeSource(sourceId);
 
     if (!showTrackingLines) return;
 
-    // Draw lines from each dispatched/enroute/onscene unit to their assigned call
+    if (!popupRef.current) {
+      popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
+    }
+
+    const features: any[] = [];
+
     units.forEach((unit) => {
       if (unit.latitude == null || unit.longitude == null) return;
       if (!unit.current_call_id) return;
       if (!['dispatched', 'enroute', 'onscene'].includes(unit.status)) return;
-      // Fix 19: validate unit has valid (finite) coordinates
       if (!isFinite(unit.latitude) || !isFinite(unit.longitude)) return;
 
       const call = calls.find((c) => String(c.id) === String(unit.current_call_id));
       if (!call || call.latitude == null || call.longitude == null) return;
-      // Fix 19: validate call has valid (finite) coordinates
       if (!isFinite(call.latitude) || !isFinite(call.longitude)) return;
-
-      // Fix 21: skip lines where unit position equals call position (zero-length line)
       if (unit.latitude === call.latitude && unit.longitude === call.longitude) return;
 
       const statusColor = UNIT_STATUS_COLORS[unit.status] || '#666666';
       const isDashed = unit.status === 'dispatched';
 
-      try { // Fix 20: try/catch around Polyline creation
-        const line = new google.maps.Polyline({
-          path: [
-            { lat: unit.latitude, lng: unit.longitude },
-            { lat: call.latitude, lng: call.longitude },
-          ],
-          geodesic: true,
-          strokeColor: statusColor,
-          strokeOpacity: isDashed ? 0 : 0.6,
-          strokeWeight: 2,
-          icons: isDashed ? [{
-            icon: { path: 'M 0,-1 0,1', strokeOpacity: 0.6, strokeWeight: 2, scale: 3 },
-            offset: '0',
-            repeat: '15px',
-          }] : undefined,
-          map,
-        });
+      features.push({
+        type: 'Feature' as const,
+        geometry: {
+          type: 'LineString' as const,
+          coordinates: [[unit.longitude, unit.latitude], [call.longitude, call.latitude]] as [number, number][],
+        },
+        properties: {
+          call_sign: unit.call_sign,
+          status: unit.status,
+          color: statusColor,
+          isDashed,
+          call_number: call.call_number,
+        },
+      });
+    });
 
-        trackingLinesRef.current.push(line);
-      } catch (err) {
-        console.warn('[useMapTrackingLines] Error creating polyline:', err);
-      }
+    if (features.length === 0) return;
+
+    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    map.addLayer({
+      id: sourceId,
+      type: 'line',
+      source: sourceId,
+      paint: {
+        'line-color': ['get', 'color'],
+        'line-width': 2,
+        'line-opacity': 0.6,
+        'line-dasharray': ['case', ['get', 'isDashed'], [2, 2], [1, 0]],
+      },
+    });
+
+    map.on('click', sourceId, (e) => {
+      const feature = e.features?.[0];
+      if (!feature || !feature.properties) return;
+      const p = feature.properties;
+      const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #222222"><div style="font-weight:bold;color:${p.color}">${p.call_sign} \u2192 ${p.call_number}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${p.status}</div></div>`;
+      if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
     });
 
     return () => {
-      trackingLinesRef.current.forEach(l => l.setMap(null));
-      trackingLinesRef.current = [];
+      if (map.getLayer(sourceId)) map.removeLayer(sourceId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
     };
-  // mapInstanceRef excluded — refs are stable, including it is misleading
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [units, calls, showTrackingLines, mapLoaded]);
+  }, [map, units, calls, showTrackingLines, mapLoaded]);
 
-  return {
-    showTrackingLines,
-    setShowTrackingLines,
-    trackingLinesRef,
-  };
+  useEffect(() => {
+    return () => {
+      if (popupRef.current) { popupRef.current.remove(); popupRef.current = null; }
+    };
+  }, []);
+
+  return { showTrackingLines, setShowTrackingLines };
 }

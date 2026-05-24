@@ -11,7 +11,7 @@ export const POPOUT_PAGES: Record<string, { title: string; width: number; height
   '/records':        { title: 'Records',             width: 1100, height: 850 },
   '/personnel':      { title: 'Personnel',           width: 1100, height: 850 },
   '/communications': { title: 'Communications',      width: 1000, height: 800 },
-  '/radio':          { title: 'Radio',               width: 800,  height: 700 },
+
   '/patrol':         { title: 'Patrol',              width: 1100, height: 850 },
   '/fleet':          { title: 'Fleet',               width: 1100, height: 850 },
   '/reports':        { title: 'Reports',             width: 1100, height: 850 },

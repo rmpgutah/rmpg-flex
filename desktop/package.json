@@ -59,7 +59,8 @@
       "icon": "../client/public/rmpg-seal.icns",
       "darkModeSupport": true,
       "hardenedRuntime": false,
-      "gatekeeperAssess": false
+      "gatekeeperAssess": false,
+      "identity": null
     },
     "dmg": {
       "backgroundColor": "#000000",
@@ -107,6 +108,7 @@
   "overrides": {
     "@xmldom/xmldom": "0.8.13",
     "lodash": ">=4.18.0",
-    "tar": ">=6.2.1"
+    "tar": ">=6.2.1",
+    "@xmldom/xmldom": ">=0.8.13"
   }
 }

@@ -1,0 +1,57 @@
+# ============================================================
+# RMPG Flex — Cloudflare Workers Configuration
+# ============================================================
+name = "rmpg-flex"
+main = "server/src/worker.ts"
+compatibility_date = "2026-05-20"
+compatibility_flags = ["nodejs_compat"]
+
+# Route API requests to this Worker
+routes = [
+  { pattern = "rmpgutah.us/*", zone_name = "rmpgutah.us" },
+  { pattern = "www.rmpgutah.us/*", zone_name = "rmpgutah.us" }
+]
+
+# ─── D1 Database ─────────────────────────────────────────
+[[d1_databases]]
+binding = "DB"
+database_name = "rmpg-flex"
+database_id = "785de7ae-3e7a-4e01-93bb-d24ddd813f6b"
+
+# ─── KV Namespace (sessions, rate limits, WS state) ─────
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "18dcb50f5f8f494596b02a50885ed379"
+
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "6573850e8db64408aa4aa719aff35d61"
+
+# ─── R2 Bucket (uploads, attachments, desktop builds) ───
+[[r2_buckets]]
+binding = "UPLOADS"
+bucket_name = "rmpg-flex-uploads"
+
+[[r2_buckets]]
+binding = "DOWNLOADS"
+bucket_name = "rmpg-flex-downloads"
+
+# ─── Vars (environment variables) ────────────────────────
+[vars]
+NODE_ENV = "production"
+PRIMARY_DOMAIN = "rmpgutah.us"
+CORS_ORIGINS = "https://rmpgutah.us,https://www.rmpgutah.us,http://localhost:5173"
+WEBAUTHN_RP_ID = "rmpgutah.us"
+WEBAUTHN_RP_NAME = "RMPG Flex"
+TOTP_ISSUER = "RMPG Flex"
+JWT_ACCESS_EXPIRY = "15m"
+JWT_REFRESH_EXPIRY = "7d"
+MAX_LOGIN_ATTEMPTS = "5"
+LOCKOUT_DURATION_MINUTES = "15"
+PASSWORD_MIN_LENGTH = "12"
+SERVER_TIMEZONE = "America/Denver"
+
+# ─── Dev ─────────────────────────────────────────────────
+[dev]
+port = 3001
+local_protocol = "http"

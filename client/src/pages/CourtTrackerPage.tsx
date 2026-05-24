@@ -25,6 +25,9 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useFormValidation } from '../hooks/useFormValidation';
+import { useFormDraft } from '../hooks/useFormDraft';
+import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
+import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidDate } from '../utils/validate';
 import { formatDate, localToday } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
@@ -96,7 +99,18 @@ export default function CourtTrackerPage() {
 
   // Form
   const [formOpen, setFormOpen] = useState(false);
-  const [formData, setFormData] = useState({ ...EMPTY_FORM });
+  const {
+    form: formData,
+    setForm: setFormData,
+    isDirty: formIsDirty,
+    wasRestored: formWasRestored,
+    clearDraft: clearFormDraft,
+    snapshot: snapshotForm,
+  } = useFormDraft<typeof EMPTY_FORM>({
+    storageKey: 'rmpg_court_event_form',
+    defaultValue: EMPTY_FORM,
+    isActive: formOpen,
+  });
   const [submitting, setSubmitting] = useState(false);
 
   // Outcome modal
@@ -310,6 +324,7 @@ export default function CourtTrackerPage() {
     try {
       await apiFetch('/court/events', { method: 'POST', body: JSON.stringify(formData) });
       addToast('Court event created', 'success');
+      clearFormDraft();
       setFormOpen(false);
       setFormData({ ...EMPTY_FORM });
       fetchEvents({ silent: true }); fetchUpcoming();
@@ -441,7 +456,7 @@ export default function CourtTrackerPage() {
           <button type="button" onClick={() => setCitationSearchOpen(true)} className="toolbar-btn text-[10px]">
             <FileText style={{ width: 11, height: 11 }} /> From Citation
           </button>
-          <button type="button" onClick={() => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); }} className="toolbar-btn toolbar-btn-primary print:hidden">
+          <button type="button" onClick={() => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); }} className="toolbar-btn toolbar-btn-primary print:hidden">
             <Plus style={{ width: 11, height: 11 }} /> New
           </button>
         </PanelTitleBar>
@@ -613,7 +628,7 @@ export default function CourtTrackerPage() {
                 icon={Scale}
                 title="No events found"
                 description="Create a new court event to get started."
-                action={{ label: 'New Event', onClick: () => { clearAllErrors(); setFormOpen(true); setFormData({ ...EMPTY_FORM }); } }}
+                action={{ label: 'New Event', onClick: () => { clearAllErrors(); setFormData({ ...EMPTY_FORM }); setFormOpen(true); snapshotForm(); } }}
               />
             ) : (
               displayEvents.map(evt => {
@@ -978,9 +993,25 @@ export default function CourtTrackerPage() {
         <div className="fixed inset-0 z-50 print:hidden flex items-center justify-center bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="New Court Event">
           <div className="panel-surface w-full max-w-lg mx-4">
             <PanelTitleBar title="New Court Event" icon={Plus}>
-              <IconButton onClick={() => setFormOpen(false)} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
+              <div className="flex items-center gap-2">
+                {formIsDirty && (
+                  <span className="text-[8px] text-amber-400 font-bold uppercase tracking-wider">UNSAVED</span>
+                )}
+                <IconButton onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn" aria-label="Close"><X style={{ width: 12, height: 12 }} /></IconButton>
+              </div>
             </PanelTitleBar>
             <div className="p-4 space-y-3">
+              {formWasRestored && (
+                <div className="flex items-center justify-between px-3 py-2 rounded-sm border border-amber-500/30" style={{ background: '#1a1500' }}>
+                  <div className="flex items-center gap-2">
+                    <Clock size={14} className="text-amber-400" />
+                    <span className="text-xs text-amber-400 font-medium">Restored pending draft</span>
+                  </div>
+                  <button type="button" onClick={clearFormDraft} className="text-[10px] text-amber-400 underline hover:text-amber-300">
+                    Discard
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="field-label">Type</label>
@@ -1028,7 +1059,7 @@ export default function CourtTrackerPage() {
                 </div>
               </div>
               <div className="flex justify-end gap-2 pt-2 border-t border-rmpg-700">
-                <button type="button" onClick={() => setFormOpen(false)} className="toolbar-btn">Cancel</button>
+                <button type="button" onClick={() => { clearFormDraft(); setFormOpen(false); }} className="toolbar-btn">Cancel</button>
                 <button type="button" onClick={handleCreate} disabled={submitting} className="toolbar-btn toolbar-btn-primary print:hidden">
                   {submitting ? <Loader2 className="w-3 h-3 animate-spin" role="status" aria-label="Loading" /> : <Save style={{ width: 11, height: 11 }} />}
                   Create Event
@@ -1304,6 +1335,15 @@ export default function CourtTrackerPage() {
           </div>
         </div>
       )}
+
+      <UnsavedChangesGuard hasUnsavedChanges={formOpen && formIsDirty} />
+      <FloatingSaveBar
+        visible={formOpen && formIsDirty}
+        onSave={handleCreate}
+        onCancel={() => { clearFormDraft(); setFormOpen(false); }}
+        isSaving={submitting}
+        saveLabel="Create Event"
+      />
     </div>
   );
 }

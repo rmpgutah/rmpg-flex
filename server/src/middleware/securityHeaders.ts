@@ -23,21 +23,16 @@ export function securityHeaders(req: Request, res: Response, next: NextFunction)
   }
 
   // Content Security Policy
-  // NOTE: Google Maps requires script/img/connect/font access to *.googleapis.com,
-  // *.gstatic.com, and *.google.com domains.
+  // Mapbox GL JS requires script-src, connect-src access to api.mapbox.com,
+  // events.mapbox.com, and tiles.mapbox.com.
   // ArcGIS Embeddable Components require access to js.arcgis.com and *.arcgis.com domains.
-  // Google Maps loads sub-resources from *.gstatic.com (maps., www., fonts.),
-  // *.googleapis.com, *.google.com, and *.ggpht.com.
-  // ArcGIS loads from js.arcgis.com, *.arcgis.com, and *.arcgisonline.com.
-  // Using wildcards for the gstatic/google/arcgis families to avoid breakage
-  // when Google or Esri add new sub-domains.
   res.set('Content-Security-Policy', [
     "default-src 'self'",
-    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
-    "style-src 'self' 'unsafe-inline' https://unpkg.com https://*.googleapis.com https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
-    "img-src 'self' data: blob: https: http: https://*.basemaps.cartocdn.com",
+    "script-src 'self' 'unsafe-inline' 'unsafe-eval' blob: https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com",
+    "style-src 'self' 'unsafe-inline' https://unpkg.com https://api.mapbox.com https://js.arcgis.com https://*.arcgis.com",
+    "img-src 'self' data: blob: https: http: https://api.mapbox.com https://tiles.mapbox.com https://*.basemaps.cartocdn.com",
     "font-src 'self' data: https://*.gstatic.com https://js.arcgis.com https://*.arcgis.com",
-    "connect-src 'self' ws: wss: https://*.googleapis.com https://*.google.com https://*.gstatic.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io",
+    "connect-src 'self' ws: wss: https://api.mapbox.com https://events.mapbox.com https://*.arcgis.com https://js.arcgis.com https://*.arcgisonline.com https://api.open-meteo.com https://basemaps.cartocdn.com https://*.basemaps.cartocdn.com https://*.cartocdn.com https://nominatim.openstreetmap.org https://api.fbi.gov https://photon.komoot.io",
     "frame-src 'self' blob: https://*.arcgis.com",
     "media-src 'self' blob: data:",
     "worker-src 'self' blob:",

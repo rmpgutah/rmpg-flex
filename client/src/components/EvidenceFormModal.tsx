@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Microscope, Hash, Shield } from 'lucide-react';
 import FormModal from './FormModal';
-import { useFormDirty } from '../hooks/useFormDirty';
+import { useFormDraft } from '../hooks/useFormDraft';
 import { apiFetch } from '../hooks/useApi';
 import type { Evidence } from '../types';
 import { localToday } from '../utils/dateUtils';
@@ -108,8 +108,18 @@ const EMPTY_FORM: EvidenceFormData = {
 };
 
 export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreated, editingEvidence }: EvidenceFormModalProps) {
-  const [form, setForm] = useState<EvidenceFormData>({ ...EMPTY_FORM });
-  const { isDirty, snapshot } = useFormDirty(form, isOpen);
+  const {
+    form,
+    setForm,
+    isDirty,
+    wasRestored,
+    clearDraft,
+    snapshot,
+  } = useFormDraft<EvidenceFormData>({
+    storageKey: 'rmpg_evidence_form',
+    defaultValue: { ...EMPTY_FORM },
+    isActive: isOpen,
+  });
   const [activeTab, setActiveTab] = useState<'basic' | 'details' | 'lab' | 'digital'>('basic');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -154,9 +164,10 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
         court_hold_reference: (editingEvidence as any).court_hold_reference || '',
       };
       setForm(initial);
-      snapshot(initial);
+      snapshot();
     } else {
-      snapshot(EMPTY_FORM);
+      setForm({ ...EMPTY_FORM });
+      snapshot();
     }
   }, [isOpen, editingEvidence]);
 
@@ -256,6 +267,8 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       isSubmitting={isSubmitting}
       maxWidth="max-w-2xl"
       isDirty={isDirty}
+      draftRestored={wasRestored}
+      onDiscardDraft={clearDraft}
     >
       {error && (
         <div className="px-3 py-2 bg-red-900/30 border border-red-700 text-red-400 text-xs">
