@@ -55,6 +55,33 @@ export function broadcastDispatchUpdate(data: any): void {
   broadcast('dispatch', 'dispatch_update', data);
 }
 
+// ── Per-user targeted delivery (Spillman parity) ──
+// Powers welfare prompts and premise auto-push. Per-isolate scope
+// matches the rest of this module — same caveat as broadcast(),
+// fine for the alert use case where the officer's MDT lives in
+// one isolate at a time.
+export function sendToUser(userId: number, type: string, data: any): number {
+  const userClients = clients.get(userId);
+  if (!userClients || userClients.length === 0) return 0;
+  const message = JSON.stringify({ type, ...data });
+  let delivered = 0;
+  for (const client of userClients) {
+    try {
+      if (client.ws.readyState === WebSocket.READY_STATE_OPEN) {
+        client.ws.send(message);
+        delivered++;
+      }
+    } catch { /* connection in flight — ignore */ }
+  }
+  return delivered;
+}
+
+export function broadcastToUsers(userIds: number[], type: string, data: any): number {
+  let total = 0;
+  for (const userId of userIds) total += sendToUser(userId, type, data);
+  return total;
+}
+
 export function broadcastUnitUpdate(data: any): void {
   broadcast('dispatch', 'unit_update', data);
 }

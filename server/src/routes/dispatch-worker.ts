@@ -1508,6 +1508,35 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
 
      const now = localNow();
 
+     // ── Run Card application (Spillman parity) ──
+     // Look up an active run card for the normalized incident_type. Card
+     // fills only nullish/empty fields — caller-provided values always win.
+     // Records run_card_id + run_card_applied_at on the call row + emits
+     // an activity_log entry for audit.
+     const normalizedIncidentType = String(incident_type || '').trim().toLowerCase().replace(/\s+/g, '_');
+     const { applyRunCardD1 } = await import('./runCards-worker');
+     const rcResult = await applyRunCardD1(db, normalizedIncidentType, normalizedPriority, {
+       weapons_involved: body.weapons_involved,
+       injuries_reported: body.injuries_reported,
+       domestic_violence: body.domestic_violence,
+       alcohol_involved: body.alcohol_involved,
+       mental_health_crisis: body.mental_health_crisis,
+       officer_safety_caution: body.officer_safety_caution,
+       felony_in_progress: body.felony_in_progress,
+       vehicle_pursuit: body.vehicle_pursuit,
+       foot_pursuit: body.foot_pursuit,
+       hazmat: body.hazmat,
+       ems_requested: body.ems_requested,
+       fire_requested: body.fire_requested,
+     });
+     // Merge rcResult.appliedFlags into body so downstream filterFieldMap
+     // picks them up. Only fill keys that were nullish on the request.
+     if (rcResult.card) {
+       for (const [k, v] of Object.entries(rcResult.appliedFlags)) {
+         if (body[k] == null || body[k] === '') body[k] = v;
+       }
+     }
+
      // Generate call number: CFS-YY-NNNNN
      const yy = String(new Date().getFullYear()).slice(-2);
      const prefix = `${yy}-CFS`;
@@ -1538,6 +1567,8 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
         notes: () => initial_notes || null,
         source: () => 'phone',
         assigned_unit_ids: () => '[]',
+        run_card_id: () => rcResult.card?.id ?? null,
+        run_card_applied_at: () => rcResult.card ? now : null,
       };
 
      // Add client_id mapping if the column exists in D1 (it doesn't in current schema, so we skip it for now)
@@ -1554,8 +1585,12 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
      const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
 
      await auditLog(db, c, 'CREATE', 'call', callId!, `Created call ${callNumber}`);
+     if (rcResult.card) {
+       await auditLog(db, c, 'run_card_applied', 'call', callId!,
+         `Run Card "${rcResult.card.display_name}" applied: ${rcResult.card.required_units}u, ${rcResult.card.backup_units} backup, priority ${rcResult.card.default_priority}${rcResult.card.silent_response_default ? ', SILENT' : ''}`);
+     }
 
-     return c.json(call, 201);
+     return c.json({ ...(call as any), runCard: rcResult.card }, 201);
    });
 
   // POST /api/dispatch/calls/:id/assign-unit - Assign a unit to a call
@@ -1606,6 +1641,28 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     `).run(callId, now, unit_id);
 
     await auditLog(db, c, 'UNIT_ASSIGNED', 'call', callId, `Assigned ${unit.call_sign} to ${call.call_number}`);
+
+    // ── Premise auto-push (Spillman parity) ──
+    // Look up active premise_alerts within 50m of the call's GPS and
+    // push them to the assigned officer's MDT via per-user WebSocket.
+    // Best-effort — never throw out of dispatch.
+    try {
+      if (call.latitude != null && call.longitude != null) {
+        const { getPremiseAlertsNear, pushPremiseAlertsToUnit } = await import('../worker-middleware/premiseAlertsForCall');
+        const alerts = await getPremiseAlertsNear(db, call.latitude, call.longitude);
+        if (alerts.length > 0) {
+          await pushPremiseAlertsToUnit({
+            db,
+            unitId: unitIdNum,
+            callId,
+            callNumber: call.call_number,
+            alerts,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('[dispatch] premise auto-push (assign-unit):', err);
+    }
 
     const updated = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
     return c.json(updated);
