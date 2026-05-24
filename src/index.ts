@@ -17,6 +17,7 @@ import dispatchGps from './routes/dispatch/gps';
 import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
+import geocode from './routes/geocode';
 import dispatchPanic from './routes/dispatch/panic';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import admin from './routes/admin';
@@ -163,6 +164,13 @@ app.use('/api/warrants/*', authMiddleware);
 app.use('/api/weather*', authMiddleware);
 app.use('/api/email/*', authMiddleware);
 app.use('/api/integrations/*', authMiddleware);
+// geocode proxy — must mount BEFORE the /api/integrations stubs
+// catch-all so /api/integrations/mapbox/client-token resolves here
+// instead of returning a stub. /api/geocode/search is the Nominatim
+// fallback used when no Mapbox token is configured.
+app.use('/api/geocode', authMiddleware);
+app.use('/api/geocode/*', authMiddleware);
+app.route('/api', geocode);
 app.use('/api/dispatch/stats*', authMiddleware);
 app.use('/api/dispatch/shift-handoff*', authMiddleware);
 app.route('/api/user', stubs);
