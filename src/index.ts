@@ -43,6 +43,7 @@ import documentIntake from './routes/documentIntake';
 import documentFolders from './routes/documents/folders';
 import audit from './routes/audit';
 import cases from './routes/cases';
+import fieldInterviews from './routes/fieldInterviews';
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
@@ -249,6 +250,12 @@ app.route('/api/cases', cases);
 app.use('/api/documents', authMiddleware);
 app.use('/api/documents/*', authMiddleware);
 app.route('/api/documents', documentFolders);
+// Field interviews — officer-initiated contact records with GPS,
+// subject details, vehicle, disposition. Migration 0025_field_interviews.
+// DELETE + /export/csv enforce role checks inside the route module.
+app.use('/api/field-interviews', authMiddleware);
+app.use('/api/field-interviews/*', authMiddleware);
+app.route('/api/field-interviews', fieldInterviews);
 // geocode proxy — must mount BEFORE the /api/integrations stubs
 // catch-all so /api/integrations/mapbox/client-token resolves here
 // instead of returning a stub. /api/geocode/search is the Nominatim
