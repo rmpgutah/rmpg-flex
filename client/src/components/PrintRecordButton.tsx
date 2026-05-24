@@ -174,6 +174,23 @@ export default function PrintRecordButton({
           }));
         }
       } catch { /* non-fatal */ }
+      // Cross-reference: linked persons + properties via record_links
+      try {
+        const links = await apiFetch<any[]>(`/records/links?source_type=vehicle&source_id=${data.id}`);
+        if (Array.isArray(links)) {
+          enriched.linked_persons = links.filter((l: any) => l.target_type === 'person').map((l: any) => ({
+            name: l.target_name || l.name || '',
+            dob: l.target_dob || l.dob,
+            flags: l.target_flags || l.flags,
+            relationship: l.relationship,
+          }));
+          enriched.linked_properties = links.filter((l: any) => l.target_type === 'property').map((l: any) => ({
+            name: l.target_name || l.name || '',
+            address: l.target_address || l.address,
+            relationship: l.relationship,
+          }));
+        }
+      } catch { /* non-fatal — endpoint may be stubbed */ }
     }
 
     // For property records, fetch incident/call history + trespass orders
@@ -198,6 +215,26 @@ export default function PrintRecordButton({
           }));
         }
       } catch { /* non-fatal */ }
+      // Cross-reference: linked persons + vehicles via record_links
+      try {
+        const links = await apiFetch<any[]>(`/records/links?source_type=property&source_id=${data.id}`);
+        if (Array.isArray(links)) {
+          enriched.linked_persons = links.filter((l: any) => l.target_type === 'person').map((l: any) => ({
+            name: l.target_name || l.name || '',
+            dob: l.target_dob || l.dob,
+            flags: l.target_flags || l.flags,
+            relationship: l.relationship,
+          }));
+          enriched.linked_vehicles = links.filter((l: any) => l.target_type === 'vehicle').map((l: any) => ({
+            license_plate: l.target_plate || l.license_plate || '',
+            year: l.target_year || l.year,
+            make: l.target_make || l.make,
+            model: l.target_model || l.model,
+            color: l.target_color || l.color,
+            relationship: l.relationship,
+          }));
+        }
+      } catch { /* non-fatal — endpoint may be stubbed */ }
     }
 
     // For call records, fetch GPS breadcrumb trail
