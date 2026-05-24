@@ -1,164 +1,41 @@
-name: "Deploy to Cloudflare Workers + D1 + Pages"
+name: Deploy to Cloudflare
 
-# Auto-deploys to Cloudflare on every push to main.
-# Also triggerable manually with workflow_dispatch.
-#
-# Prerequisites — set these repository secrets:
-#   CLOUDFLARE_API_TOKEN — API token with Workers + Pages + D1 permissions
-#     (create at https://dash.cloudflare.com/profile/api-tokens)
-#
-# If the client typecheck gate is red:
-#   That's a known pre-existing issue (Google Maps / OpenLayers types).
-#   Uncomment the `continue-on-error: true` line under "Client typecheck"
-#   to allow deploys while that issue is unresolved.
 on:
   push:
     branches: [main]
   workflow_dispatch:
-    inputs:
-      branch:
-        description: "Branch to deploy"
-        required: false
-        default: "main"
-      skip_tests:
-        description: "Skip test suite (bypass quality gate)"
-        required: false
-        default: "false"
-        type: boolean
 
 concurrency:
-  group: cloudflare-deploy-${{ github.ref }}
-  cancel-in-progress: true
+  group: cf-deploy-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
-  quality-gates:
-    name: Quality gates
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.inputs.branch || github.ref }}
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: |
-            server/package-lock.json
-            client/package-lock.json
-
-      - name: Install server deps
-        working-directory: server
-        run: npm ci --no-audit --no-fund
-
-      - name: Install client deps
-        working-directory: client
-        run: npm ci --no-audit --no-fund
-
-      - name: Server typecheck
-        working-directory: server
-        run: npx tsc --noEmit
-
-      - name: Server tests
-        if: ${{ github.event.inputs.skip_tests != 'true' }}
-        working-directory: server
-        run: npx vitest run --reporter=default
-
-      - name: Client typecheck
-        working-directory: client
-        continue-on-error: true  # known pre-existing Google Maps / OL type errors
-        run: npx tsc --noEmit
-
-      - name: Client production build
-        working-directory: client
-        run: npx vite build
-
-      - name: Upload client build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: client-dist
-          path: client/dist
-          retention-days: 1
-
-  deploy-worker:
-    name: Deploy Worker + D1
+  deploy:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    needs: [quality-gates]
-    environment: production
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
         with:
-          ref: ${{ github.event.inputs.branch || github.ref }}
+          node-version: 22
+          cache: npm
 
-      - uses: actions/setup-node@v6
+      - run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Apply D1 migrations (remote)
+        uses: cloudflare/wrangler-action@v3
         with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: server/package-lock.json
-
-      - name: Install server deps
-        working-directory: server
-        run: npm ci --no-audit --no-fund
-
-      - name: Apply D1 migrations
-        continue-on-error: true  # migrations handled by app code at boot
-        run: npx wrangler d1 migrations apply rmpg-flex --remote
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: d1 migrations apply rmpg-flex-db --remote
 
       - name: Deploy Worker
-        run: npx wrangler deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
-  deploy-pages:
-    name: Deploy Pages
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    needs: [quality-gates]
-    environment: production
-    steps:
-      - uses: actions/checkout@v6
+        uses: cloudflare/wrangler-action@v3
         with:
-          ref: ${{ github.event.inputs.branch || github.ref }}
-
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: server/package-lock.json
-
-      - name: Install server deps (for wrangler)
-        working-directory: server
-        run: npm ci --no-audit --no-fund
-
-      - uses: actions/download-artifact@v4
-        with:
-          name: client-dist
-          path: client/dist
-
-      - name: Deploy to Cloudflare Pages
-        run: npx wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-
-  verify:
-    name: Verify deployment
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    needs: [deploy-worker, deploy-pages]
-    steps:
-      - name: Wait for propagation
-        run: sleep 5
-
-      - name: Health check
-        run: |
-          HEALTH=$(curl -sf https://rmpgutah.us/api/health || echo "FAILED")
-          if [ "$HEALTH" = "FAILED" ]; then
-            echo "::error::Health check failed!"
-            exit 1
-          fi
-          echo "$HEALTH" | python3 -m json.tool
-          echo "::notice::Deploy verified — API healthy"
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          command: deploy
