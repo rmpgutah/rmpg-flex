@@ -5,7 +5,7 @@ import { validateParamId, validateParamIdMiddleware, escapeLike } from '../../mi
 import { generateCallNumber, generateCaseNumber } from '../../utils/caseNumbers';
 import { sendCsv } from '../../utils/csvExport';
 import { localNow, localToday } from '../../utils/timeUtils';
-import { geocodeCallIfNeeded, regeocodeCallAddress } from '../../utils/geocode';
+import { geocodeAddress, geocodeCallIfNeeded, regeocodeCallAddress } from '../../utils/geocode';
 import { identifyBeat } from '../../utils/geofence';
 import { broadcast, broadcastDispatchUpdate } from '../../utils/websocket';
 import { createNotificationForRoles } from '../notifications';
@@ -1024,7 +1024,7 @@ router.get('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
 });
 
 // PUT /api/dispatch/calls/:id - Update call
-router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), (req: Request, res: Response) => {
+router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (req: Request, res: Response) => {
   try {
     const db = getDb();
     const call = db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(req.params.id) as any;
@@ -1069,14 +1069,61 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       if (prop) resolvedUpdateClientId = prop.client_id;
     }
 
+    // ── Address-change → sync geocode (tight timeout) ───────────────
+    // When the address changed and no explicit coords were supplied, try
+    // to geocode now so the response + broadcast carry the new pin in a
+    // single round-trip. Nominatim usually lands in 200-500ms; on timeout
+    // or failure, fall back to the async out-of-band path so the marker
+    // stays visible at the old location rather than disappearing.
+    const addressChanged =
+      location_address !== undefined &&
+      location_address !== null &&
+      String(location_address).trim() !== String(call.location_address || '').trim();
+    const explicitCoordsProvided =
+      (latitude !== undefined && latitude !== null && latitude !== '') ||
+      (longitude !== undefined && longitude !== null && longitude !== '');
+    const shouldRegeocode = addressChanged && !explicitCoordsProvided;
+
+    let syncGeocoded: { latitude: number; longitude: number } | null = null;
+    if (shouldRegeocode) {
+      try {
+        const SYNC_GEOCODE_TIMEOUT_MS = 2500;
+        syncGeocoded = await Promise.race([
+          geocodeAddress(String(location_address)),
+          new Promise<null>((resolve) => setTimeout(() => resolve(null), SYNC_GEOCODE_TIMEOUT_MS)),
+        ]);
+        if (syncGeocoded) {
+          console.log(`[Dispatch PUT] sync geocode hit for call ${req.params.id}: ${syncGeocoded.latitude}, ${syncGeocoded.longitude}`);
+        } else {
+          console.warn(`[Dispatch PUT] sync geocode missed for call ${req.params.id} — will fall back to async`);
+        }
+      } catch (gErr) {
+        console.warn('[Dispatch PUT] sync geocode threw:', gErr instanceof Error ? gErr.message : gErr);
+        syncGeocoded = null;
+      }
+    }
+
     // ── Auto-fill Beat / Zone / Sector when coords change + 3-Tier lookup ──
     let autoZoneBeat = zone_beat;
     let autoSectionId = sector_id;
     let autoZoneId = zone_id;
     let autoBeatId = beat_id;
-    const effectiveLat = latitude !== undefined ? latitude : call.latitude;
-    const effectiveLng = longitude !== undefined ? longitude : call.longitude;
-    if (effectiveLat && effectiveLng && (latitude !== undefined || (!call.beat_id && !call.zone_id))) {
+    // Effective coords prefer (in order): explicit request body → sync geocode → existing row.
+    // When syncGeocoded fires we also want the beat to recompute, so treat the
+    // synced coords like the "latitude was just provided" branch below.
+    const effectiveLat = latitude !== undefined ? latitude : (syncGeocoded ? syncGeocoded.latitude : call.latitude);
+    const effectiveLng = longitude !== undefined ? longitude : (syncGeocoded ? syncGeocoded.longitude : call.longitude);
+    const coordsExplicitlyChanged = latitude !== undefined || !!syncGeocoded;
+    // If sync geocode landed new coords, force the beat reset so the auto-fill
+    // below sees blank slate (otherwise the "!call.beat_id && !call.zone_id" gate
+    // skips recompute on a call that already had a beat).
+    if (syncGeocoded) {
+      autoBeatId = undefined;
+      autoZoneId = undefined;
+      autoSectionId = undefined;
+      autoZoneBeat = undefined;
+    }
+    if (effectiveLat && effectiveLng && (coordsExplicitlyChanged || (!call.beat_id && !call.zone_id))) {
       try {
         const beat = identifyBeat(Number(effectiveLat), Number(effectiveLng));
         if (beat) {
@@ -1112,8 +1159,8 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
             } catch { /* skip */ }
           }
 
-          // If coords explicitly changed, always update beat data
-          if (latitude !== undefined) {
+          // If coords explicitly changed (or sync-geocode landed), always update beat data
+          if (coordsExplicitlyChanged) {
             if (autoZoneBeat === undefined) autoZoneBeat = beat.beat_code;
             if (district) {
               autoBeatId = autoBeatId !== undefined ? autoBeatId : district.beat_code;
@@ -1193,27 +1240,18 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
     addField('caller_relationship', caller_relationship);
     addField('location_address', location_address);
     addField('property_id', property_id);
-    // Detect address change with no explicit coords — keep the existing
-    // lat/lng in place (so the marker stays visible at the old location)
-    // and queue an out-of-band force-re-geocode. On success, the helper
-    // updates coords + beat + broadcasts call_updated and the marker
-    // moves. On failure, the marker stays at the old location rather
-    // than disappearing.
-    const addressChanged =
-      location_address !== undefined &&
-      location_address !== null &&
-      String(location_address).trim() !== String(call.location_address || '').trim();
-    const explicitCoordsProvided =
-      (latitude !== undefined && latitude !== null && latitude !== '') ||
-      (longitude !== undefined && longitude !== null && longitude !== '');
-    const shouldRegeocode = addressChanged && !explicitCoordsProvided;
-
-    // Protect lat/lng from being wiped — only update if a real numeric value is provided
+    // Protect lat/lng from being wiped — only update if a real numeric value is provided.
+    // Sync-geocode result (from the address-change block above) is folded in here so
+    // the new coords land in the same UPDATE as the rest of the field changes.
     if (latitude !== undefined && latitude !== null && latitude !== '') {
       updates.push('latitude = ?'); params.push(Number(latitude));
+    } else if (syncGeocoded) {
+      updates.push('latitude = ?'); params.push(syncGeocoded.latitude);
     }
     if (longitude !== undefined && longitude !== null && longitude !== '') {
       updates.push('longitude = ?'); params.push(Number(longitude));
+    } else if (syncGeocoded) {
+      updates.push('longitude = ?'); params.push(syncGeocoded.longitude);
     }
     addField('description', description);
     addField('notes', notes);
@@ -1412,13 +1450,13 @@ router.put('/calls/:id', validateParamIdMiddleware, requireRole('admin', 'manage
       WHERE c.id = ?
     `).get(req.params.id) as any;
 
-    // If location_address changed and the caller didn't supply explicit
-    // coords, force-re-geocode out of band. geocodeCallIfNeeded bails when
-    // coords already exist (which is correct for the create path), so for
-    // address edits on an already-geocoded call we use the force variant.
-    if (shouldRegeocode) {
+    // Async fallback: when sync geocode missed (timeout / Nominatim returned
+    // no result), kick off the out-of-band force-re-geocode so the marker
+    // still moves eventually. When sync geocode hit, we already wrote new
+    // coords + beat in the UPDATE above, so no async retry needed.
+    if (shouldRegeocode && !syncGeocoded) {
       regeocodeCallAddress(updated.id, String(location_address));
-    } else if (location_address && updated.latitude == null && updated.longitude == null) {
+    } else if (!shouldRegeocode && location_address && updated.latitude == null && updated.longitude == null) {
       // Address present but row never got geocoded (e.g. created without
       // coords, never edited). Use the if-needed variant.
       geocodeCallIfNeeded(updated.id, String(location_address), updated.latitude, updated.longitude);
