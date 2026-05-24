@@ -90,6 +90,8 @@ app.use('/api/dispatch/bolos', authMiddleware);
 app.use('/api/dispatch/bolos/*', authMiddleware);
 app.use('/api/dispatch/panic', authMiddleware);
 app.use('/api/dispatch/panic/*', authMiddleware);
+app.use('/api/dispatch/premise-history', authMiddleware);
+app.use('/api/dispatch/premise-history/*', authMiddleware);
 app.use('/api/nibrs', authMiddleware);
 app.use('/api/nibrs/*', authMiddleware);
 app.use('/api/incidents', authMiddleware);
