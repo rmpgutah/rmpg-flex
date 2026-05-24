@@ -1665,6 +1665,107 @@ export function mountDispatchRoutes(app: Hono<{ Bindings: Env; Variables: { user
     return c.json(updated);
   });
 
+  // ═══════════════════════════════════════════════════════════
+  // POST /calls/:id/revert-status — Step a call backward through the lifecycle
+  // ═══════════════════════════════════════════════════════════
+  // Ported from server/src/routes/dispatch/callActions.ts (Express, dead code
+  // on Workers). The DispatchPage client hits this when a dispatcher clicks
+  // "Revert" — missing route was a partial-port casualty causing 404s.
+  api.post('/calls/:id/revert-status', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+    try {
+      const db = new D1Db(c.env.DB);
+      const callId = paramNum(c.req.param('id'));
+      if (isNaN(callId)) return c.json({ error: 'Invalid call ID', code: 'INVALID_CALL_ID' }, 400);
+
+      const call = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId) as any;
+      if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+      // Status chain: pending -> dispatched -> enroute -> onscene -> cleared -> closed
+      const statusChain: Record<string, string> = {
+        dispatched: 'pending',
+        enroute: 'dispatched',
+        onscene: 'enroute',
+        cleared: 'onscene',
+        closed: 'cleared',
+      };
+      const previousStatus = statusChain[call.status];
+      if (!previousStatus) {
+        return c.json({ error: `Cannot revert from status "${call.status}"`, code: 'CANNOT_REVERT_STATUS' }, 400);
+      }
+
+      const now = localNow();
+      const timestampField: Record<string, string> = {
+        dispatched: 'dispatched_at',
+        enroute: 'enroute_at',
+        onscene: 'onscene_at',
+        cleared: 'cleared_at',
+        closed: 'closed_at',
+      };
+      const tsField = timestampField[call.status];
+
+      let updateQuery = `UPDATE calls_for_service SET status = ?, status_changed_at = ?`;
+      const updateParams: any[] = [previousStatus, now];
+      if (tsField) updateQuery += `, ${tsField} = NULL`;
+      updateQuery += ` WHERE id = ?`;
+      updateParams.push(callId);
+
+      await db.prepare(updateQuery).run(...updateParams);
+
+      // If reverting from cleared/closed, re-dispatch assigned units that are
+      // still available. D1 lacks better-sqlite3-style transactions; we do this
+      // sequentially. Failure leaves the call status reverted but units stale —
+      // acceptable: the dispatcher can re-assign manually.
+      const revertedUnitIds: number[] = [];
+      if (['cleared', 'closed'].includes(call.status)) {
+        let unitIds: number[] = [];
+        try {
+          const parsed = JSON.parse(call.assigned_unit_ids || '[]');
+          unitIds = Array.isArray(parsed) ? parsed : [];
+        } catch { /* ignore parse errors — empty unit list is fine */ }
+
+        const prevUnitStatus = previousStatus === 'onscene' ? 'onscene' : previousStatus === 'enroute' ? 'enroute' : 'dispatched';
+        for (const unitId of unitIds) {
+          const result = await db.prepare(`
+            UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?
+            WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)
+          `).run(prevUnitStatus, callId, now, unitId, callId);
+          // D1 .run() returns { meta: { changes } } via the adapter
+          if ((result as any)?.meta?.changes > 0 || (result as any)?.changes > 0) revertedUnitIds.push(unitId);
+        }
+      }
+
+      await auditLog(db, c, 'STATUS_REVERT', 'call', callId, `${call.call_number} status reverted from ${call.status} to ${previousStatus}`);
+
+      const updated = await db.prepare('SELECT * FROM calls_for_service WHERE id = ?').get(callId);
+
+      // Broadcast updates so connected dispatchers see the revert immediately.
+      try {
+        const { broadcastDispatchUpdate, broadcastUnitUpdate } = await import('../worker-middleware/websocket');
+        broadcastDispatchUpdate({ action: 'call_status_changed', call: updated, status: previousStatus });
+        for (const unitId of revertedUnitIds) {
+          const unitData = await db.prepare(`
+            SELECT u.*, usr.full_name as officer_name, usr.badge_number, usr.phone as officer_phone,
+                   c.call_number, c.incident_type as current_call_type, c.location_address as current_call_location
+            FROM units u
+            LEFT JOIN users usr ON u.officer_id = usr.id
+            LEFT JOIN calls_for_service c ON u.current_call_id = c.id
+            WHERE u.id = ?
+          `).get(unitId);
+          if (unitData) broadcastUnitUpdate({ action: 'unit_status_changed', unit: unitData });
+        }
+      } catch (broadcastErr: any) {
+        // WebSocket broadcast failure is non-fatal — clients will pick up the
+        // change on next poll. Log but don't fail the request.
+        console.warn('[revert-status] broadcast failed:', broadcastErr?.message);
+      }
+
+      return c.json(updated);
+    } catch (err: any) {
+      console.error('Revert status error:', err?.message || err, err?.stack);
+      return c.json({ error: 'Failed to revert status', code: 'REVERT_STATUS_ERROR', details: err?.message }, 500);
+    }
+  });
+
   // GET /api/dispatch/disposition-stats - Disposition counts
   api.get('/disposition-stats', requireRole('admin', 'manager', 'supervisor', 'dispatcher', 'officer'), async (c) => {
     try {

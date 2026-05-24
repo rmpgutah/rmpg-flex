@@ -67,6 +67,7 @@ import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useUserPreferences } from '../../context/UserPreferencesContext';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useGpsTracking } from '../../hooks/useGpsTracking';
+import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
@@ -384,6 +385,9 @@ export default function MapPage() {
 
   // GPS own-position
   const gps = useGpsTracking();
+  // Keep the screen awake while the map is foregrounded — officers can't be
+  // glancing down to wake the device mid-pursuit. Auto-released on unmount.
+  useScreenWakeLock(true);
   const selfMarkerRef = useRef<any>(null);
 
   // WebSocket
@@ -1667,10 +1671,15 @@ export default function MapPage() {
         data: { type: 'FeatureCollection', features },
       });
 
+      // Mapbox 'case' requires both branches to produce the same type. The
+      // "then" branch returns [1, 4] (a 2-segment dash pattern), so the
+      // "else" must also return an array — not a bare `1`. Use [1] for a
+      // solid line (single-segment pattern). Previously this threw
+      // `line-dasharray[3]: Expected array<number> but found number`.
       const dashExpr = ['case',
         ['==', ['get', 'isDashed'], true],
         [1, 4],
-        1,
+        [1],
       ];
 
       map.addLayer({

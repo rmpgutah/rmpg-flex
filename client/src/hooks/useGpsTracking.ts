@@ -728,15 +728,46 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }
   }, [isTracking, startTracking]);
 
-  // AUTO-START on mount — GPS is mandatory for all logged-in users
+  // AUTO-START on first user gesture — modern browsers gate Geolocation
+  // (and WakeLock) behind a user-activation token. Calling watchPosition on
+  // mount without a gesture causes the browser to silently withhold
+  // callbacks (symptom: "No position callback in 45s" watchdog warnings)
+  // and emit a "[Violation] geolocation in response to a user gesture" log.
+  // We wait for the first click/keydown/touch, then start. If the user has
+  // already granted location permission in a prior session, the Permissions
+  // API short-circuits the wait so officers don't need to click before GPS
+  // resumes.
   useEffect(() => {
     // Reset on (re)mount — refs persist across StrictMode double-mount and
     // route remounts, so without this `mountedRef.current` stays false from
     // a prior unmount and silently disables `setState` guards.
     mountedRef.current = true;
-    startTracking();
+
+    let started = false;
+    const start = () => {
+      if (started) return;
+      started = true;
+      window.removeEventListener('click', start);
+      window.removeEventListener('keydown', start);
+      window.removeEventListener('touchstart', start);
+      startTracking();
+    };
+
+    const permApi = (navigator as any).permissions;
+    if (permApi?.query) {
+      permApi.query({ name: 'geolocation' }).then((res: any) => {
+        if (res.state === 'granted') start();
+      }).catch(() => { /* Permissions API absent — wait for gesture */ });
+    }
+    window.addEventListener('click', start, { once: true });
+    window.addEventListener('keydown', start, { once: true });
+    window.addEventListener('touchstart', start, { once: true });
+
     return () => {
       mountedRef.current = false;
+      window.removeEventListener('click', start);
+      window.removeEventListener('keydown', start);
+      window.removeEventListener('touchstart', start);
       // Flush remaining points and clean up all timers/watchers
       cleanupTracking(true);
     };
@@ -818,45 +849,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     };
   }, [isTracking, startTracking]);
 
-  // Request WakeLock to prevent device sleep from interrupting GPS tracking
-  // (supported on Chrome Android, Chrome Desktop, Edge, etc.)
-  useEffect(() => {
-    let wakeLock: any = null;
-    const handleWakeLockRelease = () => {
-      // Wake lock released (e.g., user switched tabs) — will re-acquire via visibilitychange
-      wakeLock = null;
-    };
-    const requestWakeLock = async () => {
-      try {
-        if ('wakeLock' in navigator) {
-          wakeLock = await (navigator as any).wakeLock.request('screen');
-          wakeLock.addEventListener('release', handleWakeLockRelease);
-        }
-      } catch (err) {
-        console.warn('[useGpsTracking] WakeLock request failed:', err);
-      }
-    };
-
-    // Only request when page is visible — prevents NotAllowedError on browsers
-    // that require a user gesture for WakeLock permission
-    if (document.visibilityState === 'visible') {
-      requestWakeLock();
-    }
-
-    // Re-acquire wake lock when page becomes visible again
-    const handleVisibility = () => {
-      if (document.visibilityState === 'visible') requestWakeLock();
-    };
-    document.addEventListener('visibilitychange', handleVisibility);
-
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibility);
-      if (wakeLock) {
-        wakeLock.removeEventListener('release', handleWakeLockRelease);
-        wakeLock.release().catch((err: any) => { console.warn('[useGpsTracking] wake lock release failed:', err); });
-      }
-    };
-  }, []);
+  // Screen Wake Lock used to be requested here unconditionally. It moved to
+  // a separate `useScreenWakeLock(active)` hook called from screens that
+  // genuinely need to keep the display awake (MapPage, dispatch with an
+  // active call). Holding wake lock app-wide drained battery overnight and
+  // threw NotAllowedError on initial mount before a user gesture — visible
+  // as `[useGpsTracking] WakeLock request failed: NotAllowedError` in every
+  // officer's console.
 
   return {
     ...state,
