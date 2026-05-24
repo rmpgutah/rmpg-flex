@@ -401,7 +401,6 @@ export default function AdminPage() {
         last_name: data.last_name,
         middle_name: data.middle_name,
         email: data.email,
-        role: data.role,
         badge_number: data.badge_number,
         phone: data.phone,
         department: data.department,
@@ -430,22 +429,39 @@ export default function AdminPage() {
       };
 
       if (editingUser) {
-        if (data.password) {
-          body.password = data.password;
-        }
-        if (data.status) {
-          body.status = data.status;
-        }
+        // Role/status/password each have a dedicated endpoint so they
+        // can be audited individually. The general PUT silently drops
+        // them, so we fan out the writes here when the admin changed
+        // those specific fields.
         const updated = await apiFetch(`/personnel/${editingUser.id}`, {
           method: 'PUT',
           body: JSON.stringify(body),
         });
+        if (data.role && data.role !== editingUser.role) {
+          await apiFetch(`/personnel/${editingUser.id}/role`, {
+            method: 'POST',
+            body: JSON.stringify({ role: data.role }),
+          });
+        }
+        if (data.status && data.status !== editingUser.status) {
+          await apiFetch(`/personnel/${editingUser.id}/status`, {
+            method: 'POST',
+            body: JSON.stringify({ status: data.status }),
+          });
+        }
+        if (data.password) {
+          await apiFetch(`/personnel/${editingUser.id}/reset-password`, {
+            method: 'POST',
+            body: JSON.stringify({ new_password: data.password }),
+          });
+        }
         if (selectedUser && selectedUser.id === editingUser.id && updated) {
           setSelectedUser(prev => prev ? { ...prev, ...(updated as Record<string, any>) } : prev);
         }
       } else {
         body.username = data.username;
         body.password = data.password;
+        body.role = data.role;
         await apiFetch('/personnel', {
           method: 'POST',
           body: JSON.stringify(body),
@@ -496,8 +512,8 @@ export default function AdminPage() {
 
   const handleStatusChange = useCallback(async (userId: string, newStatus: string) => {
     try {
-      await apiFetch(`/personnel/${userId}`, {
-        method: 'PUT',
+      await apiFetch(`/personnel/${userId}/status`, {
+        method: 'POST',
         body: JSON.stringify({ status: newStatus }),
       });
       await fetchUsers({ silent: true });
