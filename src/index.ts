@@ -5,9 +5,12 @@ import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { PdfToolsContainer } from './containers/pdfToolsContainer';
 
-// Export so wrangler can find the DO class at build time
-export { WelfareWatchDO };
+// Export so wrangler can find the DO classes at build time. The Container
+// subclass extends DurableObject and is configured by [[containers]] +
+// [[durable_objects.bindings]] in wrangler.toml.
+export { WelfareWatchDO, PdfToolsContainer };
 
 import auth from './routes/auth';
 import health from './routes/health';
@@ -18,6 +21,7 @@ import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import geocode from './routes/geocode';
+import trespassOrders from './routes/trespassOrders';
 import dispatchPanic from './routes/dispatch/panic';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import admin from './routes/admin';
@@ -33,7 +37,8 @@ import welfare from './routes/welfare';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentsRouter from './routes/incidents';
 import warrants from './routes/warrants';
-import audit from './routes/audit';
+import pdfTools from './routes/pdfTools';
+import documentIntake from './routes/documentIntake';
 import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import {
   recommendedUnits,
@@ -52,6 +57,10 @@ type Bindings = {
   JWT_SECRET: string;
   CORS_ORIGINS?: string;
   PRIMARY_DOMAIN?: string;
+  // Mirrors src/types.ts Bindings — kept here so the local Hono<{ Bindings }>
+  // type matches what wrangler exposes at runtime.
+  WELFARE_WATCH?: DurableObjectNamespace;
+  PDF_TOOLS: DurableObjectNamespace<PdfToolsContainer>;
 };
 
 const app = new Hono<{ Bindings: Bindings; Variables: { user: { id: number; username: string; role: string; full_name: string }; userId: number } }>();
@@ -178,6 +187,12 @@ app.route('/api/audit', audit);
 app.use('/api/geocode', authMiddleware);
 app.use('/api/geocode/*', authMiddleware);
 app.route('/api', geocode);
+
+// Trespass orders — minimal stub so PremiseHistory's defensive
+// fetch returns 200 instead of 500/404. Full implementation TBD.
+app.use('/api/trespass-orders', authMiddleware);
+app.use('/api/trespass-orders/*', authMiddleware);
+app.route('/api/trespass-orders', trespassOrders);
 app.use('/api/dispatch/stats*', authMiddleware);
 app.use('/api/dispatch/shift-handoff*', authMiddleware);
 app.route('/api/user', stubs);
@@ -193,6 +208,14 @@ app.route('/api/email', stubs);
 app.route('/api/integrations', stubs);
 app.route('/api/dispatch/stats', stubs);
 app.route('/api/dispatch/shift-handoff', stubs);
+
+// PDF Tools (qpdf) + Document Intake (pdftotext + ocrmypdf) — both proxy
+// to the PdfToolsContainer sidecar. Auth required; per-endpoint role gates
+// inside the route files (encrypt = admin/manager, extract-text = officer+).
+app.use('/api/pdf-tools/*', authMiddleware);
+app.use('/api/document-intake/*', authMiddleware);
+app.route('/api/pdf-tools', pdfTools);
+app.route('/api/document-intake', documentIntake);
 
 // ─── Internal: WelfareWatchDO → Worker callback ──────────
 // The DO's alarm() can't call sendToUser/broadcastAll directly

@@ -81,7 +81,10 @@ runCards.get('/by-type/:incident_type', requireRole(...READ_ROLES), async (c) =>
     const db = getDb(c.env);
     const t = normalizeIncidentType(c.req.param('incident_type'));
     const row = await queryFirst<RunCardRow>(db, 'SELECT * FROM dispatch_run_cards WHERE incident_type = ? AND active = 1', t);
-    if (!row) return c.json({ error: 'No active run card for that incident type', code: 'RC_NOT_FOUND' }, 404);
+    // Return null with 200 instead of 404 — most incident types
+    // don't have a run card, and a 404 spams the console + triggers
+    // client error toasts. Client treats null as "no card, use defaults".
+    if (!row) return c.json(null);
     return c.json(parseRunCard(row));
   } catch (err) {
     console.error('[run-cards] by-type error', err);
