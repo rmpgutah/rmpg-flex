@@ -1,8 +1,9 @@
 name: "PR Tests"
 
 # Runs on every pull request and on direct pushes to main.
-# Intentionally SSH-free — this is a quality gate, not a deploy.
-# Pairs with deploy.yml (manual deploy workflow) and local deploy.sh gate.
+# Quality gate for the Cloudflare Workers stack (/src/) and client (/client/).
+# Pairs with deploy.yml which deploys to Cloudflare on push to main.
+# The legacy /server/ tree (now /legacy/server-vps/) is NOT tested here.
 # No untrusted inputs (PR titles/bodies/commit messages) are used in run: steps.
 on:
   pull_request:
@@ -16,29 +17,18 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  server-tests:
-    name: Server typecheck + tests + route guard
+  worker-typecheck:
+    name: Worker TypeScript check
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v6
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: "npm"
-          cache-dependency-path: server/package-lock.json
-      - name: Install server deps
-        working-directory: server
-        run: npm ci --no-audit --no-fund
-      - name: Route collision guard
-        working-directory: server
-        run: npm run check:routes
-      - name: Server TypeScript check
-        working-directory: server
-        run: npx tsc --noEmit
-      - name: Server vitest suite
-        working-directory: server
-        run: npx vitest run --reporter=default
+      - run: npm ci --no-audit --no-fund
+      - run: npm run typecheck
 
   client-typecheck:
     name: Client TypeScript check

@@ -1,37 +1,39 @@
-# PR auto-labeling rules based on changed file paths
+# PR auto-labeling rules based on changed file paths.
+# Paths reflect the Cloudflare Workers stack (/src/ is the live API).
+# /legacy/ is the quarantined VPS-era code — see legacy/README.md.
+
 client:
   - changed-files:
       - any-glob-to-any-file: 'client/**'
 
-server:
+worker:
   - changed-files:
-      - any-glob-to-any-file: 'server/**'
-
-desktop:
-  - changed-files:
-      - any-glob-to-any-file: 'desktop/**'
+      - any-glob-to-any-file: 'src/**'
 
 dispatch:
   - changed-files:
       - any-glob-to-any-file:
-          - 'server/src/routes/dispatch/**'
+          - 'src/routes/dispatch/**'
           - 'client/src/pages/dispatch/**'
+
+auth:
+  - changed-files:
+      - any-glob-to-any-file:
+          - 'src/middleware/auth*'
+          - 'src/routes/auth*'
+
+migrations:
+  - changed-files:
+      - any-glob-to-any-file: 'migrations/**'
+
+durable-objects:
+  - changed-files:
+      - any-glob-to-any-file: 'src/durable-objects/**'
 
 ci:
   - changed-files:
       - any-glob-to-any-file: '.github/**'
 
-deploy:
+legacy:
   - changed-files:
-      - any-glob-to-any-file: 'deploy/**'
-
-database:
-  - changed-files:
-      - any-glob-to-any-file: 'server/src/models/**'
-
-auth:
-  - changed-files:
-      - any-glob-to-any-file:
-          - 'server/src/middleware/auth*'
-          - 'server/src/routes/auth*'
-          - 'server/src/utils/totp*'
+      - any-glob-to-any-file: 'legacy/**'
