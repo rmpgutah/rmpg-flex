@@ -67,7 +67,17 @@ export interface PursuitSegment {
   avg_speed_mph: number;
   distance_miles: number;
   point_count: number;
-  points: { lat: number; lng: number; speed: number; heading: number; time: string }[];
+  // NOTE: legacy /dispatch/gps/pursuit-segments handler returns `points`
+  // as a NUMBER (the count) — not the array of coordinates this type
+  // previously claimed unconditionally. The legacy bundle also returns
+  // start_lat/lng + end_lat/lng. MapPage renders pursuit pins from those
+  // when `points` isn't a real array, and the full LineString when it is.
+  // Tracked: port the handler into /src/ so trail coordinates come through.
+  points: number | { lat: number; lng: number; speed: number; heading: number; time: string }[];
+  start_lat?: number;
+  start_lng?: number;
+  end_lat?: number;
+  end_lng?: number;
 }
 
 export interface CoverageInterval {
