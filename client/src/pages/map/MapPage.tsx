@@ -2234,29 +2234,56 @@ export default function MapPage() {
 
     if (speedAnalytics.pursuitSegments.length === 0) return;
 
-    const features: any[] = [];
+    const lineFeatures: any[] = [];
+    const pinFeatures: any[] = [];   // start/end pins for segments missing
+                                     // the trail coordinate array — see the
+                                     // PursuitSegment interface note about
+                                     // the legacy API's `points: number` quirk.
     speedAnalytics.pursuitSegments.forEach((seg) => {
-      if (seg.points.length < 2) return;
-      const coords = seg.points
-        .filter((p: any) => isFinite(p.lng) && isFinite(p.lat))
-        .map((p: any) => [p.lng, p.lat]);
-      if (coords.length < 2) return;
-      features.push({
-        type: 'Feature',
-        geometry: {
-          type: 'LineString',
-          coordinates: coords,
-        },
-        properties: {},
-      });
+      // Primary path: handler returned full trail coordinates.
+      if (Array.isArray(seg.points) && seg.points.length >= 2) {
+        const coords = seg.points
+          .filter((p: any) => isFinite(p.lng) && isFinite(p.lat))
+          .map((p: any) => [p.lng, p.lat]);
+        if (coords.length >= 2) {
+          lineFeatures.push({
+            type: 'Feature',
+            geometry: { type: 'LineString', coordinates: coords },
+            properties: { unit_id: seg.unit_id, call_sign: seg.call_sign },
+          });
+        }
+        return;
+      }
+
+      // Fallback (option C): legacy handler returns points as a count,
+      // not a list. Render start + end pins from the lat/lng pair so
+      // dispatchers can still see where pursuits started/ended.
+      const sLat = seg.start_lat;
+      const sLng = seg.start_lng;
+      const eLat = seg.end_lat;
+      const eLng = seg.end_lng;
+      if (isFinite(sLat as number) && isFinite(sLng as number)) {
+        pinFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [sLng, sLat] },
+          properties: { kind: 'start', unit_id: seg.unit_id, call_sign: seg.call_sign },
+        });
+      }
+      if (isFinite(eLat as number) && isFinite(eLng as number)) {
+        pinFeatures.push({
+          type: 'Feature',
+          geometry: { type: 'Point', coordinates: [eLng, eLat] },
+          properties: { kind: 'end', unit_id: seg.unit_id, call_sign: seg.call_sign },
+        });
+      }
     });
 
-    if (features.length > 0) {
+    if (lineFeatures.length > 0) {
       const sourceId = 'rmpg-pursuit-lines';
       const layerId = 'rmpg-pursuit-lines';
       map.addSource(sourceId, {
         type: 'geojson',
-        data: { type: 'FeatureCollection', features },
+        data: { type: 'FeatureCollection', features: lineFeatures },
       });
       map.addLayer({
         id: layerId,
@@ -2266,6 +2293,37 @@ export default function MapPage() {
           'line-color': '#dc2626',
           'line-opacity': 0.8,
           'line-width': 6,
+        },
+      });
+      pursuitLinesRef.current.push(sourceId);
+    }
+
+    if (pinFeatures.length > 0) {
+      const sourceId = 'rmpg-pursuit-pins';
+      const layerId = 'rmpg-pursuit-pins';
+      map.addSource(sourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: pinFeatures },
+      });
+      map.addLayer({
+        id: layerId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          // Green for pursuit start, red for end — matches the rest of the
+          // map's stop/go conventions and Tailwind palette tokens used in
+          // the panel UI (#16a34a green-600, #dc2626 red-600).
+          'circle-color': [
+            'match',
+            ['get', 'kind'],
+            'start', '#16a34a',
+            'end', '#dc2626',
+            '#888888',
+          ],
+          'circle-radius': 7,
+          'circle-stroke-color': '#ffffff',
+          'circle-stroke-width': 2,
+          'circle-opacity': 0.95,
         },
       });
       pursuitLinesRef.current.push(sourceId);
