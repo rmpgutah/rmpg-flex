@@ -144,8 +144,9 @@ export function useMapBreadcrumbs({ mapInstanceRef, mapLoaded }: UseMapBreadcrum
       if (map.getSource(speedAlertSourceId)) map.removeSource(speedAlertSourceId);
 
       try {
-        const trails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
-        if (!trails) return;
+        const rawTrails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
+        const trails = (Array.isArray(rawTrails) ? rawTrails : []).filter(t => Array.isArray(t?.points));
+        if (trails.length === 0) return;
         setPlaybackTrails(trails);
 
         const lineFeatures: any[] = [];
