@@ -20,7 +20,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20260520.1",
+    "@cloudflare/workers-types": "^4.20260525.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/uuid": "^10.0.0",
     "typescript": "^6.0.3",
