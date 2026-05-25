@@ -69,16 +69,24 @@ offline.get('/secrets', (c) => c.json({ secrets: [], admin_secret: null }));
 // (which accepted their offline.ts wholesale). The console didn't
 // 404 anymore because the stub returned 200, so the regression was
 // invisible until you tried to use the offline cache.
-type CursorCol = 'updated_at' | 'created_at';
+// Cursor columns must EXIST on every table they're assigned to. Verified
+// 2026-05-24 against live `8893480a` (rmpg-flex-api's DB) — any column
+// here that isn't on the actual table produces `no such column: …` from
+// D1 → silent 500 the client only console.errors. Schema source of truth
+// is `SELECT sql FROM sqlite_master`, not the legacy DB or the docs.
+type CursorCol = 'updated_at' | 'created_at' | 'scanned_at';
 const PULL_TABLES: Record<string, { columns: string; cursorCol: CursorCol }> = {
+  // `users` lists columns explicitly to keep password_hash, totp_*,
+  // webauthn_credentials, force_password_change out of every officer's
+  // IndexedDB. The list is trimmed to ONLY columns that exist on the
+  // deployed new-D1 `users` table — voice prefs, theme prefs, rank,
+  // department, first/middle/last_name, photo, assigned_unit_id etc.
+  // were in an earlier aspirational list but don't exist on the
+  // deployed schema. Client reads those via /api/personnel/me online.
   users: {
     columns: [
-      'id', 'username', 'full_name', 'first_name', 'middle_name', 'last_name',
-      'email', 'role', 'badge_number', 'phone', 'status', 'avatar_url', 'photo',
-      'rank', 'department', 'employee_id', 'assigned_unit_id',
-      'voice_persona', 'voice_rate', 'voice_pitch', 'voice_terseness',
-      'voice_brain_enabled', 'theme_preference', 'font_size_preference',
-      'created_at', 'updated_at',
+      'id', 'username', 'full_name', 'email', 'role', 'badge_number',
+      'phone', 'status', 'avatar_url', 'created_at', 'updated_at',
     ].join(', '),
     cursorCol: 'updated_at',
   },
@@ -88,16 +96,22 @@ const PULL_TABLES: Record<string, { columns: string; cursorCol: CursorCol }> = {
   calls_for_service:  { columns: '*', cursorCol: 'updated_at' },
   incidents:          { columns: '*', cursorCol: 'updated_at' },
   time_entries:       { columns: '*', cursorCol: 'created_at' },
-  persons:            { columns: '*', cursorCol: 'updated_at' },
-  vehicles_records:   { columns: '*', cursorCol: 'updated_at' },
+  // persons / vehicles_records / evidence / warrants: deployed schema
+  // has only created_at, no updated_at column. Append-only-ish for
+  // offline purposes — last-write wins via created_at order.
+  persons:            { columns: '*', cursorCol: 'created_at' },
+  vehicles_records:   { columns: '*', cursorCol: 'created_at' },
   citations:          { columns: '*', cursorCol: 'updated_at' },
   field_interviews:   { columns: '*', cursorCol: 'updated_at' },
-  evidence:           { columns: '*', cursorCol: 'updated_at' },
+  evidence:           { columns: '*', cursorCol: 'created_at' },
   criminal_history:   { columns: '*', cursorCol: 'created_at' },
-  patrol_scans:       { columns: '*', cursorCol: 'created_at' },
+  // patrol_scans uses scanned_at (NOT NULL) — the deployed schema
+  // has no created_at column, and scanned_at is what matters for a
+  // scan event anyway (when the officer physically scanned the QR).
+  patrol_scans:       { columns: '*', cursorCol: 'scanned_at' },
   patrol_checkpoints: { columns: '*', cursorCol: 'created_at' },
   trespass_orders:    { columns: '*', cursorCol: 'updated_at' },
-  warrants:           { columns: '*', cursorCol: 'updated_at' },
+  warrants:           { columns: '*', cursorCol: 'created_at' },
 };
 
 const PULL_DEFAULT_LIMIT = 1000;
