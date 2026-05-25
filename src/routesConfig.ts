@@ -55,6 +55,7 @@ import auth from './routes/auth';
 import health from './routes/health';
 import mapData from './routes/mapData';
 import admin from './routes/admin';
+import ai from './routes/ai';
 import offline from './routes/offline';
 import personnel from './routes/personnel';
 import presence from './routes/presence';
@@ -174,10 +175,14 @@ export const ROUTE_REGISTRY: RouteMount[] = [
 
   // ── Admin / personnel / presence ───────────────────────────
   { prefix: '/api/admin', router: admin, auth: 'required' },
-  { prefix: '/api/offline', router: offline, auth: 'required',
-    note: 'Browser offline-cache sync (POST /sync/pull, push stub, secret stubs)' },
+  { prefix: '/api/ai', router: ai, auth: 'required',
+    note: 'AI dashboard stubs (config/stats/status/health/activity). Real provider wiring is Phase 2.' },
   { prefix: '/api/personnel', router: personnel, auth: 'required' },
   { prefix: '/api/presence', router: presence, auth: 'required' },
+  // /api/offline mounts further down in the alphabetical RMS section
+  // (PR #638). Hono dispatches in registration order so a second mount
+  // here would be dead. Cleanup of an earlier dup-mount that the
+  // import-dedupe in 0ea59c11 didn't catch.
 
   // ── Records (subroutes BEFORE catch-all) ───────────────────
   { prefix: '/api/records/properties', router: properties, auth: 'required' },
