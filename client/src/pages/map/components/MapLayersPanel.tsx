@@ -570,9 +570,9 @@ export default function MapLayersPanel(props: MapLayersPanelProps) {
                     style={{ borderRadius: 2 }}
                   >
                     <option value="">Replay trail...</option>
-                    {playbackTrails.map((t: { unit_id: string; call_sign: string; points: { length: number } }) => (
+                    {playbackTrails.map((t: { unit_id: string; call_sign: string; points: unknown }) => (
                       <option key={t.unit_id} value={t.unit_id}>
-                        {t.call_sign} ({t.points.length} pts)
+                        {t.call_sign} ({Array.isArray(t.points) ? t.points.length : 0} pts)
                       </option>
                     ))}
                   </select>

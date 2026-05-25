@@ -671,9 +671,55 @@ async function createMainWindow() {
     mainWindow.focus();
   });
 
-  // Handle page load failures (server down, network error)
-  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription) => {
-    console.error(`[APP] Page load failed: ${errorDescription} (code ${errorCode})`);
+  // Handle page load failures (server down, network error).
+  //
+  // IMPORTANT: did-fail-load fires for a LOT of false positives:
+  //   - errorCode -3 (ERR_ABORTED) every time a JS-driven navigation
+  //     replaces an in-flight one. Cloudflare's challenge page does
+  //     exactly this when it solves and redirects. Treating -3 as
+  //     "server unreachable" makes the desktop app unusable any time
+  //     CF re-issues a challenge.
+  //   - Sub-frame failures (e.g., a failed iframe widget). The desktop
+  //     shell should only react to MAIN-frame nav failures.
+  //
+  // Policy: only show the offline page for KNOWN-fatal main-frame failures.
+  // Chromium net::Error codes:
+  //   -2   FAILED                       (generic; treat as fatal)
+  //   -100 CONNECTION_CLOSED
+  //   -101 CONNECTION_RESET
+  //   -102 CONNECTION_REFUSED
+  //   -103 CONNECTION_ABORTED           (NOT -3; this is a real socket abort)
+  //   -105 NAME_NOT_RESOLVED            (DNS)
+  //   -106 INTERNET_DISCONNECTED
+  //   -109 ADDRESS_UNREACHABLE
+  //   -118 CONNECTION_TIMED_OUT
+  //   -130 PROXY_CONNECTION_FAILED
+  //   -137 NAME_RESOLUTION_FAILED
+  //   -201 CERT_DATE_INVALID            (TLS clock/cert problems are fatal here)
+  //   -202 CERT_AUTHORITY_INVALID
+  //   -203 CERT_CONTAINS_ERRORS
+  //   -207 CERT_REVOKED
+  //   -208 CERT_INVALID
+  // Deliberately excluded:
+  //   -3   ABORTED          — fires every time a JS-driven nav replaces an
+  //                           in-flight one (Cloudflare challenge solving,
+  //                           OAuth redirects, etc.). Source of false positives.
+  //   -21  NETWORK_CHANGED  — transient on roaming/VPN reconnects; the next
+  //                           nav usually succeeds without showing offline UI.
+  const FATAL_NET_ERRORS = new Set([
+    -2, -100, -101, -102, -103, -105, -106, -109, -118, -130, -137,
+    -201, -202, -203, -207, -208,
+  ]);
+  function isFatalNavFailure(errorCode, isMainFrame /* , validatedURL */) {
+    return isMainFrame === true && FATAL_NET_ERRORS.has(errorCode);
+  }
+
+  mainWindow.webContents.on('did-fail-load', (event, errorCode, errorDescription, validatedURL, isMainFrame) => {
+    console.error(`[APP] did-fail-load: ${errorDescription} (code ${errorCode}, mainFrame=${isMainFrame}, url=${validatedURL})`);
+    if (!isFatalNavFailure(errorCode, isMainFrame, validatedURL)) {
+      console.log('[APP] did-fail-load: non-fatal, ignoring');
+      return;
+    }
     // Show the offline page with a retry button
     mainWindow.loadURL(getOfflineHTML()).catch((err) => {
       console.warn('[APP] Offline page loadURL failed:', err && err.message);

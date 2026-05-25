@@ -79,7 +79,7 @@ export function useMapHeatmapTimelapse(
     if (map.getLayer(sourceId)) map.removeLayer(sourceId);
     if (map.getSource(sourceId)) map.removeSource(sourceId);
 
-    if (!slice || !slice.points || slice.points.length === 0) return;
+    if (!slice || !Array.isArray(slice.points) || slice.points.length === 0) return;
 
     const features = slice.points
       .filter(p => p.latitude != null && p.longitude != null)
@@ -108,7 +108,7 @@ export function useMapHeatmapTimelapse(
   useEffect(() => {
     if (!map || !enabled || slices.length === 0) return;
     const slice = slices[currentIndex];
-    if (!slice || !slice.points || slice.points.length === 0) return;
+    if (!slice || !Array.isArray(slice.points) || slice.points.length === 0) return;
     renderSlice(slice);
 
     return () => {
