@@ -64,7 +64,7 @@ jobs:
 
       - name: Open issue on failure
         if: failure() && steps.typecheck.conclusion == 'failure'
-        uses: actions/github-script@v7
+        uses: actions/github-script@v9
         env:
           # User-controlled inputs go through env vars so they never
           # land in source-evaluated context.
