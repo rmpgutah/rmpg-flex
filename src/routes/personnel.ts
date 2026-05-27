@@ -2,8 +2,16 @@ import { Hono } from 'hono';
 import { hashSync } from 'bcryptjs';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras';
 
 const personnel = new Hono<Env>();
+
+// Sub-routers — mounted BEFORE any /:id handler below so the literal
+// '/body-cameras' and '/bodycam-videos' segments are matched first.
+// Hono dispatches in registration order: a parametric /:id registered
+// earlier would otherwise swallow these as id='body-cameras'.
+personnel.route('/body-cameras', bodyCamerasRouter);
+personnel.route('/bodycam-videos', bodycamVideosRouter);
 
 // Manager-tier roles can edit anyone. A user may also edit their own row,
 // but the editable column set is narrower (see SELF_EDITABLE).
