@@ -26,8 +26,21 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # Apply D1 migrations to live (`rmpg-flex` DB, 785de7ae-…).
+      #
+      # Was previously `continue-on-error: true` because the migration
+      # tracker on live D1 only had records through 0011, and re-running
+      # 0012-0038 from a clean wrangler state would have failed on
+      # ALTER conflicts. As of 2026-05-27 those 26 historical migrations
+      # are recorded in `d1_migrations` (the changeset for that recording
+      # is in this PR's body), so wrangler now skips them. From here on,
+      # the migration apply step should ONLY run truly new migrations,
+      # which are expected to succeed.
+      #
+      # A failure here now means the new migration is broken — block the
+      # deploy until it's fixed rather than silently shipping the Worker
+      # against a stale schema.
       - name: Apply D1 migrations (remote)
-        continue-on-error: true  # Live D1 has dirty schema; many migrations conflict with existing ALTER-applied columns. Bulk schema state is managed via migrations/live/*.sql applied manually by an admin (see [[project-live-db-is-different]] memory).
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
