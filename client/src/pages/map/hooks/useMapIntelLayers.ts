@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export type IntelLayer = 'warrants' | 'trespass' | 'offenders' | 'bolos';
 
@@ -146,51 +147,53 @@ export function useMapIntelLayers(
     }));
 
     const srcId = `intel-${layer}`;
-    map.addSource(srcId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: srcId,
-      type: 'circle',
-      source: srcId,
-      paint: {
-        'circle-color': LAYER_CONFIG[layer].color,
-        'circle-radius': 10,
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 2,
-      },
-    });
-
-    map.on('click', srcId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const record = withCoords.find(r => r.id === feature.properties?.id);
-      if (!record) return;
-      if (popupRef.current) {
-        popupRef.current.setLngLat(e.lngLat).setHTML(buildInfoContent(layer, record)).addTo(map);
-      }
-    });
-
-    if (layer === 'offenders') {
-      const circId = `intel-${layer}-circles`;
-      const circFeatures = withCoords.map((record) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [Number(record.longitude), Number(record.latitude)] as [number, number] },
-        properties: {},
-      }));
-      map.addSource(circId, { type: 'geojson', data: { type: 'FeatureCollection', features: circFeatures } });
+    whenStyleReady(map, () => {
+      map.addSource(srcId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
       map.addLayer({
-        id: circId,
+        id: srcId,
         type: 'circle',
-        source: circId,
+        source: srcId,
         paint: {
-          'circle-color': '#8b5cf6',
-          'circle-radius': 300,
-          'circle-opacity': 0.06,
-          'circle-stroke-color': '#8b5cf6',
-          'circle-stroke-width': 1,
-          'circle-stroke-opacity': 0.3,
+          'circle-color': LAYER_CONFIG[layer].color,
+          'circle-radius': 10,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
         },
       });
-    }
+
+      map.on('click', srcId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const record = withCoords.find(r => r.id === feature.properties?.id);
+        if (!record) return;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(buildInfoContent(layer, record)).addTo(map);
+        }
+      });
+
+      if (layer === 'offenders') {
+        const circId = `intel-${layer}-circles`;
+        const circFeatures = withCoords.map((record) => ({
+          type: 'Feature' as const,
+          geometry: { type: 'Point' as const, coordinates: [Number(record.longitude), Number(record.latitude)] as [number, number] },
+          properties: {},
+        }));
+        map.addSource(circId, { type: 'geojson', data: { type: 'FeatureCollection', features: circFeatures } });
+        map.addLayer({
+          id: circId,
+          type: 'circle',
+          source: circId,
+          paint: {
+            'circle-color': '#8b5cf6',
+            'circle-radius': 300,
+            'circle-opacity': 0.06,
+            'circle-stroke-color': '#8b5cf6',
+            'circle-stroke-width': 1,
+            'circle-stroke-opacity': 0.3,
+          },
+        });
+      }
+    });
   }, [map, clearLayer]);
 
   useEffect(() => {

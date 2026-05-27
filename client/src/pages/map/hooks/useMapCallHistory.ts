@@ -6,6 +6,7 @@ import { buildHistoricalCallMarkerContent, getOverlayMarkerClass } from '../util
 import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { escapeHtml } from '../../../utils/sanitize';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface HistoricalCall {
   id: number;
@@ -128,26 +129,27 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
       },
     }));
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': [
-          'case',
-          ['==', ['get', 'priority'], 'P1'], '#dc2626',
-          ['==', ['get', 'priority'], 'P2'], '#f59e0b',
-          ['==', ['get', 'priority'], 'P3'], '#888888',
-          '#666666',
-        ],
-        'circle-radius': 8,
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 1,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['==', ['get', 'priority'], 'P1'], '#dc2626',
+            ['==', ['get', 'priority'], 'P2'], '#f59e0b',
+            ['==', ['get', 'priority'], 'P3'], '#888888',
+            '#666666',
+          ],
+          'circle-radius': 8,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 1,
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
+      map.on('click', sourceId, (e) => {
       const feature = e.features?.[0];
       if (!feature || !feature.properties) return;
       const p = feature.properties;
@@ -182,6 +184,7 @@ export function useMapCallHistory(opts: UseMapCallHistoryOptions): UseMapCallHis
       if (popupRef.current) {
         popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
       }
+      });
     });
   }, [map, clearMarkers]);
 

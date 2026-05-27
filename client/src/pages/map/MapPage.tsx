@@ -81,6 +81,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useMapRouting } from '../../hooks/useMapRouting';
 import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
+import { whenStyleReady } from './utils/safeAddSource';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
 import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
 import { useMapHeatmapTimelapse } from './hooks/useMapHeatmapTimelapse';
@@ -1589,6 +1590,7 @@ export default function MapPage() {
       }));
 
     try {
+      whenStyleReady(map, () => {
       map.addSource('rmpg-heatmap', {
         type: 'geojson',
         data: {
@@ -1637,6 +1639,7 @@ export default function MapPage() {
       });
 
       heatmapLayerRef.current = { setMap: null } as any;
+      });
     } catch (err) {
       console.warn('[MapPage] Error creating heatmap layer:', err);
     }
@@ -1696,6 +1699,7 @@ export default function MapPage() {
     if (features.length === 0) return;
 
     try {
+      whenStyleReady(map, () => {
       map.addSource('rmpg-tracking-lines', {
         type: 'geojson',
         data: { type: 'FeatureCollection', features },
@@ -1725,6 +1729,7 @@ export default function MapPage() {
       });
 
       setTrackingLineCount(features.length);
+      });
     } catch (err) {
       console.warn('[MapPage] Error creating tracking lines:', err);
     }
@@ -2050,19 +2055,21 @@ export default function MapPage() {
         if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
         if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
         if (lineFeatures.length > 0) {
-          map.addSource('rmpg-breadcrumb-lines', {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: lineFeatures },
-          });
-          map.addLayer({
-            id: 'rmpg-breadcrumb-lines',
-            type: 'line',
-            source: 'rmpg-breadcrumb-lines',
-            paint: {
-              'line-color': ['get', 'strokeColor'],
-              'line-opacity': ['get', 'strokeOpacity'],
-              'line-width': 3,
-            },
+          whenStyleReady(map, () => {
+            map.addSource('rmpg-breadcrumb-lines', {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: lineFeatures },
+            });
+            map.addLayer({
+              id: 'rmpg-breadcrumb-lines',
+              type: 'line',
+              source: 'rmpg-breadcrumb-lines',
+              paint: {
+                'line-color': ['get', 'strokeColor'],
+                'line-opacity': ['get', 'strokeOpacity'],
+                'line-width': 3,
+              },
+            });
           });
         }
 
@@ -2074,20 +2081,22 @@ export default function MapPage() {
         if (existingDotSrc) {
           existingDotSrc.setData(dotsData);
         } else {
-          map.addSource(DOTS_SOURCE_ID, { type: 'geojson', data: dotsData });
-          map.addLayer({
-            id: DOTS_LAYER_ID,
-            type: 'circle',
-            source: DOTS_SOURCE_ID,
-            paint: {
-              'circle-color': ['get', 'color'],
-              // Last point of each trail renders slightly larger / brighter
-              // outline (preserves the visual emphasis the old DOM marker had).
-              'circle-radius': ['case', ['get', 'isLast'], 5, 4],
-              'circle-stroke-color': ['case', ['get', 'isLast'], '#fbbf24', '#fff'],
-              'circle-stroke-width': ['case', ['get', 'isLast'], 2, 0.5],
-              'circle-opacity': ['case', ['get', 'isLast'], 1, 0.6],
-            },
+          whenStyleReady(map, () => {
+            map.addSource(DOTS_SOURCE_ID, { type: 'geojson', data: dotsData });
+            map.addLayer({
+              id: DOTS_LAYER_ID,
+              type: 'circle',
+              source: DOTS_SOURCE_ID,
+              paint: {
+                'circle-color': ['get', 'color'],
+                // Last point of each trail renders slightly larger / brighter
+                // outline (preserves the visual emphasis the old DOM marker had).
+                'circle-radius': ['case', ['get', 'isLast'], 5, 4],
+                'circle-stroke-color': ['case', ['get', 'isLast'], '#fbbf24', '#fff'],
+                'circle-stroke-width': ['case', ['get', 'isLast'], 2, 0.5],
+                'circle-opacity': ['case', ['get', 'isLast'], 1, 0.6],
+              },
+            });
           });
         }
 
@@ -2257,25 +2266,27 @@ export default function MapPage() {
       const sourceId = `rmpg-speed-cell-${i}`;
       const layerId = `rmpg-speed-cell-layer-${i}`;
 
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: {
-          type: 'Feature',
-          geometry: {
-            type: 'Polygon',
-            coordinates: [[[west, north], [east, north], [east, south], [west, south], [west, north]]],
+      whenStyleReady(map, () => {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: {
+            type: 'Feature',
+            geometry: {
+              type: 'Polygon',
+              coordinates: [[[west, north], [east, north], [east, south], [west, south], [west, north]]],
+            },
+            properties: { fillColor, fillOpacity, strokeColor: fillColor },
           },
-          properties: { fillColor, fillOpacity, strokeColor: fillColor },
-        },
-      });
-      map.addLayer({
-        id: layerId,
-        type: 'fill',
-        source: sourceId,
-        paint: {
-          'fill-color': ['get', 'fillColor'],
-          'fill-opacity': ['get', 'fillOpacity'],
-        },
+        });
+        map.addLayer({
+          id: layerId,
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': ['get', 'fillColor'],
+            'fill-opacity': ['get', 'fillOpacity'],
+          },
+        });
       });
       heatmapRectsRef.current.push({ sourceId, layerId });
     });
@@ -2362,19 +2373,21 @@ export default function MapPage() {
     if (lineFeatures.length > 0) {
       const sourceId = 'rmpg-pursuit-lines';
       const layerId = 'rmpg-pursuit-lines';
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: lineFeatures },
-      });
-      map.addLayer({
-        id: layerId,
-        type: 'line',
-        source: sourceId,
-        paint: {
-          'line-color': '#dc2626',
-          'line-opacity': 0.8,
-          'line-width': 6,
-        },
+      whenStyleReady(map, () => {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: lineFeatures },
+        });
+        map.addLayer({
+          id: layerId,
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': '#dc2626',
+            'line-opacity': 0.8,
+            'line-width': 6,
+          },
+        });
       });
       pursuitLinesRef.current.push(sourceId);
     }
@@ -2382,30 +2395,32 @@ export default function MapPage() {
     if (pinFeatures.length > 0) {
       const sourceId = 'rmpg-pursuit-pins';
       const layerId = 'rmpg-pursuit-pins';
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: pinFeatures },
-      });
-      map.addLayer({
-        id: layerId,
-        type: 'circle',
-        source: sourceId,
-        paint: {
-          // Green for pursuit start, red for end — matches the rest of the
-          // map's stop/go conventions and Tailwind palette tokens used in
-          // the panel UI (#16a34a green-600, #dc2626 red-600).
-          'circle-color': [
-            'match',
-            ['get', 'kind'],
-            'start', '#16a34a',
-            'end', '#dc2626',
-            '#888888',
-          ],
-          'circle-radius': 7,
-          'circle-stroke-color': '#ffffff',
-          'circle-stroke-width': 2,
-          'circle-opacity': 0.95,
-        },
+      whenStyleReady(map, () => {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: pinFeatures },
+        });
+        map.addLayer({
+          id: layerId,
+          type: 'circle',
+          source: sourceId,
+          paint: {
+            // Green for pursuit start, red for end — matches the rest of the
+            // map's stop/go conventions and Tailwind palette tokens used in
+            // the panel UI (#16a34a green-600, #dc2626 red-600).
+            'circle-color': [
+              'match',
+              ['get', 'kind'],
+              'start', '#16a34a',
+              'end', '#dc2626',
+              '#888888',
+            ],
+            'circle-radius': 7,
+            'circle-stroke-color': '#ffffff',
+            'circle-stroke-width': 2,
+            'circle-opacity': 0.95,
+          },
+        });
       });
       pursuitLinesRef.current.push(sourceId);
     }
@@ -2471,32 +2486,34 @@ export default function MapPage() {
         const layerId = `rmpg-speed-zone-layer-${i}`;
         const ringCoords = [...validCoords.map((c) => [c.lng, c.lat]), [validCoords[0].lng, validCoords[0].lat]];
 
-        map.addSource(sourceId, {
-          type: 'geojson',
-          data: {
-            type: 'Feature',
-            geometry: { type: 'Polygon', coordinates: [ringCoords] },
-            properties: { zoneColor, zoneOpacity: 0.15 },
-          },
-        });
-        map.addLayer({
-          id: layerId,
-          type: 'fill',
-          source: sourceId,
-          paint: {
-            'fill-color': zoneColor,
-            'fill-opacity': 0.15,
-          },
-        });
-        map.addLayer({
-          id: `${layerId}-outline`,
-          type: 'line',
-          source: sourceId,
-          paint: {
-            'line-color': zoneColor,
-            'line-opacity': 0.6,
-            'line-width': 2,
-          },
+        whenStyleReady(map, () => {
+          map.addSource(sourceId, {
+            type: 'geojson',
+            data: {
+              type: 'Feature',
+              geometry: { type: 'Polygon', coordinates: [ringCoords] },
+              properties: { zoneColor, zoneOpacity: 0.15 },
+            },
+          });
+          map.addLayer({
+            id: layerId,
+            type: 'fill',
+            source: sourceId,
+            paint: {
+              'fill-color': zoneColor,
+              'fill-opacity': 0.15,
+            },
+          });
+          map.addLayer({
+            id: `${layerId}-outline`,
+            type: 'line',
+            source: sourceId,
+            paint: {
+              'line-color': zoneColor,
+              'line-opacity': 0.6,
+              'line-width': 2,
+            },
+          });
         });
         speedZonePolysRef.current.push(sourceId);
 

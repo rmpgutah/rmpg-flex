@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface LatLng {
   lat: number;
@@ -103,20 +104,22 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
 
     if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
 
-    map.addSource(rallySourceId, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { label } }] },
-    });
-    map.addLayer({
-      id: rallySourceId,
-      type: 'circle',
-      source: rallySourceId,
-      paint: { 'circle-color': '#d4a017', 'circle-radius': 14, 'circle-stroke-color': '#fbbf24', 'circle-stroke-width': 3 },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(rallySourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { label } }] },
+      });
+      map.addLayer({
+        id: rallySourceId,
+        type: 'circle',
+        source: rallySourceId,
+        paint: { 'circle-color': '#d4a017', 'circle-radius': 14, 'circle-stroke-color': '#fbbf24', 'circle-stroke-width': 3 },
+      });
 
-    map.on('click', rallySourceId, () => {
-      const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #d4a01740"><div style="font-weight:bold;color:#d4a017">Rally Point</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${label}</div></div>`;
-      if (popupRef.current) popupRef.current.setLngLat([lng, lat]).setHTML(html).addTo(map);
+      map.on('click', rallySourceId, () => {
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #d4a01740"><div style="font-weight:bold;color:#d4a017">Rally Point</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${label}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat([lng, lat]).setHTML(html).addTo(map);
+      });
     });
 
     setRallyPointState({ lat, lng, label });
@@ -143,19 +146,21 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
       properties: { radius: ring.radius, color: ring.color, label: ring.label, opacity: 0.08, strokeOpacity: 0.7 },
     }));
 
-    map.addSource(commandRingsSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: commandRingsSourceId,
-      type: 'circle',
-      source: commandRingsSourceId,
-      paint: {
-        'circle-color': ['get', 'color'],
-        'circle-radius': ['get', 'radius'],
-        'circle-opacity': ['get', 'opacity'],
-        'circle-stroke-color': ['get', 'color'],
-        'circle-stroke-width': 2,
-        'circle-stroke-opacity': ['get', 'strokeOpacity'],
-      },
+    whenStyleReady(map, () => {
+      map.addSource(commandRingsSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: commandRingsSourceId,
+        type: 'circle',
+        source: commandRingsSourceId,
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': ['get', 'radius'],
+          'circle-opacity': ['get', 'opacity'],
+          'circle-stroke-color': ['get', 'color'],
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': ['get', 'strokeOpacity'],
+        },
+      });
     });
   }, [map, clearSource]);
 
@@ -165,15 +170,17 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
     if (!map) return;
     clearSource(k9SourceId);
 
-    map.addSource(k9SourceId, {
-      type: 'geojson',
-      data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: {} }] },
-    });
-    map.addLayer({
-      id: k9SourceId,
-      type: 'circle',
-      source: k9SourceId,
-      paint: { 'circle-color': '#22c55e', 'circle-radius': 800, 'circle-opacity': 0.06, 'circle-stroke-color': '#22c55e', 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.6 },
+    whenStyleReady(map, () => {
+      map.addSource(k9SourceId, {
+        type: 'geojson',
+        data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: {} }] },
+      });
+      map.addLayer({
+        id: k9SourceId,
+        type: 'circle',
+        source: k9SourceId,
+        paint: { 'circle-color': '#22c55e', 'circle-radius': 800, 'circle-opacity': 0.06, 'circle-stroke-color': '#22c55e', 'circle-stroke-width': 2, 'circle-stroke-opacity': 0.6 },
+      });
     });
   }, [map, clearSource]);
 
@@ -189,21 +196,23 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
       properties: { name: h.name },
     }));
 
-    map.addSource(hospitalSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: hospitalSourceId,
-      type: 'circle',
-      source: hospitalSourceId,
-      paint: { 'circle-color': '#888888', 'circle-radius': 8, 'circle-stroke-color': '#666666', 'circle-stroke-width': 1 },
-    });
-
     if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
 
-    map.on('click', hospitalSourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #88888840"><div style="font-weight:bold;color:#888888">Hospital</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.name}</div></div>`;
-      if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    whenStyleReady(map, () => {
+      map.addSource(hospitalSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: hospitalSourceId,
+        type: 'circle',
+        source: hospitalSourceId,
+        paint: { 'circle-color': '#888888', 'circle-radius': 8, 'circle-stroke-color': '#666666', 'circle-stroke-width': 1 },
+      });
+
+      map.on('click', hospitalSourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #88888840"><div style="font-weight:bold;color:#888888">Hospital</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.name}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
     });
   }, [map, clearSource]);
 
@@ -217,21 +226,23 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
       properties: { name: fs.name },
     }));
 
-    map.addSource(fireSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: fireSourceId,
-      type: 'circle',
-      source: fireSourceId,
-      paint: { 'circle-color': '#ef4444', 'circle-radius': 8, 'circle-stroke-color': '#b91c1c', 'circle-stroke-width': 1 },
-    });
-
     if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
 
-    map.on('click', fireSourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #ef444440"><div style="font-weight:bold;color:#ef4444">Fire Station</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.name}</div></div>`;
-      if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    whenStyleReady(map, () => {
+      map.addSource(fireSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: fireSourceId,
+        type: 'circle',
+        source: fireSourceId,
+        paint: { 'circle-color': '#ef4444', 'circle-radius': 8, 'circle-stroke-color': '#b91c1c', 'circle-stroke-width': 1 },
+      });
+
+      map.on('click', fireSourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #ef444440"><div style="font-weight:bold;color:#ef4444">Fire Station</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.name}</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
     });
   }, [map, clearSource]);
 
@@ -257,15 +268,17 @@ export function useMapTactical(map: mapboxgl.Map | null): UseMapTacticalReturn {
       });
       source.setData({ type: 'FeatureCollection', features });
     } else {
-      map.addSource(entrySourceId, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { label, number: num } }] },
-      });
-      map.addLayer({
-        id: entrySourceId,
-        type: 'circle',
-        source: entrySourceId,
-        paint: { 'circle-color': '#8b5cf6', 'circle-radius': 12, 'circle-stroke-color': '#a78bfa', 'circle-stroke-width': 2 },
+      whenStyleReady(map, () => {
+        map.addSource(entrySourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features: [{ type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { label, number: num } }] },
+        });
+        map.addLayer({
+          id: entrySourceId,
+          type: 'circle',
+          source: entrySourceId,
+          paint: { 'circle-color': '#8b5cf6', 'circle-radius': 12, 'circle-stroke-color': '#a78bfa', 'circle-stroke-width': 2 },
+        });
       });
     }
 
