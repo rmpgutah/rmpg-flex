@@ -4,72 +4,33 @@
 // ============================================================
 // CI guard against D1 100-column-cap regressions.
 //
-// Why this exists:
-//   Cloudflare D1 caps SELECT result sets at ~100 columns. Once a
-//   table approaches that cap, any handler doing `SELECT *` (with
-//   or without JOINs) starts 500-ing in production. We've hit this
-//   twice — once shipped, once caught at merge — and don't want
-//   it to happen again.
+// Modes:
+//   1. CHANGED_MIGRATIONS env var is set (workflow mode):
+//      Check ONLY the listed files (newline-separated). Even when
+//      the list is empty (PR doesn't touch migrations/), exit 0.
+//      Never fall back to scanning everything — that would trip
+//      on the historical churn that already pushed
+//      calls_for_service to 100 cols on paper.
 //
-// What this checks:
-//   For each migration file passed via the CHANGED_MIGRATIONS env
-//   var (newline-separated, populated by the workflow from
-//   `git diff origin/main...HEAD`), reject any:
-//     ALTER TABLE <watched-table> ADD COLUMN ...
-//   where <watched-table> is in the WATCHED set below.
+//   2. CHANGED_MIGRATIONS env var is unset (local debug mode):
+//      Scan every file in migrations/. Expect many "violations"
+//      from the historical files; use this mode to spot-check
+//      that the watch list is correctly detecting ALTERs you
+//      know are present.
 //
-//   Without CHANGED_MIGRATIONS, the script falls back to checking
-//   every file in migrations/ — useful for local runs but noisy
-//   in CI because it'll flag the historical churn that already
-//   pushed calls_for_service to 100+ cols on paper.
-//
-// Why a watch list rather than column counting:
-//   The migration history overstates the live schema state by
-//   ~26 columns on calls_for_service (live=100 cols, migration
-//   files imply 126). Schema drift between migrations/ and live
-//   D1 is a separate problem documented in TRIAGE.md addenda.
-//   A column-counting check trips on this drift on every PR; a
-//   watch list focuses on the actual concern: "don't add MORE
-//   columns to tables we already know are at the cap."
-//
-// To add a table to the watch list:
-//   1. Query live D1 for its current column count via the D1 MCP:
-//      SELECT COUNT(*) FROM pragma_table_info('<table>');
-//   2. If the count is >= 85, add it to WATCHED with a comment
-//      naming the source PR / incident.
-//
-// To override (intentionally raise the cap):
-//   Set ALLOW_ALTER_<TABLE_UPPER>=1 in the workflow env. Document
-//   why in the PR description.
-//
-// Exit codes:
-//   0 — no violations in the changed files
-//   1 — at least one violation (CI should fail)
-//   2 — internal error
+// Watch set:
+//   calls_for_service  — 100 cols on live D1 (at the cap)
+//   persons            — 94 cols on live (one ALTER from the cap)
 // ============================================================
 
 const fs = require('fs');
 const path = require('path');
 
-// Tables at or near the D1 100-col cap. Any ALTER TABLE … ADD COLUMN
-// against these in a new migration must be justified.
-//
-//   calls_for_service:     100 cols on live D1 (confirmed 2026-05-27).
-//                          The migrations/ history implies 126 cols
-//                          but most of the 0009/0011/0014 ALTERs did
-//                          not land. Future cols MUST go to ext.
-//   calls_for_service_ext: 29 cols on live, with explicit room for
-//                          overflow. Allowed — listed only so future
-//                          additions are visible in CI logs.
-//   persons:               94 cols on live. Two more ALTERs and any
-//                          SELECT * starts 500-ing.
 const WATCHED = new Set([
   'calls_for_service',
   'persons',
 ]);
 
-// Soft watch — log a notice in CI even though we don't fail. Use for
-// tables that are <90 cols today but trending up.
 const SOFT_WATCH = new Set([
   'calls_for_service_ext',
   'incidents',
@@ -94,39 +55,41 @@ function parseAdds(sql) {
 }
 
 function getTargetFiles() {
-  // CHANGED_MIGRATIONS is a newline-separated list passed by the
-  // workflow. Each entry is a path relative to repo root, like
-  // "migrations/0039_foo.sql".
-  const env = process.env.CHANGED_MIGRATIONS || '';
-  const fromEnv = env
-    .split(/\r?\n/)
-    .map((s) => s.trim())
-    .filter((s) => s.endsWith('.sql') && s.includes('migrations/'));
-
-  if (fromEnv.length > 0) {
-    return fromEnv.map((p) => path.resolve(__dirname, '..', p));
+  // Distinguish unset (local debug) from set-but-empty (workflow
+  // mode, PR didn't touch migrations). `'CHANGED_MIGRATIONS' in
+  // process.env` is true even when the value is an empty string.
+  const envSet = 'CHANGED_MIGRATIONS' in process.env;
+  if (envSet) {
+    const fromEnv = (process.env.CHANGED_MIGRATIONS || '')
+      .split(/\r?\n/)
+      .map((s) => s.trim())
+      .filter((s) => s.endsWith('.sql') && s.includes('migrations/'));
+    return { files: fromEnv.map((p) => path.resolve(__dirname, '..', p)), mode: 'workflow' };
   }
 
-  // Fallback for local runs: check ALL files. Will report against
-  // every historical migration too — useful as a debug aid.
   const dir = path.join(__dirname, '..', 'migrations');
-  if (!fs.existsSync(dir)) return [];
-  return fs
-    .readdirSync(dir)
-    .filter((f) => f.endsWith('.sql'))
-    .sort()
-    .map((f) => path.join(dir, f));
+  if (!fs.existsSync(dir)) return { files: [], mode: 'local' };
+  return {
+    files: fs.readdirSync(dir).filter((f) => f.endsWith('.sql')).sort()
+      .map((f) => path.join(dir, f)),
+    mode: 'local',
+  };
 }
 
 function isAllowedByOverride(table) {
-  const key = 'ALLOW_ALTER_' + table.toUpperCase();
-  return process.env[key] === '1';
+  return process.env['ALLOW_ALTER_' + table.toUpperCase()] === '1';
 }
 
 function main() {
-  const files = getTargetFiles();
+  const { files, mode } = getTargetFiles();
+  console.log('[col-cap-check] mode: ' + mode);
+
   if (files.length === 0) {
-    console.log('[col-cap-check] no migration files to check');
+    if (mode === 'workflow') {
+      console.log('[col-cap-check] OK — no migration files changed in this PR');
+      process.exit(0);
+    }
+    console.log('[col-cap-check] no .sql files found');
     process.exit(0);
   }
 
@@ -154,12 +117,7 @@ function main() {
     for (const { table, column } of parseAdds(sql)) {
       if (WATCHED.has(table)) {
         if (isAllowedByOverride(table)) {
-          notices.push({
-            file: relName,
-            table,
-            column,
-            kind: 'override',
-          });
+          notices.push({ file: relName, table, column, kind: 'override' });
         } else {
           violations.push({ file: relName, table, column });
         }
@@ -189,6 +147,18 @@ function main() {
     process.exit(0);
   }
 
+  // Local mode treats historical violations as informational.
+  if (mode === 'local') {
+    console.log('');
+    console.log('[col-cap-check] local mode — found ' + violations.length + ' historical watched-table ALTER(s) (informational):');
+    for (const v of violations.slice(0, 10)) {
+      console.log('  - ' + v.file + ': ALTER TABLE ' + v.table + ' ADD COLUMN ' + v.column);
+    }
+    if (violations.length > 10) console.log('  ... and ' + (violations.length - 10) + ' more');
+    console.log('[col-cap-check] OK — local mode does not fail on grandfathered ALTERs');
+    process.exit(0);
+  }
+
   console.error('');
   console.error('[col-cap-check] FAIL — ' + violations.length + ' watched-table ALTER(s):');
   for (const v of violations) {
@@ -200,11 +170,9 @@ function main() {
   console.error('');
   console.error('Resolutions (in order of preference):');
   console.error('  1. Move the new column(s) to the table\'s _ext overflow table.');
-  console.error('     calls_for_service has calls_for_service_ext (1:1) already.');
   console.error('  2. If no _ext exists, create one and use it for new columns.');
-  console.error('  3. If the column truly must live on the base table, set the');
-  console.error('     override env var ALLOW_ALTER_' + violations[0].table.toUpperCase() + '=1 in this');
-  console.error('     workflow run AND document the justification in the PR body.');
+  console.error('  3. Set ALLOW_ALTER_' + violations[0].table.toUpperCase() + '=1 in this workflow run');
+  console.error('     AND document the justification in the PR body.');
   process.exit(1);
 }
 
