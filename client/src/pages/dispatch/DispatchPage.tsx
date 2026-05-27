@@ -578,59 +578,17 @@ export default function DispatchPage() {
     }
   }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles]);
 
-  // Auto-save unsaved call edits on component unmount (SPA navigation)
+  // Auto-save unsaved call edits on component unmount (SPA navigation).
+  // Shares the body assembly with the click-Save path via buildCallEditBody
+  // so PSO / process_service / contract_id / dispatch_code edits don't
+  // silently vanish here (previous bug — those fields were missing from
+  // the unmount body and only the in-page Save preserved them).
   useEffect(() => {
     return () => {
       if (!isEditingRef.current || !selectedCallRef.current) return;
       const token = localStorage.getItem('rmpg_token');
       const ed = editDataRef.current;
-      const body: Record<string, any> = {
-        incident_type: ed.incident_type,
-        priority: ed.priority,
-        client_id: ed.client_id || null,
-        property_id: ed.property_id || null,
-        caller_name: ed.caller_name,
-        caller_phone: ed.caller_phone,
-        caller_relationship: ed.caller_relationship,
-        caller_address: ed.caller_address,
-        location_address: ed.location,
-        latitude: (ed.location !== selectedCallRef.current?.location && ed.latitude === selectedCallRef.current?.latitude) ? null : (ed.latitude ?? null),
-        longitude: (ed.location !== selectedCallRef.current?.location && ed.longitude === selectedCallRef.current?.longitude) ? null : (ed.longitude ?? null),
-        description: ed.description,
-        source: ed.source,
-        disposition: ed.disposition,
-        cross_street: ed.cross_street,
-        location_building: ed.location_building,
-        location_floor: ed.location_floor,
-        location_room: ed.location_room,
-        zone_beat: ed.zone_beat,
-        sector_id: ed.sector_id,
-        zone_id: ed.zone_id,
-        beat_id: ed.beat_id,
-        weapons_involved: ed.weapons_involved,
-        injuries_reported: ed.injuries_reported,
-        num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
-        num_victims: ed.num_victims ? Number(ed.num_victims) : null,
-        subject_description: ed.subject_description,
-        vehicle_description: ed.vehicle_description,
-        direction_of_travel: ed.direction_of_travel,
-        scene_safety: ed.scene_safety,
-        weather_conditions: ed.weather_conditions,
-        lighting_conditions: ed.lighting_conditions,
-        alcohol_involved: ed.alcohol_involved,
-        drugs_involved: ed.drugs_involved,
-        domestic_violence: ed.domestic_violence,
-        supervisor_notified: ed.supervisor_notified,
-        le_notified: ed.le_notified,
-        le_agency: ed.le_agency,
-        le_case_number: ed.le_case_number,
-        damage_estimate: ed.damage_estimate ? Number(ed.damage_estimate) : null,
-        damage_description: ed.damage_description,
-        action_taken: ed.action_taken,
-        responding_officer: ed.responding_officer,
-        starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
-        ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
-      };
+      const body = buildCallEditBody(ed, selectedCallRef.current);
       try {
         fetch(`/api/dispatch/calls/${selectedCallRef.current.id}`, {
           method: 'PUT',
@@ -1217,8 +1175,15 @@ export default function DispatchPage() {
       }
       if (e.key === 'F4' && selectedCall) {
         e.preventDefault();
-        // Toggle edit mode on selected call
-        setIsEditing(prev => !prev);
+        // Toggle edit mode on selected call. Must go through the proper
+        // start/cancel handlers — the previous `setIsEditing(prev => !prev)`
+        // bypassed the fresh refetch + editData hydration, so F4 entering
+        // edit mode on a fresh selection showed empty form fields.
+        if (isEditingRef.current) {
+          cancelEditing();
+        } else {
+          startEditing();
+        }
         return;
       }
       if (e.key === 'F5') {
@@ -1573,6 +1538,85 @@ export default function DispatchPage() {
   // the edit form. Guards against stale in-memory data from list-endpoint
   // caching / older client bundles that silently dropped fields. The fetched
   // row also replaces selectedCall so the non-edit view re-renders correctly.
+  // Build the PUT body from the in-progress editData + the call we started
+  // editing against. Used by BOTH the click-Save path AND the unmount
+  // auto-save path — without this helper the two used to drift (PSO,
+  // process_service, contract_id, and dispatch_code edits silently
+  // vanished on unmount because the auto-save body forgot them).
+  //
+  // `selectedFor*` is what the user opened the editor against — needed
+  // for the "did the user change location?" → clear lat/lng heuristic.
+  // Pass `selectedCall` from saveEditing and `selectedCallRef.current`
+  // from the unmount cleanup.
+  const buildCallEditBody = (ed: Record<string, any>, selectedFor: { location?: string | null; latitude?: number | null; longitude?: number | null } | null): Record<string, any> => {
+    const sameLoc = ed.location === selectedFor?.location;
+    return {
+      incident_type: ed.incident_type,
+      priority: ed.priority,
+      client_id: ed.client_id || null,
+      property_id: ed.property_id || null,
+      caller_name: ed.caller_name,
+      caller_phone: ed.caller_phone,
+      caller_relationship: ed.caller_relationship,
+      caller_address: ed.caller_address,
+      location_address: ed.location,
+      // If location changed from original and user didn't pick a new autocomplete
+      // result (lat/lng still hold old values), clear them to trigger server re-geocode.
+      latitude: (!sameLoc && ed.latitude === selectedFor?.latitude) ? null : (ed.latitude ?? null),
+      longitude: (!sameLoc && ed.longitude === selectedFor?.longitude) ? null : (ed.longitude ?? null),
+      description: ed.description,
+      source: ed.source,
+      disposition: ed.disposition,
+      cross_street: ed.cross_street,
+      location_building: ed.location_building,
+      location_floor: ed.location_floor,
+      location_room: ed.location_room,
+      zone_beat: ed.zone_beat,
+      sector_id: ed.sector_id,
+      zone_id: ed.zone_id,
+      beat_id: ed.beat_id,
+      dispatch_code: ed.dispatch_code,
+      weapons_involved: ed.weapons_involved,
+      injuries_reported: ed.injuries_reported,
+      num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
+      num_victims: ed.num_victims ? Number(ed.num_victims) : null,
+      subject_description: ed.subject_description,
+      vehicle_description: ed.vehicle_description,
+      direction_of_travel: ed.direction_of_travel,
+      scene_safety: ed.scene_safety,
+      weather_conditions: ed.weather_conditions,
+      lighting_conditions: ed.lighting_conditions,
+      alcohol_involved: ed.alcohol_involved,
+      drugs_involved: ed.drugs_involved,
+      domestic_violence: ed.domestic_violence,
+      supervisor_notified: ed.supervisor_notified,
+      le_notified: ed.le_notified,
+      le_agency: ed.le_agency,
+      le_case_number: ed.le_case_number,
+      // 0 is a valid damage estimate; falsy guard would wrongly drop it.
+      damage_estimate: ed.damage_estimate !== '' && ed.damage_estimate != null ? Number(ed.damage_estimate) : null,
+      damage_description: ed.damage_description,
+      action_taken: ed.action_taken,
+      responding_officer: ed.responding_officer,
+      starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
+      ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
+      pso_requestor_name: ed.pso_requestor_name || null,
+      pso_requestor_phone: ed.pso_requestor_phone || null,
+      pso_requestor_email: ed.pso_requestor_email || null,
+      pso_service_type: ed.pso_service_type || null,
+      pso_billing_code: ed.pso_billing_code || null,
+      pso_authorization: ed.pso_authorization || null,
+      contract_id: ed.contract_id || null,
+      // Process Service fields
+      process_service_type: ed.process_service_type || null,
+      process_served_to: ed.process_served_to || null,
+      process_served_address: ed.process_served_address || null,
+      process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
+      process_served_at: ed.process_served_at || null,
+      process_service_result: ed.process_service_result || null,
+    };
+  };
+
   const startEditing = async () => {
     if (!selectedCall) return;
     let source: any = selectedCall;
@@ -1662,70 +1706,7 @@ export default function DispatchPage() {
     if (!selectedCall) return;
     setIsSaving(true);
     try {
-      const body: Record<string, any> = {
-        incident_type: editData.incident_type,
-        priority: editData.priority,
-        client_id: editData.client_id || null,
-        property_id: editData.property_id || null,
-        caller_name: editData.caller_name,
-        caller_phone: editData.caller_phone,
-        caller_relationship: editData.caller_relationship,
-        caller_address: editData.caller_address,
-        location_address: editData.location,
-        // If location changed from original and user didn't pick a new autocomplete
-        // result (lat/lng still hold old values), clear them to trigger server re-geocode
-        latitude: (editData.location !== selectedCall.location && editData.latitude === selectedCall.latitude) ? null : (editData.latitude ?? null),
-        longitude: (editData.location !== selectedCall.location && editData.longitude === selectedCall.longitude) ? null : (editData.longitude ?? null),
-        description: editData.description,
-        source: editData.source,
-        disposition: editData.disposition,
-        cross_street: editData.cross_street,
-        location_building: editData.location_building,
-        location_floor: editData.location_floor,
-        location_room: editData.location_room,
-        zone_beat: editData.zone_beat,
-        sector_id: editData.sector_id,
-        zone_id: editData.zone_id,
-        beat_id: editData.beat_id,
-        dispatch_code: editData.dispatch_code,
-        weapons_involved: editData.weapons_involved,
-        injuries_reported: editData.injuries_reported,
-        num_subjects: editData.num_subjects ? Number(editData.num_subjects) : null,
-        num_victims: editData.num_victims ? Number(editData.num_victims) : null,
-        subject_description: editData.subject_description,
-        vehicle_description: editData.vehicle_description,
-        direction_of_travel: editData.direction_of_travel,
-        scene_safety: editData.scene_safety,
-        weather_conditions: editData.weather_conditions,
-        lighting_conditions: editData.lighting_conditions,
-        alcohol_involved: editData.alcohol_involved,
-        drugs_involved: editData.drugs_involved,
-        domestic_violence: editData.domestic_violence,
-        supervisor_notified: editData.supervisor_notified,
-        le_notified: editData.le_notified,
-        le_agency: editData.le_agency,
-        le_case_number: editData.le_case_number,
-        damage_estimate: editData.damage_estimate !== '' && editData.damage_estimate != null ? Number(editData.damage_estimate) : null,
-        damage_description: editData.damage_description,
-        action_taken: editData.action_taken,
-        responding_officer: editData.responding_officer,
-        starting_mileage: editData.starting_mileage ? Number(editData.starting_mileage) : null,
-        ending_mileage: editData.ending_mileage ? Number(editData.ending_mileage) : null,
-        pso_requestor_name: editData.pso_requestor_name || null,
-        pso_requestor_phone: editData.pso_requestor_phone || null,
-        pso_requestor_email: editData.pso_requestor_email || null,
-        pso_service_type: editData.pso_service_type || null,
-        pso_billing_code: editData.pso_billing_code || null,
-        pso_authorization: editData.pso_authorization || null,
-        contract_id: editData.contract_id || null,
-        // Process Service fields
-        process_service_type: editData.process_service_type || null,
-        process_served_to: editData.process_served_to || null,
-        process_served_address: editData.process_served_address || null,
-        process_attempts: editData.process_attempts ? Number(editData.process_attempts) : 0,
-        process_served_at: editData.process_served_at || null,
-        process_service_result: editData.process_service_result || null,
-      };
+      const body = buildCallEditBody(editData, selectedCall);
       const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
         method: 'PUT',
         body: JSON.stringify(body),
