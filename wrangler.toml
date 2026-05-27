@@ -91,6 +91,17 @@ class_name = "PdfToolsContainer"
 tag = "v1-pdftools"
 new_sqlite_classes = ["PdfToolsContainer"]
 
+# ─── Workers AI ────────────────────────────────────────────
+# Used by /api/serve-intake/scan-document + /api/serve-intake/upload
+# for structured field extraction from OCR text and direct vision-LLM
+# OCR on uploaded images. Models in use:
+#   • @cf/meta/llama-3.3-70b-instruct-fp8-fast — structured field
+#     extraction over Tesseract output (legal-document JSON schema).
+#   • @cf/meta/llama-3.2-11b-vision-instruct — single-pass vision OCR
+#     for uploaded images (skips the Tesseract step entirely).
+[ai]
+binding = "AI"
+
 # Environment variables
 [vars]
 NODE_ENV = "production"
