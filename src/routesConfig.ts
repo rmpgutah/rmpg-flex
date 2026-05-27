@@ -114,6 +114,7 @@ import businessPhotos from './routes/business/photos';
 import howen from './routes/howen';
 // Offender registry (stats only)
 import offenderRegistry from './routes/offenderRegistry';
+
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
 // full `Hono<Env>` while others narrowed to just what they need
