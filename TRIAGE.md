@@ -170,3 +170,77 @@ Tables on live D1 NOT referenced by `/src/` handlers (legacy-only territory; do 
 - `geofences`, `iped_imports`, `integration_api_keys`, `integration_health_log`, `invoice_items`, `invoice_payments`, `daily_activity_reports`, `dash_cameras`, `email_cache`, `code_violations`, `client_persons`, `record_links`
 
 These don't break anything today — they're just rows the new worker can't see. Most don't need to be ported until their feature is rewritten.
+
+---
+
+# Addendum 2 — 2026-05-27 (afternoon) second-pass review
+
+After the first push to PR #667, ran the silent-stale-bundle check and a deeper legacy-table sweep. Three new findings.
+
+## Finding 1 — Run cards deactivated on live until PR #667 deploys
+
+The 32 dispatch run cards seeded by Bucket F land on live D1 immediately, but the matching `src/routes/dispatch/calls.ts` change that writes `run_card_id` to **ext** (instead of the base table that doesn't have those columns) only deploys on PR merge. Until then, the *deployed* legacy/old-rewrite handler tries to write the columns to the base table, hits "no such column," and 500s.
+
+Mitigation applied to live D1 right now:
+
+```sql
+UPDATE dispatch_run_cards SET active = 0;
+```
+
+This makes `applyRunCard` find no matching row → returns null card → the `if (rcResult.card)` block in the deployed handler is skipped → POST /api/dispatch/calls works (or fails for whatever other reason it was failing before, unchanged from prior state).
+
+**After PR #667 merges and deploys**, reactivate:
+
+```sql
+UPDATE dispatch_run_cards SET active = 1;
+```
+
+This is captured at the bottom of [project-live-d1-schema-patches](https://github.com/anthropics/claude-code/issues/... memory file).
+
+## Finding 2 — Bucket G stubs added in this batch
+
+PR #667 now includes proxy stubs for the 14 routes flagged as 404s in the previous addendum's Bucket G:
+- `/api/skiptracer/{status,stats}`
+- `/api/iped/{status,hash-sets}`
+- `/api/personnel/{schedules,time,deployments,coverage-gaps}`
+- `/api/reports/{incidents-summary,crime-trends,beat-activity,citation-revenue,schedules,templates,statute-analytics}`
+
+Same pattern as the earlier 14 — GET-only, empty/zeroed shapes the UI tolerates. POST/PUT/DELETE on these paths stay 404.
+
+## Finding 3 — Bucket I: ~60 legacy-only tables (NOT addressed)
+
+Cross-referencing the deployed `rmpg-flex` legacy bundle's `FROM <table>` patterns against live D1 finds 60 tables the legacy worker queries that live D1 doesn't have. Most map to features that aren't in active use (full CRM module, full HR module, lead scraping, etc). Each is a 500-on-feature-use waiting to happen.
+
+Highlights, grouped:
+
+| Domain | Missing tables | Risk if a user hits |
+|---|---|---|
+| **Cases junctions** | `case_calls`, `case_incidents`, `case_incident_links`, `case_evidence`, `case_evidence_links`, `case_persons`, `case_properties`, `case_vehicles`, `case_warrants`, `case_citations` | Case detail page 500 on tab open |
+| **Arrests** | `arrests` (plural), `arrest_cross_links` | Arrest records 500 beyond /recent stub |
+| **HR (full module)** | `hr_attendance`, `hr_disciplinary`, `hr_documents`, `hr_exit_interviews`, `hr_grievances`, `hr_handbook_acknowledgments`, `hr_leave_balances`, `hr_leave_requests`, `hr_pay_periods`, `hr_pay_rates`, `hr_payroll_entries`, `hr_performance_reviews`, `hr_pips`, `hr_salary_history`, `hr_workers_comp`, `leave_balances`, `overtime_requests`, `payments`, `personnel_certifications`, `officer_credentials` | Multiple HR tabs 500 |
+| **CRM** | `crm_leads`, `crm_activity`, `crm_lead_activity`, `crm_proposals`, `crm_proposal_templates`, `crm_tasks` | CRM page 500 if used |
+| **Invoicing** | `invoices`, `invoice_line_items`, `invoice_reminders`, `invoice_templates` | Invoicing page 500 |
+| **Dashcam** | `dashcam_events`, `dashcam_video_links` | DashCamerasPage events tab 500 |
+| **Skip tracer** | `dossiers`, `skip_tracer_searches_v`, `people_index` | Beyond the stubs above |
+| **Misc** | `entity_statutes`, `gps_locations`, `howen_gps_breadcrumbs`, `cpg_device_mappings`, `sex_offender_registry`, `dispatch_units` (alternate name), `dispatch_messages`, `webauthn_credentials`, `user_totp_secrets`, `trespass_violations`, `speed_zones`, `vehicles` (alternate), `lead_scrape_log`, `lead_scrape_sources`, `connection_investigations`, `ai_dev_chat`, `dar_templates`, `months`, `company_documents`, `warrant_scraper_runs` | Feature-specific 500s |
+
+**Why not fixing in this PR:**
+1. Many tables are alternate names for tables that already exist (`calls` vs `calls_for_service`, `vehicles` vs `vehicles_records`, `dispatch_units` vs `units`) — fixing requires reading each handler, not blanket-creating empty tables.
+2. Several map to features the user likely doesn't actively use (CRM, full HR, lead scraping, invoicing).
+3. Blanket-applying empty CREATEs for 60 tables risks creating schemas the handlers don't match.
+
+**Recommended path forward:** address per-feature as users report or as pages get opened in prod. Each fix is the same 3-step recipe: (a) grep legacy bundle for actual SQL referencing the missing table, (b) reverse-engineer the schema from the SELECT/INSERT, (c) apply CREATE TABLE on live D1 (via `d1_database_query`).
+
+---
+
+# Deploy state snapshot (2026-05-27 ~09:00 UTC)
+
+| Component | State | Notes |
+|---|---|---|
+| `rmpg-flex` (legacy worker) | last modified 2026-05-24 | unchanged this session |
+| `rmpg-flex-api` (new worker) | last modified 2026-05-27T06:37 | BEFORE PR #667 |
+| `rmpg-api-proxy` | last modified 2026-05-27T06:37 | BEFORE PR #667 |
+| Live D1 (`785de7ae-…`) | patched directly | radio + 7 migration applies + run_card_id on ext + run cards deactivated |
+| PR #667 | open, not merged | both worker code fix and proxy stubs land on merge |
+
+**The asymmetry matters:** all D1 schema fixes are live, all code fixes are pending merge.

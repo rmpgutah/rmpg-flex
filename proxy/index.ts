@@ -239,6 +239,116 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no vehicle history index yet',
   },
+  // ── Bucket G (system review 2026-05-27) ───────────────────────
+  // The following routes are listed in API_ROUTES below as going to
+  // env.API, but the new worker has no matching handler (either no
+  // mount in routesConfig.ts, or the mount exists but the sub-path
+  // isn't registered on the mounted router). All return 404 today.
+  // None appeared in the original console dump that triggered this
+  // session — they're dashboard polls that haven't actually fired
+  // yet because the parent page isn't open. Stubbing pre-emptively
+  // so they degrade quietly when those pages eventually open.
+  //
+  // Skip tracer status/stats — SkipTracerPage dashboard polls.
+  // No /api/skiptracer mount in src/routesConfig.ts.
+  {
+    match: /^\/api\/skiptracer\/status$/,
+    methods: ['GET'],
+    body: { status: 'idle', running_searches: 0, last_run: null },
+    reason: 'no /api/skiptracer mount in new worker',
+  },
+  {
+    match: /^\/api\/skiptracer\/stats$/,
+    methods: ['GET'],
+    body: { total_searches: 0, searches_this_month: 0, recent_dossiers: [] },
+    reason: 'no /api/skiptracer mount in new worker',
+  },
+  // IPED forensics surface — no /api/iped mount in new worker.
+  // ForensicsPage polls the status sub-path on mount.
+  {
+    match: /^\/api\/iped\/status$/,
+    methods: ['GET'],
+    body: { configured: false, last_sync: null },
+    reason: 'no /api/iped mount in new worker',
+  },
+  {
+    match: /^\/api\/iped\/hash-sets(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no /api/iped mount in new worker',
+  },
+  // Personnel sub-paths — /api/personnel is mounted (personnel router)
+  // but these sub-paths aren't registered there. PersonnelPage opens
+  // four tabs that GET them on mount.
+  {
+    match: /^\/api\/personnel\/schedules(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no /schedules handler in personnel router',
+  },
+  {
+    match: /^\/api\/personnel\/time(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no /time handler in personnel router',
+  },
+  {
+    match: /^\/api\/personnel\/deployments(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no /deployments handler in personnel router',
+  },
+  {
+    match: /^\/api\/personnel\/coverage-gaps(\?.*)?$/,
+    methods: ['GET'],
+    body: { gaps: [], total_uncovered_minutes: 0 },
+    reason: 'no /coverage-gaps handler in personnel router',
+  },
+  // Reports sub-paths — /api/reports IS mounted to the stubs router
+  // in src/routes/stubs.ts but only /response-times exists there.
+  // Everything else 404s.
+  {
+    match: /^\/api\/reports\/incidents-summary(\?.*)?$/,
+    methods: ['GET'],
+    body: { total_incidents: 0, by_type: [], by_status: [], by_day: [] },
+    reason: 'no /incidents-summary in stubs router',
+  },
+  {
+    match: /^\/api\/reports\/crime-trends(\?.*)?$/,
+    methods: ['GET'],
+    body: { trends: [], top_categories: [] },
+    reason: 'no /crime-trends in stubs router',
+  },
+  {
+    match: /^\/api\/reports\/beat-activity(\?.*)?$/,
+    methods: ['GET'],
+    body: { beats: [] },
+    reason: 'no /beat-activity in stubs router',
+  },
+  {
+    match: /^\/api\/reports\/citation-revenue(\?.*)?$/,
+    methods: ['GET'],
+    body: { total_revenue: 0, by_violation: [], by_month: [] },
+    reason: 'no /citation-revenue in stubs router',
+  },
+  {
+    match: /^\/api\/reports\/schedules(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no /schedules in stubs router',
+  },
+  {
+    match: /^\/api\/reports\/templates(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no /templates in stubs router',
+  },
+  {
+    match: /^\/api\/reports\/statute-analytics(\?.*)?$/,
+    methods: ['GET'],
+    body: { top_statutes: [], by_category: [] },
+    reason: 'no /statute-analytics in stubs router',
+  },
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
