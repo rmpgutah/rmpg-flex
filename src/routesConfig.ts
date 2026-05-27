@@ -108,16 +108,12 @@ import {
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
-// Fleet vehicles + dashcam videos
-import fleet from './routes/fleet';
 // Howen dashcam integration
 import howen from './routes/howen';
-// Reports analytics
-import reports from './routes/reports';
-// HR leave (other HR sub-modules: payroll, grievances, etc. — no tables yet)
-import hr from './routes/hr';
 // Offender registry (stats only)
 import offenderRegistry from './routes/offenderRegistry';
+// Skiptracer: read-only over skiptracer_dossiers + microbilt_searches
+import skiptracer from './routes/skiptracer';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
