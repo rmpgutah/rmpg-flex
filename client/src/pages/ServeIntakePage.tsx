@@ -6,6 +6,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useNavigate } from 'react-router-dom';
 import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
+import ServeIntakeAttemptModal from '../components/serve-intake/ServeIntakeAttemptModal';
 
 GlobalWorkerOptions.workerSrc = workerUrl;
 
@@ -98,6 +99,7 @@ export default function ServeIntakePage() {
   const [ocrPreview, setOcrPreview] = useState<OcrScanResult | null>(null);
   const [editingFields, setEditingFields] = useState<Record<string, string>>({});
   const [showOcrPreview, setShowOcrPreview] = useState(false);
+  const [showAttemptModal, setShowAttemptModal] = useState(false);
   const dropRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
@@ -505,10 +507,43 @@ export default function ServeIntakePage() {
             </div>
           </div>
 
-          <button onClick={() => { setFiles([]); setResult(null); }} className="toolbar-btn w-full justify-center py-2">
-            Process Another Set of Documents
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {/* Log First Attempt — only when we have a serve_queue_id to attach to.
+                Officer can hit this immediately if they're heading to the address
+                next, or skip it and log from the Serve page / dispatch panel later. */}
+            {result.serve_queue_id != null && (
+              <button
+                onClick={() => setShowAttemptModal(true)}
+                className="toolbar-btn justify-center py-2 border-amber-700/50 text-amber-300 hover:bg-amber-900/30"
+              >
+                Log First Attempt
+              </button>
+            )}
+            <button
+              onClick={() => { setFiles([]); setResult(null); }}
+              className={`toolbar-btn justify-center py-2 ${result.serve_queue_id == null ? 'col-span-2' : ''}`}
+            >
+              Process Another Set of Documents
+            </button>
+          </div>
         </div>
+      )}
+
+      {/* Attempt modal — opens from "Log First Attempt" button above.
+          Captures result + GPS + notes, POSTs to /api/serve-intake/:id/attempts,
+          and surfaces the diligence-scheduling recommendation post-submit. */}
+      {result?.serve_queue_id != null && (
+        <ServeIntakeAttemptModal
+          isOpen={showAttemptModal}
+          onClose={() => setShowAttemptModal(false)}
+          queueId={result.serve_queue_id}
+          recipientName={
+            [result.extracted?.name?.first, result.extracted?.name?.middle, result.extracted?.name?.last]
+              .filter(Boolean).join(' ') || 'Recipient'
+          }
+          recipientAddress={result.extracted?.address || ''}
+          callNumber={result.call_number}
+        />
       )}
     </div>
   );
