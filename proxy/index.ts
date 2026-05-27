@@ -553,6 +553,115 @@ const STUBS: StubRule[] = [
   },
   // /api/admin/shift-swaps now has a real handler in src/routes/shiftPlans.ts
   // (alias of /shift-swaps to match the client's existing path). Stub removed.
+
+  // ── 2026-05-27 batch 3 — legacy worker prod-readiness scan ───────────
+  // Subagent audit of the deployed `rmpg-flex` (legacy) bundle vs live D1
+  // schema found ~22 user-triggered endpoints that 500 because they query
+  // missing tables. These are all visible-page mounts (NOT background
+  // polling). The proxy can stub the GET responses with shapes the SPA
+  // already tolerates; POST/PUT/DELETE on the same paths intentionally
+  // stay 404 — those are user-initiated writes and should fail loudly
+  // until a real schema + handler lands. Each subsystem grouped for easy
+  // bulk removal when the real implementation arrives.
+  //
+  // ── Admin → Training/Credentials tabs ───────────────────────────────
+  // Legacy queries `personnel_certifications` + `officer_credentials`,
+  // neither on live D1. Admin training tab opens these on tab switch.
+  {
+    match: /^\/api\/admin\/expiring-certifications(\?.*)?$/,
+    methods: ['GET'],
+    body: { certifications: [], total: 0 },
+    reason: 'no personnel_certifications table on live D1; admin tab tolerates empty',
+  },
+  {
+    match: /^\/api\/admin\/training(\?.*)?$/,
+    methods: ['GET'],
+    body: { credentials: [], total: 0 },
+    reason: 'no officer_credentials table on live D1; admin training tab tolerates empty',
+  },
+  // ── Sex-offender registry (CRUD subset) ─────────────────────────────
+  // `/stats` is stubbed above. Root list + /expiring-registrations also
+  // queried on page mount. Other paths (POST /, PUT /:id, /import,
+  // /export/csv) stay 404 — those are user-triggered writes that should
+  // fail loudly until the schema lands.
+  {
+    match: /^\/api\/sex-offender-registry\/?(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 50 } },
+    reason: 'no sex_offender_registry table; root list tolerates empty data',
+  },
+  {
+    match: /^\/api\/(sex-)?offender-registry\/expiring-registrations(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no sex_offender_registry table; expiring-registrations tolerates empty list',
+  },
+  // ── Dispatch GPS speed zones (Map page may poll) ────────────────────
+  {
+    match: /^\/api\/dispatch\/gps\/speed-zones(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no speed_zones table on live D1; map page tolerates empty array',
+  },
+  // ── Trespass orders → violations sub-tab ────────────────────────────
+  // TrespassPage detail view opens this when a card is clicked. Empty
+  // list = "no violations on file" — a valid UX state.
+  {
+    match: /^\/api\/trespass-orders\/\d+\/violations(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no trespass_violations table; trespass detail tolerates empty list',
+  },
+  // ── Dashcam video link records (DashCamera detail) ──────────────────
+  {
+    match: /^\/api\/dashcam-videos\/[^/]+\/links(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no dashcam_video_links table; detail page tolerates empty link list',
+  },
+  // ── Dispatch messages namespace (entire mount dead — no table) ──────
+  // Legacy has ~7 routes under /api/dispatch-messages/ all querying
+  // `dispatch_messages` (and `dispatch_units` on some) which don't
+  // exist. The radio + WebSocket dispatch_update channel is what's
+  // actually used in production — this legacy mount appears to be from
+  // a never-shipped feature. GET-only stubs; POST stays 404.
+  {
+    match: /^\/api\/dispatch-messages(\/.*)?(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no dispatch_messages table; namespace appears to be never-shipped legacy feature',
+  },
+  // ── Statutes top-charged analytics (page opens on stats tab) ────────
+  {
+    match: /^\/api\/statutes\/analytics\/top-charged(\?.*)?$/,
+    methods: ['GET'],
+    body: { top: [], total: 0 },
+    reason: 'no entity_statutes table (use utah_statutes for lookup, not analytics)',
+  },
+  // ── WebAuthn / TOTP MFA setup (security tab on profile page) ────────
+  // Profile page hits these on every open. Stub the read shape so the
+  // security tab renders an "MFA not enrolled" state. Enrollment POSTs
+  // (register-options, register-verify, etc.) stay 404 — enabling MFA
+  // would need real `webauthn_credentials` + `user_totp_secrets` tables.
+  {
+    match: /^\/api\/auth\/webauthn\/(credentials|status)(\?.*)?$/,
+    methods: ['GET'],
+    body: { credentials: [], enrolled: false },
+    reason: 'no webauthn_credentials table; security tab shows un-enrolled state',
+  },
+  // ── ServeManager job linked-records (typo in legacy handler) ────────
+  // Legacy queries `FROM calls` — that table doesn't exist on live D1;
+  // the actual dispatch table is `calls_for_service`. The fix can't be
+  // applied in source (legacy worker bundle isn't in-repo), so stub
+  // empty here. Most ServeManager jobs aren't linked to dispatch calls
+  // anyway, so the empty list is a faithful representation.
+  {
+    match: /^\/api\/servemanager\/jobs\/\d+\/linked-records(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'legacy handler has `FROM calls` typo (should be calls_for_service); empty list is the typical case anyway',
+  },
+
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
