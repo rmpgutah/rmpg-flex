@@ -712,14 +712,25 @@ const STUBS: StubRule[] = [
   // ── Auth security login-history (ProfilePage Security tab) ──────────
   // The proxy already routes /api/auth/security/login-history to env.API
   // (API_ROUTES rule above), but the new worker has no handler for it,
-  // so it 404s. Stub empty array — the SessionsTab tolerates this. The
-  // route registry will need a real handler against the `login_attempts`
+  // so it 404s. Stub needs to satisfy TWO consumers with different shapes:
+  //   - LoginHistoryTable.tsx reads `data.entries` + `data.total`
+  //   - SecurityDashboardPage.tsx reads `data.data` (typed as `{ data: LoginEntry[] }`)
+  // The previous stub returned only `{ data, pagination }` which crashed
+  // LoginHistoryTable with `undefined.length` on `entries.length === 0`
+  // (observed in prod 2026-05-27 ~16:00 UTC, AdminPage ErrorBoundary).
+  // Union shape below satisfies both readers — empty everywhere.
+  // The route registry will need a real handler against the `login_attempts`
   // table (which DOES exist on live D1) in a follow-up PR.
   {
     match: /^\/api\/auth\/security\/login-history(\?.*)?$/,
     methods: ['GET'],
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 15 } },
-    reason: 'no handler in src/routes/auth.ts for /security/login-history; sessions tab tolerates empty',
+    body: {
+      entries: [],          // LoginHistoryTable.tsx:54
+      total: 0,             // LoginHistoryTable.tsx:55
+      data: [],             // SecurityDashboardPage.tsx:48
+      pagination: { total: 0, totalPages: 0, page: 1, limit: 15 },
+    },
+    reason: 'no handler in src/routes/auth.ts; union shape satisfies LoginHistoryTable + SecurityDashboardPage',
   },
   // ── Skiptracer v2 (different mount from v1) ─────────────────────────
   // The v1 stubs above cover /api/skiptracer/{status,stats}. v2 is a

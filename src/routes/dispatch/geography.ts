@@ -5,22 +5,51 @@ import { getDb, query, queryFirst } from '../../utils/db';
 const geography = new Hono<Env>();
 
 // GET /dispatch/geography/tree
+//
+// Naive nested loop (6 areas × 5 sectors × 10 zones × 2.5 beats) issued
+// ~1100 D1 queries per request and 500'd against the Workers subrequest /
+// CPU budget. Rewrite: 4 flat SELECTs in parallel (one per table) + JS-side
+// O(N) grouping by parent_id. Total query count goes 1100 → 4 regardless
+// of fleet size.
 geography.get('/tree', async (c) => {
   try {
     const db = getDb(c.env);
-    const areas = await query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_areas ORDER BY sort_order');
-    for (const area of areas) {
-      (area as any).sectors = await query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_sectors WHERE area_id = ? ORDER BY sort_order', area.id);
-      for (const sector of (area as any).sectors) {
-        (sector as any).zones = await query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_zones WHERE sector_id = ? ORDER BY sort_order', sector.id);
-        for (const zone of (sector as any).zones) {
-          (zone as any).beats = await query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_beats WHERE zone_id = ? ORDER BY sort_order', zone.id);
-        }
-      }
+    const [areas, sectors, zones, beats] = await Promise.all([
+      query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_areas ORDER BY sort_order'),
+      query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_sectors ORDER BY area_id, sort_order'),
+      query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_zones ORDER BY sector_id, sort_order'),
+      query<Record<string, unknown>>(db, 'SELECT * FROM dispatch_beats ORDER BY zone_id, sort_order'),
+    ]);
+
+    // Group children by parent_id once — O(N) per table.
+    const beatsByZone = new Map<unknown, Record<string, unknown>[]>();
+    for (const b of beats) {
+      const list = beatsByZone.get(b.zone_id) || [];
+      list.push(b);
+      beatsByZone.set(b.zone_id, list);
     }
+    const zonesBySector = new Map<unknown, Record<string, unknown>[]>();
+    for (const z of zones) {
+      (z as any).beats = beatsByZone.get(z.id) || [];
+      const list = zonesBySector.get(z.sector_id) || [];
+      list.push(z);
+      zonesBySector.set(z.sector_id, list);
+    }
+    const sectorsByArea = new Map<unknown, Record<string, unknown>[]>();
+    for (const s of sectors) {
+      (s as any).zones = zonesBySector.get(s.id) || [];
+      const list = sectorsByArea.get(s.area_id) || [];
+      list.push(s);
+      sectorsByArea.set(s.area_id, list);
+    }
+    for (const area of areas) {
+      (area as any).sectors = sectorsByArea.get(area.id) || [];
+    }
+
     return c.json(areas);
   } catch (err) {
-    return c.json({ error: 'Failed to get geography' }, 500);
+    console.error('GET /dispatch/geography/tree failed:', err);
+    return c.json({ error: 'Failed to get geography', detail: (err as Error)?.message }, 500);
   }
 });
 
