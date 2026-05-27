@@ -233,6 +233,17 @@ const API_ROUTES: RouteRule[] = [
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
 
+  // ── Cases /:id/full (PR #670) ──
+  // Legacy /full handler ran 9 inline SELECTs with no per-query try/catch,
+  // and projected calls_for_service.* (100 cols + link_id = 101) which
+  // hits D1's 100-col result-set cap. Net result: every case detail page
+  // 500'd on open. Rewrite implements the same response shape with a
+  // narrow calls projection and per-query try/catch so a single dirty
+  // table can't tank all 8 sub-tabs. Only /:id/full routes here — the
+  // rest of /api/cases/* stays on legacy (it has full sub-tab CRUD;
+  // rewrite only has /persons).
+  { kind: 'regex', value: /^\/api\/cases\/\d+\/full$/, methods: ['GET'] },
+
   // ── Radio subsystem (PR #661) ──
   // The new worker is the only handler. Legacy has no /api/radio/*
   // routes at all, so requests to this prefix have no fallback —

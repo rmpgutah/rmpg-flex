@@ -697,4 +697,153 @@ cases.get('/export/csv', async (c) => {
   }
 });
 
+// ═══════════════════════════════════════════════════════════════
+// GET /:id/full — aggregated case + all sub-tab data
+// ═══════════════════════════════════════════════════════════════
+// Ported from the legacy `rmpg-flex` Worker (legacy/server-vps/src/routes/
+// cases.ts lines 877-918) with two fixes:
+//   1. Each junction SELECT is wrapped in its own try/catch so a single
+//      failing table doesn't tank the whole response — the legacy handler
+//      ran 9 queries inline and any one throw nuked all tabs.
+//   2. The calls SELECT uses an explicit narrow column list instead of
+//      `cfs.*` because calls_for_service is at D1's 100-column cap and
+//      `SELECT cc.id, cfs.*` (101 cols) errors with SQLITE_ERROR 7500
+//      "too many columns in result set". The projected columns are
+//      everything the case detail Calls tab actually renders
+//      (CaseManagementPage.tsx lines 921-928) plus call_id for the
+//      sub-tab unlink action.
+//
+// Routed via proxy/index.ts so this overrides the legacy handler for
+// /api/cases/:id/full only — other /api/cases/* paths still fall
+// through to legacy until the rewrite of those handlers lands.
+cases.get('/:id/full', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id'), 10);
+    if (isNaN(id)) return c.json({ error: 'Invalid case ID', code: 'INVALID_ID' }, 400);
+
+    const caseRow = await queryFirst<Record<string, unknown>>(
+      db,
+      `SELECT c.*, u.full_name as lead_investigator_name
+       FROM cases c
+       LEFT JOIN users u ON c.lead_investigator_id = u.id
+       WHERE c.id = ?`,
+      id,
+    );
+    if (!caseRow) return c.json({ error: 'Case not found', code: 'NOT_FOUND' }, 404);
+
+    // Each junction query in its own try/catch — a missing table or a
+    // legacy schema drift on any one of these returns [] for that tab
+    // instead of 500'ing the whole endpoint.
+    const safeQuery = async <T>(sql: string, ...params: unknown[]): Promise<T[]> => {
+      try {
+        return await query<T>(db, sql, ...params);
+      } catch (err) {
+        console.error(`[cases/:id/full] sub-query failed:`, (err as Error)?.message);
+        return [];
+      }
+    };
+
+    // Narrow projection on calls_for_service — stays under D1's 100-col
+    // result-set cap. Add columns here ONLY if the case detail Calls
+    // tab needs them; project cfs.* and you'll re-introduce the cap bug.
+    const calls = await safeQuery<Record<string, unknown>>(
+      // location_address is the real column; aliased to `location` so the
+      // case detail Calls tab (CaseManagementPage.tsx line 926) finds it.
+      `SELECT cc.id as link_id, cfs.id, cfs.call_number, cfs.incident_type,
+              cfs.priority, cfs.status, cfs.location_address as location,
+              cfs.created_at
+       FROM case_calls cc
+       JOIN calls_for_service cfs ON cc.call_id = cfs.id
+       WHERE cc.case_id = ?
+       ORDER BY cfs.created_at DESC`,
+      id,
+    );
+    const incidents = await safeQuery<Record<string, unknown>>(
+      `SELECT ci.id as link_id, i.*
+       FROM case_incidents ci
+       JOIN incidents i ON ci.incident_id = i.id
+       WHERE ci.case_id = ?
+       ORDER BY i.created_at DESC`,
+      id,
+    );
+    const persons = await safeQuery<Record<string, unknown>>(
+      `SELECT cp.*, p.first_name, p.last_name, p.dob, p.phone, p.address
+       FROM case_persons cp
+       LEFT JOIN persons p ON cp.person_id = p.id
+       WHERE cp.case_id = ?
+       ORDER BY cp.created_at DESC`,
+      id,
+    );
+    const vehicles = await safeQuery<Record<string, unknown>>(
+      `SELECT cv.id as link_id, cv.role, v.*
+       FROM case_vehicles cv
+       JOIN vehicles_records v ON cv.vehicle_id = v.id
+       WHERE cv.case_id = ?
+       ORDER BY cv.created_at DESC`,
+      id,
+    );
+    const properties = await safeQuery<Record<string, unknown>>(
+      `SELECT cpr.id as link_id, cpr.role, p.*
+       FROM case_properties cpr
+       JOIN properties p ON cpr.property_id = p.id
+       WHERE cpr.case_id = ?
+       ORDER BY cpr.created_at DESC`,
+      id,
+    );
+    const evidence = await safeQuery<Record<string, unknown>>(
+      `SELECT ce.id as link_id, e.*
+       FROM case_evidence ce
+       JOIN evidence e ON ce.evidence_id = e.id
+       WHERE ce.case_id = ?
+       ORDER BY e.created_at DESC`,
+      id,
+    );
+    const warrants = await safeQuery<Record<string, unknown>>(
+      `SELECT cw.id as link_id, w.*,
+              sp.first_name || ' ' || sp.last_name as subject_name
+       FROM case_warrants cw
+       JOIN warrants w ON cw.warrant_id = w.id
+       LEFT JOIN persons sp ON w.subject_person_id = sp.id
+       WHERE cw.case_id = ?
+       ORDER BY w.created_at DESC`,
+      id,
+    );
+    const citations = await safeQuery<Record<string, unknown>>(
+      `SELECT cc2.id as link_id, ct.*
+       FROM case_citations cc2
+       JOIN citations ct ON cc2.citation_id = ct.id
+       WHERE cc2.case_id = ?
+       ORDER BY ct.created_at DESC`,
+      id,
+    );
+    const notes = await safeQuery<Record<string, unknown>>(
+      `SELECT cn.*, u.full_name as author_name
+       FROM case_notes cn
+       LEFT JOIN users u ON cn.author_id = u.id
+       WHERE cn.case_id = ?
+       ORDER BY cn.is_pinned DESC, cn.created_at DESC`,
+      id,
+    );
+
+    return c.json({
+      ...caseRow,
+      calls, incidents, persons, vehicles, properties,
+      evidence, warrants, citations, notes,
+      counts: {
+        calls: calls.length, incidents: incidents.length,
+        persons: persons.length, vehicles: vehicles.length,
+        properties: properties.length, evidence: evidence.length,
+        warrants: warrants.length, citations: citations.length,
+        notes: notes.length,
+      },
+    });
+  } catch (err) {
+    return c.json({
+      error: 'Failed to get full case', code: 'FULL_ERROR',
+      detail: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
+});
+
 export default cases;
