@@ -6,6 +6,7 @@ import {
   FileWarning, ShieldBan, Construction, Gavel, UserX, Users, Car, Video,
   MessageSquare, QrCode, BarChart3, Calendar, TrendingUp, ClipboardCheck,
   Settings, ScrollText, Network, ChevronLeft, ChevronRight, Camera, Mail,
+  Upload,
 } from 'lucide-react';
 
 // ─── Sidebar Navigation Structure ──────────────────────────────
@@ -58,6 +59,14 @@ const SIDEBAR_SECTIONS: SidebarSection[] = [
       { path: '/code-enforcement', icon: Construction, label: 'Code Enforcement' },
       { path: '/court', icon: Gavel, label: 'Court Tracker' },
       { path: '/offender-registry', icon: UserX, label: 'Offender Registry' },
+    ],
+  },
+  {
+    id: 'serve',
+    label: 'Process Service',
+    items: [
+      { path: '/serve-intake', icon: Upload, label: 'Serve Intake' },
+      { path: '/serve', icon: Briefcase, label: 'Process Server' },
     ],
   },
   {
