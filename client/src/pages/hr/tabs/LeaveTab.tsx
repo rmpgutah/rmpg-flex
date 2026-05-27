@@ -201,7 +201,7 @@ export default function LeaveTab() {
       await apiFetch(`/hr/leave/${id}/approve`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ review_notes: reviewNotes[id] || '' }),
+        body: JSON.stringify({}),
       });
       addToast('Leave request approved', 'success');
       setReviewNotes(prev => { const n = { ...prev }; delete n[id]; return n; });
@@ -216,7 +216,7 @@ export default function LeaveTab() {
       await apiFetch(`/hr/leave/${id}/deny`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ review_notes: reviewNotes[id] || '' }),
+        body: JSON.stringify({ denial_reason: reviewNotes[id] || '' }),
       });
       addToast('Leave request denied', 'success');
       setReviewNotes(prev => { const n = { ...prev }; delete n[id]; return n; });

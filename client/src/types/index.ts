@@ -1133,7 +1133,7 @@ export interface LeaveRequest {
   reviewed_by: number | null;
   reviewer_name?: string;
   reviewed_at: string | null;
-  review_notes: string | null;
+  denial_reason: string | null;
   created_at: string;
   updated_at: string;
 }
