@@ -80,6 +80,165 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no equipment table/handler; empty list silences dashboard polling',
   },
+  // /api/hr/benefits — no hr_benefits table on live D1 (HR rewrite only
+  // patched leave_requests / disciplinary_records / review_cycles in
+  // PR #660). BenefitsTab GETs this on mount; without a stub it 500s
+  // and shows the "Failed to load benefits" toast on every Benefits
+  // tab visit. Remove the stub the moment a real hr_benefits schema
+  // lands on live D1 — POST is intentionally NOT stubbed so the admin
+  // "Add benefit" button still fails loudly until the table exists.
+  {
+    match: /^\/api\/hr\/benefits$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no hr_benefits table on live D1',
+  },
+  // /api/arrests/recent — handler queries `FROM arrests`, no such table
+  // on live D1, so it 500s. Both ArrestRecordsPage and the AdminArrestsTab
+  // hit this on mount. Stub the shape AdminArrestsTab expects (the wider
+  // page also reads `data.records` per ArrestRecordsPage.tsx:291).
+  {
+    match: /^\/api\/arrests\/recent(\?.*)?$/,
+    methods: ['GET'],
+    body: { records: [], total: 0 },
+    reason: 'no arrests table on live D1',
+  },
+  // ── Body camera surfaces ──────────────────────────────────────
+  // None of these are implemented on the new worker, but the proxy
+  // routes /api/personnel/body-cameras + /api/personnel/bodycam-videos
+  // to env.API (lines 197-198). BodyCamerasPage fires four parallel
+  // GETs on mount and each 404 produces a [BodyCameras] ... console
+  // warning. The /upload-*, POST, PUT, DELETE, and /:id sub-paths are
+  // user-triggered (not background polling), so they stay 404 until
+  // a real implementation lands. GETs only.
+  {
+    match: /^\/api\/personnel\/body-cameras$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no body_cameras table; UI tolerates empty list',
+  },
+  {
+    match: /^\/api\/personnel\/bodycam-videos$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no bodycam_videos table; UI tolerates empty list',
+  },
+  {
+    match: /^\/api\/personnel\/bodycam-videos\/reviews\/pending$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no reviews surface yet',
+  },
+  {
+    match: /^\/api\/personnel\/bodycam-videos\/redaction-requests$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no redaction queue yet',
+  },
+  {
+    match: /^\/api\/personnel\/bodycam-videos\/retention\/report$/,
+    methods: ['GET'],
+    // BodyCamerasPage reads this via apiFetch<any>(...).catch(null), so any
+    // empty-shape object is fine. Mirror what the UI actually reads on the
+    // retention card: counts default to 0.
+    body: { total_videos: 0, retained: 0, eligible_for_purge: 0, purged_this_month: 0 },
+    reason: 'no retention engine yet',
+  },
+  // ── Audit log surfaces ────────────────────────────────────────
+  // AuditLogPage opens on /audit/logs?page=1&limit=100 (paginated list) +
+  // /audit/stats (totals + top users/actions) on mount, then optionally
+  // /audit/compliance-report and /audit/index-stats. Legacy implements
+  // /audit/logs at deployed-source line 16641 — but it returns 404 in
+  // production (likely a route-registration / auth bug on legacy). Until
+  // the real handlers come back, stub all four so the page renders.
+  {
+    match: /^\/api\/audit\/logs(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 100 } },
+    reason: 'legacy /audit/logs 404s; new worker has no audit router',
+  },
+  {
+    match: /^\/api\/audit\/stats$/,
+    methods: ['GET'],
+    // Matches the AuditStats interface in client/src/pages/AuditLogPage.tsx.
+    body: { totalEntries: 0, entriesToday: 0, topActions: [], topUsers: [] },
+    reason: 'no audit/stats handler',
+  },
+  {
+    match: /^\/api\/audit\/compliance-report(\?.*)?$/,
+    methods: ['GET'],
+    body: { compliant: true, gaps: [], generated_at: null },
+    reason: 'no compliance engine yet',
+  },
+  {
+    match: /^\/api\/audit\/index-stats$/,
+    methods: ['GET'],
+    body: { total_entries: 0, estimated_size_mb: 0 },
+    reason: 'no index-stats handler',
+  },
+  // ── Fleet surfaces ────────────────────────────────────────────
+  // Proxy routes the whole /api/fleet prefix to env.API but the new
+  // worker has no fleet router. FleetPage hits four endpoints on mount.
+  // Stub the GETs the dashboards poll. POST/PUT/DELETE stay 404 since
+  // those are user-triggered.
+  {
+    match: /^\/api\/fleet$/,
+    methods: ['GET'],
+    // The page does `apiFetch<...>('/fleet?...')` and reads `.data` from
+    // the result (see fleet-B_2rGABR.js console error path). Match a
+    // paginated empty shape; the wider FleetVehicle[] consumers tolerate
+    // an empty `data` array.
+    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 200 } },
+    reason: 'no fleet handler in new worker yet',
+  },
+  // Trailing /?... variants — FleetPage calls /fleet?per_page=200 and
+  // /fleet?archived=false. The bare-match regex above already covers
+  // /fleet (no slash); explicitly match query-string variants too.
+  {
+    match: /^\/api\/fleet\?.*/,
+    methods: ['GET'],
+    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 200 } },
+    reason: 'no fleet handler in new worker yet',
+  },
+  {
+    match: /^\/api\/fleet\/analytics(\?.*)?$/,
+    methods: ['GET'],
+    // Mirrors FleetAnalytics interface in client/src/types/index.ts:1631.
+    body: {
+      maintenance_cost_trend: [],
+      mileage_distribution: [],
+      status_breakdown: [],
+      fuel_economy_trend: [],
+      fleet_summary: {
+        total_vehicles: 0,
+        avg_mileage: 0,
+        avg_mpg: null,
+      },
+    },
+    reason: 'no fleet analytics handler',
+  },
+  {
+    match: /^\/api\/fleet\/dashcam-videos(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 25 } },
+    reason: 'no fleet dashcam handler',
+  },
+  // ── Other dashboard polls ─────────────────────────────────────
+  {
+    match: /^\/api\/reports\/crime-analysis(\?.*)?$/,
+    methods: ['GET'],
+    body: { totals: {}, by_type: [], by_day: [], by_hour: [], by_property: [], generated_at: null },
+    reason: 'no crime-analysis report yet',
+  },
+  // /api/records/vehicles/:id/history — PrintRecordButton + VehiclesTab
+  // both fetch this when opening a vehicle detail / running a printout.
+  // Empty array degrades cleanly to "no prior history".
+  {
+    match: /^\/api\/records\/vehicles\/\d+\/history$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no vehicle history index yet',
+  },
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
@@ -88,6 +247,10 @@ const STUBS: StubRule[] = [
   //   from le.utah.gov XML downloads. See scripts/seed/utah_statutes.sql.
   //   2026-05-26: Added stubs above for /warrants/utah-search/auto-poll-status
   //   and /personnel/equipment to silence dashboard polling 404s.
+  //   2026-05-27: Added stubs for /hr/benefits, /arrests/recent, the
+  //   bodycam quad, the audit quad, fleet (+/analytics, +/dashcam-videos),
+  //   /reports/crime-analysis, and /records/vehicles/:id/history to
+  //   silence broken-route console floods documented in TRIAGE.md.
 ];
 
 const API_ROUTES: RouteRule[] = [
@@ -122,6 +285,21 @@ const API_ROUTES: RouteRule[] = [
   // worker generates CFS{YY}-{NNNNN} format, broadcasts on create, and
   // writes an activity_log row for the audit trail.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/?$/, methods: ['POST'] },
+
+  // GET /api/dispatch/calls (bare list, with filters) — moved to the rewrite
+  // 2026-05-27 after the legacy handler was found doing `SELECT c.*` against
+  // calls_for_service which sits at the D1 100-column cap. SELECT * + three
+  // joined helper columns (property_name, dispatcher_name, client_name)
+  // returns 103 columns and D1 throws SQLITE_ERROR. The rewrite's handler
+  // uses LIST_VIEW_COLUMNS (src/routes/dispatch/calls.ts) for an explicit
+  // projection. MdtPage + DispatchPage + archived-list all hit this.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/?(\?.*)?$/, methods: ['GET'] },
+
+  // GET /api/dispatch/queue (MapPage active-calls queue) — same 100-col cap
+  // bug as the bare /calls list. New handler in src/routes/dispatch/aggregates.ts
+  // uses LIST_VIEW_COLUMNS and mirrors the legacy enrichment loop
+  // (age_minutes + _overdue + _expected_response_minutes).
+  { kind: 'prefix', value: '/api/dispatch/queue', methods: ['GET'] },
 
   // POST /api/dispatch/calls/:id/{assign-unit,unassign-unit,dispatch} —
   // MdtPage self-dispatch calls these; the rewrite implements the

@@ -9,6 +9,45 @@ import { sendToUser, broadcastAll } from '../ws';
 
 const calls = new Hono<Env>();
 
+// Explicit column projection for ANY list/queue handler over calls_for_service.
+// Why this exists: `calls_for_service` is at the D1 100-column cap. A naive
+// `SELECT c.*` plus three joined columns (property_name, dispatcher_name,
+// client_name) returns 103 columns and D1 throws SQLITE_ERROR "too many
+// columns in result set". Detail-only columns (PSO + process service)
+// intentionally NOT in this list — the /:id handler fetches the full row.
+// Keep in sync with calls_for_service schema. Adding a column here MUST
+// be paired with verifying total column count stays <= ~95 to leave room
+// for the joined helper columns appended by callers.
+export const LIST_VIEW_COLUMNS = [
+  'c.id', 'c.call_number', 'c.incident_type', 'c.priority', 'c.status',
+  'c.caller_name', 'c.caller_phone', 'c.caller_relationship', 'c.caller_address',
+  'c.location_address', 'c.cross_street', 'c.location_building', 'c.location_floor', 'c.location_room',
+  'c.property_id', 'c.client_id', 'c.contract_id',
+  'c.latitude', 'c.longitude',
+  'c.description', 'c.notes', 'c.source', 'c.contact_method',
+  'c.assigned_unit_ids', 'c.unit_call_signs',
+  'c.dispatcher_id', 'c.reporting_officer_id', 'c.responding_officer', 'c.responding_vehicle_id',
+  'c.created_at', 'c.dispatched_at', 'c.enroute_at', 'c.onscene_at',
+  'c.cleared_at', 'c.closed_at', 'c.archived_at', 'c.status_changed_at',
+  'c.updated_at', 'c.received_at', 'c.previous_status',
+  'c.disposition', 'c.action_taken',
+  'c.priority_score', 'c.response_time_seconds', 'c.onscene_duration_seconds',
+  'c.le_notified', 'c.le_agency', 'c.le_case_number', 'c.supervisor_notified',
+  'c.damage_estimate', 'c.damage_description',
+  'c.weapons_involved', 'c.injuries_reported', 'c.domestic_violence',
+  'c.alcohol_involved', 'c.drugs_involved', 'c.mental_health_crisis',
+  'c.juvenile_involved', 'c.felony_in_progress', 'c.officer_safety_caution',
+  'c.k9_requested', 'c.ems_requested',
+  'c.num_subjects', 'c.num_victims', 'c.subject_description',
+  'c.vehicle_description', 'c.direction_of_travel',
+  'c.scene_safety', 'c.weather_conditions', 'c.lighting_conditions',
+  'c.secondary_type', 'c.dispatch_code',
+  'c.sector_id', 'c.sector_name', 'c.zone_id', 'c.zone_name', 'c.zone_beat',
+  'c.beat_id', 'c.beat_name', 'c.beat_descriptor', 'c.section_name',
+  'c.case_id', 'c.case_number',
+  'c.starting_mileage', 'c.ending_mileage', 'c.overdue_notified',
+].join(', ');
+
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
 calls.get('/', async (c) => {
   try {
@@ -44,7 +83,8 @@ calls.get('/', async (c) => {
     const [{ total }] = await query<{ total: number }>(db, `SELECT COUNT(*) as total FROM calls_for_service c ${where}`, ...params);
 
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
+      SELECT ${LIST_VIEW_COLUMNS},
+        p.name as property_name, u.full_name as dispatcher_name,
         cl.name as client_name
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id

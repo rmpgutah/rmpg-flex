@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
+import { LIST_VIEW_COLUMNS } from './calls';
 
 const aggregates = new Hono<Env>();
 
@@ -57,19 +58,39 @@ aggregates.get('/disposition-stats', async (c) => {
   }
 });
 
-// GET /dispatch/queue - Active calls queue (alias for map page)
+// GET /dispatch/queue - Active calls queue (MapPage + dashboards).
+// Mirrors the legacy enrichment: age_minutes + _overdue + _expected_response_minutes,
+// computed in JS from priority + status + age. Uses LIST_VIEW_COLUMNS to dodge
+// the 100-column D1 cap that 500'd the legacy `SELECT c.*` handler.
 aggregates.get('/queue', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT c.*, u.full_name as dispatcher_name
+      SELECT ${LIST_VIEW_COLUMNS},
+        p.name as property_name, u.full_name as dispatcher_name
       FROM calls_for_service c
+      LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
-      WHERE c.status IN ('dispatched','enroute','onscene','pending','open')
-      ORDER BY c.created_at DESC
+      WHERE c.status IN ('pending', 'dispatched', 'enroute', 'onscene', 'on_hold')
+      ORDER BY
+        CASE c.status WHEN 'on_hold' THEN 1 ELSE 0 END,
+        COALESCE(c.priority_score, CASE c.priority WHEN 'P1' THEN 400 WHEN 'P2' THEN 300 WHEN 'P3' THEN 200 WHEN 'P4' THEN 100 END) DESC,
+        c.created_at ASC
       LIMIT 200
     `);
-    return c.json(rows);
+
+    const expectedMinutes: Record<string, number> = { P1: 8, P2: 15, P3: 30, P4: 60 };
+    const nowMs = Date.now();
+    const enriched = rows.map((r) => {
+      const createdAt = r.created_at ? Date.parse(String(r.created_at)) : null;
+      const ageMinutes = createdAt != null && !Number.isNaN(createdAt)
+        ? Math.round(((nowMs - createdAt) / 60_000) * 10) / 10
+        : null;
+      const expected = expectedMinutes[String(r.priority)] ?? 30;
+      const isOverdue = ageMinutes != null && ageMinutes > expected && r.status === 'pending';
+      return { ...r, age_minutes: ageMinutes, _overdue: isOverdue, _expected_response_minutes: expected };
+    });
+    return c.json(enriched);
   } catch (err) {
     console.error('Queue error:', err);
     return c.json({ error: 'Failed to get active calls', details: String(err) }, 500);
