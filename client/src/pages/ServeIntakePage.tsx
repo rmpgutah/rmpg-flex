@@ -99,7 +99,14 @@ export default function ServeIntakePage() {
   const extractPdfText = useCallback(async (file: File): Promise<string> => {
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const pdf = await getDocument({ data: arrayBuffer }).promise;
+      // verbosity: 0 = errors-only. Court packets often embed TrueType
+      // fonts with non-standard hinting instructions (opcode 21, etc.)
+      // that pdfjs's sanitizer doesn't recognize — it logs a benign
+      // "TT: undefined function: N" warning per font and falls back to
+      // sane rendering. Text extraction is unaffected. Suppressing here
+      // keeps the console clean during intake; if a real PDF parse error
+      // happens it still surfaces as a thrown promise rejection.
+      const pdf = await getDocument({ data: arrayBuffer, verbosity: 0 }).promise;
       const pages: string[] = [];
       for (let i = 1; i <= pdf.numPages; i++) {
         const page = await pdf.getPage(i);
