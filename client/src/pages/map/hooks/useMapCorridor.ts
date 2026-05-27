@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface CorridorSegment {
   start: { lat: number; lng: number };
@@ -120,37 +121,41 @@ export function useMapCorridor(
       });
 
       if (segmentFeatures.length > 0) {
-        map.addSource(segmentSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: segmentFeatures } });
-        map.addLayer({
-          id: segmentSourceId,
-          type: 'line',
-          source: segmentSourceId,
-          paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': 0.85 },
-        });
+        whenStyleReady(map, () => {
+          map.addSource(segmentSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: segmentFeatures } });
+          map.addLayer({
+            id: segmentSourceId,
+            type: 'line',
+            source: segmentSourceId,
+            paint: { 'line-color': ['get', 'color'], 'line-width': 4, 'line-opacity': 0.85 },
+          });
 
-        map.on('click', segmentSourceId, (e) => {
-          const feature = e.features?.[0];
-          if (!feature || !feature.properties) return;
-          const p = feature.properties;
-          const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid ${p.color}40"><div style="font-weight:bold;color:${p.color}">Risk Score: ${p.risk_score}</div>${p.traffic_label ? `<div style="font-size:9px;color:#9ca3af;margin-top:2px">${p.traffic_label}</div>` : ''}</div>`;
-          if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+          map.on('click', segmentSourceId, (e) => {
+            const feature = e.features?.[0];
+            if (!feature || !feature.properties) return;
+            const p = feature.properties;
+            const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid ${p.color}40"><div style="font-weight:bold;color:${p.color}">Risk Score: ${p.risk_score}</div>${p.traffic_label ? `<div style="font-size:9px;color:#9ca3af;margin-top:2px">${p.traffic_label}</div>` : ''}</div>`;
+            if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+          });
         });
       }
 
       if (incidentFeatures.length > 0) {
-        map.addSource(incidentSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: incidentFeatures } });
-        map.addLayer({
-          id: incidentSourceId,
-          type: 'circle',
-          source: incidentSourceId,
-          paint: { 'circle-color': '#ef4444', 'circle-radius': 3, 'circle-stroke-color': '#7f1d1d', 'circle-stroke-width': 1 },
-        });
+        whenStyleReady(map, () => {
+          map.addSource(incidentSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: incidentFeatures } });
+          map.addLayer({
+            id: incidentSourceId,
+            type: 'circle',
+            source: incidentSourceId,
+            paint: { 'circle-color': '#ef4444', 'circle-radius': 3, 'circle-stroke-color': '#7f1d1d', 'circle-stroke-width': 1 },
+          });
 
-        map.on('click', incidentSourceId, (e) => {
-          const feature = e.features?.[0];
-          if (!feature || !feature.properties) return;
-          const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #ef444440"><div style="font-weight:bold;color:#ef4444">${feature.properties.type}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.date}</div></div>`;
-          if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+          map.on('click', incidentSourceId, (e) => {
+            const feature = e.features?.[0];
+            if (!feature || !feature.properties) return;
+            const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #ef444440"><div style="font-weight:bold;color:#ef4444">${feature.properties.type}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${feature.properties.date}</div></div>`;
+            if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+          });
         });
       }
     } catch (err) {
@@ -176,18 +181,20 @@ export function useMapCorridor(
       properties: {},
     };
 
-    map.addSource(pursuitSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [feature] } });
-    map.addLayer({
-      id: pursuitSourceId,
-      type: 'fill',
-      source: pursuitSourceId,
-      paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.1 },
-    });
-    map.addLayer({
-      id: `${pursuitSourceId}-outline`,
-      type: 'line',
-      source: pursuitSourceId,
-      paint: { 'line-color': '#f59e0b', 'line-width': 2, 'line-opacity': 0.8 },
+    whenStyleReady(map, () => {
+      map.addSource(pursuitSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [feature] } });
+      map.addLayer({
+        id: pursuitSourceId,
+        type: 'fill',
+        source: pursuitSourceId,
+        paint: { 'fill-color': '#f59e0b', 'fill-opacity': 0.1 },
+      });
+      map.addLayer({
+        id: `${pursuitSourceId}-outline`,
+        type: 'line',
+        source: pursuitSourceId,
+        paint: { 'line-color': '#f59e0b', 'line-width': 2, 'line-opacity': 0.8 },
+      });
     });
   }, [map, clearSource]);
 
@@ -212,12 +219,14 @@ export function useMapCorridor(
       };
     });
 
-    map.addSource(escapeSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: escapeSourceId,
-      type: 'line',
-      source: escapeSourceId,
-      paint: { 'line-color': '#a855f7', 'line-width': 2, 'line-opacity': 0.7 },
+    whenStyleReady(map, () => {
+      map.addSource(escapeSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: escapeSourceId,
+        type: 'line',
+        source: escapeSourceId,
+        paint: { 'line-color': '#a855f7', 'line-width': 2, 'line-opacity': 0.7 },
+      });
     });
   }, [map, clearSource]);
 

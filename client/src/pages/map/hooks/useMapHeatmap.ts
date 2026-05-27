@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { useToast } from '../../../components/ToastProvider';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 const MAX_HEATMAP_POINTS = 10000;
 
@@ -93,32 +94,34 @@ export function useMapHeatmap({ mapInstanceRef, mapLoaded }: UseMapHeatmapParams
         features,
       });
     } else {
-      map.addSource(heatmapSourceId, {
-        type: 'geojson',
-        data: { type: 'FeatureCollection', features },
-      });
-      map.addLayer({
-        id: 'heatmap-layer',
-        type: 'heatmap',
-        source: heatmapSourceId,
-        maxzoom: 15,
-        paint: {
-          'heatmap-weight': ['get', 'weight'],
-          'heatmap-intensity': 0.8,
-          'heatmap-radius': 30,
-          'heatmap-opacity': 0.7,
-          'heatmap-color': [
-            'interpolate',
-            ['linear'],
-            ['heatmap-density'],
-            0, gradient[0],
-            0.2, gradient[1],
-            0.4, gradient[2],
-            0.6, gradient[3],
-            0.8, gradient[4],
-            1, gradient[5],
-          ],
-        },
+      whenStyleReady(map, () => {
+        map.addSource(heatmapSourceId, {
+          type: 'geojson',
+          data: { type: 'FeatureCollection', features },
+        });
+        map.addLayer({
+          id: 'heatmap-layer',
+          type: 'heatmap',
+          source: heatmapSourceId,
+          maxzoom: 15,
+          paint: {
+            'heatmap-weight': ['get', 'weight'],
+            'heatmap-intensity': 0.8,
+            'heatmap-radius': 30,
+            'heatmap-opacity': 0.7,
+            'heatmap-color': [
+              'interpolate',
+              ['linear'],
+              ['heatmap-density'],
+              0, gradient[0],
+              0.2, gradient[1],
+              0.4, gradient[2],
+              0.6, gradient[3],
+              0.8, gradient[4],
+              1, gradient[5],
+            ],
+          },
+        });
       });
     }
 

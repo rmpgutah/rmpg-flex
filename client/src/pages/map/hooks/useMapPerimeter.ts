@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface QuadrantCoverage {
   quadrant: 'NE' | 'NW' | 'SE' | 'SW';
@@ -106,26 +107,28 @@ export function useMapPerimeter(
       properties: { name: target.name },
     }));
 
-    map.addSource(hvtSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: hvtSourceId,
-      type: 'circle',
-      source: hvtSourceId,
-      paint: {
-        'circle-color': '#888888',
-        'circle-radius': 6,
-        'circle-stroke-color': '#555555',
-        'circle-stroke-width': 1,
-      },
-    });
-
     if (!popupRef.current) popupRef.current = new mapboxgl.Popup({ maxWidth: '200px', closeButton: true, closeOnClick: false });
 
-    map.on('click', hvtSourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #88888840"><div style="font-weight:bold;color:#888888">${feature.properties.name}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">High Value Target</div></div>`;
-      if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+    whenStyleReady(map, () => {
+      map.addSource(hvtSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: hvtSourceId,
+        type: 'circle',
+        source: hvtSourceId,
+        paint: {
+          'circle-color': '#888888',
+          'circle-radius': 6,
+          'circle-stroke-color': '#555555',
+          'circle-stroke-width': 1,
+        },
+      });
+
+      map.on('click', hvtSourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #88888840"><div style="font-weight:bold;color:#888888">${feature.properties.name}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">High Value Target</div></div>`;
+        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+      });
     });
   }, [map, clearSource]);
 
@@ -158,19 +161,21 @@ export function useMapPerimeter(
       });
 
       if (quadrantFeatures.length > 0) {
-        map.addSource(quadrantSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: quadrantFeatures } });
-        map.addLayer({
-          id: quadrantSourceId,
-          type: 'circle',
-          source: quadrantSourceId,
-          paint: {
-            'circle-color': ['get', 'color'],
-            'circle-radius': SIZE * 111000 / 2,
-            'circle-opacity': 0.12,
-            'circle-stroke-color': ['get', 'color'],
-            'circle-stroke-width': 1,
-            'circle-stroke-opacity': 0.5,
-          },
+        whenStyleReady(map, () => {
+          map.addSource(quadrantSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: quadrantFeatures } });
+          map.addLayer({
+            id: quadrantSourceId,
+            type: 'circle',
+            source: quadrantSourceId,
+            paint: {
+              'circle-color': ['get', 'color'],
+              'circle-radius': SIZE * 111000 / 2,
+              'circle-opacity': 0.12,
+              'circle-stroke-color': ['get', 'color'],
+              'circle-stroke-width': 1,
+              'circle-stroke-opacity': 0.5,
+            },
+          });
         });
       }
 
@@ -187,19 +192,21 @@ export function useMapPerimeter(
         }));
 
         if (gapFeatures.length > 0) {
-          map.addSource(gapSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: gapFeatures } });
-          map.addLayer({
-            id: gapSourceId,
-            type: 'circle',
-            source: gapSourceId,
-            paint: {
-              'circle-color': GAP_COLOR,
-              'circle-radius': 100,
-              'circle-opacity': 0.08,
-              'circle-stroke-color': GAP_COLOR,
-              'circle-stroke-width': 1,
-              'circle-stroke-opacity': 0.3,
-            },
+          whenStyleReady(map, () => {
+            map.addSource(gapSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: gapFeatures } });
+            map.addLayer({
+              id: gapSourceId,
+              type: 'circle',
+              source: gapSourceId,
+              paint: {
+                'circle-color': GAP_COLOR,
+                'circle-radius': 100,
+                'circle-opacity': 0.08,
+                'circle-stroke-color': GAP_COLOR,
+                'circle-stroke-width': 1,
+                'circle-stroke-opacity': 0.3,
+              },
+            });
           });
         }
       }
@@ -225,25 +232,27 @@ export function useMapPerimeter(
       properties: {},
     };
 
-    map.addSource(containmentSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [feature] } });
-    map.addLayer({
-      id: containmentSourceId,
-      type: 'fill',
-      source: containmentSourceId,
-      paint: {
-        'fill-color': '#ef4444',
-        'fill-opacity': 0.06,
-      },
-    });
-    map.addLayer({
-      id: `${containmentSourceId}-outline`,
-      type: 'line',
-      source: containmentSourceId,
-      paint: {
-        'line-color': '#ef4444',
-        'line-width': 2,
-        'line-opacity': 0.9,
-      },
+    whenStyleReady(map, () => {
+      map.addSource(containmentSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: [feature] } });
+      map.addLayer({
+        id: containmentSourceId,
+        type: 'fill',
+        source: containmentSourceId,
+        paint: {
+          'fill-color': '#ef4444',
+          'fill-opacity': 0.06,
+        },
+      });
+      map.addLayer({
+        id: `${containmentSourceId}-outline`,
+        type: 'line',
+        source: containmentSourceId,
+        paint: {
+          'line-color': '#ef4444',
+          'line-width': 2,
+          'line-opacity': 0.9,
+        },
+      });
     });
   }, [map, clearSource]);
 
@@ -291,19 +300,21 @@ export function useMapPerimeter(
       { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: [lng, lat] as [number, number] }, properties: { radius: outerM, color: '#f59e0b', opacity: 0.05, strokeOpacity: 0.5 } },
     ];
 
-    map.addSource(ringSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: ringSourceId,
-      type: 'circle',
-      source: ringSourceId,
-      paint: {
-        'circle-color': ['get', 'color'],
-        'circle-radius': ['get', 'radius'],
-        'circle-opacity': ['get', 'opacity'],
-        'circle-stroke-color': ['get', 'color'],
-        'circle-stroke-width': 2,
-        'circle-stroke-opacity': ['get', 'strokeOpacity'],
-      },
+    whenStyleReady(map, () => {
+      map.addSource(ringSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: ringSourceId,
+        type: 'circle',
+        source: ringSourceId,
+        paint: {
+          'circle-color': ['get', 'color'],
+          'circle-radius': ['get', 'radius'],
+          'circle-opacity': ['get', 'opacity'],
+          'circle-stroke-color': ['get', 'color'],
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': ['get', 'strokeOpacity'],
+        },
+      });
     });
   }, [map, clearSource]);
 

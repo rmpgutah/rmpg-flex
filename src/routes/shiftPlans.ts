@@ -363,7 +363,11 @@ sp.delete('/shift-plans/:id', async (c) => {
 // Shift Swaps
 // ─────────────────────────────────────────────────────────────
 
-sp.get('/shift-swaps', async (c) => {
+// GET /api/shift-swaps and GET /api/admin/shift-swaps — same query, two
+// mount points. Client's ShiftPlansPage currently hits /api/admin/shift-swaps;
+// keep both registered until the client is converged on one path. Sharing
+// a handler so the two never drift apart.
+async function listShiftSwaps(c: any) {
   const denied = requireRole(c, 'admin', 'manager', 'supervisor', 'dispatcher');
   if (denied) return c.json({ error: denied }, 403);
   const status = c.req.query('status');
@@ -375,7 +379,9 @@ sp.get('/shift-swaps', async (c) => {
   const sql = `SELECT * FROM shift_swap_requests ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
                ORDER BY created_at DESC LIMIT 200`;
   return c.json(await query(getDb(c.env), sql, ...args));
-});
+}
+sp.get('/shift-swaps', listShiftSwaps);
+sp.get('/admin/shift-swaps', listShiftSwaps);
 
 sp.post('/shift-swaps', async (c) => {
   const user = c.get('user') as { id: number; full_name?: string } | undefined;

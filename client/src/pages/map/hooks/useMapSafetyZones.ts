@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface SafetyZone {
   latitude: number;
@@ -94,30 +95,31 @@ export function useMapSafetyZones(
 
     if (features.length === 0) return;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
-        'circle-radius': ['case', ['get', 'isHigh'], 20, 15],
-        'circle-opacity': [
-          'interpolate', ['linear'], ['get', 'total_flagged'],
-          0, 0.06,
-          20, 0.21,
-        ],
-        'circle-stroke-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
-        'circle-stroke-width': ['case', ['get', 'isHigh'], 3, 2],
-        'circle-stroke-opacity': [
-          'interpolate', ['linear'], ['get', 'total_flagged'],
-          0, 0.3,
-          20, 0.7,
-        ],
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
+          'circle-radius': ['case', ['get', 'isHigh'], 20, 15],
+          'circle-opacity': [
+            'interpolate', ['linear'], ['get', 'total_flagged'],
+            0, 0.06,
+            20, 0.21,
+          ],
+          'circle-stroke-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
+          'circle-stroke-width': ['case', ['get', 'isHigh'], 3, 2],
+          'circle-stroke-opacity': [
+            'interpolate', ['linear'], ['get', 'total_flagged'],
+            0, 0.3,
+            20, 0.7,
+          ],
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
+      map.on('click', sourceId, (e) => {
       const feature = e.features?.[0];
       if (!feature || !feature.properties) return;
       const p = feature.properties;
@@ -141,6 +143,7 @@ export function useMapSafetyZones(
       if (popupRef.current) {
         popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
       }
+      });
     });
 
     return () => {

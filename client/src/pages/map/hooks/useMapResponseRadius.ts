@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface UseMapResponseRadiusReturn {
   showRadiusAt: (lat: number, lng: number) => void;
@@ -59,22 +60,24 @@ export function useMapResponseRadius(
       properties: { radius: ring.radiusMeters, color: ring.fillColor, opacity: ring.fillOpacity, label: ring.label },
     }));
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
 
-    RINGS.forEach((ring, i) => {
-      map.addLayer({
-        id: `${sourceId}-${i}`,
-        type: 'circle',
-        source: sourceId,
-        filter: ['==', ['get', 'label'], ring.label],
-        paint: {
-          'circle-color': ring.fillColor,
-          'circle-radius': ring.radiusMeters,
-          'circle-opacity': ring.fillOpacity,
-          'circle-stroke-color': ring.strokeColor,
-          'circle-stroke-width': 2,
-          'circle-stroke-opacity': 0.5,
-        },
+      RINGS.forEach((ring, i) => {
+        map.addLayer({
+          id: `${sourceId}-${i}`,
+          type: 'circle',
+          source: sourceId,
+          filter: ['==', ['get', 'label'], ring.label],
+          paint: {
+            'circle-color': ring.fillColor,
+            'circle-radius': ring.radiusMeters,
+            'circle-opacity': ring.fillOpacity,
+            'circle-stroke-color': ring.strokeColor,
+            'circle-stroke-width': 2,
+            'circle-stroke-opacity': 0.5,
+          },
+        });
       });
     });
   }, [map, enabled, clearRadius]);
@@ -102,23 +105,25 @@ export function useMapResponseRadius(
       properties: { radius: ring.radiusMeters, color: ring.strokeColor, opacity: ring.fillOpacity, label: ring.label },
     }));
 
-    map.addSource(cursorSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+    whenStyleReady(map, () => {
+      map.addSource(cursorSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
 
-    CURSOR_RINGS.forEach((ring, i) => {
-      if (map.getLayer(`${cursorSourceId}-${i}`)) map.removeLayer(`${cursorSourceId}-${i}`);
-      map.addLayer({
-        id: `${cursorSourceId}-${i}`,
-        type: 'circle',
-        source: cursorSourceId,
-        filter: ['==', ['get', 'label'], ring.label],
-        paint: {
-          'circle-color': ring.strokeColor,
-          'circle-radius': ring.radiusMeters,
-          'circle-opacity': ring.fillOpacity,
-          'circle-stroke-color': ring.strokeColor,
-          'circle-stroke-width': 1,
-          'circle-stroke-opacity': 0.4,
-        },
+      CURSOR_RINGS.forEach((ring, i) => {
+        if (map.getLayer(`${cursorSourceId}-${i}`)) map.removeLayer(`${cursorSourceId}-${i}`);
+        map.addLayer({
+          id: `${cursorSourceId}-${i}`,
+          type: 'circle',
+          source: cursorSourceId,
+          filter: ['==', ['get', 'label'], ring.label],
+          paint: {
+            'circle-color': ring.strokeColor,
+            'circle-radius': ring.radiusMeters,
+            'circle-opacity': ring.fillOpacity,
+            'circle-stroke-color': ring.strokeColor,
+            'circle-stroke-width': 1,
+            'circle-stroke-opacity': 0.4,
+          },
+        });
       });
     });
 

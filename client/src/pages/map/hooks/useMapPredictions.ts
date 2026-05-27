@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { escapeHtml } from '../../../utils/sanitize';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface PredictedHotspot {
   latitude: number;
@@ -85,61 +86,63 @@ export function useMapPredictions(
 
     if (features.length === 0) return;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
-        'circle-radius': [
-          'interpolate', ['linear'], ['get', 'score'],
-          0, 15,
-          50, 25,
-          100, 40,
-        ],
-        'circle-opacity': [
-          'interpolate', ['linear'], ['get', 'score'],
-          0, 0.08,
-          100, 0.28,
-        ],
-        'circle-stroke-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
-        'circle-stroke-width': 2,
-        'circle-stroke-opacity': [
-          'interpolate', ['linear'], ['get', 'score'],
-          0, 0.3,
-          100, 0.8,
-        ],
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
+          'circle-radius': [
+            'interpolate', ['linear'], ['get', 'score'],
+            0, 15,
+            50, 25,
+            100, 40,
+          ],
+          'circle-opacity': [
+            'interpolate', ['linear'], ['get', 'score'],
+            0, 0.08,
+            100, 0.28,
+          ],
+          'circle-stroke-color': ['case', ['get', 'isHigh'], '#dc2626', '#f59e0b'],
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': [
+            'interpolate', ['linear'], ['get', 'score'],
+            0, 0.3,
+            100, 0.8,
+          ],
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const p = feature.properties;
-      const normalizedScore = Math.min(100, Math.max(0, p.score as number));
-      const color = p.isHigh ? '#dc2626' : '#f59e0b';
-      const html = `
-        <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
-          <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">Predicted Hotspot</div>
-          <table style="width:100%;font-size:11px;border-collapse:collapse">
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Confidence</td><td style="font-weight:bold;color:#fff">${Math.round(normalizedScore)}%</td></tr>
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Raw Score</td><td style="color:#9ca3af">${p.score}</td></tr>
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Incidents</td><td style="color:#e0e0e0">${p.incident_count}</td></tr>
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Top Types</td><td style="color:#e0e0e0">${p.top_types ? escapeHtml(p.top_types as string) : '\u2014'}</td></tr>
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Weapons</td><td style="color:#ef4444">${p.weapons_count}</td></tr>
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">DV</td><td style="color:#f59e0b">${p.dv_count}</td></tr>
-          </table>
-        </div>
-      `;
-      if (popupRef.current) {
-        popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
-      }
-      map.panTo(e.lngLat);
-      const currentZoom = map.getZoom();
-      if (currentZoom != null && currentZoom < 14) {
-        map.setZoom(14);
-      }
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const p = feature.properties;
+        const normalizedScore = Math.min(100, Math.max(0, p.score as number));
+        const color = p.isHigh ? '#dc2626' : '#f59e0b';
+        const html = `
+          <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
+            <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">Predicted Hotspot</div>
+            <table style="width:100%;font-size:11px;border-collapse:collapse">
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Confidence</td><td style="font-weight:bold;color:#fff">${Math.round(normalizedScore)}%</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Raw Score</td><td style="color:#9ca3af">${p.score}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Incidents</td><td style="color:#e0e0e0">${p.incident_count}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Top Types</td><td style="color:#e0e0e0">${p.top_types ? escapeHtml(p.top_types as string) : '\u2014'}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Weapons</td><td style="color:#ef4444">${p.weapons_count}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">DV</td><td style="color:#f59e0b">${p.dv_count}</td></tr>
+            </table>
+          </div>
+        `;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        }
+        map.panTo(e.lngLat);
+        const currentZoom = map.getZoom();
+        if (currentZoom != null && currentZoom < 14) {
+          map.setZoom(14);
+        }
+      });
     });
 
     return () => {

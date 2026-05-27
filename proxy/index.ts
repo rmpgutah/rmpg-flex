@@ -81,6 +81,105 @@ const STUBS: StubRule[] = [
     reason: 'no equipment table/handler; empty list silences dashboard polling',
   },
   //
+  // ── 2026-05-27 batch — silence broken pages until real handlers land ──
+  // Each of the entries below was sourced from a single prod console log
+  // export covering 60+ unique 4xx/5xx responses across ~12 pages. The
+  // common pattern: legacy worker handler exists but the underlying table
+  // is missing OR the column the handler reads has been renamed; rewrite
+  // has no replacement handler yet. Empty-shape stubs let the page render
+  // its empty state instead of crashing into an ErrorBoundary.
+  //
+  // Categorized by page to make removal triage obvious — when a real
+  // handler lands for a subsystem, drop ALL its stubs together.
+  //
+  // ── Fleet sub-tabs that aren't ported yet ─────────────────────────────
+  // Bare /api/fleet, /api/fleet/:id, /api/fleet/map, /api/fleet/analytics,
+  // and /api/fleet/dashcam-videos[/:id[/neighbors]] are now real handlers
+  // in src/routes/fleet.ts. The list below is sub-paths the rewrite still
+  // doesn't implement; they 404 from the rewrite without a stub.
+  {
+    match: /^\/api\/fleet\/(fuel-cards|fuel|fuel\/.*|recalls|health-scores|maintenance-schedule|driver-performance|service-alerts|cost-trends|vehicle-lifecycle|fleet-cost-analytics|inspection-stats|notifications|overdue-inspections|dash-cameras|pretrip)(\/.*)?$/,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    body: { data: [], total: 0 },
+    reason: 'fleet sub-tab handler not ported; tab renders empty until implemented',
+  },
+  // Howen handlers now live in src/routes/howen.ts (devices, events, status,
+  // devices/:id). Stub removed; requests reach the rewrite via the API_ROUTES
+  // rule below.
+  // ── Personnel sub-tabs not yet ported ─────────────────────────────────
+  // training, training-requirements, training-completion, body-cameras,
+  // bodycam-videos (+ retention/report, reviews/pending, redaction-requests),
+  // and duty-hours are now real handlers in src/routes/personnel.ts. The
+  // remaining sub-paths below (training-alerts, training-materials) still
+  // 404 from the rewrite — no backing tables yet — so stub them empty.
+  {
+    match: /^\/api\/personnel\/training-alerts$/,
+    methods: ['GET'],
+    body: { alerts: [] },
+    reason: 'no training alerts pipeline yet; TrainingPage tolerates empty',
+  },
+  {
+    match: /^\/api\/personnel\/training-materials$/,
+    methods: ['GET'],
+    body: { data: [] },
+    reason: 'no training materials table; TrainingPage tolerates empty data',
+  },
+  // ── Skiptracer v1 — proxy routes to env.API per the API_ROUTES rules
+  //    above, but no handler exists in src/. Stub them so the dashboard
+  //    polling stops 404ing. v2 is a separate legacy thing untouched. ──
+  {
+    match: /^\/api\/skiptracer\/(status|stats)$/,
+    methods: ['GET'],
+    body: { enabled: false, status: 'disabled', last_run_at: null, total: 0 },
+    reason: 'no skiptracer v1 backend in rewrite; dashboard tolerates disabled',
+  },
+  // ── Warrants scraped status (legacy 404) ──────────────────────────────
+  // Legacy never had a /warrants/scraped/status handler; the page polls
+  // for it as part of the watch tab. WarrantsPage tolerates the empty
+  // shape: { syncStatus, runs, recentHits }.
+  {
+    match: /^\/api\/warrants\/scraped\/status$/,
+    methods: ['GET'],
+    body: { syncStatus: { status: 'disabled', lastSync: null }, runs: [], recentHits: [] },
+    reason: 'no scraper status endpoint; WarrantsPage Watch tab tolerates empty',
+  },
+  // ── HR sub-modules with no backing tables on live D1 yet ─────────────
+  // /api/hr/leave* now has a real handler in src/routes/hr.ts (uses the
+  // leave_requests table). The remaining sub-paths still 500 on legacy
+  // because their tables don't exist. Stub them empty until the schema
+  // patches land.
+  {
+    match: /^\/api\/hr\/(payroll\/(periods|rates|entries|overtime)|grievances|documents|attendance|pips|benefits)/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no backing tables yet; HrPage tabs render empty until schema lands',
+  },
+  // ── CRM module (entire namespace 500s on legacy) ──
+  {
+    match: /^\/api\/crm\/(dashboard|pipeline-summary|revenue-forecast|leads\/source-analytics)/,
+    methods: ['GET'],
+    body: {},
+    reason: 'legacy CRM stat handlers 500; CrmPage tolerates empty object',
+  },
+  {
+    match: /^\/api\/crm\/(recent-activity|leads\/follow-ups|tasks|expiring-contracts)/,
+    methods: ['GET'],
+    body: [],
+    reason: 'legacy CRM list handlers 500; CrmPage tolerates empty arrays',
+  },
+  // /api/offender-registry/stats now has a real handler in
+  // src/routes/offenderRegistry.ts. /api/sex-offender-registry/stats stays
+  // stubbed — no dedicated sex-offender table on live D1 yet (use the
+  // alert_type filter on offender_alerts when that page is rewritten).
+  {
+    match: /^\/api\/sex-offender-registry\/stats$/,
+    methods: ['GET'],
+    body: { data: {} },
+    reason: 'no sex-offender-specific table; SexOffenderRegistryPage tolerates empty',
+  },
+  // /api/admin/shift-swaps now has a real handler in src/routes/shiftPlans.ts
+  // (alias of /shift-swaps to match the client's existing path). Stub removed.
+  //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
   //   was found missing the utah_statutes table. Removed the same day
@@ -88,6 +187,10 @@ const STUBS: StubRule[] = [
   //   from le.utah.gov XML downloads. See scripts/seed/utah_statutes.sql.
   //   2026-05-26: Added stubs above for /warrants/utah-search/auto-poll-status
   //   and /personnel/equipment to silence dashboard polling 404s.
+  //   2026-05-27: Bulk stub addition (this batch) — fleet, howen, personnel
+  //   sub-tabs, hr, crm, offender stats, admin/shift-swaps. Sourced from a
+  //   single prod console log export. Remove each subsystem's block when
+  //   its real handler lands in /src/.
 ];
 
 const API_ROUTES: RouteRule[] = [
@@ -160,6 +263,11 @@ const API_ROUTES: RouteRule[] = [
   // has the full handler and a populated evidence table on live D1.
   { kind: 'prefix', value: '/api/records/businesses' },
   { kind: 'prefix', value: '/api/records/reports/approval-queue' },
+  // Audit — entire namespace lives in src/routes/audit.ts (logs, stats,
+  // index-stats, compliance-report). Legacy never had any of these so
+  // requests were 404ing on the AuditLogPage. Mounted in routesConfig.ts
+  // at /api/audit; this rule routes the prefix to env.API.
+  { kind: 'prefix', value: '/api/audit' },
   // Admin extras the legacy worker doesn't implement
   { kind: 'prefix', value: '/api/admin/retention' },
   { kind: 'prefix', value: '/api/admin/departments' },
@@ -175,6 +283,12 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/system-health' },
   { kind: 'prefix', value: '/api/admin/users-activity-summary' },
   { kind: 'prefix', value: '/api/admin/realtime-stats' },
+  // AdminPage tiles added 2026-05-27 (stubbed in src/routes/admin.ts).
+  { kind: 'prefix', value: '/api/admin/api-stats' },
+  { kind: 'prefix', value: '/api/admin/user-activity-heatmap' },
+  { kind: 'prefix', value: '/api/admin/backup-status' },
+  { kind: 'prefix', value: '/api/admin/maintenance-mode' },
+  { kind: 'prefix', value: '/api/admin/notification-rules' },
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
@@ -184,18 +298,47 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/offline' },
   // AI namespace (all)
   { kind: 'prefix', value: '/api/ai/' },
-  // Skip tracer v1 status/stats stubs (NOT skiptracer-v2, which is legacy)
+  // Skip tracer v1 — /status, /stats, /dossiers, /dossiers/:id are real
+  // handlers in /src/routes/skiptracer.ts (replaced the PR #667 stubs).
+  // Legacy still owns POST /search (the Microbilt round-trip), so route
+  // only the read paths here and let /search fall through to legacy.
   { kind: 'prefix', value: '/api/skiptracer/status' },
   { kind: 'prefix', value: '/api/skiptracer/stats' },
-  // IPED status / download info / hash sets
+  { kind: 'prefix', value: '/api/skiptracer/dossiers' },
+  // IPED — real handlers in /src/routes/iped.ts: /status, /hash-sets[/:id],
+  // /downloads (read-only over forensic_hash_sets + iped_imports). The
+  // broad prefix is preserved — any other /api/iped/* path still hits
+  // env.API (and 404s there), matching prior behavior. The legacy worker
+  // never implemented /api/iped/* so falling through wouldn't help.
   { kind: 'prefix', value: '/api/iped/' },
-  // Personnel tabs that didn't exist in legacy
-  { kind: 'prefix', value: '/api/personnel/schedules' },
-  { kind: 'prefix', value: '/api/personnel/time' },
-  { kind: 'prefix', value: '/api/personnel/deployments' },
-  { kind: 'prefix', value: '/api/personnel/coverage-gaps' },
+  // Personnel sub-paths — GET ports of the four roster/time/deployment
+  // surfaces (PR replacing the PR #667 stubs). Scoped to GET so the
+  // existing POST/PUT/DELETE on /schedules, /time, /deployments still
+  // fall through to legacy until the rewrite has matching write
+  // handlers. /coverage-gaps is read-only by nature but listed under
+  // the same GET filter for consistency.
+  { kind: 'prefix', value: '/api/personnel/schedules', methods: ['GET'] },
+  { kind: 'prefix', value: '/api/personnel/time', methods: ['GET'] },
+  { kind: 'prefix', value: '/api/personnel/deployments', methods: ['GET'] },
+  { kind: 'prefix', value: '/api/personnel/coverage-gaps', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
+  // training* and duty-hours: handlers now live in src/routes/personnel.ts;
+  // legacy 404s / 500s on these. Route to env.API so the new handlers win.
+  { kind: 'prefix', value: '/api/personnel/training' },
+  { kind: 'prefix', value: '/api/personnel/duty-hours' },
+  // Howen — handlers in src/routes/howen.ts (status, devices[/:id], events).
+  { kind: 'prefix', value: '/api/howen/' },
+  // Admin shift-swaps alias — handler in src/routes/shiftPlans.ts.
+  { kind: 'prefix', value: '/api/admin/shift-swaps' },
+  // HR leave — handler in src/routes/hr.ts (balances + list + CRUD).
+  { kind: 'prefix', value: '/api/hr/leave' },
+  // Offender registry stats — handler in src/routes/offenderRegistry.ts.
+  { kind: 'prefix', value: '/api/offender-registry/stats' },
+  // Arrests — handlers in src/routes/arrests.ts (manual booking subset,
+  // /recent, /search, /export/csv, /:id/cross-links). Legacy doesn't
+  // implement /recent so the page 500'd on first paint.
+  { kind: 'prefix', value: '/api/arrests' },
   // PUT + DELETE /api/personnel/:id — rewrite implements edit handler
   // (manager-tier roles can edit anyone, self-edit allowed on a narrow
   // contact/prefs subset) and soft-delete (manager-only, can't delete
@@ -233,6 +376,15 @@ const API_ROUTES: RouteRule[] = [
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
 
+  // ── Audit subsystem ──
+  // Live D1 `audit_log` had only id+created_at columns (an unused stump)
+  // until the audit-rewrite PR added user_id/action/entity_type/entity_id/
+  // details/ip_address and pointed /src/ writes at the consolidated table.
+  // Legacy never had a working audit handler — its routes return empties
+  // against the stump schema. Routing the whole namespace at env.API is
+  // the only path that lets AuditLogPage render real data.
+  { kind: 'prefix', value: '/api/audit' },
+
   // ── Radio subsystem (PR #661) ──
   // The new worker is the only handler. Legacy has no /api/radio/*
   // routes at all, so requests to this prefix have no fallback —
@@ -240,6 +392,17 @@ const API_ROUTES: RouteRule[] = [
   // the radio console was effectively broken in production despite
   // /src/routes/radio.ts existing on main.
   { kind: 'prefix', value: '/api/radio' },
+
+  // ── HR module ──
+  // New Worker owns the four ported sub-paths (/leave, /disciplinary,
+  // /reviews, /benefits). Un-ported HR sub-paths under /api/hr/*
+  // (payroll, grievances, attendance, documents, pips, exit
+  // interviews, workers' comp, handbook acks, etc.) will 404 from
+  // the new Worker — that's intentional. The legacy handlers for
+  // those depended on tables the live D1 doesn't have, so they
+  // were silently returning empty data anyway. A 404 is a more
+  // honest signal until those tabs get real ports.
+  { kind: 'prefix', value: '/api/hr' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {

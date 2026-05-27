@@ -167,4 +167,32 @@ records.get('/search', async (c) => {
   }
 });
 
+// GET /api/records/reports/approval-queue — ReportsPage Pending Approvals tab.
+// Backed by the incidents table: any incident with status in submitted /
+// pending_approval / returned is in supervisor's queue. Joins officer +
+// supervisor name so the queue row renders without an extra lookup.
+records.get('/reports/approval-queue', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        i.id, i.incident_number, i.incident_type, i.priority, i.status,
+        i.location_address, i.created_at, i.updated_at, i.officer_id,
+        u.full_name AS officer_name,
+        u.badge_number AS officer_badge,
+        s.full_name AS supervisor_name
+      FROM incidents i
+      LEFT JOIN users u ON u.id = i.officer_id
+      LEFT JOIN users s ON s.id = i.supervisor_id
+      WHERE i.status IN ('submitted', 'pending_approval', 'returned')
+      ORDER BY i.created_at DESC
+      LIMIT 200
+    `);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /records/reports/approval-queue error:', err);
+    return c.json([], 200);
+  }
+});
+
 export default records;
