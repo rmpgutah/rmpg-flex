@@ -232,6 +232,14 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/reports/crime-analysis' },
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
+
+  // ── Radio subsystem (PR #661) ──
+  // The new worker is the only handler. Legacy has no /api/radio/*
+  // routes at all, so requests to this prefix have no fallback —
+  // they MUST route to the new worker or 404. Without this entry
+  // the radio console was effectively broken in production despite
+  // /src/routes/radio.ts existing on main.
+  { kind: 'prefix', value: '/api/radio' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {
