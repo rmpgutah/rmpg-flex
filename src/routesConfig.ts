@@ -114,6 +114,8 @@ import businessPhotos from './routes/business/photos';
 import howen from './routes/howen';
 // Offender registry (stats only)
 import offenderRegistry from './routes/offenderRegistry';
+// Skiptracer: read-only over skiptracer_dossiers + microbilt_searches
+import skiptracer from './routes/skiptracer';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the

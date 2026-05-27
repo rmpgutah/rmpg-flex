@@ -56,12 +56,9 @@ export const LIST_VIEW_COLUMNS = [
 ] as const;
 
 // Pre-built `c.col1, c.col2, ...` fragment used in every list query.
-// Exported as LIST_VIEW_SELECT_C so dispatch/callLinks.ts (and any
-// future joins) can stitch it into their own SELECTs without re-deriving
-// the column list. The "_C" suffix flags that the fragment is prefixed
-// with the SQL alias `c.` (i.e. references the calls_for_service table).
-export const LIST_VIEW_SELECT_C = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
-const LIST_VIEW_SELECT = LIST_VIEW_SELECT_C;
+// Exported so peer routers (callLinks, aggregates) can reuse it instead of
+// rebuilding the join string and risk drifting from this projection.
+export const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
 
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
 calls.get('/', async (c) => {

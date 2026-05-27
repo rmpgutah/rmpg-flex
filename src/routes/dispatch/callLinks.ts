@@ -13,7 +13,7 @@
 
 import { Hono } from 'hono';
 import type { Env } from '../../types';
-import { LIST_VIEW_SELECT_C } from './calls';
+import { LIST_VIEW_SELECT } from './calls';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { sendToUser, broadcastAll } from '../ws';
 
@@ -542,7 +542,7 @@ links.put('/calls/:id/property', async (c) => {
   await execute(db, `UPDATE calls_for_service SET ${sets.join(', ')} WHERE id = ?`, ...params);
   const updated = await queryFirst<Record<string, unknown>>(
     db,
-    `SELECT ${LIST_VIEW_SELECT_C}, p.name as property_name, p.address as property_address,
+    `SELECT ${LIST_VIEW_SELECT}, p.name as property_name, p.address as property_address,
             p.gate_code, p.alarm_code, p.emergency_contact, p.post_orders, p.hazard_notes
      FROM calls_for_service c
      LEFT JOIN properties p ON c.property_id = p.id
