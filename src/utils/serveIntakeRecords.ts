@@ -347,12 +347,21 @@ export async function commitIntake(db: D1Database, input: CommitInput): Promise<
   const recipientDob = get('recipient_dob');
   const agentFullName = get('registered_agent_name');
 
-  // Build location string. The intake address might be partial — fall
-  // back to the recipient_address alone if city/state/zip aren't there.
+  // Build location string. The intake address might be partial OR might
+  // already include city/state/zip inline (court packets often have the
+  // full address on one line). Detect overlap so we don't duplicate
+  // "Salt Lake City, UT 84102, Salt Lake City, UT 84102" — observed in
+  // property id=6 on 2026-05-27 before this fix landed.
   const addr = queueRow.recipient_address || '';
   const city = queueRow.recipient_city || '';
   const stateZip = [queueRow.recipient_state, queueRow.recipient_zip].filter(Boolean).join(' ');
-  const fullLocation = [addr, [city, stateZip].filter(Boolean).join(', ')].filter(Boolean).join(', ');
+  const addrLower = addr.toLowerCase();
+  const cityAlreadyInAddr = !!city && addrLower.includes(city.toLowerCase());
+  const stateAlreadyInAddr = !!queueRow.recipient_state &&
+    addrLower.includes(queueRow.recipient_state.toLowerCase());
+  const cityStateSuffix = cityAlreadyInAddr || stateAlreadyInAddr
+    ? '' : [city, stateZip].filter(Boolean).join(', ');
+  const fullLocation = [addr, cityStateSuffix].filter(Boolean).join(', ');
 
   // ── 1. Business row (corporate recipients only) ────────────
   let business: RecordRef = { id: 0, created: false };
