@@ -662,6 +662,88 @@ const STUBS: StubRule[] = [
     reason: 'legacy handler has `FROM calls` typo (should be calls_for_service); empty list is the typical case anyway',
   },
 
+  // ── 2026-05-27 batch 4 — second prod console pass ────────────────────
+  // After deploy #686, fresh console revealed more uncovered paths beyond
+  // the subagent's static scan (these are runtime-only surfaces — admin
+  // tiles, page-specific reports, dispatch GPS analytics).
+  //
+  // ── Reports comparison (ReportsPage period-over-period card) ────────
+  {
+    match: /^\/api\/reports\/comparison(\?.*)?$/,
+    methods: ['GET'],
+    body: { current: {}, previous: {}, deltas: {} },
+    reason: 'no comparison endpoint in src/routes/reports.ts; period card tolerates empty deltas',
+  },
+  // ── Arrests status (AdminPage tile, separate from /arrests/recent) ──
+  {
+    match: /^\/api\/arrests\/status(\?.*)?$/,
+    methods: ['GET'],
+    body: { total: 0, this_week: 0, pending_charges: 0, last_arrest_at: null },
+    reason: 'AdminPage Arrests tile — separate from /arrests/recent; new worker has /recent only',
+  },
+  // ── IPED download/info (admin tile, separate from /iped/status) ─────
+  {
+    match: /^\/api\/iped\/download\/info(\?.*)?$/,
+    methods: ['GET'],
+    body: { available: false, version: null, size_bytes: 0, last_updated: null },
+    reason: 'IPED download metadata endpoint; admin tile tolerates "not available"',
+  },
+  // ── Admin → Database utilities (POST integrity-check + vacuum) ──────
+  // These are admin-only db maintenance buttons. The legacy worker
+  // doesn't implement them and the new worker has no admin/database
+  // mount. POSTs are user-clicks (no background polling), so returning
+  // a structured "not implemented" body is honest: the button reports
+  // success status from the response shape but no actual operation runs.
+  // True implementation would require D1 metadata APIs which Workers
+  // doesn't expose. Leaving the buttons visible is intentional — admins
+  // can request these in writing if they need them.
+  {
+    match: /^\/api\/admin\/database\/integrity-check$/,
+    methods: ['POST'],
+    body: { status: 'not_implemented', message: 'D1 integrity check not exposed by Cloudflare Workers runtime' },
+    reason: 'no D1 admin API for integrity-check; honest "not implemented" body',
+  },
+  {
+    match: /^\/api\/admin\/database\/vacuum$/,
+    methods: ['POST'],
+    body: { status: 'not_implemented', message: 'D1 VACUUM is managed by Cloudflare, not exposed to Workers' },
+    reason: 'no user VACUUM on D1; honest "not implemented" body',
+  },
+  // ── Auth security login-history (ProfilePage Security tab) ──────────
+  // The proxy already routes /api/auth/security/login-history to env.API
+  // (API_ROUTES rule above), but the new worker has no handler for it,
+  // so it 404s. Stub empty array — the SessionsTab tolerates this. The
+  // route registry will need a real handler against the `login_attempts`
+  // table (which DOES exist on live D1) in a follow-up PR.
+  {
+    match: /^\/api\/auth\/security\/login-history(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 15 } },
+    reason: 'no handler in src/routes/auth.ts for /security/login-history; sessions tab tolerates empty',
+  },
+  // ── Skiptracer v2 (different mount from v1) ─────────────────────────
+  // The v1 stubs above cover /api/skiptracer/{status,stats}. v2 is a
+  // separate legacy mount at /api/skiptracer-v2/* that queries `people_index`,
+  // `dossiers` (singular, not skiptracer_dossiers), and `skip_tracer_searches_v`
+  // — none of which exist on live D1. Stub GETs only; POST /search stays
+  // on legacy because v2 search is the active third-party round-trip path.
+  {
+    match: /^\/api\/skiptracer-v2\/(status|stats)(\?.*)?$/,
+    methods: ['GET'],
+    body: { enabled: false, total_searches: 0, recent_dossiers: [] },
+    reason: 'v2 mount queries people_index/dossiers/skip_tracer_searches_v — none exist on live D1',
+  },
+  // ── Dispatch GPS zone-speed-stats (MapPage analytics) ───────────────
+  // Different path from /speed-zones (which was stubbed above). This one
+  // is the analytics aggregation — likely 500s because the underlying
+  // table reference is broken. Stub empty stats; MapPage tolerates this.
+  {
+    match: /^\/api\/dispatch\/gps\/zone-speed-stats(\?.*)?$/,
+    methods: ['GET'],
+    body: { zones: [], total_violations: 0, period_hours: 8 },
+    reason: 'no zone speed analytics handler; MapPage tolerates empty zones array',
+  },
+
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
