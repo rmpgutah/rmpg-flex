@@ -110,7 +110,7 @@ incidents.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
     const sets: string[] = []; const vals: unknown[] = [];
     for (const k of editable) if (k in body) { sets.push(`${k} = ?`); vals.push(body[k]); }
     if (sets.length === 0) return c.json(incident);
-    await execute(db, `UPDATE incidents SET ${sets.join(', ')}, updated_at = datetime('now', '-6 hours') WHERE id = ?`, ...vals, id);
+    await execute(db, `UPDATE incidents SET ${sets.join(', ')}, updated_at = datetime('now', '-7 hours') WHERE id = ?`, ...vals, id);
     return c.json(await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', id));
   } catch (err) {
     console.error('[incidents] update error', err);
@@ -149,7 +149,7 @@ incidents.put('/:id/submit', requireRole(...WRITE_ROLES), async (c) => {
       } catch { /* non-fatal */ }
     }
 
-    await execute(db, "UPDATE incidents SET status = 'submitted', updated_at = datetime('now', '-6 hours') WHERE id = ?", id);
+    await execute(db, "UPDATE incidents SET status = 'submitted', updated_at = datetime('now', '-7 hours') WHERE id = ?", id);
     const updated = await queryFirst<any>(db, 'SELECT * FROM incidents WHERE id = ?', id);
     return c.json({ ...updated, validation });
   } catch (err) {
@@ -170,7 +170,7 @@ incidents.put('/:id/approve', requireRole(...REVIEW_ROLES), async (c) => {
     if (!['submitted', 'under_review'].includes(incident.status) && user.role !== 'admin') {
       return c.json({ error: 'Can only approve submitted/under_review', code: 'INC_NOT_APPROVABLE' }, 400);
     }
-    await execute(db, "UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = datetime('now', '-6 hours'), updated_at = datetime('now', '-6 hours') WHERE id = ?", user.id, id);
+    await execute(db, "UPDATE incidents SET status = 'approved', supervisor_id = ?, approved_at = datetime('now', '-7 hours'), updated_at = datetime('now', '-7 hours') WHERE id = ?", user.id, id);
     return c.json(await queryFirst(db, 'SELECT * FROM incidents WHERE id = ?', id));
   } catch (err) {
     console.error('[incidents] approve error', err);
@@ -193,7 +193,7 @@ incidents.put('/:id/return', requireRole(...REVIEW_ROLES), async (c) => {
     const body = await c.req.json().catch(() => ({} as any));
     const reason = String(body.reason || '').trim();
     if (!reason) return c.json({ error: 'reason is required', code: 'INC_REASON_REQUIRED' }, 400);
-    await execute(db, "UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = datetime('now', '-6 hours') WHERE id = ?", user.id, id);
+    await execute(db, "UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = datetime('now', '-7 hours') WHERE id = ?", user.id, id);
     try {
       await execute(db, `
         INSERT INTO activity_log (user_id, action, entity_type, entity_id, details)

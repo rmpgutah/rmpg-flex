@@ -23,6 +23,8 @@ export interface InvoicePdfOptions {
   printTarget?: PrintTarget;
 }
 import { FORM_NUMBERS } from './pdfAssets';
+// Vite-bundled URL — see pdfAssets.ts for why we don't use `/rmpg-seal.png`.
+import sealUrl from '../assets/rmpg-seal.png?url';
 
 // ── Data interface ────────────────────────────────────────
 
@@ -415,7 +417,7 @@ export function generatePrintableInvoiceHtml(data: InvoicePdfData): string {
 </head>
 <body>
   <div class="header">
-    <img src="/rmpg-seal.png" alt="RMPG Seal" onerror="this.style.display='none'" />
+    <img src="${sealUrl}" alt="RMPG Seal" onerror="this.style.display='none'" />
     <div class="header-text">
       <h1>RMPG SECURITY SERVICES</h1>
       <p>Private Security</p>

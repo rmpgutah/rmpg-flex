@@ -60,7 +60,7 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
 import FloatingSaveBar from '../components/FloatingSaveBar';
-import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
@@ -348,20 +348,35 @@ export default function IncidentsPage() {
   useEffect(() => { isEditingRef.current = isEditing; }, [isEditing]);
   useEffect(() => { selectedIncidentRef.current = selectedIncident; }, [selectedIncident]);
 
-  // Auto-save unsaved narrative on component unmount (SPA navigation)
+  // Auto-save unsaved narrative on component unmount (SPA navigation).
+  // Uses raw fetch + keepalive (matching DispatchPage's unmount cleanup
+  // pattern) rather than apiFetch. apiFetch's wrapper logic — token
+  // refresh on 401 which can redirect to /login, AbortController timeout,
+  // offline-router detours — is appropriate for normal requests but
+  // wrong for a fire-and-forget save during teardown: token-refresh
+  // failures during unmount could trigger a /login redirect on an
+  // unrelated route change, and offline routing could swallow the save.
+  // The browser's `keepalive` flag guarantees the request commits even
+  // as the page unloads (subject to a 64KB body limit, fine for a
+  // narrative field).
   useEffect(() => {
     return () => {
       if (!isEditingRef.current || !selectedIncidentRef.current) return;
       const narrative = narrativeRef.current?.value;
       if (narrative == null) return;
-      // Use apiFetch for proper token refresh handling; keepalive ensures
-      // the request completes even during page navigation
-      apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ narrative }),
-        keepalive: true,
-      }).catch(() => { /* best-effort save */ });
+      try {
+        const token = localStorage.getItem('rmpg_token');
+        fetch(`/api/incidents/${selectedIncidentRef.current.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ narrative }),
+          keepalive: true,
+        });
+      } catch { /* best-effort save */ }
     };
   }, []);
 
@@ -403,12 +418,18 @@ export default function IncidentsPage() {
   const silentRefreshIncidents = useCallback(() => fetchIncidents({ silent: true }), [fetchIncidents]);
   useLiveSync('incidents', silentRefreshIncidents);
 
-  // Keep selectedIncident in sync after data refresh
+  // Keep selectedIncident in sync after live-sync refresh.
+  // MERGE the refreshed list-row into the existing selectedIncident
+  // instead of replacing it — the list query returns a thin shape
+  // (no linked_persons/vehicles/evidence/offenses/officers), which
+  // are populated by fetchIncidentDetail. A raw replace stripped those
+  // arrays back to undefined every refresh, blanking the detail tabs
+  // until the user re-selected the row.
   useEffect(() => {
     if (selectedIncident) {
       const updated = incidents.find((i) => i.id === selectedIncident.id);
       if (updated) {
-        setSelectedIncident(updated);
+        setSelectedIncident((prev) => prev ? { ...prev, ...updated } as any : updated);
       } else {
         setSelectedIncident(null);
       }
@@ -1224,8 +1245,12 @@ export default function IncidentsPage() {
           if (callDetail.caller_phone) pdfData.caller_phone = callDetail.caller_phone;
           // Build call notes from dispatch notes
           if (callDetail.notes?.length > 0) {
+            // Use safeDateTimeStr — raw `new Date(x).toLocaleString()` parses
+            // "YYYY-MM-DD HH:MM:SS" inconsistently (Chrome=local, others=UTC),
+            // and the DB strings are MST-stamped. safeDateTimeStr applies the
+            // correct Mountain-Time offset before formatting.
             pdfData.call_notes = callDetail.notes.map((n: any) =>
-              `[${n.timestamp ? new Date(n.timestamp).toLocaleString() : ''}] ${n.author || 'System'}: ${n.text || ''}`
+              `[${n.timestamp ? safeDateTimeStr(n.timestamp, '') : ''}] ${n.author || 'System'}: ${n.text || ''}`
             ).join('\n');
           }
           // Inherit lat/lng from call if incident doesn't have them
@@ -1823,8 +1848,8 @@ export default function IncidentsPage() {
                   {officer.badge_number && <span className="text-[10px] font-mono text-rmpg-400">#{officer.badge_number}</span>}
                   {officer.call_sign && <span className="text-[10px] text-gray-400">{officer.call_sign}</span>}
                   {officer.rank && <span className="text-[10px] text-rmpg-500">{officer.rank}</span>}
-                  {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {new Date(officer.arrived_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
-                  {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {new Date(officer.departed_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}</span>}
+                  {officer.arrived_at && <span className="text-[9px] text-green-400 ml-auto">Arr: {safeTimeStr(officer.arrived_at, '')}</span>}
+                  {officer.departed_at && <span className="text-[9px] text-rmpg-400">Dep: {safeTimeStr(officer.departed_at, '')}</span>}
                   {officer.action_taken && <span className="text-[9px] text-rmpg-400 truncate max-w-[120px]" title={officer.action_taken}>{officer.action_taken}</span>}
                   {(isAdmin || isGodMode) && (
                     <IconButton onClick={async () => {

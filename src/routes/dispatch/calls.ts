@@ -5,7 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
-import { sendToUser } from '../ws';
+import { sendToUser, broadcastAll } from '../ws';
 
 const calls = new Hono<Env>();
 
@@ -162,10 +162,12 @@ calls.post('/', async (c) => {
     
     // Explicit created_at override — the schema DEFAULT for this column
     // is datetime('now') / datetime('now','localtime'), both UTC on
-    // Workers. Pass an MDT-offset SQL literal so the timestamp matches
-    // wall-clock America/Denver for the dispatcher.
+    // Workers. We pin to MST (UTC-7) year-round (no DST) per the
+    // 2026-05-26 cutover; in summer this means the timestamp is 1 hour
+    // behind wall-clock, but the offset stays stable across the year so
+    // audit trails are unambiguous.
     cols.push('call_number', 'dispatcher_id', 'created_at', 'updated_at');
-    vals.push('?', '?', "datetime('now', '-6 hours')", "datetime('now', '-6 hours')");
+    vals.push('?', '?', "datetime('now', '-7 hours')", "datetime('now', '-7 hours')");
     bindParams.push(callNumber, userId);
 
     // Same whitelist applies on create as on edit. Use the
@@ -193,6 +195,24 @@ calls.post('/', async (c) => {
       const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
       const callId = Number(result.meta.last_row_id);
       const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
+
+      // Audit trail entry — dispatch's Audit tab reads activity_log by
+      // entity_type='call' + entity_id. Failure shouldn't block the create.
+      try {
+        await execute(
+          db,
+          `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+           VALUES (?, ?, ?, ?, ?, datetime('now', '-7 hours'))`,
+          userId, 'CREATE', 'call', callId, `Created call ${callNumber}`,
+        );
+      } catch (auditErr) {
+        console.warn('activity_log insert failed for call create:', auditErr);
+      }
+
+      // Broadcast to every connected dispatcher so rosters re-render
+      // without a manual refresh. Matches the legacy POST behavior.
+      broadcastAll('dispatch_update', { action: 'call_created', call });
+
       return c.json({ ...call, runCard: rcResult.card }, 201);
     } catch (sqlErr: any) {
       // Surface the real SQL error so the dispatcher (and we) can see
@@ -296,7 +316,7 @@ calls.get('/archive-bulk', async (c) => {
 calls.post('/archive-bulk', async (c) => {
   try {
     const db = getDb(c.env);
-    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now', '-6 hours') WHERE status IN ('cleared','closed','cancelled')");
+    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now', '-7 hours') WHERE status IN ('cleared','closed','cancelled')");
     return c.json({ message: 'Bulk archive completed' });
   } catch (err) {
     return c.json({ error: 'Bulk archive failed' }, 500);
@@ -390,18 +410,17 @@ const UPDATABLE_CALL_COLUMNS_BASE = new Set<string>([
   'damage_estimate', 'damage_description',
   // LE coordination
   'le_agency', 'le_case_number', 'le_notified', 'supervisor_notified',
-  // tactical flags
+  // tactical flags (base — first 7 added directly to calls_for_service;
+  // 10 more flags overflowed to _ext when base hit the D1 100-col cap)
   'injuries_reported', 'alcohol_involved', 'drugs_involved', 'domestic_violence',
   'mental_health_crisis', 'juvenile_involved', 'felony_in_progress',
-  'officer_safety_caution', 'k9_requested', 'ems_requested', 'fire_requested',
-  'hazmat', 'gang_related', 'evidence_collected', 'body_camera_active',
-  'photos_taken', 'trespass_issued', 'vehicle_pursuit', 'foot_pursuit',
+  'officer_safety_caution', 'k9_requested', 'ems_requested',
   // cross-linking
   'case_id', 'case_number', 'client_id', 'contract_id',
   // lifecycle
   'previous_status', 'status_changed_at', 'archived_at', 'received_at',
   'priority_score', 'response_time_seconds', 'onscene_duration_seconds',
-  'starting_mileage', 'ending_mileage', 'pinned', 'overdue_notified',
+  'starting_mileage', 'ending_mileage', 'overdue_notified',
 ]);
 
 const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
@@ -413,6 +432,11 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   // process service
   'process_service_type', 'process_served_to', 'process_served_address',
   'process_attempts', 'process_served_at', 'process_service_result',
+  // tactical flags overflowed here on 2026-05-26 when calls_for_service hit
+  // the 100-column D1 cap. New tactical flags should land here too.
+  'fire_requested', 'hazmat', 'gang_related', 'evidence_collected',
+  'body_camera_active', 'photos_taken', 'trespass_issued',
+  'vehicle_pursuit', 'foot_pursuit', 'pinned',
 ]);
 
 // PUT /dispatch/calls/:id - Update call
@@ -447,7 +471,7 @@ calls.put('/:id', async (c) => {
     }
 
     // updated_at lives on base; bump it on any change so callers see it.
-    baseUpdates.push("updated_at = datetime('now', '-6 hours')");
+    baseUpdates.push("updated_at = datetime('now', '-7 hours')");
     baseParams.push(id);
     await execute(db, `UPDATE calls_for_service SET ${baseUpdates.join(', ')} WHERE id = ?`, ...baseParams);
 
@@ -467,6 +491,36 @@ calls.put('/:id', async (c) => {
   } catch (err) {
     console.error('PUT /dispatch/calls/:id failed:', err);
     return c.json({ error: 'Failed to update call', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dispatch/calls/:id/audit-trail — chronological event log for this call.
+// Reads from activity_log filtered by entity_type='call'. The client renders
+// { created_at, action, details, user_name } per row in the Audit tab
+// (DispatchPage.tsx ~line 5280). Degrades to empty on error rather than 500
+// so the tab doesn't break if activity_log schema drifts.
+calls.get('/:id/audit-trail', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const rows = await query<{
+      id: number; action: string; details: string | null;
+      user_id: number | null; user_name: string | null;
+      created_at: string;
+    }>(
+      db,
+      `SELECT al.id, al.action, al.details, al.user_id,
+              u.full_name as user_name, al.created_at
+       FROM activity_log al
+       LEFT JOIN users u ON u.id = al.user_id
+       WHERE al.entity_type = 'call' AND al.entity_id = ?
+       ORDER BY al.created_at DESC LIMIT 500`,
+      id,
+    );
+    return c.json({ events: rows });
+  } catch (err) {
+    console.error('GET /dispatch/calls/:id/audit-trail failed:', err);
+    return c.json({ events: [] });
   }
 });
 
@@ -493,9 +547,9 @@ calls.post('/:id/status', async (c) => {
 
     const timeField = `${status}_at`;
     const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at'];
-    const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now', '-6 hours'))` : '';
+    const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now', '-7 hours'))` : '';
 
-    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now', '-6 hours')${timeSql} WHERE id = ?`, status, id);
+    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now', '-7 hours')${timeSql} WHERE id = ?`, status, id);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
@@ -508,7 +562,7 @@ calls.post('/:id/archive', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now', '-6 hours') WHERE id = ?", id);
+    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now', '-7 hours') WHERE id = ?", id);
     return c.json({ message: 'Archived' });
   } catch (err) { return c.json({ error: 'Archive failed' }, 500); }
 });
@@ -565,7 +619,7 @@ calls.post('/:id/assign-unit', async (c) => {
           WHERE active = 1
             AND latitude  BETWEEN ? AND ?
             AND longitude BETWEEN ? AND ?
-            AND (expires_at IS NULL OR expires_at >= datetime('now', '-6 hours'))`,
+            AND (expires_at IS NULL OR expires_at >= datetime('now', '-7 hours'))`,
           call.latitude - dLat, call.latitude + dLat,
           call.longitude - dLng, call.longitude + dLng);
         const within50m = alerts.filter((a: any) => {
@@ -622,7 +676,7 @@ calls.post('/:id/dispatch', async (c) => {
     const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
     for (const uid of unit_ids) assigned.add(uid);
 
-    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now', '-6 hours')) WHERE id = ?", JSON.stringify([...assigned]), id);
+    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now', '-7 hours')) WHERE id = ?", JSON.stringify([...assigned]), id);
 
     for (const uid of unit_ids) {
       await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);

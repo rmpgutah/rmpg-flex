@@ -24,7 +24,7 @@ gps.post('/', async (c) => {
     for (const pt of points) {
       const result = await execute(db,
         `INSERT INTO gps_breadcrumbs (unit_id, officer_id, latitude, longitude, accuracy, heading, speed, call_sign, recorded_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '-6 hours'))`,
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now', '-7 hours'))`,
         unit.id, userId, pt.latitude, pt.longitude, pt.accuracy ?? null, pt.heading ?? null, pt.speed ?? null, unit.call_sign
       );
       inserted.push(Number(result.meta.last_row_id));
@@ -46,7 +46,7 @@ gps.get('/current', async (c) => {
       INNER JOIN (
         SELECT unit_id, MAX(recorded_at) as max_time
         FROM gps_breadcrumbs
-        WHERE recorded_at > datetime('now', '-6 hours', '-5 minutes')
+        WHERE recorded_at > datetime('now', '-7 hours', '-5 minutes')
         GROUP BY unit_id
       ) latest ON g.unit_id = latest.unit_id AND g.recorded_at = latest.max_time
     `);

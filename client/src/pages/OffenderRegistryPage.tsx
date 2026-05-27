@@ -23,6 +23,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { safeDateTimeStr } from '../utils/dateUtils';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -577,7 +578,7 @@ export default function OffenderRegistryPage() {
                   ['Effective Date', selected.effective_date ? new Date(selected.effective_date).toLocaleDateString() : '—'],
                   ['Expiration Date', selected.expiration_date ? new Date(selected.expiration_date).toLocaleDateString() : 'No expiration'],
                   ['Restriction Radius', selected.restriction_radius_ft ? `${selected.restriction_radius_ft} ft` : '—'],
-                  ['Created', selected.created_at ? new Date(selected.created_at).toLocaleString() : '—'],
+                  ['Created', safeDateTimeStr(selected.created_at)],
                 ].map(([label, value]) => (
                   <div key={label as string}>
                     <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>

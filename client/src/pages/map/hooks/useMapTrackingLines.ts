@@ -74,15 +74,21 @@ export function useMapTrackingLines({ map, mapLoaded, units, calls }: UseMapTrac
       },
     });
 
-    map.on('click', sourceId, (e) => {
+    // Capture the click handler in a local so cleanup can `map.off` it with
+    // the same reference. Without this, the effect re-runs on every
+    // units/calls change and each run stacks another listener that fires
+    // for every click on the tracking-lines layer.
+    const onLineClick = (e: mapboxgl.MapMouseEvent & { features?: mapboxgl.MapboxGeoJSONFeature[] }) => {
       const feature = e.features?.[0];
       if (!feature || !feature.properties) return;
       const p = feature.properties;
       const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #222222"><div style="font-weight:bold;color:${p.color}">${p.call_sign} \u2192 ${p.call_number}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${p.status}</div></div>`;
       if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
-    });
+    };
+    map.on('click', sourceId, onLineClick);
 
     return () => {
+      map.off('click', sourceId, onLineClick);
       if (map.getLayer(sourceId)) map.removeLayer(sourceId);
       if (map.getSource(sourceId)) map.removeSource(sourceId);
     };

@@ -7,6 +7,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from './PanelTitleBar';
 import StatusBadge from './StatusBadge';
+import { safeDateTimeStr } from '../utils/dateUtils';
 import {
   FileText, Printer, Radio, AlertTriangle, StickyNote,
   MapPin, BarChart3, Plus, Clock, Car,
@@ -218,7 +219,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-brand-400 font-bold uppercase">{b.type}</span>
                     <StatusBadge status={b.priority} type="priority" size="sm" />
-                    <span className="text-rmpg-400 ml-auto">{new Date(b.issued_at).toLocaleString()}</span>
+                    <span className="text-rmpg-400 ml-auto">{safeDateTimeStr(b.issued_at)}</span>
                   </div>
                   <p className="text-rmpg-200">{b.description}</p>
                 </div>
@@ -238,7 +239,7 @@ export default function ShiftHandoffReport({ officerId }: ShiftHandoffProps) {
                 <span className="bg-brand-900/40 text-brand-400 px-1.5 py-0.5 rounded-[2px] text-[10px] uppercase font-bold">
                   {n.category}
                 </span>
-                <span className="ml-auto">{new Date(n.created_at).toLocaleString()}</span>
+                <span className="ml-auto">{safeDateTimeStr(n.created_at)}</span>
               </div>
               <p className="text-rmpg-200">{n.content}</p>
             </div>

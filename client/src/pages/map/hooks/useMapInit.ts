@@ -181,14 +181,23 @@ export function useMapInit(mapStyle: MapStyleId): UseMapInitResult {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapRetry, mapStyle]);
 
+  // Track which MapStyleId was last applied to this map. `map.getStyle().sprite`
+  // returns the resolved CDN URL (e.g. `https://api.mapbox.com/styles/v1/...
+  // /sprite?access_token=...`), which never equals the input `mapbox://styles/...`
+  // URL — so the previous comparison was always truthy and `setStyle()` ran on
+  // every effect tick. setStyle is one of the most expensive map operations
+  // (full reload of tiles, sources, layers, sprite atlas), so we now compare
+  // against the MapStyleId we actually applied.
+  const lastAppliedStyleRef = useRef<MapStyleId>(mapStyle);
+
   useEffect(() => {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
+    if (lastAppliedStyleRef.current === mapStyle) return;
 
     const styleUrl = STYLE_MAP[mapStyle] || STYLE_MAP.dark;
-    if (map.getStyle().sprite !== styleUrl) {
-      map.setStyle(styleUrl);
-    }
+    map.setStyle(styleUrl);
+    lastAppliedStyleRef.current = mapStyle;
   }, [mapStyle, mapLoaded]);
 
   return {

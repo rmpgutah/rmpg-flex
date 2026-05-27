@@ -73,7 +73,7 @@ import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerato
 import { escapeHtml } from '../../utils/sanitize';
 import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
-import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
+import { localToday, dateToLocalYMD, safeDateTimeStr } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
@@ -1739,9 +1739,157 @@ export default function MapPage() {
   // GPS Breadcrumb Trails (enhanced: color modes, arrows, road names, playback)
   // ============================================================
 
-  const breadcrumbMarkersRef = useRef<any[]>([]);
   const breadcrumbArrowsRef = useRef<any[]>([]);
   const breadcrumbInfoRef = useRef<mapboxgl.Popup | null>(null);
+  // Holds the latest fetched trails so the (singly-registered) dot click
+  // handler can resolve a clicked feature back to its full point data
+  // without closing over the loop iteration values it was created in.
+  const breadcrumbTrailsRef = useRef<Array<{
+    unit_id: number; call_sign: string; officer_name: string; badge_number: string;
+    points: Array<{
+      lat: number; lng: number; accuracy: number | null; heading: number | null;
+      speed: number | null; status: string; call_number: string | null;
+      call_type: string | null; time: string;
+      road_name: string | null; intersection: string | null;
+    }>;
+  }>>([]);
+  // Layer / source IDs for the dots GeoJSON layer. Kept here as constants
+  // so the click-handler effect and fetchTrails agree on naming.
+  const DOTS_SOURCE_ID = 'rmpg-breadcrumb-dots';
+  const DOTS_LAYER_ID = 'rmpg-breadcrumb-dots';
+
+  // Single-bind dot click handler. Resolves the clicked circle feature
+  // back to its trail+point via breadcrumbTrailsRef, then renders the
+  // detail popup. Replaces N×M per-dot DOM listeners that were being
+  // re-added every 15s refresh.
+  useEffect(() => {
+    const map = mapInstanceRef.current;
+    if (!map || !mapLoaded) return;
+
+    if (!breadcrumbInfoRef.current) {
+      breadcrumbInfoRef.current = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
+    }
+
+    const formatSpeedMphLocal = (mps: number | null) => mps == null ? '—' : `${(mps * 2.237).toFixed(0)} mph`;
+    const STATUS_LABELS_LOCAL: Record<string, string> = {
+      available: 'AVAILABLE', dispatched: 'DISPATCHED', enroute: 'ENROUTE',
+      onscene: 'ON SCENE', busy: 'BUSY', off_duty: 'OFF DUTY',
+    };
+
+    const onDotClick = (e: mapboxgl.MapMouseEvent) => {
+      const features = map.queryRenderedFeatures(e.point, { layers: [DOTS_LAYER_ID] });
+      if (!features.length) return;
+      const props = features[0].properties as { trailIdx?: number; ptIdx?: number; unitColor?: string } | null;
+      if (!props || props.trailIdx == null || props.ptIdx == null) return;
+      const trail = breadcrumbTrailsRef.current[props.trailIdx];
+      const pt = trail?.points[props.ptIdx];
+      if (!trail || !pt) return;
+
+      const ptIdx = props.ptIdx;
+      const unitColor = props.unitColor || '#22c55e';
+      const time = safeDateTimeStr(pt.time, '');
+      const locationRow = pt.road_name
+        ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
+        : '';
+
+      // Compute acceleration and distance from previous point
+      let accelHtml = '';
+      let distHtml = '';
+      if (ptIdx > 0) {
+        const prev = trail.points[ptIdx - 1];
+        const dtSec = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
+        // Distance (Haversine approx)
+        const dLat = (pt.lat - prev.lat) * Math.PI / 180;
+        const dLng = (pt.lng - prev.lng) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.lat * Math.PI / 180) * Math.cos(pt.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
+        const distM = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        distHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Distance</td><td style="color:#e0e0e0">${Math.round(distM)}m from last ping (${dtSec.toFixed(1)}s)</td></tr>`;
+        // Acceleration
+        if (dtSec > 0 && pt.speed != null && prev.speed != null) {
+          const accelVal = (pt.speed - prev.speed) / dtSec;
+          const accelColor = accelToColor(accelVal);
+          const arrow = accelVal >= 0 ? '↑' : '↓';
+          const sign = accelVal >= 0 ? '+' : '';
+          accelHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accel</td><td style="color:${accelColor};font-weight:bold">${arrow} ${sign}${accelVal.toFixed(1)} m/s²</td></tr>`;
+        }
+      }
+
+      // GPS quality badge
+      const acc = pt.accuracy;
+      let gpsLabel = 'N/A'; let gpsColor = '#666666';
+      if (acc != null) {
+        if (acc < 10) { gpsLabel = 'GPS'; gpsColor = '#22c55e'; }
+        else if (acc < 30) { gpsLabel = 'GOOD'; gpsColor = '#84cc16'; }
+        else if (acc < 100) { gpsLabel = 'FAIR'; gpsColor = '#eab308'; }
+        else { gpsLabel = 'POOR'; gpsColor = '#ef4444'; }
+      }
+      const gpsRow = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">GPS</td><td><span style="font-size:9px;font-weight:bold;color:${gpsColor};padding:0 4px;border:1px solid ${gpsColor}40;border-radius:2px">${gpsLabel}</span> ${acc != null ? `±${Math.round(acc)}m` : ''}</td></tr>`;
+
+      // Heading compass
+      const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+      const headingDir = pt.heading != null ? dirs[Math.round(pt.heading / 45) % 8] : '';
+      const headingCompass = pt.heading != null
+        ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0"><span style="display:inline-block;transform:rotate(${Math.round(pt.heading)}deg);font-size:13px">↑</span> ${headingDir} (${Math.round(pt.heading)}°)</td></tr>`
+        : `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">—</td></tr>`;
+
+      // Mini speed sparkline SVG (surrounding ~20 points)
+      const sparkStart = Math.max(0, ptIdx - 10);
+      const sparkEnd = Math.min(trail.points.length, ptIdx + 10);
+      const sparkPoints = trail.points.slice(sparkStart, sparkEnd);
+      let sparkSvg = '';
+      if (sparkPoints.length > 2) {
+        const maxSpd = Math.max(...sparkPoints.map(p => (p.speed ?? 0) * 2.237), 10);
+        const svgW = 180; const svgH = 36;
+        const coords = sparkPoints.map((p, i) => {
+          const x = (i / (sparkPoints.length - 1)) * svgW;
+          const y = svgH - ((p.speed ?? 0) * 2.237 / maxSpd) * (svgH - 4) - 2;
+          return `${x.toFixed(1)},${y.toFixed(1)}`;
+        });
+        const highlightIdx = ptIdx - sparkStart;
+        const hx = sparkPoints.length > 1 ? (highlightIdx / (sparkPoints.length - 1)) * svgW : svgW / 2;
+        const hy = svgH - (((sparkPoints[highlightIdx]?.speed ?? 0) * 2.237) / maxSpd) * (svgH - 4) - 2;
+        sparkSvg = `<svg width="${svgW}" height="${svgH}" style="display:block;margin:4px 0">` +
+          `<polyline points="${coords.join(' ')}" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>` +
+          `<circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="3" fill="#fbbf24" stroke="#fff" stroke-width="1"/>` +
+          `</svg>`;
+      }
+
+      const html = `
+        <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:240px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
+          <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${unitColor}">
+            ${escapeHtml(trail.call_sign)} — ${escapeHtml(trail.officer_name || 'Unknown')}
+          </div>
+          <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trail.badge_number || '')}</div>
+          ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #282828">${escapeHtml(pt.road_name)}</div>` : ''}
+          <div style="font-size:18px;font-weight:900;color:${speedToColor(pt.speed)};margin-bottom:4px">${formatSpeedMphLocal(pt.speed)}</div>
+          ${sparkSvg}
+          <table style="width:100%;font-size:11px;border-collapse:collapse">
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:${statusToColor(pt.status)}">${STATUS_LABELS_LOCAL[pt.status] || pt.status}</td></tr>
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:${speedToColor(pt.speed)};font-weight:bold">${formatSpeedMphLocal(pt.speed)}</td></tr>
+            ${accelHtml}
+            ${headingCompass}
+            ${locationRow}
+            ${distHtml}
+            ${gpsRow}
+            <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
+            ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} — ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
+          </table>
+        </div>
+      `;
+      breadcrumbInfoRef.current?.setHTML(html);
+      if (isFinite(pt.lng) && isFinite(pt.lat)) {
+        breadcrumbInfoRef.current?.setLngLat([pt.lng, pt.lat]);
+        breadcrumbInfoRef.current?.addTo(map);
+      }
+    };
+
+    map.on('click', DOTS_LAYER_ID, onDotClick);
+    return () => {
+      map.off('click', DOTS_LAYER_ID, onDotClick);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mapLoaded]);
 
   useEffect(() => {
     const map = mapInstanceRef.current;
@@ -1750,12 +1898,13 @@ export default function MapPage() {
     // Clear existing breadcrumb visuals
     if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
     if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
-    breadcrumbMarkersRef.current.forEach((m) => m.remove());
-    breadcrumbMarkersRef.current = [];
+    if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
+    if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
     breadcrumbArrowsRef.current.forEach((a) => a.remove());
     breadcrumbArrowsRef.current = [];
     speedAlertMarkersRef.current.forEach((m) => m.remove());
     speedAlertMarkersRef.current = [];
+    breadcrumbTrailsRef.current = [];
 
     if (!showBreadcrumbs) { setPlaybackTrails([]); return; }
 
@@ -1766,16 +1915,9 @@ export default function MapPage() {
       breadcrumbInfoRef.current = new mapboxgl.Popup({ closeButton: false, closeOnClick: false });
     }
 
-    const formatSpeedMph = (mps: number | null) => mps == null ? '—' : `${(mps * 2.237).toFixed(0)} mph`;
-    const formatHeadingDir = (deg: number | null) => {
-      if (deg == null) return '—';
-      const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-      return dirs[Math.round(deg / 45) % 8] + ` (${Math.round(deg)}°)`;
-    };
-    const STATUS_LABELS: Record<string, string> = {
-      available: 'AVAILABLE', dispatched: 'DISPATCHED', enroute: 'ENROUTE',
-      onscene: 'ON SCENE', busy: 'BUSY', off_duty: 'OFF DUTY',
-    };
+    // formatSpeedMph / STATUS_LABELS / formatHeadingDir used to live here for
+    // the per-dot popup HTML. The popup now lives in the singly-bound click
+    // handler above, which owns its own local copies of those helpers.
 
     interface TrailPoint {
       lat: number; lng: number; accuracy: number | null; heading: number | null;
@@ -1793,18 +1935,25 @@ export default function MapPage() {
     const fetchTrails = async () => {
       breadcrumbArrowsRef.current.forEach((a) => a.remove());
       breadcrumbArrowsRef.current = [];
-      breadcrumbMarkersRef.current.forEach((m) => m.remove());
-      breadcrumbMarkersRef.current = [];
       speedAlertMarkersRef.current.forEach((m) => m.remove());
       speedAlertMarkersRef.current = [];
 
       try {
         const rawTrails = await apiFetch<Trail[]>(`/dispatch/gps/trails?hours=${breadcrumbHours}`);
         const trails = (Array.isArray(rawTrails) ? rawTrails : []).filter(t => Array.isArray(t?.points));
-        if (trails.length === 0) return;
+        if (trails.length === 0) {
+          // Clear the dots source if no trails so leftover points from
+          // previous refresh don't linger after a unit goes off-duty.
+          breadcrumbTrailsRef.current = [];
+          const existingDotSrc = map.getSource(DOTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+          if (existingDotSrc) existingDotSrc.setData({ type: 'FeatureCollection', features: [] });
+          return;
+        }
         setPlaybackTrails(trails);
+        breadcrumbTrailsRef.current = trails;
 
         const lineFeatures: any[] = [];
+        const dotFeatures: any[] = [];
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
@@ -1868,6 +2017,11 @@ export default function MapPage() {
             breadcrumbArrowsRef.current.push(arrow);
           });
 
+          // Build dot features for the GeoJSON circle layer. Per-point click
+          // popups are handled by the singly-bound handler above (which reads
+          // breadcrumbTrailsRef + the feature's trailIdx/ptIdx). This replaces
+          // ~150 LOC of per-dot DOM marker + per-dot addEventListener that
+          // were being rebuilt on every 15s refresh.
           trail.points.forEach((pt, ptIdx) => {
             const isLast = ptIdx === trail.points.length - 1;
             let dotColor: string;
@@ -1884,110 +2038,11 @@ export default function MapPage() {
             } else dotColor = unitColor;
 
             if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
-            const dotEl = document.createElement('div');
-            const dotSize = isLast ? 10 : 8;
-            dotEl.style.cssText = `width:${dotSize}px;height:${dotSize}px;background:${dotColor};border:${isLast ? 2 : 0.5}px solid ${isLast ? '#fbbf24' : '#fff'};border-radius:50%;opacity:${isLast ? 1 : 0.6};cursor:pointer;box-shadow:${isLast ? '0 0 6px ' + dotColor : 'none'};`;
-            const dot = new mapboxgl.Marker({ element: dotEl }).setLngLat([pt.lng, pt.lat]).addTo(map);
-
-            dot.getElement().addEventListener('click', () => {
-              const time = new Date(pt.time).toLocaleString();
-              const locationRow = pt.road_name
-                ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
-                : '';
-
-              // Compute acceleration and distance from previous point
-              let accelHtml = '';
-              let distHtml = '';
-              if (ptIdx > 0) {
-                const prev = trail.points[ptIdx - 1];
-                const dtSec = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
-                // Distance (Haversine approx)
-                const dLat = (pt.lat - prev.lat) * Math.PI / 180;
-                const dLng = (pt.lng - prev.lng) * Math.PI / 180;
-                const a = Math.sin(dLat / 2) ** 2 + Math.cos(prev.lat * Math.PI / 180) * Math.cos(pt.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
-                const distM = 6371000 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-                distHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Distance</td><td style="color:#e0e0e0">${Math.round(distM)}m from last ping (${dtSec.toFixed(1)}s)</td></tr>`;
-                // Acceleration
-                if (dtSec > 0 && pt.speed != null && prev.speed != null) {
-                  const accelVal = (pt.speed - prev.speed) / dtSec;
-                  const accelColor = accelToColor(accelVal);
-                  const arrow = accelVal >= 0 ? '\u2191' : '\u2193';
-                  const sign = accelVal >= 0 ? '+' : '';
-                  accelHtml = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Accel</td><td style="color:${accelColor};font-weight:bold">${arrow} ${sign}${accelVal.toFixed(1)} m/s\u00B2</td></tr>`;
-                }
-              }
-
-              // GPS quality badge
-              const acc = pt.accuracy;
-              let gpsLabel = 'N/A'; let gpsColor = '#666666';
-              if (acc != null) {
-                if (acc < 10) { gpsLabel = 'GPS'; gpsColor = '#22c55e'; }
-                else if (acc < 30) { gpsLabel = 'GOOD'; gpsColor = '#84cc16'; }
-                else if (acc < 100) { gpsLabel = 'FAIR'; gpsColor = '#eab308'; }
-                else { gpsLabel = 'POOR'; gpsColor = '#ef4444'; }
-              }
-              const gpsRow = `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">GPS</td><td><span style="font-size:9px;font-weight:bold;color:${gpsColor};padding:0 4px;border:1px solid ${gpsColor}40;border-radius:2px">${gpsLabel}</span> ${acc != null ? `\u00B1${Math.round(acc)}m` : ''}</td></tr>`;
-
-              // Heading compass
-              const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
-              const headingDir = pt.heading != null ? dirs[Math.round(pt.heading / 45) % 8] : '';
-              const headingCompass = pt.heading != null
-                ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0"><span style="display:inline-block;transform:rotate(${Math.round(pt.heading)}deg);font-size:13px">\u2191</span> ${headingDir} (${Math.round(pt.heading)}\u00B0)</td></tr>`
-                : `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Heading</td><td style="color:#e0e0e0">\u2014</td></tr>`;
-
-              // Mini speed sparkline SVG (surrounding ~20 points)
-              const sparkStart = Math.max(0, ptIdx - 10);
-              const sparkEnd = Math.min(trail.points.length, ptIdx + 10);
-              const sparkPoints = trail.points.slice(sparkStart, sparkEnd);
-              let sparkSvg = '';
-              if (sparkPoints.length > 2) {
-                const maxSpd = Math.max(...sparkPoints.map(p => (p.speed ?? 0) * 2.237), 10);
-                const svgW = 180; const svgH = 36;
-                const coords = sparkPoints.map((p, i) => {
-                  const x = (i / (sparkPoints.length - 1)) * svgW;
-                  const y = svgH - ((p.speed ?? 0) * 2.237 / maxSpd) * (svgH - 4) - 2;
-                  return `${x.toFixed(1)},${y.toFixed(1)}`;
-                });
-                const highlightIdx = ptIdx - sparkStart;
-                const hx = sparkPoints.length > 1 ? (highlightIdx / (sparkPoints.length - 1)) * svgW : svgW / 2;
-                const hy = svgH - (((sparkPoints[highlightIdx]?.speed ?? 0) * 2.237) / maxSpd) * (svgH - 4) - 2;
-                sparkSvg = `<svg width="${svgW}" height="${svgH}" style="display:block;margin:4px 0">` +
-                  `<polyline points="${coords.join(' ')}" fill="none" stroke="#4fc3f7" stroke-width="1.5" opacity="0.7"/>` +
-                  `<circle cx="${hx.toFixed(1)}" cy="${hy.toFixed(1)}" r="3" fill="#fbbf24" stroke="#fff" stroke-width="1"/>` +
-                  `</svg>`;
-              }
-
-              const html = `
-                <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:240px;line-height:1.6;background:#0d0d0d;padding:10px 12px;border-radius:6px;border:1px solid #282828">
-                  <div style="font-weight:bold;font-size:13px;margin-bottom:4px;color:${unitColor}">
-                    ${escapeHtml(trail.call_sign)} \u2014 ${escapeHtml(trail.officer_name || 'Unknown')}
-                  </div>
-                  <div style="color:#8899aa;font-size:10px;margin-bottom:4px">${escapeHtml(trail.badge_number || '')}</div>
-                  ${pt.road_name ? `<div style="color:#fbbf24;font-weight:bold;font-size:12px;margin-bottom:4px;padding:2px 0;border-bottom:1px solid #282828">${escapeHtml(pt.road_name)}</div>` : ''}
-                  <div style="font-size:18px;font-weight:900;color:${speedToColor(pt.speed)};margin-bottom:4px">${formatSpeedMph(pt.speed)}</div>
-                  ${sparkSvg}
-                  <table style="width:100%;font-size:11px;border-collapse:collapse">
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Time</td><td style="font-weight:bold;color:#fff">${time}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Status</td><td style="font-weight:bold;color:${statusToColor(pt.status)}">${STATUS_LABELS[pt.status] || pt.status}</td></tr>
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Speed</td><td style="color:${speedToColor(pt.speed)};font-weight:bold">${formatSpeedMph(pt.speed)}</td></tr>
-                    ${accelHtml}
-                    ${headingCompass}
-                    ${locationRow}
-                    ${distHtml}
-                    ${gpsRow}
-                    <tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Position</td><td style="font-size:10px;color:#e0e0e0">${pt.lat.toFixed(6)}, ${pt.lng.toFixed(6)}</td></tr>
-                    ${pt.call_number ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Call</td><td style="font-weight:bold;color:#4fc3f7">${escapeHtml(pt.call_number)} \u2014 ${escapeHtml(pt.call_type || '')}</td></tr>` : ''}
-                  </table>
-                </div>
-              `;
-              breadcrumbInfoRef.current?.setHTML(html);
-              if (isFinite(pt.lng) && isFinite(pt.lat)) {
-                breadcrumbInfoRef.current?.setLngLat([pt.lng, pt.lat]);
-                breadcrumbInfoRef.current?.addTo(map);
-              }
+            dotFeatures.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [pt.lng, pt.lat] },
+              properties: { color: dotColor, isLast, trailIdx: idx, ptIdx, unitColor },
             });
-
-            breadcrumbMarkersRef.current.push(dot);
           });
         });
 
@@ -2007,6 +2062,31 @@ export default function MapPage() {
               'line-color': ['get', 'strokeColor'],
               'line-opacity': ['get', 'strokeOpacity'],
               'line-width': 3,
+            },
+          });
+        }
+
+        // Create or update breadcrumb dots source + circle layer.
+        // setData() is much cheaper than recreating the source — most refreshes
+        // hit the update branch. The first refresh creates the source+layer.
+        const dotsData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: dotFeatures };
+        const existingDotSrc = map.getSource(DOTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        if (existingDotSrc) {
+          existingDotSrc.setData(dotsData);
+        } else {
+          map.addSource(DOTS_SOURCE_ID, { type: 'geojson', data: dotsData });
+          map.addLayer({
+            id: DOTS_LAYER_ID,
+            type: 'circle',
+            source: DOTS_SOURCE_ID,
+            paint: {
+              'circle-color': ['get', 'color'],
+              // Last point of each trail renders slightly larger / brighter
+              // outline (preserves the visual emphasis the old DOM marker had).
+              'circle-radius': ['case', ['get', 'isLast'], 5, 4],
+              'circle-stroke-color': ['case', ['get', 'isLast'], '#fbbf24', '#fff'],
+              'circle-stroke-width': ['case', ['get', 'isLast'], 2, 0.5],
+              'circle-opacity': ['case', ['get', 'isLast'], 1, 0.6],
             },
           });
         }
@@ -2039,8 +2119,9 @@ export default function MapPage() {
       clearTimeout(retryTimeout);
       if (map.getLayer('rmpg-breadcrumb-lines')) map.removeLayer('rmpg-breadcrumb-lines');
       if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
-      breadcrumbMarkersRef.current.forEach((m) => m.remove());
-      breadcrumbMarkersRef.current = [];
+      if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
+      if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
+      breadcrumbTrailsRef.current = [];
       breadcrumbArrowsRef.current.forEach((a) => a.remove());
       breadcrumbArrowsRef.current = [];
       speedAlertMarkersRef.current.forEach((m) => m.remove());

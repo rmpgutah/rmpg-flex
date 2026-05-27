@@ -26,6 +26,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
+import { safeDateTimeStr } from '../utils/dateUtils';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
@@ -1076,7 +1077,7 @@ export default function CaseManagementPage() {
                         .map((event, idx) => (
                           <div key={idx} className="relative">
                             <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full border-2 border-surface-base" style={{ background: event.color }} />
-                            <div className="text-[9px] font-mono text-rmpg-500">{event.date ? new Date(event.date).toLocaleString() : '—'}</div>
+                            <div className="text-[9px] font-mono text-rmpg-500">{safeDateTimeStr(event.date)}</div>
                             <div className="text-[10px] text-rmpg-300">
                               <span className="font-bold text-white mr-1" style={{ color: event.color }}>[{event.type}]</span>
                               {event.label}
@@ -1113,7 +1114,7 @@ export default function CaseManagementPage() {
                       <div className="flex items-center justify-between mb-1">
                         <span className="text-[10px] font-bold text-white">{note.author_name || 'Unknown'}</span>
                         <span className="text-[9px] font-mono text-rmpg-500">
-                          {note.created_at ? new Date(note.created_at).toLocaleString() : ''}
+                          {safeDateTimeStr(note.created_at, '')}
                         </span>
                       </div>
                       <div className="text-xs text-rmpg-300 whitespace-pre-wrap">{note.content}</div>

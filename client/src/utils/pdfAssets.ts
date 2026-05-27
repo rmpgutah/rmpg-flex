@@ -3,6 +3,14 @@
 // Runtime image loader for agency seal/logo + form identifiers
 // ============================================================
 
+// rmpg-seal.png is imported via Vite (?url) so it lands in the hashed
+// /assets/ path that the deployed Worker reliably serves. The previous
+// `/rmpg-seal.png` at the bundle root 404'd on live (other root-level
+// PNGs work — this specific file was missing from the served set, root
+// cause not identified). The Vite path is asset-fingerprinted, so
+// cache invalidation is automatic on rebuild.
+import sealUrl from '../assets/rmpg-seal.png?url';
+
 // ── Module-level image cache ────────────────────────────────
 
 let sealBase64: string | null = null;
@@ -16,7 +24,7 @@ let logoDarkBase64: string | null = null;
 export async function loadSealBase64(): Promise<string | null> {
   if (sealBase64) return sealBase64;
   try {
-    const res = await fetch('/rmpg-seal.png');
+    const res = await fetch(sealUrl);
     if (!res.ok) return null;
     const blob = await res.blob();
     const bmp = await createImageBitmap(blob);
