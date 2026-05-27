@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from 'react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 
 import RichTextArea from '../../components/RichTextArea';
 interface Rule {
@@ -21,7 +22,7 @@ export default function AdminEmailRulesTab() {
 
   const load = () =>
     apiFetch<Rule[]>('/api/email/rules')
-      .then(setRules)
+      .then((data) => setRules(asArray<Rule>(data)))
       .catch(err => console.error('Failed to load rules:', err));
 
   useEffect(() => {
