@@ -7,6 +7,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { GraduationCap, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { toDisplayLabel } from '../../utils/formatters';
 import { useToast } from '../../components/ToastProvider';
@@ -50,8 +51,11 @@ export default function AdminTrainingTab({ LoadingSpinner, error, setError }: Pr
         apiFetch<any[]>('/admin/users'),
       ]);
 
-      const activeUsers = (users || []).filter((u: any) => u.status === 'active' && ['officer', 'supervisor', 'admin', 'manager'].includes(u.role));
-      const trainingRecords = records || [];
+      // asArray() — endpoints may return {} from a stub instead of [].
+      // Without this guard, `users.filter` crashed the entire AdminPage
+      // with "u.map is not a function" (the minified `u` was `users`).
+      const activeUsers = asArray<any>(users).filter((u: any) => u.status === 'active' && ['officer', 'supervisor', 'admin', 'manager'].includes(u.role));
+      const trainingRecords = asArray<any>(records);
 
       // Group records by user
       const userRecords = new Map<number, any[]>();

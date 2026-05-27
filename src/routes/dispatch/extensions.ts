@@ -712,7 +712,7 @@ closestUnit.get('/:id/closest-unit', requireRole(...WRITE_ROLES), async (c) => {
 // Ported from legacy/server-vps/src/routes/dispatch/callActions.ts:1734.
 // Finds nearest AVAILABLE unit by haversine, mutates: appends to
 // call.assigned_unit_ids JSON array, flips call status pending→dispatched,
-// sets unit status=dispatched, logs to activity_log. No D1 transactions
+// sets unit status=dispatched, logs to audit_log. No D1 transactions
 // (D1 doesn't support multi-statement transactions over its HTTP gateway);
 // failure between writes is logged but not rolled back — acceptable for
 // dispatch reassign which is idempotent on the client side.
@@ -771,7 +771,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
 
     if (userId != null) {
       await execute(db, `
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'auto_assigned', 'call', ?, ?, ?)
       `, userId, call.id, `Auto-assigned nearest unit ${nearest.call_sign} (${minMiles.toFixed(2)} mi) to ${call.call_number ?? '#' + call.id}`,
         c.req.header('CF-Connecting-IP') || 'unknown');
@@ -795,7 +795,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
 // DEV-10: Manual timeline entry
 // POST /api/dispatch/calls/:id/timeline
 // Ported from legacy/server-vps/src/routes/dispatch/callLifecycle.ts:551.
-// Inserts a row into activity_log scoped to entity_type='call'. Validates
+// Inserts a row into audit_log scoped to entity_type='call'. Validates
 // details length and any user-supplied created_at (1-min future skew allowed
 // to handle client/server clock drift without rejecting legitimate writes).
 // =====================================================================
@@ -840,14 +840,14 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
     }
 
     const result = await execute(db, `
-      INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+      INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
       VALUES (?, ?, 'call', ?, ?, ?, ?)
     `, userId, action, call.id, details, c.req.header('CF-Connecting-IP') || 'unknown', timestamp);
 
     const insertedId = (result as any)?.meta?.last_row_id ?? (result as any)?.lastInsertRowid;
     const entry = await queryFirst<Record<string, unknown>>(db, `
       SELECT al.*, u.full_name AS user_name
-      FROM activity_log al
+      FROM audit_log al
       LEFT JOIN users u ON u.id = al.user_id
       WHERE al.id = ?
     `, insertedId);

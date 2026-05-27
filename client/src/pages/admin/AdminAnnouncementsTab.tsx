@@ -5,6 +5,7 @@ import {
   ArrowUpCircle, FileText, Clock, Loader2, X, Search,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { formatDateTime } from '../../utils/dateUtils';
 import ConfirmDialog from '../../components/ConfirmDialog';
 
@@ -81,7 +82,7 @@ export default function AdminAnnouncementsTab({ LoadingSpinner, error, setError 
     setLoading(true);
     try {
       const data = await apiFetch<Announcement[]>('/admin/announcements/all');
-      setAnnouncements(data || []);
+      setAnnouncements(asArray<Announcement>(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load announcements');
     } finally {
