@@ -224,16 +224,35 @@ calls.post('/', async (c) => {
       }
     }
 
-    // If a run card was applied, record run_card_id + run_card_applied_at
-    if (rcResult.card) {
-      cols.push('run_card_id', 'run_card_applied_at');
-      vals.push('?', '?');
-      bindParams.push(rcResult.card.id, new Date().toISOString());
-    }
+    // Note: run_card_id + run_card_applied_at intentionally NOT written to
+    // calls_for_service here. The base table is at the D1 100-column cap;
+    // adding columns would break GET /:id which does SELECT *. Those two
+    // columns live on calls_for_service_ext (1:1) per the existing PSO/
+    // process-service overflow pattern. We write to ext after the INSERT
+    // succeeds (below) so the call row commits even if the ext write fails.
 
     try {
       const result = await execute(db, `INSERT INTO calls_for_service (${cols.join(',')}) VALUES (${vals.join(',')})`, ...bindParams);
       const callId = Number(result.meta.last_row_id);
+
+      // Record which run card was applied — to ext (PSO/process-service home).
+      // INSERT OR IGNORE then UPDATE matches the rest of the ext write flow.
+      // Best-effort: never block call creation on the ext write.
+      if (rcResult.card) {
+        try {
+          await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', callId);
+          await execute(
+            db,
+            'UPDATE calls_for_service_ext SET run_card_id = ?, run_card_applied_at = ? WHERE id = ?',
+            rcResult.card.id,
+            new Date().toISOString(),
+            callId,
+          );
+        } catch (extErr) {
+          console.warn('run_card ext write failed (non-fatal):', extErr);
+        }
+      }
+
       const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
 
       // Audit trail entry — dispatch's Audit tab reads activity_log by

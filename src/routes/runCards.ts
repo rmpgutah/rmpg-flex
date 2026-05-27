@@ -227,7 +227,25 @@ export async function applyRunCard(
   callerProvidedFlags?: Record<string, unknown>,
 ): Promise<RunCardApplyResult> {
   const t = normalizeIncidentType(incidentType);
-  const row = await queryFirst<RunCardRow>(db, 'SELECT * FROM dispatch_run_cards WHERE incident_type = ? AND active = 1', t);
+  // Hardening (2026-05-27): wrap the lookup so a missing dispatch_run_cards
+  // table (or any other transient DB error) degrades to "no card applied"
+  // instead of throwing through to the call-create outer catch and 500-ing.
+  // The legacy live D1 went without this table for an extended window — the
+  // migration only landed alongside this hardening — so production POST
+  // /api/dispatch/calls was returning 500 for every create. Catching here
+  // means a future re-occurrence of the same drift is no longer a CAD
+  // outage.
+  let row: RunCardRow | null = null;
+  try {
+    row = await queryFirst<RunCardRow>(
+      db,
+      'SELECT * FROM dispatch_run_cards WHERE incident_type = ? AND active = 1',
+      t,
+    );
+  } catch (err) {
+    console.warn('[run-cards] applyRunCard query failed; treating as no card:', err);
+    return { card: null, appliedPriority: null, appliedFlags: {} };
+  }
   if (!row) return { card: null, appliedPriority: null, appliedFlags: {} };
   const card = parseRunCard(row);
   const appliedPriority = callerProvidedPriority?.toString().toUpperCase() || card.default_priority;

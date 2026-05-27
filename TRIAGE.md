@@ -112,3 +112,61 @@ Routed to `env.API` per proxy line 153. Comment on that line says: *"Both curren
 6. **PDF signing (Bucket E)** — not actually broken. Skip.
 
 If you want, I can start with **Bucket B (radio)**: confirm `radio_transmissions` row count is small/zero on live, then drop + recreate the three radio tables from `migrations/0038_radio.sql`.
+
+---
+
+# Addendum — 2026-05-27 system review
+
+After the initial 5-bucket fix shipped, a broader pass found the radio migration was symptomatic of a recurring pattern: **migrations land in `migrations/` but never apply to live D1** because the pipeline has `continue-on-error: true` on the migration step and the new `rmpg-flex-api` Worker isn't bound to the live DB anyway.
+
+## Bucket F — Unapplied migrations applied directly to live D1
+
+All applied to `785de7ae-3e7a-4e01-93bb-d24ddd813f6b` via D1 MCP. Idempotent (CREATE IF NOT EXISTS + INSERT OR IGNORE) so re-running the pipeline is safe.
+
+| Migration | What it creates | Why it mattered |
+|---|---|---|
+| `0014_dispatch_run_cards.sql` (table + index + 32-card seed) | `dispatch_run_cards` + 32 Spillman-style protocol cards | **Was silently 500-ing every `POST /api/dispatch/calls`** — `applyRunCard()` queried this missing table and threw. Now all 32 cards are live (structure_fire, shots_fired, domestic_in_progress, etc.). |
+| `0015_nibrs_codes.sql` | 6 NIBRS reference tables + 62 offense codes + 138 reference rows (location/weapon/bias/property/loss) | `/api/nibrs/*` handlers queried these — 500 on any NIBRS report attempt. |
+| `0023_business_records.sql` | `businesses`, `business_vehicles`, `business_visits`, `business_photos`, `call_businesses` | `/api/business-*` + Records subject-search business arm + future `/api/dispatch/calls/:id/businesses` were all dead. |
+| `0024_document_folders.sql` | `document_folders` + `attachments.folder_id` | Document Intake folder hierarchy was missing; serve-intake auto-filing 500'd. |
+| `0028_cases.sql` (`case_notes` + `case_person_links` only — `cases` already existed) | Two missing junctions | Case notes and case-person linking 500'd. |
+| `0034_patrol.sql` (`patrol_breaks` + `patrol_tour_verifications` only) | Two missing tables | Patrol break tracking + supervisor tour sign-off endpoints 500'd; `patrol.ts:445` `SELECT v.*` on `patrol_tour_verifications` was a latent 500. |
+
+**Intentionally NOT applied:** the `ALTER TABLE calls_for_service ADD COLUMN run_card_id / run_card_applied_at` from `0014_dispatch_run_cards.sql`. `calls_for_service` is at the D1 100-col cap; adding 2 more columns would break `GET /:id`'s `SELECT *`. Instead:
+- Added `run_card_id` + `run_card_applied_at` to `calls_for_service_ext` (1:1 overflow table per the established PSO/process-service pattern).
+- Updated `src/routes/dispatch/calls.ts` to write the run-card tracking columns to ext (best-effort, post-INSERT, never blocks call creation if ext write fails).
+- Hardened `src/routes/runCards.ts::applyRunCard` with a `try/catch` so a missing table degrades to "no card applied" rather than a 500.
+
+## Bucket G — Remaining ghost routes (NOT addressed by this PR)
+
+These routes produce 404 when hit but didn't appear in the original console dump. Proxy routes them to `env.API` per existing rules, but the new worker has no matching handler. None of the pages that would hit them are currently working enough to fire the request, so they're filed under "next session".
+
+- `/api/skiptracer/status`, `/api/skiptracer/stats` — proxy → env.API → no `/api/skiptracer` mount
+- `/api/iped/*` — proxy → env.API → no `/api/iped` mount
+- `/api/personnel/{schedules,time,deployments,coverage-gaps}` — `personnel` router mounted but sub-paths unimplemented
+- `/api/reports/{incidents-summary,crime-trends,beat-activity,citation-revenue,schedules,templates,statute-analytics}` — `reports` mounted to the `stubs` router but only `/response-times` exists there; the other 7 paths 404
+
+Fix path when needed: either add to `STUBS` array in `proxy/index.ts` (cheapest, ~2 min per route) or extend `src/routes/stubs.ts` with empty-shape handlers.
+
+## Bucket H — Schema baseline gaps that informed Bucket F
+
+Tables on live D1 NOT referenced by `/src/` handlers (legacy-only territory; do not delete without verifying):
+- `body_cameras`, `bodycam_videos` (stubbed in proxy already)
+- `call_units`, `call_visit_history` (legacy junctions)
+- `criminal_history`, `dl_addresses`, `dl_records`, `microbilt_searches`, `skiptracer_dossiers` (records integrations)
+- `fleet_*` (5 tables — fleet module not ported)
+- `cpgps_*` (5 tables — legacy GPS integration)
+- `forensic_case_links`, `forensic_hash_*` (3 tables — extends forensics)
+- `notifications`, `messages`, `email_cache`, `email_rules`, `security_notifications`
+- `ofac_sdn_*` (4 sanctions tables)
+- `offender_alerts`, `officer_equipment`, `equipment_checkout_log`
+- `patrol_incidents`, `patrol_reports`, `performance_reviews`, `hr_reviews`, `review_cycles`, `disciplinary_records`, `leave_requests`, `training_records`, `training_requirements`
+- `password_history`, `trusted_devices`, `user_preferences`, `user_security_questions`
+- `schedules`, `deployments` (different from the proxy-routed `/personnel/schedules` API)
+- `scraped_warrants`, `warrant_scraper_config`, `warrant_service_attempts`, `warrant_watch_log`
+- `serve_queue_persons`, `serve_skip_traces`
+- `sm_*` (3 service-marshal tables)
+- `speed_violations`, `time_entries`, `time_entry_edits`, `trespass_orders`, `use_of_force`, `vehicle_tows`
+- `geofences`, `iped_imports`, `integration_api_keys`, `integration_health_log`, `invoice_items`, `invoice_payments`, `daily_activity_reports`, `dash_cameras`, `email_cache`, `code_violations`, `client_persons`, `record_links`
+
+These don't break anything today — they're just rows the new worker can't see. Most don't need to be ported until their feature is rewritten.
