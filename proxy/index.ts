@@ -114,9 +114,14 @@ const API_ROUTES: RouteRule[] = [
 
   // GET/PUT/DELETE /api/dispatch/calls/{id} (exact match, no trailing segment)
   // — rewrite avoids the D1 100-column-cap that 500s the legacy GET handler.
-  // POST /api/dispatch/calls (create) stays on legacy until the rewrite is
-  // validated against the live broadcaster + linked-incident flow.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+$/, methods: ['GET', 'PUT', 'DELETE'] },
+
+  // POST /api/dispatch/calls (create) — moved to the rewrite 2026-05-26 after
+  // the legacy POST was found to compute callNumber but never include it in
+  // its INSERT field map (all 4 live rows had call_number = NULL). The new
+  // worker generates CFS{YY}-{NNNNN} format, broadcasts on create, and
+  // writes an activity_log row for the audit trail.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/?$/, methods: ['POST'] },
 
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──
