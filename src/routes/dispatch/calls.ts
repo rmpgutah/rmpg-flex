@@ -9,6 +9,47 @@ import { sendToUser, broadcastAll } from '../ws';
 
 const calls = new Hono<Env>();
 
+// calls_for_service hit the 100-column D1 cap on 2026-05-26. Any list/queue
+// handler that did `SELECT c.* ... JOIN` exceeded the result-set column cap
+// and returned `SQLITE_ERROR: too many columns in result set` (observed in
+// prod 2026-05-27 across GET /, GET /active, GET /queue, MDT, dispatch index).
+//
+// LIST_VIEW_COLUMNS is the explicit projection used by all list/queue handlers.
+// It excludes ~45 rarely-read columns (PSO billing fields, scene-safety
+// granularity, address subfields, etc.) that the dispatch UI never reads in
+// the list view — those still come back from `SELECT * FROM calls_for_service
+// WHERE id = ?` on the detail handler at /:id.
+//
+// Keep this list to ≤90 columns to leave headroom for the JOIN columns
+// (property_name, dispatcher_name, client_name). Adding a new column to
+// calls_for_service does NOT require adding it here unless the list UI
+// needs it. If you must, add to calls_for_service_ext instead — calls_for_service
+// itself is at the cap and cannot grow further.
+export const LIST_VIEW_COLUMNS = [
+  'id', 'call_number', 'incident_type', 'priority', 'status',
+  'caller_name', 'caller_phone', 'location_address', 'latitude', 'longitude',
+  'description', 'notes', 'source', 'assigned_unit_ids', 'unit_call_signs',
+  'dispatcher_id', 'property_id', 'client_id',
+  'created_at', 'updated_at', 'received_at', 'dispatched_at', 'enroute_at',
+  'onscene_at', 'cleared_at', 'closed_at', 'archived_at', 'status_changed_at',
+  'disposition', 'priority_score', 'previous_status',
+  'weapons_involved', 'domestic_violence', 'injuries_reported',
+  'alcohol_involved', 'drugs_involved', 'mental_health_crisis',
+  'juvenile_involved', 'felony_in_progress', 'officer_safety_caution',
+  'ems_requested', 'k9_requested',
+  'le_notified', 'le_agency', 'le_case_number',
+  'supervisor_notified', 'overdue_notified',
+  'case_id', 'case_number', 'contract_id',
+  'zone_beat', 'sector_id', 'zone_id', 'beat_id',
+  'sector_name', 'zone_name', 'beat_name', 'beat_descriptor',
+  'dispatch_code', 'section_name',
+  'response_time_seconds', 'onscene_duration_seconds',
+  'pso_service_type', 'pso_attempt_number',
+] as const;
+
+// Prefix-qualified SELECT list for queries that alias calls_for_service as `c`.
+export const LIST_VIEW_SELECT_C = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
+
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
 calls.get('/', async (c) => {
   try {
@@ -44,7 +85,8 @@ calls.get('/', async (c) => {
     const [{ total }] = await query<{ total: number }>(db, `SELECT COUNT(*) as total FROM calls_for_service c ${where}`, ...params);
 
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
+      SELECT ${LIST_VIEW_SELECT_C},
+        p.name as property_name, u.full_name as dispatcher_name,
         cl.name as client_name
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
@@ -244,7 +286,7 @@ calls.get('/active', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT c.*, u.full_name as dispatcher_name, p.name as property_name
+      SELECT ${LIST_VIEW_SELECT_C}, u.full_name as dispatcher_name, p.name as property_name
       FROM calls_for_service c
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN properties p ON c.property_id = p.id

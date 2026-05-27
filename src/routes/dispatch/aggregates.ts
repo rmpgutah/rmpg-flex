@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
+import { LIST_VIEW_SELECT_C } from './calls';
 
 const aggregates = new Hono<Env>();
 
@@ -62,7 +63,7 @@ aggregates.get('/queue', async (c) => {
   try {
     const db = getDb(c.env);
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT c.*, u.full_name as dispatcher_name
+      SELECT ${LIST_VIEW_SELECT_C}, u.full_name as dispatcher_name
       FROM calls_for_service c
       LEFT JOIN users u ON c.dispatcher_id = u.id
       WHERE c.status IN ('dispatched','enroute','onscene','pending','open')
