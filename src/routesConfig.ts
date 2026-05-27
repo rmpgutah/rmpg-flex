@@ -72,6 +72,7 @@ import arrests from './routes/arrests';
 import cases from './routes/cases';
 import citations from './routes/citations';
 import fieldInterviews from './routes/fieldInterviews';
+import fleet from './routes/fleet';
 import documentFolders from './routes/documents/folders';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
@@ -217,6 +218,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
+  { prefix: '/api/fleet', router: fleet, auth: 'required',
+    note: 'List/analytics/detail + create/update/soft-delete. Other fleet sub-paths (fuel/maintenance/inspections/personnel-notes/archive/assign) still live on legacy.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
   { prefix: '/api/hr', router: hr, auth: 'required',
