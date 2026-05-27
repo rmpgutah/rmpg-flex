@@ -20,7 +20,9 @@ stubs.get('/shift-comparison', (c) => c.json({ shifts: [] }));
 stubs.get('/officer-activity', (c) => c.json([]));
 stubs.get('/upcoming-court', (c) => c.json([]));
 stubs.get('/evidence-pending', (c) => c.json({ count: 0 }));
-stubs.get('/response-times', (c) => c.json([]));
+// /response-times moved to src/routes/reports.ts (still returns [] until
+// dispatch status-timestamp math is ported). Kept here too would cause a
+// double-registration warning under the /api/reports mount.
 
 // Communication
 stubs.get('/activity-feed', (c) => c.json([]));

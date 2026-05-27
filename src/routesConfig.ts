@@ -86,6 +86,7 @@ import serveIntake from './routes/serveIntake';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import serve from './routes/serve';
+import reports from './routes/reports';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -269,7 +270,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // paths (/, /preferences, /unread-count, /dashboard, etc).
   { prefix: '/api/user', router: stubs, auth: 'required' },
   { prefix: '/api/notifications', router: stubs, auth: 'required' },
-  { prefix: '/api/reports', router: stubs, auth: 'required' },
+  // Reports: real aggregations live in src/routes/reports.ts. Two stubs that
+  // shared the same shape (/response-times) were moved into the reports
+  // router so the stubs router doesn't also claim the prefix. /crime-analysis
+  // still falls through to legacy via the proxy — separate concern.
+  { prefix: '/api/reports', router: reports, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: stubs, auth: 'required' },
   { prefix: '/api/email', router: stubs, auth: 'required' },
