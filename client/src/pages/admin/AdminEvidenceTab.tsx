@@ -23,6 +23,7 @@ import {
   Clock, Hash,
 } from 'lucide-react';
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -86,7 +87,7 @@ export default function AdminEvidenceTab({ LoadingSpinner, error, setError }: Pr
       ]);
       setKeypair(kpRes);
       setAudit(auditRes);
-      setRecent(recentRes.events ?? []);
+      setRecent(asArray<RecentEvent>(recentRes?.events));
     } catch (e: any) {
       setError(e?.message ?? 'Failed to load evidence audit');
     } finally {
@@ -263,7 +264,7 @@ export default function AdminEvidenceTab({ LoadingSpinner, error, setError }: Pr
                   </tr>
                 </thead>
                 <tbody>
-                  {audit.audits.map(a => (
+                  {asArray<ChainAudit>(audit.audits).map(a => (
                     <tr key={a.artifact_type} className="border-b border-[#1a1a1a]">
                       <td className="py-1.5 px-2 font-mono">{a.artifact_type}</td>
                       <td className="py-1.5 px-2 text-right font-mono">{a.checked}</td>

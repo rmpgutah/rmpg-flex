@@ -13,6 +13,7 @@ import {
   RotateCcw,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { toDisplayLabel, formatPhoneInput } from '../../utils/formatters';
 import type { Client } from '../../types';
 import AdminInvoiceTab from './AdminInvoiceTab';
@@ -208,9 +209,9 @@ export default function AdminClientsTab({
         apiFetch<any>(`/admin/clients/${selectedClient.id}/billing`).catch(() => null),
       ]).then(([detail, incidents, calls, billing]) => {
         if (cancelled) return;
-        setClientProperties(detail?.properties || []);
-        setClientIncidents(incidents || []);
-        setClientCalls(calls || []);
+        setClientProperties(asArray<any>(detail?.properties));
+        setClientIncidents(asArray<any>(incidents));
+        setClientCalls(asArray<any>(calls));
         setClientBilling(billing);
       }).finally(() => { if (!cancelled) setLoadingClientDetail(false); });
     } else {

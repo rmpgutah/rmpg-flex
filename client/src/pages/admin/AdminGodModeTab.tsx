@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { safeDateTimeStr } from '../../utils/dateUtils';
 import RichTextArea from '../../components/RichTextArea';
 import {
@@ -110,8 +111,8 @@ export default function AdminGodModeTab() {
       ]);
       if (stats) setDbStats(stats);
       if (overview) setSystemOverview(overview);
-      setBackups(bk || []);
-      setUsers(userList || []);
+      setBackups(asArray<Backup>(bk));
+      setUsers(asArray<any>(userList));
 
       const [ws, presence, lockdown, feed] = await Promise.all([
         apiFetch<any>('/admin/websocket/clients').catch(() => ({ clients: [] })),
@@ -119,10 +120,10 @@ export default function AdminGodModeTab() {
         apiFetch<any>('/admin/system/lockdown').catch(() => null),
         apiFetch<any>('/admin/activity-feed?limit=20').catch(() => ({ actions: [] })),
       ]);
-      setWsClients(ws?.clients || []);
+      setWsClients(asArray<any>(ws?.clients));
       if (presence) setUserPresence(presence);
       if (lockdown) setLockdownStatus(lockdown);
-      setActivityFeed(feed?.actions || []);
+      setActivityFeed(asArray<any>(feed?.actions));
     } catch (err) {
       console.error('God Mode load error:', err);
     } finally {
@@ -364,7 +365,7 @@ export default function AdminGodModeTab() {
           {/* Top tables */}
           <div className="bg-[#0c0c0c] rounded-sm p-2 max-h-40 overflow-y-auto">
             <div className="text-[9px] text-gray-500 uppercase mb-1">Top Tables by Row Count</div>
-            {(dbStats.tables || []).slice(0, 15).map(t => (
+            {asArray<{ name: string; row_count: number }>(dbStats.tables).slice(0, 15).map(t => (
               <div key={t.name} className="flex justify-between text-[11px] py-0.5 border-b border-[#181818]/50">
                 <span className="text-gray-300 font-mono">{t.name}</span>
                 <span className="text-white font-mono">{formatNumber(t.row_count)}</span>

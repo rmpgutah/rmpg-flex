@@ -9,46 +9,54 @@ import { sendToUser, broadcastAll } from '../ws';
 
 const calls = new Hono<Env>();
 
-// calls_for_service hit the 100-column D1 cap on 2026-05-26. Any list/queue
-// handler that did `SELECT c.* ... JOIN` exceeded the result-set column cap
-// and returned `SQLITE_ERROR: too many columns in result set` (observed in
-// prod 2026-05-27 across GET /, GET /active, GET /queue, MDT, dispatch index).
+// D1 caps a result set at 100 columns. calls_for_service has been pushed to
+// ~100 cols (see memory project-live-d1-schema-patches), so `SELECT c.* +
+// any JOIN columns` exceeds the cap and returns SQLITE_ERROR 7500
+// "too many columns in result set". This is the column set the list/queue/
+// active views actually project — wide enough that the dispatch panel, MDT,
+// and map page render correctly without re-fetching, narrow enough to leave
+// headroom for the 3 joined name columns (property/dispatcher/client).
 //
-// LIST_VIEW_COLUMNS is the explicit projection used by all list/queue handlers.
-// It excludes ~45 rarely-read columns (PSO billing fields, scene-safety
-// granularity, address subfields, etc.) that the dispatch UI never reads in
-// the list view — those still come back from `SELECT * FROM calls_for_service
-// WHERE id = ?` on the detail handler at /:id.
-//
-// Keep this list to ≤90 columns to leave headroom for the JOIN columns
-// (property_name, dispatcher_name, client_name). Adding a new column to
-// calls_for_service does NOT require adding it here unless the list UI
-// needs it. If you must, add to calls_for_service_ext instead — calls_for_service
-// itself is at the cap and cannot grow further.
+// Any column NOT in this list will not appear in list-row responses. The
+// single-call GET (/:id) still returns SELECT *, so detail panels are
+// unaffected.
 export const LIST_VIEW_COLUMNS = [
-  'id', 'call_number', 'incident_type', 'priority', 'status',
-  'caller_name', 'caller_phone', 'location_address', 'latitude', 'longitude',
-  'description', 'notes', 'source', 'assigned_unit_ids', 'unit_call_signs',
-  'dispatcher_id', 'property_id', 'client_id',
-  'created_at', 'updated_at', 'received_at', 'dispatched_at', 'enroute_at',
-  'onscene_at', 'cleared_at', 'closed_at', 'archived_at', 'status_changed_at',
-  'disposition', 'priority_score', 'previous_status',
-  'weapons_involved', 'domestic_violence', 'injuries_reported',
-  'alcohol_involved', 'drugs_involved', 'mental_health_crisis',
-  'juvenile_involved', 'felony_in_progress', 'officer_safety_caution',
-  'ems_requested', 'k9_requested',
-  'le_notified', 'le_agency', 'le_case_number',
-  'supervisor_notified', 'overdue_notified',
-  'case_id', 'case_number', 'contract_id',
-  'zone_beat', 'sector_id', 'zone_id', 'beat_id',
-  'sector_name', 'zone_name', 'beat_name', 'beat_descriptor',
-  'dispatch_code', 'section_name',
+  // IDs / metadata
+  'id', 'call_number', 'incident_type', 'secondary_type',
+  'priority', 'priority_score', 'status', 'previous_status',
+  'status_changed_at', 'source', 'dispatch_code',
+  // Timing
+  'created_at', 'received_at', 'dispatched_at', 'enroute_at', 'onscene_at',
+  'cleared_at', 'closed_at', 'archived_at', 'updated_at',
   'response_time_seconds', 'onscene_duration_seconds',
-  'pso_service_type', 'pso_attempt_number',
+  // Location
+  'location_address', 'latitude', 'longitude',
+  'cross_street', 'location_building', 'location_floor', 'location_room',
+  // Caller / contact
+  'caller_name', 'caller_phone', 'contact_method',
+  // Foreign refs (names come from JOINs below)
+  'dispatcher_id', 'property_id', 'client_id',
+  'case_id', 'case_number', 'contract_id',
+  // Free-text + outcome
+  'description', 'notes', 'disposition', 'action_taken',
+  // Units
+  'assigned_unit_ids', 'unit_call_signs',
+  // Geography
+  'sector_id', 'sector_name', 'zone_id', 'zone_name', 'zone_beat',
+  'beat_id', 'beat_name', 'beat_descriptor',
+  // Safety flags (most-read by dispatcher; the rest live on the detail GET).
+  // Intentionally excluded: `pinned` and `officer_safety_caution` — both are
+  // in UPDATABLE_CALL_COLUMNS_BASE but not in any /migrations/ file (live D1
+  // patched directly per memory project-live-d1-schema-patches). Including
+  // them risks `no such column` 500s on prod if the patch was never applied.
+  // Re-add once a migration backfills them.
+  'weapons_involved', 'injuries_reported', 'domestic_violence',
+  // Mileage + overdue
+  'starting_mileage', 'ending_mileage', 'overdue_notified',
 ] as const;
 
-// Prefix-qualified SELECT list for queries that alias calls_for_service as `c`.
-export const LIST_VIEW_SELECT_C = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
+// Pre-built `c.col1, c.col2, ...` fragment used in every list query.
+const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
 
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
 calls.get('/', async (c) => {
@@ -84,8 +92,10 @@ calls.get('/', async (c) => {
 
     const [{ total }] = await query<{ total: number }>(db, `SELECT COUNT(*) as total FROM calls_for_service c ${where}`, ...params);
 
+    // Narrow projection — see LIST_VIEW_COLUMNS comment for the D1 100-col
+    // result-set cap. SELECT c.* + JOIN columns 500s; this stays under ~60.
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT ${LIST_VIEW_SELECT_C},
+      SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
         cl.name as client_name
       FROM calls_for_service c
@@ -238,17 +248,17 @@ calls.post('/', async (c) => {
       const callId = Number(result.meta.last_row_id);
       const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
 
-      // Audit trail entry — dispatch's Audit tab reads activity_log by
+      // Audit trail entry — dispatch's Audit tab reads audit_log by
       // entity_type='call' + entity_id. Failure shouldn't block the create.
       try {
         await execute(
           db,
-          `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
            VALUES (?, ?, ?, ?, ?, datetime('now', '-7 hours'))`,
           userId, 'CREATE', 'call', callId, `Created call ${callNumber}`,
         );
       } catch (auditErr) {
-        console.warn('activity_log insert failed for call create:', auditErr);
+        console.warn('audit_log insert failed for call create:', auditErr);
       }
 
       // Broadcast to every connected dispatcher so rosters re-render
@@ -285,8 +295,10 @@ calls.post('/', async (c) => {
 calls.get('/active', async (c) => {
   try {
     const db = getDb(c.env);
+    // Narrow projection — see LIST_VIEW_COLUMNS for D1 100-col cap rationale.
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT ${LIST_VIEW_SELECT_C}, u.full_name as dispatcher_name, p.name as property_name
+      SELECT ${LIST_VIEW_SELECT},
+        u.full_name as dispatcher_name, p.name as property_name
       FROM calls_for_service c
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN properties p ON c.property_id = p.id
@@ -403,7 +415,7 @@ calls.get('/:id', async (c) => {
       'SELECT id, incident_number, incident_type, status, created_at FROM incidents WHERE call_id = ? ORDER BY created_at DESC LIMIT 1000', id);
 
     const activity = await query<Record<string, unknown>>(db,
-      'SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 1000',
+      'SELECT al.*, u.full_name as user_name FROM audit_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 1000',
       'call', id);
 
     return c.json({
@@ -537,10 +549,10 @@ calls.put('/:id', async (c) => {
 });
 
 // GET /dispatch/calls/:id/audit-trail — chronological event log for this call.
-// Reads from activity_log filtered by entity_type='call'. The client renders
+// Reads from audit_log filtered by entity_type='call'. The client renders
 // { created_at, action, details, user_name } per row in the Audit tab
 // (DispatchPage.tsx ~line 5280). Degrades to empty on error rather than 500
-// so the tab doesn't break if activity_log schema drifts.
+// so the tab doesn't break if audit_log schema drifts.
 calls.get('/:id/audit-trail', async (c) => {
   try {
     const db = getDb(c.env);
@@ -553,7 +565,7 @@ calls.get('/:id/audit-trail', async (c) => {
       db,
       `SELECT al.id, al.action, al.details, al.user_id,
               u.full_name as user_name, al.created_at
-       FROM activity_log al
+       FROM audit_log al
        LEFT JOIN users u ON u.id = al.user_id
        WHERE al.entity_type = 'call' AND al.entity_id = ?
        ORDER BY al.created_at DESC LIMIT 500`,

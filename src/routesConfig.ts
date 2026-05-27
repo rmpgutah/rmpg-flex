@@ -72,17 +72,21 @@ import arrests from './routes/arrests';
 import cases from './routes/cases';
 import citations from './routes/citations';
 import fieldInterviews from './routes/fieldInterviews';
+import fleet from './routes/fleet';
 import documentFolders from './routes/documents/folders';
 import documentIntake from './routes/documentIntake';
 import pdfTools from './routes/pdfTools';
 import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import forensics from './routes/forensics';
+import hr from './routes/hr';
 import patrol from './routes/patrol';
+import radio from './routes/radio';
 import serveIntake from './routes/serveIntake';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import serve from './routes/serve';
+import reports from './routes/reports';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -225,12 +229,18 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
+  { prefix: '/api/fleet', router: fleet, auth: 'required',
+    note: 'List/analytics/detail + create/update/soft-delete. Other fleet sub-paths (fuel/maintenance/inspections/personnel-notes/archive/assign) still live on legacy.' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/hr', router: hr, auth: 'required',
+    note: 'Leave + disciplinary + performance reviews; /benefits returns [] (table deferred). Payroll/exit/grievances/PIPs stay on legacy.' },
   { prefix: '/api/offline', router: offline, auth: 'required',
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
+  { prefix: '/api/radio', router: radio, auth: 'required',
+    note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
@@ -293,12 +303,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // paths (/, /preferences, /unread-count, /dashboard, etc).
   { prefix: '/api/user', router: stubs, auth: 'required' },
   { prefix: '/api/notifications', router: stubs, auth: 'required' },
-  // Reports analytics now have real handlers in src/routes/reports.ts —
-  // mount that BEFORE the stubs fallback so the real routes win. Keep the
-  // stubs mount at /api/reports too so any path the reports router doesn't
-  // declare still hits stubs.ts (e.g. /clearance-rate, /patrol-coverage).
+  // Reports: real aggregations live in src/routes/reports.ts. Two stubs that
+  // shared the same shape (/response-times) were moved into the reports
+  // router so the stubs router doesn't also claim the prefix. /crime-analysis
+  // still falls through to legacy via the proxy — separate concern.
   { prefix: '/api/reports', router: reports, auth: 'required' },
-  { prefix: '/api/reports', router: stubs, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: stubs, auth: 'required' },
   { prefix: '/api/email', router: stubs, auth: 'required' },

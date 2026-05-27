@@ -1,434 +1,305 @@
 // ============================================================
-// Reports analytics — real aggregations over the CAD/RMS tables
+// RMPG Flex — /api/reports/* aggregations
 // ============================================================
-// Replaces the empty-shape stubs in src/routes/stubs.ts. Each handler
-// reads from calls_for_service, citations, or incidents (all live on
-// production D1) and returns the shape the corresponding ReportsPage
-// tab destructures. When in doubt about a return shape, the response
-// includes legacy aliases so existing UI rendering paths keep working
-// even if a tab was rewritten against a different field.
+// Dashboard endpoints that summarise incidents, citations, and beat
+// activity over rolling windows. Replaces the empty-shape stubs from
+// src/routes/stubs.ts so the Reports dashboard renders real numbers.
 //
-// Where no useful aggregation is possible (no rate-tables for cost,
-// no schedule-config table) the handler ships the empty-shape response
-// so the page renders empty state instead of crashing.
+// All handlers gated to admin/manager/supervisor — these expose
+// org-wide rollups, not officer-level data.
+//
+// Time windows are user-supplied via ?days=N (clamped to [1, 365]).
+// SQL filters on created_at (when the record entered the system) —
+// not approved_at / disposition_date — so freshly-entered work is
+// reflected immediately on the dashboard.
+// ============================================================
 
 import { Hono } from 'hono';
-import type { Env } from '../types';
+import { requireRole } from '../middleware/auth';
 import { getDb, query, queryFirst } from '../utils/db';
+import type { Env } from '../types';
 
 const reports = new Hono<Env>();
 
-// Convert a `?days=N` or `?start_date=...&end_date=...` window into
-// (startExpr, endExpr) — either the literal `?` placeholder bound to a
-// date string, or an inlined `date('now', '-N days')` SQL expression for
-// the relative-window case.
-//
-// We inline the relative case (no bind parameter) because date('now', '-N
-// days') is a SQL expression, not a value. The N is parseInt'd from the
-// query string so injection is impossible — only digits survive the cast.
-type DateWindow = { startSql: string; endSql: string; bindStart: boolean; bindEnd: boolean };
+const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
 
-function dateWindow(req: { query: (k: string) => string | undefined }): DateWindow {
-  const startDate = req.query('start_date') || req.query('startDate');
-  const endDate = req.query('end_date') || req.query('endDate');
-  if (startDate && endDate) {
-    return { startSql: '?', endSql: '?', bindStart: true, bindEnd: true };
-  }
-  const days = parseInt(req.query('days') || '90', 10) || 90;
-  return {
-    startSql: `date('now', '-${days} days')`,
-    endSql: `date('now', '+1 day')`,
-    bindStart: false,
-    bindEnd: false,
-  };
+reports.use('*', requireRole(...ANALYTICS_ROLES));
+
+function clampDays(raw: string | undefined, fallback: number): number {
+  const n = Number.parseInt(raw ?? '', 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(n, 365);
 }
 
-function rangeSnippet(w: DateWindow, column: string): string {
-  return `${column} >= ${w.startSql} AND ${column} < ${w.endSql}`;
-}
-
-function rangeParams(
-  req: { query: (k: string) => string | undefined },
-  w: DateWindow,
-): unknown[] {
-  const out: unknown[] = [];
-  if (w.bindStart) out.push(req.query('start_date') || req.query('startDate')!);
-  if (w.bindEnd) out.push(req.query('end_date') || req.query('endDate')!);
-  return out;
-}
-
-// ── GET /api/reports/incidents-summary ───────────────────────
-// ReportsPage builder reads `data[]` + `total` (per IncidentsSummaryData
-// interface). groupBy is one of type/priority/status/zone.
+// GET /api/reports/incidents-summary?days=30
 reports.get('/incidents-summary', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const groupBy = c.req.query('groupBy') || 'type';
-    const w = dateWindow(c.req);
+  const db = getDb(c.env);
+  const days = clampDays(c.req.query('days'), 30);
+  const since = `-${days} days`;
 
-    const groupColumn: Record<string, string> = {
-      type: 'incident_type',
-      priority: 'priority',
-      status: 'status',
-      zone: 'zone_beat',
-    };
-    const col = groupColumn[groupBy] ?? 'incident_type';
+  const total = await queryFirst<{ n: number }>(
+    db,
+    `SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now', ?)`,
+    since
+  );
+  const by_type = await query<{ type: string; count: number }>(
+    db,
+    `SELECT incident_type AS type, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY incident_type
+      ORDER BY count DESC`,
+    since
+  );
+  const by_status = await query<{ status: string; count: number }>(
+    db,
+    `SELECT status, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY status
+      ORDER BY count DESC`,
+    since
+  );
+  const by_day = await query<{ date: string; count: number }>(
+    db,
+    `SELECT date(created_at) AS date, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY date(created_at)
+      ORDER BY date ASC`,
+    since
+  );
 
-    const rows = await query<{ group_key: string; count: number }>(db, `
-      SELECT COALESCE(${col}, 'unknown') AS group_key, COUNT(*) AS count
-      FROM calls_for_service
-      WHERE ${rangeSnippet(w, 'created_at')}
-      GROUP BY ${col}
-      ORDER BY count DESC
-      LIMIT 50
-    `, ...rangeParams(c.req, w));
-
-    const total = rows.reduce((s, r) => s + (r.count || 0), 0);
-    return c.json({ groupBy, data: rows, total });
-  } catch (err) {
-    console.error('GET /reports/incidents-summary error:', err);
-    return c.json({ groupBy: 'type', data: [], total: 0 }, 200);
-  }
+  return c.json({
+    days,
+    total: total?.n ?? 0,
+    by_type,
+    by_status,
+    by_day,
+  });
 });
 
-// ── GET /api/reports/response-times ──────────────────────────
-// Response-times tile uses calls_for_service.response_time_seconds.
-// Returns the ResponseTimesData contract from ReportsPage (overall +
-// byPriority).
-reports.get('/response-times', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const w = dateWindow(c.req);
-
-    const overall = await queryFirst<Record<string, number>>(db, `
-      SELECT
-        COALESCE(AVG(response_time_seconds), 0) / 60.0 AS avgTotalResponseMinutes,
-        COALESCE(AVG(CASE WHEN dispatched_at IS NOT NULL THEN
-          (julianday(dispatched_at) - julianday(created_at)) * 24 * 60
-        END), 0) AS avgDispatchMinutes,
-        COALESCE(MIN(response_time_seconds), 0) / 60.0 AS minResponseMinutes,
-        COALESCE(MAX(response_time_seconds), 0) / 60.0 AS maxResponseMinutes,
-        COUNT(*) AS totalCalls
-      FROM calls_for_service
-      WHERE ${rangeSnippet(w, 'created_at')}
-        AND response_time_seconds IS NOT NULL
-    `, ...rangeParams(c.req, w));
-
-    const byPriority = await query<Record<string, unknown>>(db, `
-      SELECT
-        priority,
-        COALESCE(AVG(response_time_seconds), 0) / 60.0 AS avg_response_minutes,
-        COUNT(*) AS count
-      FROM calls_for_service
-      WHERE ${rangeSnippet(w, 'created_at')}
-        AND response_time_seconds IS NOT NULL
-      GROUP BY priority ORDER BY priority
-    `, ...rangeParams(c.req, w));
-
-    return c.json({ overall, byPriority });
-  } catch (err) {
-    console.error('GET /reports/response-times error:', err);
-    return c.json({
-      overall: { avgDispatchMinutes: 0, avgTotalResponseMinutes: 0, minResponseMinutes: 0, maxResponseMinutes: 0, totalCalls: 0 },
-      byPriority: [],
-    }, 200);
-  }
-});
-
-// ── GET /api/reports/officer-activity ────────────────────────
-// Per-officer counts across calls responded + incidents written.
-reports.get('/officer-activity', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const w = dateWindow(c.req);
-    const rows = await query<Record<string, unknown>>(db, `
-      SELECT
-        u.id AS officer_id,
-        u.full_name,
-        u.badge_number,
-        COUNT(DISTINCT i.id) AS incidents_written,
-        0 AS calls_responded,
-        0 AS total_hours
-      FROM users u
-      LEFT JOIN incidents i ON i.officer_id = u.id
-        AND ${rangeSnippet(w, 'i.created_at')}
-      WHERE u.status = 'active'
-      GROUP BY u.id, u.full_name, u.badge_number
-      ORDER BY incidents_written DESC, u.full_name
-      LIMIT 100
-    `, ...rangeParams(c.req, w));
-    return c.json(rows);
-  } catch (err) {
-    return c.json([], 200);
-  }
-});
-
-// ── GET /api/reports/crime-trends ────────────────────────────
-// 12-month trend + top categories. Used by ReportsPage Trends tab.
+// GET /api/reports/crime-trends?days=90
+// trends[]: per-day incident_type rollup for stacked line charts.
+// top_categories[]: leaderboard of incident_type counts for the
+// whole window (denormalised for the dashboard's quick-stats card).
 reports.get('/crime-trends', async (c) => {
-  try {
-    const db = getDb(c.env);
+  const db = getDb(c.env);
+  const days = clampDays(c.req.query('days'), 90);
+  const since = `-${days} days`;
 
-    const trends = await query<{ month: string; count: number }>(db, `
-      SELECT
-        strftime('%Y-%m', created_at) AS month,
-        COUNT(*) AS count
-      FROM calls_for_service
-      WHERE created_at >= date('now', '-12 months')
-      GROUP BY month
-      ORDER BY month
-    `);
+  const trends = await query<{ date: string; type: string; count: number }>(
+    db,
+    `SELECT date(created_at) AS date, incident_type AS type, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY date(created_at), incident_type
+      ORDER BY date ASC, count DESC`,
+    since
+  );
+  const top_categories = await query<{ type: string; count: number }>(
+    db,
+    `SELECT incident_type AS type, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY incident_type
+      ORDER BY count DESC
+      LIMIT 10`,
+    since
+  );
 
-    const topCategories = await query<{ category: string; count: number }>(db, `
-      SELECT
-        COALESCE(incident_type, 'unknown') AS category,
-        COUNT(*) AS count
-      FROM calls_for_service
-      WHERE created_at >= date('now', '-90 days')
-      GROUP BY category ORDER BY count DESC LIMIT 10
-    `);
-
-    return c.json({
-      trends,
-      periods: trends.map(t => t.month),
-      topCategories,
-    });
-  } catch (err) {
-    return c.json({ trends: [], periods: [], topCategories: [] }, 200);
-  }
+  return c.json({ days, trends, top_categories });
 });
 
-// ── GET /api/reports/crime-analysis ──────────────────────────
-// CrimeAnalysisPage: summary + byType + byHour + byDayOfWeek + hotspots.
-reports.get('/crime-analysis', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const w = dateWindow(c.req);
-
-    const summary = await queryFirst<Record<string, number>>(db, `
-      SELECT
-        COUNT(*) AS total_calls,
-        COUNT(DISTINCT incident_type) AS distinct_types,
-        SUM(CASE WHEN priority = 'P1' THEN 1 ELSE 0 END) AS p1_count,
-        SUM(CASE WHEN weapons_involved = 1 THEN 1 ELSE 0 END) AS weapons_count,
-        SUM(CASE WHEN domestic_violence = 1 THEN 1 ELSE 0 END) AS dv_count
-      FROM calls_for_service
-      WHERE ${rangeSnippet(w, 'created_at')}
-    `, ...rangeParams(c.req, w));
-
-    const byType = await query<{ type: string; count: number }>(db, `
-      SELECT COALESCE(incident_type, 'unknown') AS type, COUNT(*) AS count
-      FROM calls_for_service
-      WHERE ${rangeSnippet(w, 'created_at')}
-      GROUP BY type ORDER BY count DESC LIMIT 20
-    `, ...rangeParams(c.req, w));
-
-    const byHour = await query<{ hour: number; count: number }>(db, `
-      SELECT CAST(strftime('%H', created_at) AS INTEGER) AS hour, COUNT(*) AS count
-      FROM calls_for_service
-      WHERE ${rangeSnippet(w, 'created_at')}
-      GROUP BY hour ORDER BY hour
-    `, ...rangeParams(c.req, w));
-
-    const byDayOfWeek = await query<{ day: number; count: number }>(db, `
-      SELECT CAST(strftime('%w', created_at) AS INTEGER) AS day, COUNT(*) AS count
-      FROM calls_for_service
-      WHERE ${rangeSnippet(w, 'created_at')}
-      GROUP BY day ORDER BY day
-    `, ...rangeParams(c.req, w));
-
-    // Top 10 lat/lng clusters via integer-rounding (no full geospatial
-    // grouping — that's a follow-up; this is enough for a heat-tile list).
-    const hotspots = await query<Record<string, unknown>>(db, `
-      SELECT
-        ROUND(latitude, 3) AS lat,
-        ROUND(longitude, 3) AS lng,
-        COUNT(*) AS count,
-        GROUP_CONCAT(DISTINCT incident_type) AS top_types
-      FROM calls_for_service
-      WHERE ${rangeSnippet(w, 'created_at')}
-        AND latitude IS NOT NULL AND longitude IS NOT NULL
-      GROUP BY lat, lng
-      ORDER BY count DESC LIMIT 25
-    `, ...rangeParams(c.req, w));
-
-    return c.json({ summary, byType, byHour, byDayOfWeek, hotspots });
-  } catch (err) {
-    console.error('GET /reports/crime-analysis error:', err);
-    return c.json({ summary: {}, byType: [], byHour: [], byDayOfWeek: [], hotspots: [] }, 200);
-  }
-});
-
-// ── GET /api/reports/beat-activity ───────────────────────────
+// GET /api/reports/beat-activity?days=30
+// One row per active beat with call/incident/citation counts.
+// Joins:
+//   calls    — calls_for_service.beat_id = dispatch_beats.beat_code
+//   incidents — via calls_for_service (incidents have no beat_id of their own)
+//   citations — citations.beat_id = dispatch_beats.beat_code
+// Inactive beats are excluded.
 reports.get('/beat-activity', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const w = dateWindow(c.req);
+  const db = getDb(c.env);
+  const days = clampDays(c.req.query('days'), 30);
+  const since = `-${days} days`;
 
-    const beats = await query<{ beat: string; count: number }>(db, `
-      SELECT
-        COALESCE(zone_beat, beat_id, 'unassigned') AS beat,
-        COUNT(*) AS count
-      FROM calls_for_service
-      WHERE ${rangeSnippet(w, 'created_at')}
-      GROUP BY beat ORDER BY count DESC LIMIT 50
-    `, ...rangeParams(c.req, w));
+  const beats = await query<{
+    beat_code: string;
+    beat_name: string;
+    district_letter: string | null;
+    calls: number;
+    incidents: number;
+    citations: number;
+  }>(
+    db,
+    `SELECT b.beat_code,
+            b.beat_name,
+            b.district_letter,
+            COALESCE(c.n, 0)  AS calls,
+            COALESCE(i.n, 0)  AS incidents,
+            COALESCE(ci.n, 0) AS citations
+       FROM dispatch_beats b
+       LEFT JOIN (
+         SELECT beat_id, COUNT(*) AS n
+           FROM calls_for_service
+          WHERE created_at >= datetime('now', ?)
+          GROUP BY beat_id
+       ) c  ON c.beat_id = b.beat_code
+       LEFT JOIN (
+         SELECT cfs.beat_id, COUNT(*) AS n
+           FROM incidents i
+           JOIN calls_for_service cfs ON cfs.id = i.call_id
+          WHERE i.created_at >= datetime('now', ?)
+          GROUP BY cfs.beat_id
+       ) i  ON i.beat_id = b.beat_code
+       LEFT JOIN (
+         SELECT beat_id, COUNT(*) AS n
+           FROM citations
+          WHERE created_at >= datetime('now', ?)
+          GROUP BY beat_id
+       ) ci ON ci.beat_id = b.beat_code
+      WHERE b.active = 1
+      ORDER BY (COALESCE(c.n,0) + COALESCE(i.n,0) + COALESCE(ci.n,0)) DESC,
+               b.beat_code ASC`,
+    since, since, since
+  );
 
-    return c.json({
-      beats,
-      callsByBeat: beats,
-      unitsByBeat: [],
-    });
-  } catch (err) {
-    return c.json({ beats: [], callsByBeat: [], unitsByBeat: [] }, 200);
-  }
+  return c.json({ days, beats });
 });
 
-// ── GET /api/reports/citation-revenue ────────────────────────
-// CitationRevenue tab — total + by-month/statute/officer breakdown.
-// citations.fine_amount is the load-bearing column.
+// GET /api/reports/citation-revenue?days=30
+// total_revenue: sum of payment.amount across the window.
+// by_violation: top fine-generating statutes (sums payments per citation).
+// by_month: yyyy-mm bucketed totals for trend chart.
 reports.get('/citation-revenue', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const w = dateWindow(c.req);
+  const db = getDb(c.env);
+  const days = clampDays(c.req.query('days'), 30);
+  const since = `-${days} days`;
 
-    const totals = await queryFirst<Record<string, number>>(db, `
-      SELECT
-        COALESCE(SUM(fine_amount), 0) AS total_revenue,
-        COUNT(*) AS total_citations
-      FROM citations
-      WHERE ${rangeSnippet(w, 'COALESCE(citation_date, created_at)')}
-    `, ...rangeParams(c.req, w));
+  const total = await queryFirst<{ total_revenue: number; payment_count: number }>(
+    db,
+    `SELECT COALESCE(SUM(amount), 0) AS total_revenue,
+            COUNT(*) AS payment_count
+       FROM citation_payments
+      WHERE COALESCE(payment_date, created_at) >= datetime('now', ?)`,
+    since
+  );
+  const by_violation = await query<{
+    statute_citation: string | null;
+    violation_description: string | null;
+    revenue: number;
+    citations: number;
+  }>(
+    db,
+    `SELECT c.statute_citation,
+            c.violation_description,
+            COALESCE(SUM(p.amount), 0) AS revenue,
+            COUNT(DISTINCT c.id)       AS citations
+       FROM citations c
+       JOIN citation_payments p ON p.citation_id = c.id
+      WHERE COALESCE(p.payment_date, p.created_at) >= datetime('now', ?)
+      GROUP BY c.statute_citation, c.violation_description
+      ORDER BY revenue DESC
+      LIMIT 20`,
+    since
+  );
+  const by_month = await query<{ month: string; revenue: number }>(
+    db,
+    `SELECT strftime('%Y-%m', COALESCE(payment_date, created_at)) AS month,
+            COALESCE(SUM(amount), 0) AS revenue
+       FROM citation_payments
+      WHERE COALESCE(payment_date, created_at) >= datetime('now', ?)
+      GROUP BY month
+      ORDER BY month ASC`,
+    since
+  );
 
-    const byMonth = await query<{ month: string; revenue: number; count: number }>(db, `
-      SELECT
-        strftime('%Y-%m', COALESCE(citation_date, created_at)) AS month,
-        COALESCE(SUM(fine_amount), 0) AS revenue,
-        COUNT(*) AS count
-      FROM citations
-      WHERE COALESCE(citation_date, created_at) >= date('now', '-12 months')
-      GROUP BY month ORDER BY month
-    `);
-
-    const byStatute = await query<Record<string, unknown>>(db, `
-      SELECT
-        COALESCE(statute_citation, violation_code, violation, 'unknown') AS statute,
-        COUNT(*) AS count,
-        COALESCE(SUM(fine_amount), 0) AS revenue
-      FROM citations
-      WHERE ${rangeSnippet(w, 'COALESCE(citation_date, created_at)')}
-      GROUP BY statute ORDER BY revenue DESC LIMIT 20
-    `, ...rangeParams(c.req, w));
-
-    const byOfficer = await query<Record<string, unknown>>(db, `
-      SELECT
-        COALESCE(issuing_officer_name, 'unknown') AS officer_name,
-        COUNT(*) AS count,
-        COALESCE(SUM(fine_amount), 0) AS revenue
-      FROM citations
-      WHERE ${rangeSnippet(w, 'COALESCE(citation_date, created_at)')}
-      GROUP BY officer_name ORDER BY revenue DESC LIMIT 20
-    `, ...rangeParams(c.req, w));
-
-    return c.json({
-      totalRevenue: totals?.total_revenue ?? 0,
-      totalCitations: totals?.total_citations ?? 0,
-      byMonth, byStatute, byOfficer,
-    });
-  } catch (err) {
-    console.error('GET /reports/citation-revenue error:', err);
-    return c.json({ totalRevenue: 0, totalCitations: 0, byMonth: [], byStatute: [], byOfficer: [] }, 200);
-  }
+  return c.json({
+    days,
+    total_revenue: total?.total_revenue ?? 0,
+    payment_count: total?.payment_count ?? 0,
+    by_violation,
+    by_month,
+  });
 });
 
-// ── GET /api/reports/statute-analytics ───────────────────────
-// StatuteAnalyticsPage — top cited statutes and trend over time.
-reports.get('/statute-analytics', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const w = dateWindow(c.req);
+// GET /api/reports/schedules
+// No report_schedules table exists yet. Saved-report scheduling is
+// out of scope for v1 — the GET exists so the dashboard's schedules
+// panel can mount without 404 spam. Return [] until a real table lands.
+reports.get('/schedules', (c) => c.json([]));
 
-    const topStatutes = await query<Record<string, unknown>>(db, `
-      SELECT
-        COALESCE(statute_citation, violation_code, violation, 'unknown') AS statute,
-        COUNT(*) AS count,
-        COALESCE(SUM(fine_amount), 0) AS revenue
-      FROM citations
-      WHERE ${rangeSnippet(w, 'COALESCE(citation_date, created_at)')}
-      GROUP BY statute ORDER BY count DESC LIMIT 25
-    `, ...rangeParams(c.req, w));
-
-    const trends = await query<{ month: string; count: number }>(db, `
-      SELECT
-        strftime('%Y-%m', COALESCE(citation_date, created_at)) AS month,
-        COUNT(*) AS count
-      FROM citations
-      WHERE COALESCE(citation_date, created_at) >= date('now', '-12 months')
-      GROUP BY month ORDER BY month
-    `);
-
-    const byCategory = await query<Record<string, unknown>>(db, `
-      SELECT
-        COALESCE(type, 'other') AS category,
-        COUNT(*) AS count
-      FROM citations
-      WHERE ${rangeSnippet(w, 'COALESCE(citation_date, created_at)')}
-      GROUP BY category ORDER BY count DESC
-    `, ...rangeParams(c.req, w));
-
-    return c.json({ topStatutes, trends, byCategory });
-  } catch (err) {
-    console.error('GET /reports/statute-analytics error:', err);
-    return c.json({ topStatutes: [], trends: [], byCategory: [] }, 200);
-  }
-});
-
-// ── GET /api/reports/dashboard ───────────────────────────────
-// ReportsPage top-row tiles. Combines call counts, unit roster, BOLOs.
-reports.get('/dashboard', async (c) => {
-  try {
-    const db = getDb(c.env);
-    const today = await queryFirst<{ active_calls: number; today_calls: number; pending_reports: number }>(db, `
-      SELECT
-        SUM(CASE WHEN status IN ('dispatched','enroute','onscene','pending','open') THEN 1 ELSE 0 END) AS active_calls,
-        SUM(CASE WHEN date(created_at) = date('now') THEN 1 ELSE 0 END) AS today_calls,
-        SUM(CASE WHEN status IN ('pending','open') THEN 1 ELSE 0 END) AS pending_reports
-      FROM calls_for_service
-    `);
-    const units = await queryFirst<{ units_on_duty: number; total_units: number }>(db, `
-      SELECT
-        SUM(CASE WHEN status IN ('available','dispatched','enroute','onscene') THEN 1 ELSE 0 END) AS units_on_duty,
-        COUNT(*) AS total_units
-      FROM units
-    `);
-    const callsByPriority = await query<{ priority: string; count: number }>(db, `
-      SELECT priority, COUNT(*) AS count
-      FROM calls_for_service
-      WHERE date(created_at) >= date('now', '-30 days')
-      GROUP BY priority
-    `);
-    return c.json({
-      activeCalls: today?.active_calls ?? 0,
-      todayCalls: today?.today_calls ?? 0,
-      unitsOnDuty: units?.units_on_duty ?? 0,
-      totalUnits: units?.total_units ?? 0,
-      pendingReports: today?.pending_reports ?? 0,
-      activeBolos: 0,
-      avgResponseMinutes: 0,
-      callsByPriority,
-    });
-  } catch (err) {
-    return c.json({
-      activeCalls: 0, todayCalls: 0, unitsOnDuty: 0, totalUnits: 0,
-      pendingReports: 0, activeBolos: 0, avgResponseMinutes: 0, callsByPriority: [],
-    }, 200);
-  }
-});
-
-// ── Endpoints with no backing tables — empty shapes only ────
-// schedules + templates: ReportsPage builder reads `data[]`. No
-// report_schedules / report_templates table on live D1 yet.
-reports.get('/schedules', (c) => c.json({ data: [], total: 0 }));
+// GET /api/reports/templates
+// Same situation as /schedules — no report_templates table. Return [].
 reports.get('/templates', (c) => c.json([]));
+
+// GET /api/reports/statute-analytics?days=180
+// Aggregates over citation_violations joined to utah_statutes so we
+// can show statute code + section title + offense_level. Percentage
+// is computed against the total within the window so each row's
+// pct_of_total sums to ~100 (minor rounding ok).
+reports.get('/statute-analytics', async (c) => {
+  const db = getDb(c.env);
+  const days = clampDays(c.req.query('days'), 180);
+  const since = `-${days} days`;
+
+  const total = await queryFirst<{ n: number }>(
+    db,
+    `SELECT COUNT(*) AS n
+       FROM citation_violations v
+      WHERE v.created_at >= datetime('now', ?)`,
+    since
+  );
+  const denom = Math.max(total?.n ?? 0, 1);
+
+  const rows = await query<{
+    statute_citation: string | null;
+    short_title: string | null;
+    offense_level: string | null;
+    category: string | null;
+    count: number;
+  }>(
+    db,
+    `SELECT v.statute_citation,
+            s.short_title,
+            COALESCE(s.offense_level, v.offense_level) AS offense_level,
+            s.category,
+            COUNT(*) AS count
+       FROM citation_violations v
+  LEFT JOIN utah_statutes s ON s.id = v.statute_id
+      WHERE v.created_at >= datetime('now', ?)
+      GROUP BY v.statute_citation, s.short_title, offense_level, s.category
+      ORDER BY count DESC
+      LIMIT 25`,
+    since
+  );
+
+  const top_statutes = rows.map((r) => ({
+    statute_citation: r.statute_citation,
+    short_title: r.short_title,
+    offense_level: r.offense_level,
+    count: r.count,
+    pct_of_total: Math.round((r.count / denom) * 10000) / 100,
+  }));
+
+  const by_category = await query<{ category: string | null; count: number }>(
+    db,
+    `SELECT s.category, COUNT(*) AS count
+       FROM citation_violations v
+  LEFT JOIN utah_statutes s ON s.id = v.statute_id
+      WHERE v.created_at >= datetime('now', ?)
+      GROUP BY s.category
+      ORDER BY count DESC`,
+    since
+  );
+
+  return c.json({ days, total: total?.n ?? 0, top_statutes, by_category });
+});
+
+// GET /api/reports/response-times
+// Moved verbatim from src/routes/stubs.ts. Real dispatch-time math
+// (arrived_at - dispatched_at) is a Phase 2 port — see the
+// calls_for_service status-timestamp columns. Return [] until then.
+reports.get('/response-times', (c) => c.json([]));
 
 export default reports;

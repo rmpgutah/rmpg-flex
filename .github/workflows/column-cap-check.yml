@@ -1,0 +1,45 @@
+name: D1 column cap check
+
+on:
+  pull_request:
+    paths:
+      - 'migrations/**/*.sql'
+      - 'scripts/check-column-cap.js'
+      - '.github/workflows/column-cap-check.yml'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need history so we can diff against the base branch.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      # Collect the migration files added/modified in this PR (vs the
+      # base branch) and pass them to the script via env. Avoids
+      # flagging historical files the script can't fix.
+      - name: Identify changed migrations
+        id: changed
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          set -euo pipefail
+          changed=$(git diff --name-only --diff-filter=ACMR "$BASE_SHA" HEAD -- 'migrations/*.sql' | tr '\n' '\n' || true)
+          {
+            echo "files<<EOF"
+            echo "$changed"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "Changed migrations:"
+          echo "$changed"
+
+      - name: Check column cap
+        env:
+          CHANGED_MIGRATIONS: ${{ steps.changed.outputs.files }}
+        run: node scripts/check-column-cap.js
