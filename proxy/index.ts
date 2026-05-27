@@ -782,6 +782,22 @@ const API_ROUTES: RouteRule[] = [
   // /src/routes/radio.ts existing on main.
   { kind: 'prefix', value: '/api/radio' },
 
+  // ── Serve Intake (upload + OCR + LLM extraction) ──
+  // The new Worker owns /scan-document, /upload, /intake, /:id/documents,
+  // and /documents/:docId/file (R2-backed). The legacy `rmpg-flex`
+  // Worker had its own serve-intake handlers but they predated the
+  // Tesseract container + Workers-AI extraction wired up in PR for
+  // this session — route the whole namespace to env.API so the new
+  // pipeline is what runs in prod. Legacy serve-intake is dead code
+  // after this entry lands.
+  { kind: 'prefix', value: '/api/serve-intake' },
+  // /api/ocr/scan-document is the alias URL the ServeIntakePage client
+  // already calls for its in-page image preview path. The handler is
+  // src/routes/ocr.ts (delegates to the same extraction utility as
+  // /api/serve-intake/scan-document). Bare /api/ocr is the full prefix
+  // so future OCR sub-paths come along automatically.
+  { kind: 'prefix', value: '/api/ocr' },
+
   // ── HR module ──
   // New Worker owns the four ported sub-paths (/leave, /disciplinary,
   // /reviews, /benefits). Un-ported HR sub-paths under /api/hr/*

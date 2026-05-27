@@ -5,35 +5,46 @@
 // Each row in serve_queue is one paper to deliver; serve_attempts is
 // the append-only attempt log. Phase 1 RMS port.
 //
-// Migration: 0030_serve_intake.sql.
+// Migrations: 0030_serve_intake.sql (queue + attempts + routes + skip_traces),
+//             0034_serve_intake_documents.sql (uploaded packet sidecar).
 //
-// Scope vs legacy /server/routes/serveIntake.ts (1336 LOC):
-//   This port covers the data layer + structured-intake CRUD. The
-//   legacy file's heavy PDF parser path (extract-text → parse →
-//   intake, ~1100 LOC of regex parsers + ServeManager poller + OCR
-//   fallback) is deferred. Reason: extraction is now handled by the
-//   /api/document-intake + pdfTools container pipeline; the parser
-//   port should layer on top of that pipeline rather than re-invent
-//   the Node-specific execFile(pdftotext) path.
+// OCR pipeline (replaces the legacy regex parser):
+//   PDF  → PDF_TOOLS container (pdftotext, Tesseract fallback)
+//        → Workers AI Llama 3.3 70B for structured JSON extraction
+//   Image → Workers AI Llama 3.2 Vision (one-pass OCR + extraction)
+//   See src/utils/serveIntakeExtract.ts for the schema + prompt.
 //
-// Endpoints (12):
+// Endpoints:
+//   POST   /scan-document                per-file OCR preview (multipart)
+//   POST   /upload                       full packet: R2 + OCR + queue row
+//   POST   /intake                       legacy-shape commit (pre-extracted text)
+//   GET    /:id/documents                list uploaded files for a queue entry
+//   GET    /documents/:docId/file        stream the R2 object inline
 //   GET    /stats
-//   GET    /                       list queue with filters
-//   GET    /:id                    one queue entry + attempts
-//   POST   /                       create from structured payload
+//   GET    /                             list queue with filters
+//   GET    /:id                          one queue entry + attempts
+//   POST   /                             create from structured payload
 //   PUT    /:id
-//   DELETE /:id                    admin/manager only
+//   DELETE /:id                          admin/manager only
 //   GET    /:id/attempts
-//   POST   /:id/attempts           log attempt; bumps attempt_count
-//   POST   /:id/skip-trace         log address search
-//   GET    /routes                 list officer routes
+//   POST   /:id/attempts                 log attempt; bumps attempt_count
+//   POST   /:id/skip-trace               log address search
+//   GET    /routes                       list officer routes
 //   POST   /routes
-//   GET    /export.csv             admin/manager export
+//   GET    /export.csv                   admin/manager export
 // ============================================================
 
 import { Hono } from 'hono';
+import { getContainer } from '@cloudflare/containers';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import {
+  extractFromText,
+  extractFromImage,
+  extractTextFromPdf,
+  fieldsToQueueRow,
+  type ExtractionResult,
+} from '../utils/serveIntakeExtract';
 
 const si = new Hono<Env>();
 
@@ -57,6 +68,381 @@ const ATTEMPT_RESULTS = new Set([
   'served', 'sub_served', 'posted', 'no_answer', 'refused',
   'bad_address', 'moved', 'deceased', 'other',
 ]);
+
+// ── OCR + upload constants ──────────────────────────────────
+const MAX_UPLOAD_BYTES = 25 * 1024 * 1024;   // 25 MB per file
+const MAX_FILES_PER_UPLOAD = 12;
+const PDF_TOOLS_NAME = 'shared';
+const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer'];
+
+function isPdf(mime: string): boolean { return mime === 'application/pdf'; }
+function isImage(mime: string): boolean { return mime.startsWith('image/'); }
+
+async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
+  const ts = Date.now();
+  const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
+  const key = `serve-intake/${uploaderId ?? 'anon'}/${ts}-${crypto.randomUUID().slice(0, 8)}-${safeName}`;
+  await env.UPLOADS.put(key, file.stream(), {
+    httpMetadata: { contentType: file.type || 'application/octet-stream' },
+    customMetadata: {
+      original_name: file.name || '',
+      uploaded_by: String(uploaderId ?? ''),
+    },
+  });
+  return key;
+}
+
+// ── POST /scan-document — per-file OCR + extraction preview ──
+// Multipart upload from ServeIntakePage's `ocrScanImage` helper. Returns
+// the OcrScanResult shape the client renders in its review modal.
+// Accepts either an `image` field (used by the in-page handler) or a
+// `file` field (used by the bulk upload path). PDF files run through
+// the container Tesseract path; images go straight to vision-LLM.
+async function scanDocumentHandler(c: any): Promise<Response> {
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !INTAKE_ROLES.includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  let form: FormData;
+  try { form = await c.req.formData(); } catch {
+    return c.json({ error: 'Expected multipart/form-data' }, 400);
+  }
+  const file = (form.get('image') ?? form.get('file') ?? form.get('pdf')) as File | null;
+  if (!file || typeof (file as any).arrayBuffer !== 'function') {
+    return c.json({ error: 'Missing file (field: image | file | pdf)' }, 400);
+  }
+  if (file.size === 0 || file.size > MAX_UPLOAD_BYTES) {
+    return c.json({ error: `File size out of range (0 < n <= ${MAX_UPLOAD_BYTES})` }, 400);
+  }
+
+  let extraction: ExtractionResult;
+  let pageCount = 0;
+  let ocrUsed = false;
+  let ocrEngine: string;
+
+  try {
+    if (isImage(file.type)) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      extraction = await extractFromImage(c.env.AI, bytes);
+      ocrEngine = 'workers-ai-vision';
+    } else if (isPdf(file.type)) {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+      const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
+      pageCount = txt.page_count;
+      ocrUsed = txt.ocr_used;
+      ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+      extraction = await extractFromText(c.env.AI, txt.text);
+    } else {
+      return c.json({ error: `Unsupported file type: ${file.type}` }, 400);
+    }
+  } catch (err) {
+    return c.json({
+      error: 'Extraction failed',
+      detail: err instanceof Error ? err.message : String(err),
+    }, 500);
+  }
+
+  return c.json({
+    success: extraction.success,
+    documentType: extraction.documentType,
+    confidence: extraction.confidence,
+    fields: extraction.fields,
+    rawText: extraction.rawText,
+    allDates: extraction.allDates,
+    pageCount,
+    ocrUsed,
+    ocrEngine,
+    model: extraction.model,
+    extractionMs: extraction.ms,
+    error: extraction.error,
+  });
+}
+
+si.post('/scan-document', scanDocumentHandler);
+
+// ── POST /upload — full packet: store + OCR + serve_queue row ──
+// Accepts multipart with one or more `files[]` entries. For each
+// file we (1) write to R2 UPLOADS, (2) extract text via the right
+// engine, (3) run LLM field extraction. We then merge fields
+// across all uploaded documents (later doc wins for non-empty
+// values) and create a single serve_queue row, returning the
+// stored document records alongside it.
+si.post('/upload', async (c) => {
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !INTAKE_ROLES.includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  let form: FormData;
+  try { form = await c.req.formData(); } catch {
+    return c.json({ error: 'Expected multipart/form-data' }, 400);
+  }
+  // FormData.getAll returns FormDataEntryValue[] which the Workers types
+  // model as `string`-only (no File union). Cast through unknown so we
+  // can filter for the File-like entries (Workers does deliver File
+  // instances at runtime — only the type lib is narrow here).
+  const rawEntries = [...form.getAll('files[]'), ...form.getAll('file')] as unknown as Array<File | string>;
+  const files: File[] = rawEntries.filter(
+    (f): f is File => typeof f === 'object' && f !== null && typeof (f as File).arrayBuffer === 'function' && (f as File).size > 0,
+  );
+  if (files.length === 0) return c.json({ error: 'No files in request' }, 400);
+  if (files.length > MAX_FILES_PER_UPLOAD) {
+    return c.json({ error: `Too many files (max ${MAX_FILES_PER_UPLOAD})` }, 400);
+  }
+  for (const f of files) {
+    if (f.size > MAX_UPLOAD_BYTES) {
+      return c.json({ error: `${f.name} exceeds ${MAX_UPLOAD_BYTES} bytes` }, 400);
+    }
+  }
+
+  const db = getDb(c.env);
+  const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
+  const documents: any[] = [];
+  const mergedFields: Record<string, { value: string; confidence: number }> = {};
+  let bestConfidence = 0;
+  let bestDocType = 'other';
+  const allDates = new Set<string>();
+
+  for (const file of files) {
+    const bytes = new Uint8Array(await file.arrayBuffer());
+    let extraction: ExtractionResult;
+    let pageCount = 0;
+    let ocrUsed = false;
+    let ocrEngine: string;
+    try {
+      if (isImage(file.type)) {
+        extraction = await extractFromImage(c.env.AI, bytes);
+        ocrEngine = 'workers-ai-vision';
+      } else if (isPdf(file.type)) {
+        const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
+        pageCount = txt.page_count;
+        ocrUsed = txt.ocr_used;
+        ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+        extraction = await extractFromText(c.env.AI, txt.text);
+      } else {
+        documents.push({ file_name: file.name, status: 'failed', error: `Unsupported type ${file.type}` });
+        continue;
+      }
+    } catch (err) {
+      documents.push({
+        file_name: file.name, status: 'failed',
+        error: err instanceof Error ? err.message : String(err),
+      });
+      continue;
+    }
+
+    // Persist file to R2 only after we know the extraction succeeded
+    // enough to be worth storing. Failed extractions still get an R2
+    // copy so the user can re-try with the document later.
+    const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
+
+    const result = await execute(
+      db,
+      `INSERT INTO serve_intake_documents (
+        uploaded_by, file_name, file_type, r2_key, size_bytes, page_count,
+        raw_text, ocr_used, ocr_engine, doc_type, fields_json, confidence,
+        extraction_model, extraction_ms, status
+      ) VALUES (?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?)`,
+      user.id, file.name, file.type, r2Key, file.size, pageCount,
+      extraction.rawText.slice(0, 200_000),
+      ocrUsed ? 1 : 0, ocrEngine,
+      extraction.documentType, JSON.stringify(extraction.fields), extraction.confidence,
+      extraction.model, extraction.ms,
+      extraction.success ? 'extracted' : 'failed',
+    );
+
+    documents.push({
+      id: result.meta.last_row_id,
+      file_name: file.name,
+      file_type: file.type,
+      r2_key: r2Key,
+      page_count: pageCount,
+      ocr_used: ocrUsed,
+      ocr_engine: ocrEngine,
+      doc_type: extraction.documentType,
+      confidence: extraction.confidence,
+      success: extraction.success,
+      model: extraction.model,
+      extraction_ms: extraction.ms,
+      fields: extraction.fields,
+    });
+
+    if (extraction.confidence > bestConfidence) {
+      bestConfidence = extraction.confidence;
+      bestDocType = extraction.documentType;
+    }
+    for (const d of extraction.allDates) allDates.add(d);
+    // Later-doc-wins merge: keeps the highest-confidence value per field.
+    for (const [k, v] of Object.entries(extraction.fields)) {
+      const cur = mergedFields[k];
+      if (!cur || (v.value && v.confidence > cur.confidence)) {
+        mergedFields[k] = v;
+      }
+    }
+  }
+
+  // Create the serve_queue row from merged fields.
+  const row = fieldsToQueueRow(mergedFields);
+  let queueId: number | null = null;
+  if (row.recipient_name || row.recipient_address) {
+    const ins = await execute(
+      db,
+      `INSERT INTO serve_queue (
+        recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
+        document_type, case_number, court_name, jurisdiction,
+        client_name, attorney_name, priority, deadline,
+        service_instructions, notes, status
+      ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?)`,
+      row.recipient_name, row.recipient_address, row.recipient_city, row.recipient_state, row.recipient_zip,
+      row.document_type, row.case_number, row.court_name, row.jurisdiction,
+      row.client_name, row.attorney_name, 'normal', row.deadline,
+      row.service_instructions, row.notes, 'pending',
+    );
+    queueId = ins.meta.last_row_id as number;
+    // Back-link the document rows to the new queue entry.
+    for (const d of documents) {
+      if (d.id) await execute(db, 'UPDATE serve_intake_documents SET serve_queue_id = ? WHERE id = ?', queueId, d.id);
+    }
+  }
+
+  return c.json({
+    success: documents.some((d) => d.success),
+    serve_queue_id: queueId,
+    documents,
+    merged: {
+      documentType: bestDocType,
+      confidence: bestConfidence,
+      fields: mergedFields,
+      allDates: [...allDates],
+      queue_row: row,
+    },
+  });
+});
+
+// ── POST /intake — legacy-shape commit ─────────────────────
+// The client's ServeIntakePage.processIntake POSTs already-extracted
+// text (the in-browser pdfjs path) here as { documents: [{type,text}] }.
+// We run LLM extraction on the concatenated text and create a single
+// serve_queue row. Returns the IntakeResult shape the client expects.
+si.post('/intake', async (c) => {
+  const user = c.get('user') as { id: number; role: string } | undefined;
+  if (!user || !INTAKE_ROLES.includes(user.role)) {
+    return c.json({ error: 'Insufficient permissions', code: 'FORBIDDEN' }, 403);
+  }
+  const body = await c.req.json<any>().catch(() => ({}));
+  const docs: Array<{ type?: string; text?: string }> = Array.isArray(body.documents) ? body.documents : [];
+  if (docs.length === 0) return c.json({ error: 'No documents in request' }, 400);
+
+  const combined = docs.map((d) => `--- ${d.type || 'document'} ---\n${d.text || ''}`).join('\n\n');
+  const extraction = await extractFromText(c.env.AI, combined);
+  const row = fieldsToQueueRow(extraction.fields);
+
+  let queueId: number | null = null;
+  if (row.recipient_name || row.recipient_address) {
+    const db = getDb(c.env);
+    const ins = await execute(
+      db,
+      `INSERT INTO serve_queue (
+        recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
+        document_type, case_number, court_name, jurisdiction,
+        client_name, attorney_name, priority, deadline,
+        service_instructions, notes, status
+      ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?)`,
+      row.recipient_name, row.recipient_address, row.recipient_city, row.recipient_state, row.recipient_zip,
+      row.document_type, row.case_number, row.court_name, row.jurisdiction,
+      row.client_name, row.attorney_name, 'normal', row.deadline,
+      row.service_instructions, row.notes, 'pending',
+    );
+    queueId = ins.meta.last_row_id as number;
+  }
+
+  // Shape mirrors client/src/pages/ServeIntakePage.tsx IntakeResult.
+  // person/property/call linking deferred — return nulls so the UI
+  // still renders the success card and the operator can drill in.
+  const get = (k: string) => (extraction.fields[k]?.value || '').trim();
+  return c.json({
+    success: extraction.success,
+    person_id: null,
+    property_id: null,
+    call_id: null,
+    call_number: null,
+    serve_queue_id: queueId,
+    latitude: null,
+    longitude: null,
+    weather: null,
+    lighting: null,
+    extracted: {
+      name: {
+        first: get('recipient_first_name'),
+        middle: get('recipient_middle_name'),
+        last: get('recipient_last_name'),
+      },
+      dob: get('recipient_dob'),
+      address: get('recipient_address'),
+      plaintiff: get('plaintiff'),
+      court: get('court_name'),
+      docs: get('document_type') || get('document_subtype'),
+      instructions: get('service_instructions'),
+      jobNumber: get('job_number'),
+      caseNumber: get('case_number'),
+      dueDate: get('service_deadline'),
+      attorney: {
+        name: get('attorney_name'),
+        phone: get('attorney_phone'),
+        email: get('attorney_email'),
+        bar: get('attorney_bar_number'),
+      },
+      fee: get('fee_amount'),
+      processType: get('process_type'),
+      serviceWindows: get('service_windows'),
+      deadlineStr: get('service_deadline'),
+      serverName: get('server_name'),
+    },
+    confidence: extraction.confidence,
+    documentType: extraction.documentType,
+    model: extraction.model,
+  });
+});
+
+// ── GET /:id/documents — list documents on a queue entry ────
+si.get('/:id/documents', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const db = getDb(c.env);
+  const rows = await query(
+    db,
+    `SELECT id, file_name, file_type, r2_key, size_bytes, page_count,
+            ocr_used, ocr_engine, doc_type, confidence, status,
+            extraction_model, extraction_ms, created_at
+       FROM serve_intake_documents
+      WHERE serve_queue_id = ?
+      ORDER BY id DESC`,
+    id,
+  );
+  return c.json(rows);
+});
+
+// ── GET /documents/:docId/file — stream the R2 object ───────
+si.get('/documents/:docId/file', async (c) => {
+  const docId = parseInt(c.req.param('docId'), 10);
+  if (isNaN(docId)) return c.json({ error: 'Invalid docId' }, 400);
+  const db = getDb(c.env);
+  const doc = await queryFirst<{ r2_key: string; file_type: string; file_name: string }>(
+    db,
+    'SELECT r2_key, file_type, file_name FROM serve_intake_documents WHERE id = ?',
+    docId,
+  );
+  if (!doc?.r2_key) return c.json({ error: 'Not found' }, 404);
+  const obj = await c.env.UPLOADS.get(doc.r2_key);
+  if (!obj) return c.json({ error: 'File missing in R2' }, 404);
+  return new Response(obj.body, {
+    headers: {
+      'Content-Type': doc.file_type || 'application/octet-stream',
+      'Content-Disposition': `inline; filename="${(doc.file_name || 'document').replace(/"/g, '')}"`,
+      'Cache-Control': 'private, max-age=300',
+    },
+  });
+});
 
 // ── GET /stats ──────────────────────────────────────────────
 si.get('/stats', async (c) => {

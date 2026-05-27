@@ -20,6 +20,9 @@ export type Bindings = {
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows
   // the stub type correctly.
   PDF_TOOLS: DurableObjectNamespace<PdfToolsContainer>;
+  // Workers AI — vision-LLM OCR + structured field extraction for
+  // process-service intake. See src/routes/serveIntake.ts.
+  AI: Ai;
 };
 
 export type Variables = {
