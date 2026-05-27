@@ -189,11 +189,16 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/skiptracer/stats' },
   // IPED status / download info / hash sets
   { kind: 'prefix', value: '/api/iped/' },
-  // Personnel tabs that didn't exist in legacy
-  { kind: 'prefix', value: '/api/personnel/schedules' },
-  { kind: 'prefix', value: '/api/personnel/time' },
-  { kind: 'prefix', value: '/api/personnel/deployments' },
-  { kind: 'prefix', value: '/api/personnel/coverage-gaps' },
+  // Personnel sub-paths — GET ports of the four roster/time/deployment
+  // surfaces (PR replacing the PR #667 stubs). Scoped to GET so the
+  // existing POST/PUT/DELETE on /schedules, /time, /deployments still
+  // fall through to legacy until the rewrite has matching write
+  // handlers. /coverage-gaps is read-only by nature but listed under
+  // the same GET filter for consistency.
+  { kind: 'prefix', value: '/api/personnel/schedules', methods: ['GET'] },
+  { kind: 'prefix', value: '/api/personnel/time', methods: ['GET'] },
+  { kind: 'prefix', value: '/api/personnel/deployments', methods: ['GET'] },
+  { kind: 'prefix', value: '/api/personnel/coverage-gaps', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
   // PUT + DELETE /api/personnel/:id — rewrite implements edit handler
