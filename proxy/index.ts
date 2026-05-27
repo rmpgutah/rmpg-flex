@@ -81,6 +81,101 @@ const STUBS: StubRule[] = [
     reason: 'no equipment table/handler; empty list silences dashboard polling',
   },
   //
+  // ── 2026-05-27 batch — silence broken pages until real handlers land ──
+  // Each of the entries below was sourced from a single prod console log
+  // export covering 60+ unique 4xx/5xx responses across ~12 pages. The
+  // common pattern: legacy worker handler exists but the underlying table
+  // is missing OR the column the handler reads has been renamed; rewrite
+  // has no replacement handler yet. Empty-shape stubs let the page render
+  // its empty state instead of crashing into an ErrorBoundary.
+  //
+  // Categorized by page to make removal triage obvious — when a real
+  // handler lands for a subsystem, drop ALL its stubs together.
+  //
+  // ── Fleet (/api/fleet — rewrite routes to env.API but has no handler) ──
+  {
+    match: /^\/api\/fleet(\/.*)?$/,
+    methods: ['GET'],
+    body: { data: [], total: 0 },
+    reason: 'no fleet router in /src/; FleetPage + DashCameras render empty until ported',
+  },
+  // ── Howen dashcam integration (legacy 500: missing tables/credentials) ──
+  {
+    match: /^\/api\/howen\/(devices|events)(\/.*)?$/,
+    methods: ['GET'],
+    body: { data: [], total: 0 },
+    reason: 'howen integration backend offline; DashcamPage tolerates empty data',
+  },
+  // ── Personnel sub-tabs (rewrite + legacy both 404/500) ──
+  // body-cameras/bodycam-videos are proxy-routed to env.API per the rules
+  // above; the rewrite has no handler so it 404s. Stubs intercept first.
+  {
+    match: /^\/api\/personnel\/(body-cameras|bodycam-videos)(\/.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'body camera handlers not ported to /src/ yet; BodyCamerasPage tolerates []',
+  },
+  {
+    match: /^\/api\/personnel\/(training|training-requirements|training-completion|training-alerts)$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'training handlers not implemented; TrainingPage tolerates []',
+  },
+  {
+    match: /^\/api\/personnel\/training-materials$/,
+    methods: ['GET'],
+    body: { data: [] },
+    reason: 'training materials handler not implemented',
+  },
+  {
+    match: /^\/api\/personnel\/duty-hours/,
+    methods: ['GET'],
+    body: { entries: [], totals: { totalHours: 0, totalOfficers: 0 } },
+    reason: 'legacy duty-hours handler 500s; PersonnelAnalyticsDashboard tolerates empty',
+  },
+  // ── HR module (entire namespace 500s on legacy) ──
+  // The HR tables exist on live D1 (per project-hr-tables-stub-created memory),
+  // so the 500s are legacy handler bugs (column rename, etc.). Stub the GET
+  // paths the HrPage tabs hit on mount. POST/PUT/DELETE still fall through
+  // — if the user can read empty state they can also see "save failed" and
+  // know the feature isn't ready. Don't paper over writes.
+  {
+    match: /^\/api\/hr\/(leave\/balances|payroll\/(periods|rates|entries|overtime)|grievances|documents|attendance|pips|benefits)/,
+    methods: ['GET'],
+    body: [],
+    reason: 'legacy HR handler 500s; HrPage tabs tolerate empty arrays',
+  },
+  // ── CRM module (entire namespace 500s on legacy) ──
+  {
+    match: /^\/api\/crm\/(dashboard|pipeline-summary|revenue-forecast|leads\/source-analytics)/,
+    methods: ['GET'],
+    body: {},
+    reason: 'legacy CRM stat handlers 500; CrmPage tolerates empty object',
+  },
+  {
+    match: /^\/api\/crm\/(recent-activity|leads\/follow-ups|tasks|expiring-contracts)/,
+    methods: ['GET'],
+    body: [],
+    reason: 'legacy CRM list handlers 500; CrmPage tolerates empty arrays',
+  },
+  // ── Offender registry stats (legacy 500) ──
+  {
+    match: /^\/api\/(offender-registry|sex-offender-registry)\/stats$/,
+    methods: ['GET'],
+    body: { data: {} },
+    reason: 'legacy offender stats handler 500s; pages tolerate empty data object',
+  },
+  // ── Admin shift-swaps (client requests /api/admin/shift-swaps but the
+  //    rewrite mounts the handler at /api/shift-swaps via shiftPlans.ts.
+  //    Client should be updated to match, but until then stub the admin
+  //    path so the ShiftPlansPage tab loads.) ──
+  {
+    match: /^\/api\/admin\/shift-swaps/,
+    methods: ['GET'],
+    body: [],
+    reason: 'client path mismatch (uses /admin/shift-swaps; rewrite serves /shift-swaps)',
+  },
+  //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
   //   was found missing the utah_statutes table. Removed the same day
@@ -88,6 +183,10 @@ const STUBS: StubRule[] = [
   //   from le.utah.gov XML downloads. See scripts/seed/utah_statutes.sql.
   //   2026-05-26: Added stubs above for /warrants/utah-search/auto-poll-status
   //   and /personnel/equipment to silence dashboard polling 404s.
+  //   2026-05-27: Bulk stub addition (this batch) — fleet, howen, personnel
+  //   sub-tabs, hr, crm, offender stats, admin/shift-swaps. Sourced from a
+  //   single prod console log export. Remove each subsystem's block when
+  //   its real handler lands in /src/.
 ];
 
 const API_ROUTES: RouteRule[] = [
@@ -160,6 +259,11 @@ const API_ROUTES: RouteRule[] = [
   // has the full handler and a populated evidence table on live D1.
   { kind: 'prefix', value: '/api/records/businesses' },
   { kind: 'prefix', value: '/api/records/reports/approval-queue' },
+  // Audit — entire namespace lives in src/routes/audit.ts (logs, stats,
+  // index-stats, compliance-report). Legacy never had any of these so
+  // requests were 404ing on the AuditLogPage. Mounted in routesConfig.ts
+  // at /api/audit; this rule routes the prefix to env.API.
+  { kind: 'prefix', value: '/api/audit' },
   // Admin extras the legacy worker doesn't implement
   { kind: 'prefix', value: '/api/admin/retention' },
   { kind: 'prefix', value: '/api/admin/departments' },
