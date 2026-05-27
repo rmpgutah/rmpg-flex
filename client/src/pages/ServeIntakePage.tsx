@@ -15,6 +15,12 @@ interface UploadedFile {
   text: string;
   status: 'pending' | 'extracted' | 'error';
   ocrResult?: any;
+  // Original File handle — held in state so processIntake() can POST
+  // the actual bytes to /api/serve-intake/upload (server-side OCR via
+  // PdfToolsContainer Tesseract + Workers AI Vision). The browser-side
+  // pdfjs text extraction stays as a fast preview; the server re-runs
+  // its own extraction on submit for accuracy.
+  file?: File;
 }
 
 interface IntakeResult {
@@ -175,6 +181,7 @@ export default function ServeIntakePage() {
         name: file.name, type, text,
         status: text.length > 50 || ocrResult?.success ? 'extracted' : 'error',
         ocrResult,
+        file,
       });
     }
     setFiles(prev => [...prev, ...newFiles]);
@@ -205,21 +212,62 @@ export default function ServeIntakePage() {
     }
   };
 
+  // Server-side advanced OCR pipeline. POST raw files (multipart) to
+  // /api/serve-intake/upload so the Worker runs the full pipeline:
+  //   PDFs  → PdfToolsContainer (pdftotext + Tesseract OCR fallback)
+  //         → Workers AI Llama 3.3 70B for structured field extraction
+  //   Images → Workers AI Llama 3.2 11B Vision (single-pass OCR + extract)
+  // Files are persisted to R2 under serve-intake/<userId>/<ts>-<rand>-<name>,
+  // and each yields a serve_intake_documents sidecar row with raw OCR
+  // text, per-field confidence, and model name for audit.
+  //
+  // This replaces the legacy /intake path that POSTed in-browser pdfjs
+  // text — that path could not handle scanned/image-only PDFs or phone
+  // photos of paperwork. Falls back to the legacy path on multipart
+  // failure (e.g. all files exceed the per-file 25 MB cap).
   const processIntake = useCallback(async () => {
     if (files.length === 0) return;
     setProcessing(true);
     setError(null);
     setResult(null);
+    const token = localStorage.getItem('rmpg_token');
     try {
-      const documents = files.map(f => ({ type: f.type, text: f.text }));
-      const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
-        method: 'POST',
-        body: JSON.stringify({ documents }),
-      });
-      if (resp && resp.success) {
-        setResult(resp);
+      const filesWithBlobs = files.filter(f => !!f.file);
+      const useServerSide = filesWithBlobs.length > 0;
+
+      if (useServerSide) {
+        const formData = new FormData();
+        for (const f of filesWithBlobs) {
+          if (f.file) formData.append('files[]', f.file, f.name);
+        }
+        const resp = await fetch('/api/serve-intake/upload', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${token}` },
+          body: formData,
+        });
+        if (!resp.ok) {
+          throw new Error(`Server returned ${resp.status}: ${await resp.text().catch(() => '')}`);
+        }
+        const body = await resp.json() as IntakeResult;
+        if (body.success) {
+          setResult(body);
+        } else {
+          setError('Intake processed but no records were created (check that the documents contain a recipient name or address)');
+        }
       } else {
-        setError('Intake processing failed');
+        // Fallback: only the pdfjs-extracted text is available (no File
+        // blobs). Goes to /intake which runs LLM extraction over the
+        // already-extracted browser text.
+        const documents = files.map(f => ({ type: f.type, text: f.text }));
+        const resp = await apiFetch<IntakeResult>('/serve-intake/intake', {
+          method: 'POST',
+          body: JSON.stringify({ documents }),
+        });
+        if (resp && resp.success) {
+          setResult(resp);
+        } else {
+          setError('Intake processing failed');
+        }
       }
     } catch (err: any) {
       setError(err?.message || 'Failed to process documents');

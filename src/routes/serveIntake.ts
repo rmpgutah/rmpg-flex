@@ -320,6 +320,19 @@ si.post('/upload', async (c) => {
     call_id: commit.call_id,
     call_number: commit.call_number,
     created: commit.created,
+    latitude: null,
+    longitude: null,
+    weather: null,
+    lighting: null,
+    // Legacy IntakeResult shape so the existing success card on
+    // ServeIntakePage renders without any client-side branching on
+    // which endpoint was hit.
+    extracted: buildExtractedBlock(mergedFields),
+    confidence: bestConfidence,
+    documentType: bestDocType,
+    // Server-side advanced fields (the /intake legacy path can't
+    // produce these — only /upload has R2 keys + per-document model
+    // confidence + page counts).
     documents,
     merged: {
       documentType: bestDocType,
@@ -330,6 +343,42 @@ si.post('/upload', async (c) => {
     },
   });
 });
+
+// Build the legacy `extracted` block the client's IntakeResult expects.
+// Both /upload and /intake return this shape so ServeIntakePage's success
+// card renders the same regardless of which path the client took.
+function buildExtractedBlock(fields: Record<string, { value: string; confidence: number }>) {
+  const get = (k: string) => (fields[k]?.value || '').trim();
+  return {
+    name: {
+      first: get('recipient_first_name'),
+      middle: get('recipient_middle_name'),
+      last: get('recipient_last_name'),
+    },
+    dob: get('recipient_dob'),
+    address: get('recipient_address'),
+    plaintiff: get('plaintiff'),
+    court: get('court_name'),
+    docs: get('document_type') || get('document_subtype'),
+    instructions: get('service_instructions'),
+    jobNumber: get('job_number'),
+    caseNumber: get('case_number'),
+    dueDate: get('service_deadline'),
+    attorney: {
+      name: get('attorney_name'),
+      phone: get('attorney_phone'),
+      email: get('attorney_email'),
+      bar: get('attorney_bar_number'),
+    },
+    fee: get('fee_amount'),
+    processType: get('process_type'),
+    serviceWindows: get('service_windows'),
+    deadlineStr: get('service_deadline'),
+    serverName: get('server_name'),
+    registeredAgent: get('registered_agent_name'),
+    businessName: get('recipient_business_name'),
+  };
+}
 
 // Description string written to calls_for_service.description. Kept
 // short — dispatchers see this in the call queue, so the case number
@@ -389,7 +438,6 @@ si.post('/intake', async (c) => {
   // weather/lighting/lat/lng remain null (those need a geocode step
   // — not in this PR; the geocode route at /api/geocode handles it
   // post-intake when the queue entry is opened in the route planner).
-  const get = (k: string) => (extraction.fields[k]?.value || '').trim();
   return c.json({
     success: extraction.success && (commit.serve_queue_id !== null || commit.call_id !== null),
     person_id: commit.person_id,
@@ -404,33 +452,7 @@ si.post('/intake', async (c) => {
     longitude: null,
     weather: null,
     lighting: null,
-    extracted: {
-      name: {
-        first: get('recipient_first_name'),
-        middle: get('recipient_middle_name'),
-        last: get('recipient_last_name'),
-      },
-      dob: get('recipient_dob'),
-      address: get('recipient_address'),
-      plaintiff: get('plaintiff'),
-      court: get('court_name'),
-      docs: get('document_type') || get('document_subtype'),
-      instructions: get('service_instructions'),
-      jobNumber: get('job_number'),
-      caseNumber: get('case_number'),
-      dueDate: get('service_deadline'),
-      attorney: {
-        name: get('attorney_name'),
-        phone: get('attorney_phone'),
-        email: get('attorney_email'),
-        bar: get('attorney_bar_number'),
-      },
-      fee: get('fee_amount'),
-      processType: get('process_type'),
-      serviceWindows: get('service_windows'),
-      deadlineStr: get('service_deadline'),
-      serverName: get('server_name'),
-    },
+    extracted: buildExtractedBlock(extraction.fields),
     confidence: extraction.confidence,
     documentType: extraction.documentType,
     model: extraction.model,
