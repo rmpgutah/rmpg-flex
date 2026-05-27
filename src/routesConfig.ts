@@ -78,12 +78,14 @@ import pdfTools from './routes/pdfTools';
 import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import forensics from './routes/forensics';
+import iped from './routes/iped';
 import patrol from './routes/patrol';
 import radio from './routes/radio';
 import serveIntake from './routes/serveIntake';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import serve from './routes/serve';
+import skiptracer from './routes/skiptracer';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -218,6 +220,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/iped', router: iped, auth: 'required',
+    note: 'Read-only over forensic_hash_sets + iped_imports; replaces proxy stubs from PR #667' },
   { prefix: '/api/offline', router: offline, auth: 'required',
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
@@ -228,6 +232,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
+  { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
+    note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
 
