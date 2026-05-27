@@ -143,7 +143,7 @@ incidents.put('/:id/submit', requireRole(...WRITE_ROLES), async (c) => {
     if (!validation.valid && force) {
       try {
         await execute(db, `
-          INSERT INTO activity_log (user_id, action, entity_type, entity_id, details)
+          INSERT INTO audit_log (user_id, action, entity_type, entity_id, details)
           VALUES (?, 'admin_override', 'incident', ?, ?)`,
           user.id, id, `God Mode: bypassed NIBRS validation (${validation.errors.length} errors)`);
       } catch { /* non-fatal */ }
@@ -196,7 +196,7 @@ incidents.put('/:id/return', requireRole(...REVIEW_ROLES), async (c) => {
     await execute(db, "UPDATE incidents SET status = 'returned', supervisor_id = ?, updated_at = datetime('now', '-7 hours') WHERE id = ?", user.id, id);
     try {
       await execute(db, `
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details)
+        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details)
         VALUES (?, 'incident_returned', 'incident', ?, ?)`,
         user.id, id, `Returned for revision: ${reason}`);
     } catch { /* non-fatal */ }

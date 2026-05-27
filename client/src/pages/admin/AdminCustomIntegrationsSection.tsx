@@ -13,6 +13,7 @@ import {
   Activity, Pencil, Power, PowerOff, ServerCog,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 
 interface ExternalIntegration {
   id: string;
@@ -71,7 +72,7 @@ export default function AdminCustomIntegrationsSection() {
     setLoading(true);
     try {
       const list = await apiFetch<ExternalIntegration[]>('/api/admin/external-integrations');
-      setItems(list);
+      setItems(asArray<ExternalIntegration>(list));
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to load integrations');

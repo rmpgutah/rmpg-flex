@@ -27,7 +27,7 @@ welfare.post('/ack', requireRole(...ALL_ROLES), async (c) => {
     const userId = c.get('userId') as number;
     try {
       await execute(db, `
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'welfare_ack', 'user', ?, ?, ?)`,
         userId, userId, 'Code 4 ack received', c.req.header('cf-connecting-ip') || 'unknown');
     } catch { /* non-fatal */ }
@@ -102,7 +102,7 @@ welfare.post('/help', requireRole(...ALL_ROLES), async (c) => {
 
     try {
       await execute(db, `
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'welfare_help_requested', 'user', ?, ?, ?)`,
         userId, userId,
         `Officer requested help from MDT welfare modal${callContext ? ' on call ' + callContext.call_number : ''}`,
@@ -125,7 +125,7 @@ welfare.post('/snooze', requireRole(...ALL_ROLES), async (c) => {
     const userId = c.get('userId') as number;
     try {
       await execute(db, `
-        INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+        INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
         VALUES (?, 'welfare_snooze', 'user', ?, ?, ?)`,
         userId, userId, 'Welfare prompt snoozed (5 min)', c.req.header('cf-connecting-ip') || 'unknown');
     } catch { /* non-fatal */ }

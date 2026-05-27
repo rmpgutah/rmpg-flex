@@ -3,6 +3,10 @@ import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
 import { LIST_VIEW_COLUMNS } from './calls';
 
+// Shared with /dispatch/calls — keeps the queue rows shape-compatible with
+// the list rows the dispatch panel already knows how to render.
+const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
+
 const aggregates = new Hono<Env>();
 
 // GET /dispatch/aggregates - Dashboard stats
@@ -65,8 +69,10 @@ aggregates.get('/disposition-stats', async (c) => {
 aggregates.get('/queue', async (c) => {
   try {
     const db = getDb(c.env);
+    // Narrow projection — D1 caps result sets at 100 cols and
+    // calls_for_service alone is at the cap. See dispatch/calls.ts.
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT ${LIST_VIEW_COLUMNS},
+      SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id

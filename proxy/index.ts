@@ -582,11 +582,16 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/skiptracer/stats' },
   // IPED status / download info / hash sets
   { kind: 'prefix', value: '/api/iped/' },
-  // Personnel tabs that didn't exist in legacy
-  { kind: 'prefix', value: '/api/personnel/schedules' },
-  { kind: 'prefix', value: '/api/personnel/time' },
-  { kind: 'prefix', value: '/api/personnel/deployments' },
-  { kind: 'prefix', value: '/api/personnel/coverage-gaps' },
+  // Personnel sub-paths — GET ports of the four roster/time/deployment
+  // surfaces (PR replacing the PR #667 stubs). Scoped to GET so the
+  // existing POST/PUT/DELETE on /schedules, /time, /deployments still
+  // fall through to legacy until the rewrite has matching write
+  // handlers. /coverage-gaps is read-only by nature but listed under
+  // the same GET filter for consistency.
+  { kind: 'prefix', value: '/api/personnel/schedules', methods: ['GET'] },
+  { kind: 'prefix', value: '/api/personnel/time', methods: ['GET'] },
+  { kind: 'prefix', value: '/api/personnel/deployments', methods: ['GET'] },
+  { kind: 'prefix', value: '/api/personnel/coverage-gaps', methods: ['GET'] },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
   // PUT + DELETE /api/personnel/:id — rewrite implements edit handler
@@ -626,6 +631,15 @@ const API_ROUTES: RouteRule[] = [
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
 
+  // ── Audit subsystem ──
+  // Live D1 `audit_log` had only id+created_at columns (an unused stump)
+  // until the audit-rewrite PR added user_id/action/entity_type/entity_id/
+  // details/ip_address and pointed /src/ writes at the consolidated table.
+  // Legacy never had a working audit handler — its routes return empties
+  // against the stump schema. Routing the whole namespace at env.API is
+  // the only path that lets AuditLogPage render real data.
+  { kind: 'prefix', value: '/api/audit' },
+
   // ── Radio subsystem (PR #661) ──
   // The new worker is the only handler. Legacy has no /api/radio/*
   // routes at all, so requests to this prefix have no fallback —
@@ -633,6 +647,17 @@ const API_ROUTES: RouteRule[] = [
   // the radio console was effectively broken in production despite
   // /src/routes/radio.ts existing on main.
   { kind: 'prefix', value: '/api/radio' },
+
+  // ── HR module ──
+  // New Worker owns the four ported sub-paths (/leave, /disciplinary,
+  // /reviews, /benefits). Un-ported HR sub-paths under /api/hr/*
+  // (payroll, grievances, attendance, documents, pips, exit
+  // interviews, workers' comp, handbook acks, etc.) will 404 from
+  // the new Worker — that's intentional. The legacy handlers for
+  // those depended on tables the live D1 doesn't have, so they
+  // were silently returning empty data anyway. A 404 is a more
+  // honest signal until those tabs get real ports.
+  { kind: 'prefix', value: '/api/hr' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {
