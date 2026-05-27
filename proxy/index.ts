@@ -92,46 +92,37 @@ const STUBS: StubRule[] = [
   // Categorized by page to make removal triage obvious — when a real
   // handler lands for a subsystem, drop ALL its stubs together.
   //
-  // ── Fleet (/api/fleet — rewrite routes to env.API but has no handler) ──
+  // ── Fleet sub-tabs that aren't ported yet ─────────────────────────────
+  // Bare /api/fleet, /api/fleet/:id, /api/fleet/map, /api/fleet/analytics,
+  // and /api/fleet/dashcam-videos[/:id[/neighbors]] are now real handlers
+  // in src/routes/fleet.ts. The list below is sub-paths the rewrite still
+  // doesn't implement; they 404 from the rewrite without a stub.
   {
-    match: /^\/api\/fleet(\/.*)?$/,
-    methods: ['GET'],
+    match: /^\/api\/fleet\/(fuel-cards|fuel|fuel\/.*|recalls|health-scores|maintenance-schedule|driver-performance|service-alerts|cost-trends|vehicle-lifecycle|fleet-cost-analytics|inspection-stats|notifications|overdue-inspections|dash-cameras|pretrip)(\/.*)?$/,
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     body: { data: [], total: 0 },
-    reason: 'no fleet router in /src/; FleetPage + DashCameras render empty until ported',
+    reason: 'fleet sub-tab handler not ported; tab renders empty until implemented',
   },
-  // ── Howen dashcam integration (legacy 500: missing tables/credentials) ──
+  // Howen handlers now live in src/routes/howen.ts (devices, events, status,
+  // devices/:id). Stub removed; requests reach the rewrite via the API_ROUTES
+  // rule below.
+  // ── Personnel sub-tabs not yet ported ─────────────────────────────────
+  // training, training-requirements, training-completion, body-cameras,
+  // bodycam-videos (+ retention/report, reviews/pending, redaction-requests),
+  // and duty-hours are now real handlers in src/routes/personnel.ts. The
+  // remaining sub-paths below (training-alerts, training-materials) still
+  // 404 from the rewrite — no backing tables yet — so stub them empty.
   {
-    match: /^\/api\/howen\/(devices|events)(\/.*)?$/,
+    match: /^\/api\/personnel\/training-alerts$/,
     methods: ['GET'],
-    body: { data: [], total: 0 },
-    reason: 'howen integration backend offline; DashcamPage tolerates empty data',
-  },
-  // ── Personnel sub-tabs (rewrite + legacy both 404/500) ──
-  // body-cameras/bodycam-videos are proxy-routed to env.API per the rules
-  // above; the rewrite has no handler so it 404s. Stubs intercept first.
-  {
-    match: /^\/api\/personnel\/(body-cameras|bodycam-videos)(\/.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'body camera handlers not ported to /src/ yet; BodyCamerasPage tolerates []',
-  },
-  {
-    match: /^\/api\/personnel\/(training|training-requirements|training-completion|training-alerts)$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'training handlers not implemented; TrainingPage tolerates []',
+    body: { alerts: [] },
+    reason: 'no training alerts pipeline yet; TrainingPage tolerates empty',
   },
   {
     match: /^\/api\/personnel\/training-materials$/,
     methods: ['GET'],
     body: { data: [] },
-    reason: 'training materials handler not implemented',
-  },
-  {
-    match: /^\/api\/personnel\/duty-hours/,
-    methods: ['GET'],
-    body: { entries: [], totals: { totalHours: 0, totalOfficers: 0 } },
-    reason: 'legacy duty-hours handler 500s; PersonnelAnalyticsDashboard tolerates empty',
+    reason: 'no training materials table; TrainingPage tolerates empty data',
   },
   // ── HR module (entire namespace 500s on legacy) ──
   // The HR tables exist on live D1 (per project-hr-tables-stub-created memory),
@@ -165,16 +156,8 @@ const STUBS: StubRule[] = [
     body: { data: {} },
     reason: 'legacy offender stats handler 500s; pages tolerate empty data object',
   },
-  // ── Admin shift-swaps (client requests /api/admin/shift-swaps but the
-  //    rewrite mounts the handler at /api/shift-swaps via shiftPlans.ts.
-  //    Client should be updated to match, but until then stub the admin
-  //    path so the ShiftPlansPage tab loads.) ──
-  {
-    match: /^\/api\/admin\/shift-swaps/,
-    methods: ['GET'],
-    body: [],
-    reason: 'client path mismatch (uses /admin/shift-swaps; rewrite serves /shift-swaps)',
-  },
+  // /api/admin/shift-swaps now has a real handler in src/routes/shiftPlans.ts
+  // (alias of /shift-swaps to match the client's existing path). Stub removed.
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
@@ -300,6 +283,14 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/personnel/coverage-gaps' },
   { kind: 'prefix', value: '/api/personnel/body-cameras' },
   { kind: 'prefix', value: '/api/personnel/bodycam-videos' },
+  // training* and duty-hours: handlers now live in src/routes/personnel.ts;
+  // legacy 404s / 500s on these. Route to env.API so the new handlers win.
+  { kind: 'prefix', value: '/api/personnel/training' },
+  { kind: 'prefix', value: '/api/personnel/duty-hours' },
+  // Howen — handlers in src/routes/howen.ts (status, devices[/:id], events).
+  { kind: 'prefix', value: '/api/howen/' },
+  // Admin shift-swaps alias — handler in src/routes/shiftPlans.ts.
+  { kind: 'prefix', value: '/api/admin/shift-swaps' },
   // PUT + DELETE /api/personnel/:id — rewrite implements edit handler
   // (manager-tier roles can edit anyone, self-edit allowed on a narrow
   // contact/prefs subset) and soft-delete (manager-only, can't delete

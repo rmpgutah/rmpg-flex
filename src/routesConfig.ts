@@ -104,6 +104,10 @@ import {
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
+// Fleet vehicles + dashcam videos
+import fleet from './routes/fleet';
+// Howen dashcam integration
+import howen from './routes/howen';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -238,6 +242,18 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-vehicles', router: businessVehicles, auth: 'required' },
   { prefix: '/api/business-visits', router: businessVisits, auth: 'required' },
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
+
+  // ── Fleet ──────────────────────────────────────────────────
+  // Vehicles + dashcam videos. See src/routes/fleet.ts for the implemented
+  // subset; unimplemented sub-tabs (fuel-cards, recalls, health-scores,
+  // maintenance-schedule, driver-performance, service-alerts, cost-trends,
+  // vehicle-lifecycle, pretrip) continue to fall through to the proxy stubs
+  // in proxy/index.ts until their handlers land.
+  { prefix: '/api/fleet', router: fleet, auth: 'required' },
+
+  // ── Howen dashcam integration ──────────────────────────────
+  // Device fleet + recent events. See src/routes/howen.ts.
+  { prefix: '/api/howen', router: howen, auth: 'required' },
 
   // ── Bare /api mounts (router owns sub-paths) ───────────────
   // Each entry here mounts at the bare /api prefix so the router can
