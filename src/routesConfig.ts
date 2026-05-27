@@ -68,6 +68,7 @@ import nibrs from './routes/nibrs';
 import incidentSupplements from './routes/incidentSupplements';
 import incidentsRouter from './routes/incidents';
 import audit from './routes/audit';
+import radio from './routes/radio';
 import arrests from './routes/arrests';
 import cases from './routes/cases';
 import citations from './routes/citations';
@@ -227,6 +228,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
+  { prefix: '/api/radio', router: radio, auth: 'required' },
 
   // ── Documents ──────────────────────────────────────────────
   { prefix: '/api/documents', router: documentFolders, auth: 'required' },
