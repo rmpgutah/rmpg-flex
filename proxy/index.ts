@@ -88,6 +88,25 @@ const API_ROUTES: RouteRule[] = [
   // validated against the live broadcaster + linked-incident flow.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+$/, methods: ['GET', 'PUT', 'DELETE'] },
 
+  // GET /api/dispatch/calls (list) and /api/dispatch/calls/active —
+  // routed to the rewrite for the same reason as /:id: the legacy handler
+  // does SELECT c.* + 3 JOIN columns on calls_for_service, which now has
+  // ~100 columns post-schema-drift and exceeds D1's 100-col result-set cap
+  // with SQLITE_ERROR 7500 "too many columns in result set" (production
+  // 500s on MDT/Map/Dispatch cascading from /api/dispatch/calls?limit=200,
+  // 2026-05-26). The rewrite uses a narrow LIST_VIEW_COLUMNS projection.
+  // GET-only — POST /api/dispatch/calls (create) still falls through to
+  // legacy because the rewrite hasn't been validated end-to-end on create.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/?$/, methods: ['GET'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/active\/?$/, methods: ['GET'] },
+
+  // GET /api/dispatch/queue — same D1 column-cap root cause as the list
+  // endpoint above. Rewrite mounted at /api/dispatch/queue via
+  // src/routes/dispatch/aggregates.ts (registered at /api/dispatch in the
+  // route registry). Both Mapbox and the dispatch summary panel poll this
+  // — without this rule, the map page cascade-fails on first render.
+  { kind: 'regex', value: /^\/api\/dispatch\/queue\/?$/, methods: ['GET'] },
+
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
