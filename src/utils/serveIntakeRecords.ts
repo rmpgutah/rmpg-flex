@@ -186,14 +186,17 @@ export async function findOrCreateProperty(db: D1Database, p: PropertyInput): Pr
     }
   }
   const clientId = await ensureSentinelClient(db);
-  // Only include columns guaranteed by 0001_initial_schema.sql.
-  // The 0037 backport adds city/state/zip/etc but those aren't
-  // present on every D1; safer to keep the INSERT narrow and let
-  // the address string carry the city/state/zip inline.
+  // is_active is the only column we MUST set beyond the original 0001
+  // schema — live D1 added `is_active INTEGER NOT NULL` via the 0037
+  // backport WITHOUT a default value, so an INSERT that omits it crashes
+  // with SQLITE_CONSTRAINT_NOTNULL (observed in prod 2026-05-27, first
+  // real intake attempt). The other 0037 columns (city/state/zip/notes/
+  // updated_at/etc.) are all nullable — keeping the projection narrow so
+  // a future column rename/drop on live doesn't break this writer.
   const ins = await execute(
     db,
-    `INSERT INTO properties (client_id, name, address, latitude, longitude, property_type, post_orders)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    `INSERT INTO properties (client_id, name, address, latitude, longitude, property_type, post_orders, is_active)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 1)`,
     clientId,
     p.name || address,
     address,
@@ -253,13 +256,22 @@ export async function createServiceCall(db: D1Database, c: ServiceCallInput): Pr
   // Only touch columns that exist on the schema in migrations/0001_initial_schema.sql.
   // calls_for_service is at the 100-col cap (see CLAUDE.md gotcha #13) — never ADD a
   // column here without porting it to calls_for_service_ext.
+  //
+  // source MUST be one of the CHECK-allowed values on live D1:
+  //   'phone','radio','alarm','walk_in','email','patrol','online','dispatch',
+  //   'panic','servemanager','intake','other'
+  // Earlier draft used 'process_service' which is NOT in that list — that would
+  // have failed with SQLITE_CONSTRAINT_CHECK on the next INSERT after the
+  // properties.is_active fix. 'intake' is the existing canonical value used by
+  // other intake flows (ServeManager pollers etc.) so it groups cleanly in
+  // dispatch-source analytics.
   const result = await execute(
     db,
     `INSERT INTO calls_for_service (
       call_number, incident_type, priority, status,
       caller_name, caller_phone, location_address, property_id,
       description, source, dispatcher_id
-    ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, 'process_service', ?)`,
+    ) VALUES (?, ?, ?, 'pending', ?, ?, ?, ?, ?, 'intake', ?)`,
     c.call_number, c.incident_type, c.priority,
     c.caller_name, c.caller_phone, c.location_address, c.property_id,
     c.description, c.dispatcher_id,
