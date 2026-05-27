@@ -9,6 +9,55 @@ import { sendToUser, broadcastAll } from '../ws';
 
 const calls = new Hono<Env>();
 
+// D1 caps a result set at 100 columns. calls_for_service has been pushed to
+// ~100 cols (see memory project-live-d1-schema-patches), so `SELECT c.* +
+// any JOIN columns` exceeds the cap and returns SQLITE_ERROR 7500
+// "too many columns in result set". This is the column set the list/queue/
+// active views actually project — wide enough that the dispatch panel, MDT,
+// and map page render correctly without re-fetching, narrow enough to leave
+// headroom for the 3 joined name columns (property/dispatcher/client).
+//
+// Any column NOT in this list will not appear in list-row responses. The
+// single-call GET (/:id) still returns SELECT *, so detail panels are
+// unaffected.
+export const LIST_VIEW_COLUMNS = [
+  // IDs / metadata
+  'id', 'call_number', 'incident_type', 'secondary_type',
+  'priority', 'priority_score', 'status', 'previous_status',
+  'status_changed_at', 'source', 'dispatch_code',
+  // Timing
+  'created_at', 'received_at', 'dispatched_at', 'enroute_at', 'onscene_at',
+  'cleared_at', 'closed_at', 'archived_at', 'updated_at',
+  'response_time_seconds', 'onscene_duration_seconds',
+  // Location
+  'location_address', 'latitude', 'longitude',
+  'cross_street', 'location_building', 'location_floor', 'location_room',
+  // Caller / contact
+  'caller_name', 'caller_phone', 'contact_method',
+  // Foreign refs (names come from JOINs below)
+  'dispatcher_id', 'property_id', 'client_id',
+  'case_id', 'case_number', 'contract_id',
+  // Free-text + outcome
+  'description', 'notes', 'disposition', 'action_taken',
+  // Units
+  'assigned_unit_ids', 'unit_call_signs',
+  // Geography
+  'sector_id', 'sector_name', 'zone_id', 'zone_name', 'zone_beat',
+  'beat_id', 'beat_name', 'beat_descriptor',
+  // Safety flags (most-read by dispatcher; the rest live on the detail GET).
+  // Intentionally excluded: `pinned` and `officer_safety_caution` — both are
+  // in UPDATABLE_CALL_COLUMNS_BASE but not in any /migrations/ file (live D1
+  // patched directly per memory project-live-d1-schema-patches). Including
+  // them risks `no such column` 500s on prod if the patch was never applied.
+  // Re-add once a migration backfills them.
+  'weapons_involved', 'injuries_reported', 'domestic_violence',
+  // Mileage + overdue
+  'starting_mileage', 'ending_mileage', 'overdue_notified',
+] as const;
+
+// Pre-built `c.col1, c.col2, ...` fragment used in every list query.
+const LIST_VIEW_SELECT = LIST_VIEW_COLUMNS.map(col => `c.${col}`).join(', ');
+
 // GET /dispatch/calls - List calls with filters (also handles /active via query param)
 calls.get('/', async (c) => {
   try {
@@ -43,8 +92,11 @@ calls.get('/', async (c) => {
 
     const [{ total }] = await query<{ total: number }>(db, `SELECT COUNT(*) as total FROM calls_for_service c ${where}`, ...params);
 
+    // Narrow projection — see LIST_VIEW_COLUMNS comment for the D1 100-col
+    // result-set cap. SELECT c.* + JOIN columns 500s; this stays under ~60.
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT c.*, p.name as property_name, u.full_name as dispatcher_name,
+      SELECT ${LIST_VIEW_SELECT},
+        p.name as property_name, u.full_name as dispatcher_name,
         cl.name as client_name
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
@@ -243,8 +295,10 @@ calls.post('/', async (c) => {
 calls.get('/active', async (c) => {
   try {
     const db = getDb(c.env);
+    // Narrow projection — see LIST_VIEW_COLUMNS for D1 100-col cap rationale.
     const rows = await query<Record<string, unknown>>(db, `
-      SELECT c.*, u.full_name as dispatcher_name, p.name as property_name
+      SELECT ${LIST_VIEW_SELECT},
+        u.full_name as dispatcher_name, p.name as property_name
       FROM calls_for_service c
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN properties p ON c.property_id = p.id
