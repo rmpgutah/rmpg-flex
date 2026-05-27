@@ -77,6 +77,7 @@ import VehicleFormModal, { type VehicleFormData } from '../../components/Vehicle
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 import {
   humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo,
@@ -6160,7 +6161,7 @@ export default function DispatchPage() {
               {handoffMeta.updated_by && (
                 <p className="text-[10px] text-rmpg-400 mb-2">
                   Last updated by <span className="text-amber-400">{handoffMeta.updated_by}</span>
-                  {handoffMeta.updated_at && ` at ${new Date(handoffMeta.updated_at).toLocaleString()}`}
+                  {handoffMeta.updated_at && ` at ${safeDateTimeStr(handoffMeta.updated_at)}`}
                 </p>
               )}
               <textarea

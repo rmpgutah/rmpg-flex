@@ -25,7 +25,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidVIN, isValidPlate } from '../utils/validate';
-import { localToday, safeDateStr } from '../utils/dateUtils';
+import { localToday, safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
 import EmptyState from '../components/EmptyState';
 
@@ -613,7 +613,7 @@ export default function CodeEnforcementPage() {
                   ['Fine Amount', selectedViolation.fine_amount && !isNaN(Number(selectedViolation.fine_amount)) ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
                   ['Compliance Deadline', selectedViolation.compliance_deadline ? new Date(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
                   ['S/Z/B', [(selectedViolation as any).sector_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
-                  ['Created', selectedViolation.created_at ? new Date(selectedViolation.created_at).toLocaleString() : '—'],
+                  ['Created', safeDateTimeStr(selectedViolation.created_at)],
                 ].map(([label, value]) => (
                   <div key={label as string}>
                     <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider">{label}</div>

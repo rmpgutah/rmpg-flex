@@ -73,7 +73,7 @@ import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerato
 import { escapeHtml } from '../../utils/sanitize';
 import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
-import { localToday, dateToLocalYMD } from '../../utils/dateUtils';
+import { localToday, dateToLocalYMD, safeDateTimeStr } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
@@ -1787,7 +1787,7 @@ export default function MapPage() {
 
       const ptIdx = props.ptIdx;
       const unitColor = props.unitColor || '#22c55e';
-      const time = new Date(pt.time).toLocaleString();
+      const time = safeDateTimeStr(pt.time, '');
       const locationRow = pt.road_name
         ? `<tr><td style="color:#6b7b8d;padding:1px 6px 1px 0">Road</td><td style="color:#e0e0e0">${pt.road_name}${pt.intersection ? ` @ ${pt.intersection}` : ''}</td></tr>`
         : '';
