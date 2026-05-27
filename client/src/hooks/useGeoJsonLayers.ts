@@ -244,6 +244,15 @@ export function useGeoJsonLayers({
 
   const geojsonCacheRef = useRef<Record<string, object>>({});
   const labelMarkerRefs = useRef<Record<string, mapboxgl.Marker[]>>({});
+  // Concurrency guard: prevents two parallel loadLayer() calls for the same
+  // layer from both passing the getSource() check and racing to addSource().
+  // The async fetch on /geojson/<file>.json creates a window where multiple
+  // effects (auto-load + ensureLayerLoaded) can interleave and double-add.
+  const inFlightLayersRef = useRef<Set<string>>(new Set());
+  // Track which layers we've already bound the click handler for. Without
+  // this, every successful loadLayer() call stacks another listener on the
+  // same fill layer, so a remount produces N popups per click.
+  const clickHandlerRegisteredRef = useRef<Set<string>>(new Set());
 
   const selectionModeRef = useRef(selectionMode);
   const onFeatureClickRef = useRef(onFeatureClick);
@@ -319,6 +328,12 @@ export function useGeoJsonLayers({
   const loadLayer = useCallback(async (cfg: GeoLayerConfig) => {
     if (!map) return;
 
+    // Concurrency guard — bail if another invocation is already mid-load
+    // for this layer. Without this, the async fetch creates a window where
+    // a second call (from auto-load effect, toggle, or ensureLayerLoaded)
+    // can race past the getSource() check and double-add the source.
+    if (inFlightLayersRef.current.has(cfg.id)) return;
+
     const sourceId = getLayerSourceId(cfg.id);
     if (map.getSource(sourceId)) {
       // Safe check: If layers were somehow removed but source remained, or vice versa, handle it
@@ -332,107 +347,126 @@ export function useGeoJsonLayers({
       }
     }
 
-    let geojson = geojsonCacheRef.current[cfg.id];
-    if (!geojson) {
-      try {
-        const resp = await fetch(`/geojson/${cfg.file}`);
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-        geojson = await resp.json();
-        geojsonCacheRef.current[cfg.id] = geojson;
-      } catch (err) {
-        console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
-        return;
+    inFlightLayersRef.current.add(cfg.id);
+    try {
+      let geojson = geojsonCacheRef.current[cfg.id];
+      if (!geojson) {
+        try {
+          const resp = await fetch(`/geojson/${cfg.file}`);
+          if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+          geojson = await resp.json();
+          geojsonCacheRef.current[cfg.id] = geojson;
+        } catch (err) {
+          console.error(`[GeoJSON] Failed to load ${cfg.file}:`, err);
+          return;
+        }
       }
-    }
 
-    map.addSource(sourceId, {
-      type: 'geojson',
-      data: geojson as any,
-    });
-
-    // Add fill layer for polygon features
-    map.addLayer({
-      id: getFillLayerId(cfg.id),
-      type: 'fill',
-      source: sourceId,
-      paint: {
-        'fill-color': cfg.style.fillColor,
-        'fill-opacity': cfg.style.fillOpacity,
-      },
-      layout: {
-        visibility: cfg.visible ? 'visible' : 'none',
-      },
-    });
-
-    // Add line layer for stroke
-    map.addLayer({
-      id: getLineLayerId(cfg.id),
-      type: 'line',
-      source: sourceId,
-      paint: {
-        'line-color': cfg.style.strokeColor,
-        'line-opacity': cfg.style.strokeOpacity,
-        'line-width': cfg.style.strokeWeight,
-      },
-      layout: {
-        visibility: cfg.visible ? 'visible' : 'none',
-      },
-    });
-
-    // Click handler
-    map.on('click', getFillLayerId(cfg.id), (e) => {
-      if (!e.features || e.features.length === 0) return;
-      const feat = e.features[0];
-      const props = feat.properties || {};
-      const fKey = props[cfg.featureKeyProp] != null ? String(props[cfg.featureKeyProp]) : '';
-      const name = props[cfg.labelProp] || props.name || props.NAME || cfg.label;
-
-      if (selectionModeRef.current && cfg.selectable && onFeatureClickRef.current) {
-        onFeatureClickRef.current({
-          layerId: cfg.id,
-          featureKey: fKey,
-          label: String(name),
-          properties: props,
+      // Defensive re-check before each side-effect — a sibling caller could
+      // have completed between our fetch starting and finishing.
+      if (!map.getSource(sourceId)) {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: geojson as any,
         });
-        return;
       }
 
-      if (!popup) return;
-
-      let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
-
-      const entry = cfg.id === 'beat'
-        ? lookupBeatDistrict(beatDistrictMapRef.current, props.city_code, props.district_letter)
-        : undefined;
-
-      if (entry) {
-        const sColor = getSectionColor(entry.sectionId);
-        html += `<div style="font-weight:bold;font-size:13px;color:${sColor};margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(entry.dispatchCode)}</div>`;
-        html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(entry.beatName)}${entry.beatDescriptor ? ' — ' + escapeForHtml(entry.beatDescriptor) : ''}</div>`;
-        html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Section:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
-        html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> <span style="color:#ddd;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span></div>`;
-        html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> <span style="color:#ddd;">${escapeForHtml(entry.beatId)}</span></div>`;
-      } else {
-        html += buildDefaultInfoHtml(name, cfg, props);
+      // Add fill layer for polygon features
+      if (!map.getLayer(getFillLayerId(cfg.id))) {
+        map.addLayer({
+          id: getFillLayerId(cfg.id),
+          type: 'fill',
+          source: sourceId,
+          paint: {
+            'fill-color': cfg.style.fillColor,
+            'fill-opacity': cfg.style.fillOpacity,
+          },
+          layout: {
+            visibility: cfg.visible ? 'visible' : 'none',
+          },
+        });
       }
 
-      const compositeKey = makeCompositeKey(cfg.id, fKey);
-      if (assignedFeaturesRef.current?.has(compositeKey)) {
-        html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #333;font-size:9px;color:#22c55e;font-weight:bold;">● ASSIGNED</div>`;
+      // Add line layer for stroke
+      if (!map.getLayer(getLineLayerId(cfg.id))) {
+        map.addLayer({
+          id: getLineLayerId(cfg.id),
+          type: 'line',
+          source: sourceId,
+          paint: {
+            'line-color': cfg.style.strokeColor,
+            'line-opacity': cfg.style.strokeOpacity,
+            'line-width': cfg.style.strokeWeight,
+          },
+          layout: {
+            visibility: cfg.visible ? 'visible' : 'none',
+          },
+        });
       }
 
-      html += `</div>`;
-      popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
-    });
+      // Click handler — gate registration so a re-invocation of loadLayer
+      // (after Mapbox style reload, layer cleanup, etc.) doesn't stack
+      // listeners. The handler reads from refs so it stays current without
+      // needing re-registration when callbacks/state change.
+      if (!clickHandlerRegisteredRef.current.has(cfg.id)) {
+        clickHandlerRegisteredRef.current.add(cfg.id);
+        map.on('click', getFillLayerId(cfg.id), (e) => {
+          if (!e.features || e.features.length === 0) return;
+          const feat = e.features[0];
+          const props = feat.properties || {};
+          const fKey = props[cfg.featureKeyProp] != null ? String(props[cfg.featureKeyProp]) : '';
+          const name = props[cfg.labelProp] || props.name || props.NAME || cfg.label;
 
-    setLayerStates((prev) => ({
-      ...prev,
-      [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
-    }));
+          if (selectionModeRef.current && cfg.selectable && onFeatureClickRef.current) {
+            onFeatureClickRef.current({
+              layerId: cfg.id,
+              featureKey: fKey,
+              label: String(name),
+              properties: props,
+            });
+            return;
+          }
 
-    // Apply beat-specific colors
-    if (cfg.id === 'beat' && beatStyleLookupRef.current) {
-      // Beat colors are handled statically — no per-feature styling in this approach
+          if (!popup) return;
+
+          let html = `<div style="font-family:'Courier New',monospace;color:#d4d4d4;font-size:11px;min-width:140px;">`;
+
+          const entry = cfg.id === 'beat'
+            ? lookupBeatDistrict(beatDistrictMapRef.current, props.city_code, props.district_letter)
+            : undefined;
+
+          if (entry) {
+            const sColor = getSectionColor(entry.sectionId);
+            html += `<div style="font-weight:bold;font-size:13px;color:${sColor};margin-bottom:2px;letter-spacing:1px;">${escapeForHtml(entry.dispatchCode)}</div>`;
+            html += `<div style="color:#fff;font-size:11px;margin-bottom:6px;border-bottom:1px solid #444;padding-bottom:4px;">${escapeForHtml(entry.beatName)}${entry.beatDescriptor ? ' — ' + escapeForHtml(entry.beatDescriptor) : ''}</div>`;
+            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:${sColor};">Section:</span> <span style="color:#ddd;">${escapeForHtml(entry.sectionId)} — ${escapeForHtml(entry.sectionName)}</span></div>`;
+            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Zone:</span> <span style="color:#ddd;">${escapeForHtml(entry.zoneId)} — ${escapeForHtml(entry.zoneName)}</span></div>`;
+            html += `<div style="font-size:10px;color:#999;margin-top:2px;"><span style="color:#bbb;">Beat:</span> <span style="color:#ddd;">${escapeForHtml(entry.beatId)}</span></div>`;
+          } else {
+            html += buildDefaultInfoHtml(name, cfg, props);
+          }
+
+          const compositeKey = makeCompositeKey(cfg.id, fKey);
+          if (assignedFeaturesRef.current?.has(compositeKey)) {
+            html += `<div style="margin-top:6px;padding-top:4px;border-top:1px solid #333;font-size:9px;color:#22c55e;font-weight:bold;">● ASSIGNED</div>`;
+          }
+
+          html += `</div>`;
+          popup.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        });
+      }
+
+      setLayerStates((prev) => ({
+        ...prev,
+        [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
+      }));
+
+      // Apply beat-specific colors
+      if (cfg.id === 'beat' && beatStyleLookupRef.current) {
+        // Beat colors are handled statically — no per-feature styling in this approach
+      }
+    } finally {
+      inFlightLayersRef.current.delete(cfg.id);
     }
   }, [map, popup]);
 
@@ -514,6 +548,13 @@ export function useGeoJsonLayers({
       labelMarkerRefs.current = {};
     };
   }, []);
+
+  // Reset per-map registration tracking when the map instance changes.
+  // Mapbox handlers live on the map; a new map needs fresh bindings.
+  useEffect(() => {
+    clickHandlerRegisteredRef.current.clear();
+    inFlightLayersRef.current.clear();
+  }, [map]);
 
   return {
     layerStates,
