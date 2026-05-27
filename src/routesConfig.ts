@@ -108,6 +108,12 @@ import businessPhotos from './routes/business/photos';
 import fleet from './routes/fleet';
 // Howen dashcam integration
 import howen from './routes/howen';
+// Reports analytics
+import reports from './routes/reports';
+// HR leave (other HR sub-modules: payroll, grievances, etc. — no tables yet)
+import hr from './routes/hr';
+// Offender registry (stats only)
+import offenderRegistry from './routes/offenderRegistry';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -255,6 +261,17 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // Device fleet + recent events. See src/routes/howen.ts.
   { prefix: '/api/howen', router: howen, auth: 'required' },
 
+  // ── HR (leave module only — see src/routes/hr.ts) ──────────
+  // Other HR sub-modules (payroll, grievances, documents, attendance,
+  // pips, benefits) continue to fall through to the proxy stubs in
+  // proxy/index.ts until their backing tables land on live D1.
+  { prefix: '/api/hr', router: hr, auth: 'required' },
+
+  // ── Offender registry (stats only) ─────────────────────────
+  // /search + per-person detail is a follow-up; only the dashboard
+  // tile-count endpoint is implemented today.
+  { prefix: '/api/offender-registry', router: offenderRegistry, auth: 'required' },
+
   // ── Bare /api mounts (router owns sub-paths) ───────────────
   // Each entry here mounts at the bare /api prefix so the router can
   // own multiple disjoint sub-paths under one mount (a Hono.route()
@@ -276,6 +293,11 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // paths (/, /preferences, /unread-count, /dashboard, etc).
   { prefix: '/api/user', router: stubs, auth: 'required' },
   { prefix: '/api/notifications', router: stubs, auth: 'required' },
+  // Reports analytics now have real handlers in src/routes/reports.ts —
+  // mount that BEFORE the stubs fallback so the real routes win. Keep the
+  // stubs mount at /api/reports too so any path the reports router doesn't
+  // declare still hits stubs.ts (e.g. /clearance-rate, /patrol-coverage).
+  { prefix: '/api/reports', router: reports, auth: 'required' },
   { prefix: '/api/reports', router: stubs, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: stubs, auth: 'required' },

@@ -124,17 +124,16 @@ const STUBS: StubRule[] = [
     body: { data: [] },
     reason: 'no training materials table; TrainingPage tolerates empty data',
   },
-  // ── HR module (entire namespace 500s on legacy) ──
-  // The HR tables exist on live D1 (per project-hr-tables-stub-created memory),
-  // so the 500s are legacy handler bugs (column rename, etc.). Stub the GET
-  // paths the HrPage tabs hit on mount. POST/PUT/DELETE still fall through
-  // — if the user can read empty state they can also see "save failed" and
-  // know the feature isn't ready. Don't paper over writes.
+  // ── HR sub-modules with no backing tables on live D1 yet ─────────────
+  // /api/hr/leave* now has a real handler in src/routes/hr.ts (uses the
+  // leave_requests table). The remaining sub-paths still 500 on legacy
+  // because their tables don't exist. Stub them empty until the schema
+  // patches land.
   {
-    match: /^\/api\/hr\/(leave\/balances|payroll\/(periods|rates|entries|overtime)|grievances|documents|attendance|pips|benefits)/,
+    match: /^\/api\/hr\/(payroll\/(periods|rates|entries|overtime)|grievances|documents|attendance|pips|benefits)/,
     methods: ['GET'],
     body: [],
-    reason: 'legacy HR handler 500s; HrPage tabs tolerate empty arrays',
+    reason: 'no backing tables yet; HrPage tabs render empty until schema lands',
   },
   // ── CRM module (entire namespace 500s on legacy) ──
   {
@@ -149,12 +148,15 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'legacy CRM list handlers 500; CrmPage tolerates empty arrays',
   },
-  // ── Offender registry stats (legacy 500) ──
+  // /api/offender-registry/stats now has a real handler in
+  // src/routes/offenderRegistry.ts. /api/sex-offender-registry/stats stays
+  // stubbed — no dedicated sex-offender table on live D1 yet (use the
+  // alert_type filter on offender_alerts when that page is rewritten).
   {
-    match: /^\/api\/(offender-registry|sex-offender-registry)\/stats$/,
+    match: /^\/api\/sex-offender-registry\/stats$/,
     methods: ['GET'],
     body: { data: {} },
-    reason: 'legacy offender stats handler 500s; pages tolerate empty data object',
+    reason: 'no sex-offender-specific table; SexOffenderRegistryPage tolerates empty',
   },
   // /api/admin/shift-swaps now has a real handler in src/routes/shiftPlans.ts
   // (alias of /shift-swaps to match the client's existing path). Stub removed.
@@ -291,6 +293,10 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/howen/' },
   // Admin shift-swaps alias — handler in src/routes/shiftPlans.ts.
   { kind: 'prefix', value: '/api/admin/shift-swaps' },
+  // HR leave — handler in src/routes/hr.ts (balances + list + CRUD).
+  { kind: 'prefix', value: '/api/hr/leave' },
+  // Offender registry stats — handler in src/routes/offenderRegistry.ts.
+  { kind: 'prefix', value: '/api/offender-registry/stats' },
   // PUT + DELETE /api/personnel/:id — rewrite implements edit handler
   // (manager-tier roles can edit anyone, self-edit allowed on a narrow
   // contact/prefs subset) and soft-delete (manager-only, can't delete
