@@ -108,6 +108,16 @@ import {
 import businessVehicles from './routes/business/vehicles';
 import businessVisits from './routes/business/visits';
 import businessPhotos from './routes/business/photos';
+// Fleet vehicles + dashcam videos
+import fleet from './routes/fleet';
+// Howen dashcam integration
+import howen from './routes/howen';
+// Reports analytics
+import reports from './routes/reports';
+// HR leave (other HR sub-modules: payroll, grievances, etc. — no tables yet)
+import hr from './routes/hr';
+// Offender registry (stats only)
+import offenderRegistry from './routes/offenderRegistry';
 
 // Permissive Router alias — `Hono<any>` accepts every router shape
 // the existing route files happen to declare. Some routes use the
@@ -235,6 +245,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
+  { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
+    note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
 
@@ -248,6 +260,29 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/business-vehicles', router: businessVehicles, auth: 'required' },
   { prefix: '/api/business-visits', router: businessVisits, auth: 'required' },
   { prefix: '/api/business-photos', router: businessPhotos, auth: 'required' },
+
+  // ── Fleet ──────────────────────────────────────────────────
+  // Vehicles + dashcam videos. See src/routes/fleet.ts for the implemented
+  // subset; unimplemented sub-tabs (fuel-cards, recalls, health-scores,
+  // maintenance-schedule, driver-performance, service-alerts, cost-trends,
+  // vehicle-lifecycle, pretrip) continue to fall through to the proxy stubs
+  // in proxy/index.ts until their handlers land.
+  { prefix: '/api/fleet', router: fleet, auth: 'required' },
+
+  // ── Howen dashcam integration ──────────────────────────────
+  // Device fleet + recent events. See src/routes/howen.ts.
+  { prefix: '/api/howen', router: howen, auth: 'required' },
+
+  // ── HR (leave module only — see src/routes/hr.ts) ──────────
+  // Other HR sub-modules (payroll, grievances, documents, attendance,
+  // pips, benefits) continue to fall through to the proxy stubs in
+  // proxy/index.ts until their backing tables land on live D1.
+  { prefix: '/api/hr', router: hr, auth: 'required' },
+
+  // ── Offender registry (stats only) ─────────────────────────
+  // /search + per-person detail is a follow-up; only the dashboard
+  // tile-count endpoint is implemented today.
+  { prefix: '/api/offender-registry', router: offenderRegistry, auth: 'required' },
 
   // ── Bare /api mounts (router owns sub-paths) ───────────────
   // Each entry here mounts at the bare /api prefix so the router can

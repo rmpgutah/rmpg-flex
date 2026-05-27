@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface EnforcementCluster {
   lat: number;
@@ -92,43 +93,45 @@ export function useMapEnforcementClusters(
 
     if (features.length === 0) return;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': color,
-        'circle-radius': ['get', 'radius'],
-        'circle-opacity': 0.2,
-        'circle-stroke-color': color,
-        'circle-stroke-width': 2,
-        'circle-stroke-opacity': 0.6,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': color,
+          'circle-radius': ['get', 'radius'],
+          'circle-opacity': 0.2,
+          'circle-stroke-color': color,
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': 0.6,
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const p = feature.properties;
-      const statutes = p.top_statutes ? (p.top_statutes as string).split(',').slice(0, 5).join(', ') : 'N/A';
-      const firstDate = p.first_date ? new Date(p.first_date as string).toLocaleDateString() : 'Unknown';
-      const lastDate = p.last_date ? new Date(p.last_date as string).toLocaleDateString() : 'Unknown';
-      const label = type === 'citations' ? 'Citation Cluster' : 'Arrest Cluster';
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const p = feature.properties;
+        const statutes = p.top_statutes ? (p.top_statutes as string).split(',').slice(0, 5).join(', ') : 'N/A';
+        const firstDate = p.first_date ? new Date(p.first_date as string).toLocaleDateString() : 'Unknown';
+        const lastDate = p.last_date ? new Date(p.last_date as string).toLocaleDateString() : 'Unknown';
+        const label = type === 'citations' ? 'Citation Cluster' : 'Arrest Cluster';
 
-      const html = `
-        <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
-          <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">${label}</div>
-          <table style="width:100%;font-size:11px;border-collapse:collapse">
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Count</td><td style="color:#e0e0e0">${p.total}</td></tr>
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Top Statutes</td><td style="color:#e0e0e0">${statutes}</td></tr>
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Date Range</td><td style="color:#e0e0e0">${firstDate} \u2014 ${lastDate}</td></tr>
-          </table>
-        </div>
-      `;
-      if (popupRef.current) {
-        popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
-      }
+        const html = `
+          <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
+            <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">${label}</div>
+            <table style="width:100%;font-size:11px;border-collapse:collapse">
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Count</td><td style="color:#e0e0e0">${p.total}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Top Statutes</td><td style="color:#e0e0e0">${statutes}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Date Range</td><td style="color:#e0e0e0">${firstDate} \u2014 ${lastDate}</td></tr>
+            </table>
+          </div>
+        `;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        }
+      });
     });
 
     return () => {

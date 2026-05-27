@@ -4,6 +4,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import type { OverlayMarker } from '../utils/mapMarkerBuilders';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface Geofence {
   id: number;
@@ -209,6 +210,7 @@ export function useMapGeofences(
     });
 
     if (polyFeatures.length > 0) {
+      whenStyleReady(map, () => {
       map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: polyFeatures } });
       map.addLayer({
         id: sourceId,
@@ -254,9 +256,11 @@ export function useMapGeofences(
           .setHTML(html)
           .addTo(map);
       });
+      });
     }
 
     if (labelFeatures.length > 0) {
+      whenStyleReady(map, () => {
       map.addSource(labelSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: labelFeatures } });
       map.addLayer({
         id: labelSourceId,
@@ -273,6 +277,7 @@ export function useMapGeofences(
           'text-halo-color': '#000000',
           'text-halo-width': 1,
         },
+      });
       });
     }
 
@@ -322,8 +327,10 @@ export function useMapGeofences(
       if (map.getSource(drawSourceId)) {
         (map.getSource(drawSourceId) as mapboxgl.GeoJSONSource).setData(lineData);
       } else {
-        map.addSource(drawSourceId, { type: 'geojson', data: lineData });
-        map.addLayer({ id: `${drawSourceId}-line`, type: 'line', source: drawSourceId, paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.9 } });
+        whenStyleReady(map, () => {
+          map.addSource(drawSourceId, { type: 'geojson', data: lineData });
+          map.addLayer({ id: `${drawSourceId}-line`, type: 'line', source: drawSourceId, paint: { 'line-color': '#d4a017', 'line-width': 2, 'line-opacity': 0.9 } });
+        });
       }
     };
 

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { UNIT_STATUS_COLORS } from '../utils/mapConstants';
 import type { MapUnit as Unit, ActiveCall } from '../utils/mapConstants';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface UseMapTrackingLinesParams {
   map: mapboxgl.Map | null;
@@ -61,19 +62,6 @@ export function useMapTrackingLines({ map, mapLoaded, units, calls }: UseMapTrac
 
     if (features.length === 0) return;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'line',
-      source: sourceId,
-      paint: {
-        'line-color': ['get', 'color'],
-        'line-width': 2,
-        'line-opacity': 0.6,
-        'line-dasharray': ['case', ['get', 'isDashed'], [2, 2], [1, 0]],
-      },
-    });
-
     // Capture the click handler in a local so cleanup can `map.off` it with
     // the same reference. Without this, the effect re-runs on every
     // units/calls change and each run stacks another listener that fires
@@ -85,7 +73,22 @@ export function useMapTrackingLines({ map, mapLoaded, units, calls }: UseMapTrac
       const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:8px 10px;border-radius:4px;border:1px solid #222222"><div style="font-weight:bold;color:${p.color}">${p.call_sign} \u2192 ${p.call_number}</div><div style="font-size:9px;color:#9ca3af;margin-top:2px">${p.status}</div></div>`;
       if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
     };
-    map.on('click', sourceId, onLineClick);
+
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'line',
+        source: sourceId,
+        paint: {
+          'line-color': ['get', 'color'],
+          'line-width': 2,
+          'line-opacity': 0.6,
+          'line-dasharray': ['case', ['get', 'isDashed'], [2, 2], [1, 0]],
+        },
+      });
+      map.on('click', sourceId, onLineClick);
+    });
 
     return () => {
       map.off('click', sourceId, onLineClick);

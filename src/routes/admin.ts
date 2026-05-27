@@ -160,3 +160,29 @@ admin.get('/departments', (c) => c.json([]));
 admin.get('/retention', (c) => c.json([]));
 admin.get('/retention/preview', (c) => c.json([]));
 admin.get('/announcements/all', (c) => c.json([]));
+
+// ── Admin observability stubs (AdminPage dashboard tiles) ────
+// All four 404'd in prod (no handler in either rewrite or legacy).
+// Empty-shape responses keep AdminPage's top tiles from showing
+// red error toasts on mount. Real implementations need a metrics
+// pipeline (api_call_log, system_health_pings tables) that doesn't
+// exist on live D1 yet.
+admin.get('/api-stats', (c) => c.json({
+  data: [], total_requests: 0, error_count: 0, avg_response_ms: 0,
+  by_endpoint: [], by_day: [],
+}));
+admin.get('/user-activity-heatmap', (c) => c.json({
+  data: [], cells: [], peak_hour: null, peak_day: null,
+}));
+admin.get('/backup-status', (c) => c.json({
+  last_backup_at: null, status: 'unknown', size_bytes: 0, location: null,
+}));
+admin.get('/maintenance-mode', (c) => c.json({
+  enabled: false, message: null, scheduled_at: null,
+}));
+
+// ── Notification rules (no rule-engine table yet) ────────────
+// AdminPage's notification settings tab tries to list rules on
+// mount. No backing schema, so respond with an empty list. POST
+// will continue to 404 until a real schema lands.
+admin.get('/notification-rules', (c) => c.json([]));

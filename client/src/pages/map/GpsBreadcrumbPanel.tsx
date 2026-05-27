@@ -7,6 +7,7 @@ import { apiFetch } from '../../hooks/useApi';
 import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
 import { escapeHtml } from '../../utils/sanitize';
 import { mapboxgl } from '../../utils/mapboxLoader';
+import { whenStyleReady } from './utils/safeAddSource';
 
 // ============================================================
 // Types
@@ -164,16 +165,18 @@ export default function GpsBreadcrumbPanel({ map, mapLoaded, isOpen, onToggle }:
     for (const [color, coords] of segmentsByColor) {
       const sourceId = `breadcrumb-line-${segIdx++}`;
       sourceIdsRef.current.push(sourceId);
-      map.addSource(sourceId, {
-        type: 'geojson',
-        data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
-      });
-      map.addLayer({
-        id: sourceId,
-        type: 'line',
-        source: sourceId,
-        paint: { 'line-color': color, 'line-width': 2, 'line-opacity': 0.9 },
-        layout: { 'line-cap': 'round', 'line-join': 'round' },
+      whenStyleReady(map, () => {
+        map.addSource(sourceId, {
+          type: 'geojson',
+          data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } },
+        });
+        map.addLayer({
+          id: sourceId,
+          type: 'line',
+          source: sourceId,
+          paint: { 'line-color': color, 'line-width': 2, 'line-opacity': 0.9 },
+          layout: { 'line-cap': 'round', 'line-join': 'round' },
+        });
       });
     }
 

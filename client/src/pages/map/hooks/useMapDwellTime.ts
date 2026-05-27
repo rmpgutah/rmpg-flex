@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface DwellTimeRecord {
   call_sign: string;
@@ -120,44 +121,46 @@ export function useMapDwellTime(
 
     if (features.length === 0) return;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': ['get', 'tierColor'],
-        'circle-radius': ['get', 'tierRadius'],
-        'circle-opacity': 0.08,
-        'circle-stroke-color': ['get', 'tierColor'],
-        'circle-stroke-width': ['get', 'tierStrokeWeight'],
-        'circle-stroke-opacity': 0.7,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': ['get', 'tierColor'],
+          'circle-radius': ['get', 'tierRadius'],
+          'circle-opacity': 0.08,
+          'circle-stroke-color': ['get', 'tierColor'],
+          'circle-stroke-width': ['get', 'tierStrokeWeight'],
+          'circle-stroke-opacity': 0.7,
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const p = feature.properties;
-      const tier = getTier(p.dwell_minutes as number);
-      const color = tier?.color || '#666666';
-      const hours = Math.floor(p.dwell_minutes as number / 60);
-      const mins = Math.round(p.dwell_minutes as number % 60);
-      const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const p = feature.properties;
+        const tier = getTier(p.dwell_minutes as number);
+        const color = tier?.color || '#666666';
+        const hours = Math.floor(p.dwell_minutes as number / 60);
+        const mins = Math.round(p.dwell_minutes as number % 60);
+        const durationStr = hours > 0 ? `${hours}h ${mins}m` : `${mins}m`;
 
-      const html = `
-        <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:180px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
-          <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">Dwell Time \u2014 ${p.call_sign}</div>
-          <table style="width:100%;font-size:11px;border-collapse:collapse">
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Duration</td><td style="color:${color}">${durationStr}</td></tr>
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Status</td><td style="color:#e0e0e0">${p.status}</td></tr>
-            <tr><td style="color:#888888;padding:1px 6px 1px 0">Unit</td><td style="color:#e0e0e0">${p.call_sign}</td></tr>
-          </table>
-        </div>
-      `;
-      if (popupRef.current) {
-        popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
-      }
+        const html = `
+          <div style="font-family:monospace;font-size:11px;color:#e0e0e0;min-width:180px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
+            <div style="font-weight:bold;font-size:13px;margin-bottom:6px;color:${color}">Dwell Time \u2014 ${p.call_sign}</div>
+            <table style="width:100%;font-size:11px;border-collapse:collapse">
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Duration</td><td style="color:${color}">${durationStr}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Status</td><td style="color:#e0e0e0">${p.status}</td></tr>
+              <tr><td style="color:#888888;padding:1px 6px 1px 0">Unit</td><td style="color:#e0e0e0">${p.call_sign}</td></tr>
+            </table>
+          </div>
+        `;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        }
+      });
     });
 
     return () => {

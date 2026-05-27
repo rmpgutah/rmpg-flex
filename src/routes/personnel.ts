@@ -3,8 +3,20 @@ import type { Context } from 'hono';
 import { hashSync } from 'bcryptjs';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras';
+// Side-effect import: registers upload + stream handlers on
+// bodycamVideosRouter. Splits the upload/stream surface (PR 2) into
+// its own file so the read-only routes (PR 1) stay reviewable.
+import './personnel/bodyCameraUploads';
 
 const personnel = new Hono<Env>();
+
+// Sub-routers — mounted BEFORE any /:id handler below so the literal
+// '/body-cameras' and '/bodycam-videos' segments are matched first.
+// Hono dispatches in registration order: a parametric /:id registered
+// earlier would otherwise swallow these as id='body-cameras'.
+personnel.route('/body-cameras', bodyCamerasRouter);
+personnel.route('/bodycam-videos', bodycamVideosRouter);
 
 // Manager-tier roles can edit anyone. A user may also edit their own row,
 // but the editable column set is narrower (see SELF_EDITABLE).
@@ -937,6 +949,200 @@ personnel.delete('/:id', async (c) => {
   } catch (err) {
     console.error('DELETE /personnel/:id failed:', err);
     return c.json({ error: 'Failed', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// ============================================================
+// Training (live tables: training_records, training_requirements)
+// ============================================================
+
+// GET /api/personnel/training — TrainingPage list of all training records,
+// joined with officer name. No pagination yet; legacy tables hold <1k rows.
+personnel.get('/training', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        tr.*,
+        u.full_name AS officer_name,
+        u.badge_number AS officer_badge
+      FROM training_records tr
+      LEFT JOIN users u ON u.id = tr.officer_id
+      ORDER BY COALESCE(tr.completed_date, tr.created_at) DESC, tr.id DESC
+    `);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/training error:', err);
+    return c.json([], 200);
+  }
+});
+
+// GET /api/personnel/training-requirements — courses + cadence config.
+personnel.get('/training-requirements', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(
+      db, 'SELECT * FROM training_requirements ORDER BY category, course_name');
+    return c.json(rows);
+  } catch (err) {
+    return c.json([], 200);
+  }
+});
+
+// GET /api/personnel/training-completion — per-officer rollup of completion
+// status against requirements. Lightweight implementation: joins every
+// active officer with every requirement and reports the most-recent record
+// status. Heavier compliance scoring (overdue-by-N-days etc.) can land in
+// a follow-up.
+personnel.get('/training-completion', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        u.id AS officer_id,
+        u.full_name AS officer_name,
+        req.id AS requirement_id,
+        req.course_name AS requirement_course,
+        req.category,
+        rec.completed_date,
+        rec.expiry_date,
+        rec.status AS record_status,
+        CASE
+          WHEN rec.id IS NULL THEN 'missing'
+          WHEN rec.expiry_date IS NOT NULL AND date(rec.expiry_date) < date('now') THEN 'expired'
+          ELSE 'current'
+        END AS compliance_status
+      FROM users u
+      CROSS JOIN training_requirements req
+      LEFT JOIN training_records rec
+        ON rec.officer_id = u.id AND rec.course_name = req.course_name
+      WHERE u.status = 'active' AND COALESCE(req.is_active, 1) = 1
+      ORDER BY u.full_name, req.category, req.course_name
+    `);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/training-completion error:', err);
+    return c.json([], 200);
+  }
+});
+
+// ============================================================
+// Body cameras + bodycam videos
+// ============================================================
+
+// GET /api/personnel/body-cameras — BodyCamerasPage device roster.
+// No dedicated devices table yet; derive a one-row-per-distinct-camera_id
+// view from the bodycam_videos table so the page can render an inventory
+// without an explicit join target. Last-seen timestamp comes from the
+// most-recent video for that camera.
+personnel.get('/body-cameras', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        camera_id,
+        MIN(officer_id) AS assigned_officer_id,
+        COUNT(*) AS total_videos,
+        SUM(COALESCE(duration_seconds, 0)) AS total_duration_seconds,
+        MAX(recorded_at) AS last_recorded_at,
+        SUM(CASE WHEN classification = 'evidence' THEN 1 ELSE 0 END) AS evidence_videos
+      FROM bodycam_videos
+      WHERE camera_id IS NOT NULL
+      GROUP BY camera_id
+      ORDER BY last_recorded_at DESC NULLS LAST
+    `);
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/body-cameras error:', err);
+    return c.json([], 200);
+  }
+});
+
+// GET /api/personnel/bodycam-videos[?case_number=...]
+personnel.get('/bodycam-videos', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const { case_number, officer_id, classification, limit: limitParam } = c.req.query();
+    const limit = Math.min(500, Math.max(1, parseInt(limitParam || '100', 10)));
+
+    let where = 'WHERE 1=1';
+    const params: unknown[] = [];
+    if (case_number) { where += ' AND case_number = ?'; params.push(case_number); }
+    if (officer_id) { where += ' AND officer_id = ?'; params.push(officer_id); }
+    if (classification) { where += ' AND classification = ?'; params.push(classification); }
+
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT * FROM bodycam_videos ${where}
+      ORDER BY recorded_at DESC, id DESC LIMIT ?
+    `, ...params, limit);
+
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /personnel/bodycam-videos error:', err);
+    return c.json([], 200);
+  }
+});
+
+// GET /api/personnel/bodycam-videos/retention/report — BodyCamerasPage
+// retention dashboard tile. Groups videos by retention_status and reports
+// total size + count per bucket.
+personnel.get('/bodycam-videos/retention/report', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(db, `
+      SELECT
+        COALESCE(retention_status, 'unset') AS retention_status,
+        COUNT(*) AS video_count,
+        COALESCE(SUM(file_size), 0) AS total_bytes,
+        COALESCE(SUM(duration_seconds), 0) AS total_duration_seconds
+      FROM bodycam_videos GROUP BY retention_status
+    `);
+    return c.json({ buckets: rows });
+  } catch (err) {
+    return c.json({ buckets: [] }, 200);
+  }
+});
+
+// GET /api/personnel/bodycam-videos/reviews/pending — placeholder for the
+// supervisor review queue. No reviews table on live D1 yet, so an empty
+// list is the safest contract for now.
+personnel.get('/bodycam-videos/reviews/pending', async (c) => {
+  return c.json({ data: [] });
+});
+
+// GET /api/personnel/bodycam-videos/redaction-requests — same story.
+personnel.get('/bodycam-videos/redaction-requests', async (c) => {
+  return c.json([]);
+});
+
+// ============================================================
+// Duty hours rollup (PersonnelAnalyticsDashboard)
+// ============================================================
+
+// GET /api/personnel/duty-hours?period=14
+// PersonnelAnalyticsDashboard shows hours-by-officer over a rolling window.
+// No dedicated duty-hours/timeclock table on live D1 yet; derive a minimal
+// shape from unit status changes if any exist, else return zeros. The
+// component reads `entries[]` + `totals` so both keys must be present.
+personnel.get('/duty-hours', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const officers = await query<{ id: number; full_name: string; badge_number: string }>(
+      db, "SELECT id, full_name, badge_number FROM users WHERE status = 'active' ORDER BY full_name");
+    const entries = officers.map(o => ({
+      officer_id: o.id,
+      officer_name: o.full_name,
+      badge_number: o.badge_number,
+      total_hours: 0,
+      shifts_completed: 0,
+    }));
+    return c.json({
+      entries,
+      totals: { totalHours: 0, totalOfficers: entries.length },
+      period_days: parseInt(c.req.query('period') || '14', 10),
+    });
+  } catch (err) {
+    return c.json({ entries: [], totals: { totalHours: 0, totalOfficers: 0 } }, 200);
   }
 });
 

@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface UnitExposureData {
   call_sign: string;
@@ -176,26 +177,28 @@ export function useMapUnitSafety(
     });
 
     if (loneFeatures.length > 0) {
-      map.addSource(loneSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: loneFeatures } });
-      map.addLayer({
-        id: loneSourceId,
-        type: 'circle',
-        source: loneSourceId,
-        paint: {
-          'circle-color': '#f59e0b',
-          'circle-radius': 150,
-          'circle-opacity': 0.2,
-          'circle-stroke-color': '#f59e0b',
-          'circle-stroke-width': 2,
-          'circle-stroke-opacity': 0.6,
-        },
-      });
+      whenStyleReady(map, () => {
+        map.addSource(loneSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: loneFeatures } });
+        map.addLayer({
+          id: loneSourceId,
+          type: 'circle',
+          source: loneSourceId,
+          paint: {
+            'circle-color': '#f59e0b',
+            'circle-radius': 150,
+            'circle-opacity': 0.2,
+            'circle-stroke-color': '#f59e0b',
+            'circle-stroke-width': 2,
+            'circle-stroke-opacity': 0.6,
+          },
+        });
 
-      map.on('click', loneSourceId, (e) => {
-        const feature = e.features?.[0];
-        if (!feature || !feature.properties) return;
-        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #f59e0b40"><div style="font-weight:bold;font-size:12px;color:#f59e0b;margin-bottom:4px">Lone Officer — ${feature.properties.call_sign}</div><div style="font-size:9px;color:#9ca3af">No backup within ${LONE_OFFICER_RADIUS_MI} mi</div></div>`;
-        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        map.on('click', loneSourceId, (e) => {
+          const feature = e.features?.[0];
+          if (!feature || !feature.properties) return;
+          const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #f59e0b40"><div style="font-weight:bold;font-size:12px;color:#f59e0b;margin-bottom:4px">Lone Officer — ${feature.properties.call_sign}</div><div style="font-size:9px;color:#9ca3af">No backup within ${LONE_OFFICER_RADIUS_MI} mi</div></div>`;
+          if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        });
       });
     }
 
@@ -209,26 +212,28 @@ export function useMapUnitSafety(
     });
 
     if (clusterFeatures.length > 0) {
-      map.addSource(clusterSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: clusterFeatures } });
-      map.addLayer({
-        id: clusterSourceId,
-        type: 'circle',
-        source: clusterSourceId,
-        paint: {
-          'circle-color': '#888888',
-          'circle-radius': 100,
-          'circle-opacity': 0.15,
-          'circle-stroke-color': '#888888',
-          'circle-stroke-width': 2,
-          'circle-stroke-opacity': 0.5,
-        },
-      });
+      whenStyleReady(map, () => {
+        map.addSource(clusterSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: clusterFeatures } });
+        map.addLayer({
+          id: clusterSourceId,
+          type: 'circle',
+          source: clusterSourceId,
+          paint: {
+            'circle-color': '#888888',
+            'circle-radius': 100,
+            'circle-opacity': 0.15,
+            'circle-stroke-color': '#888888',
+            'circle-stroke-width': 2,
+            'circle-stroke-opacity': 0.5,
+          },
+        });
 
-      map.on('click', clusterSourceId, (e) => {
-        const feature = e.features?.[0];
-        if (!feature || !feature.properties) return;
-        const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #88888840"><div style="font-weight:bold;font-size:12px;color:#888888;margin-bottom:4px">Unit Cluster</div><div style="font-size:9px;color:#9ca3af">${feature.properties.count} units: ${feature.properties.units}</div></div>`;
-        if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        map.on('click', clusterSourceId, (e) => {
+          const feature = e.features?.[0];
+          if (!feature || !feature.properties) return;
+          const html = `<div style="font-family:monospace;font-size:11px;color:#e0e0e0;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #88888840"><div style="font-weight:bold;font-size:12px;color:#888888;margin-bottom:4px">Unit Cluster</div><div style="font-size:9px;color:#9ca3af">${feature.properties.count} units: ${feature.properties.units}</div></div>`;
+          if (popupRef.current) popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+        });
       });
     }
 
@@ -242,19 +247,21 @@ export function useMapUnitSafety(
     });
 
     if (gapFeatures.length > 0) {
-      map.addSource(gapSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: gapFeatures } });
-      map.addLayer({
-        id: gapSourceId,
-        type: 'circle',
-        source: gapSourceId,
-        paint: {
-          'circle-color': '#ef4444',
-          'circle-radius': ['case', ['==', ['get', 'severity'], 'high'], 200, ['==', ['get', 'severity'], 'moderate'], 150, 100],
-          'circle-opacity': 0.12,
-          'circle-stroke-color': '#ef4444',
-          'circle-stroke-width': 1,
-          'circle-stroke-opacity': 0.3,
-        },
+      whenStyleReady(map, () => {
+        map.addSource(gapSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: gapFeatures } });
+        map.addLayer({
+          id: gapSourceId,
+          type: 'circle',
+          source: gapSourceId,
+          paint: {
+            'circle-color': '#ef4444',
+            'circle-radius': ['case', ['==', ['get', 'severity'], 'high'], 200, ['==', ['get', 'severity'], 'moderate'], 150, 100],
+            'circle-opacity': 0.12,
+            'circle-stroke-color': '#ef4444',
+            'circle-stroke-width': 1,
+            'circle-stroke-opacity': 0.3,
+          },
+        });
       });
     }
   }, [map, clearOverlays]);

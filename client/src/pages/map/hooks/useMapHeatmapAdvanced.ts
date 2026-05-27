@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export type HeatmapAdvancedMode = 'density' | 'risk' | 'temporal' | 'comparison';
 export type HeatmapColorScheme = 'heat' | 'risk' | 'gold' | 'green' | 'purple';
@@ -265,84 +266,86 @@ export function useMapHeatmapAdvanced(
 
     const gradient = GRADIENTS[options.colorScheme] || GRADIENTS.heat;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: weightedData } });
-    map.addLayer({
-      id: layerId,
-      type: 'heatmap',
-      source: sourceId,
-      maxzoom: 15,
-      paint: {
-        'heatmap-weight': ['get', 'weight'],
-        'heatmap-intensity': 0.8,
-        'heatmap-radius': options.radius,
-        'heatmap-opacity': options.opacity / 100,
-        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], ...gradient.flat()],
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: weightedData } });
+      map.addLayer({
+        id: layerId,
+        type: 'heatmap',
+        source: sourceId,
+        maxzoom: 15,
+        paint: {
+          'heatmap-weight': ['get', 'weight'],
+          'heatmap-intensity': 0.8,
+          'heatmap-radius': options.radius,
+          'heatmap-opacity': options.opacity / 100,
+          'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], ...gradient.flat()],
+        },
+      });
 
-    if (options.mode === 'comparison' && comparisonPoints.length > 0) {
-      const compData = comparisonPoints
-        .filter((p) => p.lat != null && p.lng != null)
-        .map((point) => ({
+      if (options.mode === 'comparison' && comparisonPoints.length > 0) {
+        const compData = comparisonPoints
+          .filter((p) => p.lat != null && p.lng != null)
+          .map((point) => ({
+            type: 'Feature' as const,
+            geometry: { type: 'Point' as const, coordinates: [point.lng, point.lat] as [number, number] },
+            properties: { weight: point.weight || 1 },
+          }));
+
+        if (compData.length > 0) {
+          map.addSource(compSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: compData } });
+          map.addLayer({
+            id: compLayerId,
+            type: 'heatmap',
+            source: compSourceId,
+            maxzoom: 15,
+            paint: {
+              'heatmap-weight': ['get', 'weight'],
+              'heatmap-intensity': 0.8,
+              'heatmap-radius': options.radius,
+              'heatmap-opacity': (options.opacity / 100) * 0.7,
+              'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], ...COMPARISON_GRADIENT.flat()],
+            },
+          });
+        }
+      }
+
+      if (options.showClusters && clusters.length > 0) {
+        const clusterFeatures = clusters.map((cluster) => ({
           type: 'Feature' as const,
-          geometry: { type: 'Point' as const, coordinates: [point.lng, point.lat] as [number, number] },
-          properties: { weight: point.weight || 1 },
+          geometry: { type: 'Point' as const, coordinates: [cluster.center.lng, cluster.center.lat] as [number, number] },
+          properties: {
+            count: cluster.count,
+            avgRisk: cluster.avgRisk,
+            radius: cluster.radius,
+          },
         }));
 
-      if (compData.length > 0) {
-        map.addSource(compSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: compData } });
+        map.addSource(clusterSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: clusterFeatures } });
         map.addLayer({
-          id: compLayerId,
-          type: 'heatmap',
-          source: compSourceId,
-          maxzoom: 15,
+          id: clusterLayerId,
+          type: 'circle',
+          source: clusterSourceId,
           paint: {
-            'heatmap-weight': ['get', 'weight'],
-            'heatmap-intensity': 0.8,
-            'heatmap-radius': options.radius,
-            'heatmap-opacity': (options.opacity / 100) * 0.7,
-            'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'], ...COMPARISON_GRADIENT.flat()],
+            'circle-color': [
+              'case',
+              ['>', ['get', 'avgRisk'], 5], '#ef4444',
+              ['>', ['get', 'avgRisk'], 2], '#f59e0b',
+              '#888888',
+            ],
+            'circle-radius': ['get', 'radius'],
+            'circle-opacity': 0.08,
+            'circle-stroke-color': [
+              'case',
+              ['>', ['get', 'avgRisk'], 5], '#ef4444',
+              ['>', ['get', 'avgRisk'], 2], '#f59e0b',
+              '#888888',
+            ],
+            'circle-stroke-width': 1.5,
+            'circle-stroke-opacity': 0.5,
           },
         });
       }
-    }
-
-    if (options.showClusters && clusters.length > 0) {
-      const clusterFeatures = clusters.map((cluster) => ({
-        type: 'Feature' as const,
-        geometry: { type: 'Point' as const, coordinates: [cluster.center.lng, cluster.center.lat] as [number, number] },
-        properties: {
-          count: cluster.count,
-          avgRisk: cluster.avgRisk,
-          radius: cluster.radius,
-        },
-      }));
-
-      map.addSource(clusterSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: clusterFeatures } });
-      map.addLayer({
-        id: clusterLayerId,
-        type: 'circle',
-        source: clusterSourceId,
-        paint: {
-          'circle-color': [
-            'case',
-            ['>', ['get', 'avgRisk'], 5], '#ef4444',
-            ['>', ['get', 'avgRisk'], 2], '#f59e0b',
-            '#888888',
-          ],
-          'circle-radius': ['get', 'radius'],
-          'circle-opacity': 0.08,
-          'circle-stroke-color': [
-            'case',
-            ['>', ['get', 'avgRisk'], 5], '#ef4444',
-            ['>', ['get', 'avgRisk'], 2], '#f59e0b',
-            '#888888',
-          ],
-          'circle-stroke-width': 1.5,
-          'circle-stroke-opacity': 0.5,
-        },
-      });
-    }
+    });
 
     return () => {
       if (map.getLayer(layerId)) map.removeLayer(layerId);

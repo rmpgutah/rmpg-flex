@@ -5,6 +5,7 @@ import {
   Database, Activity, FileSearch, RefreshCw, Server,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 
 interface Props {
   LoadingSpinner: React.FC;
@@ -132,7 +133,7 @@ export default function AdminIPEDTab({ LoadingSpinner, error, setError }: Props)
   const fetchHashSets = useCallback(async () => {
     try {
       const data = await apiFetch<{ sets: HashSetInfo[] }>('/iped/hash-sets');
-      setHashSets(data.sets || []);
+      setHashSets(asArray<HashSetInfo>(data?.sets));
     } catch { /* non-critical */ }
   }, []);
 
