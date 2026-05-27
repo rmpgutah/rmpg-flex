@@ -249,6 +249,24 @@ export default function PersonnelPage() {
     }
   }, [activeTab]);
 
+  // Reset per-officer caches when switching officers. The detail-tab
+  // fetches below gate on `xxx.length === 0`; without this reset,
+  // switching from Officer A to Officer B would show Officer A's
+  // training/equipment/body_cameras/deployments data because the cached
+  // arrays are non-empty. The dashcam-events / device-mapping refs are
+  // also cleared so a brief flash of A's mapping doesn't show on B.
+  useEffect(() => {
+    if (!selectedOfficer) return;
+    setTraining([]);
+    setEquipment([]);
+    setBodyCameras([]);
+    setBodyCamVideos([]);
+    setDeployments([]);
+    setOfficerActivity([]);
+    setOfficerDashcamEvents([]);
+    setOfficerDeviceMapping(null);
+  }, [selectedOfficer?.id]);
+
   // Lazy-load detail tab data
   useEffect(() => {
     if (!selectedOfficer) return;

@@ -348,20 +348,35 @@ export default function IncidentsPage() {
   useEffect(() => { isEditingRef.current = isEditing; }, [isEditing]);
   useEffect(() => { selectedIncidentRef.current = selectedIncident; }, [selectedIncident]);
 
-  // Auto-save unsaved narrative on component unmount (SPA navigation)
+  // Auto-save unsaved narrative on component unmount (SPA navigation).
+  // Uses raw fetch + keepalive (matching DispatchPage's unmount cleanup
+  // pattern) rather than apiFetch. apiFetch's wrapper logic — token
+  // refresh on 401 which can redirect to /login, AbortController timeout,
+  // offline-router detours — is appropriate for normal requests but
+  // wrong for a fire-and-forget save during teardown: token-refresh
+  // failures during unmount could trigger a /login redirect on an
+  // unrelated route change, and offline routing could swallow the save.
+  // The browser's `keepalive` flag guarantees the request commits even
+  // as the page unloads (subject to a 64KB body limit, fine for a
+  // narrative field).
   useEffect(() => {
     return () => {
       if (!isEditingRef.current || !selectedIncidentRef.current) return;
       const narrative = narrativeRef.current?.value;
       if (narrative == null) return;
-      // Use apiFetch for proper token refresh handling; keepalive ensures
-      // the request completes even during page navigation
-      apiFetch(`/incidents/${selectedIncidentRef.current.id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ narrative }),
-        keepalive: true,
-      }).catch(() => { /* best-effort save */ });
+      try {
+        const token = localStorage.getItem('rmpg_token');
+        fetch(`/api/incidents/${selectedIncidentRef.current.id}`, {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Requested-With': 'XMLHttpRequest',
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          body: JSON.stringify({ narrative }),
+          keepalive: true,
+        });
+      } catch { /* best-effort save */ }
     };
   }, []);
 
