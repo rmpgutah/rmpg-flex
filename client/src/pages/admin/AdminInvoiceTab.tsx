@@ -6,6 +6,7 @@ import {
   Edit, Zap, Eye,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { toDisplayLabel } from '../../utils/formatters';
 import type {
   Invoice, InvoiceDetail, InvoiceLineItem, Payment, InvoiceStats, Client,
@@ -96,7 +97,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
     setLoading(true);
     try {
       const res = await apiFetch<{ data: Invoice[]; pagination: any }>(`/invoices?client_id=${clientId}&limit=100`);
-      setInvoices(res.data || []);
+      setInvoices(asArray<Invoice>(res?.data));
     } catch { setError('Failed to load invoices'); }
     setLoading(false);
   }, [clientId]);
@@ -560,7 +561,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
               </tr>
             </thead>
             <tbody>
-              {(inv.line_items || []).map(item => (
+              {asArray<InvoiceLineItem>(inv.line_items).map(item => (
                 <tr key={item.id} className="border-b border-rmpg-700/30 hover:bg-rmpg-700/10">
                   <td className="p-1">{TYPE_ICON[item.line_type] || <FileText className="w-3 h-3 text-rmpg-500" />}</td>
                   <td className="p-1 text-rmpg-300">{item.description}</td>
@@ -652,7 +653,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
         )}
 
         {/* Payments Table */}
-        {(inv.payments || []).length > 0 && (
+        {asArray<Payment>(inv.payments).length > 0 && (
           <div className="bg-surface-raised border border-rmpg-700 rounded-sm p-3 mb-3">
             <span className="text-[10px] uppercase tracking-wider text-rmpg-400 font-bold mb-2 block">Payments</span>
             <table className="w-full text-[10px]">
@@ -667,7 +668,7 @@ export default function AdminInvoiceTab({ clientId, clientName, client }: AdminI
                 </tr>
               </thead>
               <tbody>
-                {inv.payments.map(pay => (
+                {asArray<Payment>(inv.payments).map(pay => (
                   <tr key={pay.id} className="border-b border-rmpg-700/30">
                     <td className="p-1 text-rmpg-300">{fmtShortDate(pay.payment_date)}</td>
                     <td className="p-1 text-right text-green-400 font-mono font-bold">{formatCurrency(pay.amount)}</td>
