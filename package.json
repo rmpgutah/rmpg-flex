@@ -22,7 +22,7 @@
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260520.1",
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcryptjs": "^3.0.0",
     "@types/uuid": "^10.0.0",
     "typescript": "^6.0.3",
     "vitest": "^4.1.7",
