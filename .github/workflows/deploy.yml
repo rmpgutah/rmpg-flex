@@ -27,7 +27,13 @@ jobs:
         run: npm run typecheck
 
       - name: Apply D1 migrations (remote)
-        continue-on-error: true  # Live D1 has dirty schema; many migrations conflict with existing ALTER-applied columns. Bulk schema state is managed via migrations/live/*.sql applied manually by an admin (see [[project-live-db-is-different]] memory).
+        # As of 2026-05-27, the d1_migrations tracker on live (785de7ae-...)
+        # is reconciled with /migrations/ through 0038 (see
+        # migrations/README.md "Recording manual applies"). A failure here
+        # is now a real bug -- a non-idempotent migration that needs fixing,
+        # not silenced. If you apply a migration manually via
+        # `wrangler d1 execute` or the D1 MCP, you MUST also INSERT INTO
+        # d1_migrations to keep wrangler's tracker honest.
         uses: cloudflare/wrangler-action@v3
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}

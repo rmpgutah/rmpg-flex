@@ -20,11 +20,24 @@ These exist for historical reasons and should NOT be "fixed" by renumbering — 
 
 ## Adding a new migration
 
-1. Use the next free integer (currently `0023`).
-2. Single file per migration, snake_case description: `0023_describe_change.sql`.
-3. Write all DDL idempotently — `CREATE TABLE IF NOT EXISTS`, `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` (D1 doesn't support `IF NOT EXISTS` on `ADD COLUMN` — wrap in a check or accept the failure on re-apply against a partially-migrated DB).
+1. Use the next free integer (currently `0039`).
+2. Single file per migration, snake_case description: `0039_describe_change.sql`.
+3. Write all DDL idempotently — `CREATE TABLE IF NOT EXISTS`, `INSERT OR IGNORE`. D1 does NOT support `IF NOT EXISTS` on `ADD COLUMN`, so for bare `ALTER TABLE ... ADD COLUMN` accept that the migration only ever runs once cleanly against the tracker.
 4. Run locally first: `npm run migrate:local`.
-5. After merge to main, `deploy.yml` runs `migrate:prod` (currently `continue-on-error: true` because the prod D1 carries dirty schema from earlier runs — the Worker reconciles missing columns at boot).
+5. After merge to main, `deploy.yml` runs `migrate:prod`. The migration step is **not** `continue-on-error` anymore — a failure breaks the deploy by design. If you see one, the cause is almost always either a non-idempotent statement against an already-migrated DB or a tracker/schema mismatch. Fix the underlying mismatch (see below); don't re-silence the step.
+
+## Recording manual applies (D1 MCP / `wrangler d1 execute`)
+
+When live needs a schema fix and you bypass `wrangler d1 migrations apply` — e.g. running SQL through the Cloudflare D1 MCP (`mcp__bfc8f52c-…__d1_database_query`) or `wrangler d1 execute rmpg-flex --remote --command "..."` — you **must** also record the migration in the tracker so wrangler skips it on the next deploy:
+
+```sql
+INSERT OR IGNORE INTO d1_migrations (name, applied_at)
+VALUES ('0039_your_migration.sql', datetime('now'));
+```
+
+Without this insert, the next CI deploy will try to re-apply your migration. Idempotent DDL survives that (noisily); non-idempotent DDL — bare `ALTER TABLE ADD COLUMN`, `DROP TABLE`, raw `INSERT`s without `OR IGNORE` — fails the whole deploy. The tracker is wrangler's single source of truth for skip-vs-run; treat it the same way you treat the schema itself. Always pair a manual apply with the tracker insert in the same session.
+
+Reconciliation of 0001–0038 against the live tracker happened on 2026-05-27 as part of the "tighten migration apply" PR; prior to that, `continue-on-error: true` had silenced months of skew between `/migrations/` and the live DB.
 
 ## The `live/` subdirectory
 
