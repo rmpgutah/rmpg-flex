@@ -196,17 +196,17 @@ calls.post('/', async (c) => {
       const callId = Number(result.meta.last_row_id);
       const call = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', callId);
 
-      // Audit trail entry — dispatch's Audit tab reads activity_log by
+      // Audit trail entry — dispatch's Audit tab reads audit_log by
       // entity_type='call' + entity_id. Failure shouldn't block the create.
       try {
         await execute(
           db,
-          `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, created_at)
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
            VALUES (?, ?, ?, ?, ?, datetime('now', '-7 hours'))`,
           userId, 'CREATE', 'call', callId, `Created call ${callNumber}`,
         );
       } catch (auditErr) {
-        console.warn('activity_log insert failed for call create:', auditErr);
+        console.warn('audit_log insert failed for call create:', auditErr);
       }
 
       // Broadcast to every connected dispatcher so rosters re-render
@@ -361,7 +361,7 @@ calls.get('/:id', async (c) => {
       'SELECT id, incident_number, incident_type, status, created_at FROM incidents WHERE call_id = ? ORDER BY created_at DESC LIMIT 1000', id);
 
     const activity = await query<Record<string, unknown>>(db,
-      'SELECT al.*, u.full_name as user_name FROM activity_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 1000',
+      'SELECT al.*, u.full_name as user_name FROM audit_log al LEFT JOIN users u ON al.user_id = u.id WHERE al.entity_type = ? AND al.entity_id = ? ORDER BY al.created_at DESC LIMIT 1000',
       'call', id);
 
     return c.json({
@@ -495,10 +495,10 @@ calls.put('/:id', async (c) => {
 });
 
 // GET /dispatch/calls/:id/audit-trail — chronological event log for this call.
-// Reads from activity_log filtered by entity_type='call'. The client renders
+// Reads from audit_log filtered by entity_type='call'. The client renders
 // { created_at, action, details, user_name } per row in the Audit tab
 // (DispatchPage.tsx ~line 5280). Degrades to empty on error rather than 500
-// so the tab doesn't break if activity_log schema drifts.
+// so the tab doesn't break if audit_log schema drifts.
 calls.get('/:id/audit-trail', async (c) => {
   try {
     const db = getDb(c.env);
@@ -511,7 +511,7 @@ calls.get('/:id/audit-trail', async (c) => {
       db,
       `SELECT al.id, al.action, al.details, al.user_id,
               u.full_name as user_name, al.created_at
-       FROM activity_log al
+       FROM audit_log al
        LEFT JOIN users u ON u.id = al.user_id
        WHERE al.entity_type = 'call' AND al.entity_id = ?
        ORDER BY al.created_at DESC LIMIT 500`,

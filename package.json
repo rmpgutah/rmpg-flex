@@ -7,7 +7,8 @@
     "deploy": "wrangler deploy",
     "types": "wrangler types",
     "typecheck": "tsc --noEmit",
-    "test": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "migrate:local": "wrangler d1 migrations apply rmpg-flex-db --local",
     "migrate:prod": "wrangler d1 migrations apply rmpg-flex-db --remote"
   },
@@ -24,6 +25,7 @@
     "@types/bcryptjs": "^2.4.6",
     "@types/uuid": "^10.0.0",
     "typescript": "^6.0.3",
+    "vitest": "^2.1.9",
     "wrangler": "^4.93.0"
   }
 }

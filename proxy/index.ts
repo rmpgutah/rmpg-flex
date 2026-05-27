@@ -233,6 +233,15 @@ const API_ROUTES: RouteRule[] = [
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
 
+  // ── Audit subsystem ──
+  // Live D1 `audit_log` had only id+created_at columns (an unused stump)
+  // until the audit-rewrite PR added user_id/action/entity_type/entity_id/
+  // details/ip_address and pointed /src/ writes at the consolidated table.
+  // Legacy never had a working audit handler — its routes return empties
+  // against the stump schema. Routing the whole namespace at env.API is
+  // the only path that lets AuditLogPage render real data.
+  { kind: 'prefix', value: '/api/audit' },
+
   // ── Radio subsystem (PR #661) ──
   // The new worker is the only handler. Legacy has no /api/radio/*
   // routes at all, so requests to this prefix have no fallback —
