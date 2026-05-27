@@ -390,18 +390,17 @@ const UPDATABLE_CALL_COLUMNS_BASE = new Set<string>([
   'damage_estimate', 'damage_description',
   // LE coordination
   'le_agency', 'le_case_number', 'le_notified', 'supervisor_notified',
-  // tactical flags
+  // tactical flags (base — first 7 added directly to calls_for_service;
+  // 10 more flags overflowed to _ext when base hit the D1 100-col cap)
   'injuries_reported', 'alcohol_involved', 'drugs_involved', 'domestic_violence',
   'mental_health_crisis', 'juvenile_involved', 'felony_in_progress',
-  'officer_safety_caution', 'k9_requested', 'ems_requested', 'fire_requested',
-  'hazmat', 'gang_related', 'evidence_collected', 'body_camera_active',
-  'photos_taken', 'trespass_issued', 'vehicle_pursuit', 'foot_pursuit',
+  'officer_safety_caution', 'k9_requested', 'ems_requested',
   // cross-linking
   'case_id', 'case_number', 'client_id', 'contract_id',
   // lifecycle
   'previous_status', 'status_changed_at', 'archived_at', 'received_at',
   'priority_score', 'response_time_seconds', 'onscene_duration_seconds',
-  'starting_mileage', 'ending_mileage', 'pinned', 'overdue_notified',
+  'starting_mileage', 'ending_mileage', 'overdue_notified',
 ]);
 
 const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
@@ -413,6 +412,11 @@ const UPDATABLE_CALL_COLUMNS_EXT = new Set<string>([
   // process service
   'process_service_type', 'process_served_to', 'process_served_address',
   'process_attempts', 'process_served_at', 'process_service_result',
+  // tactical flags overflowed here on 2026-05-26 when calls_for_service hit
+  // the 100-column D1 cap. New tactical flags should land here too.
+  'fire_requested', 'hazmat', 'gang_related', 'evidence_collected',
+  'body_camera_active', 'photos_taken', 'trespass_issued',
+  'vehicle_pursuit', 'foot_pursuit', 'pinned',
 ]);
 
 // PUT /dispatch/calls/:id - Update call
@@ -467,6 +471,36 @@ calls.put('/:id', async (c) => {
   } catch (err) {
     console.error('PUT /dispatch/calls/:id failed:', err);
     return c.json({ error: 'Failed to update call', detail: (err as Error)?.message }, 500);
+  }
+});
+
+// GET /dispatch/calls/:id/audit-trail — chronological event log for this call.
+// Reads from activity_log filtered by entity_type='call'. The client renders
+// { created_at, action, details, user_name } per row in the Audit tab
+// (DispatchPage.tsx ~line 5280). Degrades to empty on error rather than 500
+// so the tab doesn't break if activity_log schema drifts.
+calls.get('/:id/audit-trail', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    const rows = await query<{
+      id: number; action: string; details: string | null;
+      user_id: number | null; user_name: string | null;
+      created_at: string;
+    }>(
+      db,
+      `SELECT al.id, al.action, al.details, al.user_id,
+              u.full_name as user_name, al.created_at
+       FROM activity_log al
+       LEFT JOIN users u ON u.id = al.user_id
+       WHERE al.entity_type = 'call' AND al.entity_id = ?
+       ORDER BY al.created_at DESC LIMIT 500`,
+      id,
+    );
+    return c.json({ events: rows });
+  } catch (err) {
+    console.error('GET /dispatch/calls/:id/audit-trail failed:', err);
+    return c.json({ events: [] });
   }
 });
 

@@ -95,7 +95,7 @@ const API_ROUTES: RouteRule[] = [
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,
   // timeline, warnings} all live on env.API. Listed BEFORE the
   // bare /api/dispatch/calls/:id rule so they win the match.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings)(\/.*)?$/ },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail)(\/.*)?$/ },
 
   // /api/dispatch/calls/:id/{persons,vehicles}[/...] — rewrite implements
   // POST/DELETE/PATCH plus the quick-add fast-path; legacy implements ONLY
