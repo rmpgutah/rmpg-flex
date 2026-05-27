@@ -84,7 +84,6 @@ import patrol from './routes/patrol';
 import radio from './routes/radio';
 import serveIntake from './routes/serveIntake';
 import ocr from './routes/ocr';
-import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import serve from './routes/serve';
