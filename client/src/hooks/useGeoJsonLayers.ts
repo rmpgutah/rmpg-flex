@@ -225,6 +225,33 @@ function getLayerSourceId(layerId: string): string { return `geojson-${layerId}`
 function getFillLayerId(layerId: string): string { return `geojson-${layerId}-fill`; }
 function getLineLayerId(layerId: string): string { return `geojson-${layerId}-line`; }
 
+// Build a Mapbox `match` expression that resolves a beat feature's color
+// from its `city_code` property. All districts within a city share a color
+// (the lookup is keyed `${cityCode}::${distLetter}` but the colors collapse
+// per city), so we match on city_code alone to keep the expression small.
+//
+// `pickColor` lets the caller pick fill vs stroke from the same lookup.
+// Returns a flat string if the lookup is empty (no `match` overhead).
+function buildBeatColorExpression(
+  lookup: Map<string, BeatStyleEntry> | undefined,
+  pickColor: (entry: BeatStyleEntry) => string,
+  fallback: string,
+): string | unknown[] {
+  if (!lookup || lookup.size === 0) return fallback;
+  const cityColors = new Map<string, string>();
+  for (const [key, entry] of lookup) {
+    const cityCode = key.split('::')[0];
+    if (!cityColors.has(cityCode)) cityColors.set(cityCode, pickColor(entry));
+  }
+  if (cityColors.size === 0) return fallback;
+  const expr: unknown[] = ['match', ['to-string', ['get', 'city_code']]];
+  for (const [cityCode, color] of cityColors) {
+    expr.push(cityCode, color);
+  }
+  expr.push(fallback);
+  return expr;
+}
+
 export function useGeoJsonLayers({
   map,
   popup,
@@ -371,6 +398,16 @@ export function useGeoJsonLayers({
         });
       }
 
+      // For beats specifically, use a data-driven color expression keyed
+      // on city_code so each city renders in its own color (per
+      // beatDistrictMap). All other layers use the static config color.
+      const fillColorExpr = cfg.id === 'beat'
+        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => e.style.fillColor, cfg.style.fillColor)
+        : cfg.style.fillColor;
+      const lineColorExpr = cfg.id === 'beat'
+        ? buildBeatColorExpression(beatStyleLookupRef.current, (e) => e.style.strokeColor, cfg.style.strokeColor)
+        : cfg.style.strokeColor;
+
       // Add fill layer for polygon features
       if (!map.getLayer(getFillLayerId(cfg.id))) {
         map.addLayer({
@@ -378,7 +415,7 @@ export function useGeoJsonLayers({
           type: 'fill',
           source: sourceId,
           paint: {
-            'fill-color': cfg.style.fillColor,
+            'fill-color': fillColorExpr as any,
             'fill-opacity': cfg.style.fillOpacity,
           },
           layout: {
@@ -394,7 +431,7 @@ export function useGeoJsonLayers({
           type: 'line',
           source: sourceId,
           paint: {
-            'line-color': cfg.style.strokeColor,
+            'line-color': lineColorExpr as any,
             'line-opacity': cfg.style.strokeOpacity,
             'line-width': cfg.style.strokeWeight,
           },
@@ -460,15 +497,30 @@ export function useGeoJsonLayers({
         ...prev,
         [cfg.id]: { ...prev[cfg.id], loaded: true, featureCount: 0 },
       }));
-
-      // Apply beat-specific colors
-      if (cfg.id === 'beat' && beatStyleLookupRef.current) {
-        // Beat colors are handled statically — no per-feature styling in this approach
-      }
     } finally {
       inFlightLayersRef.current.delete(cfg.id);
     }
   }, [map, popup]);
+
+  // Keep the beat layer's paint in sync with beatStyleLookup. The layer's
+  // initial paint is set inside loadLayer using whatever lookup was
+  // present at first load — but the district map is fetched async, so it
+  // often arrives AFTER the beat layer is already on the map. This effect
+  // re-applies the expression whenever the lookup changes (and the beat
+  // layer is present).
+  useEffect(() => {
+    if (!map) return;
+    const beatCfg = GEO_LAYER_CONFIGS.find(c => c.id === 'beat');
+    if (!beatCfg) return;
+    const fillId = getFillLayerId('beat');
+    const lineId = getLineLayerId('beat');
+    if (!map.getLayer(fillId) && !map.getLayer(lineId)) return;
+
+    const fillExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.fillColor, beatCfg.style.fillColor);
+    const lineExpr = buildBeatColorExpression(beatStyleLookup, (e) => e.style.strokeColor, beatCfg.style.strokeColor);
+    try { if (map.getLayer(fillId)) map.setPaintProperty(fillId, 'fill-color', fillExpr as any); } catch {}
+    try { if (map.getLayer(lineId)) map.setPaintProperty(lineId, 'line-color', lineExpr as any); } catch {}
+  }, [map, beatStyleLookup]);
 
   const ensureLayerLoaded = useCallback(async (layerId: string) => {
     const cfg = GEO_LAYER_CONFIGS.find((c) => c.id === layerId);
@@ -520,13 +572,21 @@ export function useGeoJsonLayers({
     }
   }, [map, layerStates, loadLayer]);
 
-  // Zoom-based visibility management
+  // Zoom-based visibility management.
+  // Uses `zoomend` (fires once at gesture end) instead of `zoom` (fires
+  // continuously at ~60Hz during a pinch) — running per-config setLayoutProperty
+  // loops every frame was a meaningful frame-time cost. Reads layerStates via
+  // ref so the listener doesn't re-bind on every state change.
+  const layerStatesRef = useRef(layerStates);
+  useEffect(() => { layerStatesRef.current = layerStates; }, [layerStates]);
+
   useEffect(() => {
     if (!map) return;
-    const onZoom = () => {
+    const onZoomEnd = () => {
       const zoom = map.getZoom();
+      const states = layerStatesRef.current;
       for (const cfg of GEO_LAYER_CONFIGS) {
-        const state = layerStates[cfg.id];
+        const state = states[cfg.id];
         if (!state?.visible) continue;
         const fillId = getFillLayerId(cfg.id);
         const lineId = getLineLayerId(cfg.id);
@@ -535,9 +595,11 @@ export function useGeoJsonLayers({
         try { if (map.getLayer(lineId)) map.setLayoutProperty(lineId, 'visibility', viz); } catch {}
       }
     };
-    map.on('zoom', onZoom);
-    return () => { map.off('zoom', onZoom); };
-  }, [map, layerStates]);
+    map.on('zoomend', onZoomEnd);
+    // Apply once on bind so initial zoom state is respected without waiting for a gesture.
+    onZoomEnd();
+    return () => { map.off('zoomend', onZoomEnd); };
+  }, [map]);
 
   // Cleanup on unmount
   useEffect(() => {

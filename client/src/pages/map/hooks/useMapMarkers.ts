@@ -275,6 +275,16 @@ export function useMapMarkers({
     }
   }, [layers, units, calls, properties, mapLoaded, removeMarker, animateMarkerTo, cancelAnimation, mapInstanceRef, markersRef, infoWindowRef]);
 
+  // Stabilize parent callbacks via refs so the document-level click
+  // listeners bind once on mount, not on every MapPage render. The
+  // listener reads showRouteRef.current / onFindClosestRef.current at
+  // dispatch time, so updates to those props still take effect — they
+  // just don't churn add/removeEventListener.
+  const showRouteRef = useRef(showRoute);
+  useEffect(() => { showRouteRef.current = showRoute; }, [showRoute]);
+  const onFindClosestRef = useRef(onFindClosest);
+  useEffect(() => { onFindClosestRef.current = onFindClosest; }, [onFindClosest]);
+
   useEffect(() => {
     function handleRouteClick(e: MouseEvent) {
       const btn = (e.target as HTMLElement).closest('[data-route-unit]') as HTMLElement | null;
@@ -286,27 +296,30 @@ export function useMapMarkers({
       const cLat = parseFloat(btn.getAttribute('data-route-clat') || '');
       const cLng = parseFloat(btn.getAttribute('data-route-clng') || '');
       if (!isNaN(uLat) && !isNaN(uLng) && !isNaN(cLat) && !isNaN(cLng)) {
-        showRoute(unitCallSign, callNumber, uLat, uLng, cLat, cLng);
+        showRouteRef.current(unitCallSign, callNumber, uLat, uLng, cLat, cLng);
         if (infoWindowRef.current) infoWindowRef.current.remove();
       }
     }
     document.addEventListener('click', handleRouteClick);
     return () => document.removeEventListener('click', handleRouteClick);
-  }, [showRoute, infoWindowRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     function handleFindClosestClick(e: MouseEvent) {
       const btn = (e.target as HTMLElement).closest('[data-find-closest]') as HTMLElement | null;
       if (!btn) return;
       const callId = btn.getAttribute('data-find-closest') || '';
-      if (callId && onFindClosest) {
-        onFindClosest(callId);
+      const cb = onFindClosestRef.current;
+      if (callId && cb) {
+        cb(callId);
         if (infoWindowRef.current) infoWindowRef.current.remove();
       }
     }
     document.addEventListener('click', handleFindClosestClick);
     return () => document.removeEventListener('click', handleFindClosestClick);
-  }, [onFindClosest, infoWindowRef]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     const map = mapInstanceRef.current;

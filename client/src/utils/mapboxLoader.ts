@@ -81,11 +81,12 @@ export function monitorTileLoading(
     if (stallTimer) { clearTimeout(stallTimer); stallTimer = null; }
     callbacks.onLoaded();
   };
+  const onRender = () => {
+    if (!tilesLoaded) startStallTimer();
+  };
 
   map.on('idle', onIdle);
-  map.on('render', () => {
-    if (!tilesLoaded) startStallTimer();
-  });
+  map.on('render', onRender);
 
   const RECOVERY_STYLE_ID = 'rmpg-tile-recovery-style';
   if (!document.getElementById(RECOVERY_STYLE_ID)) {
@@ -133,9 +134,14 @@ export function monitorTileLoading(
   };
   window.addEventListener('online', onOnline);
 
-  map.on('idle', () => {
+  // Second idle handler — hides the recovery indicator once tiles finish
+  // loading after a network blip. Captured in a const so cleanup can
+  // remove it; without this, every call to monitorTileLoading leaked
+  // one idle listener for the lifetime of the map.
+  const onIdleHideRecovery = () => {
     recoveryIndicator.style.display = 'none';
-  });
+  };
+  map.on('idle', onIdleHideRecovery);
 
   const recoveryInterval = setInterval(() => {
     if (tilesLoaded) return;
@@ -148,6 +154,8 @@ export function monitorTileLoading(
     if (stallTimer) clearTimeout(stallTimer);
     clearInterval(recoveryInterval);
     map.off('idle', onIdle);
+    map.off('idle', onIdleHideRecovery);
+    map.off('render', onRender);
     window.removeEventListener('online', onOnline);
     recoveryIndicator.remove();
   };
