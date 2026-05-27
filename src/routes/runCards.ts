@@ -171,7 +171,7 @@ runCards.put('/:id', requireRole(...WRITE_ROLES), async (c) => {
         required_roles = ?, auto_flags = ?, recommended_codes = ?,
         officer_safety_alert = ?, silent_response_default = ?,
         ems_requested = ?, fire_requested = ?, notes = ?, active = ?,
-        updated_at = datetime('now', '-6 hours')
+        updated_at = datetime('now', '-7 hours')
       WHERE id = ?`,
       b.display_name ?? before.display_name,
       default_priority,
