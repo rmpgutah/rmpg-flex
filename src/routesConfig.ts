@@ -84,6 +84,7 @@ import serveIntake from './routes/serveIntake';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import serve from './routes/serve';
+import reports from './routes/reports';
 import stubs from './routes/stubs';
 // Dispatch domain
 import dispatchCalls from './routes/dispatch/calls';
@@ -263,6 +264,13 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   // paths (/, /preferences, /unread-count, /dashboard, etc).
   { prefix: '/api/user', router: stubs, auth: 'required' },
   { prefix: '/api/notifications', router: stubs, auth: 'required' },
+  // Reports — real handlers (crime-analysis + CSV export) MUST come
+  // before the /api/reports stubs entry, otherwise Hono's first-match
+  // dispatch sends /crime-analysis to the empty stub fan-out.
+  // Other /api/reports/* paths the real router doesn't handle fall
+  // through to stubs below (the router 404s internally, app keeps walking).
+  { prefix: '/api/reports', router: reports, auth: 'required',
+    note: 'BEFORE the stubs entry — owns /crime-analysis + /crime-analysis/export only' },
   { prefix: '/api/reports', router: stubs, auth: 'required' },
   { prefix: '/api/comms', router: stubs, auth: 'required' },
   { prefix: '/api/weather', router: stubs, auth: 'required' },
