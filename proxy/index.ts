@@ -124,6 +124,25 @@ const STUBS: StubRule[] = [
     body: { data: [] },
     reason: 'no training materials table; TrainingPage tolerates empty data',
   },
+  // ── Skiptracer v1 — proxy routes to env.API per the API_ROUTES rules
+  //    above, but no handler exists in src/. Stub them so the dashboard
+  //    polling stops 404ing. v2 is a separate legacy thing untouched. ──
+  {
+    match: /^\/api\/skiptracer\/(status|stats)$/,
+    methods: ['GET'],
+    body: { enabled: false, status: 'disabled', last_run_at: null, total: 0 },
+    reason: 'no skiptracer v1 backend in rewrite; dashboard tolerates disabled',
+  },
+  // ── Warrants scraped status (legacy 404) ──────────────────────────────
+  // Legacy never had a /warrants/scraped/status handler; the page polls
+  // for it as part of the watch tab. WarrantsPage tolerates the empty
+  // shape: { syncStatus, runs, recentHits }.
+  {
+    match: /^\/api\/warrants\/scraped\/status$/,
+    methods: ['GET'],
+    body: { syncStatus: { status: 'disabled', lastSync: null }, runs: [], recentHits: [] },
+    reason: 'no scraper status endpoint; WarrantsPage Watch tab tolerates empty',
+  },
   // ── HR sub-modules with no backing tables on live D1 yet ─────────────
   // /api/hr/leave* now has a real handler in src/routes/hr.ts (uses the
   // leave_requests table). The remaining sub-paths still 500 on legacy
@@ -264,6 +283,12 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/admin/system-health' },
   { kind: 'prefix', value: '/api/admin/users-activity-summary' },
   { kind: 'prefix', value: '/api/admin/realtime-stats' },
+  // AdminPage tiles added 2026-05-27 (stubbed in src/routes/admin.ts).
+  { kind: 'prefix', value: '/api/admin/api-stats' },
+  { kind: 'prefix', value: '/api/admin/user-activity-heatmap' },
+  { kind: 'prefix', value: '/api/admin/backup-status' },
+  { kind: 'prefix', value: '/api/admin/maintenance-mode' },
+  { kind: 'prefix', value: '/api/admin/notification-rules' },
   // Auth security history
   { kind: 'prefix', value: '/api/auth/security/login-history' },
   // Offline-cache sync engine (browser IndexedDB) — entire namespace
@@ -297,6 +322,10 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/hr/leave' },
   // Offender registry stats — handler in src/routes/offenderRegistry.ts.
   { kind: 'prefix', value: '/api/offender-registry/stats' },
+  // Arrests — handlers in src/routes/arrests.ts (manual booking subset,
+  // /recent, /search, /export/csv, /:id/cross-links). Legacy doesn't
+  // implement /recent so the page 500'd on first paint.
+  { kind: 'prefix', value: '/api/arrests' },
   // PUT + DELETE /api/personnel/:id — rewrite implements edit handler
   // (manager-tier roles can edit anyone, self-edit allowed on a narrow
   // contact/prefs subset) and soft-delete (manager-only, can't delete
