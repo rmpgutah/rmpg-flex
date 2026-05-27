@@ -207,6 +207,14 @@ const HEARTBEAT_INTERVAL = 15000; // 15 seconds
 // key set. We detect Electron and provide an IP-based fallback.
 const IS_ELECTRON = typeof window !== 'undefined' && !!(window as any).electron?.isElectron;
 
+// ─── Panasonic Toughbook Internal GPS ─────────────────────────
+// Toughbooks ship a u-blox NEO-M8N (or similar) on an internal
+// virtual COM port. When detected, we bypass navigator.geolocation
+// entirely and stream raw NMEA fixes from the Electron main process.
+// See desktop/internalGps.js for the parser.
+const IS_WINDOWS_ELECTRON =
+  IS_ELECTRON && (window as any).electron?.platform === 'win32';
+
 export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const {
     batchIntervalMs = DEFAULT_BATCH_INTERVAL,
@@ -263,6 +271,19 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const MAX_HEARTBEAT_RESTARTS = 5;
   /** GPS source for unit — 'browser' (default) or 'clearpathgps' (external tracker) */
   const gpsSourceRef = useRef<string>('browser');
+  /** True once we've confirmed the host is a Toughbook (FZ-55) with a live
+   *  internal GPS stream. Internal NMEA is PRIMARY; navigator.geolocation
+   *  continues to run as a SECONDARY fallback for when GPS lock is lost
+   *  (e.g., officer steps inside a concrete building). */
+  const useInternalGpsRef = useRef<boolean>(false);
+  /** Timestamp (ms) of the last internal-GPS fix. The browser geolocation
+   *  callback skips ingestion when this is recent — prevents 200m WiFi
+   *  triangulation from polluting the queue while hardware GPS is healthy. */
+  const lastInternalGpsAtRef = useRef<number>(0);
+  /** How fresh internal GPS must be (ms) before browser fixes are ignored.
+   *  15s: u-blox modules can lose lock briefly under bridges or in tunnels;
+   *  this gives the browser fallback room to fill the gap. */
+  const INTERNAL_GPS_FRESH_MS = 15000;
 
   // Fetch the user's assigned unit on mount
   useEffect(() => {
@@ -506,8 +527,149 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     }
   }, [sendBatch]);
 
+  // ─── Shared position ingestion ───────────────────────────
+  // Used by BOTH navigator.geolocation.watchPosition (browser path) AND
+  // the Electron internal-GPS IPC stream (Toughbook path). Keeps a single
+  // filter/smooth/queue pipeline so both sources behave identically downstream.
+  const ingestPosition = useCallback((coords: {
+    latitude: number;
+    longitude: number;
+    accuracy: number | null;
+    heading: number | null;
+    speed: number | null;
+    sourceHint?: PositionSource;
+    fromInternalGps?: boolean;
+  }) => {
+    const { latitude, longitude, accuracy, heading, speed } = coords;
+
+    // Browser geolocation is SECONDARY when internal GPS is active and fresh.
+    // Skip browser fixes if a Toughbook NMEA reading arrived within the
+    // freshness window — 5m hardware GPS beats 200m WiFi triangulation.
+    if (!coords.fromInternalGps && useInternalGpsRef.current) {
+      const sinceInternal = Date.now() - lastInternalGpsAtRef.current;
+      if (sinceInternal < INTERNAL_GPS_FRESH_MS) return;
+    }
+
+    if (coords.fromInternalGps) {
+      lastInternalGpsAtRef.current = Date.now();
+    }
+
+    lastCallbackTimeRef.current = Date.now();
+    heartbeatRestartCountRef.current = 0;
+
+    const connType = getConnectionType();
+    // Internal NMEA is always 'gps' regardless of network type
+    const source = coords.sourceHint ?? inferPositionSource(accuracy, connType);
+
+    setState((prev) => ({
+      ...prev,
+      latitude,
+      longitude,
+      accuracy,
+      heading,
+      speed,
+      error: null,
+      permissionDenied: false,
+      permissionPending: false,
+      connectionType: connType,
+      positionSource: source,
+    }));
+
+    if (!shouldAcceptPoint(latitude, longitude, accuracy)) return;
+
+    const point: QueuedPoint = {
+      lat: latitude,
+      lng: longitude,
+      accuracy,
+      heading,
+      speed,
+      timestamp: new Date().toISOString(),
+      source,
+    };
+
+    lastAcceptedRef.current = { lat: latitude, lng: longitude, time: Date.now() };
+    latestPositionRef.current = point;
+
+    if (queueRef.current.length >= MAX_QUEUE_SIZE) {
+      queueRef.current = queueRef.current.slice(-Math.floor(MAX_QUEUE_SIZE / 2));
+    }
+    queueRef.current.push(point);
+
+    if (!firstPositionSentRef.current) {
+      firstPositionSentRef.current = true;
+      sendImmediate(point);
+    }
+  }, [shouldAcceptPoint, sendImmediate]);
+
+  // ─── Toughbook internal GPS subscription ─────────────────
+  // Detect on mount; if it's a Toughbook with a live COM port, start the
+  // native NMEA reader and bypass navigator.geolocation entirely.
+  useEffect(() => {
+    if (!IS_WINDOWS_ELECTRON) return;
+    const electron = (window as any).electron;
+    if (!electron?.detectInternalGps) return;
+
+    let unsubUpdate: (() => void) | null = null;
+    let unsubError: (() => void) | null = null;
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const detected = await electron.detectInternalGps();
+        if (cancelled) return;
+        if (!detected?.isToughbook || !detected?.portPath) {
+          console.log('[useGpsTracking] Not a Toughbook or no GPS port — using navigator.geolocation');
+          return;
+        }
+        const result = await electron.startInternalGps({ portPath: detected.portPath });
+        if (cancelled) return;
+        if (!result?.ok) {
+          console.warn('[useGpsTracking] Internal GPS failed to start, falling back to navigator.geolocation:', result?.error);
+          return;
+        }
+        console.log('[useGpsTracking] Internal GPS active on', detected.portPath, '— navigator.geolocation disabled');
+        useInternalGpsRef.current = true;
+        setIsTracking(true);
+        setState((prev) => ({ ...prev, permissionPending: false, permissionDenied: false }));
+
+        unsubUpdate = electron.onInternalGpsUpdate((pos: any) => {
+          ingestPosition({
+            latitude: pos.latitude,
+            longitude: pos.longitude,
+            accuracy: pos.accuracy ?? null,
+            heading: pos.heading ?? null,
+            speed: pos.speed ?? null,
+            sourceHint: 'gps',
+            fromInternalGps: true,
+          });
+        });
+        unsubError = electron.onInternalGpsError((err: any) => {
+          console.warn('[useGpsTracking] Internal GPS error:', err?.message);
+          setState((prev) => ({ ...prev, error: `Internal GPS: ${err?.message || 'unknown error'}` }));
+        });
+        // No need to start the batch interval here — startTracking() runs
+        // in parallel (browser fallback path) and owns the batch send timer.
+      } catch (err) {
+        console.warn('[useGpsTracking] Internal GPS detection error:', err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      if (unsubUpdate) unsubUpdate();
+      if (unsubError) unsubError();
+      if (useInternalGpsRef.current && electron?.stopInternalGps) {
+        electron.stopInternalGps().catch(() => { /* shutting down */ });
+      }
+    };
+  }, [ingestPosition]);
+
   // Start tracking
   const startTracking = useCallback(() => {
+    // On Toughbook FZ-55, internal NMEA is primary but navigator.geolocation
+    // also runs as a SECONDARY fallback — when GPS lock is lost (concrete
+    // buildings, parking garages), WiFi triangulation fills the gap.
+    // ingestPosition gates browser fixes via lastInternalGpsAtRef.
     if (!('geolocation' in navigator)) {
       setState((prev) => ({
         ...prev,

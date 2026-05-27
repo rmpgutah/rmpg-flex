@@ -10,7 +10,9 @@
     "start": "electron . --dev",
     "build:win": "electron-builder --win",
     "build:mac": "electron-builder --mac",
-    "build:all": "electron-builder --mac --win"
+    "build:all": "electron-builder --mac --win",
+    "postinstall": "electron-rebuild -f -w serialport,better-sqlite3 || echo '[postinstall] electron-rebuild skipped (likely CI or first install before electron); run npm run rebuild manually if dev start fails with NODE_MODULE_VERSION'",
+    "rebuild": "electron-rebuild -f -w serialport,better-sqlite3"
   },
   "build": {
     "appId": "com.rmpg.flex",
@@ -34,6 +36,7 @@
       "pinManager.js",
       "offlineRouter.js",
       "syncManager.js",
+      "internalGps.js",
       "originalCatalog.json"
     ],
     "extraResources": [
@@ -99,9 +102,11 @@
   },
   "dependencies": {
     "better-sqlite3": "^12.9.0",
-    "electron-updater": "^6.8.3"
+    "electron-updater": "^6.8.3",
+    "serialport": "^12.0.0"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.0.3",
     "electron": "^40.9.3",
     "electron-builder": "^26.0.0"
   },
