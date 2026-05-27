@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import { safeDateTimeStr } from '../../../utils/dateUtils';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface FleetVehicle {
   id: number;
@@ -109,33 +110,35 @@ export function useMapFleetVehicles(
       properties: { id: vehicle.id, vehicle_number: vehicle.vehicle_number, status: vehicle.status, gps_reported_at: vehicle.gps_reported_at },
     }));
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': [
-          'case',
-          ['==', ['get', 'status'], 'in_service'], '#22c55e',
-          ['==', ['get', 'status'], 'maintenance'], '#f59e0b',
-          ['==', ['get', 'status'], 'out_of_service'], '#dc2626',
-          '#666666',
-        ],
-        'circle-radius': 12,
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 2,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['==', ['get', 'status'], 'in_service'], '#22c55e',
+            ['==', ['get', 'status'], 'maintenance'], '#f59e0b',
+            ['==', ['get', 'status'], 'out_of_service'], '#dc2626',
+            '#666666',
+          ],
+          'circle-radius': 12,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const vehicle = withCoords.find(v => v.id === feature.properties?.id);
-      if (!vehicle) return;
-      if (popupRef.current) {
-        popupRef.current.setLngLat(e.lngLat).setHTML(buildVehicleInfoContent(vehicle)).addTo(map);
-      }
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const vehicle = withCoords.find(v => v.id === feature.properties?.id);
+        if (!vehicle) return;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(buildVehicleInfoContent(vehicle)).addTo(map);
+        }
+      });
     });
   }, [map, clearMarkers]);
 

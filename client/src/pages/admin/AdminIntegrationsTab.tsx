@@ -5,6 +5,7 @@ import {
   Shield, Database, Bell, Unlock, Cloud, Cpu, MapPin, Navigation, Server,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { safeDateStr } from '../../utils/dateUtils';
 
 interface Props {
@@ -366,7 +367,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   const fetchKeys = useCallback(async () => {
     try {
       const data = await apiFetch<ApiKey[]>('/integrations/keys');
-      setKeys(data);
+      setKeys(asArray<ApiKey>(data));
     } catch (err) {
       console.error('Failed to fetch integration keys:', err);
       setError(err instanceof Error ? err.message : 'Failed to load API keys');
@@ -378,7 +379,7 @@ export default function AdminIntegrationsTab({ LoadingSpinner, error, setError }
   const fetchRequestLog = useCallback(async () => {
     try {
       const data = await apiFetch<RequestLogEntry[]>('/integrations/keys/request-log');
-      setRequestLog(data);
+      setRequestLog(asArray<RequestLogEntry>(data));
     } catch (err) {
       console.error('Failed to fetch request log:', err);
     } finally {

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface RepeatAddress {
   location_address: string;
@@ -111,40 +112,42 @@ export function useMapRepeatAddresses(
 
     if (features.length === 0) return;
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': [
-          'case',
-          ['>=', ['get', 'call_count'], 20], '#991b1b',
-          ['>=', ['get', 'call_count'], 11], '#dc2626',
-          ['>=', ['get', 'call_count'], 6], '#f97316',
-          ['>=', ['get', 'call_count'], 4], '#f59e0b',
-          '#eab308',
-        ],
-        'circle-radius': [
-          'case',
-          ['>=', ['get', 'call_count'], 20], 19,
-          ['>=', ['get', 'call_count'], 11], 16,
-          ['>=', ['get', 'call_count'], 6], 14,
-          12,
-        ],
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 2,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['>=', ['get', 'call_count'], 20], '#991b1b',
+            ['>=', ['get', 'call_count'], 11], '#dc2626',
+            ['>=', ['get', 'call_count'], 6], '#f97316',
+            ['>=', ['get', 'call_count'], 4], '#f59e0b',
+            '#eab308',
+          ],
+          'circle-radius': [
+            'case',
+            ['>=', ['get', 'call_count'], 20], 19,
+            ['>=', ['get', 'call_count'], 11], 16,
+            ['>=', ['get', 'call_count'], 6], 14,
+            12,
+          ],
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const addr = addresses.find(a => a.lat === e.lngLat.lat && a.lng === e.lngLat.lng);
-      if (!addr) return;
-      if (popupRef.current) {
-        popupRef.current.setLngLat(e.lngLat).setHTML(buildInfoContent(addr)).addTo(map);
-      }
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const addr = addresses.find(a => a.lat === e.lngLat.lat && a.lng === e.lngLat.lng);
+        if (!addr) return;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(buildInfoContent(addr)).addTo(map);
+        }
+      });
     });
 
     return () => {

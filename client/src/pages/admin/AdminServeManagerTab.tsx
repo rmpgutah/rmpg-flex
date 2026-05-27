@@ -5,6 +5,7 @@ import {
   ChevronLeft, ChevronRight, FileText, Briefcase, MapPin, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { safeDateStr, safeDateTimeStr } from '../../utils/dateUtils';
 import type {
   SMIntegrationStatus, SMConnectionTestResult, SMSyncResult,
@@ -73,7 +74,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
   const fetchSyncLog = useCallback(async () => {
     try {
       const res = await apiFetch<{ data: SMSyncLogEntry[] }>('/servemanager/sync/log');
-      setSyncLog(res.data);
+      setSyncLog(asArray<SMSyncLogEntry>(res?.data));
     } catch (e) { console.error('Failed to fetch sync log:', e); }
   }, []);
 
@@ -83,7 +84,7 @@ export default function AdminServeManagerTab({ LoadingSpinner, error, setError }
       const params = new URLSearchParams({ page: String(jobPage), per_page: '25' });
       if (jobSearch) params.set('q', jobSearch);
       const res = await apiFetch<SMPaginatedResponse<SMCachedJob>>(`/servemanager/jobs?${params}`);
-      setJobs(res.data);
+      setJobs(asArray<SMCachedJob>(res?.data));
       setJobTotal(res.pagination?.total || 0);
       setJobTotalPages(res.pagination?.totalPages || 0);
     } catch (err) {

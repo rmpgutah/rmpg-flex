@@ -1,463 +1,305 @@
 // ============================================================
-// RMPG Flex — Reports router (crime analysis + CSV export)
+// RMPG Flex — /api/reports/* aggregations
 // ============================================================
-// Replaces the /api/reports/crime-analysis stub. Two endpoints:
+// Dashboard endpoints that summarise incidents, citations, and beat
+// activity over rolling windows. Replaces the empty-shape stubs from
+// src/routes/stubs.ts so the Reports dashboard renders real numbers.
 //
-//   GET /crime-analysis?days=90 | start_date=YYYY-MM-DD&end_date=...
-//       [&property_id=N]
-//     Aggregates incidents joined to incident_offenses ↔ nibrs_offense_codes
-//     and calls_for_service ↔ properties. Returns BOTH the task-spec
-//     shape (totals, by_type, by_day, by_hour, by_property) AND the
-//     legacy shape the existing CrimeAnalysisPage.tsx reads
-//     (topOffenses, hotspots, dayOfWeek, timeOfDay, trendData,
-//      clearanceRate, responseMetrics, repeatOffenders) — single SQL
-//     pass per axis, two field projections.
+// All handlers gated to admin/manager/supervisor — these expose
+// org-wide rollups, not officer-level data.
 //
-//   GET /crime-analysis/export?format=csv&...   (same filters)
-//     Streams one row per incident, capped at 50,000 rows. Primary
-//     offense = MIN(incident_offenses.id) per incident (stable default;
-//     the row inserted first).
-//
-// Both routes require admin | manager | supervisor. Other report
-// prefixes (/api/reports/incidents-summary, /response-times, etc.)
-// fall through to the stubs router; this file owns ONLY /crime-analysis.
+// Time windows are user-supplied via ?days=N (clamped to [1, 365]).
+// SQL filters on created_at (when the record entered the system) —
+// not approved_at / disposition_date — so freshly-entered work is
+// reflected immediately on the dashboard.
 // ============================================================
 
 import { Hono } from 'hono';
-import type { Env } from '../types';
 import { requireRole } from '../middleware/auth';
 import { getDb, query, queryFirst } from '../utils/db';
+import type { Env } from '../types';
 
 const reports = new Hono<Env>();
 
-reports.use('/crime-analysis', requireRole('admin', 'manager', 'supervisor'));
-reports.use('/crime-analysis/*', requireRole('admin', 'manager', 'supervisor'));
+const ANALYTICS_ROLES = ['admin', 'manager', 'supervisor'];
 
-// ── Filter parsing ───────────────────────────────────────────
-// `days` is the SPA's default control. `start_date`/`end_date` win
-// if both are present (custom-range selector). property_id is an
-// optional filter on the joined call's property.
-interface Filters {
-  start: string;          // 'YYYY-MM-DD HH:MM:SS' SQLite datetime
-  end: string;
-  property_id: number | null;
-  // For Content-Disposition + UI display — keep YYYY-MM-DD slugs.
-  startSlug: string;
-  endSlug: string;
+reports.use('*', requireRole(...ANALYTICS_ROLES));
+
+function clampDays(raw: string | undefined, fallback: number): number {
+  const n = Number.parseInt(raw ?? '', 10);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(n, 365);
 }
 
-function parseFilters(c: any): Filters {
-  const url = new URL(c.req.url);
-  const qDays = url.searchParams.get('days');
-  const qStart = url.searchParams.get('start_date');
-  const qEnd = url.searchParams.get('end_date');
-  const qProp = url.searchParams.get('property_id');
-
-  let startSlug: string;
-  let endSlug: string;
-  if (qStart && qEnd) {
-    startSlug = qStart;
-    endSlug = qEnd;
-  } else {
-    const days = Math.max(1, Math.min(parseInt(qDays || '90', 10) || 90, 3650));
-    const now = new Date();
-    const start = new Date(now);
-    start.setUTCDate(now.getUTCDate() - days);
-    startSlug = start.toISOString().slice(0, 10);
-    endSlug = now.toISOString().slice(0, 10);
-  }
-  return {
-    start: `${startSlug} 00:00:00`,
-    end: `${endSlug} 23:59:59`,
-    property_id: qProp ? parseInt(qProp, 10) || null : null,
-    startSlug,
-    endSlug,
-  };
-}
-
-// Build the WHERE fragment + binding list used by every aggregation.
-// Centralised so adding a new filter (e.g. district_id) lands in one
-// place instead of N copies. Returns ' AND ...' suffixes so the
-// caller controls the base FROM/JOIN.
-function whereClause(f: Filters): { sql: string; bindings: unknown[] } {
-  const parts: string[] = ['i.created_at BETWEEN ? AND ?'];
-  const bindings: unknown[] = [f.start, f.end];
-  if (f.property_id != null) {
-    parts.push('cfs.property_id = ?');
-    bindings.push(f.property_id);
-  }
-  return { sql: parts.join(' AND '), bindings };
-}
-
-// ── GET /crime-analysis ──────────────────────────────────────
-reports.get('/crime-analysis', async (c) => {
+// GET /api/reports/incidents-summary?days=30
+reports.get('/incidents-summary', async (c) => {
   const db = getDb(c.env);
-  const f = parseFilters(c);
-  const w = whereClause(f);
+  const days = clampDays(c.req.query('days'), 30);
+  const since = `-${days} days`;
 
-  // FROM/JOIN block reused across most queries. incidents is at 84 cols
-  // on live D1, but we never `SELECT i.*` — only a few projections, so
-  // we're nowhere near the D1 100-column result-set cap.
-  const FROM = `
-    FROM incidents i
-    LEFT JOIN calls_for_service cfs ON cfs.id = i.call_id
-  `;
-
-  // 1. Totals — single row aggregate
-  const totalsRow = await queryFirst<Record<string, number | null>>(db, `
-    SELECT
-      COUNT(DISTINCT i.id)         AS total_incidents,
-      COUNT(DISTINCT cfs.property_id) AS unique_properties,
-      COUNT(DISTINCT i.officer_id) AS unique_officers,
-      SUM(CASE WHEN i.priority = 'P1' THEN 1 ELSE 0 END) AS p1,
-      SUM(CASE WHEN i.priority = 'P2' THEN 1 ELSE 0 END) AS p2,
-      SUM(CASE WHEN i.priority = 'P3' THEN 1 ELSE 0 END) AS p3,
-      SUM(CASE WHEN i.priority = 'P4' THEN 1 ELSE 0 END) AS p4,
-      SUM(CASE WHEN i.status = 'approved' THEN 1 ELSE 0 END) AS approved,
-      SUM(CASE WHEN i.status IN ('submitted','under_review','approved','returned') THEN 1 ELSE 0 END) AS reviewable
-    ${FROM} WHERE ${w.sql}
-  `, ...w.bindings);
-
-  const totalOffensesRow = await queryFirst<{ total_offenses: number }>(db, `
-    SELECT COUNT(*) AS total_offenses
-    FROM incident_offenses io
-    JOIN incidents i ON i.id = io.incident_id
-    LEFT JOIN calls_for_service cfs ON cfs.id = i.call_id
-    WHERE ${w.sql}
-  `, ...w.bindings);
-
-  const totalIncidents = Number(totalsRow?.total_incidents || 0);
-  const totalOffenses = Number(totalOffensesRow?.total_offenses || 0);
-  const approved = Number(totalsRow?.approved || 0);
-  const reviewable = Number(totalsRow?.reviewable || 0);
-  const clearanceRate = reviewable > 0 ? Math.round((approved / reviewable) * 1000) / 10 : 0;
-
-  // 2. by_type — JOIN to nibrs_offense_codes via io.code (PR #667 column).
-  // LEFT JOIN: incidents with offenses that have no NIBRS mapping still
-  // show up under description from incident_offenses, with null code.
-  const typeRows = await query<Record<string, unknown>>(db, `
-    SELECT
-      io.code                                AS nibrs_code,
-      COALESCE(noc.description, io.description, io.offense_type, 'Unknown') AS description,
-      COALESCE(noc.category, 'Uncategorized') AS category,
-      COUNT(*)                               AS count
-    FROM incident_offenses io
-    JOIN incidents i ON i.id = io.incident_id
-    LEFT JOIN calls_for_service cfs ON cfs.id = i.call_id
-    LEFT JOIN nibrs_offense_codes noc ON noc.code = io.code
-    WHERE ${w.sql}
-    GROUP BY io.code, COALESCE(noc.description, io.description, io.offense_type),
-             COALESCE(noc.category, 'Uncategorized')
-    ORDER BY count DESC
-    LIMIT 20
-  `, ...w.bindings);
-
-  const by_type = typeRows.map((r) => ({
-    nibrs_code: r.nibrs_code as string | null,
-    description: r.description as string,
-    category: r.category as string,
-    count: Number(r.count),
-    pct: totalOffenses > 0 ? Math.round((Number(r.count) / totalOffenses) * 1000) / 10 : 0,
-  }));
-
-  // 3. by_day — date + priority breakdown
-  const dayRows = await query<Record<string, unknown>>(db, `
-    SELECT
-      date(i.created_at) AS date,
-      i.priority         AS priority,
-      COUNT(*)           AS count
-    ${FROM} WHERE ${w.sql}
-    GROUP BY date(i.created_at), i.priority
-    ORDER BY date(i.created_at) ASC
-  `, ...w.bindings);
-
-  const byDayMap = new Map<string, { date: string; total: number; by_priority: Record<string, number> }>();
-  for (const r of dayRows) {
-    const date = String(r.date);
-    const pri = String(r.priority ?? 'P3');
-    const count = Number(r.count);
-    let bucket = byDayMap.get(date);
-    if (!bucket) {
-      bucket = { date, total: 0, by_priority: { P1: 0, P2: 0, P3: 0, P4: 0 } };
-      byDayMap.set(date, bucket);
-    }
-    bucket.total += count;
-    if (bucket.by_priority[pri] != null) bucket.by_priority[pri] += count;
-  }
-  const by_day = [...byDayMap.values()];
-
-  // 4. by_hour — hour 0-23 with day-of-week breakdown
-  // SQLite strftime('%w') returns 0=Sun..6=Sat.
-  const hourRows = await query<Record<string, unknown>>(db, `
-    SELECT
-      CAST(strftime('%H', i.created_at) AS INTEGER) AS hour,
-      CAST(strftime('%w', i.created_at) AS INTEGER) AS dow,
-      COUNT(*) AS count
-    ${FROM} WHERE ${w.sql}
-    GROUP BY hour, dow
-  `, ...w.bindings);
-
-  const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-  const byHourArr: Array<{ hour: number; count: number; dow: Record<string, number> }> = [];
-  for (let h = 0; h < 24; h++) {
-    byHourArr.push({ hour: h, count: 0, dow: { Sun: 0, Mon: 0, Tue: 0, Wed: 0, Thu: 0, Fri: 0, Sat: 0 } });
-  }
-  for (const r of hourRows) {
-    const h = Number(r.hour);
-    const d = Number(r.dow);
-    const cnt = Number(r.count);
-    if (h >= 0 && h < 24) {
-      byHourArr[h].count += cnt;
-      byHourArr[h].dow[DAY_NAMES[d]] = (byHourArr[h].dow[DAY_NAMES[d]] || 0) + cnt;
-    }
-  }
-
-  // 5. by_property — top 25 by incident count. top_types lookup runs as a
-  // second pass to avoid an N+M correlated subquery. property_id is read
-  // through cfs since incidents.property_id doesn't exist (per migration
-  // 0001 and the spec confirmed before writing this).
-  const propRows = await query<Record<string, unknown>>(db, `
-    SELECT
-      cfs.property_id      AS property_id,
-      p.name               AS property_name,
-      COUNT(DISTINCT i.id) AS count
-    ${FROM}
-    JOIN properties p ON p.id = cfs.property_id
-    WHERE ${w.sql} AND cfs.property_id IS NOT NULL
-    GROUP BY cfs.property_id, p.name
-    ORDER BY count DESC
-    LIMIT 25
-  `, ...w.bindings);
-
-  // top_types per property — small follow-up query per top property.
-  // 25 round-trips at this scale is acceptable (each query is a tiny
-  // GROUP BY on indexed FKs). For >100 properties we'd consolidate.
-  const by_property: Array<{
-    property_id: number;
-    property_name: string;
-    count: number;
-    top_types: string[];
-  }> = [];
-  for (const pr of propRows) {
-    const pid = Number(pr.property_id);
-    const topTypeRows = await query<{ description: string }>(db, `
-      SELECT COALESCE(noc.description, io.description, io.offense_type, 'Unknown') AS description
-      FROM incident_offenses io
-      JOIN incidents i ON i.id = io.incident_id
-      LEFT JOIN calls_for_service cfs ON cfs.id = i.call_id
-      LEFT JOIN nibrs_offense_codes noc ON noc.code = io.code
-      WHERE ${w.sql} AND cfs.property_id = ?
-      GROUP BY description
-      ORDER BY COUNT(*) DESC
-      LIMIT 3
-    `, ...w.bindings, pid);
-    by_property.push({
-      property_id: pid,
-      property_name: String(pr.property_name || `Property #${pid}`),
-      count: Number(pr.count),
-      top_types: topTypeRows.map((t) => t.description),
-    });
-  }
-
-  // ── Legacy-shape axes (CrimeAnalysisPage.tsx) ───────────────
-  // Hotspots: top locations by raw incident count. Pulled from
-  // incidents.location_address with averaged lat/lng.
-  const hotspots = await query<Record<string, unknown>>(db, `
-    SELECT
-      i.location_address AS location,
-      AVG(i.latitude)    AS lat,
-      AVG(i.longitude)   AS lng,
-      COUNT(*)           AS count
-    ${FROM} WHERE ${w.sql} AND i.location_address IS NOT NULL AND TRIM(i.location_address) != ''
-    GROUP BY i.location_address
-    ORDER BY count DESC
-    LIMIT 10
-  `, ...w.bindings);
-
-  // Day of week — flat array {day_of_week 0-6, count}.
-  const dowRows = await query<Record<string, unknown>>(db, `
-    SELECT CAST(strftime('%w', i.created_at) AS INTEGER) AS day_of_week, COUNT(*) AS count
-    ${FROM} WHERE ${w.sql}
-    GROUP BY day_of_week ORDER BY day_of_week
-  `, ...w.bindings);
-
-  // Time of day — {hour, count}.
-  const todRows = await query<Record<string, unknown>>(db, `
-    SELECT CAST(strftime('%H', i.created_at) AS INTEGER) AS hour, COUNT(*) AS count
-    ${FROM} WHERE ${w.sql}
-    GROUP BY hour ORDER BY hour
-  `, ...w.bindings);
-
-  // Monthly trend — {month: 'YYYY-MM', count}.
-  const trendRows = await query<Record<string, unknown>>(db, `
-    SELECT strftime('%Y-%m', i.created_at) AS month, COUNT(*) AS count
-    ${FROM} WHERE ${w.sql}
-    GROUP BY month ORDER BY month
-  `, ...w.bindings);
-
-  // Response metrics — average dispatched→onscene minutes per priority,
-  // sourced from the same calls_for_service rows backing the incidents
-  // (so the metric matches the filtered window). Only count calls where
-  // both timestamps exist.
-  const respRows = await query<Record<string, unknown>>(db, `
-    SELECT
-      LOWER(CASE i.priority
-        WHEN 'P1' THEN 'critical'
-        WHEN 'P2' THEN 'high'
-        WHEN 'P3' THEN 'normal'
-        WHEN 'P4' THEN 'low'
-        ELSE 'normal' END) AS priority,
-      ROUND(AVG(
-        (julianday(cfs.onscene_at) - julianday(cfs.dispatched_at)) * 24 * 60
-      ), 1) AS avg_minutes,
-      COUNT(*) AS call_count
-    ${FROM}
-    WHERE ${w.sql}
-      AND cfs.dispatched_at IS NOT NULL
-      AND cfs.onscene_at    IS NOT NULL
-    GROUP BY priority
-    ORDER BY i.priority
-  `, ...w.bindings);
-
-  // Repeat offenders — persons linked to ≥3 incidents in window as
-  // suspect/arrestee. Joined to persons for display name.
-  const repeatRows = await query<Record<string, unknown>>(db, `
-    SELECT
-      p.id                                          AS person_id,
-      TRIM(COALESCE(p.first_name,'') || ' ' || COALESCE(p.last_name,'')) AS name,
-      COUNT(DISTINCT i.id)                          AS incident_count
-    FROM incident_persons ip
-    JOIN persons p ON p.id = ip.person_id
-    JOIN incidents i ON i.id = ip.incident_id
-    LEFT JOIN calls_for_service cfs ON cfs.id = i.call_id
-    WHERE ${w.sql}
-      AND ip.role IN ('suspect','arrestee')
-    GROUP BY p.id, name
-    HAVING incident_count >= 3
-    ORDER BY incident_count DESC
-    LIMIT 25
-  `, ...w.bindings);
+  const total = await queryFirst<{ n: number }>(
+    db,
+    `SELECT COUNT(*) AS n FROM incidents WHERE created_at >= datetime('now', ?)`,
+    since
+  );
+  const by_type = await query<{ type: string; count: number }>(
+    db,
+    `SELECT incident_type AS type, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY incident_type
+      ORDER BY count DESC`,
+    since
+  );
+  const by_status = await query<{ status: string; count: number }>(
+    db,
+    `SELECT status, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY status
+      ORDER BY count DESC`,
+    since
+  );
+  const by_day = await query<{ date: string; count: number }>(
+    db,
+    `SELECT date(created_at) AS date, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY date(created_at)
+      ORDER BY date ASC`,
+    since
+  );
 
   return c.json({
-    data: {
-      // ── Task-spec shape ──
-      totals: {
-        total_incidents: totalIncidents,
-        total_offenses: totalOffenses,
-        unique_properties: Number(totalsRow?.unique_properties || 0),
-        unique_officers: Number(totalsRow?.unique_officers || 0),
-        by_priority: {
-          P1: Number(totalsRow?.p1 || 0),
-          P2: Number(totalsRow?.p2 || 0),
-          P3: Number(totalsRow?.p3 || 0),
-          P4: Number(totalsRow?.p4 || 0),
-        },
-      },
-      by_type,
-      by_day,
-      by_hour: byHourArr,
-      by_property,
-      generated_at: new Date().toISOString(),
-
-      // ── Legacy shape (CrimeAnalysisPage.tsx) ──
-      topOffenses: by_type.map((t) => ({ offense_type: t.description, count: t.count })),
-      hotspots: hotspots.map((h) => ({
-        location: h.location,
-        lat: h.lat,
-        lng: h.lng,
-        count: Number(h.count),
-      })),
-      dayOfWeek: dowRows.map((r) => ({ day_of_week: Number(r.day_of_week), count: Number(r.count) })),
-      timeOfDay: todRows.map((r) => ({ hour: Number(r.hour), count: Number(r.count) })),
-      trendData: trendRows.map((r) => ({ month: r.month, count: Number(r.count) })),
-      clearanceRate: { rate: clearanceRate },
-      responseMetrics: respRows.map((r) => ({
-        priority: r.priority,
-        avg_minutes: r.avg_minutes,
-        call_count: Number(r.call_count),
-      })),
-      repeatOffenders: repeatRows.map((r) => ({
-        person_id: Number(r.person_id),
-        name: r.name || 'Unknown',
-        incident_count: Number(r.incident_count),
-      })),
-    },
+    days,
+    total: total?.n ?? 0,
+    by_type,
+    by_status,
+    by_day,
   });
 });
 
-// ── GET /crime-analysis/export?format=csv ────────────────────
-// One row per incident, primary offense = MIN(incident_offenses.id).
-// 50,000-row cap is enforced via LIMIT in the SQL rather than a runtime
-// counter so D1 never ships rows we'd just discard.
-const CSV_ROW_CAP = 50_000;
-
-function csvEscape(v: unknown): string {
-  if (v == null) return '';
-  const s = String(v);
-  if (s.includes(',') || s.includes('"') || s.includes('\n') || s.includes('\r')) {
-    return `"${s.replace(/"/g, '""')}"`;
-  }
-  return s;
-}
-
-reports.get('/crime-analysis/export', async (c) => {
-  const format = new URL(c.req.url).searchParams.get('format') || 'csv';
-  if (format !== 'csv') {
-    return c.json({ error: 'Only format=csv is supported' }, 400);
-  }
+// GET /api/reports/crime-trends?days=90
+// trends[]: per-day incident_type rollup for stacked line charts.
+// top_categories[]: leaderboard of incident_type counts for the
+// whole window (denormalised for the dashboard's quick-stats card).
+reports.get('/crime-trends', async (c) => {
   const db = getDb(c.env);
-  const f = parseFilters(c);
-  const w = whereClause(f);
+  const days = clampDays(c.req.query('days'), 90);
+  const since = `-${days} days`;
 
-  // Correlated subquery picks MIN(id) per incident — the offense row
-  // inserted first. This is the deterministic stand-in for a "primary"
-  // designation since incident_offenses has no is_primary flag.
-  const rows = await query<Record<string, unknown>>(db, `
-    SELECT
-      i.id                AS incident_id,
-      i.incident_number   AS incident_number,
-      i.created_at        AS date,
-      io.code             AS type_code,
-      COALESCE(noc.description, io.description, io.offense_type, '') AS type_description,
-      i.priority          AS priority,
-      COALESCE(p.name, '') AS property_name,
-      i.status            AS status,
-      COALESCE(u.full_name, u.username, '') AS primary_officer,
-      COALESCE(i.location_address, '') AS location_address
-    FROM incidents i
-    LEFT JOIN calls_for_service cfs ON cfs.id = i.call_id
-    LEFT JOIN properties p ON p.id = cfs.property_id
-    LEFT JOIN users u ON u.id = i.officer_id
-    LEFT JOIN incident_offenses io ON io.id = (
-      SELECT MIN(id) FROM incident_offenses WHERE incident_id = i.id
-    )
-    LEFT JOIN nibrs_offense_codes noc ON noc.code = io.code
-    WHERE ${w.sql}
-    ORDER BY i.created_at DESC
-    LIMIT ?
-  `, ...w.bindings, CSV_ROW_CAP);
+  const trends = await query<{ date: string; type: string; count: number }>(
+    db,
+    `SELECT date(created_at) AS date, incident_type AS type, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY date(created_at), incident_type
+      ORDER BY date ASC, count DESC`,
+    since
+  );
+  const top_categories = await query<{ type: string; count: number }>(
+    db,
+    `SELECT incident_type AS type, COUNT(*) AS count
+       FROM incidents
+      WHERE created_at >= datetime('now', ?)
+      GROUP BY incident_type
+      ORDER BY count DESC
+      LIMIT 10`,
+    since
+  );
 
-  const header = [
-    'incident_id', 'incident_number', 'date', 'type_code', 'type_description',
-    'priority', 'property_name', 'status', 'primary_officer', 'location_address',
-  ];
-  const lines: string[] = [header.join(',')];
-  for (const r of rows) {
-    lines.push([
-      r.incident_id, r.incident_number, r.date, r.type_code, r.type_description,
-      r.priority, r.property_name, r.status, r.primary_officer, r.location_address,
-    ].map(csvEscape).join(','));
-  }
-  const body = lines.join('\r\n');
+  return c.json({ days, trends, top_categories });
+});
 
-  return new Response(body, {
-    status: 200,
-    headers: {
-      'content-type': 'text/csv; charset=utf-8',
-      'content-disposition': `attachment; filename=crime-analysis-${f.startSlug}-${f.endSlug}.csv`,
-      'cache-control': 'private, no-store',
-    },
+// GET /api/reports/beat-activity?days=30
+// One row per active beat with call/incident/citation counts.
+// Joins:
+//   calls    — calls_for_service.beat_id = dispatch_beats.beat_code
+//   incidents — via calls_for_service (incidents have no beat_id of their own)
+//   citations — citations.beat_id = dispatch_beats.beat_code
+// Inactive beats are excluded.
+reports.get('/beat-activity', async (c) => {
+  const db = getDb(c.env);
+  const days = clampDays(c.req.query('days'), 30);
+  const since = `-${days} days`;
+
+  const beats = await query<{
+    beat_code: string;
+    beat_name: string;
+    district_letter: string | null;
+    calls: number;
+    incidents: number;
+    citations: number;
+  }>(
+    db,
+    `SELECT b.beat_code,
+            b.beat_name,
+            b.district_letter,
+            COALESCE(c.n, 0)  AS calls,
+            COALESCE(i.n, 0)  AS incidents,
+            COALESCE(ci.n, 0) AS citations
+       FROM dispatch_beats b
+       LEFT JOIN (
+         SELECT beat_id, COUNT(*) AS n
+           FROM calls_for_service
+          WHERE created_at >= datetime('now', ?)
+          GROUP BY beat_id
+       ) c  ON c.beat_id = b.beat_code
+       LEFT JOIN (
+         SELECT cfs.beat_id, COUNT(*) AS n
+           FROM incidents i
+           JOIN calls_for_service cfs ON cfs.id = i.call_id
+          WHERE i.created_at >= datetime('now', ?)
+          GROUP BY cfs.beat_id
+       ) i  ON i.beat_id = b.beat_code
+       LEFT JOIN (
+         SELECT beat_id, COUNT(*) AS n
+           FROM citations
+          WHERE created_at >= datetime('now', ?)
+          GROUP BY beat_id
+       ) ci ON ci.beat_id = b.beat_code
+      WHERE b.active = 1
+      ORDER BY (COALESCE(c.n,0) + COALESCE(i.n,0) + COALESCE(ci.n,0)) DESC,
+               b.beat_code ASC`,
+    since, since, since
+  );
+
+  return c.json({ days, beats });
+});
+
+// GET /api/reports/citation-revenue?days=30
+// total_revenue: sum of payment.amount across the window.
+// by_violation: top fine-generating statutes (sums payments per citation).
+// by_month: yyyy-mm bucketed totals for trend chart.
+reports.get('/citation-revenue', async (c) => {
+  const db = getDb(c.env);
+  const days = clampDays(c.req.query('days'), 30);
+  const since = `-${days} days`;
+
+  const total = await queryFirst<{ total_revenue: number; payment_count: number }>(
+    db,
+    `SELECT COALESCE(SUM(amount), 0) AS total_revenue,
+            COUNT(*) AS payment_count
+       FROM citation_payments
+      WHERE COALESCE(payment_date, created_at) >= datetime('now', ?)`,
+    since
+  );
+  const by_violation = await query<{
+    statute_citation: string | null;
+    violation_description: string | null;
+    revenue: number;
+    citations: number;
+  }>(
+    db,
+    `SELECT c.statute_citation,
+            c.violation_description,
+            COALESCE(SUM(p.amount), 0) AS revenue,
+            COUNT(DISTINCT c.id)       AS citations
+       FROM citations c
+       JOIN citation_payments p ON p.citation_id = c.id
+      WHERE COALESCE(p.payment_date, p.created_at) >= datetime('now', ?)
+      GROUP BY c.statute_citation, c.violation_description
+      ORDER BY revenue DESC
+      LIMIT 20`,
+    since
+  );
+  const by_month = await query<{ month: string; revenue: number }>(
+    db,
+    `SELECT strftime('%Y-%m', COALESCE(payment_date, created_at)) AS month,
+            COALESCE(SUM(amount), 0) AS revenue
+       FROM citation_payments
+      WHERE COALESCE(payment_date, created_at) >= datetime('now', ?)
+      GROUP BY month
+      ORDER BY month ASC`,
+    since
+  );
+
+  return c.json({
+    days,
+    total_revenue: total?.total_revenue ?? 0,
+    payment_count: total?.payment_count ?? 0,
+    by_violation,
+    by_month,
   });
 });
+
+// GET /api/reports/schedules
+// No report_schedules table exists yet. Saved-report scheduling is
+// out of scope for v1 — the GET exists so the dashboard's schedules
+// panel can mount without 404 spam. Return [] until a real table lands.
+reports.get('/schedules', (c) => c.json([]));
+
+// GET /api/reports/templates
+// Same situation as /schedules — no report_templates table. Return [].
+reports.get('/templates', (c) => c.json([]));
+
+// GET /api/reports/statute-analytics?days=180
+// Aggregates over citation_violations joined to utah_statutes so we
+// can show statute code + section title + offense_level. Percentage
+// is computed against the total within the window so each row's
+// pct_of_total sums to ~100 (minor rounding ok).
+reports.get('/statute-analytics', async (c) => {
+  const db = getDb(c.env);
+  const days = clampDays(c.req.query('days'), 180);
+  const since = `-${days} days`;
+
+  const total = await queryFirst<{ n: number }>(
+    db,
+    `SELECT COUNT(*) AS n
+       FROM citation_violations v
+      WHERE v.created_at >= datetime('now', ?)`,
+    since
+  );
+  const denom = Math.max(total?.n ?? 0, 1);
+
+  const rows = await query<{
+    statute_citation: string | null;
+    short_title: string | null;
+    offense_level: string | null;
+    category: string | null;
+    count: number;
+  }>(
+    db,
+    `SELECT v.statute_citation,
+            s.short_title,
+            COALESCE(s.offense_level, v.offense_level) AS offense_level,
+            s.category,
+            COUNT(*) AS count
+       FROM citation_violations v
+  LEFT JOIN utah_statutes s ON s.id = v.statute_id
+      WHERE v.created_at >= datetime('now', ?)
+      GROUP BY v.statute_citation, s.short_title, offense_level, s.category
+      ORDER BY count DESC
+      LIMIT 25`,
+    since
+  );
+
+  const top_statutes = rows.map((r) => ({
+    statute_citation: r.statute_citation,
+    short_title: r.short_title,
+    offense_level: r.offense_level,
+    count: r.count,
+    pct_of_total: Math.round((r.count / denom) * 10000) / 100,
+  }));
+
+  const by_category = await query<{ category: string | null; count: number }>(
+    db,
+    `SELECT s.category, COUNT(*) AS count
+       FROM citation_violations v
+  LEFT JOIN utah_statutes s ON s.id = v.statute_id
+      WHERE v.created_at >= datetime('now', ?)
+      GROUP BY s.category
+      ORDER BY count DESC`,
+    since
+  );
+
+  return c.json({ days, total: total?.n ?? 0, top_statutes, by_category });
+});
+
+// GET /api/reports/response-times
+// Moved verbatim from src/routes/stubs.ts. Real dispatch-time math
+// (arrived_at - dispatched_at) is a Phase 2 port — see the
+// calls_for_service status-timestamp columns. Return [] until then.
+reports.get('/response-times', (c) => c.json([]));
 
 export default reports;

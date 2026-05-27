@@ -1,11 +1,20 @@
 // ChannelsTab — browse / favorite / mute / create / edit / archive.
 // Selecting a channel jumps back to LiveTab via onSelectChannel.
+//
+// CRUD (create / archive) is gated client-side to admin/manager/supervisor
+// to match `requireRole('admin','manager','supervisor')` in
+// src/routes/radio.ts. Without this gate, line officers saw NEW + archive
+// controls that always returned 403 server-side. Favorite / mute / select
+// remain unrestricted (they're per-user UI state, not channel config).
 import { useCallback, useEffect, useState } from 'react';
 import { Plus, Star, VolumeX, Archive, ChevronRight, Radio } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { useAuth } from '../../../context/AuthContext';
 import { ls } from '../helpers';
 import { SectionHeader, MiniToggle, ToolbarBtn } from '../components';
 import type { RadioChannel } from '../types';
+
+const MANAGE_ROLES = new Set(['admin', 'manager', 'supervisor']);
 
 interface Props {
   selectedChannelId: number | null;
@@ -13,6 +22,8 @@ interface Props {
 }
 
 export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Props) {
+  const { user } = useAuth();
+  const canManage = MANAGE_ROLES.has(user?.role || '');
   const [channels, setChannels] = useState<RadioChannel[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(() => ls.getSet('radio_favorites'));
   const [muted, setMuted] = useState<Set<string>>(() => ls.getSet('radio_muted_channels'));
@@ -73,14 +84,16 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
             <ToolbarBtn onClick={() => setIncludeArchived((v) => !v)} active={includeArchived}>
               <Archive className="w-3 h-3" /> ARCHIVED
             </ToolbarBtn>
-            <ToolbarBtn onClick={() => setCreating((v) => !v)} active={creating}>
-              <Plus className="w-3 h-3" /> NEW
-            </ToolbarBtn>
+            {canManage && (
+              <ToolbarBtn onClick={() => setCreating((v) => !v)} active={creating}>
+                <Plus className="w-3 h-3" /> NEW
+              </ToolbarBtn>
+            )}
           </div>
         }
       />
 
-      {creating && (
+      {creating && canManage && (
         <div className="px-3 py-2 flex flex-col gap-2"
           style={{ background: 'var(--rt-panel)', borderBottom: '1px solid var(--rt-border)' }}>
           <input
@@ -126,7 +139,7 @@ export default function ChannelsTab({ selectedChannelId, onSelectChannel }: Prop
                   {c.description && <span style={{ color: 'var(--rt-muted)' }}>— {c.description}</span>}
                 </button>
                 <span className="tabular-nums" style={{ color: 'var(--rt-muted)' }}>{c.tx_count} tx</span>
-                {!isArchived && (
+                {!isArchived && canManage && (
                   <button type="button" onClick={() => archive(c.id)} title="Archive channel"
                     aria-label={`Archive ${c.name}`}
                     className="opacity-60 hover:opacity-100"

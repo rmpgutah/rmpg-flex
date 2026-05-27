@@ -5,6 +5,7 @@ import { buildIncidentReportMarkerContent, getOverlayMarkerClass } from '../util
 import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { escapeHtml } from '../../../utils/sanitize';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 export interface MapIncidentReport {
   id: number;
@@ -117,28 +118,29 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
       },
     }));
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': [
-          'case',
-          ['==', ['get', 'status'], 'draft'], '#666666',
-          ['==', ['get', 'status'], 'submitted'], '#888888',
-          ['==', ['get', 'status'], 'under_review'], '#f59e0b',
-          ['==', ['get', 'status'], 'approved'], '#22c55e',
-          ['==', ['get', 'status'], 'returned'], '#ef4444',
-          '#666666',
-        ],
-        'circle-radius': 8,
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 1,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['==', ['get', 'status'], 'draft'], '#666666',
+            ['==', ['get', 'status'], 'submitted'], '#888888',
+            ['==', ['get', 'status'], 'under_review'], '#f59e0b',
+            ['==', ['get', 'status'], 'approved'], '#22c55e',
+            ['==', ['get', 'status'], 'returned'], '#ef4444',
+            '#666666',
+          ],
+          'circle-radius': 8,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 1,
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
+      map.on('click', sourceId, (e) => {
       const feature = e.features?.[0];
       if (!feature || !feature.properties) return;
       const p = feature.properties;
@@ -171,6 +173,7 @@ export function useMapIncidentReports(opts: UseMapIncidentReportsOptions): UseMa
       if (popupRef.current) {
         popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
       }
+      });
     });
   }, [map, clearMarkers]);
 

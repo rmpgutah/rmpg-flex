@@ -34,7 +34,7 @@ function requireAdmin(c: { get: (k: 'user') => { role: string } | undefined }): 
 // ── CSV serializer (RFC 4180) ──────────────────────────────
 // Inline because /src/ doesn't have a CSV helper yet. Wraps
 // every cell in quotes with internal quotes doubled — the
-// activity_log details column can contain commas, newlines,
+// audit_log details column can contain commas, newlines,
 // and quoted incident numbers, and a naive join(',') would
 // silently corrupt rows. This matters most when prosecutors
 // export the audit log for discovery.
@@ -74,7 +74,7 @@ audit.get('/logs', async (c) => {
     const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const countRow = await queryFirst<{ total: number }>(
-      db, `SELECT COUNT(*) as total FROM activity_log al ${whereClause}`, ...params,
+      db, `SELECT COUNT(*) as total FROM audit_log al ${whereClause}`, ...params,
     );
     const total = countRow?.total ?? 0;
     const totalPages = limitNum > 0 ? Math.ceil(total / limitNum) : 0;
@@ -84,7 +84,7 @@ audit.get('/logs', async (c) => {
       `SELECT al.id, al.user_id, al.action, al.entity_type, al.entity_id,
               al.details, al.ip_address, al.created_at,
               u.full_name as user_name, u.badge_number, u.role as user_role
-       FROM activity_log al
+       FROM audit_log al
        LEFT JOIN users u ON al.user_id = u.id
        ${whereClause}
        ORDER BY al.created_at DESC
@@ -105,21 +105,21 @@ audit.get('/logs', async (c) => {
 audit.get('/stats', async (c) => {
   try {
     const db = getDb(c.env);
-    const totalRow = await queryFirst<{ total: number }>(db, 'SELECT COUNT(*) as total FROM activity_log');
+    const totalRow = await queryFirst<{ total: number }>(db, 'SELECT COUNT(*) as total FROM audit_log');
     const todayRow = await queryFirst<{ total: number }>(
-      db, `SELECT COUNT(*) as total FROM activity_log WHERE date(created_at) = date('now')`,
+      db, `SELECT COUNT(*) as total FROM audit_log WHERE date(created_at) = date('now')`,
     );
     const cutoff = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
     const topActions = await query<Record<string, unknown>>(
       db,
-      `SELECT action, COUNT(*) as count FROM activity_log
+      `SELECT action, COUNT(*) as count FROM audit_log
        WHERE created_at >= ? GROUP BY action ORDER BY count DESC LIMIT 10`,
       cutoff,
     );
     const topUsers = await query<Record<string, unknown>>(
       db,
       `SELECT u.full_name as user_name, u.badge_number, COUNT(*) as count
-       FROM activity_log al LEFT JOIN users u ON al.user_id = u.id
+       FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
        WHERE al.created_at >= ? AND u.full_name IS NOT NULL
        GROUP BY u.full_name, u.badge_number ORDER BY count DESC LIMIT 10`,
       cutoff,
@@ -161,7 +161,7 @@ audit.get('/export', async (c) => {
       db,
       `SELECT al.action, al.entity_type, al.entity_id, al.details,
               u.full_name as user_name, al.ip_address, al.created_at
-       FROM activity_log al
+       FROM audit_log al
        LEFT JOIN users u ON al.user_id = u.id
        ${whereClause}
        ORDER BY al.created_at DESC
@@ -199,16 +199,16 @@ audit.post('/retention/enforce', async (c) => {
     const body = await c.req.json<{ retention_days?: number }>().catch(() => ({} as { retention_days?: number }));
     const days = Math.max(30, Math.min(3650, parseInt(String(body.retention_days ?? '365'), 10) || 365));
 
-    const beforeRow = await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM activity_log');
+    const beforeRow = await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM audit_log');
     const countBefore = beforeRow?.count ?? 0;
 
     const result = await execute(
       db,
-      `DELETE FROM activity_log WHERE created_at < datetime('now', '-' || ? || ' days')`,
+      `DELETE FROM audit_log WHERE created_at < datetime('now', '-' || ? || ' days')`,
       days,
     );
 
-    const afterRow = await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM activity_log');
+    const afterRow = await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM audit_log');
     const countAfter = afterRow?.count ?? 0;
 
     // Log the enforcement itself so it stays auditable even after the purge.
@@ -216,7 +216,7 @@ audit.post('/retention/enforce', async (c) => {
     const ip = c.req.header('CF-Connecting-IP') || c.req.header('X-Forwarded-For') || 'unknown';
     await execute(
       db,
-      `INSERT INTO activity_log (user_id, action, entity_type, entity_id, details, ip_address)
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
        VALUES (?, 'audit_retention_enforced', 'audit', 0, ?, ?)`,
       user?.id ?? 0,
       `Enforced ${days}-day retention: removed ${result.meta.changes} entries`,
@@ -246,8 +246,8 @@ audit.get('/retention/policy', async (c) => {
       db,
       `SELECT config_value FROM system_config WHERE config_key = 'audit_auto_enforce' AND category = 'system_settings'`,
     );
-    const totalRow = await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM activity_log');
-    const oldestRow = await queryFirst<{ oldest: string | null }>(db, 'SELECT MIN(created_at) as oldest FROM activity_log');
+    const totalRow = await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM audit_log');
+    const oldestRow = await queryFirst<{ oldest: string | null }>(db, 'SELECT MIN(created_at) as oldest FROM audit_log');
 
     return c.json({
       retention_days: parseInt(row?.config_value ?? '365', 10) || 365,
@@ -310,11 +310,11 @@ audit.get('/action-types', async (c) => {
     const actionTypes = await query<Record<string, unknown>>(
       db,
       `SELECT action, COUNT(*) as count, MAX(created_at) as last_seen
-       FROM activity_log GROUP BY action ORDER BY count DESC`,
+       FROM audit_log GROUP BY action ORDER BY count DESC`,
     );
     const entityTypes = await query<Record<string, unknown>>(
       db,
-      `SELECT entity_type, COUNT(*) as count FROM activity_log
+      `SELECT entity_type, COUNT(*) as count FROM audit_log
        WHERE entity_type IS NOT NULL GROUP BY entity_type ORDER BY count DESC`,
     );
     return c.json({ actionTypes, entityTypes });
@@ -331,7 +331,7 @@ audit.get('/summary', async (c) => {
 
     const dailyTrend = await query<Record<string, unknown>>(
       db,
-      `SELECT DATE(created_at) as date, COUNT(*) as count FROM activity_log
+      `SELECT DATE(created_at) as date, COUNT(*) as count FROM audit_log
        WHERE created_at >= datetime('now', '-' || ? || ' days')
        GROUP BY date ORDER BY date`,
       daysNum,
@@ -339,28 +339,28 @@ audit.get('/summary', async (c) => {
     const byHour = await query<Record<string, unknown>>(
       db,
       `SELECT CAST(strftime('%H', created_at) AS INTEGER) as hour, COUNT(*) as count
-       FROM activity_log WHERE created_at >= datetime('now', '-' || ? || ' days')
+       FROM audit_log WHERE created_at >= datetime('now', '-' || ? || ' days')
        GROUP BY hour ORDER BY hour`,
       daysNum,
     );
     const topUsers = await query<Record<string, unknown>>(
       db,
       `SELECT u.full_name, u.badge_number, u.role, COUNT(*) as action_count
-       FROM activity_log al JOIN users u ON al.user_id = u.id
+       FROM audit_log al JOIN users u ON al.user_id = u.id
        WHERE al.created_at >= datetime('now', '-' || ? || ' days')
        GROUP BY al.user_id ORDER BY action_count DESC LIMIT 10`,
       daysNum,
     );
     const topActions = await query<Record<string, unknown>>(
       db,
-      `SELECT action, COUNT(*) as count FROM activity_log
+      `SELECT action, COUNT(*) as count FROM audit_log
        WHERE created_at >= datetime('now', '-' || ? || ' days')
        GROUP BY action ORDER BY count DESC LIMIT 15`,
       daysNum,
     );
     const securityActions = await query<Record<string, unknown>>(
       db,
-      `SELECT action, COUNT(*) as count FROM activity_log
+      `SELECT action, COUNT(*) as count FROM audit_log
        WHERE created_at >= datetime('now', '-' || ? || ' days')
          AND (action LIKE '%login%' OR action LIKE '%password%' OR action LIKE '%totp%'
               OR action LIKE '%session%' OR action LIKE '%role%' OR action LIKE '%permission%')
@@ -369,11 +369,11 @@ audit.get('/summary', async (c) => {
     );
     const totalInPeriod = await queryFirst<{ count: number }>(
       db,
-      `SELECT COUNT(*) as count FROM activity_log
+      `SELECT COUNT(*) as count FROM audit_log
        WHERE created_at >= datetime('now', '-' || ? || ' days')`,
       daysNum,
     );
-    const totalOverall = await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM activity_log');
+    const totalOverall = await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM audit_log');
 
     return c.json({
       period_days: daysNum,
@@ -397,7 +397,7 @@ audit.get('/entity/:entityType/:entityId', async (c) => {
     const logs = await query<Record<string, unknown>>(
       db,
       `SELECT al.*, u.full_name as user_name, u.badge_number
-       FROM activity_log al LEFT JOIN users u ON al.user_id = u.id
+       FROM audit_log al LEFT JOIN users u ON al.user_id = u.id
        WHERE al.entity_type = ? AND al.entity_id = ?
        ORDER BY al.created_at DESC LIMIT ?`,
       entityType, entityId, limitNum,
@@ -418,7 +418,7 @@ audit.post('/compress', async (c) => {
     const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
 
     const countRow = await queryFirst<{ count: number }>(
-      db, 'SELECT COUNT(*) as count FROM activity_log WHERE created_at < ?', cutoff,
+      db, 'SELECT COUNT(*) as count FROM audit_log WHERE created_at < ?', cutoff,
     );
     const count = countRow?.count ?? 0;
     if (count === 0) return c.json({ message: 'No entries older than the cutoff', compressed: 0 });
@@ -427,7 +427,7 @@ audit.post('/compress', async (c) => {
       db,
       `SELECT DATE(created_at) as log_date, action,
               COUNT(*) as count, COUNT(DISTINCT user_id) as unique_users
-       FROM activity_log WHERE created_at < ?
+       FROM audit_log WHERE created_at < ?
        GROUP BY DATE(created_at), action ORDER BY log_date`,
       cutoff,
     );
@@ -474,21 +474,23 @@ audit.post('/compress', async (c) => {
   }
 });
 
-// ── GET /api/audit/index-stats — admin diagnostics ──
+// ── GET /api/audit/index-stats — diagnostics (admin or manager) ──
+// Read-only sizing/diagnostic view of the audit table. The original
+// port locked this to admin; the audit-rewrite spec opens it to
+// manager too so the AuditLogPage indicator works for both roles.
 audit.get('/index-stats', async (c) => {
-  if (!requireAdmin(c)) return c.json({ error: 'Admin only', code: 'FORBIDDEN' }, 403);
   try {
     const db = getDb(c.env);
-    const totalEntries = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM activity_log'))?.count ?? 0;
-    const oldestEntry = await queryFirst<{ oldest: string | null }>(db, 'SELECT MIN(created_at) as oldest FROM activity_log');
-    const newestEntry = await queryFirst<{ newest: string | null }>(db, 'SELECT MAX(created_at) as newest FROM activity_log');
-    const uniqueActions = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(DISTINCT action) as count FROM activity_log'))?.count ?? 0;
-    const uniqueEntityTypes = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(DISTINCT entity_type) as count FROM activity_log'))?.count ?? 0;
-    const uniqueUsers = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(DISTINCT user_id) as count FROM activity_log'))?.count ?? 0;
+    const totalEntries = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(*) as count FROM audit_log'))?.count ?? 0;
+    const oldestEntry = await queryFirst<{ oldest: string | null }>(db, 'SELECT MIN(created_at) as oldest FROM audit_log');
+    const newestEntry = await queryFirst<{ newest: string | null }>(db, 'SELECT MAX(created_at) as newest FROM audit_log');
+    const uniqueActions = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(DISTINCT action) as count FROM audit_log'))?.count ?? 0;
+    const uniqueEntityTypes = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(DISTINCT entity_type) as count FROM audit_log'))?.count ?? 0;
+    const uniqueUsers = (await queryFirst<{ count: number }>(db, 'SELECT COUNT(DISTINCT user_id) as count FROM audit_log'))?.count ?? 0;
     const avgEntrySize = await queryFirst<{ avg_bytes: number | null }>(
       db,
       `SELECT AVG(LENGTH(COALESCE(action, '')) + LENGTH(COALESCE(details, '')) + LENGTH(COALESCE(ip_address, ''))) as avg_bytes
-       FROM activity_log LIMIT 1000`,
+       FROM audit_log LIMIT 1000`,
     );
 
     return c.json({
@@ -514,7 +516,7 @@ audit.get('/compliance-report', async (c) => {
 
     const securityEvents = await query<Record<string, unknown>>(
       db,
-      `SELECT action, COUNT(*) as count FROM activity_log
+      `SELECT action, COUNT(*) as count FROM audit_log
        WHERE created_at >= ? AND action IN (
          'user_login', 'user_logout', 'password_changed', 'totp_enabled',
          'totp_disabled', 'user_created', 'user_deactivated', 'user_role_changed',
@@ -525,14 +527,14 @@ audit.get('/compliance-report', async (c) => {
     );
     const dataAccess = await query<Record<string, unknown>>(
       db,
-      `SELECT entity_type, COUNT(*) as count FROM activity_log
+      `SELECT entity_type, COUNT(*) as count FROM audit_log
        WHERE created_at >= ? AND action IN ('read', 'view', 'search', 'export')
        GROUP BY entity_type ORDER BY count DESC LIMIT 20`,
       cutoff,
     );
     const dataModifications = await query<Record<string, unknown>>(
       db,
-      `SELECT entity_type, action, COUNT(*) as count FROM activity_log
+      `SELECT entity_type, action, COUNT(*) as count FROM audit_log
        WHERE created_at >= ? AND action IN ('create', 'update', 'delete', 'archive', 'CREATE', 'UPDATE', 'DELETE')
        GROUP BY entity_type, action ORDER BY count DESC LIMIT 30`,
       cutoff,
@@ -555,12 +557,40 @@ audit.get('/compliance-report', async (c) => {
     } catch { /* table missing — leave as 0 */ }
 
     const activeUsers = (await queryFirst<{ count: number }>(
-      db, `SELECT COUNT(DISTINCT user_id) as count FROM activity_log WHERE created_at >= ?`, cutoff,
+      db, `SELECT COUNT(DISTINCT user_id) as count FROM audit_log WHERE created_at >= ?`, cutoff,
     ))?.count ?? 0;
 
+    // ── Daily-coverage compliance check ──
+    // v1 heuristic: a day is "covered" if it has at least MIN_DAILY entries.
+    // Overall compliance = ≥COVERAGE_THRESHOLD share of days in the window
+    // are covered. We expose the gap list so the UI can render which days
+    // fell short rather than just a boolean. This matches the spec's
+    // {compliant, gaps, generated_at} contract without pretending we've
+    // built a real CJIS audit engine.
+    const MIN_DAILY = 1;
+    const COVERAGE_THRESHOLD = 0.8;
+    const daily = await query<{ day: string; n: number }>(
+      db,
+      `SELECT date(created_at) as day, COUNT(*) as n FROM audit_log
+       WHERE created_at >= ? GROUP BY day`,
+      cutoff,
+    );
+    const byDay = new Map<string, number>(daily.map((d) => [d.day, d.n]));
+    const gaps: { date: string; expected: number; actual: number }[] = [];
+    const today = new Date();
+    for (let i = days - 1; i >= 0; i--) {
+      const d = new Date(today.getTime() - i * 24 * 60 * 60 * 1000);
+      const iso = d.toISOString().slice(0, 10);
+      const actual = byDay.get(iso) ?? 0;
+      if (actual < MIN_DAILY) gaps.push({ date: iso, expected: MIN_DAILY, actual });
+    }
+    const compliant = gaps.length <= Math.floor(days * (1 - COVERAGE_THRESHOLD));
+
     return c.json({
-      report_period_days: days,
+      compliant,
+      gaps,
       generated_at: new Date().toISOString(),
+      report_period_days: days,
       security_events: securityEvents,
       data_access: dataAccess,
       data_modifications: dataModifications,

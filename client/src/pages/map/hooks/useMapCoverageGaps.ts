@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface UnitPosition {
   call_sign: string;
@@ -130,38 +131,40 @@ export function useMapCoverageGaps(
     });
 
     if (coverageFeatures.length > 0) {
-      map.addSource(coverageSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: coverageFeatures } });
-      map.addLayer({
-        id: coverageSourceId,
-        type: 'circle',
-        source: coverageSourceId,
-        paint: {
-          'circle-color': ['get', 'color'],
-          'circle-radius': ['get', 'radius'],
-          'circle-opacity': ['get', 'color'],
-          'circle-stroke-color': ['get', 'color'],
-          'circle-stroke-width': 1.5,
-          'circle-stroke-opacity': 0.35,
-        },
-      });
+      whenStyleReady(map, () => {
+        map.addSource(coverageSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: coverageFeatures } });
+        map.addLayer({
+          id: coverageSourceId,
+          type: 'circle',
+          source: coverageSourceId,
+          paint: {
+            'circle-color': ['get', 'color'],
+            'circle-radius': ['get', 'radius'],
+            'circle-opacity': ['get', 'color'],
+            'circle-stroke-color': ['get', 'color'],
+            'circle-stroke-width': 1.5,
+            'circle-stroke-opacity': 0.35,
+          },
+        });
 
-      map.on('click', coverageSourceId, (e) => {
-        const feature = e.features?.[0];
-        if (!feature || !feature.properties) return;
-        const p = feature.properties;
-        const color = p.color as string;
-        const nearbyCount = p.nearbyCount as number;
+        map.on('click', coverageSourceId, (e) => {
+          const feature = e.features?.[0];
+          if (!feature || !feature.properties) return;
+          const p = feature.properties;
+          const color = p.color as string;
+          const nearbyCount = p.nearbyCount as number;
 
-        const html = `
-          <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
-            <div style="font-weight:bold;font-size:12px;margin-bottom:4px;color:${color}">Coverage \u2014 ${p.call_sign}</div>
-            <div style="font-size:10px;color:${color};font-weight:700;margin-bottom:2px;">${p.densityLabel} (${nearbyCount} nearby unit${nearbyCount !== 1 ? 's' : ''})</div>
-            <div style="font-size:9px;color:#6b7280;">Radius: ${radiusMiles} mi (${Math.round(radiusMeters)} m)</div>
-          </div>
-        `;
-        if (popupRef.current) {
-          popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
-        }
+          const html = `
+            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:200px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #222222">
+              <div style="font-weight:bold;font-size:12px;margin-bottom:4px;color:${color}">Coverage \u2014 ${p.call_sign}</div>
+              <div style="font-size:10px;color:${color};font-weight:700;margin-bottom:2px;">${p.densityLabel} (${nearbyCount} nearby unit${nearbyCount !== 1 ? 's' : ''})</div>
+              <div style="font-size:9px;color:#6b7280;">Radius: ${radiusMiles} mi (${Math.round(radiusMeters)} m)</div>
+            </div>
+          `;
+          if (popupRef.current) {
+            popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+          }
+        });
       });
     }
 
@@ -203,34 +206,36 @@ export function useMapCoverageGaps(
       setDeadZones(foundDeadZones);
 
       if (deadZoneFeatures.length > 0) {
-        map.addSource(deadZoneSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: deadZoneFeatures } });
-        map.addLayer({
-          id: deadZoneSourceId,
-          type: 'circle',
-          source: deadZoneSourceId,
-          paint: {
-            'circle-color': '#ef4444',
-            'circle-radius': FIVE_MINUTE_METERS * 0.5,
-            'circle-opacity': 0.06,
-            'circle-stroke-color': '#ef4444',
-            'circle-stroke-width': 1,
-            'circle-stroke-opacity': 0.25,
-          },
-        });
+        whenStyleReady(map, () => {
+          map.addSource(deadZoneSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: deadZoneFeatures } });
+          map.addLayer({
+            id: deadZoneSourceId,
+            type: 'circle',
+            source: deadZoneSourceId,
+            paint: {
+              'circle-color': '#ef4444',
+              'circle-radius': FIVE_MINUTE_METERS * 0.5,
+              'circle-opacity': 0.06,
+              'circle-stroke-color': '#ef4444',
+              'circle-stroke-width': 1,
+              'circle-stroke-opacity': 0.25,
+            },
+          });
 
-        map.on('click', deadZoneSourceId, (e) => {
-          const feature = e.features?.[0];
-          if (!feature || !feature.properties) return;
-          const html = `
-            <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:180px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #ef444440">
-              <div style="font-weight:bold;font-size:12px;margin-bottom:4px;color:#ef4444">Dead Zone</div>
-              <div style="font-size:9px;color:#f87171;">No unit within 5-min response time</div>
-              <div style="font-size:9px;color:#6b7280;margin-top:2px;">${feature.properties.label}</div>
-            </div>
-          `;
-          if (popupRef.current) {
-            popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
-          }
+          map.on('click', deadZoneSourceId, (e) => {
+            const feature = e.features?.[0];
+            if (!feature || !feature.properties) return;
+            const html = `
+              <div style="font-family:'JetBrains Mono',monospace;font-size:11px;color:#e0e0e0;min-width:180px;line-height:1.6;background:#050505;padding:10px 12px;border-radius:4px;border:1px solid #ef444440">
+                <div style="font-weight:bold;font-size:12px;margin-bottom:4px;color:#ef4444">Dead Zone</div>
+                <div style="font-size:9px;color:#f87171;">No unit within 5-min response time</div>
+                <div style="font-size:9px;color:#6b7280;margin-top:2px;">${feature.properties.label}</div>
+              </div>
+            `;
+            if (popupRef.current) {
+              popupRef.current.setLngLat(e.lngLat).setHTML(html).addTo(map);
+            }
+          });
         });
       }
 
@@ -267,16 +272,18 @@ export function useMapCoverageGaps(
         setRepositionSuggestions(suggestions);
 
         if (repositionFeatures.length > 0) {
-          map.addSource(repositionSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: repositionFeatures } });
-          map.addLayer({
-            id: repositionSourceId,
-            type: 'line',
-            source: repositionSourceId,
-            paint: {
-              'line-color': '#aaaaaa',
-              'line-width': 2,
-              'line-opacity': 0.6,
-            },
+          whenStyleReady(map, () => {
+            map.addSource(repositionSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: repositionFeatures } });
+            map.addLayer({
+              id: repositionSourceId,
+              type: 'line',
+              source: repositionSourceId,
+              paint: {
+                'line-color': '#aaaaaa',
+                'line-width': 2,
+                'line-opacity': 0.6,
+              },
+            });
           });
         }
       }
