@@ -3,6 +3,7 @@ import {
   Archive, Play, Eye, Loader2, Trash2, AlertTriangle, CheckCircle2, Database,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { formatDateTime } from '../../utils/dateUtils';
 import { pluralize } from '../../utils/formatters';
 import ConfirmDialog from '../../components/ConfirmDialog';
@@ -70,7 +71,7 @@ export default function AdminRetentionTab({ LoadingSpinner, error, setError }: P
     setLoading(true);
     try {
       const data = await apiFetch<RetentionPolicy[]>('/admin/retention');
-      setPolicies(data || []);
+      setPolicies(asArray<RetentionPolicy>(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load retention policies');
     } finally {

@@ -5,6 +5,7 @@ import {
   Clock, BarChart3,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import { safeDateTimeStr } from '../../utils/dateUtils';
 
 interface Props {
@@ -149,7 +150,7 @@ export default function AdminSkipTracerTab({ LoadingSpinner, error, setError }: 
   const handleLoadHistory = async () => {
     try {
       const data = await apiFetch<{ searches: SearchHistoryRow[] }>('/skiptracer/history?limit=20');
-      setHistory(data.searches || []);
+      setHistory(asArray<SearchHistoryRow>(data?.searches));
       setShowHistory(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load history');
