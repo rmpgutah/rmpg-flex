@@ -11,6 +11,7 @@ const path = require('path');
 const { AppUpdater } = require('./updater');
 const { initLocalDb, getLocalDb, closeLocalDb, getConfig, setConfig, getQueueDepth, getSyncMeta } = require('./localDb');
 const { ConnectivityMonitor } = require('./connectivityMonitor');
+const { InternalGps, findGpsPort } = require('./internalGps');
 
 // ─── Chromium Geolocation ────────────────────────────────────
 // Electron strips Chrome's bundled Google API key. Without it,
@@ -2123,6 +2124,109 @@ ipcMain.handle('app:force-refresh', async () => {
     mainWindow.webContents.reload();
   }
   return { success: true };
+});
+
+// ─── Internal GPS (Panasonic Toughbook) ──────────────────────
+// On Toughbooks, the internal u-blox GPS module is exposed as a
+// virtual COM port. We read raw NMEA sentences instead of relying
+// on Chromium's geolocation (which falls back to WiFi triangulation
+// and gives ~100-500m accuracy in moving vehicles).
+//
+// Lifecycle:
+//   renderer → geo:internal-gps-detect → { isToughbook, portPath } | null
+//   renderer → geo:internal-gps-start → boolean (started?)
+//   renderer ← geo:internal-gps-update (event with { latitude, ... })
+//   renderer → geo:internal-gps-stop  → void
+
+let internalGpsReader = null;
+
+/**
+ * Detect whether the host is a Panasonic Toughbook with a usable internal GPS.
+ *
+ * This function is CALLED ONCE on app startup. The decision drives whether
+ * useGpsTracking.ts replaces navigator.geolocation entirely (per the team
+ * decision 2026-05-27).
+ *
+ * Returns: { isToughbook: boolean, manufacturer: string, model: string, portPath: string | null }
+ *
+ * TODO: Christopher — fill in the manufacturer/model predicate below.
+ * What you know that I don't:
+ *   - Which Toughbook models RMPG actually deploys (CF-33? FZ-55? FZ-G2?)
+ *   - Whether the manufacturer string is "Panasonic Corporation",
+ *     "Matsushita Electric", "Panasonic" alone, or something else
+ *   - Whether any non-Toughbook Panasonic gear should also qualify
+ *     (e.g., Lenovo ThinkPad with aftermarket u-blox dongle — same code path)
+ */
+async function detectToughbook() {
+  if (process.platform !== 'win32') {
+    return { isToughbook: false, manufacturer: '', model: '', portPath: null };
+  }
+  try {
+    const { execFile } = require('child_process');
+    const wmi = await new Promise((resolve) => {
+      execFile(
+        'powershell.exe',
+        ['-NoProfile', '-Command', 'Get-CimInstance Win32_ComputerSystem | Select-Object Manufacturer, Model | ConvertTo-Json'],
+        { timeout: 8000 },
+        (err, stdout) => {
+          if (err) return resolve(null);
+          try { resolve(JSON.parse(stdout)); } catch { resolve(null); }
+        }
+      );
+    });
+    const manufacturer = (wmi?.Manufacturer || '').trim();
+    const model = (wmi?.Model || '').trim();
+
+    // ─── Toughbook detection (RMPG fleet: FZ-55 only) ───
+    // Only the Panasonic Toughbook FZ-55 ships internal GPS in the
+    // RMPG fleet. CF-33s and other Panasonic gear (including consumer
+    // Lumix laptops) should fall back to navigator.geolocation.
+    // 'Matsushita' (Panasonic's pre-2008 name) is intentionally NOT
+    // matched — no live RMPG hardware predates the 2008 rename.
+    const mfg = manufacturer.toLowerCase();
+    const mdl = model.toLowerCase();
+    const isToughbook = mfg.includes('panasonic') && mdl.includes('fz-55');
+
+    const portPath = isToughbook ? await findGpsPort() : null;
+    console.log(`[INTERNAL-GPS] Detect: mfg="${manufacturer}" model="${model}" toughbook=${isToughbook} port=${portPath}`);
+    return { isToughbook, manufacturer, model, portPath };
+  } catch (err) {
+    console.warn('[INTERNAL-GPS] Detection failed:', err.message);
+    return { isToughbook: false, manufacturer: '', model: '', portPath: null };
+  }
+}
+
+ipcMain.handle('geo:internal-gps-detect', detectToughbook);
+
+ipcMain.handle('geo:internal-gps-start', async (_event, { portPath, baudRate } = {}) => {
+  if (internalGpsReader) return { ok: true, alreadyRunning: true };
+  if (!portPath) {
+    const detected = await detectToughbook();
+    if (!detected.portPath) return { ok: false, error: 'No GPS COM port found' };
+    portPath = detected.portPath;
+  }
+  internalGpsReader = new InternalGps();
+  internalGpsReader.on('position', (pos) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('geo:internal-gps-update', pos);
+    }
+  });
+  internalGpsReader.on('error', (err) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('geo:internal-gps-error', { message: err.message });
+    }
+  });
+  const ok = await internalGpsReader.start(portPath, baudRate || 4800);
+  return { ok, portPath };
+});
+
+ipcMain.handle('geo:internal-gps-stop', async () => {
+  if (internalGpsReader) {
+    internalGpsReader.stop();
+    internalGpsReader.removeAllListeners();
+    internalGpsReader = null;
+  }
+  return { ok: true };
 });
 
 // ─── IP Geolocation Fallback ─────────────────────────────────
