@@ -79,6 +79,7 @@ import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import forensics from './routes/forensics';
 import patrol from './routes/patrol';
+import radio from './routes/radio';
 import serveIntake from './routes/serveIntake';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
@@ -221,6 +222,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
     note: 'MVP: checkpoints + scans + breaks + tour verifications; analytics endpoints deferred' },
+  { prefix: '/api/radio', router: radio, auth: 'required',
+    note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',

@@ -90,7 +90,7 @@ const InvoicesPage = lazyRetry(() => import('./pages/InvoicesPage'));
 const IpedPage = lazyRetry(() => import('./pages/IpedPage'));
 const NationalWarrantSearchPage = lazyRetry(() => import('./pages/NationalWarrantSearchPage'));
 const DashcamPage = lazyRetry(() => import('./pages/DashcamPage'));
-const RadioPage = lazyRetry(() => import('./pages/radio/RadioPage'));
+const RadioPage = lazyRetry(() => import('./pages/radio'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
 const RecordDetailWindow = lazyRetry(() => import('./pages/detached/RecordDetailWindow'));
 
