@@ -29,6 +29,20 @@ export async function authMiddleware(c: Context, next: Next) {
     token = authHeader.slice(7);
   } else if (cookieToken) {
     token = cookieToken;
+  } else {
+    // Query-token fallback. Used by the bodycam-video stream endpoint
+    // because <video src="..."> can't carry an Authorization header
+    // and CORS prevents a service-worker shim. The trade-off: the JWT
+    // ends up in CF tail logs and any proxy access log; the blast
+    // radius is bounded by JWT lifetime. A follow-up should narrow
+    // this to a short-lived HMAC-signed token issued at detail-GET
+    // time — the client already supports `_signedQuery` on the video
+    // row (VideoPlayer.tsx). Until that lands, only GET requests on
+    // a small set of stream paths should be hitting this branch in
+    // practice, and the verify-then-scope checks in the stream
+    // handler still enforce per-resource access.
+    const queryToken = c.req.query('token');
+    if (queryToken) token = queryToken;
   }
 
   if (!token) {

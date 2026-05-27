@@ -3,6 +3,10 @@ import { hashSync } from 'bcryptjs';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
 import { bodyCamerasRouter, bodycamVideosRouter } from './personnel/bodyCameras';
+// Side-effect import: registers upload + stream handlers on
+// bodycamVideosRouter. Splits the upload/stream surface (PR 2) into
+// its own file so the read-only routes (PR 1) stay reviewable.
+import './personnel/bodyCameraUploads';
 
 const personnel = new Hono<Env>();
 
