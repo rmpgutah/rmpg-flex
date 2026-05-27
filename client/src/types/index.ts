@@ -1835,6 +1835,10 @@ export type WSMessageType =
   | 'radio_channel_join'
   | 'radio_channel_leave'
   | 'radio_channel_state'
+  // Radio backend (src/routes/radio.ts) — channel CRUD + new transmissions.
+  // Payload: { action: 'channel_created' | 'channel_updated' |
+  // 'channel_archived' | 'transmission_logged', channel?, channel_id?, transmission? }
+  | 'radio_update'
   // MDC Selcall — unit paging, emergency override, channel scanning
   | 'selcall_page'
   | 'selcall_page_sent'

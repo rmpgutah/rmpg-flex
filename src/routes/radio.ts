@@ -25,6 +25,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { broadcastAll } from './ws';
 
 const rt = new Hono<Env>();
 
@@ -34,10 +35,10 @@ function rangeClause(range: string | undefined): { sql: string; args: unknown[] 
   if (!range || range === 'all' || !ALLOWED_RANGES.has(range)) return { sql: '', args: [] };
   // SQLite datetime() math in TEXT comparison form — same shape as the
   // other route files (patrol/audit) so query plans stay consistent.
-  if (range === 'today') return { sql: " AND date(transmitted_at) = date('now','localtime')", args: [] };
-  if (range === 'h24')   return { sql: " AND transmitted_at >= datetime('now','-1 day','localtime')", args: [] };
-  if (range === 'week')  return { sql: " AND transmitted_at >= datetime('now','-7 days','localtime')", args: [] };
-  if (range === 'month') return { sql: " AND transmitted_at >= datetime('now','-30 days','localtime')", args: [] };
+  if (range === 'today') return { sql: " AND date(transmitted_at) = date('now','-7 hours')", args: [] };
+  if (range === 'h24')   return { sql: " AND transmitted_at >= datetime('now','-1 day','-7 hours')", args: [] };
+  if (range === 'week')  return { sql: " AND transmitted_at >= datetime('now','-7 days','-7 hours')", args: [] };
+  if (range === 'month') return { sql: " AND transmitted_at >= datetime('now','-30 days','-7 hours')", args: [] };
   return { sql: '', args: [] };
 }
 
@@ -67,8 +68,9 @@ rt.post('/channels', async (c) => {
   const name = (body.name || '').trim();
   if (!name) return c.json({ error: 'name required' }, 400);
   const user = c.get('user') as { id: number } | undefined;
+  const db = getDb(c.env);
   const result = await execute(
-    getDb(c.env),
+    db,
     `INSERT INTO radio_channels (name, description, frequency, talkgroup, color, sort_order, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
     name,
@@ -79,7 +81,11 @@ rt.post('/channels', async (c) => {
     Number.isFinite(body.sort_order) ? body.sort_order : 0,
     user?.id ?? null,
   );
-  return c.json({ success: true, id: result.meta.last_row_id });
+  const id = Number(result.meta.last_row_id);
+  // Broadcast so other dispatchers' channel pickers update without a refresh.
+  const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
+  broadcastAll('radio_update', { action: 'channel_created', channel });
+  return c.json({ success: true, id });
 });
 
 rt.patch('/channels/:id', async (c) => {
@@ -95,7 +101,10 @@ rt.patch('/channels/:id', async (c) => {
   }
   if (!fields.length) return c.json({ error: 'no updatable fields' }, 400);
   args.push(id);
-  await execute(getDb(c.env), `UPDATE radio_channels SET ${fields.join(', ')} WHERE id = ?`, ...args);
+  const db = getDb(c.env);
+  await execute(db, `UPDATE radio_channels SET ${fields.join(', ')} WHERE id = ?`, ...args);
+  const channel = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM radio_channels WHERE id = ?', id);
+  broadcastAll('radio_update', { action: 'channel_updated', channel });
   return c.json({ success: true });
 });
 
@@ -107,9 +116,10 @@ rt.delete('/channels/:id', async (c) => {
   // Soft-delete — keeps transmission FK pointers valid for audit.
   await execute(
     getDb(c.env),
-    "UPDATE radio_channels SET archived_at = datetime('now','localtime') WHERE id = ? AND archived_at IS NULL",
+    "UPDATE radio_channels SET archived_at = datetime('now','-7 hours') WHERE id = ? AND archived_at IS NULL",
     id,
   );
+  broadcastAll('radio_update', { action: 'channel_archived', channel_id: id });
   return c.json({ success: true });
 });
 
@@ -149,8 +159,9 @@ rt.post('/transmissions', async (c) => {
   const channelId = parseInt(body.channel_id, 10);
   if (!Number.isFinite(channelId)) return c.json({ error: 'channel_id required' }, 400);
   const user = c.get('user') as { id: number } | undefined;
+  const db = getDb(c.env);
   const result = await execute(
-    getDb(c.env),
+    db,
     `INSERT INTO radio_transmissions
        (channel_id, user_id, unit_label, duration_seconds, transcript, audio_url, priority, tags, call_id)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
@@ -164,7 +175,21 @@ rt.post('/transmissions', async (c) => {
     body.tags ? (typeof body.tags === 'string' ? body.tags : JSON.stringify(body.tags)) : null,
     Number.isFinite(body.call_id) ? body.call_id : null,
   );
-  return c.json({ success: true, id: result.meta.last_row_id });
+  const id = Number(result.meta.last_row_id);
+
+  // Fetch the joined row so the WS payload matches what GET /transmissions
+  // returns — subscribers can prepend directly without a re-fetch.
+  const transmission = await queryFirst<Record<string, unknown>>(
+    db,
+    `SELECT t.*, c.name AS channel_name, u.full_name AS user_name
+       FROM radio_transmissions t
+       LEFT JOIN radio_channels c ON c.id = t.channel_id
+       LEFT JOIN users u ON u.id = t.user_id
+       WHERE t.id = ?`,
+    id,
+  );
+  broadcastAll('radio_update', { action: 'transmission_logged', transmission });
+  return c.json({ success: true, id });
 });
 
 rt.delete('/transmissions/:id', async (c) => {
@@ -258,7 +283,7 @@ rt.get('/stats', async (c) => {
     `SELECT CAST((strftime('%s','now') - strftime('%s', transmitted_at)) / 3600 AS INTEGER) AS hours_ago,
             COUNT(*) AS n
        FROM radio_transmissions
-       WHERE transmitted_at >= datetime('now','-1 day','localtime')
+       WHERE transmitted_at >= datetime('now','-1 day','-7 hours')
        GROUP BY hours_ago`,
   );
   const sparkline = Array.from({ length: 24 }, (_, i) => hourly.find((r) => r.hours_ago === i)?.n ?? 0);
@@ -272,7 +297,7 @@ rt.get('/stats', async (c) => {
             CAST(strftime('%H', transmitted_at) AS INTEGER) AS hour,
             COUNT(*) AS n
        FROM radio_transmissions
-       WHERE transmitted_at >= datetime('now','-7 days','localtime')
+       WHERE transmitted_at >= datetime('now','-7 days','-7 hours')
        GROUP BY dow, hour`,
   );
   const heatmap: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
@@ -284,8 +309,8 @@ rt.get('/stats', async (c) => {
   const totals = await queryFirst<{ today: number; week: number; all: number }>(
     db,
     `SELECT
-       SUM(CASE WHEN date(transmitted_at) = date('now','localtime') THEN 1 ELSE 0 END) AS today,
-       SUM(CASE WHEN transmitted_at >= datetime('now','-7 days','localtime') THEN 1 ELSE 0 END) AS week,
+       SUM(CASE WHEN date(transmitted_at) = date('now','-7 hours') THEN 1 ELSE 0 END) AS today,
+       SUM(CASE WHEN transmitted_at >= datetime('now','-7 days','-7 hours') THEN 1 ELSE 0 END) AS week,
        COUNT(*) AS all FROM radio_transmissions`,
   );
 
