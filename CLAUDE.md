@@ -190,6 +190,7 @@ There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/
 10. **`WelfareWatchDO` is SQLite-backed (`new_sqlite_classes`)** — free-plan compatible. Same API surface for our use case but storage is per-DO, isolated from D1.
 11. **Megafiles still exist on the client** — `FirecrawlTab.tsx` (11k lines), `MapPage.tsx` / `DispatchPage.tsx` (~6k each), `WarrantsPage.tsx` (4k). Split opportunistically when you're already in them; don't schedule a "refactoring sprint."
 12. **Comments in `/src/` and `/client/src/` that say "mirrors server/..."** — those references now point at `legacy/server-vps/...`. Read them as historical reference only; the canonical implementation is whatever's in `/src/`.
+13. **D1 column cap (~100 cols/SELECT result set)** — D1 silently truncates result rows whose declared column list exceeds ~100, producing 500s on otherwise-fine queries. We've been bitten twice. `calls_for_service` is already at the cap; net-new fields for it (or any other widening table) **must** go onto a `<table>_ext` sibling, not the base table. The guard at `scripts/check-column-cap.js` runs in CI ([`.github/workflows/column-cap-check.yml`](.github/workflows/column-cap-check.yml)) and fails any PR that pushes a new table to 90+ columns or grows a baselined table. Baseline lives at `scripts/column-cap-baseline.json`; to ratchet it after a reviewed schema change, run `COLUMN_CAP_BASELINE_UPDATE=1 node scripts/check-column-cap.js` and commit the JSON.
 
 ## Cross-reference: dead instructions to ignore
 

@@ -1,0 +1,39 @@
+name: "D1 column-cap check"
+
+# Fails any PR that pushes a D1 table to D1_COL_THRESHOLD columns or more.
+# Real D1 SELECT result-set cap is ~100; threshold gives headroom so new
+# fields can be routed to a `<table>_ext` sibling instead of the base table.
+# Pure Node script — no dependencies, no npm install needed.
+# No untrusted inputs (PR titles/bodies/commit messages) are used in run: steps.
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - "migrations/**/*.sql"
+      - "scripts/check-column-cap.js"
+      - ".github/workflows/column-cap-check.yml"
+  push:
+    branches: [main]
+    paths:
+      - "migrations/**/*.sql"
+      - "scripts/check-column-cap.js"
+      - ".github/workflows/column-cap-check.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: column-cap-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  column-cap:
+    name: Column-cap guard
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Run column-cap guard
+        run: node scripts/check-column-cap.js
