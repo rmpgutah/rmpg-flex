@@ -568,11 +568,16 @@ export default function DispatchPage() {
     return () => window.removeEventListener('click', close);
   }, [contextMenu]);
 
-  // Fetch linked persons/vehicles when a call is selected
+  // Fetch linked persons/vehicles when a call is selected.
+  // `selectedCall?.id` can be the LITERAL STRING "undefined" when the call
+  // is hydrated from stale state — it passes `?.id &&` truthiness but blows
+  // up server-side as /dispatch/calls/undefined/persons → 500. See prod
+  // console 2026-05-27 ~10:10 UTC.
   useEffect(() => {
-    if (selectedCall?.id) {
-      fetchCallPersons(selectedCall.id);
-      fetchCallVehicles(selectedCall.id);
+    const cid = selectedCall?.id;
+    if (cid && cid !== ('undefined' as any) && cid !== ('null' as any) && cid !== '') {
+      fetchCallPersons(cid);
+      fetchCallVehicles(cid);
     } else {
       setCallPersons([]);
       setCallVehicles([]);
@@ -1057,9 +1062,13 @@ export default function DispatchPage() {
     return () => { cancelled = true; };
   }, [selectedCall?.id, detailTab]);
 
-  // Fetch linked incidents and activity when a call is selected
+  // Fetch linked incidents and activity when a call is selected.
+  // Same string-"undefined" guard as the persons/vehicles effect above —
+  // see prod console 2026-05-27 ~10:10 UTC for the symptom.
   useEffect(() => {
-    if (!selectedCall) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); setAuditTrail([]); return; }
+    const cid = selectedCall?.id;
+    const invalid = !selectedCall || !cid || cid === ('undefined' as any) || cid === ('null' as any) || cid === '';
+    if (invalid) { setLinkedIncidents([]); setActivityEntries([]); setCallWarnings([]); setServeLink(null); setAuditTrail([]); return; }
     let cancelled = false;
     setIsEditing(false);
     setShowAttachUnitDropdown(false);

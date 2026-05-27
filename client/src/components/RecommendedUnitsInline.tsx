@@ -65,7 +65,12 @@ export default function RecommendedUnitsInline({
   const [err, setErr] = useState<string | null>(null);
 
   const fetchRecommendations = useCallback(async () => {
-    if (!callId) return;
+    // Reject empty / undefined / string-"undefined" call IDs. A bug elsewhere
+    // (selectedCall hydrated from stale state) lets the string "undefined"
+    // slip through `!callId` because it's truthy. See dispatch:1 prod console
+    // 2026-05-27 ~10:10 UTC — `/dispatch/calls/undefined/recommended-units`
+    // hammered the API on every render until this guard.
+    if (!callId || callId === 'undefined' || callId === 'null' || callId === '') return;
     setLoading(true);
     setErr(null);
     try {
