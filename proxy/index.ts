@@ -240,6 +240,17 @@ const API_ROUTES: RouteRule[] = [
   // the radio console was effectively broken in production despite
   // /src/routes/radio.ts existing on main.
   { kind: 'prefix', value: '/api/radio' },
+
+  // ── HR module ──
+  // New Worker owns the four ported sub-paths (/leave, /disciplinary,
+  // /reviews, /benefits). Un-ported HR sub-paths under /api/hr/*
+  // (payroll, grievances, attendance, documents, pips, exit
+  // interviews, workers' comp, handbook acks, etc.) will 404 from
+  // the new Worker — that's intentional. The legacy handlers for
+  // those depended on tables the live D1 doesn't have, so they
+  // were silently returning empty data anyway. A 404 is a more
+  // honest signal until those tabs get real ports.
+  { kind: 'prefix', value: '/api/hr' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {

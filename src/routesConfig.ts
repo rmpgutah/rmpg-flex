@@ -78,6 +78,7 @@ import pdfTools from './routes/pdfTools';
 import tts from './routes/tts';
 import trespassOrders from './routes/trespassOrders';
 import forensics from './routes/forensics';
+import hr from './routes/hr';
 import patrol from './routes/patrol';
 import radio from './routes/radio';
 import serveIntake from './routes/serveIntake';
@@ -218,6 +219,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
   { prefix: '/api/forensics', router: forensics, auth: 'required',
     note: 'MVP: cases + exhibits + analyses + activity log; hash sets / reports / cross-links deferred' },
+  { prefix: '/api/hr', router: hr, auth: 'required',
+    note: 'Leave + disciplinary + performance reviews; /benefits returns [] (table deferred). Payroll/exit/grievances/PIPs stay on legacy.' },
   { prefix: '/api/offline', router: offline, auth: 'required',
     note: 'Offline sync (push/pull + secrets). /sync/push dispatches allowlisted writes through the root app; see src/routes/offline.ts.' },
   { prefix: '/api/patrol', router: patrol, auth: 'required',
