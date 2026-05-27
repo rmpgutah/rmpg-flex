@@ -261,6 +261,14 @@ export default function DispatchPage() {
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
+  // Status-bar clock — ticks every 1s so the bottom-bar time isn't frozen
+  // at the parent's last render. Pinned to America/Denver via the formatter
+  // below so it shows local wall-clock (MST/MDT) regardless of browser TZ.
+  const [statusBarTime, setStatusBarTime] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setStatusBarTime(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
@@ -1232,12 +1240,8 @@ export default function DispatchPage() {
         handleClearWithDisposition(selectedCall.id);
         return;
       }
-      // Shift+C — quick clear on selected call (mirrors F7, faster muscle memory)
-      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
-        e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
-        return;
-      }
+      // Shift+C is handled below the input guard — see comment near `if (isInput) return`.
+      // Putting it here would fire on capital C in a note/narrative textarea.
       if (e.key === 'F8') {
         e.preventDefault();
         // Focus CAD command line
@@ -1264,6 +1268,15 @@ export default function DispatchPage() {
 
       // Don't process letter keys when typing in inputs
       if (isInput) return;
+
+      // Shift+C — quick clear on selected call (mirrors F7, faster muscle
+      // memory). MUST sit below the input guard above; otherwise typing a
+      // capital C in a note/narrative textarea pops the disposition modal.
+      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleClearWithDisposition(selectedCall.id);
+        return;
+      }
 
       // N - New call
       if (e.key === 'n' || e.key === 'N') {
@@ -1345,10 +1358,17 @@ export default function DispatchPage() {
         return;
       }
 
-      // Escape - close modal
+      // Escape - close any open modal / panel / inline prompt.
+      // Keep this list in sync with new modals — UX-inconsistent if some
+      // modals close on Esc and others don't.
       if (e.key === 'Escape') {
         setShowNewCallModal(false);
         setShowQuickPsoModal(false);
+        setShowNcicPanel(false);
+        setShowHandoffNotes(false);
+        setShowCreateUnitModal(false);
+        setQuickTemplateData(null);
+        setDispositionPromptCallId(null);
         return;
       }
     };
@@ -6163,7 +6183,7 @@ export default function DispatchPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[90]"
+      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[40]"
         style={{ background: '#050505', borderColor: '#141414', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
         {/* Left: Call metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
@@ -6225,7 +6245,7 @@ export default function DispatchPage() {
           <span style={{ color: '#555555' }}>F8:CMD</span>
           <span style={{ color: '#555555' }}>F12:NCIC</span>
           <span style={{ color: '#444444' }}>|</span>
-          <span style={{ color: '#999999' }}>{new Date().toLocaleTimeString('en-US', { hour12: false })}</span>
+          <span style={{ color: '#999999' }}>{new Date(statusBarTime).toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Denver' })}</span>
         </div>
       </div>
     </div>
