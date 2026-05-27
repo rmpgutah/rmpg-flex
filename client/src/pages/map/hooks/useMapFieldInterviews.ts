@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface FIRecord {
   id: number;
@@ -92,39 +93,41 @@ export function useMapFieldInterviews(
       properties: { id: fi.id, fi_number: fi.fi_number, contact_reason: fi.contact_reason, created_at: fi.created_at },
     }));
 
-    map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
-    map.addLayer({
-      id: sourceId,
-      type: 'circle',
-      source: sourceId,
-      paint: {
-        'circle-color': [
-          'case',
-          ['==', ['get', 'contact_reason'], 'trespass'], '#f59e0b',
-          ['==', ['get', 'contact_reason'], 'suspicious'], '#dc2626',
-          ['==', ['get', 'contact_reason'], 'welfare'], '#888888',
-          '#666666',
-        ],
-        'circle-radius': 8,
-        'circle-stroke-color': '#fff',
-        'circle-stroke-width': 2,
-        'circle-opacity': [
-          'interpolate', ['linear'],
-          ['-', ['number', ['/', ['-', ['now'], ['to-number', ['to-date', ['get', 'created_at']]]], 86400000], 60], 0],
-          0, 1,
-          60, 0.4,
-        ],
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features } });
+      map.addLayer({
+        id: sourceId,
+        type: 'circle',
+        source: sourceId,
+        paint: {
+          'circle-color': [
+            'case',
+            ['==', ['get', 'contact_reason'], 'trespass'], '#f59e0b',
+            ['==', ['get', 'contact_reason'], 'suspicious'], '#dc2626',
+            ['==', ['get', 'contact_reason'], 'welfare'], '#888888',
+            '#666666',
+          ],
+          'circle-radius': 8,
+          'circle-stroke-color': '#fff',
+          'circle-stroke-width': 2,
+          'circle-opacity': [
+            'interpolate', ['linear'],
+            ['-', ['number', ['/', ['-', ['now'], ['to-number', ['to-date', ['get', 'created_at']]]], 86400000], 60], 0],
+            0, 1,
+            60, 0.4,
+          ],
+        },
+      });
 
-    map.on('click', sourceId, (e) => {
-      const feature = e.features?.[0];
-      if (!feature || !feature.properties) return;
-      const fi = withCoords.find(f => f.id === feature.properties?.id);
-      if (!fi) return;
-      if (popupRef.current) {
-        popupRef.current.setLngLat(e.lngLat).setHTML(buildFIInfoContent(fi)).addTo(map);
-      }
+      map.on('click', sourceId, (e) => {
+        const feature = e.features?.[0];
+        if (!feature || !feature.properties) return;
+        const fi = withCoords.find(f => f.id === feature.properties?.id);
+        if (!fi) return;
+        if (popupRef.current) {
+          popupRef.current.setLngLat(e.lngLat).setHTML(buildFIInfoContent(fi)).addTo(map);
+        }
+      });
     });
   }, [map, clearMarkers]);
 

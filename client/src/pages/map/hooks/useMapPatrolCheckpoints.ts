@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import { safeDateTimeStr } from '../../../utils/dateUtils';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 interface CheckpointRecord {
   id: number;
@@ -220,49 +221,53 @@ export function useMapPatrolCheckpoints(
     });
 
     if (markerFeatures.length > 0) {
-      map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: markerFeatures } });
-      map.addLayer({
-        id: sourceId,
-        type: 'circle',
-        source: sourceId,
-        paint: {
-          'circle-color': [
-            'case',
-            ['==', ['get', 'status'], 'red'], '#dc2626',
-            ['==', ['get', 'status'], 'amber'], '#f59e0b',
-            '#22c55e',
-          ],
-          'circle-radius': 8,
-          'circle-stroke-color': '#fff',
-          'circle-stroke-width': 2,
-        },
-      });
+      whenStyleReady(map, () => {
+        map.addSource(sourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: markerFeatures } });
+        map.addLayer({
+          id: sourceId,
+          type: 'circle',
+          source: sourceId,
+          paint: {
+            'circle-color': [
+              'case',
+              ['==', ['get', 'status'], 'red'], '#dc2626',
+              ['==', ['get', 'status'], 'amber'], '#f59e0b',
+              '#22c55e',
+            ],
+            'circle-radius': 8,
+            'circle-stroke-color': '#fff',
+            'circle-stroke-width': 2,
+          },
+        });
 
-      map.on('click', sourceId, (e) => {
-        const feature = e.features?.[0];
-        if (!feature) return;
-        const props = feature.properties;
-        const cp = withCoords.find(c => c.id === props?.id);
-        if (!cp) return;
-        const status = getScanStatus(cp);
-        if (popupRef.current) {
-          popupRef.current.setLngLat([cp.longitude!, cp.latitude!]).setHTML(buildCheckpointInfoContent(cp, status)).addTo(map);
-        }
+        map.on('click', sourceId, (e) => {
+          const feature = e.features?.[0];
+          if (!feature) return;
+          const props = feature.properties;
+          const cp = withCoords.find(c => c.id === props?.id);
+          if (!cp) return;
+          const status = getScanStatus(cp);
+          if (popupRef.current) {
+            popupRef.current.setLngLat([cp.longitude!, cp.latitude!]).setHTML(buildCheckpointInfoContent(cp, status)).addTo(map);
+          }
+        });
       });
     }
 
     if (routeFeatures.length > 0) {
-      map.addSource(routeSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: routeFeatures } });
-      map.addLayer({
-        id: routeSourceId,
-        type: 'line',
-        source: routeSourceId,
-        paint: {
-          'line-color': '#aaaaaa',
-          'line-width': 2,
-          'line-dasharray': [2, 3],
-          'line-opacity': 0.6,
-        },
+      whenStyleReady(map, () => {
+        map.addSource(routeSourceId, { type: 'geojson', data: { type: 'FeatureCollection', features: routeFeatures } });
+        map.addLayer({
+          id: routeSourceId,
+          type: 'line',
+          source: routeSourceId,
+          paint: {
+            'line-color': '#aaaaaa',
+            'line-width': 2,
+            'line-dasharray': [2, 3],
+            'line-opacity': 0.6,
+          },
+        });
       });
     }
   }, [map, clearAll]);

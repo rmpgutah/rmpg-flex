@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { useWebSocket } from '../../../context/WebSocketContext';
+import { whenStyleReady } from '../utils/safeAddSource';
 
 type PanicStatus = 'active' | 'acknowledged' | 'resolved';
 
@@ -130,47 +131,49 @@ export function useMapPanicZone(
     const innerData = { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: center }, properties: {} };
     const outerData = { type: 'Feature' as const, geometry: { type: 'Point' as const, coordinates: center }, properties: {} };
 
-    map.addSource(innerSourceId, { type: 'geojson', data: innerData });
-    map.addLayer({
-      id: `${innerSourceId}-circle`,
-      type: 'circle',
-      source: innerSourceId,
-      paint: {
-        'circle-color': colors.innerFill,
-        'circle-radius': 200,
-        'circle-opacity': colors.innerFillOpacity,
-        'circle-stroke-color': colors.innerStroke,
-        'circle-stroke-width': 3,
-        'circle-stroke-opacity': 1.0,
-      },
-    });
+    whenStyleReady(map, () => {
+      map.addSource(innerSourceId, { type: 'geojson', data: innerData });
+      map.addLayer({
+        id: `${innerSourceId}-circle`,
+        type: 'circle',
+        source: innerSourceId,
+        paint: {
+          'circle-color': colors.innerFill,
+          'circle-radius': 200,
+          'circle-opacity': colors.innerFillOpacity,
+          'circle-stroke-color': colors.innerStroke,
+          'circle-stroke-width': 3,
+          'circle-stroke-opacity': 1.0,
+        },
+      });
 
-    map.addSource(outerSourceId, { type: 'geojson', data: outerData });
-    map.addLayer({
-      id: `${outerSourceId}-circle`,
-      type: 'circle',
-      source: outerSourceId,
-      paint: {
-        'circle-color': colors.outerFill,
-        'circle-radius': 400,
-        'circle-opacity': colors.outerFillOpacity,
-        'circle-stroke-color': colors.outerStroke,
-        'circle-stroke-width': 2,
-        'circle-stroke-opacity': 0.6,
-      },
+      map.addSource(outerSourceId, { type: 'geojson', data: outerData });
+      map.addLayer({
+        id: `${outerSourceId}-circle`,
+        type: 'circle',
+        source: outerSourceId,
+        paint: {
+          'circle-color': colors.outerFill,
+          'circle-radius': 400,
+          'circle-opacity': colors.outerFillOpacity,
+          'circle-stroke-color': colors.outerStroke,
+          'circle-stroke-width': 2,
+          'circle-stroke-opacity': 0.6,
+        },
+      });
+
+      if (status === 'active') {
+        let pulseHigh = true;
+        pulseTimerRef.current = setInterval(() => {
+          pulseHigh = !pulseHigh;
+          if (map.getLayer(`${innerSourceId}-circle`)) {
+            map.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-opacity', pulseHigh ? 1.0 : 0.3);
+          }
+        }, 500);
+      }
     });
 
     map.flyTo({ center, zoom: 15 });
-
-    if (status === 'active') {
-      let pulseHigh = true;
-      pulseTimerRef.current = setInterval(() => {
-        pulseHigh = !pulseHigh;
-        if (map.getLayer(`${innerSourceId}-circle`)) {
-          map.setPaintProperty(`${innerSourceId}-circle`, 'circle-stroke-opacity', pulseHigh ? 1.0 : 0.3);
-        }
-      }, 500);
-    }
   }, [map, clearOverlays]);
 
   useEffect(() => {
