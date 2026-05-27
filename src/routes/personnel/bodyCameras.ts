@@ -385,6 +385,10 @@ bodycamVideosRouter.get('/', async (c) => {
   }
 });
 
+// ───── Stream + upload endpoints registered separately below ─────
+// (See bodyCameraUploads.ts for handler bodies — split out so this
+// file stays readable and the edit surface stays small for review.)
+
 bodycamVideosRouter.get('/:id', async (c) => {
   try {
     const actor = getActor(c);
@@ -419,4 +423,4 @@ bodycamVideosRouter.get('/:id', async (c) => {
   }
 });
 
-export { bodyCamerasRouter, bodycamVideosRouter };
+export { bodyCamerasRouter, bodycamVideosRouter, READ_ALL_ROLES, WRITE_ROLES, getActor };
