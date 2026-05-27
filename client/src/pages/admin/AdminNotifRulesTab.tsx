@@ -4,6 +4,7 @@ import {
   Smartphone,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { asArray } from '../../utils/asArray';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import IconButton from '../../components/IconButton';
 import type { User } from '../../types';
@@ -85,7 +86,7 @@ export default function AdminNotifRulesTab({ users, LoadingSpinner, error, setEr
     setLoading(true);
     try {
       const data = await apiFetch<NotificationRule[]>('/admin/notification-rules');
-      setRules(data || []);
+      setRules(asArray<NotificationRule>(data));
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load notification rules');
     } finally {

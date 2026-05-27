@@ -51,13 +51,43 @@ interface StubRule {
 }
 
 const STUBS: StubRule[] = [
-  // (intentionally empty — no current stubs)
+  // /api/warrants/utah-search/auto-poll-status — no handler exists in legacy
+  // OR rewrite. WarrantsPage polls this on mount of the Watch tab, so a 404
+  // floods the console. Return the empty AutoPollStatus shape the UI tolerates.
+  // Remove this stub once the poller is actually implemented in /src/routes/warrants.ts.
+  {
+    match: /^\/api\/warrants\/utah-search\/auto-poll-status$/,
+    methods: ['GET'],
+    body: {
+      syncStatus: { lastSync: null, warrantCount: 0, status: 'disabled', lastError: null },
+      blocked: false,
+      runs: [],
+      flaggedPersons: [],
+      recentHits: [],
+      totalPersons: 0,
+    },
+    reason: 'no poller backend; UI tolerates empty status',
+  },
+  // /api/personnel/equipment — no equipment table or handler in either backend.
+  // PersonnelPage's Equipment tab issues this GET on mount; without a stub
+  // it 404s and produces visible console noise. Return [] (callsites do
+  // `apiFetch<any[]>('/personnel/equipment')`). Sub-routes (/equipment/:id,
+  // /equipment/:id/checkout, etc.) are user-triggered, not background, so they
+  // stay 404 until a real implementation lands.
+  {
+    match: /^\/api\/personnel\/equipment$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no equipment table/handler; empty list silences dashboard polling',
+  },
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
   //   was found missing the utah_statutes table. Removed the same day
   //   after schema was applied (PR #637) AND 1387 sections were seeded
   //   from le.utah.gov XML downloads. See scripts/seed/utah_statutes.sql.
+  //   2026-05-26: Added stubs above for /warrants/utah-search/auto-poll-status
+  //   and /personnel/equipment to silence dashboard polling 404s.
 ];
 
 const API_ROUTES: RouteRule[] = [
@@ -65,7 +95,7 @@ const API_ROUTES: RouteRule[] = [
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,
   // timeline, warnings} all live on env.API. Listed BEFORE the
   // bare /api/dispatch/calls/:id rule so they win the match.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings)(\/.*)?$/ },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail)(\/.*)?$/ },
 
   // /api/dispatch/calls/:id/{persons,vehicles}[/...] — rewrite implements
   // POST/DELETE/PATCH plus the quick-add fast-path; legacy implements ONLY
@@ -84,28 +114,21 @@ const API_ROUTES: RouteRule[] = [
 
   // GET/PUT/DELETE /api/dispatch/calls/{id} (exact match, no trailing segment)
   // — rewrite avoids the D1 100-column-cap that 500s the legacy GET handler.
-  // POST /api/dispatch/calls (create) stays on legacy until the rewrite is
-  // validated against the live broadcaster + linked-incident flow.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+$/, methods: ['GET', 'PUT', 'DELETE'] },
 
-  // GET /api/dispatch/calls (list) and /api/dispatch/calls/active —
-  // routed to the rewrite for the same reason as /:id: the legacy handler
-  // does SELECT c.* + 3 JOIN columns on calls_for_service, which now has
-  // ~100 columns post-schema-drift and exceeds D1's 100-col result-set cap
-  // with SQLITE_ERROR 7500 "too many columns in result set" (production
-  // 500s on MDT/Map/Dispatch cascading from /api/dispatch/calls?limit=200,
-  // 2026-05-26). The rewrite uses a narrow LIST_VIEW_COLUMNS projection.
-  // GET-only — POST /api/dispatch/calls (create) still falls through to
-  // legacy because the rewrite hasn't been validated end-to-end on create.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/?$/, methods: ['GET'] },
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/active\/?$/, methods: ['GET'] },
+  // POST /api/dispatch/calls (create) — moved to the rewrite 2026-05-26 after
+  // the legacy POST was found to compute callNumber but never include it in
+  // its INSERT field map (all 4 live rows had call_number = NULL). The new
+  // worker generates CFS{YY}-{NNNNN} format, broadcasts on create, and
+  // writes an activity_log row for the audit trail.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/?$/, methods: ['POST'] },
 
-  // GET /api/dispatch/queue — same D1 column-cap root cause as the list
-  // endpoint above. Rewrite mounted at /api/dispatch/queue via
-  // src/routes/dispatch/aggregates.ts (registered at /api/dispatch in the
-  // route registry). Both Mapbox and the dispatch summary panel poll this
-  // — without this rule, the map page cascade-fails on first render.
-  { kind: 'regex', value: /^\/api\/dispatch\/queue\/?$/, methods: ['GET'] },
+  // POST /api/dispatch/calls/:id/{assign-unit,unassign-unit,dispatch} —
+  // MdtPage self-dispatch calls these; the rewrite implements the
+  // duplicate-assignment guard + the call_status_for_officer push that
+  // the legacy worker doesn't. Without this rule MDT requests fall
+  // through to legacy and skip both behaviors.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(assign-unit|unassign-unit|dispatch)$/, methods: ['POST'] },
 
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──
@@ -130,8 +153,11 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/pdf-tools/sign-payload' },
 
   // ── Existing routes (preserved from prior proxy deployment) ──
-  // Records — Evidence/Property tab, Businesses tab, approval queue
-  { kind: 'prefix', value: '/api/records/evidence' },
+  // Records — Businesses tab, approval queue.
+  // /api/records/evidence intentionally NOT routed here: the rewrite has no
+  // /evidence handler in src/routes/records.ts, so the prefix sent every
+  // GET to a 404. Removed 2026-05-26 so it falls through to legacy, which
+  // has the full handler and a populated evidence table on live D1.
   { kind: 'prefix', value: '/api/records/businesses' },
   { kind: 'prefix', value: '/api/records/reports/approval-queue' },
   // Admin extras the legacy worker doesn't implement
@@ -206,6 +232,14 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/reports/crime-analysis' },
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
+
+  // ── Radio subsystem (PR #661) ──
+  // The new worker is the only handler. Legacy has no /api/radio/*
+  // routes at all, so requests to this prefix have no fallback —
+  // they MUST route to the new worker or 404. Without this entry
+  // the radio console was effectively broken in production despite
+  // /src/routes/radio.ts existing on main.
+  { kind: 'prefix', value: '/api/radio' },
 ];
 
 function matches(rule: RouteRule, pathname: string, method: string): boolean {

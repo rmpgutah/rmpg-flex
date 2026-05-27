@@ -413,11 +413,29 @@ export default function MdtPage() {
       // Pending calls (available for self-dispatch)
       setPendingCalls(allCalls.filter(c => c.status === 'pending'));
 
-      // Keep selectedCall fresh — update from new data if still exists
+      // Keep selectedCall fresh — update from new data if still in the
+      // page-1 list. If the call has dropped off the list (could be a
+      // paged-out result, a transient filter hiccup, or a real delete),
+      // refetch it by id rather than blindly nulling. The previous
+      // behavior was nulling the open call any time it slipped past
+      // ?limit=100 — disorienting for the officer mid-view.
       setSelectedCall(prev => {
         if (!prev) return null;
         const fresh = allCalls.find(c => c.id === prev.id);
-        return fresh || null;
+        if (fresh) return fresh;
+        // Fire-and-forget refetch; clear on 404, keep on success.
+        // We return prev to avoid a flash of empty state during the
+        // refetch — if the call IS deleted, the next render clears it.
+        apiFetch<any>(`/dispatch/calls/${prev.id}`)
+          .then((detail) => {
+            if (detail && detail.id != null) {
+              setSelectedCall(mapDbCall(detail));
+            } else {
+              setSelectedCall(null);
+            }
+          })
+          .catch(() => setSelectedCall(null));
+        return prev;
       });
 
     } catch (err) {

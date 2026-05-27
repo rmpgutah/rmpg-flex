@@ -249,6 +249,24 @@ export default function PersonnelPage() {
     }
   }, [activeTab]);
 
+  // Reset per-officer caches when switching officers. The detail-tab
+  // fetches below gate on `xxx.length === 0`; without this reset,
+  // switching from Officer A to Officer B would show Officer A's
+  // training/equipment/body_cameras/deployments data because the cached
+  // arrays are non-empty. The dashcam-events / device-mapping refs are
+  // also cleared so a brief flash of A's mapping doesn't show on B.
+  useEffect(() => {
+    if (!selectedOfficer) return;
+    setTraining([]);
+    setEquipment([]);
+    setBodyCameras([]);
+    setBodyCamVideos([]);
+    setDeployments([]);
+    setOfficerActivity([]);
+    setOfficerDashcamEvents([]);
+    setOfficerDeviceMapping(null);
+  }, [selectedOfficer?.id]);
+
   // Lazy-load detail tab data
   useEffect(() => {
     if (!selectedOfficer) return;
@@ -293,10 +311,18 @@ export default function PersonnelPage() {
       ])
         .then(([events, mappings]) => {
           setOfficerDashcamEvents(Array.isArray(events) ? events : []);
-          // Find the mapping for this officer's unit
+          // Find the mapping for this officer's unit. Match by officer_id
+          // (stable) — the previous name-based match silently failed for
+          // officers with middle names, suffixes, or whitespace differences.
+          // Falls back to a trimmed-name match for older mappings that
+          // haven't had officer_id backfilled yet.
           const allMappings: CpgDeviceMapping[] = Array.isArray(mappings) ? mappings : [];
-          const match = allMappings.find(m => m.officer_name && selectedOfficer &&
-            m.officer_name === `${selectedOfficer.first_name} ${selectedOfficer.last_name}`);
+          const fullName = `${selectedOfficer.first_name} ${selectedOfficer.last_name}`.trim();
+          const match = allMappings.find(m => {
+            if (m.officer_id && String(m.officer_id) === String(selectedOfficer.id)) return true;
+            if (m.officer_name && m.officer_name.trim() === fullName) return true;
+            return false;
+          });
           setOfficerDeviceMapping(match || null);
         })
         .catch(() => addToast('Failed to load dash camera data', 'error'))

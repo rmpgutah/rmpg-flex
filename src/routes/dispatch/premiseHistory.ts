@@ -40,7 +40,7 @@ premise.get('/premise-history', async (c) => {
 
   // Last 2 years is the operational window — old calls aren't a
   // useful "premise alert" signal for an officer enroute.
-  let whereClause = "WHERE created_at >= datetime('now', '-6 hours', '-2 years')";
+  let whereClause = "WHERE created_at >= datetime('now', '-7 hours', '-2 years')";
   const params: unknown[] = [];
   if (propertyId) {
     whereClause += ' AND property_id = ?';

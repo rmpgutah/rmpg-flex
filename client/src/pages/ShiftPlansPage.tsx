@@ -18,7 +18,7 @@ import StatusBadge from '../components/StatusBadge';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
 
 // ── Date helpers ───────────────────────────────────────────
 
@@ -362,7 +362,7 @@ export default function ShiftPlansPage() {
                     </span>
                   </div>
                   <div className="text-[9px] text-rmpg-500 mt-0.5">
-                    Updated {new Date(sp.activePlan.updatedAt).toLocaleString()}
+                    Updated {safeDateTimeStr(sp.activePlan.updatedAt)}
                   </div>
                 </div>
 

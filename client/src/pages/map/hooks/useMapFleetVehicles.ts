@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
+import { safeDateTimeStr } from '../../../utils/dateUtils';
 
 interface FleetVehicle {
   id: number;
@@ -60,7 +61,7 @@ function buildVehicleInfoContent(vehicle: FleetVehicle): string {
         ${vehicle.current_mileage != null ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Mileage</td><td style="color:#e0e0e0">${vehicle.current_mileage.toLocaleString()} mi</td></tr>` : ''}
         ${vehicle.next_service_due ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Next Service</td><td style="color:#e0e0e0">${vehicle.next_service_due}</td></tr>` : ''}
         ${vehicle.assigned_call_sign ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Assigned Unit</td><td style="color:#e0e0e0">${vehicle.assigned_call_sign}</td></tr>` : ''}
-        ${vehicle.gps_reported_at ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">GPS Time</td><td style="color:#e0e0e0">${new Date(vehicle.gps_reported_at).toLocaleString()}</td></tr>` : ''}
+        ${vehicle.gps_reported_at ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">GPS Time</td><td style="color:#e0e0e0">${safeDateTimeStr(vehicle.gps_reported_at)}</td></tr>` : ''}
         ${vehicle.gps_speed != null ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Speed</td><td style="color:#e0e0e0">${Math.round(vehicle.gps_speed)} mph</td></tr>` : ''}
       </table>
     </div>

@@ -77,6 +77,7 @@ import VehicleFormModal, { type VehicleFormData } from '../../components/Vehicle
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
+import { safeDateTimeStr } from '../../utils/dateUtils';
 import {
   humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo,
@@ -261,6 +262,14 @@ export default function DispatchPage() {
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
+  // Status-bar clock — ticks every 1s so the bottom-bar time isn't frozen
+  // at the parent's last render. Pinned to America/Denver via the formatter
+  // below so it shows local wall-clock (MST/MDT) regardless of browser TZ.
+  const [statusBarTime, setStatusBarTime] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setStatusBarTime(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, []);
   const [searchQuery, setSearchQuery] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
@@ -570,59 +579,17 @@ export default function DispatchPage() {
     }
   }, [selectedCall?.id, fetchCallPersons, fetchCallVehicles]);
 
-  // Auto-save unsaved call edits on component unmount (SPA navigation)
+  // Auto-save unsaved call edits on component unmount (SPA navigation).
+  // Shares the body assembly with the click-Save path via buildCallEditBody
+  // so PSO / process_service / contract_id / dispatch_code edits don't
+  // silently vanish here (previous bug — those fields were missing from
+  // the unmount body and only the in-page Save preserved them).
   useEffect(() => {
     return () => {
       if (!isEditingRef.current || !selectedCallRef.current) return;
       const token = localStorage.getItem('rmpg_token');
       const ed = editDataRef.current;
-      const body: Record<string, any> = {
-        incident_type: ed.incident_type,
-        priority: ed.priority,
-        client_id: ed.client_id || null,
-        property_id: ed.property_id || null,
-        caller_name: ed.caller_name,
-        caller_phone: ed.caller_phone,
-        caller_relationship: ed.caller_relationship,
-        caller_address: ed.caller_address,
-        location_address: ed.location,
-        latitude: (ed.location !== selectedCallRef.current?.location && ed.latitude === selectedCallRef.current?.latitude) ? null : (ed.latitude ?? null),
-        longitude: (ed.location !== selectedCallRef.current?.location && ed.longitude === selectedCallRef.current?.longitude) ? null : (ed.longitude ?? null),
-        description: ed.description,
-        source: ed.source,
-        disposition: ed.disposition,
-        cross_street: ed.cross_street,
-        location_building: ed.location_building,
-        location_floor: ed.location_floor,
-        location_room: ed.location_room,
-        zone_beat: ed.zone_beat,
-        sector_id: ed.sector_id,
-        zone_id: ed.zone_id,
-        beat_id: ed.beat_id,
-        weapons_involved: ed.weapons_involved,
-        injuries_reported: ed.injuries_reported,
-        num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
-        num_victims: ed.num_victims ? Number(ed.num_victims) : null,
-        subject_description: ed.subject_description,
-        vehicle_description: ed.vehicle_description,
-        direction_of_travel: ed.direction_of_travel,
-        scene_safety: ed.scene_safety,
-        weather_conditions: ed.weather_conditions,
-        lighting_conditions: ed.lighting_conditions,
-        alcohol_involved: ed.alcohol_involved,
-        drugs_involved: ed.drugs_involved,
-        domestic_violence: ed.domestic_violence,
-        supervisor_notified: ed.supervisor_notified,
-        le_notified: ed.le_notified,
-        le_agency: ed.le_agency,
-        le_case_number: ed.le_case_number,
-        damage_estimate: ed.damage_estimate ? Number(ed.damage_estimate) : null,
-        damage_description: ed.damage_description,
-        action_taken: ed.action_taken,
-        responding_officer: ed.responding_officer,
-        starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
-        ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
-      };
+      const body = buildCallEditBody(ed, selectedCallRef.current);
       try {
         fetch(`/api/dispatch/calls/${selectedCallRef.current.id}`, {
           method: 'PUT',
@@ -1204,19 +1171,26 @@ export default function DispatchPage() {
       }
       if (e.key === 'F3' && selectedCall && selectedCall.status === 'pending') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'dispatched');
+        handleStatusChangeRef.current(selectedCall.id, 'dispatched');
         return;
       }
       if (e.key === 'F4' && selectedCall) {
         e.preventDefault();
-        // Toggle edit mode on selected call
-        setIsEditing(prev => !prev);
+        // Toggle edit mode on selected call. Must go through the proper
+        // start/cancel handlers — the previous `setIsEditing(prev => !prev)`
+        // bypassed the fresh refetch + editData hydration, so F4 entering
+        // edit mode on a fresh selection showed empty form fields.
+        if (isEditingRef.current) {
+          cancelEditingRef.current();
+        } else {
+          startEditingRef.current();
+        }
         return;
       }
       if (e.key === 'F5') {
         e.preventDefault();
         if (selectedCall && selectedCall.status === 'dispatched') {
-          handleStatusChange(selectedCall.id, 'enroute');
+          handleStatusChangeRef.current(selectedCall.id, 'enroute');
         } else {
           fetchData(); // Refresh if no enroute action available
         }
@@ -1224,20 +1198,16 @@ export default function DispatchPage() {
       }
       if (e.key === 'F6' && selectedCall && selectedCall.status === 'enroute') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'onscene');
+        handleStatusChangeRef.current(selectedCall.id, 'onscene');
         return;
       }
       if (e.key === 'F7' && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
+        handleClearWithDispositionRef.current(selectedCall.id);
         return;
       }
-      // Shift+C — quick clear on selected call (mirrors F7, faster muscle memory)
-      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
-        e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
-        return;
-      }
+      // Shift+C is handled below the input guard — see comment near `if (isInput) return`.
+      // Putting it here would fire on capital C in a note/narrative textarea.
       if (e.key === 'F8') {
         e.preventDefault();
         // Focus CAD command line
@@ -1247,7 +1217,7 @@ export default function DispatchPage() {
       }
       if (e.key === 'F9' && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleHoldCall(selectedCall.id);
+        handleHoldCallRef.current(selectedCall.id);
         return;
       }
       if (e.key === 'F10') {
@@ -1264,6 +1234,15 @@ export default function DispatchPage() {
 
       // Don't process letter keys when typing in inputs
       if (isInput) return;
+
+      // Shift+C — quick clear on selected call (mirrors F7, faster muscle
+      // memory). MUST sit below the input guard above; otherwise typing a
+      // capital C in a note/narrative textarea pops the disposition modal.
+      if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
+        e.preventDefault();
+        handleClearWithDispositionRef.current(selectedCall.id);
+        return;
+      }
 
       // N - New call
       if (e.key === 'n' || e.key === 'N') {
@@ -1313,42 +1292,49 @@ export default function DispatchPage() {
       // D - Dispatch selected call
       if ((e.key === 'd' || e.key === 'D') && selectedCall && selectedCall.status === 'pending') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'dispatched');
+        handleStatusChangeRef.current(selectedCall.id, 'dispatched');
         return;
       }
 
       // E - Enroute
       if ((e.key === 'e' || e.key === 'E') && selectedCall && selectedCall.status === 'dispatched') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'enroute');
+        handleStatusChangeRef.current(selectedCall.id, 'enroute');
         return;
       }
 
       // O - On scene
       if ((e.key === 'o' || e.key === 'O') && selectedCall && selectedCall.status === 'enroute') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'onscene');
+        handleStatusChangeRef.current(selectedCall.id, 'onscene');
         return;
       }
 
       // C - Clear call (opens disposition prompt)
       if ((e.key === 'c' || e.key === 'C') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
+        handleClearWithDispositionRef.current(selectedCall.id);
         return;
       }
 
       // H - Hold call
       if ((e.key === 'h' || e.key === 'H') && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleHoldCall(selectedCall.id);
+        handleHoldCallRef.current(selectedCall.id);
         return;
       }
 
-      // Escape - close modal
+      // Escape - close any open modal / panel / inline prompt.
+      // Keep this list in sync with new modals — UX-inconsistent if some
+      // modals close on Esc and others don't.
       if (e.key === 'Escape') {
         setShowNewCallModal(false);
         setShowQuickPsoModal(false);
+        setShowNcicPanel(false);
+        setShowHandoffNotes(false);
+        setShowCreateUnitModal(false);
+        setQuickTemplateData(null);
+        setDispositionPromptCallId(null);
         return;
       }
     };
@@ -1553,6 +1539,85 @@ export default function DispatchPage() {
   // the edit form. Guards against stale in-memory data from list-endpoint
   // caching / older client bundles that silently dropped fields. The fetched
   // row also replaces selectedCall so the non-edit view re-renders correctly.
+  // Build the PUT body from the in-progress editData + the call we started
+  // editing against. Used by BOTH the click-Save path AND the unmount
+  // auto-save path — without this helper the two used to drift (PSO,
+  // process_service, contract_id, and dispatch_code edits silently
+  // vanished on unmount because the auto-save body forgot them).
+  //
+  // `selectedFor*` is what the user opened the editor against — needed
+  // for the "did the user change location?" → clear lat/lng heuristic.
+  // Pass `selectedCall` from saveEditing and `selectedCallRef.current`
+  // from the unmount cleanup.
+  const buildCallEditBody = (ed: Record<string, any>, selectedFor: { location?: string | null; latitude?: number | null; longitude?: number | null } | null): Record<string, any> => {
+    const sameLoc = ed.location === selectedFor?.location;
+    return {
+      incident_type: ed.incident_type,
+      priority: ed.priority,
+      client_id: ed.client_id || null,
+      property_id: ed.property_id || null,
+      caller_name: ed.caller_name,
+      caller_phone: ed.caller_phone,
+      caller_relationship: ed.caller_relationship,
+      caller_address: ed.caller_address,
+      location_address: ed.location,
+      // If location changed from original and user didn't pick a new autocomplete
+      // result (lat/lng still hold old values), clear them to trigger server re-geocode.
+      latitude: (!sameLoc && ed.latitude === selectedFor?.latitude) ? null : (ed.latitude ?? null),
+      longitude: (!sameLoc && ed.longitude === selectedFor?.longitude) ? null : (ed.longitude ?? null),
+      description: ed.description,
+      source: ed.source,
+      disposition: ed.disposition,
+      cross_street: ed.cross_street,
+      location_building: ed.location_building,
+      location_floor: ed.location_floor,
+      location_room: ed.location_room,
+      zone_beat: ed.zone_beat,
+      sector_id: ed.sector_id,
+      zone_id: ed.zone_id,
+      beat_id: ed.beat_id,
+      dispatch_code: ed.dispatch_code,
+      weapons_involved: ed.weapons_involved,
+      injuries_reported: ed.injuries_reported,
+      num_subjects: ed.num_subjects ? Number(ed.num_subjects) : null,
+      num_victims: ed.num_victims ? Number(ed.num_victims) : null,
+      subject_description: ed.subject_description,
+      vehicle_description: ed.vehicle_description,
+      direction_of_travel: ed.direction_of_travel,
+      scene_safety: ed.scene_safety,
+      weather_conditions: ed.weather_conditions,
+      lighting_conditions: ed.lighting_conditions,
+      alcohol_involved: ed.alcohol_involved,
+      drugs_involved: ed.drugs_involved,
+      domestic_violence: ed.domestic_violence,
+      supervisor_notified: ed.supervisor_notified,
+      le_notified: ed.le_notified,
+      le_agency: ed.le_agency,
+      le_case_number: ed.le_case_number,
+      // 0 is a valid damage estimate; falsy guard would wrongly drop it.
+      damage_estimate: ed.damage_estimate !== '' && ed.damage_estimate != null ? Number(ed.damage_estimate) : null,
+      damage_description: ed.damage_description,
+      action_taken: ed.action_taken,
+      responding_officer: ed.responding_officer,
+      starting_mileage: ed.starting_mileage ? Number(ed.starting_mileage) : null,
+      ending_mileage: ed.ending_mileage ? Number(ed.ending_mileage) : null,
+      pso_requestor_name: ed.pso_requestor_name || null,
+      pso_requestor_phone: ed.pso_requestor_phone || null,
+      pso_requestor_email: ed.pso_requestor_email || null,
+      pso_service_type: ed.pso_service_type || null,
+      pso_billing_code: ed.pso_billing_code || null,
+      pso_authorization: ed.pso_authorization || null,
+      contract_id: ed.contract_id || null,
+      // Process Service fields
+      process_service_type: ed.process_service_type || null,
+      process_served_to: ed.process_served_to || null,
+      process_served_address: ed.process_served_address || null,
+      process_attempts: ed.process_attempts ? Number(ed.process_attempts) : 0,
+      process_served_at: ed.process_served_at || null,
+      process_service_result: ed.process_service_result || null,
+    };
+  };
+
   const startEditing = async () => {
     if (!selectedCall) return;
     let source: any = selectedCall;
@@ -1642,70 +1707,7 @@ export default function DispatchPage() {
     if (!selectedCall) return;
     setIsSaving(true);
     try {
-      const body: Record<string, any> = {
-        incident_type: editData.incident_type,
-        priority: editData.priority,
-        client_id: editData.client_id || null,
-        property_id: editData.property_id || null,
-        caller_name: editData.caller_name,
-        caller_phone: editData.caller_phone,
-        caller_relationship: editData.caller_relationship,
-        caller_address: editData.caller_address,
-        location_address: editData.location,
-        // If location changed from original and user didn't pick a new autocomplete
-        // result (lat/lng still hold old values), clear them to trigger server re-geocode
-        latitude: (editData.location !== selectedCall.location && editData.latitude === selectedCall.latitude) ? null : (editData.latitude ?? null),
-        longitude: (editData.location !== selectedCall.location && editData.longitude === selectedCall.longitude) ? null : (editData.longitude ?? null),
-        description: editData.description,
-        source: editData.source,
-        disposition: editData.disposition,
-        cross_street: editData.cross_street,
-        location_building: editData.location_building,
-        location_floor: editData.location_floor,
-        location_room: editData.location_room,
-        zone_beat: editData.zone_beat,
-        sector_id: editData.sector_id,
-        zone_id: editData.zone_id,
-        beat_id: editData.beat_id,
-        dispatch_code: editData.dispatch_code,
-        weapons_involved: editData.weapons_involved,
-        injuries_reported: editData.injuries_reported,
-        num_subjects: editData.num_subjects ? Number(editData.num_subjects) : null,
-        num_victims: editData.num_victims ? Number(editData.num_victims) : null,
-        subject_description: editData.subject_description,
-        vehicle_description: editData.vehicle_description,
-        direction_of_travel: editData.direction_of_travel,
-        scene_safety: editData.scene_safety,
-        weather_conditions: editData.weather_conditions,
-        lighting_conditions: editData.lighting_conditions,
-        alcohol_involved: editData.alcohol_involved,
-        drugs_involved: editData.drugs_involved,
-        domestic_violence: editData.domestic_violence,
-        supervisor_notified: editData.supervisor_notified,
-        le_notified: editData.le_notified,
-        le_agency: editData.le_agency,
-        le_case_number: editData.le_case_number,
-        damage_estimate: editData.damage_estimate !== '' && editData.damage_estimate != null ? Number(editData.damage_estimate) : null,
-        damage_description: editData.damage_description,
-        action_taken: editData.action_taken,
-        responding_officer: editData.responding_officer,
-        starting_mileage: editData.starting_mileage ? Number(editData.starting_mileage) : null,
-        ending_mileage: editData.ending_mileage ? Number(editData.ending_mileage) : null,
-        pso_requestor_name: editData.pso_requestor_name || null,
-        pso_requestor_phone: editData.pso_requestor_phone || null,
-        pso_requestor_email: editData.pso_requestor_email || null,
-        pso_service_type: editData.pso_service_type || null,
-        pso_billing_code: editData.pso_billing_code || null,
-        pso_authorization: editData.pso_authorization || null,
-        contract_id: editData.contract_id || null,
-        // Process Service fields
-        process_service_type: editData.process_service_type || null,
-        process_served_to: editData.process_served_to || null,
-        process_served_address: editData.process_served_address || null,
-        process_attempts: editData.process_attempts ? Number(editData.process_attempts) : 0,
-        process_served_at: editData.process_served_at || null,
-        process_service_result: editData.process_service_result || null,
-      };
+      const body = buildCallEditBody(editData, selectedCall);
       const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
         method: 'PUT',
         body: JSON.stringify(body),
@@ -1813,6 +1815,26 @@ export default function DispatchPage() {
   // Feature 17: Auto-archive cleared calls after 5 minutes
   const handleArchiveRef = useRef(handleArchive);
   useEffect(() => { handleArchiveRef.current = handleArchive; }, [handleArchive]);
+
+  // ── Refs for keydown-called handlers ───────────────────────────
+  // The F-key / letter shortcut effect (line ~1192) binds once-ish and
+  // captures handler references via closure. Without refs, the captured
+  // function is whatever existed at last bind — a stale `handleStatusChange`
+  // can fire against an out-of-date `selectedCall.id` if React batches a
+  // call-swap concurrent with a keystroke. Routing through refs that we
+  // update every render guarantees the shortcut always invokes the latest
+  // closure with fresh selectedCall in scope. Same pattern as
+  // handleArchiveRef above.
+  const handleStatusChangeRef = useRef(handleStatusChange);
+  useEffect(() => { handleStatusChangeRef.current = handleStatusChange; }, [handleStatusChange]);
+  const handleClearWithDispositionRef = useRef(handleClearWithDisposition);
+  useEffect(() => { handleClearWithDispositionRef.current = handleClearWithDisposition; }, [handleClearWithDisposition]);
+  const handleHoldCallRef = useRef(handleHoldCall);
+  useEffect(() => { handleHoldCallRef.current = handleHoldCall; }, [handleHoldCall]);
+  const startEditingRef = useRef(startEditing);
+  useEffect(() => { startEditingRef.current = startEditing; }, [startEditing]);
+  const cancelEditingRef = useRef(cancelEditing);
+  useEffect(() => { cancelEditingRef.current = cancelEditing; }, [cancelEditing]);
   useEffect(() => {
     const checkAutoArchive = () => {
       const now = Date.now();
@@ -5163,8 +5185,8 @@ export default function DispatchPage() {
                             <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
                               </div>
                             )}
                           </>
@@ -6139,7 +6161,7 @@ export default function DispatchPage() {
               {handoffMeta.updated_by && (
                 <p className="text-[10px] text-rmpg-400 mb-2">
                   Last updated by <span className="text-amber-400">{handoffMeta.updated_by}</span>
-                  {handoffMeta.updated_at && ` at ${new Date(handoffMeta.updated_at).toLocaleString()}`}
+                  {handoffMeta.updated_at && ` at ${safeDateTimeStr(handoffMeta.updated_at)}`}
                 </p>
               )}
               <textarea
@@ -6163,7 +6185,7 @@ export default function DispatchPage() {
       {/* ═══════════════════════════════════════════════════════════ */}
       {/* DISPATCH STATUS BAR — Fixed bottom footer                   */}
       {/* ═══════════════════════════════════════════════════════════ */}
-      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[90]"
+      <div className="hidden md:flex items-center justify-between px-3 h-[22px] flex-shrink-0 border-t select-none fixed bottom-0 left-0 right-0 z-[40]"
         style={{ background: '#050505', borderColor: '#141414', fontFamily: "JetBrains Mono, Courier New, monospace" }}>
         {/* Left: Call metrics */}
         <div className="flex items-center gap-3 text-[9px] tabular-nums">
@@ -6225,7 +6247,7 @@ export default function DispatchPage() {
           <span style={{ color: '#555555' }}>F8:CMD</span>
           <span style={{ color: '#555555' }}>F12:NCIC</span>
           <span style={{ color: '#444444' }}>|</span>
-          <span style={{ color: '#999999' }}>{new Date().toLocaleTimeString('en-US', { hour12: false })}</span>
+          <span style={{ color: '#999999' }}>{new Date(statusBarTime).toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Denver' })}</span>
         </div>
       </div>
     </div>
