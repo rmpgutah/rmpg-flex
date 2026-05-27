@@ -553,6 +553,197 @@ const STUBS: StubRule[] = [
   },
   // /api/admin/shift-swaps now has a real handler in src/routes/shiftPlans.ts
   // (alias of /shift-swaps to match the client's existing path). Stub removed.
+
+  // ── 2026-05-27 batch 3 — legacy worker prod-readiness scan ───────────
+  // Subagent audit of the deployed `rmpg-flex` (legacy) bundle vs live D1
+  // schema found ~22 user-triggered endpoints that 500 because they query
+  // missing tables. These are all visible-page mounts (NOT background
+  // polling). The proxy can stub the GET responses with shapes the SPA
+  // already tolerates; POST/PUT/DELETE on the same paths intentionally
+  // stay 404 — those are user-initiated writes and should fail loudly
+  // until a real schema + handler lands. Each subsystem grouped for easy
+  // bulk removal when the real implementation arrives.
+  //
+  // ── Admin → Training/Credentials tabs ───────────────────────────────
+  // Legacy queries `personnel_certifications` + `officer_credentials`,
+  // neither on live D1. Admin training tab opens these on tab switch.
+  {
+    match: /^\/api\/admin\/expiring-certifications(\?.*)?$/,
+    methods: ['GET'],
+    body: { certifications: [], total: 0 },
+    reason: 'no personnel_certifications table on live D1; admin tab tolerates empty',
+  },
+  {
+    match: /^\/api\/admin\/training(\?.*)?$/,
+    methods: ['GET'],
+    body: { credentials: [], total: 0 },
+    reason: 'no officer_credentials table on live D1; admin training tab tolerates empty',
+  },
+  // ── Sex-offender registry (CRUD subset) ─────────────────────────────
+  // `/stats` is stubbed above. Root list + /expiring-registrations also
+  // queried on page mount. Other paths (POST /, PUT /:id, /import,
+  // /export/csv) stay 404 — those are user-triggered writes that should
+  // fail loudly until the schema lands.
+  {
+    match: /^\/api\/sex-offender-registry\/?(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 50 } },
+    reason: 'no sex_offender_registry table; root list tolerates empty data',
+  },
+  {
+    match: /^\/api\/(sex-)?offender-registry\/expiring-registrations(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no sex_offender_registry table; expiring-registrations tolerates empty list',
+  },
+  // ── Dispatch GPS speed zones (Map page may poll) ────────────────────
+  {
+    match: /^\/api\/dispatch\/gps\/speed-zones(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no speed_zones table on live D1; map page tolerates empty array',
+  },
+  // ── Trespass orders → violations sub-tab ────────────────────────────
+  // TrespassPage detail view opens this when a card is clicked. Empty
+  // list = "no violations on file" — a valid UX state.
+  {
+    match: /^\/api\/trespass-orders\/\d+\/violations(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no trespass_violations table; trespass detail tolerates empty list',
+  },
+  // ── Dashcam video link records (DashCamera detail) ──────────────────
+  {
+    match: /^\/api\/dashcam-videos\/[^/]+\/links(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no dashcam_video_links table; detail page tolerates empty link list',
+  },
+  // ── Dispatch messages namespace (entire mount dead — no table) ──────
+  // Legacy has ~7 routes under /api/dispatch-messages/ all querying
+  // `dispatch_messages` (and `dispatch_units` on some) which don't
+  // exist. The radio + WebSocket dispatch_update channel is what's
+  // actually used in production — this legacy mount appears to be from
+  // a never-shipped feature. GET-only stubs; POST stays 404.
+  {
+    match: /^\/api\/dispatch-messages(\/.*)?(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no dispatch_messages table; namespace appears to be never-shipped legacy feature',
+  },
+  // ── Statutes top-charged analytics (page opens on stats tab) ────────
+  {
+    match: /^\/api\/statutes\/analytics\/top-charged(\?.*)?$/,
+    methods: ['GET'],
+    body: { top: [], total: 0 },
+    reason: 'no entity_statutes table (use utah_statutes for lookup, not analytics)',
+  },
+  // ── WebAuthn / TOTP MFA setup (security tab on profile page) ────────
+  // Profile page hits these on every open. Stub the read shape so the
+  // security tab renders an "MFA not enrolled" state. Enrollment POSTs
+  // (register-options, register-verify, etc.) stay 404 — enabling MFA
+  // would need real `webauthn_credentials` + `user_totp_secrets` tables.
+  {
+    match: /^\/api\/auth\/webauthn\/(credentials|status)(\?.*)?$/,
+    methods: ['GET'],
+    body: { credentials: [], enrolled: false },
+    reason: 'no webauthn_credentials table; security tab shows un-enrolled state',
+  },
+  // ── ServeManager job linked-records (typo in legacy handler) ────────
+  // Legacy queries `FROM calls` — that table doesn't exist on live D1;
+  // the actual dispatch table is `calls_for_service`. The fix can't be
+  // applied in source (legacy worker bundle isn't in-repo), so stub
+  // empty here. Most ServeManager jobs aren't linked to dispatch calls
+  // anyway, so the empty list is a faithful representation.
+  {
+    match: /^\/api\/servemanager\/jobs\/\d+\/linked-records(\?.*)?$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'legacy handler has `FROM calls` typo (should be calls_for_service); empty list is the typical case anyway',
+  },
+
+  // ── 2026-05-27 batch 4 — second prod console pass ────────────────────
+  // After deploy #686, fresh console revealed more uncovered paths beyond
+  // the subagent's static scan (these are runtime-only surfaces — admin
+  // tiles, page-specific reports, dispatch GPS analytics).
+  //
+  // ── Reports comparison (ReportsPage period-over-period card) ────────
+  {
+    match: /^\/api\/reports\/comparison(\?.*)?$/,
+    methods: ['GET'],
+    body: { current: {}, previous: {}, deltas: {} },
+    reason: 'no comparison endpoint in src/routes/reports.ts; period card tolerates empty deltas',
+  },
+  // ── Arrests status (AdminPage tile, separate from /arrests/recent) ──
+  {
+    match: /^\/api\/arrests\/status(\?.*)?$/,
+    methods: ['GET'],
+    body: { total: 0, this_week: 0, pending_charges: 0, last_arrest_at: null },
+    reason: 'AdminPage Arrests tile — separate from /arrests/recent; new worker has /recent only',
+  },
+  // ── IPED download/info (admin tile, separate from /iped/status) ─────
+  {
+    match: /^\/api\/iped\/download\/info(\?.*)?$/,
+    methods: ['GET'],
+    body: { available: false, version: null, size_bytes: 0, last_updated: null },
+    reason: 'IPED download metadata endpoint; admin tile tolerates "not available"',
+  },
+  // ── Admin → Database utilities (POST integrity-check + vacuum) ──────
+  // These are admin-only db maintenance buttons. The legacy worker
+  // doesn't implement them and the new worker has no admin/database
+  // mount. POSTs are user-clicks (no background polling), so returning
+  // a structured "not implemented" body is honest: the button reports
+  // success status from the response shape but no actual operation runs.
+  // True implementation would require D1 metadata APIs which Workers
+  // doesn't expose. Leaving the buttons visible is intentional — admins
+  // can request these in writing if they need them.
+  {
+    match: /^\/api\/admin\/database\/integrity-check$/,
+    methods: ['POST'],
+    body: { status: 'not_implemented', message: 'D1 integrity check not exposed by Cloudflare Workers runtime' },
+    reason: 'no D1 admin API for integrity-check; honest "not implemented" body',
+  },
+  {
+    match: /^\/api\/admin\/database\/vacuum$/,
+    methods: ['POST'],
+    body: { status: 'not_implemented', message: 'D1 VACUUM is managed by Cloudflare, not exposed to Workers' },
+    reason: 'no user VACUUM on D1; honest "not implemented" body',
+  },
+  // ── Auth security login-history (ProfilePage Security tab) ──────────
+  // The proxy already routes /api/auth/security/login-history to env.API
+  // (API_ROUTES rule above), but the new worker has no handler for it,
+  // so it 404s. Stub empty array — the SessionsTab tolerates this. The
+  // route registry will need a real handler against the `login_attempts`
+  // table (which DOES exist on live D1) in a follow-up PR.
+  {
+    match: /^\/api\/auth\/security\/login-history(\?.*)?$/,
+    methods: ['GET'],
+    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 15 } },
+    reason: 'no handler in src/routes/auth.ts for /security/login-history; sessions tab tolerates empty',
+  },
+  // ── Skiptracer v2 (different mount from v1) ─────────────────────────
+  // The v1 stubs above cover /api/skiptracer/{status,stats}. v2 is a
+  // separate legacy mount at /api/skiptracer-v2/* that queries `people_index`,
+  // `dossiers` (singular, not skiptracer_dossiers), and `skip_tracer_searches_v`
+  // — none of which exist on live D1. Stub GETs only; POST /search stays
+  // on legacy because v2 search is the active third-party round-trip path.
+  {
+    match: /^\/api\/skiptracer-v2\/(status|stats)(\?.*)?$/,
+    methods: ['GET'],
+    body: { enabled: false, total_searches: 0, recent_dossiers: [] },
+    reason: 'v2 mount queries people_index/dossiers/skip_tracer_searches_v — none exist on live D1',
+  },
+  // ── Dispatch GPS zone-speed-stats (MapPage analytics) ───────────────
+  // Different path from /speed-zones (which was stubbed above). This one
+  // is the analytics aggregation — likely 500s because the underlying
+  // table reference is broken. Stub empty stats; MapPage tolerates this.
+  {
+    match: /^\/api\/dispatch\/gps\/zone-speed-stats(\?.*)?$/,
+    methods: ['GET'],
+    body: { zones: [], total_violations: 0, period_hours: 8 },
+    reason: 'no zone speed analytics handler; MapPage tolerates empty zones array',
+  },
+
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
@@ -781,6 +972,22 @@ const API_ROUTES: RouteRule[] = [
   // the radio console was effectively broken in production despite
   // /src/routes/radio.ts existing on main.
   { kind: 'prefix', value: '/api/radio' },
+
+  // ── Serve Intake (upload + OCR + LLM extraction) ──
+  // The new Worker owns /scan-document, /upload, /intake, /:id/documents,
+  // and /documents/:docId/file (R2-backed). The legacy `rmpg-flex`
+  // Worker had its own serve-intake handlers but they predated the
+  // Tesseract container + Workers-AI extraction wired up in PR for
+  // this session — route the whole namespace to env.API so the new
+  // pipeline is what runs in prod. Legacy serve-intake is dead code
+  // after this entry lands.
+  { kind: 'prefix', value: '/api/serve-intake' },
+  // /api/ocr/scan-document is the alias URL the ServeIntakePage client
+  // already calls for its in-page image preview path. The handler is
+  // src/routes/ocr.ts (delegates to the same extraction utility as
+  // /api/serve-intake/scan-document). Bare /api/ocr is the full prefix
+  // so future OCR sub-paths come along automatically.
+  { kind: 'prefix', value: '/api/ocr' },
 
   // ── HR module ──
   // New Worker owns the four ported sub-paths (/leave, /disciplinary,

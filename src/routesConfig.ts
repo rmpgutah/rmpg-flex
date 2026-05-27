@@ -83,6 +83,8 @@ import hr from './routes/hr';
 import patrol from './routes/patrol';
 import radio from './routes/radio';
 import serveIntake from './routes/serveIntake';
+import ocr from './routes/ocr';
+import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import serve from './routes/serve';
@@ -240,7 +242,9 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
-    note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
+    note: 'Upload + OCR (Tesseract container) + Workers-AI field extraction; commits to serve_queue + serve_intake_documents' },
+  { prefix: '/api/ocr', router: ocr, auth: 'required',
+    note: 'Alias of /api/serve-intake/scan-document — the client URL the OCR preview path already calls' },
   { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
     note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },

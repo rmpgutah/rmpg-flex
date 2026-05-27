@@ -2238,8 +2238,8 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
       heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
-        try { map?.removeLayer(layerId); } catch {}
-        try { map?.removeSource(sourceId); } catch {}
+        if (map?.getLayer(layerId)) map.removeLayer(layerId);
+        if (map?.getSource(sourceId)) map.removeSource(sourceId);
       });
       heatmapRectsRef.current = [];
       return;
@@ -2247,8 +2247,8 @@ export default function MapPage() {
 
     // Clean previous
     heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
-      try { map.removeLayer(layerId); } catch {}
-      try { map.removeSource(sourceId); } catch {}
+      if (map.getLayer(layerId)) map.removeLayer(layerId);
+      if (map.getSource(sourceId)) map.removeSource(sourceId);
     });
     heatmapRectsRef.current = [];
 
@@ -2293,8 +2293,8 @@ export default function MapPage() {
 
     return () => {
       heatmapRectsRef.current.forEach(({ sourceId, layerId }) => {
-        try { map.removeLayer(layerId); } catch {}
-        try { map.removeSource(sourceId); } catch {}
+        if (map.getLayer(layerId)) map.removeLayer(layerId);
+        if (map.getSource(sourceId)) map.removeSource(sourceId);
       });
       heatmapRectsRef.current = [];
     };
@@ -2310,8 +2310,8 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
       pursuitLinesRef.current.forEach((id) => {
-        try { map?.removeLayer(id); } catch {}
-        try { map?.removeSource(id); } catch {}
+        if (map?.getLayer(id)) map.removeLayer(id);
+        if (map?.getSource(id)) map.removeSource(id);
       });
       pursuitLinesRef.current = [];
       return;
@@ -2319,8 +2319,8 @@ export default function MapPage() {
 
     // Clean previous
     pursuitLinesRef.current.forEach((id) => {
-      try { map.removeLayer(id); } catch {}
-      try { map.removeSource(id); } catch {}
+      if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(id)) map.removeSource(id);
     });
     pursuitLinesRef.current = [];
 
@@ -2427,8 +2427,8 @@ export default function MapPage() {
 
     return () => {
       pursuitLinesRef.current.forEach((id) => {
-        try { map.removeLayer(id); } catch {}
-        try { map.removeSource(id); } catch {}
+        if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource(id)) map.removeSource(id);
       });
       pursuitLinesRef.current = [];
     };
@@ -2445,8 +2445,8 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) {
       speedZonePolysRef.current.forEach((id) => {
-        try { map?.removeLayer(id); } catch {}
-        try { map?.removeSource(id); } catch {}
+        if (map?.getLayer(id)) map.removeLayer(id);
+        if (map?.getSource(id)) map.removeSource(id);
       });
       speedZonePolysRef.current = [];
       speedZoneLabelsRef.current.forEach((m) => m.remove());
@@ -2456,8 +2456,8 @@ export default function MapPage() {
 
     // Clean previous
     speedZonePolysRef.current.forEach((id) => {
-      try { map.removeLayer(id); } catch {}
-      try { map.removeSource(id); } catch {}
+      if (map.getLayer(id)) map.removeLayer(id);
+      if (map.getSource(id)) map.removeSource(id);
     });
     speedZonePolysRef.current = [];
     speedZoneLabelsRef.current.forEach((m) => m.remove());
@@ -2534,9 +2534,9 @@ export default function MapPage() {
 
     return () => {
       speedZonePolysRef.current.forEach((id) => {
-        try { map.removeLayer(`${id}-outline`); } catch {}
-        try { map.removeLayer(id); } catch {}
-        try { map.removeSource(id); } catch {}
+        if (map.getLayer(`${id}-outline`)) map.removeLayer(`${id}-outline`);
+        if (map.getLayer(id)) map.removeLayer(id);
+        if (map.getSource(id)) map.removeSource(id);
       });
       speedZonePolysRef.current = [];
       speedZoneLabelsRef.current.forEach((m) => m.remove());
