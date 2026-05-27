@@ -123,6 +123,13 @@ const API_ROUTES: RouteRule[] = [
   // writes an activity_log row for the audit trail.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/?$/, methods: ['POST'] },
 
+  // POST /api/dispatch/calls/:id/{assign-unit,unassign-unit,dispatch} —
+  // MdtPage self-dispatch calls these; the rewrite implements the
+  // duplicate-assignment guard + the call_status_for_officer push that
+  // the legacy worker doesn't. Without this rule MDT requests fall
+  // through to legacy and skip both behaviors.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(assign-unit|unassign-unit|dispatch)$/, methods: ['POST'] },
+
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
