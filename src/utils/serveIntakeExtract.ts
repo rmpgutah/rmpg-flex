@@ -26,13 +26,26 @@ const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct' as const;
 // in one place so the JSON-schema prompt and the post-processor
 // stay aligned. Add a field here and both ends pick it up.
 export const TARGET_FIELDS = [
+  // ── Recipient (the party being served) ────────────────────
+  // recipient_type lets the commit step decide whether to create a
+  // person row (last_name='Smith'), a business row (Steel Encounters
+  // Inc.), or both (corporate service to a registered agent).
+  'recipient_type',                       // 'person' | 'business'
   'recipient_first_name', 'recipient_middle_name', 'recipient_last_name',
+  'recipient_business_name',              // populated when recipient_type='business'
   'recipient_dob', 'recipient_address', 'recipient_city',
   'recipient_state', 'recipient_zip', 'recipient_phone',
+  // Registered agent — separate from recipient because for corporate
+  // service the agent IS the human person we physically serve.
+  'registered_agent_name',
+  // ── Case / court ──────────────────────────────────────────
   'plaintiff', 'defendant', 'case_number', 'court_name', 'jurisdiction',
   'document_type', 'document_subtype', 'filing_date', 'service_deadline',
-  'hearing_date', 'attorney_name', 'attorney_phone', 'attorney_email',
-  'attorney_bar_number', 'client_name', 'job_number', 'fee_amount',
+  'hearing_date',
+  // ── Counsel / hiring party ────────────────────────────────
+  'attorney_name', 'attorney_phone', 'attorney_email', 'attorney_bar_number',
+  'client_name', 'job_number', 'fee_amount',
+  // ── Service mechanics ─────────────────────────────────────
   'process_type', 'service_windows', 'service_instructions',
   'server_name', 'priority',
 ] as const;
@@ -285,7 +298,21 @@ export async function extractTextFromPdf(
 // Map the LLM-extracted fields into the column shape serve_queue expects.
 // The client's `processIntake` POST shape (IntakeResult.extracted) is
 // derived from this — keep the mapping in lock-step.
-export function fieldsToQueueRow(fields: Record<string, ExtractedField>): {
+// Allowed serve_queue.priority values (from migration 0030 CHECK).
+// The CAD `calls_for_service.priority` ladder is P1..P4 — see
+// serveIntakeRecords.cadPriority() for the mapping into that ladder.
+export type ServePriority = 'routine' | 'normal' | 'rush' | 'urgent';
+
+const SERVE_PRIORITIES: ServePriority[] = ['routine', 'normal', 'rush', 'urgent'];
+
+export function normalizePriority(raw: string): ServePriority {
+  const lower = raw.trim().toLowerCase();
+  if (lower === 'hot rush' || lower === 'hot_rush') return 'urgent';
+  if (SERVE_PRIORITIES.includes(lower as ServePriority)) return lower as ServePriority;
+  return 'normal';
+}
+
+export interface QueueRow {
   recipient_name: string | null;
   recipient_address: string | null;
   recipient_city: string | null;
@@ -297,15 +324,28 @@ export function fieldsToQueueRow(fields: Record<string, ExtractedField>): {
   jurisdiction: string | null;
   client_name: string | null;
   attorney_name: string | null;
+  priority: ServePriority;
   deadline: string | null;
   service_instructions: string | null;
   notes: string | null;
-} {
+}
+
+export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueRow {
   const get = (k: TargetField) => (fields[k]?.value || '').trim() || null;
-  const nameParts = [get('recipient_first_name'), get('recipient_middle_name'), get('recipient_last_name')]
-    .filter(Boolean).join(' ').trim();
+  const isBusiness = (get('recipient_type') || '').toLowerCase() === 'business';
+  const businessName = get('recipient_business_name');
+  const personName = [get('recipient_first_name'), get('recipient_middle_name'), get('recipient_last_name')]
+    .filter(Boolean).join(' ').trim() || null;
+  // For corporate recipients the queue's "recipient_name" is the company
+  // (so the queue list reads naturally — "STEEL ENCOUNTERS, INC." not
+  // "Joan Lind"). The actual person we serve (the registered agent) lives
+  // on the linked persons row via recipient_person_id.
+  const recipient_name = isBusiness
+    ? (businessName || personName)
+    : (personName || businessName);
+
   return {
-    recipient_name: nameParts || null,
+    recipient_name,
     recipient_address: get('recipient_address'),
     recipient_city: get('recipient_city'),
     recipient_state: get('recipient_state'),
@@ -316,6 +356,7 @@ export function fieldsToQueueRow(fields: Record<string, ExtractedField>): {
     jurisdiction: get('jurisdiction'),
     client_name: get('client_name'),
     attorney_name: get('attorney_name'),
+    priority: normalizePriority(get('priority') || ''),
     deadline: get('service_deadline'),
     service_instructions: get('service_instructions'),
     notes: get('service_windows'),

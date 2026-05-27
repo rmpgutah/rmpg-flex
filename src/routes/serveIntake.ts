@@ -45,6 +45,7 @@ import {
   fieldsToQueueRow,
   type ExtractionResult,
 } from '../utils/serveIntakeExtract';
+import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 
 const si = new Hono<Env>();
 
@@ -281,33 +282,44 @@ si.post('/upload', async (c) => {
     }
   }
 
-  // Create the serve_queue row from merged fields.
+  // ── Commit the merged extraction into the full RMS record set:
+  //    business / person / property / call / serve_queue + links.
   const row = fieldsToQueueRow(mergedFields);
-  let queueId: number | null = null;
+  const docSummary = buildCallDescription(row, mergedFields, documents.length);
+  let commit: CommitResult = {
+    serve_queue_id: null, person_id: null, agent_person_id: null,
+    business_id: null, property_id: null, call_id: null, call_number: null,
+    created: { person: false, agent_person: false, business: false, property: false, call: false },
+  };
   if (row.recipient_name || row.recipient_address) {
-    const ins = await execute(
-      db,
-      `INSERT INTO serve_queue (
-        recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
-        document_type, case_number, court_name, jurisdiction,
-        client_name, attorney_name, priority, deadline,
-        service_instructions, notes, status
-      ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?)`,
-      row.recipient_name, row.recipient_address, row.recipient_city, row.recipient_state, row.recipient_zip,
-      row.document_type, row.case_number, row.court_name, row.jurisdiction,
-      row.client_name, row.attorney_name, 'normal', row.deadline,
-      row.service_instructions, row.notes, 'pending',
-    );
-    queueId = ins.meta.last_row_id as number;
+    commit = await commitIntake(db, {
+      fields: mergedFields,
+      queueRow: row,
+      userId: user.id,
+      documentSummary: docSummary,
+    });
     // Back-link the document rows to the new queue entry.
-    for (const d of documents) {
-      if (d.id) await execute(db, 'UPDATE serve_intake_documents SET serve_queue_id = ? WHERE id = ?', queueId, d.id);
+    if (commit.serve_queue_id) {
+      for (const d of documents) {
+        if (d.id) {
+          await execute(db,
+            'UPDATE serve_intake_documents SET serve_queue_id = ? WHERE id = ?',
+            commit.serve_queue_id, d.id);
+        }
+      }
     }
   }
 
   return c.json({
     success: documents.some((d) => d.success),
-    serve_queue_id: queueId,
+    serve_queue_id: commit.serve_queue_id,
+    person_id: commit.person_id,
+    agent_person_id: commit.agent_person_id,
+    business_id: commit.business_id,
+    property_id: commit.property_id,
+    call_id: commit.call_id,
+    call_number: commit.call_number,
+    created: commit.created,
     documents,
     merged: {
       documentType: bestDocType,
@@ -318,6 +330,26 @@ si.post('/upload', async (c) => {
     },
   });
 });
+
+// Description string written to calls_for_service.description. Kept
+// short — dispatchers see this in the call queue, so the case number
+// and recipient name need to come first.
+function buildCallDescription(
+  row: ReturnType<typeof fieldsToQueueRow>,
+  fields: Record<string, { value: string; confidence: number }>,
+  docCount: number,
+): string {
+  const parts: string[] = [];
+  parts.push(`Process service: ${row.document_type || 'Civil paper'}`);
+  if (row.case_number) parts.push(`Case ${row.case_number}`);
+  if (row.recipient_name) parts.push(`Recipient: ${row.recipient_name}`);
+  const agent = (fields.registered_agent_name?.value || '').trim();
+  if (agent) parts.push(`R/A: ${agent}`);
+  if (row.court_name) parts.push(row.court_name);
+  if (row.deadline) parts.push(`Due ${row.deadline}`);
+  if (docCount) parts.push(`${docCount} document${docCount > 1 ? 's' : ''} on file`);
+  return parts.join(' · ');
+}
 
 // ── POST /intake — legacy-shape commit ─────────────────────
 // The client's ServeIntakePage.processIntake POSTs already-extracted
@@ -337,36 +369,37 @@ si.post('/intake', async (c) => {
   const extraction = await extractFromText(c.env.AI, combined);
   const row = fieldsToQueueRow(extraction.fields);
 
-  let queueId: number | null = null;
+  let commit: CommitResult = {
+    serve_queue_id: null, person_id: null, agent_person_id: null,
+    business_id: null, property_id: null, call_id: null, call_number: null,
+    created: { person: false, agent_person: false, business: false, property: false, call: false },
+  };
   if (row.recipient_name || row.recipient_address) {
     const db = getDb(c.env);
-    const ins = await execute(
-      db,
-      `INSERT INTO serve_queue (
-        recipient_name, recipient_address, recipient_city, recipient_state, recipient_zip,
-        document_type, case_number, court_name, jurisdiction,
-        client_name, attorney_name, priority, deadline,
-        service_instructions, notes, status
-      ) VALUES (?,?,?,?,?, ?,?,?,?, ?,?,?,?, ?,?,?)`,
-      row.recipient_name, row.recipient_address, row.recipient_city, row.recipient_state, row.recipient_zip,
-      row.document_type, row.case_number, row.court_name, row.jurisdiction,
-      row.client_name, row.attorney_name, 'normal', row.deadline,
-      row.service_instructions, row.notes, 'pending',
-    );
-    queueId = ins.meta.last_row_id as number;
+    commit = await commitIntake(db, {
+      fields: extraction.fields,
+      queueRow: row,
+      userId: user.id,
+      documentSummary: buildCallDescription(row, extraction.fields, docs.length),
+    });
   }
 
   // Shape mirrors client/src/pages/ServeIntakePage.tsx IntakeResult.
-  // person/property/call linking deferred — return nulls so the UI
-  // still renders the success card and the operator can drill in.
+  // person/property/call IDs now reflect the freshly-linked records;
+  // weather/lighting/lat/lng remain null (those need a geocode step
+  // — not in this PR; the geocode route at /api/geocode handles it
+  // post-intake when the queue entry is opened in the route planner).
   const get = (k: string) => (extraction.fields[k]?.value || '').trim();
   return c.json({
-    success: extraction.success,
-    person_id: null,
-    property_id: null,
-    call_id: null,
-    call_number: null,
-    serve_queue_id: queueId,
+    success: extraction.success && (commit.serve_queue_id !== null || commit.call_id !== null),
+    person_id: commit.person_id,
+    agent_person_id: commit.agent_person_id,
+    business_id: commit.business_id,
+    property_id: commit.property_id,
+    call_id: commit.call_id,
+    call_number: commit.call_number,
+    serve_queue_id: commit.serve_queue_id,
+    created: commit.created,
     latitude: null,
     longitude: null,
     weather: null,
