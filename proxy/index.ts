@@ -51,13 +51,43 @@ interface StubRule {
 }
 
 const STUBS: StubRule[] = [
-  // (intentionally empty — no current stubs)
+  // /api/warrants/utah-search/auto-poll-status — no handler exists in legacy
+  // OR rewrite. WarrantsPage polls this on mount of the Watch tab, so a 404
+  // floods the console. Return the empty AutoPollStatus shape the UI tolerates.
+  // Remove this stub once the poller is actually implemented in /src/routes/warrants.ts.
+  {
+    match: /^\/api\/warrants\/utah-search\/auto-poll-status$/,
+    methods: ['GET'],
+    body: {
+      syncStatus: { lastSync: null, warrantCount: 0, status: 'disabled', lastError: null },
+      blocked: false,
+      runs: [],
+      flaggedPersons: [],
+      recentHits: [],
+      totalPersons: 0,
+    },
+    reason: 'no poller backend; UI tolerates empty status',
+  },
+  // /api/personnel/equipment — no equipment table or handler in either backend.
+  // PersonnelPage's Equipment tab issues this GET on mount; without a stub
+  // it 404s and produces visible console noise. Return [] (callsites do
+  // `apiFetch<any[]>('/personnel/equipment')`). Sub-routes (/equipment/:id,
+  // /equipment/:id/checkout, etc.) are user-triggered, not background, so they
+  // stay 404 until a real implementation lands.
+  {
+    match: /^\/api\/personnel\/equipment$/,
+    methods: ['GET'],
+    body: [],
+    reason: 'no equipment table/handler; empty list silences dashboard polling',
+  },
   //
   // History:
   //   2026-05-24: Added stub for /api/statutes/search after live D1
   //   was found missing the utah_statutes table. Removed the same day
   //   after schema was applied (PR #637) AND 1387 sections were seeded
   //   from le.utah.gov XML downloads. See scripts/seed/utah_statutes.sql.
+  //   2026-05-26: Added stubs above for /warrants/utah-search/auto-poll-status
+  //   and /personnel/equipment to silence dashboard polling 404s.
 ];
 
 const API_ROUTES: RouteRule[] = [
@@ -111,8 +141,11 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/pdf-tools/sign-payload' },
 
   // ── Existing routes (preserved from prior proxy deployment) ──
-  // Records — Evidence/Property tab, Businesses tab, approval queue
-  { kind: 'prefix', value: '/api/records/evidence' },
+  // Records — Businesses tab, approval queue.
+  // /api/records/evidence intentionally NOT routed here: the rewrite has no
+  // /evidence handler in src/routes/records.ts, so the prefix sent every
+  // GET to a 404. Removed 2026-05-26 so it falls through to legacy, which
+  // has the full handler and a populated evidence table on live D1.
   { kind: 'prefix', value: '/api/records/businesses' },
   { kind: 'prefix', value: '/api/records/reports/approval-queue' },
   // Admin extras the legacy worker doesn't implement

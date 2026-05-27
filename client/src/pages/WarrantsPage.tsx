@@ -1082,8 +1082,8 @@ export default function WarrantsPage() {
   const fetchCoverage = useCallback(async () => {
     setCoverageLoading(true);
     try {
-      const res = await apiFetch<{ data: ScraperSource[] }>('/warrants/scraped/status');
-      setCoverageSources(res.data || []);
+      const res = await apiFetch<{ sources: ScraperSource[] }>('/warrants/scrapers');
+      setCoverageSources(res.sources || []);
     } catch { /* silent */ }
     finally { setCoverageLoading(false); }
   }, []);
