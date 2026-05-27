@@ -1170,7 +1170,7 @@ export default function DispatchPage() {
       }
       if (e.key === 'F3' && selectedCall && selectedCall.status === 'pending') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'dispatched');
+        handleStatusChangeRef.current(selectedCall.id, 'dispatched');
         return;
       }
       if (e.key === 'F4' && selectedCall) {
@@ -1180,16 +1180,16 @@ export default function DispatchPage() {
         // bypassed the fresh refetch + editData hydration, so F4 entering
         // edit mode on a fresh selection showed empty form fields.
         if (isEditingRef.current) {
-          cancelEditing();
+          cancelEditingRef.current();
         } else {
-          startEditing();
+          startEditingRef.current();
         }
         return;
       }
       if (e.key === 'F5') {
         e.preventDefault();
         if (selectedCall && selectedCall.status === 'dispatched') {
-          handleStatusChange(selectedCall.id, 'enroute');
+          handleStatusChangeRef.current(selectedCall.id, 'enroute');
         } else {
           fetchData(); // Refresh if no enroute action available
         }
@@ -1197,12 +1197,12 @@ export default function DispatchPage() {
       }
       if (e.key === 'F6' && selectedCall && selectedCall.status === 'enroute') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'onscene');
+        handleStatusChangeRef.current(selectedCall.id, 'onscene');
         return;
       }
       if (e.key === 'F7' && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
+        handleClearWithDispositionRef.current(selectedCall.id);
         return;
       }
       // Shift+C is handled below the input guard — see comment near `if (isInput) return`.
@@ -1216,7 +1216,7 @@ export default function DispatchPage() {
       }
       if (e.key === 'F9' && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleHoldCall(selectedCall.id);
+        handleHoldCallRef.current(selectedCall.id);
         return;
       }
       if (e.key === 'F10') {
@@ -1239,7 +1239,7 @@ export default function DispatchPage() {
       // capital C in a note/narrative textarea pops the disposition modal.
       if (e.shiftKey && (e.key === 'C' || e.key === 'c') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
+        handleClearWithDispositionRef.current(selectedCall.id);
         return;
       }
 
@@ -1291,35 +1291,35 @@ export default function DispatchPage() {
       // D - Dispatch selected call
       if ((e.key === 'd' || e.key === 'D') && selectedCall && selectedCall.status === 'pending') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'dispatched');
+        handleStatusChangeRef.current(selectedCall.id, 'dispatched');
         return;
       }
 
       // E - Enroute
       if ((e.key === 'e' || e.key === 'E') && selectedCall && selectedCall.status === 'dispatched') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'enroute');
+        handleStatusChangeRef.current(selectedCall.id, 'enroute');
         return;
       }
 
       // O - On scene
       if ((e.key === 'o' || e.key === 'O') && selectedCall && selectedCall.status === 'enroute') {
         e.preventDefault();
-        handleStatusChange(selectedCall.id, 'onscene');
+        handleStatusChangeRef.current(selectedCall.id, 'onscene');
         return;
       }
 
       // C - Clear call (opens disposition prompt)
       if ((e.key === 'c' || e.key === 'C') && selectedCall && ['dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleClearWithDisposition(selectedCall.id);
+        handleClearWithDispositionRef.current(selectedCall.id);
         return;
       }
 
       // H - Hold call
       if ((e.key === 'h' || e.key === 'H') && selectedCall && ['pending', 'dispatched', 'enroute', 'onscene'].includes(selectedCall.status)) {
         e.preventDefault();
-        handleHoldCall(selectedCall.id);
+        handleHoldCallRef.current(selectedCall.id);
         return;
       }
 
@@ -1814,6 +1814,26 @@ export default function DispatchPage() {
   // Feature 17: Auto-archive cleared calls after 5 minutes
   const handleArchiveRef = useRef(handleArchive);
   useEffect(() => { handleArchiveRef.current = handleArchive; }, [handleArchive]);
+
+  // ── Refs for keydown-called handlers ───────────────────────────
+  // The F-key / letter shortcut effect (line ~1192) binds once-ish and
+  // captures handler references via closure. Without refs, the captured
+  // function is whatever existed at last bind — a stale `handleStatusChange`
+  // can fire against an out-of-date `selectedCall.id` if React batches a
+  // call-swap concurrent with a keystroke. Routing through refs that we
+  // update every render guarantees the shortcut always invokes the latest
+  // closure with fresh selectedCall in scope. Same pattern as
+  // handleArchiveRef above.
+  const handleStatusChangeRef = useRef(handleStatusChange);
+  useEffect(() => { handleStatusChangeRef.current = handleStatusChange; }, [handleStatusChange]);
+  const handleClearWithDispositionRef = useRef(handleClearWithDisposition);
+  useEffect(() => { handleClearWithDispositionRef.current = handleClearWithDisposition; }, [handleClearWithDisposition]);
+  const handleHoldCallRef = useRef(handleHoldCall);
+  useEffect(() => { handleHoldCallRef.current = handleHoldCall; }, [handleHoldCall]);
+  const startEditingRef = useRef(startEditing);
+  useEffect(() => { startEditingRef.current = startEditing; }, [startEditing]);
+  const cancelEditingRef = useRef(cancelEditing);
+  useEffect(() => { cancelEditingRef.current = cancelEditing; }, [cancelEditing]);
   useEffect(() => {
     const checkAutoArchive = () => {
       const now = Date.now();
@@ -5164,8 +5184,8 @@ export default function DispatchPage() {
                             <span className="text-[#e5e7eb] leading-relaxed flex-1 min-w-0">{renderFormattedText(note.text || '')}{note.edited_at && <span className="text-[#545454] text-[8px] ml-1">(edited)</span>}</span>
                             {isAdminOrManager && (
                               <div className="opacity-0 group-hover:opacity-100 transition-opacity flex gap-0.5 shrink-0">
-                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
-                                <button type="button" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
+                                <button type="button" aria-label="Edit note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#a0a0a0] transition-colors" title="Edit note" onClick={() => { setEditingNoteId(note.id); setEditingNoteText(note.text || ''); }}><Pencil className="w-3 h-3" /></button>
+                                <button type="button" aria-label="Delete note" className="p-2 sm:p-0.5 min-w-[44px] min-h-[44px] sm:min-w-0 sm:min-h-0 flex items-center justify-center text-[#6b7280] hover:text-[#ef4444] transition-colors" title="Delete note" onClick={() => handleDeleteNote(note.id)}><Trash2 className="w-3 h-3" /></button>
                               </div>
                             )}
                           </>
