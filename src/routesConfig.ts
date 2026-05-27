@@ -235,6 +235,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Phase 1 data layer + structured intake; PDF auto-parser deferred (uses /api/document-intake pipeline)' },
+  { prefix: '/api/skiptracer', router: skiptracer, auth: 'required',
+    note: 'Read-only over skiptracer_dossiers + microbilt_searches; legacy still owns POST /search' },
   { prefix: '/api/trespass-orders', router: trespassOrders, auth: 'required' },
   { prefix: '/api/audit', router: audit, auth: 'required' },
 

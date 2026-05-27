@@ -184,10 +184,18 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/offline' },
   // AI namespace (all)
   { kind: 'prefix', value: '/api/ai/' },
-  // Skip tracer v1 status/stats stubs (NOT skiptracer-v2, which is legacy)
+  // Skip tracer v1 — /status, /stats, /dossiers, /dossiers/:id are real
+  // handlers in /src/routes/skiptracer.ts (replaced the PR #667 stubs).
+  // Legacy still owns POST /search (the Microbilt round-trip), so route
+  // only the read paths here and let /search fall through to legacy.
   { kind: 'prefix', value: '/api/skiptracer/status' },
   { kind: 'prefix', value: '/api/skiptracer/stats' },
-  // IPED status / download info / hash sets
+  { kind: 'prefix', value: '/api/skiptracer/dossiers' },
+  // IPED — real handlers in /src/routes/iped.ts: /status, /hash-sets[/:id],
+  // /downloads (read-only over forensic_hash_sets + iped_imports). The
+  // broad prefix is preserved — any other /api/iped/* path still hits
+  // env.API (and 404s there), matching prior behavior. The legacy worker
+  // never implemented /api/iped/* so falling through wouldn't help.
   { kind: 'prefix', value: '/api/iped/' },
   // Personnel sub-paths — GET ports of the four roster/time/deployment
   // surfaces (PR replacing the PR #667 stubs). Scoped to GET so the
