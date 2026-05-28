@@ -243,13 +243,23 @@ si.post('/upload', async (c) => {
   const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
   const allDates = new Set<string>();
 
-  // ── Phase 1: per-file — acquire text + store to R2, IN PARALLEL ──
-  // No per-file field extraction here. PDFs contribute their pdfjs text
-  // (or a timeout-guarded container pass for scans); images get a single
-  // Vision OCR pass. Running these concurrently + bounding each with a
-  // timeout is what fixes the "stuck on upload" hang — the old code did
-  // one 70B field-extraction call PER file, sequentially, with no
-  // timeout, so 3 docs meant 3 serial stalls that never resolved.
+  // ── Phase 1+2: per-file text acquisition + field extraction, IN PARALLEL ──
+  // Each document is fully processed independently and concurrently:
+  //   • acquire text (pdfjs client text / container OCR / Vision for images)
+  //   • store to R2
+  //   • run field extraction on THAT doc alone, timeout-bounded
+  //
+  // Why per-doc instead of one combined call: a combined 90K-char prompt
+  // (dominated by a 47K-char court docket of summons boilerplate) blew the
+  // 25s timeout and lost EVERYTHING, including the recipient that lived in
+  // the 1KB field sheet (job 16009904). Extracting per-doc in parallel
+  // means the small structured docs (field sheet / info form) return in
+  // seconds and yield the recipient even if the giant docket's call times
+  // out. Resilience through independence — partial success beats all-or-
+  // nothing. Each doc's text is also capped so no single call runs long.
+  const PER_DOC_CAP = 40_000;
+  const EXTRACT_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+
   interface Collected {
     file: File;
     text: string;
@@ -257,13 +267,8 @@ si.post('/upload', async (c) => {
     ocrUsed: boolean;
     ocrEngine: string;
     r2Key: string | null;
-    // Images carry their own Vision extraction; PDFs share the combined one.
-    imageFields?: Record<string, ExtractedField>;
-    imageDocType?: string;
-    imageConfidence?: number;
-    imageModel?: string;
-    imageMs?: number;
-    error?: string;
+    ex: ExtractionResult;   // per-document field extraction
+    error?: string;          // file-level (read/store) error
   }
 
   const emptyExtraction = (model: string, error?: string): ExtractionResult => ({
@@ -277,78 +282,82 @@ si.post('/upload', async (c) => {
     try {
       const bytes = new Uint8Array(await file.arrayBuffer());
 
+      // Images: Vision does OCR + extraction in one timeout-bounded pass.
       if (isImage(file.type)) {
         const ex = await withTimeout(
           extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
         ).catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
         for (const d of ex.allDates) allDates.add(d);
-        return {
-          file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: 'workers-ai-vision', r2Key,
-          imageFields: ex.fields, imageDocType: ex.documentType,
-          imageConfidence: ex.confidence, imageModel: ex.model, imageMs: ex.ms,
-          error: ex.error,
-        };
+        return { file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: 'workers-ai-vision', r2Key, ex };
       }
 
+      // PDFs: acquire text, then extract fields from THIS doc alone.
       if (isPdf(file.type)) {
+        let text = '';
+        let ocrEngine = 'pdfjs-client';
+        let ocrUsed = false;
+        let pageCount = 0;
         const clientText = clientTextByName.get(file.name) || '';
         if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
-          return { file, text: clientText, pageCount: 0, ocrUsed: false, ocrEngine: 'pdfjs-client', r2Key };
+          text = clientText;
+        } else {
+          try {
+            const txt = await withTimeout(
+              extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+              CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+            );
+            text = txt.text; pageCount = txt.page_count; ocrUsed = txt.ocr_used;
+            ocrEngine = txt.ocr_used ? 'tesseract' : 'pdftotext';
+          } catch {
+            text = clientText; ocrEngine = 'container-unavailable';
+          }
         }
-        try {
-          const txt = await withTimeout(
-            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
-            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
-          );
-          return {
-            file, text: txt.text, pageCount: txt.page_count, ocrUsed: txt.ocr_used,
-            ocrEngine: txt.ocr_used ? 'tesseract' : 'pdftotext', r2Key,
-          };
-        } catch {
-          return { file, text: clientText, pageCount: 0, ocrUsed: false, ocrEngine: 'container-unavailable', r2Key };
-        }
+        const ex = text.trim().length >= 20
+          ? await withTimeout(
+              extractFromText(c.env.AI, text.slice(0, PER_DOC_CAP)),
+              AI_TIMEOUT_MS, 'Field extraction timed out',
+            ).catch((e) => emptyExtraction(EXTRACT_MODEL, e instanceof Error ? e.message : String(e)))
+          : emptyExtraction(EXTRACT_MODEL, 'Insufficient text to extract');
+        ex.rawText = text;
+        for (const d of ex.allDates) allDates.add(d);
+        return { file, text, pageCount, ocrUsed, ocrEngine, r2Key, ex };
       }
 
-      return { file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'unsupported', r2Key, error: `Unsupported type ${file.type}` };
+      return {
+        file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'unsupported', r2Key,
+        ex: emptyExtraction(EXTRACT_MODEL, `Unsupported type ${file.type}`),
+        error: `Unsupported type ${file.type}`,
+      };
     } catch (err) {
-      return { file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key, error: err instanceof Error ? err.message : String(err) };
+      const msg = err instanceof Error ? err.message : String(err);
+      return { file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key, ex: emptyExtraction(EXTRACT_MODEL, msg), error: msg };
     }
   }));
 
-  // ── Phase 2: ONE combined field extraction over all collected text ──
-  // This is the proven /intake approach — a single 70B call for the whole
-  // packet instead of one-per-file. Timeout-guarded.
-  const combinedText = collected
-    .map((c2) => (c2.text ? `--- ${c2.file.name} ---\n${c2.text}` : ''))
-    .filter(Boolean).join('\n\n');
-
-  let combined: ExtractionResult = emptyExtraction('');
-  combined.rawText = combinedText;
-  if (combinedText.trim().length >= 20) {
-    combined = await withTimeout(
-      extractFromText(c.env.AI, combinedText), AI_TIMEOUT_MS, 'Field extraction timed out',
-    ).catch((e) => emptyExtraction('', e instanceof Error ? e.message : String(e)));
-  }
-  for (const d of combined.allDates) allDates.add(d);
-
-  // Merge: start from the combined PDF extraction, let any image's own
-  // Vision fields fill/override where they have higher confidence.
-  const mergedFields: Record<string, ExtractedField> = { ...combined.fields };
+  // ── Merge per-document fields by confidence ──
+  // Field-sheet / info-form docs (structured, recipient-dense) usually win
+  // each field; the court docket fills gaps. Highest-confidence value per
+  // field survives — so a timed-out docket simply contributes nothing
+  // rather than blanking the recipient the field sheet already provided.
+  const mergedFields: Record<string, ExtractedField> = {};
+  let bestConfidence = 0;
+  let bestDocType = 'other';
+  // synthetic combined.error placeholder so downstream warning logic can
+  // report the most relevant extraction failure.
+  let combinedError: string | null = null;
   for (const c2 of collected) {
-    if (!c2.imageFields) continue;
-    for (const [k, v] of Object.entries(c2.imageFields)) {
+    for (const [k, v] of Object.entries(c2.ex.fields)) {
       const cur = mergedFields[k];
       if (!cur || (v.value && v.confidence > cur.confidence)) mergedFields[k] = v;
     }
-  }
-  let bestConfidence = combined.confidence;
-  let bestDocType = combined.documentType;
-  for (const c2 of collected) {
-    if ((c2.imageConfidence ?? 0) > bestConfidence) {
-      bestConfidence = c2.imageConfidence as number;
-      bestDocType = c2.imageDocType || bestDocType;
+    if (c2.ex.confidence > bestConfidence) {
+      bestConfidence = c2.ex.confidence;
+      bestDocType = c2.ex.documentType;
     }
+    if (c2.ex.error && !combinedError) combinedError = c2.ex.error;
   }
+  // Expose under the same name the rest of the handler already reads.
+  const combined = { error: combinedError } as { error: string | null };
 
   // ── Phase 3: persist a serve_intake_documents row per file ──
   const documents: any[] = [];
@@ -357,17 +366,17 @@ si.post('/upload', async (c) => {
       documents.push({ file_name: c2.file.name, status: 'failed', error: c2.error });
       continue;
     }
-    const docFields = c2.imageFields ?? combined.fields;
-    const docType = c2.imageDocType ?? combined.documentType;
-    const docConf = c2.imageConfidence ?? combined.confidence;
-    const docModel = c2.imageModel ?? combined.model;
-    const docMs = c2.imageMs ?? combined.ms;
+    // Per-document extraction now lives on c2.ex (Vision for images,
+    // text-LLM for PDFs) — no combined-call indirection.
+    const docFields = c2.ex.fields;
+    const docType = c2.ex.documentType;
+    const docConf = c2.ex.confidence;
+    const docModel = c2.ex.model;
+    const docMs = c2.ex.ms;
     const hasText = (c2.text || '').trim().length > 0;
-    // Capture the extraction error (image's own, else the combined-call
-    // error) so a confidence=0 row is diagnosable instead of silent. A
-    // row with text but no fields stores WHY (timeout / parse miss / AI
-    // error) in error_message.
-    const docError = c2.error || c2.imageFields ? c2.error ?? null : (combined.error ?? null);
+    // Capture this doc's own extraction error (timeout / parse miss / AI
+    // error) so a confidence=0 row is diagnosable instead of silent.
+    const docError = c2.error ?? c2.ex.error ?? null;
     const res = await execute(
       db,
       `INSERT INTO serve_intake_documents (
