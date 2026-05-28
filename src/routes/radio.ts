@@ -35,10 +35,10 @@ function rangeClause(range: string | undefined): { sql: string; args: unknown[] 
   if (!range || range === 'all' || !ALLOWED_RANGES.has(range)) return { sql: '', args: [] };
   // SQLite datetime() math in TEXT comparison form — same shape as the
   // other route files (patrol/audit) so query plans stay consistent.
-  if (range === 'today') return { sql: " AND date(transmitted_at) = date('now','-7 hours')", args: [] };
-  if (range === 'h24')   return { sql: " AND transmitted_at >= datetime('now','-1 day','-7 hours')", args: [] };
-  if (range === 'week')  return { sql: " AND transmitted_at >= datetime('now','-7 days','-7 hours')", args: [] };
-  if (range === 'month') return { sql: " AND transmitted_at >= datetime('now','-30 days','-7 hours')", args: [] };
+  if (range === 'today') return { sql: " AND date(transmitted_at) = date('now')", args: [] };
+  if (range === 'h24')   return { sql: " AND transmitted_at >= datetime('now','-1 day')", args: [] };
+  if (range === 'week')  return { sql: " AND transmitted_at >= datetime('now','-7 days')", args: [] };
+  if (range === 'month') return { sql: " AND transmitted_at >= datetime('now','-30 days')", args: [] };
   return { sql: '', args: [] };
 }
 
@@ -116,7 +116,7 @@ rt.delete('/channels/:id', async (c) => {
   // Soft-delete — keeps transmission FK pointers valid for audit.
   await execute(
     getDb(c.env),
-    "UPDATE radio_channels SET archived_at = datetime('now','-7 hours') WHERE id = ? AND archived_at IS NULL",
+    "UPDATE radio_channels SET archived_at = datetime('now') WHERE id = ? AND archived_at IS NULL",
     id,
   );
   broadcastAll('radio_update', { action: 'channel_archived', channel_id: id });
@@ -283,7 +283,7 @@ rt.get('/stats', async (c) => {
     `SELECT CAST((strftime('%s','now') - strftime('%s', transmitted_at)) / 3600 AS INTEGER) AS hours_ago,
             COUNT(*) AS n
        FROM radio_transmissions
-       WHERE transmitted_at >= datetime('now','-1 day','-7 hours')
+       WHERE transmitted_at >= datetime('now','-1 day')
        GROUP BY hours_ago`,
   );
   const sparkline = Array.from({ length: 24 }, (_, i) => hourly.find((r) => r.hours_ago === i)?.n ?? 0);
@@ -297,7 +297,7 @@ rt.get('/stats', async (c) => {
             CAST(strftime('%H', transmitted_at) AS INTEGER) AS hour,
             COUNT(*) AS n
        FROM radio_transmissions
-       WHERE transmitted_at >= datetime('now','-7 days','-7 hours')
+       WHERE transmitted_at >= datetime('now','-7 days')
        GROUP BY dow, hour`,
   );
   const heatmap: number[][] = Array.from({ length: 7 }, () => Array(24).fill(0));
@@ -309,8 +309,8 @@ rt.get('/stats', async (c) => {
   const totals = await queryFirst<{ today: number; week: number; all: number }>(
     db,
     `SELECT
-       SUM(CASE WHEN date(transmitted_at) = date('now','-7 hours') THEN 1 ELSE 0 END) AS today,
-       SUM(CASE WHEN transmitted_at >= datetime('now','-7 days','-7 hours') THEN 1 ELSE 0 END) AS week,
+       SUM(CASE WHEN date(transmitted_at) = date('now') THEN 1 ELSE 0 END) AS today,
+       SUM(CASE WHEN transmitted_at >= datetime('now','-7 days') THEN 1 ELSE 0 END) AS week,
        COUNT(*) AS all FROM radio_transmissions`,
   );
 

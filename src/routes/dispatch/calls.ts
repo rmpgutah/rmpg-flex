@@ -221,7 +221,7 @@ calls.post('/', async (c) => {
     // behind wall-clock, but the offset stays stable across the year so
     // audit trails are unambiguous.
     cols.push('call_number', 'dispatcher_id', 'created_at', 'updated_at');
-    vals.push('?', '?', "datetime('now', '-7 hours')", "datetime('now', '-7 hours')");
+    vals.push('?', '?', "datetime('now')", "datetime('now')");
     bindParams.push(callNumber, userId);
 
     // Same whitelist applies on create as on edit. Use the
@@ -275,7 +275,7 @@ calls.post('/', async (c) => {
         await execute(
           db,
           `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
-           VALUES (?, ?, ?, ?, ?, datetime('now', '-7 hours'))`,
+           VALUES (?, ?, ?, ?, ?, datetime('now'))`,
           userId, 'CREATE', 'call', callId, `Created call ${callNumber}`,
         );
       } catch (auditErr) {
@@ -391,7 +391,7 @@ calls.get('/archive-bulk', async (c) => {
 calls.post('/archive-bulk', async (c) => {
   try {
     const db = getDb(c.env);
-    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now', '-7 hours') WHERE status IN ('cleared','closed','cancelled')");
+    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE status IN ('cleared','closed','cancelled')");
     return c.json({ message: 'Bulk archive completed' });
   } catch (err) {
     return c.json({ error: 'Bulk archive failed' }, 500);
@@ -546,7 +546,7 @@ calls.put('/:id', async (c) => {
     }
 
     // updated_at lives on base; bump it on any change so callers see it.
-    baseUpdates.push("updated_at = datetime('now', '-7 hours')");
+    baseUpdates.push("updated_at = datetime('now')");
     baseParams.push(id);
     await execute(db, `UPDATE calls_for_service SET ${baseUpdates.join(', ')} WHERE id = ?`, ...baseParams);
 
@@ -622,9 +622,9 @@ calls.post('/:id/status', async (c) => {
 
     const timeField = `${status}_at`;
     const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at'];
-    const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now', '-7 hours'))` : '';
+    const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now'))` : '';
 
-    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now', '-7 hours')${timeSql} WHERE id = ?`, status, id);
+    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql} WHERE id = ?`, status, id);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
@@ -637,7 +637,7 @@ calls.post('/:id/archive', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now', '-7 hours') WHERE id = ?", id);
+    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE id = ?", id);
     return c.json({ message: 'Archived' });
   } catch (err) { return c.json({ error: 'Archive failed' }, 500); }
 });
@@ -694,7 +694,7 @@ calls.post('/:id/assign-unit', async (c) => {
           WHERE active = 1
             AND latitude  BETWEEN ? AND ?
             AND longitude BETWEEN ? AND ?
-            AND (expires_at IS NULL OR expires_at >= datetime('now', '-7 hours'))`,
+            AND (expires_at IS NULL OR expires_at >= datetime('now'))`,
           call.latitude - dLat, call.latitude + dLat,
           call.longitude - dLng, call.longitude + dLng);
         const within50m = alerts.filter((a: any) => {
@@ -751,7 +751,7 @@ calls.post('/:id/dispatch', async (c) => {
     const assigned = new Set(JSON.parse(call.assigned_unit_ids || '[]') as number[]);
     for (const uid of unit_ids) assigned.add(uid);
 
-    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now', '-7 hours')) WHERE id = ?", JSON.stringify([...assigned]), id);
+    await execute(db, "UPDATE calls_for_service SET assigned_unit_ids = ?, status = 'dispatched', dispatched_at = COALESCE(dispatched_at, datetime('now')) WHERE id = ?", JSON.stringify([...assigned]), id);
 
     for (const uid of unit_ids) {
       await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);

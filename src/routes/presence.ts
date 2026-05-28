@@ -13,7 +13,7 @@ presence.get('/', async (c) => {
         s.created_at as last_seen
       FROM sessions s
       JOIN users u ON s.user_id = u.id
-      WHERE s.expires_at > datetime('now', '-7 hours')
+      WHERE s.expires_at > datetime('now')
       GROUP BY s.user_id
       ORDER BY u.full_name
     `);

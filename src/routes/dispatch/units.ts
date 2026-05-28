@@ -60,7 +60,7 @@ units.put('/:id', async (c) => {
       params.push(v ?? null);
     }
     if (!sets.length) return c.json({ message: 'No changes' });
-    sets.push("updated_at = datetime('now', '-7 hours')");
+    sets.push("updated_at = datetime('now')");
     params.push(id);
     await execute(db, `UPDATE units SET ${sets.join(', ')} WHERE id = ?`, ...params);
     const updated = await queryFirst(db, 'SELECT * FROM units WHERE id = ?', id);
