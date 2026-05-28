@@ -7,6 +7,9 @@ import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
+// Parse server timestamps as UTC (naive strings) — raw new Date() reads
+// them as browser-local and skews every elapsed/age calc by the offset.
+import { parseTimestamp } from '../utils/dateUtils';
 
 // Feature 15: Call Source Icons
 const SOURCE_ICONS: Record<string, React.ElementType> = {
@@ -23,8 +26,8 @@ function formatCallDuration(createdAt: string, status?: string, archivedAt?: str
   // For archived/closed/cancelled calls, show the final duration (not a running timer)
   if (status && ['archived', 'closed', 'cancelled'].includes(status)) {
     const endTime = archivedAt || createdAt;
-    const start = new Date(createdAt).getTime();
-    const end = new Date(endTime).getTime();
+    const start = parseTimestamp(createdAt).getTime();
+    const end = parseTimestamp(endTime).getTime();
     const elapsed = end - start;
     if (elapsed <= 0 || !isFinite(elapsed)) return '0:00';
     const totalSec = Math.floor(elapsed / 1000);
@@ -34,7 +37,7 @@ function formatCallDuration(createdAt: string, status?: string, archivedAt?: str
     if (hrs > 0) return `${hrs}:${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
     return `${mins}:${String(secs).padStart(2, '0')}`;
   }
-  const elapsed = Date.now() - new Date(createdAt).getTime();
+  const elapsed = Date.now() - parseTimestamp(createdAt).getTime();
   if (elapsed < 0 || !isFinite(elapsed)) return '0:00';
   const totalSec = Math.floor(elapsed / 1000);
   const hrs = Math.floor(totalSec / 3600);
@@ -49,7 +52,7 @@ function calcResponseTime(call: CallForService): string | null {
   if (!call.dispatched_at || !call.created_at) return null;
   if (!['cleared', 'closed', 'archived'].includes(call.status) && !call.onscene_at) return null;
   const endTime = call.onscene_at || call.cleared_at || call.dispatched_at;
-  const diff = new Date(endTime).getTime() - new Date(call.created_at).getTime();
+  const diff = parseTimestamp(endTime).getTime() - parseTimestamp(call.created_at).getTime();
   if (diff < 0 || !isFinite(diff)) return null;
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m`;
@@ -126,7 +129,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       // Feature 12: Update hold timer
       if (holdTimerRef.current) {
         if (call.status === 'pending' && !call.assigned_units?.length) {
-          const holdMs = Date.now() - new Date(call.created_at).getTime();
+          const holdMs = Date.now() - parseTimestamp(call.created_at).getTime();
           const holdMins = Math.floor(holdMs / 60000);
           holdTimerRef.current.textContent = `HOLD ${holdMins}m`;
           holdTimerRef.current.style.display = 'inline-flex';
@@ -136,7 +139,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
       }
 
       // Legacy escalation logic — guard against missing/invalid created_at
-      const createdTime = call.created_at ? new Date(call.created_at).getTime() : NaN;
+      const createdTime = call.created_at ? parseTimestamp(call.created_at).getTime() : NaN;
       const diffMin = Number.isFinite(createdTime) ? Math.floor((Date.now() - createdTime) / 60000) : -1;
       const isPending = call.status === 'pending';
       setShouldEscalate(isPending && (
@@ -278,7 +281,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           {call.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(call.status) && (() => {
             const terminalTime = call.closed_at || call.cleared_at;
             if (!terminalTime) return null;
-            const elapsed = Date.now() - new Date(terminalTime).getTime();
+            const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
             const hoursLeft = Math.max(0, 72 - elapsed / (60 * 60 * 1000));
             if (elapsed >= 72 * 60 * 60 * 1000) {
               return (
@@ -298,7 +301,7 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
           })()}
           {/* 72-hour deadline for active PSO calls (from creation time) */}
           {call.incident_type === 'pso_client_request' && !['cleared', 'closed', 'archived', 'cancelled'].includes(call.status) && call.created_at && (() => {
-            const deadline = new Date(new Date(call.created_at).getTime() + 72 * 3600000);
+            const deadline = new Date(parseTimestamp(call.created_at).getTime() + 72 * 3600000);
             const remaining = deadline.getTime() - Date.now();
             if (remaining <= 0) return (
               <span className="text-[8px] font-bold font-mono text-red-400 bg-red-900/40 border border-red-600/50 px-1 py-0 animate-pulse">
