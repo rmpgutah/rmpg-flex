@@ -242,6 +242,13 @@ export default function ServeIntakePage() {
         for (const f of filesWithBlobs) {
           if (f.file) formData.append('files[]', f.file, f.name);
         }
+        // Send the browser pdfjs text alongside the files. The server
+        // uses it for born-digital PDFs so it doesn't have to round-trip
+        // through the OCR container (which isn't rolled out in prod).
+        // Only empty/scanned PDFs fall through to the container path.
+        formData.append('client_text', JSON.stringify(
+          filesWithBlobs.map(f => ({ name: f.name, type: f.type, text: f.text || '' })),
+        ));
         const resp = await fetch('/api/serve-intake/upload', {
           method: 'POST',
           headers: { 'Authorization': `Bearer ${token}` },
