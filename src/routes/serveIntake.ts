@@ -79,6 +79,25 @@ const INTAKE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher', 'officer']
 function isPdf(mime: string): boolean { return mime === 'application/pdf'; }
 function isImage(mime: string): boolean { return mime.startsWith('image/'); }
 
+// Minimum browser-extracted text length to trust a PDF as "born-digital"
+// and skip the OCR container. A court summons cover page alone is ~800
+// chars; 200 comfortably clears sparse single-page exhibits while still
+// catching truly-empty scans (which return 0).
+const MIN_CLIENT_TEXT_CHARS = 200;
+
+// Hard ceiling on the PDF Tools container round-trip. The container is
+// currently NOT rolled out in prod (deploy uses --containers-rollout=none),
+// so this is mostly a guard against an indefinite hang — a missing/cold
+// container fetch is raced against this timeout and we fall back.
+const CONTAINER_TIMEOUT_MS = 12_000;
+
+function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, reject) => setTimeout(() => reject(new Error(label)), ms)),
+  ]);
+}
+
 async function storeToR2(env: Env['Bindings'], file: File, uploaderId: number | null): Promise<string> {
   const ts = Date.now();
   const safeName = (file.name || 'upload').replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80);
@@ -196,6 +215,23 @@ si.post('/upload', async (c) => {
     }
   }
 
+  // Client-provided pdfjs text, keyed by filename. The browser already
+  // ran pdfjs on each PDF during drag-drop; we use that text directly
+  // for born-digital PDFs instead of round-tripping through the PDF
+  // Tools container (which is NOT rolled out in prod — deploy uses
+  // --containers-rollout=none — so a container fetch would hang).
+  // Only genuinely empty PDFs (scans) fall through to the container.
+  const clientTextByName = new Map<string, string>();
+  const clientTextRaw = form.get('client_text');
+  if (typeof clientTextRaw === 'string') {
+    try {
+      const arr = JSON.parse(clientTextRaw) as Array<{ name?: string; text?: string }>;
+      for (const e of arr) {
+        if (e?.name) clientTextByName.set(e.name, (e.text || '').trim());
+      }
+    } catch { /* ignore malformed client_text — fall back to server extraction */ }
+  }
+
   const db = getDb(c.env);
   const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
   const documents: any[] = [];
@@ -212,14 +248,40 @@ si.post('/upload', async (c) => {
     let ocrEngine: string;
     try {
       if (isImage(file.type)) {
+        // Images go straight to the Workers AI vision model — no
+        // container needed (Vision does OCR + extraction in one pass).
         extraction = await extractFromImage(c.env.AI, bytes);
         ocrEngine = 'workers-ai-vision';
       } else if (isPdf(file.type)) {
-        const txt = await extractTextFromPdf(container, bytes, file.name || 'doc.pdf');
-        pageCount = txt.page_count;
-        ocrUsed = txt.ocr_used;
-        ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-        extraction = await extractFromText(c.env.AI, txt.text);
+        const clientText = clientTextByName.get(file.name) || '';
+        if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
+          // Born-digital PDF — the browser's pdfjs pass already produced
+          // usable text. Use it directly; the container is unnecessary.
+          ocrEngine = 'pdfjs-client';
+          extraction = await extractFromText(c.env.AI, clientText);
+        } else {
+          // Sparse/empty browser text → probably a scan. Try the
+          // container OCR path, but race it against a timeout so a
+          // missing/cold container can't hang the whole request.
+          try {
+            const txt = await withTimeout(
+              extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+              CONTAINER_TIMEOUT_MS,
+              'PDF Tools container timed out or unavailable',
+            );
+            pageCount = txt.page_count;
+            ocrUsed = txt.ocr_used;
+            ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
+            extraction = await extractFromText(c.env.AI, txt.text);
+          } catch {
+            // Container unavailable — fall back to whatever sparse text
+            // the browser managed (better than failing the upload). The
+            // doc row is still created so the file is stored in R2 and
+            // can be re-OCR'd later when the container is rolled out.
+            ocrEngine = 'container-unavailable';
+            extraction = await extractFromText(c.env.AI, clientText);
+          }
+        }
       } else {
         documents.push({ file_name: file.name, status: 'failed', error: `Unsupported type ${file.type}` });
         continue;
