@@ -755,7 +755,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
     const currentUnits = safeJson<number[]>(call.assigned_unit_ids, []);
     if (!currentUnits.includes(Number(nearest.id))) currentUnits.push(Number(nearest.id));
 
-    const now = new Date(Date.now() - 6 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
+    const now = new Date(Date.now() - 7 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
 
     await execute(db, `
       UPDATE calls_for_service
@@ -824,7 +824,7 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
       return c.json({ error: 'details must be 5000 characters or fewer', code: 'DETAILS_TOO_LONG' }, 400);
     }
 
-    let timestamp = new Date(Date.now() - 6 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
+    let timestamp = new Date(Date.now() - 7 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
     if (body.created_at) {
       if (typeof body.created_at !== 'string' || body.created_at.length > 50) {
         return c.json({ error: 'created_at must be a valid date string', code: 'CREATEDAT_INVALID' }, 400);

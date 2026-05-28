@@ -4,6 +4,17 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 
 const units = new Hono<Env>();
 
+// Columns a client may set via PUT /dispatch/units/:id. The handler
+// interpolates body keys directly into the SQL SET clause, so without this
+// allowlist any key would be concatenated into the query (column-name
+// injection) and any column writable. Keys outside this set are ignored.
+// `updated_at` is intentionally omitted — the handler stamps it itself.
+const UPDATABLE_UNIT_COLUMNS = new Set([
+  'call_sign', 'officer_id', 'status', 'latitude', 'longitude',
+  'vehicle_id', 'capabilities', 'current_call_id', 'current_call_number',
+  'last_status_change', 'audio_mode',
+]);
+
 // GET /dispatch/units
 units.get('/', async (c) => {
   try {
@@ -55,7 +66,7 @@ units.put('/:id', async (c) => {
     const sets: string[] = [];
     const params: unknown[] = [];
     for (const [k, v] of Object.entries(body)) {
-      if (['id', 'created_at'].includes(k)) continue;
+      if (!UPDATABLE_UNIT_COLUMNS.has(k)) continue;
       sets.push(`${k} = ?`);
       params.push(v ?? null);
     }

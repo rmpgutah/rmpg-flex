@@ -84,8 +84,14 @@ calls.get('/', async (c) => {
     if (archived === 'true') where += " AND c.status = 'archived'";
     else if (archived !== 'all') where += " AND c.status != 'archived'";
 
-    if (active === 'true' || (!status && !archived)) {
+    if (active === 'true' || (!status && !archived && !priority && !startDate && !endDate && !search)) {
+      // Override replaces the accumulated WHERE with a static clause that has
+      // no placeholders. Any params pushed above (priority/date/search) would
+      // then outnumber the placeholders and trip D1's bind-count error on the
+      // COUNT and SELECT below, so clear them. The scope guard also stops this
+      // implicit "active only" default from silently discarding real filters.
       where = "WHERE c.status IN ('dispatched','enroute','onscene','pending','open')";
+      params.length = 0;
     }
 
     const pageNum = Math.max(1, parseInt(page || '1', 10));
@@ -105,7 +111,7 @@ calls.get('/', async (c) => {
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
       ${where}
-      ORDER BY c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
+      ORDER BY c.priority_score IS NULL, c.priority_score DESC, c.created_at DESC
       LIMIT ? OFFSET ?
     `, ...params, limitNum, offset);
 
