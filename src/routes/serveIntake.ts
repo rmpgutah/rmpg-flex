@@ -92,11 +92,15 @@ const MIN_CLIENT_TEXT_CHARS = 200;
 // container fetch is raced against this timeout and we fall back.
 const CONTAINER_TIMEOUT_MS = 12_000;
 
-// Per-call ceiling on any single Workers AI invocation (combined text
+// Per-call ceiling on any single Workers AI invocation (per-doc text
 // extraction or per-image Vision). Without this a slow/stalled model
 // call hangs the whole /upload request — the original "stuck on upload"
 // cause. On timeout we record the doc as failed rather than blocking.
-const AI_TIMEOUT_MS = 25_000;
+// 35s (was 25s): real extractions land ~20-22s even after dropping the
+// json_schema constraint, so 25s left only a 3-5s margin and tipped over
+// under model load. Calls run in PARALLEL, so this is the per-doc ceiling
+// AND roughly the whole-request ceiling — not additive across docs.
+const AI_TIMEOUT_MS = 35_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([

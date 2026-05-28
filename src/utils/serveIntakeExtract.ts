@@ -346,6 +346,32 @@ export function normalizePriority(raw: string): ServePriority {
   return 'normal';
 }
 
+// serve_queue.deadline must hold a real calendar date (it drives the
+// overdue check: WHERE deadline < datetime('now')). The LLM sometimes
+// returns a RELATIVE phrase instead — e.g. "21 days" lifted from a
+// summons's "answer within 21 days" language — which would compare
+// lexically against ISO dates and silently never trip overdue. Only
+// accept values that parse as an actual date; otherwise null.
+// Accepts ISO (YYYY-MM-DD) and common US (M/D/YYYY) forms, normalizing
+// to ISO. Returns null for anything that isn't a concrete date.
+export function normalizeDeadline(raw: string): string | null {
+  const s = (raw || '').trim();
+  if (!s) return null;
+  // ISO: 2026-05-22 (optionally with time) — take the date part.
+  const iso = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  // US: 5/22/2026 or 05/22/26
+  const us = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (us) {
+    const mm = us[1].padStart(2, '0');
+    const dd = us[2].padStart(2, '0');
+    const yyyy = us[3].length === 2 ? `20${us[3]}` : us[3];
+    return `${yyyy}-${mm}-${dd}`;
+  }
+  // Anything else ("21 days", "upon service", free text) → not a date.
+  return null;
+}
+
 export interface QueueRow {
   recipient_name: string | null;
   recipient_address: string | null;
@@ -391,7 +417,9 @@ export function fieldsToQueueRow(fields: Record<string, ExtractedField>): QueueR
     client_name: get('client_name'),
     attorney_name: get('attorney_name'),
     priority: normalizePriority(get('priority') || ''),
-    deadline: get('service_deadline'),
+    // Only store a real calendar date — a relative phrase like "21 days"
+    // would silently break the overdue check (see normalizeDeadline).
+    deadline: normalizeDeadline(get('service_deadline') || ''),
     service_instructions: get('service_instructions'),
     notes: get('service_windows'),
   };
