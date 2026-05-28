@@ -5,6 +5,7 @@ import {
   Radio, MapPin, Eye, ArrowRight, TrendingUp, Gavel, Briefcase, Target,
   CheckCircle, XCircle, Sun, Cloud, CloudRain, CloudSnow, CloudLightning,
   CloudDrizzle, CloudFog, Snowflake, Timer, Navigation, Mail, Zap, RefreshCw,
+  Layers, Map as MapIcon,
 } from 'lucide-react';
 import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
@@ -55,6 +56,8 @@ interface DashboardApiResponse {
   avgResponseMinutes: number | null;
   callsByPriority: { priority: string; count: number }[];
   callsByStatus: { status: string; count: number }[];
+  /** Legacy worker emits this key name; client accepts either. */
+  by_status?: { status: string; count: number }[];
   recentActivity: unknown[];
   officersOnDuty: unknown[];
   callsByHour: { hour: string; count: number }[];
@@ -333,6 +336,50 @@ function pollFreshnessColor(p: {
   return 'text-amber-400';                       // overdue — at least one cycle missed
 }
 
+// ─── Calls-by-status pipeline config ─────────────────────
+// The CAD call lifecycle, in flow order. `key` matches the status string the
+// dispatch backend stores on calls_for_service (see dispatch/aggregates.ts).
+// Tune labels/colors here if RMPG's status vocabulary changes — anything the
+// backend returns that isn't listed falls through to an "Other" bucket so no
+// data is silently dropped.
+const STATUS_PIPELINE: { key: string; label: string; color: string }[] = [
+  { key: 'pending', label: 'Pending', color: '#f59e0b' },
+  { key: 'dispatched', label: 'Dispatched', color: '#888888' },
+  { key: 'enroute', label: 'En Route', color: '#3b82f6' },
+  { key: 'onscene', label: 'On Scene', color: '#a855f7' },
+  { key: 'cleared', label: 'Cleared', color: '#22c55e' },
+];
+
+// Build a contiguous N-day series (oldest→newest) from sparse daily rows,
+// zero-filling days with no calls so the trend line never has gaps.
+function buildVolumeSeries(rows: { date: string; count: number }[], days: number) {
+  const map = new Map(rows.map((r) => [r.date, r.count]));
+  const out: { date: string; label: string; count: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const iso = d.toISOString().slice(0, 10);
+    out.push({
+      date: iso,
+      label: d.toLocaleDateString('en-US', { weekday: 'short' }),
+      count: map.get(iso) ?? 0,
+    });
+  }
+  return out;
+}
+
+// Status-dot color for a live unit's status (dispatch_units.status enum).
+function unitStatusColor(status: string | undefined): string {
+  switch (status) {
+    case 'available': return '#22c55e';
+    case 'dispatched': return '#888888';
+    case 'enroute': return '#3b82f6';
+    case 'onscene': return '#a855f7';
+    case 'off_duty': return '#555555';
+    default: return '#666666';
+  }
+}
+
 // ─── Component ───────────────────────────────────────────
 
 export default function DashboardPage() {
@@ -381,6 +428,16 @@ export default function DashboardPage() {
   } | null>(null);
   const [courtDatesCount, setCourtDatesCount] = useState(0);
   const [expiringCertsCount, setExpiringCertsCount] = useState(0);
+
+  // ═══ Operational visuals (added this session) ═══
+  // callsByStatus rides on the existing /reports/dashboard payload (zero new
+  // fetch). units / callVolume / callsByZone come from separate endpoints and
+  // degrade gracefully to empty — the widgets self-hide when there's no data,
+  // matching the existing optional-widget pattern in fetchWidgets().
+  const [callsByStatus, setCallsByStatus] = useState<{ status: string; count: number }[]>([]);
+  const [units, setUnits] = useState<any[]>([]);
+  const [callVolume, setCallVolume] = useState<{ date: string; count: number }[]>([]);
+  const [callsByZone, setCallsByZone] = useState<{ zone: string; count: number }[]>([]);
 
   // Shift countdown timer — update every second
   useEffect(() => {
@@ -431,6 +488,7 @@ export default function DashboardPage() {
       ]);
 
       setStats(mapDashboardStats(dashboardRaw));
+      setCallsByStatus(dashboardRaw.callsByStatus ?? dashboardRaw.by_status ?? []);
       if (dashboardRaw.pso) setPsoStats(dashboardRaw.pso);
       setActivities((activityRaw ?? []).map(mapActivityEntry));
       setBolos(
@@ -483,7 +541,7 @@ export default function DashboardPage() {
     const safe = async <T,>(url: string): Promise<T | null> => {
       try { return await apiFetch<T>(url); } catch (err) { console.warn(`[Dashboard] widget fetch failed (${url}):`, err); return null; }
     };
-    const [sc, cr, pc, ep, uc, or_, ss, cd, ec] = await Promise.all([
+    const [sc, cr, pc, ep, uc, or_, ss, cd, ec, un, cv, cz] = await Promise.all([
       safe<any>('/reports/shift-comparison'),
       safe<any>('/reports/clearance-rate'),
       safe<any>('/reports/patrol-coverage'),
@@ -493,6 +551,9 @@ export default function DashboardPage() {
       safe<any>('/admin/shift-stats'),
       safe<any>('/admin/upcoming-court-dates?days=30'),
       safe<any>('/admin/expiring-certifications?days=30'),
+      safe<any[]>('/dispatch/units'),
+      safe<any>('/dispatch/aggregates/call-volume?days=7'),
+      safe<any>('/dispatch/aggregates/by-zone?days=7'),
     ]);
     if (sc) setShiftComparison(sc);
     if (cr) setClearanceRate(cr);
@@ -503,6 +564,9 @@ export default function DashboardPage() {
     if (ss) setShiftStats(ss);
     if (cd) setCourtDatesCount(cd.count ?? 0);
     if (ec) setExpiringCertsCount((ec.expiring_count ?? 0) + (ec.expired_count ?? 0));
+    if (Array.isArray(un)) setUnits(un);
+    if (cv?.by_day) setCallVolume(cv.by_day);
+    if (cz?.by_zone) setCallsByZone(cz.by_zone);
   }, []);
 
   useEffect(() => {
@@ -1158,6 +1222,201 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════════════
+          Operational Visuals — call status pipeline, 7-day volume
+          trend, live unit board, and calls-by-zone heat.
+          ═══════════════════════════════════════════════════════ */}
+      {/* Calls by Status pipeline + 7-Day Volume Trend */}
+      <div className={`grid ${isMobile ? 'grid-cols-1 gap-3' : 'grid-cols-1 lg:grid-cols-2 gap-4'}`}>
+        {/* Calls by Status — pipeline bar (data already on the dashboard payload) */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Calls by status">
+          <PanelTitleBar title="CALLS BY STATUS — TODAY" icon={Layers} />
+          <div className="p-3">
+            {(() => {
+              const norm = (s: string) => s.toLowerCase().replace(/[\s_-]/g, '');
+              const counts = new Map<string, number>();
+              for (const row of callsByStatus) counts.set(norm(row.status), (counts.get(norm(row.status)) ?? 0) + (row.count ?? 0));
+              const segments = STATUS_PIPELINE.map((s) => ({ ...s, count: counts.get(norm(s.key)) ?? 0 }));
+              const knownKeys = new Set(STATUS_PIPELINE.map((s) => norm(s.key)));
+              const otherCount = callsByStatus.reduce((sum, r) => knownKeys.has(norm(r.status)) ? sum : sum + (r.count ?? 0), 0);
+              const all = otherCount > 0 ? [...segments, { key: 'other', label: 'Other', color: '#444444', count: otherCount }] : segments;
+              const total = all.reduce((sum, s) => sum + s.count, 0);
+
+              if (total === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center h-[120px] gap-2" role="status">
+                    <Layers className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                    <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none">No calls today</span>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-3">
+                  {/* Stacked proportional bar */}
+                  <div className="flex h-5 w-full rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner bg-surface-sunken" role="img" aria-label="Call status distribution">
+                    {all.filter((s) => s.count > 0).map((s) => (
+                      <div
+                        key={s.key}
+                        className="h-full transition-all duration-500 ease-out"
+                        style={{ width: `${(s.count / total) * 100}%`, backgroundColor: s.color }}
+                        title={`${s.label}: ${s.count} (${Math.round((s.count / total) * 100)}%)`}
+                      />
+                    ))}
+                  </div>
+                  {/* Legend with counts */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-3 gap-y-1.5">
+                    {all.map((s) => (
+                      <button
+                        type="button"
+                        key={s.key}
+                        onClick={() => navigate('/dispatch')}
+                        className="flex items-center gap-1.5 py-0.5 px-1 rounded-sm hover:bg-surface-sunken transition-colors text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                        aria-label={`${s.label}: ${s.count} calls`}
+                      >
+                        <span className="w-2.5 h-2.5 rounded-sm flex-shrink-0 shadow-sm" style={{ backgroundColor: s.color }} />
+                        <span className="text-[9px] text-rmpg-400 truncate">{s.label}</span>
+                        <span className="text-[9px] font-mono font-bold text-rmpg-200 ml-auto tabular-nums">{s.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+
+        {/* 7-Day Call Volume Trend */}
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Seven day call volume trend">
+          <PanelTitleBar title="CALL VOLUME — LAST 7 DAYS" icon={TrendingUp} />
+          <div className="p-3">
+            {callVolume.length === 0 ? (
+              <div className="flex flex-col items-center justify-center h-[140px] gap-2" role="status">
+                <TrendingUp className="w-6 h-6 text-rmpg-600" aria-hidden="true" />
+                <span className="text-[10px] text-rmpg-500 uppercase tracking-wider select-none text-center">Trend data unavailable</span>
+              </div>
+            ) : (() => {
+              const series = buildVolumeSeries(callVolume, 7);
+              const weekTotal = series.reduce((sum, d) => sum + d.count, 0);
+              const peak = series.reduce((m, d) => Math.max(m, d.count), 0);
+              return (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[9px] text-rmpg-500 uppercase font-bold tracking-wide">7-Day Total</div>
+                    <div className="flex items-center gap-3 font-mono tabular-nums">
+                      <span className="text-sm font-bold text-brand-400">{weekTotal}</span>
+                      <span className="text-[9px] text-rmpg-500">peak {peak}/day</span>
+                    </div>
+                  </div>
+                  <ResponsiveContainer width="100%" height={isMobile ? 130 : 150}>
+                    <AreaChart data={series} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="volumeGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#d4a017" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="#d4a017" stopOpacity={0.02} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#181818" />
+                      <XAxis dataKey="label" tick={{ fill: '#666666', fontSize: 9 }} tickLine={{ stroke: '#222222' }} axisLine={{ stroke: '#222222' }} />
+                      <YAxis tick={{ fill: '#666666', fontSize: 9 }} tickLine={{ stroke: '#222222' }} axisLine={{ stroke: '#222222' }} allowDecimals={false} width={28} />
+                      <Tooltip
+                        contentStyle={{ backgroundColor: '#0a0a0a', border: '1px solid #3a3a3a', borderRadius: '2px', color: '#cccccc', fontSize: '11px', boxShadow: '0 4px 12px rgba(0,0,0,0.3)', padding: '8px 12px' }}
+                        labelStyle={{ color: '#888888', fontSize: '10px', marginBottom: '4px' }}
+                        formatter={(value: number) => [`${value} calls`, '']}
+                        cursor={{ stroke: '#d4a017', strokeWidth: 1, strokeDasharray: '4 4' }}
+                      />
+                      <Area type="monotone" dataKey="count" stroke="#d4a017" strokeWidth={2} fill="url(#volumeGradient)" dot={{ fill: '#d4a017', r: 2, strokeWidth: 0 }} activeDot={{ fill: '#f0c040', r: 5, strokeWidth: 2, stroke: '#ffffff' }} animationDuration={700} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              );
+            })()}
+          </div>
+        </div>
+      </div>
+
+      {/* Live Unit Status Board */}
+      {units.length > 0 && (
+        <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Live unit status board">
+          <PanelTitleBar title="UNIT STATUS BOARD" icon={Radio}>
+            <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">
+              {units.filter((u) => u.status === 'available').length} avail / {units.length} total
+            </span>
+          </PanelTitleBar>
+          <div className="p-3">
+            <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2'}`}>
+              {units.map((u) => {
+                const color = unitStatusColor(u.status);
+                const onCall = !!u.current_call_number;
+                return (
+                  <div
+                    key={u.id ?? u.call_sign}
+                    onClick={() => navigate('/dispatch')}
+                    onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') navigate('/dispatch'); }}
+                    tabIndex={0}
+                    role="button"
+                    className="panel-beveled bg-surface-sunken p-2 cursor-pointer hover:bg-surface-raised hover:shadow-md hover:shadow-black/15 transition-all duration-150 border-l-[3px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand-500/50"
+                    style={{ borderLeftColor: color }}
+                    title={onCall ? `On call ${u.current_call_number} — ${u.current_call_type ?? ''}` : (u.status ?? 'unknown')}
+                    aria-label={`Unit ${u.call_sign}: ${u.status ?? 'unknown'}${onCall ? `, on call ${u.current_call_number}` : ''}`}
+                  >
+                    <div className="flex items-center gap-1.5 mb-1">
+                      <span className="led-dot flex-shrink-0" style={{ backgroundColor: color, boxShadow: `0 0 6px ${color}` }} />
+                      <span className="text-xs font-bold font-mono text-rmpg-100 tabular-nums truncate">{u.call_sign ?? '—'}</span>
+                      <span className="text-[8px] uppercase font-bold tracking-wider ml-auto truncate" style={{ color }}>{(u.status ?? '').replace(/_/g, ' ')}</span>
+                    </div>
+                    <div className="text-[9px] text-rmpg-400 truncate">
+                      {u.officer_name ?? 'Unassigned'}{u.badge_number ? ` · #${u.badge_number}` : ''}
+                    </div>
+                    {onCall && (
+                      <div className="text-[8px] font-mono text-amber-400/90 truncate mt-0.5 tabular-nums" title={u.current_call_location ?? ''}>
+                        {u.current_call_priority ? `${u.current_call_priority} ` : ''}{u.current_call_number}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Calls by Zone — heat list */}
+      {callsByZone.length > 0 && (() => {
+        const maxZone = callsByZone.reduce((m, z) => Math.max(m, z.count), 0) || 1;
+        const zoneTotal = callsByZone.reduce((sum, z) => sum + z.count, 0);
+        // Gold→red ramp by relative volume so hot zones read at a glance.
+        const heatColor = (ratio: number) =>
+          ratio >= 0.75 ? '#ef4444' : ratio >= 0.5 ? '#f59e0b' : ratio >= 0.25 ? '#d4a017' : '#888888';
+        return (
+          <div className="panel-beveled bg-surface-base shadow-md shadow-black/10" role="region" aria-label="Calls by zone">
+            <PanelTitleBar title="CALLS BY ZONE — LAST 7 DAYS" icon={MapIcon}>
+              <button type="button" className="toolbar-btn flex items-center gap-1 hover:bg-surface-raised transition-colors" onClick={() => navigate('/map')} title="Open map">
+                <MapPin style={{ width: 10, height: 10 }} />
+                <span className="text-[9px] font-bold">Map</span>
+              </button>
+            </PanelTitleBar>
+            <div className="p-3 space-y-1.5">
+              {callsByZone.map((z) => {
+                const ratio = z.count / maxZone;
+                const color = heatColor(ratio);
+                return (
+                  <div key={z.zone} className="flex items-center gap-2 group hover:bg-surface-sunken rounded-sm px-1 py-0.5 transition-colors">
+                    <span className="text-[10px] text-rmpg-300 w-28 truncate group-hover:text-rmpg-100 transition-colors" title={z.zone}>{z.zone}</span>
+                    <div className="flex-1 h-2 bg-surface-sunken rounded-sm overflow-hidden border border-[#2b2b2b] shadow-inner">
+                      <div className="h-full transition-all duration-500 ease-out rounded-sm" style={{ width: `${Math.max(4, ratio * 100)}%`, backgroundColor: color, boxShadow: `0 0 6px ${color}55` }} />
+                    </div>
+                    <span className="text-[10px] font-mono font-bold w-10 text-right tabular-nums" style={{ color }}>{z.count}</span>
+                  </div>
+                );
+              })}
+              <div className="flex justify-end pt-1 mt-1 border-t border-[#2b2b2b]">
+                <span className="text-[9px] font-mono text-rmpg-500 tabular-nums">{zoneTotal} calls across {callsByZone.length} zones</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* Shift Summary Row */}
       <div className={`grid ${isMobile ? 'grid-cols-2 gap-2' : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2'}`} role="region" aria-label="Shift summary metrics">

@@ -137,4 +137,51 @@ aggregates.get('/districts', async (c) => {
   }
 });
 
+// GET /dispatch/aggregates/call-volume?days=7
+// Daily call counts for the dashboard's multi-day volume trend.
+// Projects only date(created_at) + COUNT, so it sidesteps the 100-column
+// D1 result-set cap that calls_for_service sits at. Returns rows for days
+// that had calls; the client zero-fills the gaps so the chart is contiguous.
+aggregates.get('/call-volume', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const raw = Number.parseInt(c.req.query('days') ?? '', 10);
+    const days = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 90) : 7;
+    const rows = await query<{ date: string; count: number }>(db, `
+      SELECT date(created_at) AS date, COUNT(*) AS count
+        FROM calls_for_service
+       WHERE created_at >= datetime('now', ?)
+       GROUP BY date(created_at)
+       ORDER BY date ASC
+    `, `-${days} days`);
+    return c.json({ days, by_day: rows });
+  } catch (err) {
+    return c.json({ days: 0, by_day: [] });
+  }
+});
+
+// GET /dispatch/aggregates/by-zone?days=7
+// Call volume grouped by the denormalised zone_beat label on each call.
+// Used by the dashboard's calls-by-zone heat list. NULL/blank labels roll
+// up into 'Unassigned' so the total always reconciles with call_volume.
+aggregates.get('/by-zone', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const raw = Number.parseInt(c.req.query('days') ?? '', 10);
+    const days = Number.isFinite(raw) && raw > 0 ? Math.min(raw, 90) : 7;
+    const rows = await query<{ zone: string; count: number }>(db, `
+      SELECT COALESCE(NULLIF(TRIM(zone_beat), ''), 'Unassigned') AS zone,
+             COUNT(*) AS count
+        FROM calls_for_service
+       WHERE created_at >= datetime('now', ?)
+       GROUP BY zone
+       ORDER BY count DESC
+       LIMIT 12
+    `, `-${days} days`);
+    return c.json({ days, by_zone: rows });
+  } catch (err) {
+    return c.json({ days: 0, by_zone: [] });
+  }
+});
+
 export default aggregates;
