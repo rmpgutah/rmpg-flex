@@ -363,17 +363,22 @@ si.post('/upload', async (c) => {
     const docModel = c2.imageModel ?? combined.model;
     const docMs = c2.imageMs ?? combined.ms;
     const hasText = (c2.text || '').trim().length > 0;
+    // Capture the extraction error (image's own, else the combined-call
+    // error) so a confidence=0 row is diagnosable instead of silent. A
+    // row with text but no fields stores WHY (timeout / parse miss / AI
+    // error) in error_message.
+    const docError = c2.error || c2.imageFields ? c2.error ?? null : (combined.error ?? null);
     const res = await execute(
       db,
       `INSERT INTO serve_intake_documents (
         uploaded_by, file_name, file_type, r2_key, size_bytes, page_count,
         raw_text, ocr_used, ocr_engine, doc_type, fields_json, confidence,
-        extraction_model, extraction_ms, status
-      ) VALUES (?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?)`,
+        extraction_model, extraction_ms, status, error_message
+      ) VALUES (?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?,?)`,
       user.id, c2.file.name, c2.file.type, c2.r2Key, c2.file.size, c2.pageCount,
       (c2.text || '').slice(0, 200_000), c2.ocrUsed ? 1 : 0, c2.ocrEngine,
       docType, JSON.stringify(docFields), docConf, docModel, docMs,
-      hasText ? 'extracted' : 'failed',
+      hasText ? 'extracted' : 'failed', docError,
     );
     documents.push({
       id: res.meta.last_row_id,
@@ -420,8 +425,20 @@ si.post('/upload', async (c) => {
     }
   }
 
+  // Make the "text extracted but nothing usable came back" case explicit
+  // instead of a silent partial success (doc rows but no queue entry).
+  const noRecords = commit.serve_queue_id == null && commit.call_id == null;
+  const hadText = collected.some((c2) => (c2.text || '').trim().length > 0);
+  const warning = noRecords
+    ? (hadText
+        ? `Documents stored but no recipient could be extracted${combined.error ? ` (${combined.error})` : ''}. Review the documents and create the entry manually.`
+        : 'No readable text found in the uploaded documents (likely scans). Nothing was extracted.')
+    : null;
+
   return c.json({
-    success: documents.some((d) => d.success),
+    success: commit.serve_queue_id != null || commit.call_id != null,
+    warning,
+    extraction_error: combined.error ?? null,
     serve_queue_id: commit.serve_queue_id,
     person_id: commit.person_id,
     agent_person_id: commit.agent_person_id,

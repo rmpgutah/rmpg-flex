@@ -257,11 +257,15 @@ export default function ServeIntakePage() {
         if (!resp.ok) {
           throw new Error(`Server returned ${resp.status}: ${await resp.text().catch(() => '')}`);
         }
-        const body = await resp.json() as IntakeResult;
+        const body = await resp.json() as IntakeResult & { warning?: string };
         if (body.success) {
           setResult(body);
         } else {
-          setError('Intake processed but no records were created (check that the documents contain a recipient name or address)');
+          // Surface the server's specific reason (e.g. "Documents stored
+          // but no recipient could be extracted (…)") rather than a
+          // generic message, so the operator knows whether to retry,
+          // fix the docs, or create the entry manually.
+          setError(body.warning || 'Intake processed but no records were created (check that the documents contain a recipient name or address)');
         }
       } else {
         // Fallback: only the pdfjs-extracted text is available (no File
