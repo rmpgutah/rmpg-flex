@@ -495,7 +495,7 @@ fleet.put('/:id', async (c) => {
 
     // MST timestamps — all of /src/ pins SQL clocks to UTC-7 to avoid DST
     // drift in dispatch timelines (see project memory feedback on timestamps).
-    setCols.push("updated_at = datetime('now', '-7 hours')");
+    setCols.push("updated_at = datetime('now')");
     bindings.push(id);
     await execute(db, `UPDATE fleet_vehicles SET ${setCols.join(', ')} WHERE id = ?`, ...bindings);
 
@@ -539,8 +539,8 @@ fleet.delete('/:id', async (c) => {
       db,
       `UPDATE fleet_vehicles
        SET status = 'archived',
-           archived_at = datetime('now', '-7 hours'),
-           updated_at = datetime('now', '-7 hours')
+           archived_at = datetime('now'),
+           updated_at = datetime('now')
        WHERE id = ?`,
       id,
     );

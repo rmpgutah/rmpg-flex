@@ -33,10 +33,17 @@ export function dateToLocalYMD(d: Date): string {
  * Legacy timestamps stored in the DB lack timezone info:
  *   "2025-01-15 14:30:00"
  *
- * JavaScript's `new Date("2025-01-15 14:30:00")` treats timezone-naive
- * strings as UTC, causing times to display ~6–7 hours ahead of actual
- * Mountain Time. This helper detects legacy formats and appends the
- * Mountain Time offset so they're interpreted correctly.
+ * The server (Cloudflare Workers + D1) runs in UTC and writes
+ * timezone-naive strings like "2025-01-15 14:30:00" that are actually
+ * UTC wall-clock. We therefore interpret naive timestamps as UTC and
+ * let the browser render them in the viewer's local zone (Mountain for
+ * RMPG), which is DST-aware automatically — no fixed offset needed.
+ *
+ * (Pre-2026 this assumed Mountain Time, to compensate for the VPS era's
+ * `datetime('now','-7 hours')` storage convention. That convention was
+ * removed app-wide in the UTC-standardization change; all timestamps are
+ * now UTC, so assuming UTC here is the correct + DST-safe interpretation.
+ * A fixed -7h was also wrong half the year — MDT is UTC-6, not -7.)
  */
 export function parseTimestamp(dateStr: string | null | undefined): Date {
   if (!dateStr) return new Date();
@@ -46,29 +53,16 @@ export function parseTimestamp(dateStr: string | null | undefined): Date {
     return new Date(dateStr);
   }
 
-  // Legacy format: "YYYY-MM-DD HH:MM:SS" — assume Mountain Time
-  // Determine the correct UTC offset for the given date (handles MST/MDT transitions)
+  // Naive "YYYY-MM-DD HH:MM:SS" — server stores these as UTC wall-clock.
+  // Append 'Z' so JS parses as UTC; the browser then renders in the
+  // viewer's local timezone (DST-aware).
   if (dateStr.includes(' ') && !dateStr.includes('T')) {
-    const naive = new Date(dateStr.replace(' ', 'T'));
-    // Use Intl to determine the Mountain Time offset for this specific date
-    try {
-      const fmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'shortOffset' });
-      const parts = fmt.formatToParts(naive);
-      const tzPart = parts.find(p => p.type === 'timeZoneName');
-      // tzPart.value is like "GMT-7", "GMT-6", "UTC-7", or "GMT+05:30"
-      if (tzPart?.value) {
-        const match = tzPart.value.match(/(?:GMT|UTC)([+-]\d{1,2})(?::(\d{2}))?/);
-        if (match) {
-          const offset = parseInt(match[1], 10);
-          const minutes = match[2] ? parseInt(match[2], 10) : 0;
-          const sign = offset <= 0 && minutes === 0 ? '-' : offset < 0 ? '-' : '+';
-          const absH = String(Math.abs(offset)).padStart(2, '0');
-          const absM = String(minutes).padStart(2, '0');
-          return new Date(dateStr.replace(' ', 'T') + `${sign}${absH}:${absM}`);
-        }
-      }
-    } catch { /* fallback below */ }
-    return new Date(dateStr.replace(' ', 'T') + '-07:00');
+    return new Date(dateStr.replace(' ', 'T') + 'Z');
+  }
+  // Same for naive ISO without offset ("2025-01-15T14:30:00") — treat as UTC.
+  if (dateStr.includes('T') && !dateStr.includes('Z') && !/[+-]\d{2}:?\d{2}$/.test(dateStr)
+      && /\d{2}:\d{2}/.test(dateStr)) {
+    return new Date(dateStr + 'Z');
   }
 
   // Date-only "YYYY-MM-DD" — append T00:00:00 to force LOCAL timezone parsing
