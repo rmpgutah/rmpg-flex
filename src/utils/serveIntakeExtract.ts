@@ -87,12 +87,20 @@ Confidence is your own per-field self-report on a 0..1 scale:
 Never invent values. If unsure, return empty string with confidence 0.
 For dates use ISO format (YYYY-MM-DD); for phone numbers use digits only.`;
 
+// Llama 3.3 70B has a 128K-token context. 24K chars (~6K tokens) was
+// far too conservative — a multi-document packet (e.g. a 47K-char court
+// docket bundled with field sheets) got truncated mid-stream, and the
+// recipient data could fall past the cut. 90K chars (~22K tokens) leaves
+// generous headroom for the system prompt + JSON schema while covering
+// virtually every real serve packet in one pass.
+const MAX_PROMPT_CHARS = 90_000;
+
 function buildUserPrompt(text: string): string {
   return `Extract the fields below from this process-service document.
 
 Document text:
 """
-${text.slice(0, 24000)}
+${text.slice(0, MAX_PROMPT_CHARS)}
 """
 
 Return JSON with EXACTLY this shape:
@@ -206,26 +214,43 @@ export async function extractFromText(
     };
   }
   const started = Date.now();
-  try {
-    const out = await ai.run(TEXT_MODEL, {
-      messages: [
-        { role: 'system', content: SYSTEM_PROMPT },
-        { role: 'user', content: buildUserPrompt(trimmed) },
-      ],
-      response_format: RESPONSE_SCHEMA,
-      temperature: 0.1,
-      max_tokens: 2048,
-    } as any);
-    const parsed = tryParseModelJson(out);
-    return normalize(parsed, rawText, TEXT_MODEL, Date.now() - started);
-  } catch (err) {
-    return {
-      success: false, documentType: 'other', confidence: 0,
-      fields: Object.fromEntries(TARGET_FIELDS.map((f) => [f, { value: '', confidence: 0 }])) as any,
-      rawText, allDates: [], model: TEXT_MODEL, ms: Date.now() - started,
-      error: err instanceof Error ? err.message : String(err),
-    };
+  // Workers AI calls can fail transiently (rate limit, model cold-start,
+  // gateway 5xx) — and a json_schema response occasionally comes back
+  // unparseable. One retry on a failed/empty result turns most of those
+  // into a clean extraction. lastErr is surfaced so the caller can store
+  // it on the doc row instead of silently recording confidence=0.
+  let lastErr = '';
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const out = await ai.run(TEXT_MODEL, {
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: buildUserPrompt(trimmed) },
+        ],
+        response_format: RESPONSE_SCHEMA,
+        temperature: 0.1,
+        max_tokens: 2048,
+      } as any);
+      const parsed = tryParseModelJson(out);
+      const result = normalize(parsed, rawText, TEXT_MODEL, Date.now() - started);
+      // A 0-field result on the first pass is usually a transient parse
+      // miss — retry once before giving up.
+      if (result.success || attempt === 1) {
+        if (!result.success && !result.error) result.error = 'Model returned no extractable fields';
+        return result;
+      }
+      lastErr = 'First pass returned no fields; retrying';
+    } catch (err) {
+      lastErr = err instanceof Error ? err.message : String(err);
+      // fall through to retry (or exit on second attempt)
+    }
   }
+  return {
+    success: false, documentType: 'other', confidence: 0,
+    fields: Object.fromEntries(TARGET_FIELDS.map((f) => [f, { value: '', confidence: 0 }])) as any,
+    rawText, allDates: [], model: TEXT_MODEL, ms: Date.now() - started,
+    error: lastErr || 'Extraction failed after retry',
+  };
 }
 
 // Llama 3.2 Vision accepts the image as a number-array of bytes.
