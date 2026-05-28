@@ -376,31 +376,10 @@ export default function Layout() {
   // handled by AuthContext and show messages on the login page.
   const showSessionWarning = false;
 
-  // ── Feature 24: Auto-logout on idle ──
-  const lastActivityRef = useRef(Date.now());
-  const [showIdleDialog, setShowIdleDialog] = useState(false);
-  const IDLE_TIMEOUT_MS = 60 * 60 * 1000; // 60 minutes of no activity
-  const IDLE_WARNING_MS = 55 * 60 * 1000; // Warn at 55 minutes
-
-  useEffect(() => {
-    const resetActivity = () => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); };
-    const events = ['mousedown', 'keydown', 'scroll', 'touchstart'];
-    events.forEach(ev => window.addEventListener(ev, resetActivity));
-
-    const checkIdle = setInterval(() => {
-      const idle = Date.now() - lastActivityRef.current;
-      if (idle >= IDLE_TIMEOUT_MS) {
-        logout();
-      } else if (idle >= IDLE_WARNING_MS) {
-        setShowIdleDialog(true);
-      }
-    }, 30000); // check every 30s
-
-    return () => {
-      events.forEach(ev => window.removeEventListener(ev, resetActivity));
-      clearInterval(checkIdle);
-    };
-  }, [logout]);
+  // Idle auto-logout was removed per user request. A wall-clock setInterval
+  // timer counts suspended-while-asleep time as "idle," so a Windows laptop
+  // waking from sleep was logged out instantly. Sessions now persist until
+  // JWT/refresh-token expiry, handled in AuthContext.
 
   // Live header stats
   const [activeCallCount, setActiveCallCount] = useState(0);
@@ -1528,25 +1507,6 @@ export default function Layout() {
 
       {/* Force 2FA Setup Modal — blocks UI until 2FA is enabled */}
       <Force2FASetupModal />
-
-      {/* Feature 24: Auto-logout idle warning dialog */}
-      {showIdleDialog && (
-        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Idle timeout warning">
-          {/* 13: Idle dialog with stronger visual hierarchy */}
-          <div className="bg-surface-raised border border-rmpg-600 rounded-sm p-6 w-[350px] text-center animate-dropdown-appear" style={{ borderTop: '3px solid #d4a017', boxShadow: '0 16px 48px rgba(0,0,0,0.6)' }}>
-            <AlertTriangle className="w-10 h-10 text-amber-400 mx-auto mb-3" />
-            <h3 className="text-white font-bold text-base mb-2">Are you still there?</h3>
-            <p className="text-sm text-rmpg-300 mb-4">You will be logged out in 5 minutes due to inactivity.</p>
-            <button type="button"
-              onClick={() => { lastActivityRef.current = Date.now(); setShowIdleDialog(false); }}
-              className="px-4 py-2 text-sm font-bold text-white bg-brand-600 hover:bg-brand-500 rounded-sm transition-colors duration-150 active:scale-[0.97] focus-visible:ring-1 focus-visible:ring-[#888888] focus-visible:outline-none"
-              autoFocus
-            >
-              I'm still here
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* Keyboard Shortcut Help Modal */}
       {showShortcutHelp && (
