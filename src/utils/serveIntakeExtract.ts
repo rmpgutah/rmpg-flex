@@ -114,10 +114,15 @@ Return JSON with EXACTLY this shape:
 }`;
 }
 
-// ── Response schema ──────────────────────────────────────────
-// Workers AI accepts response_format with a JSON schema. The model
-// reliably emits matching JSON; we still defensively parse.
-const RESPONSE_SCHEMA = {
+// ── Response schema (RETAINED FOR REFERENCE — NOT CURRENTLY USED) ──
+// We removed response_format from the ai.run() calls: strict grammar-
+// constrained decoding over this 30+-field schema was timing out the
+// extraction (>25s even on tiny inputs) in prod. We now rely on the
+// prompt-specified JSON shape + lenient tryParseModelJson() instead.
+// Kept here documented so the schema is easy to re-enable if a future
+// Workers AI model handles constrained decoding fast enough to be worth
+// the accuracy guarantee. Prefixed _ to signal "intentionally unused".
+const _RESPONSE_SCHEMA = {
   type: 'json_schema',
   json_schema: {
     name: 'serve_intake_extraction',
@@ -214,11 +219,18 @@ export async function extractFromText(
     };
   }
   const started = Date.now();
-  // Workers AI calls can fail transiently (rate limit, model cold-start,
-  // gateway 5xx) — and a json_schema response occasionally comes back
-  // unparseable. One retry on a failed/empty result turns most of those
-  // into a clean extraction. lastErr is surfaced so the caller can store
-  // it on the doc row instead of silently recording confidence=0.
+  // NOTE: we deliberately do NOT pass response_format/json_schema here.
+  // Strict grammar-constrained decoding over our 30+-field nested schema
+  // made the gateway build a huge FSM and constrain every token, which
+  // pushed even a 1KB field-sheet extraction past 25s and timed out in
+  // prod (jobs 14901313, 16009904, 2026-05-28). The prompt already
+  // specifies the exact JSON shape and the system prompt forbids prose/
+  // fences, so a 70B reliably emits parseable JSON under FREE generation
+  // — dramatically faster. tryParseModelJson() handles any stray fences.
+  //
+  // One retry covers transient gateway errors / the rare unparseable
+  // response. lastErr is surfaced so the caller can record WHY a doc
+  // came back with no fields instead of a silent confidence=0.
   let lastErr = '';
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
@@ -227,14 +239,11 @@ export async function extractFromText(
           { role: 'system', content: SYSTEM_PROMPT },
           { role: 'user', content: buildUserPrompt(trimmed) },
         ],
-        response_format: RESPONSE_SCHEMA,
         temperature: 0.1,
         max_tokens: 2048,
       } as any);
       const parsed = tryParseModelJson(out);
       const result = normalize(parsed, rawText, TEXT_MODEL, Date.now() - started);
-      // A 0-field result on the first pass is usually a transient parse
-      // miss — retry once before giving up.
       if (result.success || attempt === 1) {
         if (!result.success && !result.error) result.error = 'Model returned no extractable fields';
         return result;
