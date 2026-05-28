@@ -44,6 +44,7 @@ import {
   extractTextFromPdf,
   fieldsToQueueRow,
   type ExtractionResult,
+  type ExtractedField,
 } from '../utils/serveIntakeExtract';
 import { commitIntake, type CommitResult } from '../utils/serveIntakeRecords';
 
@@ -90,6 +91,12 @@ const MIN_CLIENT_TEXT_CHARS = 200;
 // so this is mostly a guard against an indefinite hang — a missing/cold
 // container fetch is raced against this timeout and we fall back.
 const CONTAINER_TIMEOUT_MS = 12_000;
+
+// Per-call ceiling on any single Workers AI invocation (combined text
+// extraction or per-image Vision). Without this a slow/stalled model
+// call hangs the whole /upload request — the original "stuck on upload"
+// cause. On timeout we record the doc as failed rather than blocking.
+const AI_TIMEOUT_MS = 25_000;
 
 function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
   return Promise.race([
@@ -234,114 +241,155 @@ si.post('/upload', async (c) => {
 
   const db = getDb(c.env);
   const container = getContainer(c.env.PDF_TOOLS, PDF_TOOLS_NAME);
-  const documents: any[] = [];
-  const mergedFields: Record<string, { value: string; confidence: number }> = {};
-  let bestConfidence = 0;
-  let bestDocType = 'other';
   const allDates = new Set<string>();
 
-  for (const file of files) {
-    const bytes = new Uint8Array(await file.arrayBuffer());
-    let extraction: ExtractionResult;
-    let pageCount = 0;
-    let ocrUsed = false;
-    let ocrEngine: string;
+  // ── Phase 1: per-file — acquire text + store to R2, IN PARALLEL ──
+  // No per-file field extraction here. PDFs contribute their pdfjs text
+  // (or a timeout-guarded container pass for scans); images get a single
+  // Vision OCR pass. Running these concurrently + bounding each with a
+  // timeout is what fixes the "stuck on upload" hang — the old code did
+  // one 70B field-extraction call PER file, sequentially, with no
+  // timeout, so 3 docs meant 3 serial stalls that never resolved.
+  interface Collected {
+    file: File;
+    text: string;
+    pageCount: number;
+    ocrUsed: boolean;
+    ocrEngine: string;
+    r2Key: string | null;
+    // Images carry their own Vision extraction; PDFs share the combined one.
+    imageFields?: Record<string, ExtractedField>;
+    imageDocType?: string;
+    imageConfidence?: number;
+    imageModel?: string;
+    imageMs?: number;
+    error?: string;
+  }
+
+  const emptyExtraction = (model: string, error?: string): ExtractionResult => ({
+    success: false, documentType: 'other', confidence: 0,
+    fields: {} as Record<string, ExtractedField>, rawText: '', allDates: [],
+    model, ms: 0, error,
+  });
+
+  const collected: Collected[] = await Promise.all(files.map(async (file): Promise<Collected> => {
+    const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
     try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+
       if (isImage(file.type)) {
-        // Images go straight to the Workers AI vision model — no
-        // container needed (Vision does OCR + extraction in one pass).
-        extraction = await extractFromImage(c.env.AI, bytes);
-        ocrEngine = 'workers-ai-vision';
-      } else if (isPdf(file.type)) {
+        const ex = await withTimeout(
+          extractFromImage(c.env.AI, bytes), AI_TIMEOUT_MS, 'Vision OCR timed out',
+        ).catch((e) => emptyExtraction('workers-ai-vision', e instanceof Error ? e.message : String(e)));
+        for (const d of ex.allDates) allDates.add(d);
+        return {
+          file, text: ex.rawText, pageCount: 0, ocrUsed: true, ocrEngine: 'workers-ai-vision', r2Key,
+          imageFields: ex.fields, imageDocType: ex.documentType,
+          imageConfidence: ex.confidence, imageModel: ex.model, imageMs: ex.ms,
+          error: ex.error,
+        };
+      }
+
+      if (isPdf(file.type)) {
         const clientText = clientTextByName.get(file.name) || '';
         if (clientText.length >= MIN_CLIENT_TEXT_CHARS) {
-          // Born-digital PDF — the browser's pdfjs pass already produced
-          // usable text. Use it directly; the container is unnecessary.
-          ocrEngine = 'pdfjs-client';
-          extraction = await extractFromText(c.env.AI, clientText);
-        } else {
-          // Sparse/empty browser text → probably a scan. Try the
-          // container OCR path, but race it against a timeout so a
-          // missing/cold container can't hang the whole request.
-          try {
-            const txt = await withTimeout(
-              extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
-              CONTAINER_TIMEOUT_MS,
-              'PDF Tools container timed out or unavailable',
-            );
-            pageCount = txt.page_count;
-            ocrUsed = txt.ocr_used;
-            ocrEngine = ocrUsed ? 'tesseract' : 'pdftotext';
-            extraction = await extractFromText(c.env.AI, txt.text);
-          } catch {
-            // Container unavailable — fall back to whatever sparse text
-            // the browser managed (better than failing the upload). The
-            // doc row is still created so the file is stored in R2 and
-            // can be re-OCR'd later when the container is rolled out.
-            ocrEngine = 'container-unavailable';
-            extraction = await extractFromText(c.env.AI, clientText);
-          }
+          return { file, text: clientText, pageCount: 0, ocrUsed: false, ocrEngine: 'pdfjs-client', r2Key };
         }
-      } else {
-        documents.push({ file_name: file.name, status: 'failed', error: `Unsupported type ${file.type}` });
-        continue;
+        try {
+          const txt = await withTimeout(
+            extractTextFromPdf(container, bytes, file.name || 'doc.pdf'),
+            CONTAINER_TIMEOUT_MS, 'PDF Tools container timed out or unavailable',
+          );
+          return {
+            file, text: txt.text, pageCount: txt.page_count, ocrUsed: txt.ocr_used,
+            ocrEngine: txt.ocr_used ? 'tesseract' : 'pdftotext', r2Key,
+          };
+        } catch {
+          return { file, text: clientText, pageCount: 0, ocrUsed: false, ocrEngine: 'container-unavailable', r2Key };
+        }
       }
+
+      return { file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'unsupported', r2Key, error: `Unsupported type ${file.type}` };
     } catch (err) {
-      documents.push({
-        file_name: file.name, status: 'failed',
-        error: err instanceof Error ? err.message : String(err),
-      });
+      return { file, text: '', pageCount: 0, ocrUsed: false, ocrEngine: 'error', r2Key, error: err instanceof Error ? err.message : String(err) };
+    }
+  }));
+
+  // ── Phase 2: ONE combined field extraction over all collected text ──
+  // This is the proven /intake approach — a single 70B call for the whole
+  // packet instead of one-per-file. Timeout-guarded.
+  const combinedText = collected
+    .map((c2) => (c2.text ? `--- ${c2.file.name} ---\n${c2.text}` : ''))
+    .filter(Boolean).join('\n\n');
+
+  let combined: ExtractionResult = emptyExtraction('');
+  combined.rawText = combinedText;
+  if (combinedText.trim().length >= 20) {
+    combined = await withTimeout(
+      extractFromText(c.env.AI, combinedText), AI_TIMEOUT_MS, 'Field extraction timed out',
+    ).catch((e) => emptyExtraction('', e instanceof Error ? e.message : String(e)));
+  }
+  for (const d of combined.allDates) allDates.add(d);
+
+  // Merge: start from the combined PDF extraction, let any image's own
+  // Vision fields fill/override where they have higher confidence.
+  const mergedFields: Record<string, ExtractedField> = { ...combined.fields };
+  for (const c2 of collected) {
+    if (!c2.imageFields) continue;
+    for (const [k, v] of Object.entries(c2.imageFields)) {
+      const cur = mergedFields[k];
+      if (!cur || (v.value && v.confidence > cur.confidence)) mergedFields[k] = v;
+    }
+  }
+  let bestConfidence = combined.confidence;
+  let bestDocType = combined.documentType;
+  for (const c2 of collected) {
+    if ((c2.imageConfidence ?? 0) > bestConfidence) {
+      bestConfidence = c2.imageConfidence as number;
+      bestDocType = c2.imageDocType || bestDocType;
+    }
+  }
+
+  // ── Phase 3: persist a serve_intake_documents row per file ──
+  const documents: any[] = [];
+  for (const c2 of collected) {
+    if (c2.error && !c2.text) {
+      documents.push({ file_name: c2.file.name, status: 'failed', error: c2.error });
       continue;
     }
-
-    // Persist file to R2 only after we know the extraction succeeded
-    // enough to be worth storing. Failed extractions still get an R2
-    // copy so the user can re-try with the document later.
-    const r2Key = await storeToR2(c.env, file, user.id).catch(() => null);
-
-    const result = await execute(
+    const docFields = c2.imageFields ?? combined.fields;
+    const docType = c2.imageDocType ?? combined.documentType;
+    const docConf = c2.imageConfidence ?? combined.confidence;
+    const docModel = c2.imageModel ?? combined.model;
+    const docMs = c2.imageMs ?? combined.ms;
+    const hasText = (c2.text || '').trim().length > 0;
+    const res = await execute(
       db,
       `INSERT INTO serve_intake_documents (
         uploaded_by, file_name, file_type, r2_key, size_bytes, page_count,
         raw_text, ocr_used, ocr_engine, doc_type, fields_json, confidence,
         extraction_model, extraction_ms, status
       ) VALUES (?,?,?,?,?,?, ?,?,?,?,?,?, ?,?,?)`,
-      user.id, file.name, file.type, r2Key, file.size, pageCount,
-      extraction.rawText.slice(0, 200_000),
-      ocrUsed ? 1 : 0, ocrEngine,
-      extraction.documentType, JSON.stringify(extraction.fields), extraction.confidence,
-      extraction.model, extraction.ms,
-      extraction.success ? 'extracted' : 'failed',
+      user.id, c2.file.name, c2.file.type, c2.r2Key, c2.file.size, c2.pageCount,
+      (c2.text || '').slice(0, 200_000), c2.ocrUsed ? 1 : 0, c2.ocrEngine,
+      docType, JSON.stringify(docFields), docConf, docModel, docMs,
+      hasText ? 'extracted' : 'failed',
     );
-
     documents.push({
-      id: result.meta.last_row_id,
-      file_name: file.name,
-      file_type: file.type,
-      r2_key: r2Key,
-      page_count: pageCount,
-      ocr_used: ocrUsed,
-      ocr_engine: ocrEngine,
-      doc_type: extraction.documentType,
-      confidence: extraction.confidence,
-      success: extraction.success,
-      model: extraction.model,
-      extraction_ms: extraction.ms,
-      fields: extraction.fields,
+      id: res.meta.last_row_id,
+      file_name: c2.file.name,
+      file_type: c2.file.type,
+      r2_key: c2.r2Key,
+      page_count: c2.pageCount,
+      ocr_used: c2.ocrUsed,
+      ocr_engine: c2.ocrEngine,
+      doc_type: docType,
+      confidence: docConf,
+      success: hasText,
+      model: docModel,
+      extraction_ms: docMs,
+      fields: docFields,
     });
-
-    if (extraction.confidence > bestConfidence) {
-      bestConfidence = extraction.confidence;
-      bestDocType = extraction.documentType;
-    }
-    for (const d of extraction.allDates) allDates.add(d);
-    // Later-doc-wins merge: keeps the highest-confidence value per field.
-    for (const [k, v] of Object.entries(extraction.fields)) {
-      const cur = mergedFields[k];
-      if (!cur || (v.value && v.confidence > cur.confidence)) {
-        mergedFields[k] = v;
-      }
-    }
   }
 
   // ── Commit the merged extraction into the full RMS record set:
