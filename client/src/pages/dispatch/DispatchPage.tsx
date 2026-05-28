@@ -1470,14 +1470,25 @@ export default function DispatchPage() {
   // ── Admin timeline edit handler ──
   const handleTimelineEdit = useCallback(async (field: string, value: string | null) => {
     if (!selectedCall || !isAdminOrManager) return;
+    const callId = selectedCall.id;
     try {
-      const result = await apiFetch<any>(`/dispatch/calls/${selectedCall.id}`, {
+      const result = await apiFetch<any>(`/dispatch/calls/${callId}`, {
         method: 'PUT',
         body: JSON.stringify({ [field]: value || null }),
       });
-      const updated = mapDbCall(result);
-      setCalls(prev => prev.map(c => c.id === selectedCall.id ? updated : c));
-      setSelectedCall(updated);
+      // DEFENSIVE: only adopt the server response if it's actually a full
+      // call row. Some backends return an error/"no changes" body for a
+      // single-field PUT (e.g. the legacy worker rejects timeline-timestamp
+      // edits with {error:'No fields to update'}); blindly running
+      // mapDbCall() on that produced a blank 'Other' call that wiped the
+      // real one from the UI ("editing time destructs the call"). When the
+      // response isn't a full row, patch just the edited field locally —
+      // the DB write already succeeded (or the catch below fires).
+      const looksLikeFullRow = result && (result.incident_type || result.call_number);
+      const apply = (c: typeof selectedCall) =>
+        looksLikeFullRow ? mapDbCall(result) : ({ ...c, [field]: value || null } as typeof c);
+      setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
+      setSelectedCall(prev => (prev && prev.id === callId ? apply(prev) : prev));
       addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');
     } catch (err) {
       console.error('Failed to update timeline:', err);

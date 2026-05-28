@@ -465,7 +465,10 @@ const UPDATABLE_CALL_COLUMNS_BASE = new Set<string>([
   'incident_type', 'priority', 'status', 'caller_name', 'caller_phone',
   'location_address', 'property_id', 'latitude', 'longitude', 'description',
   'notes', 'source', 'assigned_unit_ids', 'unit_call_signs', 'dispatcher_id',
-  'dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at',
+  // Timeline timestamps — all admin-editable from the dispatch timeline.
+  // created_at was previously omitted, so editing the "Created" time
+  // returned {message:'No changes'} and the client blanked the call.
+  'created_at', 'dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at',
   'disposition',
   // geography
   'sector_id', 'sector_name', 'zone_id', 'zone_name', 'zone_beat',
