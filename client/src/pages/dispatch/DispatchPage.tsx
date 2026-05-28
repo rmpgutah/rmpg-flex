@@ -77,7 +77,7 @@ import VehicleFormModal, { type VehicleFormData } from '../../components/Vehicle
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
-import { safeDateTimeStr } from '../../utils/dateUtils';
+import { safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import {
   humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo,
@@ -883,7 +883,7 @@ export default function DispatchPage() {
         // Voice alert: announce archival with summary
         if (mapped.status === 'archived') {
           const responseMin = mapped.created_at && mapped.onscene_at
-            ? Math.floor((new Date(mapped.onscene_at).getTime() - new Date(mapped.created_at).getTime()) / 60000)
+            ? Math.floor((parseTimestamp(mapped.onscene_at).getTime() - parseTimestamp(mapped.created_at).getTime()) / 60000)
             : undefined;
           announceCallArchived(mapped.call_number, mapped.disposition, responseMin);
         }
@@ -1008,7 +1008,7 @@ export default function DispatchPage() {
       return;
     }
     const update = () => {
-      const diff = Date.now() - new Date(selectedCall.onscene_at!).getTime();
+      const diff = Date.now() - parseTimestamp(selectedCall.onscene_at).getTime();
       if (diff < 0) { setOnSceneElapsed(''); return; }
       const totalSec = Math.floor(diff / 1000);
       const h = Math.floor(totalSec / 3600);
@@ -1149,19 +1149,19 @@ export default function DispatchPage() {
     // User-selectable sort for active tabs
     const sortMode = userPrefs?.dispatch_sort || 'priority';
     if (sortMode === 'time') {
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     if (sortMode === 'status') {
       const sOrder: Record<string, number> = { dispatched: 0, enroute: 1, onscene: 2, pending: 3, on_hold: 4, cleared: 5, closed: 6, cancelled: 7 };
       const sDiff = (sOrder[a.status] ?? 5) - (sOrder[b.status] ?? 5);
       if (sDiff !== 0) return sDiff;
-      return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+      return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
     // Default: priority then newest first
     const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
-    return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+    return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
   }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
@@ -1849,7 +1849,7 @@ export default function DispatchPage() {
       const now = Date.now();
       const fiveMinMs = 5 * 60 * 1000;
       calls.filter(c => ['cleared'].includes(c.status) && c.cleared_at).forEach(c => {
-        const clearedTime = new Date(c.cleared_at!).getTime();
+        const clearedTime = parseTimestamp(c.cleared_at).getTime();
         if (now - clearedTime > fiveMinMs) {
           handleArchiveRef.current(c.id).catch(() => {});
         }
@@ -2032,13 +2032,13 @@ export default function DispatchPage() {
                   <span className="text-rmpg-200 font-bold">
                     {(() => {
                       const endTime = ['cleared', 'closed', 'cancelled', 'archived'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
-                      const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
+                      const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
                       return formatCallDuration(elapsed);
                     })()}
                   </span>
                 </div>
                 {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                  const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                  const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
                   if (diff <= 0 || !isFinite(diff)) return null;
                   return (
                     <div className="flex items-center gap-1">
@@ -2049,7 +2049,7 @@ export default function DispatchPage() {
                 })()}
                 {selectedCall.onscene_at && (() => {
                   const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
-                  const diff = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.onscene_at).getTime();
+                  const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
                   if (diff <= 0 || !isFinite(diff)) return null;
                   return (
                     <div className="flex items-center gap-1">
@@ -2298,7 +2298,7 @@ export default function DispatchPage() {
                     ))}
                     {/* Enhancement 26: Response time (dispatched → onscene) */}
                     {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                      const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                      const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
                       if (diff <= 0 || !isFinite(diff)) return null;
                       const mins = Math.floor(diff / 60000);
                       const secs = Math.floor((diff % 60000) / 1000);
@@ -2604,7 +2604,7 @@ export default function DispatchPage() {
                     {['cleared', 'closed'].includes(selectedCall.status) && (() => {
                       const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                       if (!terminalTime) return null;
-                      const elapsed = Date.now() - new Date(terminalTime).getTime();
+                      const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
                       const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                       if (elapsed >= 72 * 3600000) {
                         return (
@@ -2961,7 +2961,7 @@ export default function DispatchPage() {
                   const now = Date.now();
                   calls.forEach(c => {
                     if (!c.created_at) return;
-                    const t = new Date(c.created_at).getTime();
+                    const t = parseTimestamp(c.created_at).getTime();
                     const ageMin = (now - t) / 60000;
                     if (ageMin < 0 || ageMin > 60) return;
                     const idx = Math.min(11, Math.floor(ageMin / 5));
@@ -2994,7 +2994,7 @@ export default function DispatchPage() {
         {(() => {
           const todayCalls = calls.filter(c => {
             if (!c.created_at) return false;
-            const d = new Date(c.created_at);
+            const d = parseTimestamp(c.created_at);
             const now = new Date();
             return d.toDateString() === now.toDateString();
           });
@@ -3002,13 +3002,13 @@ export default function DispatchPage() {
           // Avg response time (created → onscene) for calls with onscene_at today
           const responseTimes = todayCalls
             .filter(c => c.onscene_at && c.created_at)
-            .map(c => (new Date(c.onscene_at!).getTime() - new Date(c.created_at!).getTime()) / 60000)
+            .map(c => (parseTimestamp(c.onscene_at).getTime() - parseTimestamp(c.created_at).getTime()) / 60000)
             .filter(m => m > 0 && m < 480);
           const avgResponse = responseTimes.length > 0 ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length) : null;
           // Oldest pending call age
           const pendingCalls = calls.filter(c => c.status === 'pending');
           const oldestPending = pendingCalls.length > 0
-            ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => new Date(c.created_at || 0).getTime()))) / 60000)
+            ? Math.round((Date.now() - Math.min(...pendingCalls.map(c => parseTimestamp(c.created_at).getTime()))) / 60000)
             : null;
 
           return (
@@ -3265,7 +3265,7 @@ export default function DispatchPage() {
                   {selectedCall.created_at && !['cleared', 'closed', 'archived', 'cancelled'].includes(selectedCall.status) && (
                     <span className={`${onSceneElapsed ? '' : 'ml-auto'} flex items-center gap-1 px-1.5 py-0.5 text-[9px] font-bold font-mono whitespace-nowrap tabular-nums ${
                       (() => {
-                        const mins = Math.round((Date.now() - new Date(selectedCall.created_at).getTime()) / 60000);
+                        const mins = Math.round((Date.now() - parseTimestamp(selectedCall.created_at).getTime()) / 60000);
                         if (mins > 60) return 'text-red-400 bg-red-900/20 border border-red-700/30';
                         if (mins > 30) return 'text-amber-400 bg-amber-900/20 border border-amber-700/30';
                         return 'text-rmpg-400 bg-rmpg-900/20 border border-rmpg-700/30';
@@ -3273,7 +3273,7 @@ export default function DispatchPage() {
                     }`} title="Total call duration">
                       <Clock style={{ width: 9, height: 9 }} />
                       {(() => {
-                        const mins = Math.round((Date.now() - new Date(selectedCall.created_at).getTime()) / 60000);
+                        const mins = Math.round((Date.now() - parseTimestamp(selectedCall.created_at).getTime()) / 60000);
                         return mins >= 60 ? `${Math.floor(mins / 60)}h ${mins % 60}m` : `${mins}m`;
                       })()}
                     </span>
@@ -3569,14 +3569,14 @@ export default function DispatchPage() {
                     <span className="text-rmpg-200 font-bold">
                       {(() => {
                         const endTime = selectedCall.status === 'archived' ? (selectedCall.archived_at || selectedCall.cleared_at || (selectedCall as any).closed_at) : ['cleared', 'closed', 'cancelled'].includes(selectedCall.status) ? (selectedCall.cleared_at || (selectedCall as any).closed_at || selectedCall.created_at) : null;
-                        const elapsed = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.created_at).getTime();
+                        const elapsed = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.created_at).getTime();
                         return formatCallDuration(elapsed);
                       })()}
                     </span>
                   </div>
                   {/* Response time — dispatched to on scene */}
                   {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                    const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                    const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
@@ -3589,7 +3589,7 @@ export default function DispatchPage() {
                   {/* On-scene time — onscene to cleared (or live if still on scene) */}
                   {selectedCall.onscene_at && (() => {
                     const endTime = selectedCall.cleared_at || (selectedCall as any).closed_at || (selectedCall.status === 'archived' ? selectedCall.archived_at : null);
-                    const diff = (endTime ? new Date(endTime).getTime() : Date.now()) - new Date(selectedCall.onscene_at).getTime();
+                    const diff = (endTime ? parseTimestamp(endTime).getTime() : Date.now()) - parseTimestamp(selectedCall.onscene_at).getTime();
                     if (diff <= 0 || !isFinite(diff)) return null;
                     return (
                       <div className="flex items-center gap-1.5 text-[10px] font-mono tabular-nums">
@@ -3925,7 +3925,7 @@ export default function DispatchPage() {
                         ))}
                         {/* Enhancement 26: Response time (dispatched → onscene) */}
                         {selectedCall.dispatched_at && selectedCall.onscene_at && (() => {
-                          const diff = new Date(selectedCall.onscene_at).getTime() - new Date(selectedCall.dispatched_at).getTime();
+                          const diff = parseTimestamp(selectedCall.onscene_at).getTime() - parseTimestamp(selectedCall.dispatched_at).getTime();
                           if (diff <= 0 || !isFinite(diff)) return null;
                           const mins = Math.floor(diff / 60000);
                           const secs = Math.floor((diff % 60000) / 1000);
@@ -4521,7 +4521,7 @@ export default function DispatchPage() {
                       {!isEditing && selectedCall.incident_type === 'pso_client_request' && ['cleared', 'closed'].includes(selectedCall.status) && (() => {
                         const terminalTime = selectedCall.closed_at || selectedCall.cleared_at;
                         if (!terminalTime) return null;
-                        const elapsed = Date.now() - new Date(terminalTime).getTime();
+                        const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
                         const hoursLeft = Math.max(0, 72 - elapsed / (3600000));
                         if (elapsed >= 72 * 3600000) {
                           return (
@@ -4667,7 +4667,7 @@ export default function DispatchPage() {
                         </div>
                         {/* 72-hour deadline countdown for active PSO calls */}
                         {selectedCall.incident_type === 'pso_client_request' && selectedCall.created_at && !['archived'].includes(selectedCall.status) && (() => {
-                          const deadline = new Date(new Date(selectedCall.created_at).getTime() + 72 * 3600000);
+                          const deadline = new Date(parseTimestamp(selectedCall.created_at).getTime() + 72 * 3600000);
                           const remaining = deadline.getTime() - Date.now();
                           if (remaining <= 0) return (
                             <div className="text-[10px] font-mono font-bold animate-pulse" style={{ color: '#f87171' }}>
@@ -6008,7 +6008,7 @@ export default function DispatchPage() {
                 if (call) {
                   const terminalTime = (call as any).closed_at || (call as any).cleared_at;
                   if (terminalTime) {
-                    const elapsed = Date.now() - new Date(terminalTime).getTime();
+                    const elapsed = Date.now() - parseTimestamp(terminalTime).getTime();
                     const hoursLeft = Math.max(0, 72 - elapsed / 3600000);
                     const caseNum = call.case_number || call.call_number;
                     announceCourtDeadline(caseNum, hoursLeft, (call as any).process_served_to || (call as any).caller_name);
