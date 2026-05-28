@@ -690,17 +690,23 @@ si.post('/:id/attempts', async (c) => {
   const result = ATTEMPT_RESULTS.has(body.result) ? body.result : 'other';
   const nextNum = (queue.attempt_count || 0) + 1;
 
+  // NB: live serve_attempts does NOT have the `status` column that
+  // migration 0030 defines (schema drift — the column was never applied
+  // to the 785de7ae DB). Inserting it crashes with "no such column".
+  // It's redundant anyway: per-attempt status is derivable from `result`
+  // (served → served, else → attempted), and the workflow state lives on
+  // serve_queue.status which we update below. So we omit it entirely.
+  // See [[feedback-verify-live-schema-before-insert]].
   const ins = await execute(
     db,
     `INSERT INTO serve_attempts (
       serve_queue_id, attempt_number, officer_id, result,
-      latitude, longitude, notes, attempt_type, photo_ids, signature_data, status
-    ) VALUES (?,?,?,?, ?,?,?,?, ?,?,?)`,
+      latitude, longitude, notes, attempt_type, photo_ids, signature_data
+    ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
     id, nextNum, body.officer_id ?? user?.id ?? null, result,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type ?? null,
     JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
-    result === 'served' ? 'served' : 'attempted',
   );
 
   let newStatus = queue.status;
