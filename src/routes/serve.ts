@@ -368,17 +368,20 @@ async function logAttempt(c: any, defaultResult: string) {
   const result = ATTEMPT_RESULTS.has(body.result) ? body.result : defaultResult;
   const nextNum = (queue.attempt_count ?? 0) + 1;
 
+  // Live serve_attempts has no `status` column (migration 0030 drift —
+  // never applied to 785de7ae). It's redundant with `result` + the
+  // serve_queue.status update below, so omit it. See
+  // [[feedback-verify-live-schema-before-insert]].
   const ins = await execute(
     db,
     `INSERT INTO serve_attempts (
        serve_queue_id, attempt_number, officer_id, result,
-       latitude, longitude, notes, attempt_type, photo_ids, signature_data, status
-     ) VALUES (?,?,?,?, ?,?,?,?, ?,?,?)`,
+       latitude, longitude, notes, attempt_type, photo_ids, signature_data
+     ) VALUES (?,?,?,?, ?,?,?,?, ?,?)`,
     id, nextNum, body.officer_id ?? user?.id ?? null, result,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type ?? null,
     JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
-    result === 'served' || result === 'sub_served' ? 'served' : 'attempted',
   );
 
   let newStatus = queue.status;
@@ -418,12 +421,13 @@ sv.post('/:id/substitute-service', async (c) => {
   );
   if (!queue) return c.json({ error: 'Queue entry not found' }, 404);
   const nextNum = (queue.attempt_count ?? 0) + 1;
+  // No `status` column on live serve_attempts (see logAttempt note above).
   const ins = await execute(
     db,
     `INSERT INTO serve_attempts (
        serve_queue_id, attempt_number, officer_id, result,
-       latitude, longitude, notes, attempt_type, photo_ids, signature_data, status
-     ) VALUES (?,?,?, 'sub_served', ?,?,?, ?, ?,?, 'served')`,
+       latitude, longitude, notes, attempt_type, photo_ids, signature_data
+     ) VALUES (?,?,?, 'sub_served', ?,?,?, ?, ?,?)`,
     id, nextNum, body.officer_id ?? user?.id ?? null,
     body.latitude ?? null, body.longitude ?? null, body.notes ?? null,
     body.attempt_type, JSON.stringify(body.photo_ids ?? []), body.signature_data ?? null,
