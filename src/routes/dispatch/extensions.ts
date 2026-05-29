@@ -658,9 +658,13 @@ function safeJson<T>(s: string | null | undefined, fb: T): T {
   try { return JSON.parse(s) as T; } catch { return fb; }
 }
 
-// MST/UTC-7 wall-clock timestamp string (matches the convention used by the
-// auto-assign / timeline handlers above and the legacy `localNow()` helper).
-const localNow = () => new Date(Date.now() - 6 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
+// UTC wall-clock timestamp string ("YYYY-MM-DD HH:MM:SS"), matching SQLite's
+// datetime('now'). The app standard is UTC storage + browser-local display
+// (the client's parseTimestamp reads naive strings as UTC). The previous
+// `Date.now() - 6h` "MST" form stored local time, which the display layer then
+// mis-read as UTC and rendered ~6h off (wrong call/on-scene timers, timeline
+// entries before the call's own created_at). Always store UTC here.
+const utcNow = () => new Date().toISOString().replace('T', ' ').slice(0, 19);
 
 // Canonical updated-call payload: bare base row (no JOINs) so we stay under the
 // D1 100-column result-set cap. The client maps this through mapDbCall(), which
@@ -775,7 +779,7 @@ autoAssign.post('/:id/auto-assign', requireRole(...WRITE_ROLES), async (c) => {
     const currentUnits = safeJson<number[]>(call.assigned_unit_ids, []);
     if (!currentUnits.includes(Number(nearest.id))) currentUnits.push(Number(nearest.id));
 
-    const now = new Date(Date.now() - 6 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
+    const now = utcNow();
 
     await execute(db, `
       UPDATE calls_for_service
@@ -844,7 +848,7 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
       return c.json({ error: 'details must be 5000 characters or fewer', code: 'DETAILS_TOO_LONG' }, 400);
     }
 
-    let timestamp = new Date(Date.now() - 6 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
+    let timestamp = utcNow();
     if (body.created_at) {
       if (typeof body.created_at !== 'string' || body.created_at.length > 50) {
         return c.json({ error: 'created_at must be a valid date string', code: 'CREATEDAT_INVALID' }, 400);
@@ -985,7 +989,7 @@ callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) =>
       cleared: 'cleared_at', closed: 'closed_at',
     };
     const tsField = timestampField[call.status];
-    const now = localNow();
+    const now = utcNow();
 
     await execute(db,
       `UPDATE calls_for_service SET status = ?${tsField ? `, ${tsField} = NULL` : ''}, updated_at = ? WHERE id = ?`,
@@ -1048,7 +1052,7 @@ callActions.post('/:id/le-notification', requireRole(...READ_ROLES), async (c) =
       return c.json({ error: 'Case number must be 100 characters or less', code: 'INVALID_CASE_NUMBER' }, 400);
     }
 
-    const now = localNow();
+    const now = utcNow();
     const agencyName = agency || 'Local PD';
     await execute(db,
       `UPDATE calls_for_service
@@ -1100,7 +1104,7 @@ callActions.post('/:id/transfer', requireRole(...WRITE_ROLES), async (c) => {
     let units = safeJson<number[]>(call.assigned_unit_ids, []).filter((u) => u !== fromUnitId);
     if (!units.includes(toUnitId)) units.push(toUnitId);
 
-    const now = localNow();
+    const now = utcNow();
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?', JSON.stringify(units), now, id);
     await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?`, now, fromUnitId);
     await execute(db, `UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?`, id, now, toUnitId);
@@ -1145,7 +1149,7 @@ callActions.post('/:id/broadcast-note', requireRole(...WRITE_ROLES), async (c) =
       return c.json({ error: 'message is required (2-2000 chars)', code: 'MESSAGE_INVALID' }, 400);
     }
 
-    const now = localNow();
+    const now = utcNow();
     const notes = safeJson<any[]>(call.notes, []);
     notes.push({ id: `bn-${Date.now()}`, author: 'DISPATCH BROADCAST', text: message, timestamp: now, broadcast: true });
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
@@ -1183,7 +1187,7 @@ callActions.put('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => 
     const idx = notes.findIndex((n) => String(n.id) === String(noteId));
     if (idx === -1) return c.json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }, 404);
 
-    const now = localNow();
+    const now = utcNow();
     notes[idx] = { ...notes[idx], text, edited_at: now, edited_by: user?.username || 'admin' };
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
 
@@ -1212,7 +1216,7 @@ callActions.delete('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) 
     if (idx === -1) return c.json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }, 404);
 
     notes.splice(idx, 1);
-    const now = localNow();
+    const now = utcNow();
     await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
 
     const updated = await fetchCallRow(db, id);
