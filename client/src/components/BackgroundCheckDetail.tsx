@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import type { BackgroundRecord } from '../utils/ncicFormatter';
+import { safeDateTimeStr } from '../utils/dateUtils';
 
 interface BackgroundCheckDetailProps {
   searchId: number;

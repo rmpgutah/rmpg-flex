@@ -16,9 +16,7 @@ import { parseTimestamp } from '../../../utils/dateUtils';
  */
 export function formatMilitary(isoString: string | undefined | null): string {
   if (!isoString) return '-';
-  // Force local-time parse for date-only strings
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(isoString) ? `${isoString}T00:00:00` : isoString;
-  const d = new Date(normalized);
+  const d = parseTimestamp(isoString);
   if (isNaN(d.getTime())) return isoString; // fallback for unparseable strings
   const yyyy = d.getFullYear();
   const MM = String(d.getMonth() + 1).padStart(2, '0');
@@ -36,8 +34,7 @@ export function formatMilitaryDate(isoString: string | undefined | null): string
   if (!isoString) return '-';
   // Date-only strings can be returned directly — avoids UTC timezone shift
   if (/^\d{4}-\d{2}-\d{2}$/.test(isoString)) return isoString;
-  const normalized = isoString.replace(' ', 'T'); // SQLite space → T
-  const d = new Date(normalized);
+  const d = parseTimestamp(isoString);
   if (isNaN(d.getTime())) return isoString;
   const yyyy = d.getFullYear();
   const MM = String(d.getMonth() + 1).padStart(2, '0');

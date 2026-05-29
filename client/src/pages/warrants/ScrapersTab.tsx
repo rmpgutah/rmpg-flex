@@ -23,6 +23,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp, safeDateTimeStr } from '../../utils/dateUtils';
 import { useWebSocket } from '../../context/WebSocketContext';
 import { useToast } from '../../components/ToastProvider';
 import type {
@@ -259,7 +260,7 @@ function ScraperLiveFeed({ entries }: { entries: LiveFeedEntry[] }) {
         ) : (
           entries.map((entry) => {
             const display = formatLiveFeedEvent(entry.event);
-            const time = new Date(entry.timestamp).toLocaleTimeString().slice(0, 8);
+            const time = parseTimestamp(entry.timestamp).toLocaleTimeString().slice(0, 8);
             return (
               <div key={entry.id} className="flex items-start gap-2">
                 <span className="text-rmpg-600 w-14 flex-shrink-0">{time}</span>
@@ -351,9 +352,7 @@ function ScraperSourceCard({
             <div>
               <span className="text-rmpg-500">Last success: </span>
               <span className="text-white">
-                {source.last_success_at
-                  ? new Date(source.last_success_at).toLocaleString()
-                  : 'never'}
+                {safeDateTimeStr(source.last_success_at, 'never')}
               </span>
             </div>
             <div>

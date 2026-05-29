@@ -1,0 +1,34 @@
+name: new Date() timezone check
+
+on:
+  pull_request:
+    paths:
+      - 'client/src/**/*.ts'
+      - 'client/src/**/*.tsx'
+      - 'scripts/check-new-date.js'
+      - '.github/workflows/new-date-check.yml'
+
+# Least-privilege: this workflow only reads the repo to diff added lines.
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Need history so we can diff added lines against the base branch.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      # Only newly-added `new Date(<field>)` lines are flagged; the ~400
+      # pre-existing sites are grandfathered via the base-branch diff.
+      - name: Check for new Date() on server strings
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: node scripts/check-new-date.js

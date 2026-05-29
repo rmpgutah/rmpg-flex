@@ -67,7 +67,7 @@ export function mapSchedule(row: any): Schedule {
   let shiftEnd = '';
   if (shiftDate) {
     if (endTime <= startTime) {
-      const nextDay = new Date(shiftDate);
+      const nextDay = parseTimestamp(shiftDate);
       nextDay.setDate(nextDay.getDate() + 1);
       const pad = (n: number) => String(n).padStart(2, '0');
       const nextDateStr = `${nextDay.getFullYear()}-${pad(nextDay.getMonth() + 1)}-${pad(nextDay.getDate())}`;

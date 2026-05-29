@@ -3,6 +3,9 @@ node_modules/
 *.log
 .wrangler/
 
+# Vite build output (deploy.yml rebuilds this; never track it)
+client/dist/
+
 # Claude Code tooling (per-worktree, not committed)
 .claude/
 

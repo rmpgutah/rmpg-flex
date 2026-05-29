@@ -7,6 +7,8 @@
 // to display validated values in the UI.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /** Validate an email address (RFC 5322 simplified). */
 export function isValidEmail(email: string): boolean {
   return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email.trim());
@@ -61,7 +63,7 @@ export function isValidZip(zip: string): boolean {
 /** Validate a date string (YYYY-MM-DD format, must be a real date). */
 export function isValidDate(dateStr: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateStr)) return false;
-  const d = new Date(dateStr + 'T00:00:00');
+  const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return false;
   // Verify the date components match (catches invalid dates like Feb 30)
   const [y, m, day] = dateStr.split('-').map(Number);
@@ -71,14 +73,14 @@ export function isValidDate(dateStr: string): boolean {
 /** Validate that a date is not in the future. */
 export function isNotFutureDate(dateStr: string): boolean {
   if (!isValidDate(dateStr)) return false;
-  const d = new Date(dateStr + 'T23:59:59');
+  const d = parseTimestamp(dateStr);
   return d.getTime() <= Date.now();
 }
 
 /** Validate that a date range is valid (start <= end). */
 export function isValidDateRange(start: string, end: string): boolean {
   if (!isValidDate(start) || !isValidDate(end)) return false;
-  return new Date(start + 'T00:00:00') <= new Date(end + 'T00:00:00');
+  return parseTimestamp(start) <= parseTimestamp(end);
 }
 
 /** Validate an incident/case number format (e.g., RKY26-00001-BURG). */
@@ -123,7 +125,7 @@ export function isValidState(state: string): boolean {
  */
 export function calculateAge(dob: string): number | null {
   if (!isValidDate(dob)) return null;
-  const birth = new Date(dob + 'T00:00:00');
+  const birth = parseTimestamp(dob);
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();
   const monthDiff = today.getMonth() - birth.getMonth();

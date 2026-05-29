@@ -17,6 +17,7 @@
 
 import jsPDF from 'jspdf';
 import type { FleetVehicle, FleetFuelLog, FleetFuelSummary } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Args {
   vehicle: FleetVehicle;
@@ -39,7 +40,7 @@ function formatLogDate(s: string | null | undefined): string {
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(cleaned)) {
     return cleaned.slice(0, 16);
   }
-  const d = new Date(s);
+  const d = parseTimestamp(s);
   if (isNaN(d.getTime())) return s; // last-resort raw passthrough
   const pad = (n: number) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;

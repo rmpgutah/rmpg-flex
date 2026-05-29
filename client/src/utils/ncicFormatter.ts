@@ -96,7 +96,7 @@ function pad(val: string | null | undefined, width: number): string {
 function ncicDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '        ';
   try {
-    const d = new Date(dateStr);
+    const d = parseTimestamp(dateStr);
     if (isNaN(d.getTime())) return '        ';
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
