@@ -439,13 +439,21 @@ async function serverFetch(endpoint: string, options: RequestInit = {}): Promise
  * Attempt to refresh the JWT token and retry the request.
  */
 async function refreshAndRetry(endpoint: string, options: RequestInit): Promise<any> {
-  const refreshToken = await getConfig('refresh_token');
+  // The /api/auth/refresh handler requires BOTH refreshToken AND sessionId
+  // (sessions lookup is WHERE session_id = ? AND refresh_token_hash = ?), so
+  // sending only refreshToken always 401'd — this is why "[SYNC] Pull …
+  // failed: Refresh failed" appeared for every table. Prefer the main app's
+  // localStorage tokens (which stay current through refresh-token rotation)
+  // over our IndexedDB copy, which can drift once apiFetch/AuthContext rotates.
+  const ls = typeof localStorage !== 'undefined' ? localStorage : null;
+  const refreshToken = ls?.getItem('rmpg_refresh_token') || (await getConfig('refresh_token'));
+  const sessionId = ls?.getItem('rmpg_session_id') || (await getConfig('session_id'));
   if (!refreshToken) throw new Error('No refresh token available');
 
   const refreshResponse = await fetch(`${serverUrl}/api/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-    body: JSON.stringify({ refreshToken }),
+    body: JSON.stringify({ refreshToken, sessionId }),
   });
 
   if (!refreshResponse.ok) {

@@ -59,7 +59,11 @@
 //       timeouts) into the production-deployed branch (2026-05-01).
 // ============================================================
 
-const CACHE_NAME = 'rmpg-flex-v600';
+// v601: auth-refresh fix — apiFetch + offlineSync now send sessionId on
+//       /api/auth/refresh (legacy handler requires session_id); was causing
+//       silent logout at every 15-min token expiry + the [SYNC] Refresh-failed
+//       warnings. Bump forces clients onto the fixed bundle.
+const CACHE_NAME = 'rmpg-flex-v601';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
