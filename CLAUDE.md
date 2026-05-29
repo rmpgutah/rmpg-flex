@@ -13,7 +13,7 @@ RMPG Flex is a **police CAD/RMS** (Computer-Aided Dispatch / Records Management 
 
 - **App domain**: https://rmpgutah.us (React SPA on Cloudflare Pages)
 - **API domain**: https://api.rmpgutah.us (Worker `rmpg-flex-api`, entry [`src/index.ts`](src/index.ts))
-- **Database**: Cloudflare D1 `rmpg-flex-db` (`8893480a-6dd5-4790-a11f-1fb6fac13f02`), bound as `DB`
+- **Database**: Cloudflare D1 `rmpg-flex` (`785de7ae-3e7a-4e01-93bb-d24ddd813f6b`), bound as `DB` — the live 6 MB dataset both Workers share (verified 2026-05-29 via `wrangler.toml` + row counts). The old `rmpg-flex-db` (`8893480a-…`) is **abandoned** (0 calls/persons, missing tables); do not target it.
 - **Storage**: R2 — `system-essentials` bound as `MAP_DATA`
 - **Cache/state**: KV namespace `8e01c392038e4f76838ca9a1130c908e` bound as `KV`
 - **Durable Objects**: `WelfareWatchDO` (one instance per officer for welfare-check timers)

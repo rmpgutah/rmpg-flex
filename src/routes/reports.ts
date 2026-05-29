@@ -243,10 +243,16 @@ reports.get('/statute-analytics', async (c) => {
   const days = clampDays(c.req.query('days'), 180);
   const since = `-${days} days`;
 
+  // Statute data lives on `citations` (statute_citation/statute_id/offense_level/
+  // created_at), NOT `citation_violations` (which only carries violation_code/
+  // description/fine_amount/points — no statute or created_at columns). Querying
+  // citation_violations here 500'd in prod; the proxy stub masked it. Both
+  // citations and utah_statutes expose offense_level, so the GROUP BY must use
+  // the same COALESCE expression as the SELECT or D1 throws "ambiguous column".
   const total = await queryFirst<{ n: number }>(
     db,
     `SELECT COUNT(*) AS n
-       FROM citation_violations v
+       FROM citations v
       WHERE v.created_at >= datetime('now', ?)`,
     since
   );
@@ -265,10 +271,10 @@ reports.get('/statute-analytics', async (c) => {
             COALESCE(s.offense_level, v.offense_level) AS offense_level,
             s.category,
             COUNT(*) AS count
-       FROM citation_violations v
+       FROM citations v
   LEFT JOIN utah_statutes s ON s.id = v.statute_id
       WHERE v.created_at >= datetime('now', ?)
-      GROUP BY v.statute_citation, s.short_title, offense_level, s.category
+      GROUP BY v.statute_citation, s.short_title, COALESCE(s.offense_level, v.offense_level), s.category
       ORDER BY count DESC
       LIMIT 25`,
     since
@@ -285,7 +291,7 @@ reports.get('/statute-analytics', async (c) => {
   const by_category = await query<{ category: string | null; count: number }>(
     db,
     `SELECT s.category, COUNT(*) AS count
-       FROM citation_violations v
+       FROM citations v
   LEFT JOIN utah_statutes s ON s.id = v.statute_id
       WHERE v.created_at >= datetime('now', ?)
       GROUP BY s.category
