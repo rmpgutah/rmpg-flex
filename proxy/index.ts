@@ -777,7 +777,7 @@ const API_ROUTES: RouteRule[] = [
   // shared generateIncidentFromCall() is schema-verified vs live incidents +
   // audit_log; legacy lacked promote-to-incident entirely (CAD "PI" was 404).
   // Listed BEFORE the bare /api/dispatch/calls/:id rule so they win the match.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve)(\/.*)?$/ },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve|pin)(\/.*)?$/ },
 
   // /api/dispatch/calls/:id/{persons,vehicles}[/...] — rewrite implements
   // POST/DELETE/PATCH plus the quick-add fast-path; legacy implements ONLY

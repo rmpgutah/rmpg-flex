@@ -96,16 +96,22 @@ calls.get('/', async (c) => {
 
     // Narrow projection — see LIST_VIEW_COLUMNS comment for the D1 100-col
     // result-set cap. SELECT c.* + JOIN columns 500s; this stays under ~60.
+    // cfse.pinned is ONE explicit column from the ext table — safe under the
+    // result-set cap (the cap problem is SELECT c.*, not a single joined col).
+    // Sorted pinned-first so a dispatcher's pinned calls stay on top across
+    // refreshes (the PATCH /:id/pin handler writes cfse.pinned).
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name
+        cl.name as client_name,
+        COALESCE(cfse.pinned, 0) as pinned
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      LEFT JOIN calls_for_service_ext cfse ON cfse.id = c.id
       ${where}
-      ORDER BY c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
+      ORDER BY COALESCE(cfse.pinned, 0) DESC, c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
       LIMIT ? OFFSET ?
     `, ...params, limitNum, offset);
 

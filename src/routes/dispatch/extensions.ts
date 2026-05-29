@@ -1394,3 +1394,29 @@ callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervis
     return c.json({ error: 'Failed to send to serve queue', code: 'SEND_TO_SERVE_ERR' }, 500);
   }
 });
+
+// PATCH /:id/pin — pin/unpin a call to the top of the dispatch queue.
+// `pinned` lives on calls_for_service_ext (the base table is at the D1
+// 100-column cap), so we upsert the ext row. Nobody implemented this
+// before → the DispatchPage pin toggle 404'd and the optimistic update
+// always reverted. The list query (GET /calls) reads cfse.pinned and
+// sorts pinned-first so the state persists across refreshes.
+callActions.patch('/:id/pin', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    const body = await c.req.json().catch(() => ({} as any));
+    const pinned = body.pinned ? 1 : 0;
+
+    const call = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+    await execute(db, 'UPDATE calls_for_service_ext SET pinned = ? WHERE id = ?', pinned, id);
+    return c.json({ success: true, id, pinned: Boolean(pinned) });
+  } catch (err) {
+    console.error('[dispatch] pin error', err);
+    return c.json({ error: 'Failed to toggle pin', code: 'PIN_ERR' }, 500);
+  }
+});
