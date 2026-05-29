@@ -23,6 +23,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import type { BodyCamVideo } from '../types';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Constants ─────────────────────────────────────────
 const STATUS_COLORS: Record<string, string> = {
@@ -367,12 +368,12 @@ export default function EvidencePropertyPage() {
 
   const formatDate = (d?: string) => {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatDateTime = (d?: string) => {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDuration = (seconds?: number) => {

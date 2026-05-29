@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { buildIncidentReportMarkerContent, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import type { OverlayMarker } from '../utils/mapMarkerBuilders';
 import { formatIncidentType } from '../../../utils/caseNumbers';
@@ -64,7 +65,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 function formatDate(iso: string | null): string {
   if (!iso) return '-';
   try {
-    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+    const d = parseTimestamp(iso);
     return d.toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit', hour12: true,

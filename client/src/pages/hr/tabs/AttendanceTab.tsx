@@ -3,7 +3,7 @@ import { ClipboardCheck, Plus, AlertTriangle, Loader2, Search } from 'lucide-rea
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
-import { localToday } from '../../../utils/dateUtils';
+import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 
 interface AttendanceRecord {
   id: number;
@@ -183,7 +183,7 @@ export default function AttendanceTab({ userRole }: { userRole: string }) {
               <div className="flex items-center gap-3">
                 <span className={`inline-flex px-1.5 py-0.5 text-[9px] font-mono font-bold uppercase rounded-sm ${TYPE_COLORS[r.type] || TYPE_COLORS.absent}`}>{r.type.replace(/_/g, ' ')}</span>
                 <span className="text-xs text-white">{r.officer_name}</span>
-                <span className="text-[10px] text-rmpg-400">{r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : r.date}</span>
+                <span className="text-[10px] text-rmpg-400">{r.date ? parseTimestamp(r.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : r.date}</span>
                 {r.minutes_late > 0 && <span className="text-[10px] text-amber-400">{r.minutes_late}m late</span>}
                 {r.reason && <span className="text-[10px] text-rmpg-400 italic truncate max-w-[200px]">{r.reason}</span>}
               </div>

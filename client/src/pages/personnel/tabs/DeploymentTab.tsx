@@ -8,6 +8,7 @@ import type { Deployment, CoverageGap, DeploymentStatus } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 type StatusFilter = 'all' | DeploymentStatus;
 
@@ -46,7 +47,7 @@ export default function DeploymentTab({ deployments, coverageGaps, officers, loa
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const FILTER_BUTTONS: { value: StatusFilter; label: string }[] = [

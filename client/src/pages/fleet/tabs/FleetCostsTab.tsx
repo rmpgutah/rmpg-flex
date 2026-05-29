@@ -23,6 +23,7 @@ import type {
   FleetCostSummary,
 } from '../../../types';
 import type { CostCategory } from '../modals/FleetCostFormModal';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 type SubTab = 'loan' | 'insurance' | 'accessory' | 'utility';
 
@@ -271,7 +272,7 @@ function InsuranceList({ records, onAdd, onEdit, onDelete }: {
   // Highlight policies expiring in the next 30 days.
   const soon = (d: string | null) => {
     if (!d) return false;
-    const diff = (new Date(d).getTime() - Date.now()) / 86400_000;
+    const diff = (parseTimestamp(d).getTime() - Date.now()) / 86400_000;
     return diff > 0 && diff < 30;
   };
   return (

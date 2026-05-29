@@ -26,6 +26,7 @@ import ExportButton from '../components/ExportButton';
 import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Constants ──────────────────────────────────────────────────────────
 
@@ -464,7 +465,7 @@ export default function ServePage() {
         // Priority: overdue > no deadline is last
         const getUrgencyScore = (j: ServeJob) => {
           if (!j.deadline) return 999;
-          const daysLeft = (new Date(j.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
+          const daysLeft = (parseTimestamp(j.deadline).getTime() - Date.now()) / (1000 * 60 * 60 * 24);
           if (daysLeft < 0) return -100 + daysLeft; // overdue: most negative first
           return daysLeft;
         };

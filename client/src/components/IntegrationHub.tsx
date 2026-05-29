@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import {
   MapPin, Briefcase, Shield, Microscope, Wifi, RefreshCw, ArrowRight, Settings,
 } from 'lucide-react';
@@ -46,7 +47,7 @@ function formatStats(stats: Record<string, number>): string {
 
 function relativeTime(iso: string | null): string {
   if (!iso) return 'Never';
-  const diff = Date.now() - new Date(iso).getTime();
+  const diff = Date.now() - parseTimestamp(iso).getTime();
   if (diff < 60000) return 'Just now';
   if (diff < 3600000) return `${Math.floor(diff / 60000)}m ago`;
   if (diff < 86400000) return `${Math.floor(diff / 3600000)}h ago`;

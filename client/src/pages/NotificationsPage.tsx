@@ -7,7 +7,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import { useAuth } from '../context/AuthContext';
 import { useToast } from '../components/ToastProvider';
-import { formatDateTime } from '../utils/dateUtils';
+import { formatDateTime, parseTimestamp } from '../utils/dateUtils';
 
 interface Notification {
   id: number;
@@ -370,7 +370,7 @@ export default function NotificationsPage() {
                     <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                       <span>{(n.type || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                       <span title={formatDateTime(n.created_at)}>{(() => {
-                        const ms = Date.now() - new Date(n.created_at).getTime();
+                        const ms = Date.now() - parseTimestamp(n.created_at).getTime();
                         const mins = Math.floor(ms / 60000);
                         if (mins < 1) return 'just now';
                         if (mins < 60) return `${mins}m ago`;

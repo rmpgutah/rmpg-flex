@@ -8,6 +8,7 @@
 // ============================================================
 
 import React, { useEffect, useRef, useCallback } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── Props ───────────────────────────────────────────────────
 
@@ -75,7 +76,7 @@ export default function VideoHudOverlay(props: VideoHudOverlayProps) {
   const updateTimestamp = useCallback(() => {
     const video = videoRef.current;
     if (video && timestampRef.current && recordedAt) {
-      const baseTime = new Date(recordedAt).getTime();
+      const baseTime = parseTimestamp(recordedAt).getTime();
       const elapsed = video.currentTime * 1000;
       const now = new Date(baseTime + elapsed);
       timestampRef.current.textContent = formatOverlayTimestamp(now);

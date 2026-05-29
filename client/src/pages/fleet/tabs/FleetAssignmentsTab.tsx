@@ -1,10 +1,11 @@
 import { Radio, Clock, User, ArrowRight } from 'lucide-react';
 import type { FleetAssignment } from '../../../types';
 import { formatMilitary } from '../utils/fleetFormatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 function formatDuration(start: string, end?: string): string {
-  const s = new Date(start);
-  const e = end ? new Date(end) : new Date();
+  const s = parseTimestamp(start);
+  const e = end ? parseTimestamp(end) : new Date();
   const diffMs = e.getTime() - s.getTime();
   const days = Math.floor(diffMs / 86400000);
   const hours = Math.floor((diffMs % 86400000) / 3600000);

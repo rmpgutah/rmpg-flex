@@ -10,6 +10,7 @@ import {
 import type { Deployment } from '../../../types';
 import { DEPLOYMENT_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   deployments: Deployment[];
@@ -31,7 +32,7 @@ export default function DeploymentDetailTab({ deployments, loading, onAddDeploym
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const pastBorderColor = (status: string) => {

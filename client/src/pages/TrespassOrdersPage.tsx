@@ -18,7 +18,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { useDistrictOptions } from '../hooks/useDistrictLookup';
-import { safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
+import { safeDateStr, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
 
 const ORDER_TYPES: { value: TrespassOrderType; label: string }[] = [
@@ -54,7 +54,7 @@ const EMPTY_FORM = {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -308,7 +308,7 @@ export default function TrespassOrdersPage() {
   // Check if order expires within 30 days
   const isExpiringWithin30Days = (order: TrespassOrder): boolean => {
     if (!order.expiration_date) return false;
-    const exp = new Date(order.expiration_date);
+    const exp = parseTimestamp(order.expiration_date);
     const now = new Date();
     const thirtyDays = new Date();
     thirtyDays.setDate(thirtyDays.getDate() + 30);
@@ -584,13 +584,13 @@ export default function TrespassOrdersPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-2 text-xs">
               <div><span className="text-rmpg-500 text-[10px] uppercase">Subject</span><div className="text-white font-medium">{selectedOrder.subject_last_name}, {selectedOrder.subject_first_name}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedOrder.subject_dob ? new Date(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">DOB</span><div className="text-white">{selectedOrder.subject_dob ? parseTimestamp(selectedOrder.subject_dob).toLocaleDateString() : '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Property</span><div className="text-white">{selectedOrder.property_name || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Location</span><div className="text-white">{formatAddressDisplay(selectedOrder.location)}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Order Type</span><div className="text-white capitalize">{selectedOrder.order_type.replace(/_/g, ' ')}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Status</span><div className="text-white capitalize">{selectedOrder.status.replace(/_/g, ' ')}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-white">{selectedOrder.effective_date ? new Date(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
-              <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? new Date(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Effective</span><div className="text-white">{selectedOrder.effective_date ? parseTimestamp(selectedOrder.effective_date).toLocaleDateString() : '—'}</div></div>
+              <div><span className="text-rmpg-500 text-[10px] uppercase">Expires</span><div className="text-white">{selectedOrder.expiration_date ? parseTimestamp(selectedOrder.expiration_date).toLocaleDateString() : 'Permanent'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Issued By</span><div className="text-white">{selectedOrder.issued_by_name || selectedOrder.issued_by_display || '—'}</div></div>
               <div><span className="text-rmpg-500 text-[10px] uppercase">Authorized By</span><div className="text-white">{selectedOrder.authorized_by || '—'}</div></div>
               {(selectedOrder.sector_id || selectedOrder.zone_id || selectedOrder.beat_id) && (

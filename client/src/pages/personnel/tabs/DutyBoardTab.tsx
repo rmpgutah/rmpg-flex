@@ -7,6 +7,7 @@ import { Radio, Clock, AlertTriangle } from 'lucide-react';
 import type { TimeEntry, Credential } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import OfficerAvatar from '../components/OfficerAvatar';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 type DutyFilter = 'all' | 'on_duty' | 'off_duty';
 
@@ -52,7 +53,7 @@ export default function DutyBoardTab({ officers, timeEntries, credentials, onOff
   const lastUpdated = new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
 
   function getElapsedHours(clockIn: string): string {
-    const diff = Date.now() - new Date(clockIn).getTime();
+    const diff = Date.now() - parseTimestamp(clockIn).getTime();
     if (isNaN(diff) || diff < 0) return '0h 0m';
     const hrs = Math.floor(diff / 3600000);
     const mins = Math.floor((diff % 3600000) / 60000);

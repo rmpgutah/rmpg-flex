@@ -4,6 +4,7 @@
  * Every date/time display in the Fleet module should use these functions
  * to ensure a consistent 24-hour format with seconds.
  */
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 /**
  * Format an ISO date string as military time: "YYYY-MM-DD HH:MM:SS"
@@ -80,9 +81,8 @@ export function toDatetimeLocal(d: string | undefined | null): string {
  */
 export function daysUntilExpiry(dateStr: string | undefined | null): number | null {
   if (!dateStr) return null;
-  // Force local-time for date-only strings to avoid UTC timezone shift
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00` : dateStr;
-  const exp = new Date(normalized);
+  // parseTimestamp reads naive timestamps as UTC and date-only strings as local
+  const exp = parseTimestamp(dateStr);
   if (isNaN(exp.getTime())) return null;
   return Math.ceil((exp.getTime() - Date.now()) / 86_400_000);
 }

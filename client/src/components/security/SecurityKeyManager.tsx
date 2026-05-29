@@ -5,6 +5,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { Usb, Plus, Trash2, RefreshCw, Shield, Fingerprint } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 
@@ -20,7 +21,7 @@ interface WebAuthnCredential {
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return 'Never';
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseTimestamp(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins}m ago`;
@@ -28,7 +29,7 @@ function timeAgo(dateStr: string | null): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  return parseTimestamp(dateStr).toLocaleDateString();
 }
 
 function transportLabel(transports: string[]): string {
@@ -217,7 +218,7 @@ export default function SecurityKeyManager() {
 
               <div className="text-right flex-shrink-0">
                 <div className="text-[9px] font-mono" style={{ color: '#888888' }}>
-                  Added {cred.createdAt ? new Date(cred.createdAt).toLocaleDateString() : 'N/A'}
+                  Added {cred.createdAt ? parseTimestamp(cred.createdAt).toLocaleDateString() : 'N/A'}
                 </div>
               </div>
 

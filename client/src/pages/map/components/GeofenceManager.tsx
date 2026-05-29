@@ -7,6 +7,7 @@
 import React, { useState, useMemo } from 'react';
 import { Plus, Trash2, Pencil, Shield, Loader2, MapPin, ChevronDown, ChevronRight, Bell, Navigation } from 'lucide-react';
 import type { Geofence, GeofenceAlert } from '../hooks/useMapGeofences';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface GeofenceManagerProps {
   geofences: Geofence[];
@@ -82,7 +83,7 @@ function getCentroid(coordStr: string): { lat: number; lng: number } | null {
 // ─── Time-ago helper ────────────────────────────────────────
 
 function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
+  const diff = Date.now() - parseTimestamp(ts).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -118,7 +119,7 @@ export default function GeofenceManager({
     }
     // Sort each list newest-first
     for (const [, list] of map) {
-      list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+      list.sort((a, b) => parseTimestamp(b.timestamp).getTime() - parseTimestamp(a.timestamp).getTime());
     }
     return map;
   }, [alerts]);

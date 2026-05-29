@@ -5,6 +5,7 @@
 
 import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from './mapConstants';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 // ── HTML Marker Content Builders ──────────────────────────────
 
@@ -96,7 +97,7 @@ export function buildIncidentMarkerContent(priority: string, incidentType: strin
   tag.appendChild(catSpan);
 
   if (createdAt) {
-    const ageMs = Date.now() - new Date(createdAt).getTime();
+    const ageMs = Date.now() - parseTimestamp(createdAt).getTime();
     const ageMin = Math.floor(ageMs / 60000);
     if (ageMin >= 0) {
       let ageColor: string;

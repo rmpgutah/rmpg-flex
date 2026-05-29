@@ -29,7 +29,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidDate } from '../utils/validate';
-import { formatDate, localToday } from '../utils/dateUtils';
+import { formatDate, localToday, parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 
 const EVENT_TYPES: { value: CourtEventType; label: string }[] = [
@@ -414,7 +414,7 @@ export default function CourtTrackerPage() {
 
   // Feature 9: Deadline countdown with urgency colors
   const daysUntil = (dateStr: string) => {
-    const d = Math.ceil((new Date(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+    const d = Math.ceil((parseTimestamp(dateStr).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
     if (isNaN(d)) return { text: '-', color: 'text-rmpg-500' };
     if (d < 0) return { text: 'PAST', color: 'text-red-500' };
     if (d === 0) return { text: 'TODAY', color: 'text-red-400 animate-pulse' };

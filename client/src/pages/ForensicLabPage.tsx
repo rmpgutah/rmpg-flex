@@ -21,7 +21,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ExportButton from '../components/ExportButton';
 import { useToast } from '../components/ToastProvider';
-import { safeDateTimeStr } from '../utils/dateUtils';
+import { safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 
 // ─── Constants ───────────────────────────────────────────
 
@@ -740,12 +740,12 @@ export default function ForensicLabPage() {
 
   const formatDate = (d: string | null) => {
     if (!d) return '—';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const isOverdue = (c: ForensicCase) => {
     if (!c.due_date || ['closed', 'cancelled', 'report_final'].includes(c.status)) return false;
-    return new Date(c.due_date) < new Date();
+    return parseTimestamp(c.due_date) < new Date();
   };
 
   // Set document title

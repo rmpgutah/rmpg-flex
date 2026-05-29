@@ -20,7 +20,7 @@ import {
   FileWarning,
 } from 'lucide-react';
 import type { ServeJob, ServeJobLinkedCall } from '../../types';
-import { safeDateStr } from '../../utils/dateUtils';
+import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 
 interface ServeJobCardProps {
   job: ServeJob;
@@ -101,14 +101,14 @@ export default React.memo(function ServeJobCard({
 }: ServeJobCardProps) {
   const isDueSoon = useMemo(() => {
     if (!job.deadline) return false;
-    const deadlineMs = new Date(job.deadline).getTime();
+    const deadlineMs = parseTimestamp(job.deadline).getTime();
     const now = Date.now();
     return deadlineMs - now <= 48 * 60 * 60 * 1000 && deadlineMs > now;
   }, [job.deadline]);
 
   const isOverdue = useMemo(() => {
     if (!job.deadline) return false;
-    return new Date(job.deadline).getTime() <= Date.now();
+    return parseTimestamp(job.deadline).getTime() <= Date.now();
   }, [job.deadline]);
 
   const fullAddress = [job.recipient_address, job.recipient_city, job.recipient_state, job.recipient_zip]
@@ -186,7 +186,7 @@ export default React.memo(function ServeJobCard({
 
           {/* Enhancement 46: Deadline countdown */}
           {isDueSoon && job.deadline && (() => {
-            const msLeft = new Date(job.deadline).getTime() - Date.now();
+            const msLeft = parseTimestamp(job.deadline).getTime() - Date.now();
             const hrsLeft = Math.floor(msLeft / 3600000);
             const minsLeft = Math.floor((msLeft % 3600000) / 60000);
             return (

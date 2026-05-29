@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { PRIORITY_COLORS } from '../utils/mapConstants';
 import { buildHistoricalCallMarkerContent, getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import type { OverlayMarker } from '../utils/mapMarkerBuilders';
@@ -53,7 +54,7 @@ function formatResponseTime(minutes: number | null): string {
 function formatTimestamp(iso: string | null): string {
   if (!iso) return '-';
   try {
-    const d = new Date(iso.includes('T') ? iso : iso + 'T00:00:00');
+    const d = parseTimestamp(iso);
     return d.toLocaleString('en-US', {
       month: 'short', day: 'numeric',
       hour: '2-digit', minute: '2-digit',

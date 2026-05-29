@@ -4,6 +4,7 @@
 
 import { Activity } from 'lucide-react';
 import { ACTION_COLORS } from '../utils/personnelConstants';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface ActivityEntry {
   id: string;
@@ -36,7 +37,7 @@ function borderColor(action: string): string {
 
 function formatTimestamp(dateStr: string): string {
   if (!dateStr) return '-';
-  return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
+  return parseTimestamp(dateStr).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

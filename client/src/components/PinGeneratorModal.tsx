@@ -1,4 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import { X, Key, Copy, Check, Loader2, AlertCircle, Clock } from 'lucide-react';
 import { useOfflineMode } from '../hooks/useOfflineMode';
 import { toDisplayLabel } from '../utils/formatters';
@@ -79,7 +80,7 @@ export default function PinGeneratorModal({ isOpen, onClose, users }: PinGenerat
   let expiryDisplay = '';
   if (expiresAt) {
     try {
-      const dt = new Date(expiresAt);
+      const dt = parseTimestamp(expiresAt);
       expiryDisplay = dt.toLocaleString('en-US', {
         weekday: 'short',
         month: 'short',

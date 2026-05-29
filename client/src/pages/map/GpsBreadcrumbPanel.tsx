@@ -4,7 +4,7 @@ import {
   ChevronDown, ChevronUp, MapPin, Gauge, Navigation2, AlertTriangle,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { localToday, safeDateTimeStr } from '../../utils/dateUtils';
+import { localToday, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { escapeHtml } from '../../utils/sanitize';
 import { mapboxgl } from '../../utils/mapboxLoader';
 import { whenStyleReady } from './utils/safeAddSource';
@@ -77,7 +77,7 @@ const formatHeadingDir = (deg: number | null) => {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);

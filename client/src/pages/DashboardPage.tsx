@@ -23,6 +23,7 @@ import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ─── Backend Response Types ──────────────────────────────
 
@@ -308,7 +309,7 @@ function pollFreshnessText(p: {
   if (!p) return '—';
   if (p.status === 'running') return 'NOW';
   if (p.status === 'failed') return 'FAIL';
-  const completed = p.completed_at ? new Date(p.completed_at).getTime() : NaN;
+  const completed = p.completed_at ? parseTimestamp(p.completed_at).getTime() : NaN;
   if (Number.isNaN(completed)) return '—';
   const minutesAgo = Math.floor((Date.now() - completed) / 60_000);
   if (minutesAgo < 1) return '<1m';
@@ -325,7 +326,7 @@ function pollFreshnessColor(p: {
   if (!p) return 'text-rmpg-400';
   if (p.status === 'failed') return 'text-red-400';
   if (p.status === 'running') return 'text-brand-400';
-  const completed = p.completed_at ? new Date(p.completed_at).getTime() : NaN;
+  const completed = p.completed_at ? parseTimestamp(p.completed_at).getTime() : NaN;
   if (Number.isNaN(completed)) return 'text-rmpg-400';
   const hoursAgo = (Date.now() - completed) / 3_600_000;
   if (hoursAgo < 1.5) return 'text-green-400';   // within freshness window
@@ -457,7 +458,7 @@ export default function DashboardPage() {
       const sixtyDaysOut = new Date(now.getTime() + 60 * 24 * 60 * 60 * 1000);
       const expiring = (Array.isArray(data) ? data : []).filter((c: any) => {
         if (!c.expiry_date) return false;
-        const exp = new Date(c.expiry_date);
+        const exp = parseTimestamp(c.expiry_date);
         return exp <= sixtyDaysOut;
       });
       setExpiringCredentials(expiring);
@@ -1386,7 +1387,7 @@ export default function DashboardPage() {
                 {upcomingCourt.upcoming.map((c: any, i: number) => (
                   <div key={i} className="flex items-center gap-2 panel-beveled bg-surface-sunken p-2 hover:bg-surface-raised transition-colors duration-150">
                     <div className="text-[10px] font-mono text-brand-400 font-bold w-16 flex-shrink-0 tabular-nums">
-                      {c.date ? new Date(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
+                      {c.date ? parseTimestamp(c.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-[10px] text-rmpg-200 truncate font-medium">{c.case_number || c.description || 'Court Appearance'}</div>
@@ -1670,7 +1671,7 @@ export default function DashboardPage() {
                 <tbody>
                   {expiringCredentials.map((cred: any, idx: number) => {
                     const now = new Date();
-                    const exp = new Date(cred.expiry_date);
+                    const exp = parseTimestamp(cred.expiry_date);
                     const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
                     const isExpired = daysLeft < 0;
                     const isUrgent = daysLeft <= 30;

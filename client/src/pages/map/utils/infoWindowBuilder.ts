@@ -6,6 +6,7 @@
 // ============================================================
 
 import { escapeHtml } from '../../../utils/sanitize';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { formatIncidentType } from '../../../utils/caseNumbers';
 import { UNIT_STATUS_HEX, UNIT_STATUS_LABELS, PRIORITY_HEX } from '../../../utils/statusColors';
 import type { MapUnit, ActiveCall, MapProperty } from './mapConstants';
@@ -104,7 +105,7 @@ function divider(): string {
 function formatTimestamp(ts: string | null | undefined): string {
   if (!ts) return '--';
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   } catch { return '--'; }
 }
@@ -112,7 +113,7 @@ function formatTimestamp(ts: string | null | undefined): string {
 function formatDateTime(ts: string | null | undefined): string {
   if (!ts) return '--';
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' +
            d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
   } catch { return '--'; }
@@ -148,12 +149,12 @@ export function buildUnitInfoWindow(
   let timeOnScene = '';
   let timeSinceDispatch = '';
   if (unit.onscene_at) {
-    const ms = Date.now() - new Date(unit.onscene_at).getTime();
+    const ms = Date.now() - parseTimestamp(unit.onscene_at).getTime();
     const mins = Math.floor(ms / 60000);
     timeOnScene = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
   }
   if (unit.dispatched_at && !unit.onscene_at) {
-    const ms = Date.now() - new Date(unit.dispatched_at).getTime();
+    const ms = Date.now() - parseTimestamp(unit.dispatched_at).getTime();
     const mins = Math.floor(ms / 60000);
     timeSinceDispatch = mins < 60 ? `${mins}m` : `${Math.floor(mins / 60)}h ${mins % 60}m`;
   }

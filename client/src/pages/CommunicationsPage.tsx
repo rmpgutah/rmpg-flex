@@ -39,7 +39,7 @@ import ConfirmDialog from '../components/ConfirmDialog';
 import { apiFetch, apiUploadFiles } from '../hooks/useApi';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { usePersistedTab } from '../hooks/usePersistedState';
-import { formatShortTime, formatDateTime } from '../utils/dateUtils';
+import { formatShortTime, formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
@@ -187,7 +187,7 @@ function groupMessagesIntoThreads(messages: Message[]): MessageThread[] {
   for (const [threadId, msgs] of threadMap) {
     // Sort messages in thread chronologically (oldest first for display)
     const sorted = [...msgs].sort((a, b) =>
-      new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      parseTimestamp(a.created_at).getTime() - parseTimestamp(b.created_at).getTime()
     );
     const firstMsg = sorted[0];
     const lastMsg = sorted[sorted.length - 1];
@@ -223,7 +223,7 @@ function groupMessagesIntoThreads(messages: Message[]): MessageThread[] {
 
   // Sort threads by last message date (newest first)
   threads.sort((a, b) =>
-    new Date(b.lastMessage.created_at).getTime() - new Date(a.lastMessage.created_at).getTime()
+    parseTimestamp(b.lastMessage.created_at).getTime() - parseTimestamp(a.lastMessage.created_at).getTime()
   );
 
   return threads;
@@ -1233,8 +1233,8 @@ export default function CommunicationsPage() {
                   {bolo.expires_at && bolo.status === 'active' && (
                     <div className="mb-2 flex items-center gap-2">
                       <Clock className="w-3 h-3 text-amber-400" />
-                      <span className={`text-[10px] font-mono ${new Date(bolo.expires_at) <= new Date() ? 'text-red-400 font-bold' : 'text-amber-400'}`}>
-                        {new Date(bolo.expires_at) <= new Date() ? 'EXPIRED' : `Expires: ${formatDateTime(bolo.expires_at)}`}
+                      <span className={`text-[10px] font-mono ${parseTimestamp(bolo.expires_at) <= new Date() ? 'text-red-400 font-bold' : 'text-amber-400'}`}>
+                        {parseTimestamp(bolo.expires_at) <= new Date() ? 'EXPIRED' : `Expires: ${formatDateTime(bolo.expires_at)}`}
                       </span>
                     </div>
                   )}

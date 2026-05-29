@@ -34,7 +34,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
-import { localToday, dateToLocalYMD } from '../utils/dateUtils';
+import { localToday, dateToLocalYMD, parseTimestamp } from '../utils/dateUtils';
 import { generatePatrolTrackingPdf } from '../utils/patrolTrackingPdfGenerator';
 import { formatIncidentType } from '../utils/caseNumbers';
 import { toDisplayLabel } from '../utils/formatters';
@@ -173,7 +173,7 @@ function formatGroupKey(key: string): string {
 }
 
 function formatDateLabel(dateStr: string): string {
-  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const date = parseTimestamp(dateStr);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
@@ -310,7 +310,7 @@ function ReportApprovalQueue() {
             <div className="text-[9px] text-rmpg-400 mt-0.5">
               {r.officer_name && <span>{r.officer_name}</span>}
               {r.badge_number && <span className="ml-1">#{r.badge_number}</span>}
-              <span className="ml-2">{r.created_at ? new Date(r.created_at).toLocaleDateString() : ''}</span>
+              <span className="ml-2">{r.created_at ? parseTimestamp(r.created_at).toLocaleDateString() : ''}</span>
             </div>
             {r.narrative && <div className="text-[9px] text-rmpg-500 mt-0.5 truncate max-w-[300px]">{r.narrative.slice(0, 100)}</div>}
           </div>
@@ -486,7 +486,7 @@ function WeeklyDigestCard() {
               <ResponsiveContainer width="100%" height={120}>
                 <BarChart data={digest.byDay}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#2e2e2e" />
-                  <XAxis dataKey="day" tick={{ fill: '#888888', fontSize: 9 }} tickFormatter={(d: string) => new Date(d).toLocaleDateString('en-US', { weekday: 'short' })} />
+                  <XAxis dataKey="day" tick={{ fill: '#888888', fontSize: 9 }} tickFormatter={(d: string) => parseTimestamp(d).toLocaleDateString('en-US', { weekday: 'short' })} />
                   <YAxis tick={{ fill: '#888888', fontSize: 9 }} allowDecimals={false} />
                   <Tooltip {...CHART_TOOLTIP_STYLE} />
                   <Bar dataKey="count" fill="#888888" radius={[2, 2, 0, 0]} />

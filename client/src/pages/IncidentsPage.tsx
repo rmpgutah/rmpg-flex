@@ -60,7 +60,7 @@ import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import { useToast } from '../components/ToastProvider';
 import FloatingSaveBar from '../components/FloatingSaveBar';
-import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr } from '../utils/dateUtils';
+import { formatDate, formatDateTime, safeDateTimeStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { useIsMobile } from '../hooks/useIsMobile';
 import WarrantBadge from '../components/WarrantBadge';
 import NarrativeAssist from '../components/dispatch/NarrativeAssist';
@@ -176,7 +176,7 @@ function SortIcon({ colKey, sortKey, sortAsc }: { colKey: SortKey; sortKey: Sort
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -1039,7 +1039,7 @@ export default function IncidentsPage() {
                     </span>
                     {/* Age indicator */}
                     {inc.occurred_at && (() => {
-                      const days = Math.floor((Date.now() - new Date(inc.occurred_at).getTime()) / 86400000);
+                      const days = Math.floor((Date.now() - parseTimestamp(inc.occurred_at).getTime()) / 86400000);
                       if (days > 30) return <span className="ml-1 text-[7px] text-red-400 font-normal">{days}d</span>;
                       if (days > 7) return <span className="ml-1 text-[7px] text-amber-400 font-normal">{days}d</span>;
                       return null;

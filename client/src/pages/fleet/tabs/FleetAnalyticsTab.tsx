@@ -9,6 +9,7 @@ import {
   ChevronUp, Search, X, Heart, Clock, User, Bell,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import type { FleetAnalytics, FleetServiceAlert } from '../../../types';
 
 const CHART_TOOLTIP_STYLE = {
@@ -536,7 +537,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                     <span className="font-mono font-bold text-white">{alert.vehicle_number}</span>
                     <span className={`${sev.text} truncate mx-2`}>{alert.issue}</span>
                     <span className="font-mono tabular-nums text-rmpg-400 shrink-0">
-                      {alert.due_date ? new Date(alert.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'}
+                      {alert.due_date ? parseTimestamp(alert.due_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '--'}
                     </span>
                   </div>
                 );
@@ -644,7 +645,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   tickLine={false}
                   axisLine={{ stroke: '#222222' }}
                   tickFormatter={(v) => {
-                    const d = new Date(v + 'T00:00:00');
+                    const d = parseTimestamp(v);
                     return `${d.getMonth() + 1}/${d.getDate()}`;
                   }}
                 />
@@ -658,7 +659,7 @@ export default function FleetAnalyticsTab({ analytics, loading, onPeriodChange }
                   {...CHART_TOOLTIP_STYLE}
                   formatter={(value: any, name: string) => [value, name === 'active_vehicles' ? 'Active Vehicles' : name]}
                   labelFormatter={(label) => {
-                    const d = new Date(label + 'T00:00:00');
+                    const d = parseTimestamp(label);
                     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                   }}
                 />

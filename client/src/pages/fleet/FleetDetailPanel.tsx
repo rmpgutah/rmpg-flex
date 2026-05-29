@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
+import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Car, Fuel, ClipboardCheck, Radio, BarChart3, Settings, Wrench, X, Clock, Users,
   Archive, RotateCcw, Trash2, Printer, ChevronDown, Circle, AlertTriangle, AlertOctagon,
@@ -40,9 +41,8 @@ const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
-  // Force local-time parse for date-only strings to avoid UTC timezone shift
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00` : dateStr;
-  const exp = new Date(normalized);
+  // parseTimestamp reads naive timestamps as UTC and date-only strings as local
+  const exp = parseTimestamp(dateStr);
   const now = new Date();
   if (exp < now) return 'expired';
   const thirtyDays = new Date();

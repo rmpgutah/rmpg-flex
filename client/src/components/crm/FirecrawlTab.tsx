@@ -5,6 +5,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import RichTextArea from '../RichTextArea';
 import {
   Radar, BrainCircuit, Copy, Megaphone, GitCompareArrows, Workflow, Plus, Trash2,
@@ -193,7 +194,7 @@ interface WorkflowRun {
 
 function fmtDate(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', {
+  return parseTimestamp(d).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: 'numeric',

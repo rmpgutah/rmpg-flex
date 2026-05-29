@@ -6,6 +6,7 @@ import React, { useState } from 'react';
 import { Video, Plus, Edit2, Trash2, Loader2, Camera, Play, Upload } from 'lucide-react';
 import type { BodyCamera, BodyCamVideo } from '../../../types';
 import { CAMERA_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS, VIDEO_CLASSIFICATION_COLORS } from '../utils/personnelConstants';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   cameras: BodyCamera[];
@@ -43,7 +44,7 @@ export default function BodyCameraDetailTab({
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const formatFileSize = (bytes: number) => {

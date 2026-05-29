@@ -8,6 +8,7 @@ import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
 
 import RichTextArea from '../../../components/RichTextArea';
+import { parseTimestamp } from '../../../utils/dateUtils';
 interface Grievance {
   id: number;
   officer_id: number;
@@ -44,7 +45,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '';
-  try { return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
+  try { return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d.substring(0, 10); }
 }
 
 const EMPTY_FORM = { type: 'general', subject: '', description: '', priority: 'normal' };
