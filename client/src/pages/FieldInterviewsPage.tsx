@@ -20,7 +20,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidPlate, isValidDate } from '../utils/validate';
-import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { formatDate, formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
 import WarrantBadge from '../components/WarrantBadge';
 import { formatAddressDisplay } from '../utils/statusLabels';
@@ -79,7 +79,7 @@ const EMPTY_FORM = {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);

@@ -37,7 +37,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import StatuteLookup, { type StatuteResult } from '../components/StatuteLookup';
 import PrintRecordButton from '../components/PrintRecordButton';
 import type { CitationPdfData } from '../utils/recordPdfGenerator';
-import { localToday, formatDate } from '../utils/dateUtils';
+import { localToday, formatDate, parseTimestamp } from '../utils/dateUtils';
 import { useFormValidation } from '../hooks/useFormValidation';
 import { isValidDate, isValidPlate, isValidState } from '../utils/validate';
 import { useDistrictOptions, useDistrictIdentify } from '../hooks/useDistrictLookup';
@@ -1190,7 +1190,7 @@ export default function CitationsPage() {
               </h3>
               <div className="bg-surface-raised border border-rmpg-700 p-3 space-y-1.5 text-xs">
                 {c.court_date && (() => {
-                  const daysUntil = Math.ceil((new Date(c.court_date + 'T00:00:00').getTime() - Date.now()) / 86400000);
+                  const daysUntil = Math.ceil((parseTimestamp(c.court_date).getTime() - Date.now()) / 86400000);
                   const cdColor = daysUntil < 0 ? '#ef4444' : daysUntil <= 7 ? '#f97316' : daysUntil <= 30 ? '#eab308' : '#22c55e';
                   const cdLabel = daysUntil < 0 ? `${Math.abs(daysUntil)}d overdue` : daysUntil === 0 ? 'TODAY' : `${daysUntil}d away`;
                   return (

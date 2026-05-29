@@ -4,6 +4,7 @@ import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
 
 import RichTextArea from '../../../components/RichTextArea';
+import { parseTimestamp } from '../../../utils/dateUtils';
 interface PIP {
   id: number;
   officer_id: number;
@@ -28,7 +29,7 @@ const STATUS_COLORS: Record<string, string> = {
 
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '';
-  try { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+  try { return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
 }
 
 export default function PIPsTab({ userRole }: { userRole: string }) {
@@ -79,7 +80,7 @@ export default function PIPsTab({ userRole }: { userRole: string }) {
   };
 
   const daysRemaining = (endDate: string) => {
-    const diff = new Date(endDate).getTime() - Date.now();
+    const diff = parseTimestamp(endDate).getTime() - Date.now();
     return Math.ceil(diff / (1000 * 60 * 60 * 24));
   };
 

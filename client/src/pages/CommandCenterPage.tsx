@@ -8,6 +8,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import StatusBadge from '../components/StatusBadge';
 import { formatIncidentType } from '../utils/caseNumbers';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface CommandCenterData {
   active_calls: any[];
@@ -71,7 +72,7 @@ export default function CommandCenterPage() {
   }
 
   const formatElapsed = (dateStr: string) => {
-    const min = Math.floor((Date.now() - new Date(dateStr).getTime()) / 60000);
+    const min = Math.floor((Date.now() - parseTimestamp(dateStr).getTime()) / 60000);
     if (min < 60) return `${min}m`;
     return `${Math.floor(min / 60)}h ${min % 60}m`;
   };

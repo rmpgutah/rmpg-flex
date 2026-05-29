@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { whenStyleReady } from '../utils/safeAddSource';
 
 interface EnforcementCluster {
@@ -114,8 +115,8 @@ export function useMapEnforcementClusters(
         if (!feature || !feature.properties) return;
         const p = feature.properties;
         const statutes = p.top_statutes ? (p.top_statutes as string).split(',').slice(0, 5).join(', ') : 'N/A';
-        const firstDate = p.first_date ? new Date(p.first_date as string).toLocaleDateString() : 'Unknown';
-        const lastDate = p.last_date ? new Date(p.last_date as string).toLocaleDateString() : 'Unknown';
+        const firstDate = p.first_date ? parseTimestamp(p.first_date as string).toLocaleDateString() : 'Unknown';
+        const lastDate = p.last_date ? parseTimestamp(p.last_date as string).toLocaleDateString() : 'Unknown';
         const label = type === 'citations' ? 'Citation Cluster' : 'Arrest Cluster';
 
         const html = `

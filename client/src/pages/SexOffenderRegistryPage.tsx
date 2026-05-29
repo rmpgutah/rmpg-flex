@@ -23,6 +23,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import ExportButton from '../components/ExportButton';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // Re-type apiFetch for raw Response access (needed for PUT/POST error handling)
 async function apiRaw(endpoint: string, options?: RequestInit): Promise<Response> {
@@ -71,7 +72,7 @@ function parseJson<T>(raw: string | undefined | null, fallback: T[]): T[] {
 function formatDate(d?: string | null): string {
   if (!d) return '—';
   try {
-    const dt = new Date(d.includes('T') ? d : d + 'T00:00:00');
+    const dt = parseTimestamp(d);
     return dt.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   } catch { return d; }
 }
@@ -79,7 +80,7 @@ function formatDate(d?: string | null): string {
 function calcAge(dob?: string | null): string {
   if (!dob) return '';
   try {
-    const birth = new Date(dob);
+    const birth = parseTimestamp(dob);
     const today = new Date();
     let age = today.getFullYear() - birth.getFullYear();
     if (today.getMonth() < birth.getMonth() || (today.getMonth() === birth.getMonth() && today.getDate() < birth.getDate())) age--;
@@ -640,7 +641,7 @@ export default function SexOffenderRegistryPage() {
           <Field label="Last Verified" value={formatDate(selected.last_verification)} />
           <Field label="Next Due" value={
             selected.next_verification_due ? (
-              <span style={{ color: new Date(selected.next_verification_due) < new Date() ? '#f87171' : '#4ade80' }}>
+              <span style={{ color: parseTimestamp(selected.next_verification_due) < new Date() ? '#f87171' : '#4ade80' }}>
                 {formatDate(selected.next_verification_due)}
               </span>
             ) : '—'

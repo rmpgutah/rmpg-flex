@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { Clock, ChevronDown, ChevronUp } from 'lucide-react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface CoverageInterval {
   start: string;
@@ -22,7 +23,7 @@ interface CoverageTimelineProps {
 
 /** Format HH:MM from ISO timestamp */
 function fmtTime(iso: string): string {
-  const d = new Date(iso);
+  const d = parseTimestamp(iso);
   const h = d.getHours();
   const m = d.getMinutes();
   return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}`;

@@ -17,7 +17,7 @@ import type {
 import { SEVERITY_COLORS, DISCIPLINARY_TYPE_LABELS } from '../utils/hrConstants';
 import DisciplinaryFormModal from '../modals/DisciplinaryFormModal';
 import ExportButton from '../../../components/ExportButton';
-import { safeDateStr } from '../../../utils/dateUtils';
+import { safeDateStr, parseTimestamp } from '../../../utils/dateUtils';
 
 interface DisciplinaryTabProps {
   userRole: string;
@@ -66,7 +66,7 @@ function statusBadge(status: DisciplinaryStatus) {
 
 function followUpStatus(date: string | null): 'none' | 'upcoming' | 'overdue' | 'past' {
   if (!date) return 'none';
-  const d = new Date(date);
+  const d = parseTimestamp(date);
   const now = new Date();
   const diff = d.getTime() - now.getTime();
   const days = diff / (1000 * 60 * 60 * 24);

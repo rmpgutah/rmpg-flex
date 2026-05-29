@@ -6,6 +6,7 @@ import {
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetVehicle, FleetMaintenance, FleetVehicleStatus } from '../../../types';
 import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetFormatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 const STATUS_LED: Record<FleetVehicleStatus, string> = {
   in_service: 'led-dot led-green',
@@ -30,9 +31,8 @@ const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
-  // Force local-time parse for date-only strings to avoid UTC timezone shift
-  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? `${dateStr}T00:00:00` : dateStr;
-  const exp = new Date(normalized);
+  // parseTimestamp reads naive timestamps as UTC and date-only strings as local
+  const exp = parseTimestamp(dateStr);
   const now = new Date();
   if (exp < now) return 'expired';
   const thirtyDays = new Date();
@@ -122,7 +122,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
         const lastSvcMileage = maintenance.length > 0
           ? maintenance.reduce((latest, m) => {
               if (!m.mileage_at_service) return latest;
-              if (!latest || new Date(m.performed_at) > new Date(latest.performed_at)) return m;
+              if (!latest || parseTimestamp(m.performed_at) > parseTimestamp(latest.performed_at)) return m;
               return latest;
             }, null as (typeof maintenance[0]) | null)?.mileage_at_service
           : null;
@@ -378,7 +378,7 @@ export default function FleetOverviewTab({ detail, maintenance, onEditMaintenanc
 
       {/* Service Alert for This Vehicle */}
       {detail.next_service_due && (() => {
-        const daysUntil = Math.floor((new Date(detail.next_service_due).getTime() - Date.now()) / 86400000);
+        const daysUntil = Math.floor((parseTimestamp(detail.next_service_due).getTime() - Date.now()) / 86400000);
         if (daysUntil > 30) return null;
         return (
           <div className={`panel-beveled p-3 ${daysUntil < 0 ? 'bg-red-900/20 border-red-700/40' : 'bg-amber-900/20 border-amber-700/40'}`}>

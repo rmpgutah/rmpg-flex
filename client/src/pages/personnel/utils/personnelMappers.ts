@@ -3,6 +3,7 @@
 // ============================================================
 
 import type { User as UserType, Schedule, TimeEntry, Credential, TrainingRecord, Deployment, BodyCamera, BodyCamVideo } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 export interface OfficerWithStatus extends Omit<UserType, 'status'> {
   status: string;
@@ -120,7 +121,7 @@ export function mapTimeEntry(row: any): TimeEntry {
 export function mapCredential(row: any): Credential {
   let status: Credential['status'] = 'valid';
   if (row.expiry_date) {
-    const expiry = new Date(row.expiry_date);
+    const expiry = parseTimestamp(row.expiry_date);
     const now = new Date();
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
     if (expiry.getTime() < now.getTime()) {

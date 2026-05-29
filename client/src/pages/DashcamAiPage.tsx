@@ -22,6 +22,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { apiFetch } from '../hooks/useApi';
 import usePersistedState from '../hooks/usePersistedState';
 import useLiveSync from '../hooks/useLiveSync';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -110,7 +111,7 @@ const HEALTH_LED: Record<string, string> = {
 function formatLocalDate(s: string | null): string {
   if (!s) return '—';
   try {
-    return new Date(s.includes('T') ? s : s.replace(' ', 'T')).toLocaleString('en-US', {
+    return parseTimestamp(s).toLocaleString('en-US', {
       month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit',
     });
   } catch { return s; }
@@ -118,7 +119,7 @@ function formatLocalDate(s: string | null): string {
 
 function formatRelative(s: string | null): string {
   if (!s) return '—';
-  const ms = Date.now() - new Date(s.includes('T') ? s : s.replace(' ', 'T')).getTime();
+  const ms = Date.now() - parseTimestamp(s).getTime();
   if (ms < 0) return 'just now';
   if (ms < 60_000) return `${Math.floor(ms / 1000)}s ago`;
   if (ms < 3600_000) return `${Math.floor(ms / 60_000)}m ago`;

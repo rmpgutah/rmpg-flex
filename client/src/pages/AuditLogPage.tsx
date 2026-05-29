@@ -23,7 +23,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
-import { localToday } from '../utils/dateUtils';
+import { localToday, parseTimestamp } from '../utils/dateUtils';
 import { useToast } from '../components/ToastProvider';
 
 interface AuditLogEntry {
@@ -235,7 +235,7 @@ const AuditLogPage: React.FC = () => {
 
   // Format timestamp
   const formatTimestamp = (timestamp: string): string => {
-    const date = new Date(timestamp);
+    const date = parseTimestamp(timestamp);
     return date.toLocaleString('en-US', {
       year: 'numeric',
       month: '2-digit',

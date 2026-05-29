@@ -25,7 +25,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { isValidVIN, isValidPlate } from '../utils/validate';
-import { localToday, safeDateStr, safeDateTimeStr } from '../utils/dateUtils';
+import { localToday, safeDateStr, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { formatAddressDisplay } from '../utils/statusLabels';
 import EmptyState from '../components/EmptyState';
 
@@ -75,7 +75,7 @@ const EMPTY_TOW = {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -611,7 +611,7 @@ export default function CodeEnforcementPage() {
                   ['Code Section', selectedViolation.code_section || '—'],
                   ['Severity', selectedViolation.severity ? selectedViolation.severity.charAt(0).toUpperCase() + selectedViolation.severity.slice(1) : '—'],
                   ['Fine Amount', selectedViolation.fine_amount && !isNaN(Number(selectedViolation.fine_amount)) ? `$${Number(selectedViolation.fine_amount).toFixed(2)}` : '—'],
-                  ['Compliance Deadline', selectedViolation.compliance_deadline ? new Date(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
+                  ['Compliance Deadline', selectedViolation.compliance_deadline ? parseTimestamp(selectedViolation.compliance_deadline).toLocaleDateString() : '—'],
                   ['S/Z/B', [(selectedViolation as any).sector_id, (selectedViolation as any).zone_id, (selectedViolation as any).beat_id].filter(Boolean).join('/') || '—'],
                   ['Created', safeDateTimeStr(selectedViolation.created_at)],
                 ].map(([label, value]) => (

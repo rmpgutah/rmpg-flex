@@ -7,7 +7,7 @@ import { Package, Plus, Edit2, Trash2, Loader2, Box, LogIn, LogOut, Clock } from
 import type { OfficerEquipment } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import { EQUIPMENT_STATUS_COLORS, EQUIPMENT_CONDITION_COLORS } from '../utils/personnelConstants';
-import { safeDateTimeStr } from '../../../utils/dateUtils';
+import { safeDateTimeStr, parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   equipment: OfficerEquipment[];
@@ -96,7 +96,7 @@ export default function EquipmentDetailTab({
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const typeLabel = (type: string) =>

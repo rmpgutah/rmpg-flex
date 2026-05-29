@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import { safeDateTimeStr } from '../../../utils/dateUtils';
 import { whenStyleReady } from '../utils/safeAddSource';
@@ -32,7 +33,7 @@ interface UseMapFleetVehiclesReturn {
 
 function getVehicleColor(status: string, gpsReportedAt: string | null): string {
   if (gpsReportedAt) {
-    const reportedTime = new Date(gpsReportedAt).getTime();
+    const reportedTime = parseTimestamp(gpsReportedAt).getTime();
     if (isNaN(reportedTime)) return '#666666';
     const oneHourAgo = Date.now() - 60 * 60 * 1000;
     if (reportedTime < oneHourAgo) return '#666666';

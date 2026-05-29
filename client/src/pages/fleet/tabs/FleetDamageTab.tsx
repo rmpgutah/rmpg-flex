@@ -5,7 +5,7 @@ import { useFormDraft } from '../../../hooks/useFormDraft';
 import { useToast } from '../../../components/ToastProvider';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
-import { localToday } from '../../../utils/dateUtils';
+import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface DamageReport {
@@ -156,7 +156,7 @@ export default function FleetDamageTab({ vehicleId }: { vehicleId: number | stri
               </div>
               <p className="text-[10px] text-rmpg-300">{r.description}</p>
               <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-                <span>{r.damage_date ? new Date(r.damage_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+                <span>{r.damage_date ? parseTimestamp(r.damage_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                 <span>By: {r.reported_by_name}</span>
                 {r.repair_estimate && <span>Est: ${r.repair_estimate}</span>}
                 {r.repair_cost && <span>Cost: ${r.repair_cost}</span>}

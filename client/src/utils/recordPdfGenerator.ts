@@ -6,7 +6,7 @@
 
 import jsPDF from 'jspdf';
 import QRCode from 'qrcode';
-import { isPast, isWithinDays } from './dateUtils';
+import { isPast, isWithinDays, parseTimestamp } from './dateUtils';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import {
   addConfidentialWatermark, openAutoSection, closeAutoSection, addFieldPair,
@@ -1140,7 +1140,7 @@ function toMountain(d: Date): { mm: string; dd: string; yyyy: number; hh: string
 function fmtDate(ts?: string | null): string {
   if (!ts) return '';
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     if (isNaN(d.getTime())) return ts;
     const { mm, dd, yyyy } = toMountain(d);
     return `${mm}/${dd}/${yyyy}`;
@@ -1151,7 +1151,7 @@ function fmtDate(ts?: string | null): string {
 function fmtDateTime(ts?: string | null): string {
   if (!ts) return '';
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     if (isNaN(d.getTime())) return ts;
     const { mm, dd, yyyy, hh, min, sec } = toMountain(d);
     return `${mm}/${dd}/${yyyy} @ ${hh}:${min}:${sec}`;
@@ -1458,7 +1458,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let prevMs: number | null = null;
       for (let i = 0; i < steps.length; i++) {
         const s = steps[i];
-        const tsMs = new Date(s.ts as string).getTime();
+        const tsMs = parseTimestamp(s.ts as string).getTime();
         const deltaMs = (prevMs != null && isFinite(tsMs - prevMs) && tsMs - prevMs >= 0) ? tsMs - prevMs : null;
         let deltaStr = '—';
         if (deltaMs != null) {
@@ -1489,11 +1489,11 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
         const clock = hh > 0 ? `${pad(hh)}:${pad(mm)}:${pad(ss)}` : `${pad(mm)}:${pad(ss)}`;
         return `${clock} (${(ms / 3600000).toFixed(2)}h)`;
       };
-      const t0 = data.created_at ? new Date(data.created_at).getTime() : NaN;
-      const tEnd = (data.cleared_at || data.closed_at || (data as any).archived_at) ? new Date((data.cleared_at || data.closed_at || (data as any).archived_at) as string).getTime() : NaN;
-      const tDisp = data.dispatched_at ? new Date(data.dispatched_at).getTime() : NaN;
-      const tOn = data.onscene_at ? new Date(data.onscene_at).getTime() : NaN;
-      const tClr = data.cleared_at ? new Date(data.cleared_at).getTime() : (data.closed_at ? new Date(data.closed_at).getTime() : NaN);
+      const t0 = data.created_at ? parseTimestamp(data.created_at).getTime() : NaN;
+      const tEnd = (data.cleared_at || data.closed_at || (data as any).archived_at) ? parseTimestamp((data.cleared_at || data.closed_at || (data as any).archived_at) as string).getTime() : NaN;
+      const tDisp = data.dispatched_at ? parseTimestamp(data.dispatched_at).getTime() : NaN;
+      const tOn = data.onscene_at ? parseTimestamp(data.onscene_at).getTime() : NaN;
+      const tClr = data.cleared_at ? parseTimestamp(data.cleared_at).getTime() : (data.closed_at ? parseTimestamp(data.closed_at).getTime() : NaN);
       const totalMs = tEnd - t0;
       const respMs = tOn - tDisp;
       const onSceneMs = tClr - tOn;
@@ -1582,7 +1582,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       else if (data.pso_72hr_notified === 'resolved') slaStatus = 'RESOLVED';
       else if (data.pso_72hr_deadline) {
         try {
-          const dl = new Date(data.pso_72hr_deadline);
+          const dl = parseTimestamp(data.pso_72hr_deadline);
           if (!Number.isNaN(dl.getTime()) && isPast(dl.toISOString())) slaStatus = 'OVERDUE';
         } catch { /* ignore parse errors */ }
       }
@@ -1590,7 +1590,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
       let timeRemaining = '';
       if (data.pso_72hr_deadline) {
         try {
-          const dl = new Date(data.pso_72hr_deadline).getTime();
+          const dl = parseTimestamp(data.pso_72hr_deadline).getTime();
           const diffMs = dl - Date.now();
           const absH = Math.floor(Math.abs(diffMs) / 3_600_000);
           const absM = Math.floor((Math.abs(diffMs) % 3_600_000) / 60_000);
@@ -1625,8 +1625,8 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     if (data.dispatched_at || data.onscene_at || data.cleared_at) {
       const durMin = (from?: string, to?: string): string => {
         if (!from || !to) return '';
-        const a = new Date(from).getTime();
-        const b = new Date(to).getTime();
+        const a = parseTimestamp(from).getTime();
+        const b = parseTimestamp(to).getTime();
         if (Number.isNaN(a) || Number.isNaN(b) || b < a) return '';
         const mins = Math.round((b - a) / 60_000);
         const h = Math.floor(mins / 60);
@@ -2139,7 +2139,7 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     const tableRows = sampled.map((p: any) => {
       let timeStr = '';
       try {
-        timeStr = new Date(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       } catch { timeStr = p.time; }
       let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;
       if (p.road_name) {
@@ -3742,7 +3742,7 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
 
   // ── Watermarks (after all content) — stamp every page (Phase 1 review) ──
   const totalPages = doc.getNumberOfPages();
-  if (data.expires_at && new Date(data.expires_at) < new Date()) {
+  if (data.expires_at && parseTimestamp(data.expires_at) < new Date()) {
     for (let i = 1; i <= totalPages; i++) {
       doc.setPage(i);
       drawDiagonalWatermark(doc, 'EXPIRED', [220, 38, 38, 0.15]);
@@ -4007,7 +4007,7 @@ function expiryStatusTag(dateStr: string | null | undefined, warnWithinDays = 30
   if (!dateStr) return '';
   if (isPast(dateStr)) return '[EXPIRED]';
   // Compute exact days remaining
-  const d = new Date(dateStr).getTime();
+  const d = parseTimestamp(dateStr).getTime();
   const now = Date.now();
   const days = Math.ceil((d - now) / 86400000);
   if (days <= warnWithinDays) return `[${days} DAY${days === 1 ? '' : 'S'}]`;
@@ -5482,7 +5482,7 @@ export async function downloadRecordPdf<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? new Date(closedDate) : new Date();
+    const sigDate = closedDate ? parseTimestamp(closedDate) : new Date();
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({
@@ -5540,7 +5540,7 @@ export async function generateRecordPdfBlobUrl<T extends RecordPdfType>(
     const badgeNum = anyData.badge_number || anyData.officer_badge || '';
     // Use call closed/cleared date if available, otherwise now — always include time with seconds
     const closedDate = anyData.closed_at || anyData.cleared_at || anyData.archived_at || null;
-    const sigDate = closedDate ? new Date(closedDate) : new Date();
+    const sigDate = closedDate ? parseTimestamp(closedDate) : new Date();
     const _p2 = (n: number) => String(n).padStart(2, '0');
     const sigDateStr = `${_p2(sigDate.getMonth() + 1)}/${_p2(sigDate.getDate())}/${sigDate.getFullYear()} ${_p2(sigDate.getHours())}:${_p2(sigDate.getMinutes())}:${_p2(sigDate.getSeconds())}`;
     setActiveOfficerSignature({

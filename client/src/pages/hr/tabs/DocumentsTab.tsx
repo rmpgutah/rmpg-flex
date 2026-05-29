@@ -5,6 +5,7 @@ import { useToast } from '../../../components/ToastProvider';
 import { useAuth } from '../../../context/AuthContext';
 
 import RichTextArea from '../../../components/RichTextArea';
+import { parseTimestamp } from '../../../utils/dateUtils';
 interface HRDocument {
   id: number;
   title: string;
@@ -141,7 +142,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                     <span className="text-[9px] font-mono px-1.5 py-0.5 bg-rmpg-700 text-rmpg-300 uppercase rounded-sm border border-rmpg-700">{(doc.category || '').replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase())}</span>
                   </div>
                   {doc.description && <p className="text-[10px] text-rmpg-400 mt-1">{doc.description}</p>}
-                  <span className="text-[10px] text-rmpg-500">Uploaded by {doc.uploaded_by_name} on {doc.created_at ? new Date(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
+                  <span className="text-[10px] text-rmpg-500">Uploaded by {doc.uploaded_by_name} on {doc.created_at ? parseTimestamp(doc.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : ''}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   {!myAcks.has(doc.id) ? (
@@ -162,7 +163,7 @@ export default function DocumentsTab({ userRole }: { userRole: string }) {
                   <p className="text-[10px] text-rmpg-400 font-bold mb-1">Acknowledgments ({acks.length})</p>
                   <div className="grid grid-cols-3 gap-1">
                     {acks.map(a => (
-                      <div key={a.id} className="text-[10px] text-rmpg-300">{a.officer_name} - {a.acknowledged_at ? new Date(a.acknowledged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</div>
+                      <div key={a.id} className="text-[10px] text-rmpg-300">{a.officer_name} - {a.acknowledged_at ? parseTimestamp(a.acknowledged_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''}</div>
                     ))}
                   </div>
                 </div>

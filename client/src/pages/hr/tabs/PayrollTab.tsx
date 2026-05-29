@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import IconButton from '../../../components/IconButton';
-import { localToday } from '../../../utils/dateUtils';
+import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import UnsavedChangesGuard from '../../../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../../../components/FloatingSaveBar';
@@ -100,7 +100,7 @@ function formatCurrency(amount: number): string {
 
 function formatDate(d: string): string {
   if (!d) return '—';
-  const date = new Date(d.includes('T') ? d : d + 'T00:00:00');
+  const date = parseTimestamp(d);
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
@@ -209,7 +209,7 @@ export default function PayrollTab({ userRole }: { userRole: string }) {
         const hireDate = p.hire_date || p.start_date || p.created_at;
         let accrued = ANNUAL_PTO_ALLOTMENT;
         if (hireDate) {
-          const hire = new Date(hireDate);
+          const hire = parseTimestamp(hireDate);
           const now = new Date();
           const yearStart = new Date(now.getFullYear(), 0, 1);
           const effectiveStart = hire > yearStart ? hire : yearStart;

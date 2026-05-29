@@ -12,6 +12,7 @@ import { useRef, useState, useEffect, useMemo, useCallback } from 'react';
 import { X, Maximize2, Minimize2, Edit2 } from 'lucide-react';
 import type { DashCamVideo } from '../types';
 import { mapboxgl } from '../utils/mapboxLoader';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -164,7 +165,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
   // ── Format helpers ──────────────────────────────────────────
 
   const formatHudTime = (seconds: number) => {
-    const d = video.recorded_at ? new Date(video.recorded_at) : new Date();
+    const d = video.recorded_at ? parseTimestamp(video.recorded_at) : new Date();
     const p = new Date(d.getTime() + seconds * 1000);
     return p.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).replace(',', '');
   };
@@ -381,7 +382,7 @@ export default function DashCamVideoPlayer({ isOpen, onClose, video, apiBase, ge
             <span className="px-2 text-[9px] font-mono uppercase tracking-wider ml-auto">
               <span className="text-white/15 mr-1">REC</span>
               <span className="text-white/50">
-                {video.recorded_at ? new Date(video.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
+                {video.recorded_at ? parseTimestamp(video.recorded_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : '--'}
               </span>
             </span>
           </div>

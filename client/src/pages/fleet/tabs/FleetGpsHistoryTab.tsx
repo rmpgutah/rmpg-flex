@@ -3,6 +3,7 @@ import {
   Navigation2, Gauge, Zap, AlertTriangle, Car, Radio, RefreshCw, Loader2,
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Breadcrumb {
   id: number;
@@ -93,11 +94,11 @@ export default function FleetGpsHistoryTab({ vehicleId }: Props) {
   useEffect(() => { fetchData(); }, [fetchData]);
 
   const formatTime = (dt: string) => {
-    const d = new Date(dt);
+    const d = parseTimestamp(dt);
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   };
   const formatDate = (dt: string) => {
-    const d = new Date(dt);
+    const d = parseTimestamp(dt);
     return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit' });
   };
 

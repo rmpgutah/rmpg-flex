@@ -25,7 +25,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import EmptyState from '../components/EmptyState';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
-import { formatDate, formatDateTime } from '../utils/dateUtils';
+import { formatDate, formatDateTime, parseTimestamp } from '../utils/dateUtils';
 import { useAuth } from '../context/AuthContext';
 import {
   downloadRecordPdf, generateBoloPdf, generateWarrantSummaryPdf,
@@ -369,7 +369,7 @@ function chargesFromJson(charges: string | null): string {
 function computeDuration(start: string, end: string | null): string {
   if (!end) return 'In progress...';
   try {
-    const ms = new Date(end.replace(' ', 'T')).getTime() - new Date(start.replace(' ', 'T')).getTime();
+    const ms = parseTimestamp(end).getTime() - parseTimestamp(start).getTime();
     if (ms < 0) return '-';
     const secs = Math.floor(ms / 1000);
     if (secs < 60) return `${secs}s`;
@@ -382,7 +382,7 @@ function computeDuration(start: string, end: string | null): string {
 
 function relativeTime(dt: string): string {
   try {
-    const ms = Date.now() - new Date(dt.replace(' ', 'T')).getTime();
+    const ms = Date.now() - parseTimestamp(dt).getTime();
     if (ms < 0) return 'just now';
     const secs = Math.floor(ms / 1000);
     if (secs < 60) return `${secs}s ago`;
@@ -401,7 +401,7 @@ function relativeTime(dt: string): string {
 
 function CoverageSourceCard({ source }: { source: ScraperSource }) {
   const isRecent = source.last_scraped_at &&
-    (Date.now() - new Date(source.last_scraped_at.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
+    (Date.now() - parseTimestamp(source.last_scraped_at).getTime()) < 3 * 60 * 60 * 1000;
   return (
     <div className={`p-2 rounded-sm border ${
       !source.enabled
@@ -1903,7 +1903,7 @@ export default function WarrantsPage() {
                       </div>
                       {/* UPGRADE 42: Expiration warning highlight */}
                       {w.expires_at && w.status === 'active' && (() => {
-                        const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        const daysLeft = Math.ceil((parseTimestamp(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                         if (daysLeft < 0) return <div className="text-[9px] text-red-400 font-bold mt-0.5 flex items-center gap-1"><AlertTriangle size={9} /> EXPIRED {Math.abs(daysLeft)}d ago</div>;
                         if (daysLeft <= 30) return <div className="text-[9px] text-amber-400 font-bold mt-0.5 flex items-center gap-1"><Clock size={9} /> Expires in {daysLeft}d</div>;
                         return null;
@@ -1974,7 +1974,7 @@ export default function WarrantsPage() {
                             {formatEnumValue(w.status)}
                           </span>
                           {w.expires_at && w.status === 'active' && (() => {
-                            const daysLeft = Math.ceil((new Date(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                            const daysLeft = Math.ceil((parseTimestamp(w.expires_at).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                             if (daysLeft < 0) return <span className="ml-1 text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1 py-0.5 rounded-sm font-bold">EXPIRED</span>;
                             if (daysLeft <= 7) return <span className="ml-1 text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1 py-0.5 rounded-sm font-bold">{daysLeft}d</span>;
                             return null;
@@ -3175,7 +3175,7 @@ export default function WarrantsPage() {
               const totalScraped = coverageSources.reduce((sum, s) => sum + s.total_warrants, 0);
               const recentlyScraped = coverageSources.filter(s => {
                 if (!s.last_scraped_at) return false;
-                const ago = Date.now() - new Date(s.last_scraped_at.replace(' ', 'T')).getTime();
+                const ago = Date.now() - parseTimestamp(s.last_scraped_at).getTime();
                 return ago < 3 * 60 * 60 * 1000;
               }).length;
 
@@ -3229,7 +3229,7 @@ export default function WarrantsPage() {
                         const enabled = sources.filter(s => s.enabled).length;
                         const hasErrors = sources.some(s => s.consecutive_failures > 0);
                         const lastScraped = sources.map(s => s.last_scraped_at).filter(Boolean).sort().pop();
-                        const isRecent = lastScraped && (Date.now() - new Date(lastScraped.replace(' ', 'T')).getTime()) < 3 * 60 * 60 * 1000;
+                        const isRecent = lastScraped && (Date.now() - parseTimestamp(lastScraped).getTime()) < 3 * 60 * 60 * 1000;
 
                         return (
                           <div

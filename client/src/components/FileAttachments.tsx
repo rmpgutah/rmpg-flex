@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import {
   Paperclip,
   Upload,
@@ -98,7 +99,7 @@ function getFileIcon(mime: string) {
 }
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleString('en-US', {
+  return parseTimestamp(dateStr).toLocaleString('en-US', {
     month: 'short',
     day: 'numeric',
     hour: '2-digit',

@@ -45,6 +45,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import RmpgLogo from '../components/RmpgLogo';
 import ClientFormModal from '../components/ClientFormModal';
 import ExportButton from '../components/ExportButton';
+import { parseTimestamp } from '../utils/dateUtils';
 import type {
   Client,
   Property,
@@ -83,12 +84,12 @@ function formatCurrency(val: number): string {
 
 function formatDate(d?: string): string {
   if (!d) return '—';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(d?: string): string {
   if (!d) return '—';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function toDisplayLabel(s: string): string {
@@ -1201,7 +1202,7 @@ export default function CrmPage() {
                     <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
                       {task.client_name && <span className="flex items-center gap-1"><Building2 className="w-2.5 h-2.5" />{task.client_name}</span>}
                       {task.due_date && (
-                        <span className={`flex items-center gap-1 ${new Date(task.due_date) < new Date() && task.status !== 'completed' ? 'text-red-400' : ''}`}>
+                        <span className={`flex items-center gap-1 ${parseTimestamp(task.due_date) < new Date() && task.status !== 'completed' ? 'text-red-400' : ''}`}>
                           <Calendar className="w-2.5 h-2.5" />{formatDate(task.due_date)}
                         </span>
                       )}

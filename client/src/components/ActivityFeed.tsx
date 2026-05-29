@@ -1,4 +1,5 @@
 import React from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import {
   Phone,
   Radio,
@@ -44,7 +45,7 @@ const ACTION_CONFIG: Record<ActivityAction, { icon: React.ElementType; color: st
 
 function formatTime(dateStr: string, showDate: boolean): string {
   if (!dateStr) return '--:--:--';
-  const date = new Date(dateStr);
+  const date = parseTimestamp(dateStr);
   if (isNaN(date.getTime())) return '--:--:--';
   if (showDate) {
     return date.toLocaleString('en-US', {

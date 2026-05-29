@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import {
   Shield,
   FileText,
@@ -96,7 +97,7 @@ interface PersonHistoryPanelProps {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', {
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', {
       year: 'numeric',
       month: 'short',
       day: 'numeric',

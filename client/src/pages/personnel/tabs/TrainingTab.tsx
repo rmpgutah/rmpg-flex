@@ -10,6 +10,7 @@ import {
 import type { TrainingRecord, TrainingRequirement, TrainingCategory } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { TRAINING_CATEGORY_COLORS } from '../utils/personnelConstants';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 const CATEGORIES: TrainingCategory[] = [
   'firearms', 'defensive_tactics', 'first_aid', 'legal',
@@ -39,7 +40,7 @@ export default function TrainingTab({ training, requirements, officers, loading,
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const statusBadge = (status: string) => {

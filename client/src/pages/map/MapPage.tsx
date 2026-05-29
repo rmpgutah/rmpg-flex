@@ -73,7 +73,7 @@ import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerato
 import { escapeHtml } from '../../utils/sanitize';
 import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
-import { localToday, dateToLocalYMD, safeDateTimeStr } from '../../utils/dateUtils';
+import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
 import { useGeoJsonLayers, GEO_LAYER_CONFIGS, getSectionColor, type BeatDistrictEntry } from '../../hooks/useGeoJsonLayers';
 import { useEventPlanning, PLAN_COLORS, PLAN_TYPE_LABELS, type PlanItemType } from '../../hooks/useEventPlanning';
 import { useShiftPlanning, SHIFT_TYPES, type ShiftType } from '../../hooks/useShiftPlanning';
@@ -1410,8 +1410,8 @@ export default function MapPage() {
 
                 // Build call history rows
                 const callRows = recentCalls.slice(0, 5).map((c: any) => {
-                  const date = c.created_at ? new Date(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
-                  const time = c.created_at ? new Date(c.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
+                  const date = c.created_at ? parseTimestamp(c.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : '';
+                  const time = c.created_at ? parseTimestamp(c.created_at).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : '';
                   const statusColor = c.status === 'cleared' || c.status === 'closed' ? '#4ade80' : c.status === 'pending' ? '#fbbf24' : '#aaaaaa';
                   return `<div style="display:flex;justify-content:space-between;align-items:center;padding:3px 0;border-bottom:1px solid #2b2b2b20;">
                     <div>
@@ -1802,7 +1802,7 @@ export default function MapPage() {
       let distHtml = '';
       if (ptIdx > 0) {
         const prev = trail.points[ptIdx - 1];
-        const dtSec = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
+        const dtSec = (parseTimestamp(pt.time).getTime() - parseTimestamp(prev.time).getTime()) / 1000;
         // Distance (Haversine approx)
         const dLat = (pt.lat - prev.lat) * Math.PI / 180;
         const dLng = (pt.lng - prev.lng) * Math.PI / 180;
@@ -1978,7 +1978,7 @@ export default function MapPage() {
             } else if (breadcrumbColorMode === 'status') {
               segColor = statusToColor(p1.status);
             } else if (breadcrumbColorMode === 'accel') {
-              const dt = (new Date(p2.time).getTime() - new Date(p1.time).getTime()) / 1000;
+              const dt = (parseTimestamp(p2.time).getTime() - parseTimestamp(p1.time).getTime()) / 1000;
               if (dt > 0 && p1.speed != null && p2.speed != null) {
                 const accel = (p2.speed - p1.speed) / dt;
                 segColor = accelToColor(accel);
@@ -2035,7 +2035,7 @@ export default function MapPage() {
             else if (breadcrumbColorMode === 'accel') {
               if (ptIdx > 0) {
                 const prev = trail.points[ptIdx - 1];
-                const dt = (new Date(pt.time).getTime() - new Date(prev.time).getTime()) / 1000;
+                const dt = (parseTimestamp(pt.time).getTime() - parseTimestamp(prev.time).getTime()) / 1000;
                 if (dt > 0 && pt.speed != null && prev.speed != null) {
                   dotColor = accelToColor((pt.speed - prev.speed) / dt);
                 } else { dotColor = accelToColor(null); }

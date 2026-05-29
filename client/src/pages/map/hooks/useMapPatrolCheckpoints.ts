@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import { safeDateTimeStr } from '../../../utils/dateUtils';
 import { whenStyleReady } from '../utils/safeAddSource';
@@ -30,7 +31,7 @@ type ScanStatus = 'green' | 'amber' | 'red';
 
 function getHoursSinceLastScan(checkpoint: CheckpointRecord): number {
   if (!checkpoint.last_scanned) return Infinity;
-  const lastScan = new Date(checkpoint.last_scanned).getTime();
+  const lastScan = parseTimestamp(checkpoint.last_scanned).getTime();
   if (isNaN(lastScan)) return Infinity;
   return (Date.now() - lastScan) / (1000 * 60 * 60);
 }

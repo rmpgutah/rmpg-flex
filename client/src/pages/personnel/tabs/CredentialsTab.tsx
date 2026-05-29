@@ -9,6 +9,7 @@ import {
 import type { Credential } from '../../../types';
 import { CREDENTIAL_STATUS_COLORS } from '../utils/personnelConstants';
 import { toDisplayLabel } from '../../../utils/formatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   credentials: Credential[];
@@ -29,7 +30,7 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
 
   function formatDate(dateStr?: string): string {
     if (!dateStr) return '-';
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function statusLabel(status: string): string {
@@ -117,10 +118,10 @@ export default function CredentialsTab({ credentials, onAddCredential, onEditCre
       {(() => {
         const now = Date.now();
         const withExpiry = credentials.filter(c => c.expiry_date);
-        const expired = withExpiry.filter(c => new Date(c.expiry_date!).getTime() < now);
-        const in30 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d >= now && d <= now + 30*86400000; });
-        const in60 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d > now + 30*86400000 && d <= now + 60*86400000; });
-        const in90 = withExpiry.filter(c => { const d = new Date(c.expiry_date!).getTime(); return d > now + 60*86400000 && d <= now + 90*86400000; });
+        const expired = withExpiry.filter(c => parseTimestamp(c.expiry_date!).getTime() < now);
+        const in30 = withExpiry.filter(c => { const d = parseTimestamp(c.expiry_date!).getTime(); return d >= now && d <= now + 30*86400000; });
+        const in60 = withExpiry.filter(c => { const d = parseTimestamp(c.expiry_date!).getTime(); return d > now + 30*86400000 && d <= now + 60*86400000; });
+        const in90 = withExpiry.filter(c => { const d = parseTimestamp(c.expiry_date!).getTime(); return d > now + 60*86400000 && d <= now + 90*86400000; });
         if (expired.length === 0 && in30.length === 0 && in60.length === 0 && in90.length === 0) return null;
         return (
           <div className="panel-beveled p-3 bg-surface-base border-l-2 border-l-amber-500">

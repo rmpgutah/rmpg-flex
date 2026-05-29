@@ -1,4 +1,5 @@
 import { Clock } from 'lucide-react';
+import { parseTimestamp } from '../utils/dateUtils';
 import type { TimelineEntry } from '../types';
 
 interface CallTimelineProps {
@@ -31,7 +32,7 @@ function getLedClass(action: string): string {
 
 function formatTimestamp(dateStr: string): string {
   if (!dateStr) return '--:--:--';
-  const date = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const date = parseTimestamp(dateStr);
   if (isNaN(date.getTime())) return '--:--:--';
   return date.toLocaleTimeString('en-US', {
     hour: '2-digit',

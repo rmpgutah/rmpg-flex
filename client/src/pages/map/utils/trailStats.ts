@@ -6,6 +6,8 @@
 // clicking through to a separate analytics view.
 // ============================================================
 
+import { parseTimestamp } from '../../../utils/dateUtils';
+
 interface TrailPoint {
   lat: number;
   lng: number;
@@ -88,7 +90,7 @@ export function trailToGpx(trail: UnitTrail): string {
   const ptsXml = (trail.points || [])
     .map((p) =>
       `      <trkpt lat="${p.lat}" lon="${p.lng}">\n` +
-      `        <time>${new Date(p.time).toISOString()}</time>\n` +
+      `        <time>${parseTimestamp(p.time).toISOString()}</time>\n` +
       (p.speed != null ? `        <speed>${p.speed}</speed>\n` : '') +
       `      </trkpt>`,
     )

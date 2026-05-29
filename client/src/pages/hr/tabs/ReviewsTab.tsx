@@ -16,6 +16,7 @@ import { REVIEW_CATEGORIES, RATING_LABELS } from '../utils/hrConstants';
 import ReviewFormModal from '../modals/ReviewFormModal';
 import ExportButton from '../../../components/ExportButton';
 import type { PerformanceReview, ReviewType, ReviewStatus } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 const MANAGER_ROLES = ['admin', 'manager', 'supervisor'];
 
@@ -61,7 +62,7 @@ const STATUS_LABELS: Record<ReviewStatus, string> = {
 
 function formatDate(d: string | null): string {
   if (!d) return '--';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
+  return parseTimestamp(d).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
@@ -149,9 +150,9 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
       const ninetyDays = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
       const expiring = (data || []).filter((c: any) => {
         if (!c.expiry_date) return false;
-        const exp = new Date(c.expiry_date);
+        const exp = parseTimestamp(c.expiry_date);
         return exp <= ninetyDays;
-      }).sort((a: any, b: any) => new Date(a.expiry_date).getTime() - new Date(b.expiry_date).getTime());
+      }).sort((a: any, b: any) => parseTimestamp(a.expiry_date).getTime() - parseTimestamp(b.expiry_date).getTime());
       setExpiringCerts(expiring);
     } catch { setExpiringCerts([]); }
     finally { setCertsLoading(false); }
@@ -216,12 +217,12 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
   const stats = isManager
     ? {
         upcoming: reviews.filter(
-          (r) => r.status === 'draft' && new Date(r.review_period_end) > new Date(),
+          (r) => r.status === 'draft' && parseTimestamp(r.review_period_end) > new Date(),
         ).length,
         overdue: reviews.filter(
           (r) =>
             (r.status === 'draft' || r.status === 'submitted') &&
-            new Date(r.review_period_end) < new Date(),
+            parseTimestamp(r.review_period_end) < new Date(),
         ).length,
         avgRating: (() => {
           const rated = reviews.filter((r) => r.overall_rating && r.overall_rating > 0);
@@ -435,7 +436,7 @@ export default function ReviewsTab({ userRole, userId }: ReviewsTabProps) {
           <div className="max-h-48 overflow-y-auto">
             {expiringCerts.map((cert: any) => {
               const now = new Date();
-              const exp = new Date(cert.expiry_date);
+              const exp = parseTimestamp(cert.expiry_date);
               const daysLeft = Math.ceil((exp.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
               const isExpired = daysLeft < 0;
               const urgencyColor = isExpired ? 'text-red-400 bg-red-900/30' : daysLeft <= 30 ? 'text-red-400 bg-red-900/20' : daysLeft <= 60 ? 'text-amber-400 bg-amber-900/20' : 'text-yellow-400 bg-yellow-900/20';

@@ -15,6 +15,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { parseTimestamp } from './dateUtils';
 import {
   COLOR, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT,
   getContentWidth,
@@ -355,10 +356,12 @@ export function addLinkedRecordsStrip(
 // ── Helpers ─────────────────────────────────────────────
 
 function formatTimestamp(iso: string): string {
-  const t = Date.parse(iso);
-  if (!isFinite(t)) return iso;
-  const d = new Date(t);
-  const p2 = (n: number) => String(n).padStart(2, '0');
-  return `${p2(d.getMonth() + 1)}/${p2(d.getDate())}/${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  // parseTimestamp reads naive server strings as UTC (Date.parse treats them as
+  // device-local → wrong instant); display pinned to Mountain Time.
+  const d = parseTimestamp(iso);
+  if (isNaN(d.getTime())) return iso;
+  const date = d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'America/Denver' });
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Denver' });
+  return `${date} ${time}`;
 }
 

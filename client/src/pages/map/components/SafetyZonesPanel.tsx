@@ -7,6 +7,7 @@
 
 import React from 'react';
 import { X, ShieldAlert, AlertTriangle, Loader2, RefreshCw, MapPin, Crosshair, Swords, Heart, Scale } from 'lucide-react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -168,7 +169,7 @@ export default function SafetyZonesPanel({
                 const isHigh = zone.risk_level === 'high';
                 const color = isHigh ? '#ef4444' : '#f59e0b';
                 const types = zone.incident_types?.split(',').slice(0, 3).map(t => t.trim()).filter(Boolean) || [];
-                const lastDate = zone.last_incident ? new Date(zone.last_incident).toLocaleDateString() : null;
+                const lastDate = zone.last_incident ? parseTimestamp(zone.last_incident).toLocaleDateString() : null;
 
                 return (
                   <button type="button"

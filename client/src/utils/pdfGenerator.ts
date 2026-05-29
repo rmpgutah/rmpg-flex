@@ -14,6 +14,7 @@ import jsPDF from 'jspdf';
 import { getTypeCode, formatIncidentType, PDF_REPORT_LABELS, type PdfReportType } from './caseNumbers';
 import { zoneLeaf, beatLeaf, sectionZoneBeatCombined } from './dispatchCodeParts';
 import { loadSealBase64, loadLogoDarkBase64, FORM_NUMBERS, FORM_REVISION } from './pdfAssets';
+import { parseTimestamp } from './dateUtils';
 // Document hashing infrastructure (pdfIntegrity.ts, pdfSigner.ts) is
 // dormant as of 2026-05-04 per user request. The trailer page +
 // per-page footer hash prefix are removed; payload-hash computation +
@@ -2506,7 +2507,7 @@ function addGpsActivityLogSection(doc: jsPDF, data: IncidentData, y: number, pri
     const tableRows = sampled.map(p => {
       let timeStr = '';
       try {
-        timeStr = new Date(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+        timeStr = parseTimestamp(p.time).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
       } catch { timeStr = p.time; }
       // Prefer road name + nearest intersection, fall back to raw coordinates
       let locationStr = `${p.lat.toFixed(5)}, ${p.lng.toFixed(5)}`;

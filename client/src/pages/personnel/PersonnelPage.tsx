@@ -31,6 +31,7 @@ import OfficerAvatar from './components/OfficerAvatar';
 import CredentialProgressBar from './components/CredentialProgressBar';
 import { ROLE_COLORS } from './utils/personnelConstants';
 import { toDisplayLabel } from '../../utils/formatters';
+import { parseTimestamp } from '../../utils/dateUtils';
 import PersonnelDetailPanel from './PersonnelDetailPanel';
 import PersonnelAnalyticsDashboard from './PersonnelAnalyticsDashboard';
 import DutyBoardTab from './tabs/DutyBoardTab';
@@ -938,7 +939,7 @@ export default function PersonnelPage() {
           const compliancePct = officerCreds.length > 0 ? Math.round((validCreds / officerCreds.length) * 100) : 100;
           const isSelected = selectedOfficer?.id === officer.id;
           const yrsOfService = officer.hire_date
-            ? Math.max(0, Math.floor((Date.now() - new Date(officer.hire_date).getTime()) / (365.25 * 86400000)))
+            ? Math.max(0, Math.floor((Date.now() - parseTimestamp(officer.hire_date).getTime()) / (365.25 * 86400000)))
             : null;
 
           return (

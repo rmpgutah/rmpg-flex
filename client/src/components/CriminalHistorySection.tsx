@@ -4,6 +4,7 @@
 // ============================================================
 
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import RichTextArea from './RichTextArea';
 import {
   Plus, Trash2, Pencil, ChevronDown, ChevronRight, Loader2, Save, X, Gavel,
@@ -90,7 +91,7 @@ const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return dateStr; }
 }
 

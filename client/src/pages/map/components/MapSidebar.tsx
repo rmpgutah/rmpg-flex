@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Shield, AlertTriangle, Search, ChevronUp, ChevronDown, AlertCircle, Radio, PhoneOff } from 'lucide-react';
 import { formatIncidentType } from '../../../utils/caseNumbers';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import type { UnitStatus } from '../../../types';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, getIncidentCategory } from '../utils/mapConstants';
 import type { MapUnit as Unit, ActiveCall } from '../utils/mapConstants';
@@ -147,7 +148,7 @@ export default function MapSidebar({
                   const statusColor = UNIT_STATUS_COLORS[unit.status];
                   // Fix 100: visual indicator for stale unit positions
                   const isStale = hasCoords && (unit as any).gps_updated_at
-                    ? (Date.now() - new Date((unit as any).gps_updated_at).getTime()) > GPS_STALE_THRESHOLD_MS
+                    ? (Date.now() - parseTimestamp((unit as any).gps_updated_at).getTime()) > GPS_STALE_THRESHOLD_MS
                     : false;
                   return (
                     <button type="button"

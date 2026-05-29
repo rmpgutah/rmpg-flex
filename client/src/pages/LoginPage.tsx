@@ -14,6 +14,7 @@ import { useAuth, type LoginStep } from '../context/AuthContext';
 import TotpCodeInput from '../components/TotpCodeInput';
 import PasswordStrengthMeter from '../components/security/PasswordStrengthMeter';
 import BackupCodesDisplay from '../components/security/BackupCodesDisplay';
+import { parseTimestamp } from '../utils/dateUtils';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '5.3.9';
@@ -545,7 +546,7 @@ export default function LoginPage() {
                 <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" style={{ color: '#22c55e' }} />
                 <p className="text-xs" style={{ color: '#86efac' }}>
                   Last login: {(() => {
-                    const d = new Date(lastLoginInfo.time);
+                    const d = parseTimestamp(lastLoginInfo.time);
                     const now = new Date();
                     const diff = now.getTime() - d.getTime();
                     const hours = Math.floor(diff / 3600000);
