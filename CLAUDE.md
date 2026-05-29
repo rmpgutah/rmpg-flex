@@ -76,8 +76,22 @@ deploy/             VPS deploy scripts — likely dead, retained until confirmed
 
 **Verify after every deploy**:
 ```bash
-curl -sf https://api.rmpgutah.us/api/health
-curl -sf https://rmpgutah.us/   # SPA shell
+# ⚠️ A Cloudflare **managed challenge** now fronts both zones, so a plain
+# `curl -sf https://api.rmpgutah.us/api/health` returns HTTP 403 ("Just a
+# moment…") even when the API is perfectly healthy — the bot check needs JS
+# + cookies that curl can't solve. Confirmed 2026-05-29 (also reproduced live:
+# the SPA + /dispatch load fine in a real browser while curl gets 403).
+# The old curl checks are NOT a valid signal anymore.
+
+# Working verification options (pick one):
+# 1. Browser: open https://rmpgutah.us/ and https://api.rmpgutah.us/api/health
+#    in a real browser (solves the challenge) and eyeball the JSON / SPA shell.
+# 2. DB-level health (bypasses the WAF entirely) via the Cloudflare API/D1:
+#    query the LIVE DB `rmpg-flex` (785de7ae-3e7a-4e01-93bb-d24ddd813f6b),
+#    e.g. `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` (expect ~180).
+# 3. Scripted HTTP: add a WAF "Skip → Managed Challenge" custom rule for
+#    `http.request.uri.path eq "/api/health"` (and/or gate it on a secret
+#    header), then `curl -sf` works again in CI.
 ```
 
 **Service worker cache**: bump `CACHE_NAME` in `client/public/sw.js` on every client change so users don't get stale chunks. Incident 2026-05-24: SW v321 lived in prod for weeks while source moved to v563 because the old `deploy.yml` only ran the Worker step. The new pipeline deploys both — but the SW bump is still required for cache invalidation.
