@@ -63,7 +63,10 @@
 //       /api/auth/refresh (legacy handler requires session_id); was causing
 //       silent logout at every 15-min token expiry + the [SYNC] Refresh-failed
 //       warnings. Bump forces clients onto the fixed bundle.
-const CACHE_NAME = 'rmpg-flex-v601';
+// v602: turn-by-turn driving directions panel on the dispatch map (useMapRouting
+//       now requests steps=true + parses maneuvers; DispatchMiniMap renders a
+//       scrollable point-by-point list for the unit→call route).
+const CACHE_NAME = 'rmpg-flex-v602';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

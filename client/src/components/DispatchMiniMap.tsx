@@ -248,6 +248,46 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         </div>
       )}
 
+      {/* Turn-by-turn driving directions (unit → call). Shown in the full
+          dispatch-detail map where there's room; scrollable point-by-point list. */}
+      {fullHeight && activeRoute?.steps && activeRoute.steps.length > 0 && (
+        <div style={{
+          position: 'absolute', top: 28, left: 4, zIndex: 10, width: 248, maxHeight: '58%',
+          background: 'rgba(0,0,0,0.92)', border: '1px solid #2e2e2e', borderRadius: 2,
+          overflowY: 'auto', pointerEvents: 'auto',
+        }}>
+          <div style={{
+            position: 'sticky', top: 0, background: '#141414', borderBottom: '1px solid #222222',
+            padding: '3px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          }}>
+            <span style={{ fontSize: 8, color: '#d4a017', fontWeight: 900, letterSpacing: '0.05em' }}>
+              DRIVING DIRECTIONS · {activeRoute.unitCallSign}→{activeRoute.callNumber}
+            </span>
+            <span style={{ fontSize: 8, color: '#888888', whiteSpace: 'nowrap' }}>
+              {activeRoute.eta} · {activeRoute.distance}
+            </span>
+          </div>
+          <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
+            {activeRoute.steps.map((s, i) => (
+              <li key={i} style={{
+                display: 'flex', gap: 6, padding: '3px 6px',
+                borderBottom: '1px solid #1a1a1a', alignItems: 'baseline',
+              }}>
+                <span style={{ fontSize: 9, color: '#d4a017', fontWeight: 900, minWidth: 14, fontFamily: "'JetBrains Mono', monospace" }}>
+                  {i + 1}
+                </span>
+                <span style={{ fontSize: 10, color: '#e5e5e5', flex: 1, lineHeight: 1.3 }}>
+                  {s.instruction}
+                </span>
+                {s.distanceMeters > 0 && (
+                  <span style={{ fontSize: 8, color: '#888888', whiteSpace: 'nowrap' }}>{s.distanceText}</span>
+                )}
+              </li>
+            ))}
+          </ol>
+        </div>
+      )}
+
       {/* Map container */}
       <div ref={mapContainerRef} role="application" aria-label="Dispatch mini map" style={{ width: '100%', height: '100%' }} />
 
