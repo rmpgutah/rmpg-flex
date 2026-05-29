@@ -351,7 +351,11 @@ async function tryRefreshToken(): Promise<string | null> {
       const res = await fetch('/api/auth/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ refreshToken, sessionId }),
+        // Send both spellings: legacy worker reads `refreshToken` (+ sessionId),
+        // the /src/ worker reads `refresh_token`. Including both makes the
+        // refresh succeed regardless of which worker serves the route, so a
+        // transient 401 self-heals instead of bouncing the user to /login.
+        body: JSON.stringify({ refreshToken, refresh_token: refreshToken, sessionId }),
         signal: controller.signal,
       }).finally(() => clearTimeout(timeout));
 
@@ -417,6 +421,13 @@ export async function apiFetch<T>(
   const relativeUrl = endpoint.startsWith('/api') ? endpoint : `/api${endpoint}`;
   const url = maybeRedirectToCfWorker(relativeUrl);
   const method = options?.method || 'GET';
+
+  // Network = activity. Signal the idle backstop (Layout.tsx Feature 24) on
+  // every API call so a monitoring-only screen — live polling, live-sync —
+  // never trips the shift-length idle logout while data is still flowing.
+  if (typeof window !== 'undefined') {
+    try { window.dispatchEvent(new Event('rmpg:activity')); } catch { /* SSR / no-DOM */ }
+  }
 
   // ─── Offline interception (Electron desktop only) ──────
   if (electron?.localApi && electron?.getOfflineState) {
