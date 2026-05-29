@@ -653,12 +653,11 @@ calls.post('/:id/status', async (c) => {
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
     const { status, disposition } = await c.req.json<{ status: string; disposition?: string }>();
-    // NOTE: 'on_hold' is intentionally NOT in this list yet. The live
-    // calls_for_service.status CHECK constraint does not include 'on_hold', so
-    // writing it returns SQLITE_CONSTRAINT → a 500. Migration 0040 adds it to
-    // the enum; re-add 'on_hold' here only AFTER that migration is applied to
-    // live D1 (verify with: SELECT sql FROM sqlite_master WHERE name='calls_for_service').
-    const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+    // 'on_hold' is valid once migration 0040 has added it to the live
+    // calls_for_service.status CHECK enum. 0040 ships in THIS PR, and deploy.yml
+    // applies migrations before the Worker deploys, so the enum and this handler
+    // go live together (re-enabling what #722 had temporarily guarded).
+    const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
     if (!valid.includes(status)) return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
 
     const timeField = `${status}_at`;
@@ -698,12 +697,21 @@ calls.post('/:id/unarchive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/hold
-// GUARDED: the live status CHECK constraint has no 'on_hold' value, so the
-// UPDATE below would fail with SQLITE_CONSTRAINT and return a 500. Until
-// migration 0040 adds 'on_hold' to the enum, return a clean 409 instead of
-// attempting the write. Restore the UPDATE after 0040 is applied to live D1.
+// Enabled by migration 0040 (adds 'on_hold' to the calls_for_service.status
+// CHECK enum). Records when the hold began via status_changed_at and preserves
+// the prior status so resume can restore context; won't re-hold an already-held call.
 calls.post('/:id/hold', async (c) => {
-  return c.json({ error: 'Call hold is not yet enabled (pending schema migration 0040)', code: 'HOLD_NOT_ENABLED' }, 409);
+  try {
+    const db = getDb(c.env);
+    await execute(
+      db,
+      "UPDATE calls_for_service SET status = 'on_hold', previous_status = status, status_changed_at = datetime('now'), updated_at = datetime('now') WHERE id = ? AND status != 'on_hold'",
+      c.req.param('id'),
+    );
+    return c.json({ message: 'On hold' });
+  } catch (err) {
+    return c.json({ error: 'Hold failed' }, 500);
+  }
 });
 
 // POST /dispatch/calls/:id/resume
