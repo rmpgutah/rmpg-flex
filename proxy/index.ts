@@ -93,136 +93,13 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no hr_benefits table on live D1',
   },
-  // /api/arrests/recent — handler queries `FROM arrests`, no such table
-  // on live D1, so it 500s. Both ArrestRecordsPage and the AdminArrestsTab
-  // hit this on mount. Stub the shape AdminArrestsTab expects (the wider
-  // page also reads `data.records` per ArrestRecordsPage.tsx:291).
-  {
-    match: /^\/api\/arrests\/recent(\?.*)?$/,
-    methods: ['GET'],
-    body: { records: [], total: 0 },
-    reason: 'no arrests table on live D1',
-  },
-  // ── Body camera surfaces ──────────────────────────────────────
-  // None of these are implemented on the new worker, but the proxy
-  // routes /api/personnel/body-cameras + /api/personnel/bodycam-videos
-  // to env.API (lines 197-198). BodyCamerasPage fires four parallel
-  // GETs on mount and each 404 produces a [BodyCameras] ... console
-  // warning. The /upload-*, POST, PUT, DELETE, and /:id sub-paths are
-  // user-triggered (not background polling), so they stay 404 until
-  // a real implementation lands. GETs only.
-  {
-    match: /^\/api\/personnel\/body-cameras$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no body_cameras table; UI tolerates empty list',
-  },
-  {
-    match: /^\/api\/personnel\/bodycam-videos$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no bodycam_videos table; UI tolerates empty list',
-  },
-  {
-    match: /^\/api\/personnel\/bodycam-videos\/reviews\/pending$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no reviews surface yet',
-  },
-  {
-    match: /^\/api\/personnel\/bodycam-videos\/redaction-requests$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no redaction queue yet',
-  },
-  {
-    match: /^\/api\/personnel\/bodycam-videos\/retention\/report$/,
-    methods: ['GET'],
-    // BodyCamerasPage reads this via apiFetch<any>(...).catch(null), so any
-    // empty-shape object is fine. Mirror what the UI actually reads on the
-    // retention card: counts default to 0.
-    body: { total_videos: 0, retained: 0, eligible_for_purge: 0, purged_this_month: 0 },
-    reason: 'no retention engine yet',
-  },
-  // ── Audit log surfaces ────────────────────────────────────────
-  // AuditLogPage opens on /audit/logs?page=1&limit=100 (paginated list) +
-  // /audit/stats (totals + top users/actions) on mount, then optionally
-  // /audit/compliance-report and /audit/index-stats. Legacy implements
-  // /audit/logs at deployed-source line 16641 — but it returns 404 in
-  // production (likely a route-registration / auth bug on legacy). Until
-  // the real handlers come back, stub all four so the page renders.
-  {
-    match: /^\/api\/audit\/logs(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 100 } },
-    reason: 'legacy /audit/logs 404s; new worker has no audit router',
-  },
-  {
-    match: /^\/api\/audit\/stats$/,
-    methods: ['GET'],
-    // Matches the AuditStats interface in client/src/pages/AuditLogPage.tsx.
-    body: { totalEntries: 0, entriesToday: 0, topActions: [], topUsers: [] },
-    reason: 'no audit/stats handler',
-  },
-  {
-    match: /^\/api\/audit\/compliance-report(\?.*)?$/,
-    methods: ['GET'],
-    body: { compliant: true, gaps: [], generated_at: null },
-    reason: 'no compliance engine yet',
-  },
-  {
-    match: /^\/api\/audit\/index-stats$/,
-    methods: ['GET'],
-    body: { total_entries: 0, estimated_size_mb: 0 },
-    reason: 'no index-stats handler',
-  },
-  // ── Fleet surfaces ────────────────────────────────────────────
-  // Proxy routes the whole /api/fleet prefix to env.API but the new
-  // worker has no fleet router. FleetPage hits four endpoints on mount.
-  // Stub the GETs the dashboards poll. POST/PUT/DELETE stay 404 since
-  // those are user-triggered.
-  {
-    match: /^\/api\/fleet$/,
-    methods: ['GET'],
-    // The page does `apiFetch<...>('/fleet?...')` and reads `.data` from
-    // the result (see fleet-B_2rGABR.js console error path). Match a
-    // paginated empty shape; the wider FleetVehicle[] consumers tolerate
-    // an empty `data` array.
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 200 } },
-    reason: 'no fleet handler in new worker yet',
-  },
-  // Trailing /?... variants — FleetPage calls /fleet?per_page=200 and
-  // /fleet?archived=false. The bare-match regex above already covers
-  // /fleet (no slash); explicitly match query-string variants too.
-  {
-    match: /^\/api\/fleet\?.*/,
-    methods: ['GET'],
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 200 } },
-    reason: 'no fleet handler in new worker yet',
-  },
-  {
-    match: /^\/api\/fleet\/analytics(\?.*)?$/,
-    methods: ['GET'],
-    // Mirrors FleetAnalytics interface in client/src/types/index.ts:1631.
-    body: {
-      maintenance_cost_trend: [],
-      mileage_distribution: [],
-      status_breakdown: [],
-      fuel_economy_trend: [],
-      fleet_summary: {
-        total_vehicles: 0,
-        avg_mileage: 0,
-        avg_mpg: null,
-      },
-    },
-    reason: 'no fleet analytics handler',
-  },
-  {
-    match: /^\/api\/fleet\/dashcam-videos(\?.*)?$/,
-    methods: ['GET'],
-    body: { data: [], pagination: { total: 0, totalPages: 0, page: 1, limit: 25 } },
-    reason: 'no fleet dashcam handler',
-  },
+  // (2026-05-29 stub-shadowing audit) Removed arrests/recent, body-camera,
+  // audit (logs/stats/compliance-report/index-stats), and fleet
+  // (bare/analytics/dashcam-videos) stubs — each now has a real handler in
+  // the rewrite (arrests.ts, personnel.ts, audit.ts, fleet.ts) whose tables
+  // exist on live D1 (verified column-by-column). STUBS run BEFORE
+  // API_ROUTES, so leaving them shadowed the real handlers and the pages
+  // showed empty data instead of real rows (e.g. Audit's login-failure rate).
   // ── Other dashboard polls ─────────────────────────────────────
   {
     match: /^\/api\/reports\/crime-analysis(\?.*)?$/,
@@ -249,20 +126,8 @@ const STUBS: StubRule[] = [
   // yet because the parent page isn't open. Stubbing pre-emptively
   // so they degrade quietly when those pages eventually open.
   //
-  // Skip tracer status/stats — SkipTracerPage dashboard polls.
-  // No /api/skiptracer mount in src/routesConfig.ts.
-  {
-    match: /^\/api\/skiptracer\/status$/,
-    methods: ['GET'],
-    body: { status: 'idle', running_searches: 0, last_run: null },
-    reason: 'no /api/skiptracer mount in new worker',
-  },
-  {
-    match: /^\/api\/skiptracer\/stats$/,
-    methods: ['GET'],
-    body: { total_searches: 0, searches_this_month: 0, recent_dossiers: [] },
-    reason: 'no /api/skiptracer mount in new worker',
-  },
+  // (2026-05-29 audit) skiptracer /status + /stats stubs removed — real
+  // handlers in src/routes/skiptracer.ts (microbilt_searches + skiptracer_dossiers).
   // IPED forensics surface — no /api/iped mount in new worker.
   // ForensicsPage polls the status sub-path on mount.
   {
@@ -277,60 +142,14 @@ const STUBS: StubRule[] = [
     body: [],
     reason: 'no /api/iped mount in new worker',
   },
-  // Personnel sub-paths — /api/personnel is mounted (personnel router)
-  // but these sub-paths aren't registered there. PersonnelPage opens
-  // four tabs that GET them on mount.
-  {
-    match: /^\/api\/personnel\/schedules(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /schedules handler in personnel router',
-  },
-  {
-    match: /^\/api\/personnel\/time(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /time handler in personnel router',
-  },
-  {
-    match: /^\/api\/personnel\/deployments(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no /deployments handler in personnel router',
-  },
-  {
-    match: /^\/api\/personnel\/coverage-gaps(\?.*)?$/,
-    methods: ['GET'],
-    body: { gaps: [], total_uncovered_minutes: 0 },
-    reason: 'no /coverage-gaps handler in personnel router',
-  },
-  // Reports sub-paths — /api/reports IS mounted to the stubs router
-  // in src/routes/stubs.ts but only /response-times exists there.
-  // Everything else 404s.
-  {
-    match: /^\/api\/reports\/incidents-summary(\?.*)?$/,
-    methods: ['GET'],
-    body: { total_incidents: 0, by_type: [], by_status: [], by_day: [] },
-    reason: 'no /incidents-summary in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/crime-trends(\?.*)?$/,
-    methods: ['GET'],
-    body: { trends: [], top_categories: [] },
-    reason: 'no /crime-trends in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/beat-activity(\?.*)?$/,
-    methods: ['GET'],
-    body: { beats: [] },
-    reason: 'no /beat-activity in stubs router',
-  },
-  {
-    match: /^\/api\/reports\/citation-revenue(\?.*)?$/,
-    methods: ['GET'],
-    body: { total_revenue: 0, by_violation: [], by_month: [] },
-    reason: 'no /citation-revenue in stubs router',
-  },
+  // (2026-05-29 audit) Removed shadowing stubs for personnel /schedules,
+  // /time, /deployments, /coverage-gaps (real handlers in personnel.ts over
+  // shift_plans/time_entries/deployments/system_config) and reports
+  // /incidents-summary, /crime-trends, /beat-activity, /citation-revenue
+  // (real handlers in reports.ts; columns verified on live D1).
+  // /reports/schedules, /templates, /statute-analytics stubs KEPT below
+  // (schedules/templates return [] from a placeholder; statute-analytics'
+  // handler fix ships via deploy.yml — un-stub only after it lands).
   {
     match: /^\/api\/reports\/schedules(\?.*)?$/,
     methods: ['GET'],
@@ -353,36 +172,12 @@ const STUBS: StubRule[] = [
   // (PR #667 was still open / unmerged when the user opened these pages.
   //  Adding now so they degrade quietly post-merge.)
   //
-  // Personnel training tabs — TrainingPage opens three GETs on mount.
-  // No `training_records` queries in /src/, legacy queries the table but
-  // didn't surface the path. Empty list each.
-  {
-    match: /^\/api\/personnel\/training(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no training records handler',
-  },
-  {
-    match: /^\/api\/personnel\/training-requirements(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no training-requirements handler',
-  },
-  {
-    match: /^\/api\/personnel\/training-completion(\?.*)?$/,
-    methods: ['GET'],
-    body: [],
-    reason: 'no training-completion handler',
-  },
-  // PersonnelAnalyticsDashboard's DutyHoursPanel — guards on
-  // `data?.officers?.length` so any object shape passes; we still
-  // need to silence the 500 noise.
-  {
-    match: /^\/api\/personnel\/duty-hours(\?.*)?$/,
-    methods: ['GET'],
-    body: { officers: [], flagged_excessive_hours: [] },
-    reason: 'no duty-hours aggregation handler',
-  },
+  // (2026-05-29 audit) Removed shadowing stubs for personnel /training,
+  // /training-requirements, /training-completion, /duty-hours — real handlers
+  // in personnel.ts over training_records + training_requirements (present on
+  // live D1; each wraps queries in try/catch → [] so a schema gap degrades
+  // to the same empty the stub returned). /training-alerts + /training-materials
+  // stubs stay (no handler / no backing table).
   // ── CRM module (entirely legacy-only on live D1) ──────────────
   // CrmPage's mount issues 6 GETs in parallel. All hit legacy which
   // queries crm_leads / crm_tasks / crm_activity etc — those tables
@@ -498,15 +293,9 @@ const STUBS: StubRule[] = [
     body: { data: [] },
     reason: 'no training materials table; TrainingPage tolerates empty data',
   },
-  // ── Skiptracer v1 — proxy routes to env.API per the API_ROUTES rules
-  //    above, but no handler exists in src/. Stub them so the dashboard
-  //    polling stops 404ing. v2 is a separate legacy thing untouched. ──
-  {
-    match: /^\/api\/skiptracer\/(status|stats)$/,
-    methods: ['GET'],
-    body: { enabled: false, status: 'disabled', last_run_at: null, total: 0 },
-    reason: 'no skiptracer v1 backend in rewrite; dashboard tolerates disabled',
-  },
+  // (2026-05-29 audit) Combined skiptracer /(status|stats) stub removed —
+  // real handlers in src/routes/skiptracer.ts. v2 (/api/skiptracer-v2/*) stub
+  // is untouched below.
   // ── Warrants scraped status (legacy 404) ──────────────────────────────
   // Legacy never had a /warrants/scraped/status handler; the page polls
   // for it as part of the watch tab. WarrantsPage tolerates the empty
@@ -668,11 +457,23 @@ const STUBS: StubRule[] = [
   // tiles, page-specific reports, dispatch GPS analytics).
   //
   // ── Reports comparison (ReportsPage period-over-period card) ────────
+  // Body MUST match the ComparisonData shape ReportsPage.tsx:790 reads:
+  // { period, calls/incidents/citations:{current,previous,change},
+  //   responseTime:{current,previous,change} }. The old {current,previous,
+  //   deltas} shape lacked `responseTime`, so ReportsPage's
+  //   `comparisonData.responseTime.current` threw and the ErrorBoundary took
+  //   down the ENTIRE Reports page in prod (2026-05-29).
   {
     match: /^\/api\/reports\/comparison(\?.*)?$/,
     methods: ['GET'],
-    body: { current: {}, previous: {}, deltas: {} },
-    reason: 'no comparison endpoint in src/routes/reports.ts; period card tolerates empty deltas',
+    body: {
+      period: 'week',
+      calls: { current: 0, previous: 0, change: 0 },
+      incidents: { current: 0, previous: 0, change: 0 },
+      citations: { current: 0, previous: 0, change: 0 },
+      responseTime: { current: null, previous: null, change: null },
+    },
+    reason: 'no comparison handler in src/; shape matches ReportsPage ComparisonData so the card renders empty instead of crashing the page',
   },
   // ── Arrests status (AdminPage tile, separate from /arrests/recent) ──
   {
@@ -852,6 +653,19 @@ const API_ROUTES: RouteRule[] = [
   // and sets status_changed_at/archived_at/notes for parity. Without this rule
   // the path fell through to env.LEGACY and the timezone bug persisted.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/status$/, methods: ['POST'] },
+
+  // ── Dispatch call-action endpoints (PR #711) ──
+  // revert-status / le-notification / transfer / broadcast-note /
+  // generate-incident, notes edit/delete, the /status disposition fix
+  // (writes cleared_at in UTC + persists disposition), and /archive-bulk.
+  // Without these the paths fall through to env.LEGACY, which loses the
+  // disposition and writes status timestamps as local MST mislabeled +00:00.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(revert-status|le-notification|transfer|broadcast-note|generate-incident)$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/notes\/[^/]+$/, methods: ['PUT', 'DELETE'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/status$/, methods: ['POST'] },
+  // Single-call archive — rewrite writes archived_at in UTC; legacy mislabels MST.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/archive$/, methods: ['POST'] },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/archive-bulk$/, methods: ['POST'] },
 
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──

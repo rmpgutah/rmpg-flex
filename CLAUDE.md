@@ -13,7 +13,7 @@ RMPG Flex is a **police CAD/RMS** (Computer-Aided Dispatch / Records Management 
 
 - **App domain**: https://rmpgutah.us (React SPA on Cloudflare Pages)
 - **API domain**: https://api.rmpgutah.us (Worker `rmpg-flex-api`, entry [`src/index.ts`](src/index.ts))
-- **Database**: Cloudflare D1 `rmpg-flex-db` (`8893480a-6dd5-4790-a11f-1fb6fac13f02`), bound as `DB`
+- **Database**: Cloudflare D1 `rmpg-flex` (`785de7ae-3e7a-4e01-93bb-d24ddd813f6b`), bound as `DB` — the live 6 MB dataset both Workers share (verified 2026-05-29 via `wrangler.toml` + row counts). The old `rmpg-flex-db` (`8893480a-…`) is **abandoned** (0 calls/persons, missing tables); do not target it.
 - **Storage**: R2 — `system-essentials` bound as `MAP_DATA`
 - **Cache/state**: KV namespace `8e01c392038e4f76838ca9a1130c908e` bound as `KV`
 - **Durable Objects**: `WelfareWatchDO` (one instance per officer for welfare-check timers)
@@ -67,7 +67,7 @@ deploy/             VPS deploy scripts — likely dead, retained until confirmed
 **Canonical trigger**: `git push origin main` → `.github/workflows/deploy.yml`:
 
 1. `npm run typecheck` (Worker)
-2. `wrangler d1 migrations apply rmpg-flex-db --remote` (`continue-on-error: true`; the Worker reconciles missing columns at boot)
+2. `wrangler d1 migrations apply rmpg-flex --remote` (`continue-on-error: true`; the Worker reconciles missing columns at boot)
 3. `wrangler deploy` (Worker)
 4. `cd client && npm ci && npm run build`
 5. `wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main`
@@ -76,8 +76,22 @@ deploy/             VPS deploy scripts — likely dead, retained until confirmed
 
 **Verify after every deploy**:
 ```bash
-curl -sf https://api.rmpgutah.us/api/health
-curl -sf https://rmpgutah.us/   # SPA shell
+# ⚠️ A Cloudflare **managed challenge** now fronts both zones, so a plain
+# `curl -sf https://api.rmpgutah.us/api/health` returns HTTP 403 ("Just a
+# moment…") even when the API is perfectly healthy — the bot check needs JS
+# + cookies that curl can't solve. Confirmed 2026-05-29 (also reproduced live:
+# the SPA + /dispatch load fine in a real browser while curl gets 403).
+# The old curl checks are NOT a valid signal anymore.
+
+# Working verification options (pick one):
+# 1. Browser: open https://rmpgutah.us/ and https://api.rmpgutah.us/api/health
+#    in a real browser (solves the challenge) and eyeball the JSON / SPA shell.
+# 2. DB-level health (bypasses the WAF entirely) via the Cloudflare API/D1:
+#    query the LIVE DB `rmpg-flex` (785de7ae-3e7a-4e01-93bb-d24ddd813f6b),
+#    e.g. `SELECT COUNT(*) FROM sqlite_master WHERE type='table'` (expect ~180).
+# 3. Scripted HTTP: add a WAF "Skip → Managed Challenge" custom rule for
+#    `http.request.uri.path eq "/api/health"` (and/or gate it on a secret
+#    header), then `curl -sf` works again in CI.
 ```
 
 **Service worker cache**: bump `CACHE_NAME` in `client/public/sw.js` on every client change so users don't get stale chunks. Incident 2026-05-24: SW v321 lived in prod for weeks while source moved to v563 because the old `deploy.yml` only ran the Worker step. The new pipeline deploys both — but the SW bump is still required for cache invalidation.
@@ -181,7 +195,7 @@ There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/
 1. **`/server/` is dead** — it's been moved to `legacy/server-vps/`. If you see `import ... from 'server/...'` anywhere outside `legacy/`, that's a bug from before the rehoming and should be ported to `/src/`.
 2. **`/src/` and `/client/src/` both contain TypeScript** — `/src/` is the Worker, `/client/src/` is React. They share no build, no `tsconfig`, no `package.json`. Edits to one do not affect the other.
 3. **D1 queries are async** — `await db.prepare(...).first()`. Forgetting `await` returns a Promise that JSON-serialises to `{}`, which the client then logs as "empty response."
-4. **`deploy.yml` step `Apply D1 migrations` has `continue-on-error: true`** — the Worker reconciles missing columns at boot, but you cannot rely on the deploy log alone to tell you a migration succeeded. After deploying, query the table directly via `wrangler d1 execute rmpg-flex-db --remote --command 'SELECT name FROM sqlite_master ...'` to confirm.
+4. **`deploy.yml` step `Apply D1 migrations` has `continue-on-error: true`** — the Worker reconciles missing columns at boot, but you cannot rely on the deploy log alone to tell you a migration succeeded. After deploying, query the table directly via `wrangler d1 execute rmpg-flex --remote --command 'SELECT name FROM sqlite_master ...'` to confirm.
 5. **D1 has dirty schema in prod** — earlier migrations partially applied during the rehoming. New migrations must be idempotent. See [`migrations/README.md`](migrations/README.md).
 6. **Service worker cache** — bump `CACHE_NAME` in `client/public/sw.js` on every client change. Without a bump, users keep serving the old hash-named bundles from cache for up to 24 h.
 7. **Mapbox token** — `client/src/utils/mapboxApiKey.ts` reads `VITE_MAPBOX_ACCESS_TOKEN` at build time. The error string in that file still says "Add MAPBOX_ACCESS_TOKEN to server/.env" — that's stale (no `.env` on Workers); the token must be embedded into the Vite build via `client/.env` or Cloudflare Pages env vars.

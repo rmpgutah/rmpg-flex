@@ -1006,7 +1006,11 @@ export default function ReportsPage() {
           </div>
 
           {/* Upgrade: Week-over-Week Comparison */}
-          {comparisonData && (
+          {/* Guard on responseTime specifically: a malformed/placeholder
+              comparison payload (e.g. the proxy stub's old {current,previous,
+              deltas} shape) lacks responseTime, and reading .current off it
+              threw and took down the whole page via the ErrorBoundary. */}
+          {comparisonData?.responseTime && (
             <div className="panel-beveled p-4 bg-surface-base">
               <div className="flex items-center gap-2 mb-3">
                 <TrendingUp className="w-4 h-4 text-brand-blue" />
