@@ -624,6 +624,12 @@ const API_ROUTES: RouteRule[] = [
   // the legacy worker doesn't. Without this rule MDT requests fall
   // through to legacy and skip both behaviors.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(assign-unit|unassign-unit|dispatch)$/, methods: ['POST'] },
+  // POST /api/dispatch/calls/:id/{hold,resume} — "call hold" is a rewrite-only
+  // feature: hold is an orthogonal flag in calls_for_service_ext.held_at
+  // (migration 0041), preserving status while held. The legacy worker never
+  // implemented either route, so without this rule both fell through to
+  // env.LEGACY and 404'd — the DispatchPage hold button silently failed.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(hold|resume)$/, methods: ['POST'] },
   // POST /api/dispatch/calls/:id/status — MUST route to the rewrite. The legacy
   // handler writes status_changed_at + dispatched_at/enroute_at/onscene_at via
   // localNow(), which stamps Denver-local wall-clock as +00:00 — so every
@@ -664,6 +670,10 @@ const API_ROUTES: RouteRule[] = [
   // startsWith — intended, both go to the rewrite now.
   { kind: 'prefix', value: '/api/warrants/utah' },
   { kind: 'prefix', value: '/api/warrants/scraped/status' },
+  // /api/warrants/search-all — unified cross-source warrant search (WarrantsPage
+  // "SEARCH ALL" tab). New handler in src/routes/warrants.ts; legacy never had
+  // it, so the POST 404'd and the tab threw an unhandled rejection.
+  { kind: 'prefix', value: '/api/warrants/search-all' },
   { kind: 'regex', value: /^\/api\/warrants\/person\/\d+\/profile$/, methods: ['GET'] },
   // /api/warrants/scrapers* — Sources tab + Layout header badge + per-source
   // trigger/reset-circuit buttons. Legacy `rmpg-flex` had /scrapers handlers
@@ -682,9 +692,11 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/warrants/scrapers' },
 
   // ── TTS + PDF signing (rewrite ports of legacy/server-vps endpoints) ──
-  // Both currently return 503 from the rewrite (configurable in a follow-up).
-  // Routing here so the client gets a structured "not configured" instead
-  // of a 404 it logs as a bug.
+  // /api/tts now synthesizes real audio via Workers AI (@cf/myshell-ai/melotts,
+  // src/routes/tts.ts) and returns audio/mpeg the client decodes directly; on
+  // any synth failure it returns 503 so the client falls back to browser
+  // SpeechSynthesis. /pdf-tools/sign-payload still returns 503 from the rewrite
+  // (configurable in a follow-up). Routing both to env.API.
   { kind: 'prefix', value: '/api/tts' },
   { kind: 'prefix', value: '/api/pdf-tools/sign-payload' },
 
@@ -790,6 +802,14 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'regex', value: /^\/api\/personnel\/\d+\/role$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/personnel\/\d+\/reset-password$/, methods: ['POST'] },
   { kind: 'regex', value: /^\/api\/personnel\/\d+\/status$/, methods: ['POST'] },
+  // ── Connections (analyst graph) ──
+  // Entire namespace is rewrite-only: /search, /graph, /path, and
+  // /investigations CRUD all live in src/routes/connections.ts (backed by
+  // connection_investigations on live D1). The legacy `rmpg-flex` Worker
+  // never ported the VPS connections feature, so the page's /connections/*
+  // calls had NO backend and the graph rendered empty. No STUB matches
+  // this prefix, so routing here can't be shadowed.
+  { kind: 'prefix', value: '/api/connections' },
   // Fleet — entire namespace
   { kind: 'prefix', value: '/api/fleet' },
   // Comms BOLOs + message priority stats (legacy has /comms/messages

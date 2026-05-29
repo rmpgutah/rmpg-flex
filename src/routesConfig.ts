@@ -71,6 +71,7 @@ import audit from './routes/audit';
 import arrests from './routes/arrests';
 import cases from './routes/cases';
 import citations from './routes/citations';
+import connections from './routes/connections';
 import fieldInterviews from './routes/fieldInterviews';
 import fleet from './routes/fleet';
 import documentFolders from './routes/documents/folders';
@@ -226,6 +227,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/cases', router: cases, auth: 'required',
     note: 'MVP core; entity-junction tables in a follow-up PR' },
   { prefix: '/api/citations', router: citations, auth: 'required' },
+  { prefix: '/api/connections', router: connections, auth: 'required',
+    note: 'Connection-graph analyst tool: /search, /graph, /path, /investigations CRUD. Node types incl. call (CFS) + report (supplemental_reports). Backed by connection_investigations (live D1, migration 0043).' },
   { prefix: '/api/court', router: court, auth: 'required',
     note: 'Court events + subpoenas (single-table); reminder fan-out deferred' },
   { prefix: '/api/field-interviews', router: fieldInterviews, auth: 'required' },
