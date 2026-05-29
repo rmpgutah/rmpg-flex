@@ -58,7 +58,8 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const navigate = useNavigate();
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const callMarkerRef = useRef<mapboxgl.Marker | null>(null);
+  const unitMarkersRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const [loaded, setLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tilesStalled, setTilesStalled] = useState(false);
@@ -102,12 +103,16 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     return () => { cancelled = true; };
   }, [mapTokenRetry]);
 
-  // Initialize or update map
+  // Initialize the map ONCE, then re-center + re-pin the call only when the
+  // SELECTED CALL changes. Deliberately does NOT depend on `units`, so a unit
+  // GPS poll never re-centers the map ("reload while the unit moves") or
+  // disturbs the static call pin.
   useEffect(() => {
     if (!loaded || !mapContainerRef.current) return;
 
-    const center: [number, number] = call?.latitude != null && call?.longitude != null
-      ? [call.longitude, call.latitude]
+    const hasCallLoc = call?.latitude != null && call?.longitude != null;
+    const center: [number, number] = hasCallLoc
+      ? [call!.longitude!, call!.latitude!]
       : DEFAULT_CENTER;
 
     if (!mapRef.current) {
@@ -129,31 +134,44 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       }, 15000);
 
       map.on('remove', () => clearInterval(stallCheck));
-    } else {
+    } else if (hasCallLoc) {
+      // Only re-center when a new call is selected (this effect's deps), never
+      // on a unit GPS update — preserves the dispatcher's pan/zoom.
       mapRef.current.setCenter(center);
     }
 
-    // Clear old markers
-    markersRef.current.forEach(m => m.remove());
-    markersRef.current = [];
-
-    // Call marker (red)
-    if (call?.latitude != null && call?.longitude != null && mapRef.current) {
-      const el = document.createElement('div');
-      el.style.cssText =
-        'background:#ef4444;color:#fff;font-size:9px;font-weight:900;' +
-        "padding:1px 4px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
-      el.textContent = call.call_number || 'CALL';
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([call.longitude, call.latitude])
-        .addTo(mapRef.current);
-      markersRef.current.push(marker);
+    // Call marker (red) — static per call. Move the existing marker in place
+    // rather than tearing it down so it never flickers / "flies around".
+    if (hasCallLoc && mapRef.current) {
+      if (callMarkerRef.current) {
+        callMarkerRef.current.setLngLat([call!.longitude!, call!.latitude!]);
+        const el = callMarkerRef.current.getElement();
+        if (el) el.textContent = call!.call_number || 'CALL';
+      } else {
+        const el = document.createElement('div');
+        el.style.cssText =
+          'background:#ef4444;color:#fff;font-size:9px;font-weight:900;' +
+          "padding:1px 4px;border:1px solid #fff;white-space:nowrap;font-family:'JetBrains Mono',monospace;letter-spacing:0.03em;box-shadow:0 1px 4px rgba(0,0,0,0.4);";
+        el.textContent = call!.call_number || 'CALL';
+        callMarkerRef.current = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([call!.longitude!, call!.latitude!])
+          .addTo(mapRef.current);
+      }
+    } else if (!hasCallLoc && callMarkerRef.current) {
+      callMarkerRef.current.remove();
+      callMarkerRef.current = null;
     }
+  }, [loaded, call?.id, call?.latitude, call?.longitude]);
 
-    // Assigned unit markers — match by the call's assigned_units OR the unit's
-    // own current_call_id. The calls LIST endpoint (and the WebSocket payload)
-    // omit assigned_units, so the `selectedCall` passed in usually has none;
-    // current_call_id on the unit is the reliable unit→call link.
+  // Assigned-unit markers — keyed by unit id and MOVED in place on each GPS
+  // update so the pin glides to its new position instead of being destroyed and
+  // recreated (which made it flicker / jump around the map). Match by the
+  // call's assigned_units OR the unit's current_call_id (list/WS payloads omit
+  // assigned_units).
+  useEffect(() => {
+    if (!loaded || !mapReady || !mapRef.current) return;
+    const map = mapRef.current;
+
     const assignedIds = assignedUnitIdSet(call);
     const assignedUnits = units.filter(u =>
       (assignedIds.has(String(u.id)) ||
@@ -161,19 +179,32 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       u.latitude != null && u.longitude != null
     );
 
+    const liveIds = new Set<string>();
     for (const unit of assignedUnits) {
-      if (!mapRef.current) continue;
-      const el = document.createElement('div');
-      el.style.cssText =
-        'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
-        "padding:1px 4px;border:1px solid #363636;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
-      el.textContent = unit.call_sign;
-      const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
-        .setLngLat([unit.longitude!, unit.latitude!])
-        .addTo(mapRef.current);
-      markersRef.current.push(marker);
+      const id = String(unit.id);
+      liveIds.add(id);
+      const existing = unitMarkersRef.current.get(id);
+      if (existing) {
+        existing.setLngLat([unit.longitude!, unit.latitude!]);
+        const el = existing.getElement();
+        if (el && el.textContent !== unit.call_sign) el.textContent = unit.call_sign;
+      } else {
+        const el = document.createElement('div');
+        el.style.cssText =
+          'background:#888888;color:#fff;font-size:8px;font-weight:900;' +
+          "padding:1px 4px;border:1px solid #363636;white-space:nowrap;font-family:'JetBrains Mono',monospace;border-radius:2px;box-shadow:0 2px 6px rgba(0,0,0,0.4);";
+        el.textContent = unit.call_sign;
+        const marker = new mapboxgl.Marker({ element: el, anchor: 'bottom' })
+          .setLngLat([unit.longitude!, unit.latitude!])
+          .addTo(map);
+        unitMarkersRef.current.set(id, marker);
+      }
     }
-  }, [loaded, call?.id, call?.latitude, call?.longitude, units]);
+    // Drop markers for units no longer assigned / no longer in the feed.
+    for (const [id, marker] of unitMarkersRef.current) {
+      if (!liveIds.has(id)) { marker.remove(); unitMarkersRef.current.delete(id); }
+    }
+  }, [loaded, mapReady, units, call?.id]);
 
   // Auto-route: show driving route when exactly 1 assigned unit has GPS
   const hasActiveRouteRef = useRef(false);
@@ -244,9 +275,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     void speak(phrase, 'moderate', 'conversational');
   }, [activeRoute?.steps]);
 
-  // Cleanup: unregister map instance on unmount
+  // Cleanup: remove persistent markers + unregister map instance on unmount
   useEffect(() => {
     return () => {
+      callMarkerRef.current?.remove();
+      callMarkerRef.current = null;
+      unitMarkersRef.current.forEach((m) => m.remove());
+      unitMarkersRef.current.clear();
       if (mapRef.current) unregisterMapInstance(mapRef.current);
     };
   }, []);
