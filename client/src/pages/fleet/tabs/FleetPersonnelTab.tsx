@@ -9,7 +9,6 @@ import type { FleetPersonnelData, FleetPersonnelNote, FleetAssignment, Unit } fr
 import { parseTimestamp } from '../../../utils/dateUtils';
 import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetFormatters';
 import { toDisplayLabel } from '../../../utils/formatters';
-import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   vehicleId: string;

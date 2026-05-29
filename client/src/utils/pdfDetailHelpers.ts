@@ -21,7 +21,6 @@ import {
   getContentWidth,
 } from './pdfTokens';
 import { sanitizePdfText } from './pdfGenerator';
-import { parseTimestamp } from './dateUtils';
 
 // ── Quick-reference banner ──────────────────────────────
 //

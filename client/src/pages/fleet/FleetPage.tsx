@@ -18,7 +18,6 @@ import PrintButton from '../../components/PrintButton';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import UnsavedChangesGuard from '../../components/UnsavedChangesGuard';
 import { nowLocalISO, toDatetimeLocal } from './utils/fleetFormatters';
-import { parseTimestamp } from '../../utils/dateUtils';
 import GaugeRing from './components/GaugeRing';
 import FleetDetailPanel, { type DetailTab } from './FleetDetailPanel';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
