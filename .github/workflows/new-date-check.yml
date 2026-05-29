@@ -8,6 +8,10 @@ on:
       - 'scripts/check-new-date.js'
       - '.github/workflows/new-date-check.yml'
 
+# Least-privilege: this workflow only reads the repo to diff added lines.
+permissions:
+  contents: read
+
 jobs:
   check:
     runs-on: ubuntu-latest
