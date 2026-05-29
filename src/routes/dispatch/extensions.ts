@@ -17,6 +17,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
@@ -155,6 +156,29 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
   } catch (err) {
     console.error('[dispatch] PUT audio-mode error', err);
     return c.json({ error: 'Failed to update audio mode', code: 'AUDIO_MODE_SET_ERR' }, 500);
+  }
+});
+
+// PUT /:id/mileage — CAD "MI" command sets a unit's odometer reading.
+// Neither legacy nor the rewrite implemented this before, so the CAD
+// command 404'd. units.mileage is REAL; we accept a non-negative number.
+audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const unitId = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
+    const body = await c.req.json().catch(() => ({} as any));
+    const mileage = Number(body.mileage);
+    if (!Number.isFinite(mileage) || mileage < 0) {
+      return c.json({ error: 'mileage must be a non-negative number', code: 'INVALID_MILEAGE' }, 400);
+    }
+    const unit = await queryFirst<{ id: number }>(db, 'SELECT id FROM units WHERE id = ?', unitId);
+    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+    await execute(db, "UPDATE units SET mileage = ?, updated_at = datetime('now') WHERE id = ?", mileage, unitId);
+    return c.json({ success: true, unit_id: unitId, mileage });
+  } catch (err) {
+    console.error('[dispatch] PUT mileage error', err);
+    return c.json({ error: 'Failed to update mileage', code: 'MILEAGE_SET_ERR' }, 500);
   }
 });
 
@@ -1228,11 +1252,13 @@ callActions.delete('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) 
   }
 });
 
-// POST /:id/generate-incident — spawn a draft incident from a cleared/closed call.
-// Returns 409 if one already exists (client handles this). The lean incidents
-// table has no tactical-flag / PSO / district columns, so all of that call
-// detail is packed into the narrative instead of structured columns.
-callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c) => {
+// Shared incident-generation logic behind two routes:
+//   POST /:id/generate-incident   — post-clear action; requires cleared/closed.
+//   POST /:id/promote-to-incident — CAD "PI" command; promotes a LIVE call,
+//                                   so it does NOT require cleared/closed.
+// Both build a draft incident from the call, dedup on call_id (409), and
+// write an audit row. Kept as one helper so the two routes can't drift.
+async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean) {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -1243,7 +1269,7 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
-    if (!['cleared', 'closed'].includes(call.status)) {
+    if (requireCleared && !['cleared', 'closed'].includes(call.status)) {
       return c.json({ error: 'Can only generate incident reports from cleared or closed calls', code: 'CALL_NOT_CLEARED' }, 400);
     }
 
@@ -1311,4 +1337,13 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
     console.error('[dispatch] generate-incident error', err);
     return c.json({ error: 'Failed to generate incident', code: 'GENERATE_INCIDENT_ERROR' }, 500);
   }
-});
+}
+
+// Post-clear: requires the call to be cleared/closed first.
+callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+  (c) => generateIncidentFromCall(c, true));
+
+// CAD "PI" command: promote a live call to an incident report immediately,
+// without first clearing it. Same dedup + audit behavior.
+callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+  (c) => generateIncidentFromCall(c, false));
