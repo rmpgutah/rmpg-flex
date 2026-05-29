@@ -4,7 +4,7 @@
 // dispatch console shouldn't override their phone's preference).
 import { useEffect, useState } from 'react';
 import { Settings as SettingsIcon } from 'lucide-react';
-import { ls, playBeep } from '../helpers';
+import { ls, playBeep, isInQuietHours } from '../helpers';
 import { THEMES, type Theme, NOTIF_SOUNDS } from '../constants';
 import { SectionHeader, SettingRow, SettingCheckbox, ToolbarBtn } from '../components';
 
@@ -13,26 +13,6 @@ interface Props {
   onTheme: (t: Theme) => void;
   fontScale: 'sm' | 'md' | 'lg';
   onFontScale: (f: 'sm' | 'md' | 'lg') => void;
-}
-
-// ─────────────────────────────────────────────────────────────
-// Quiet hours — TODO(user-contribution): see the prompt below.
-//
-// `isInQuietHours(startHHMM, endHHMM, now)` should return true when
-// `now` falls within the quiet-hours window. The tricky bit: the
-// window can wrap midnight (e.g. start="22:00", end="06:00") in
-// which case the naive `now >= start && now <= end` returns false
-// at 23:00 — the bug we want to avoid.
-//
-// Inputs: startHHMM/endHHMM are "HH:MM" strings; now is a Date.
-// Return true if quiet, false if not. Empty/invalid window → false.
-// ─────────────────────────────────────────────────────────────
-export function isInQuietHours(startHHMM: string, endHHMM: string, now: Date = new Date()): boolean {
-  // TODO: implement. Replace this placeholder with your version.
-  // Hint: convert all three to minutes-since-midnight, then handle
-  // the wrap case (start > end) as a single OR check.
-  void startHHMM; void endHHMM; void now;
-  return false;
 }
 
 export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: Props) {

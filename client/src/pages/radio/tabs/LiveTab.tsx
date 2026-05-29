@@ -1,10 +1,10 @@
 // LiveTab — current channel + scrolling TX feed with filters.
 // Polls /api/radio/transmissions every 5s (cheap; the WS will replace
 // this later — see TODO at the bottom of the file).
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Search, Filter, Star, Volume2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
-import { matchesSearch, COMPARE_DATE } from '../helpers';
+import { matchesSearch, COMPARE_DATE, ls, playBeep, isInQuietHours } from '../helpers';
 import { DATE_RANGES, DURATION_FILTERS } from '../constants';
 import { FilterChip, SectionHeader, EmptyConsole, Waveform, Sep } from '../components';
 import type { RadioChannel, RadioTransmission } from '../types';
@@ -23,9 +23,19 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   const [showFilters, setShowFilters] = useState(false);
   const [favsOnly, setFavsOnly] = useState(false);
 
+  // Highest transmission id seen so far. `null` until the first poll
+  // lands so we never beep for the backlog that's already on screen
+  // when the tab opens — only for TX that arrive while we're watching.
+  const lastSeenIdRef = useRef<number | null>(null);
+
   useEffect(() => {
     apiFetch<RadioChannel[]>('/radio/channels').then(setChannels).catch(console.error);
   }, []);
+
+  // Reset the new-TX baseline whenever the feed query changes, so
+  // switching channel/range doesn't beep for rows that are "new" only
+  // because the filter changed (not because a fresh TX came in).
+  useEffect(() => { lastSeenIdRef.current = null; }, [selectedChannelId, range, minDur]);
 
   // Poll the TX feed. 5s is the right cadence for a console that's
   // displayed (faster than this and the LIST jitters during reads).
@@ -40,13 +50,36 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
       if (minDur !== '0') params.set('min_duration', minDur);
       params.set('limit', '200');
       apiFetch<RadioTransmission[]>(`/radio/transmissions?${params.toString()}`)
-        .then((rows) => { if (alive) setTx(rows); })
+        .then((rows) => {
+          if (!alive) return;
+          setTx(rows);
+          notifyOnNewTx(rows);
+        })
         .catch((err) => { console.error('[radio] tx fetch', err); });
     };
     fetchTx();
     const t = setInterval(fetchTx, 5000);
     return () => { alive = false; clearInterval(t); };
   }, [selectedChannelId, range, minDur]);
+
+  // Audible alert for transmissions that arrived since the last poll.
+  // Gated by the operator's Settings: "Sound on new transmission" plus
+  // the quiet-hours window (so the console stays silent overnight).
+  function notifyOnNewTx(rows: RadioTransmission[]) {
+    const maxId = rows.reduce((m, r) => Math.max(m, r.id), 0);
+    const prev = lastSeenIdRef.current;
+    lastSeenIdRef.current = maxId;
+    if (prev === null || maxId <= prev) return; // first poll, or nothing new
+
+    if (ls.get('radio_sound_enabled') === 'false') return;
+    const qs = ls.get('radio_quiet_start') || '';
+    const qe = ls.get('radio_quiet_end') || '';
+    if (qs && qe && isInQuietHours(qs, qe)) return;
+
+    const sound = ls.get('radio_notif_sound') || 'chime';
+    const volume = Number(ls.get('radio_notif_volume') ?? '1') || 1;
+    playBeep(sound, volume);
+  }
 
   // Favorites live in localStorage (no server round-trip for taps).
   const favorites = useMemo<Set<string>>(() => {
