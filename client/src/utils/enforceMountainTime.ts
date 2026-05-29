@@ -1,12 +1,13 @@
 // ============================================================
-// RMPG Flex — Mandatory Mountain Time (America/Denver) enforcement
+// RMPG Flex — Display timezone enforcement
 // ============================================================
-// RMPG operates exclusively in Utah. Every human-facing date/time MUST
-// render in Mountain Time, DST-aware, REGARDLESS of the viewer's device
-// timezone — a dispatcher on a laptop set to Eastern, an out-of-state
-// admin, or a kiosk with a wrong clock must all see the same Utah
-// wall-clock. Storage stays UTC (the canonical, unambiguous instant);
-// this module only governs DISPLAY.
+// RMPG operates in Utah, so by DEFAULT every human-facing date/time renders
+// in Mountain Time (America/Denver), DST-aware, regardless of the viewer's
+// device timezone — a dispatcher on a laptop set to Eastern, an out-of-state
+// admin, or a kiosk with a wrong clock all see Utah wall-clock. Users can opt
+// into 'device' mode (use the device's own clock) via Profile → Display
+// Settings; see timeZoneMode.ts. Storage stays UTC (the canonical, unambiguous
+// instant); this module only governs DISPLAY.
 //
 // Why patch globally instead of fixing call sites:
 //   ~370 toLocale* calls across ~170 files format times for display, and
@@ -31,15 +32,20 @@
 // This must run before any rendering — import it FIRST in main.tsx (and in
 // the test setup, so tests behave identically to production).
 
-export const MOUNTAIN_TIME_ZONE = 'America/Denver';
+import { displayTimeZone, MOUNTAIN_TIME_ZONE } from './timeZoneMode';
+
+export { MOUNTAIN_TIME_ZONE };
 
 type LocalesArg = string | string[] | undefined;
 
-function withMountainZone(options?: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions {
-  // Respect an explicit timeZone (e.g. the handful of call sites that already
-  // pass America/Denver, or anything intentionally formatting another zone).
+function withDisplayZone(options?: Intl.DateTimeFormatOptions): Intl.DateTimeFormatOptions | undefined {
+  // Respect an explicit timeZone (e.g. PDF records pinned to America/Denver, or
+  // anything intentionally formatting another zone).
   if (options && options.timeZone) return options;
-  return { ...(options ?? {}), timeZone: MOUNTAIN_TIME_ZONE };
+  const tz = displayTimeZone();
+  // Device mode (tz === undefined): inject nothing — native device behavior.
+  if (!tz) return options;
+  return { ...(options ?? {}), timeZone: tz };
 }
 
 // Guard against double-patching (HMR, repeated imports).
@@ -54,12 +60,12 @@ if (!(globalThis as Record<string, unknown>)[FLAG]) {
   // Preserve the caller's `locales` argument verbatim (incl. undefined) so
   // locale behavior is unchanged — only the timeZone default is injected.
   Date.prototype.toLocaleString = function (locales?: LocalesArg, options?: Intl.DateTimeFormatOptions): string {
-    return origToLocaleString.call(this, locales as never, withMountainZone(options));
+    return origToLocaleString.call(this, locales as never, withDisplayZone(options));
   };
   Date.prototype.toLocaleDateString = function (locales?: LocalesArg, options?: Intl.DateTimeFormatOptions): string {
-    return origToLocaleDateString.call(this, locales as never, withMountainZone(options));
+    return origToLocaleDateString.call(this, locales as never, withDisplayZone(options));
   };
   Date.prototype.toLocaleTimeString = function (locales?: LocalesArg, options?: Intl.DateTimeFormatOptions): string {
-    return origToLocaleTimeString.call(this, locales as never, withMountainZone(options));
+    return origToLocaleTimeString.call(this, locales as never, withDisplayZone(options));
   };
 }

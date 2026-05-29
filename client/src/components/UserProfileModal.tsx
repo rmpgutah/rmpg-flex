@@ -36,6 +36,7 @@ import BackupCodesDisplay from './security/BackupCodesDisplay';
 import SecurityStatusCard from './security/SecurityStatusCard';
 import TwoFactorSetupWizard from './security/TwoFactorSetupWizard';
 import { applyThemePreference, normalizeThemePreference } from '../utils/theme';
+import { getTimeZoneMode, setTimeZoneMode } from '../utils/timeZoneMode';
 
 interface UserPreferences {
   notify_dispatch_email: number;
@@ -1002,6 +1003,24 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                         >
                           <option value="dark">Dark</option>
                           <option value="light">Light</option>
+                        </select>
+                      </div>
+                      {/* Time Zone: Mountain (default, fixed Utah time) or device-local.
+                          Storage is always UTC; this only changes the display zone.
+                          Reload so every already-rendered timestamp re-formats. */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] text-rmpg-200">Time Zone</span>
+                        <select
+                          defaultValue={getTimeZoneMode()}
+                          onChange={e => {
+                            setTimeZoneMode(e.target.value === 'device' ? 'device' : 'mountain');
+                            window.location.reload();
+                          }}
+                          className="input-dark text-[10px] py-0.5 px-1 w-32"
+                          title="Mountain = always Utah time. Device = use this device's clock."
+                        >
+                          <option value="mountain">Mountain (Utah)</option>
+                          <option value="device">Device local</option>
                         </select>
                       </div>
                       {/* Feature 33: Font Size Adjustment */}

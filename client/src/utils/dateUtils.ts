@@ -7,21 +7,31 @@
 
 const pad2 = (n: number) => String(n).padStart(2, '0');
 
-// ── Mandatory Mountain Time ─────────────────────────────────
-// RMPG is a Utah operation: every displayed date/time is Mountain Time,
-// DST-aware, regardless of the viewer's device. Storage stays UTC. The
-// global shim in enforceMountainTime.ts pins all toLocale* output to MT;
-// the helpers below cover the formatters that read Date getters directly
-// (getHours/getDate/...), which the shim can't touch, plus the MT→UTC
-// conversion needed when a user edits a wall-clock time.
-export const APP_TIME_ZONE = 'America/Denver';
+// ── Display timezone (default Mountain, optional device) ────
+// By default every displayed date/time is Mountain Time, DST-aware, regardless
+// of the viewer's device (see timeZoneMode.ts; users can switch to 'device'
+// mode). Storage stays UTC. The global shim pins toLocale* output to the chosen
+// zone; the helpers below cover the formatters that read Date getters directly
+// (getHours/getDate/...), which the shim can't touch, plus the wall-clock→UTC
+// conversion for time edits. All resolve the zone via displayTimeZone():
+// an IANA zone (e.g. America/Denver) or undefined = the device's local zone.
+import { displayTimeZone } from './timeZoneMode';
+export { MOUNTAIN_TIME_ZONE, getTimeZoneMode, setTimeZoneMode } from './timeZoneMode';
 
-interface MtParts { year: number; month: number; day: number; hour: number; minute: number; second: number; }
+interface ZoneParts { year: number; month: number; day: number; hour: number; minute: number; second: number; }
 
-/** Wall-clock components of an instant in Mountain Time (DST-aware). */
-function mtParts(d: Date): MtParts {
+/** Wall-clock components of an instant in the active display zone (DST-aware). */
+function zoneParts(d: Date): ZoneParts {
+  const tz = displayTimeZone();
+  if (!tz) {
+    // Device mode — read the device's local wall-clock directly.
+    return {
+      year: d.getFullYear(), month: d.getMonth() + 1, day: d.getDate(),
+      hour: d.getHours(), minute: d.getMinutes(), second: d.getSeconds(),
+    };
+  }
   const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone: APP_TIME_ZONE,
+    timeZone: tz,
     year: 'numeric', month: '2-digit', day: '2-digit',
     hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
   }).formatToParts(d);
@@ -34,9 +44,10 @@ function mtParts(d: Date): MtParts {
   };
 }
 
-/** Mountain Time offset from UTC (ms) at the given instant: MT_wall − UTC. */
-function mtOffsetMs(d: Date): number {
-  const p = mtParts(d);
+/** Display-zone offset from UTC (ms) at the given instant: zone_wall − UTC. */
+function zoneOffsetMs(d: Date): number {
+  if (!displayTimeZone()) return -d.getTimezoneOffset() * 60000; // device offset
+  const p = zoneParts(d);
   return Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - d.getTime();
 }
 
@@ -46,7 +57,7 @@ function mtOffsetMs(d: Date): number {
  * produces incorrect dates near midnight in non-UTC timezones.
  */
 export function localToday(): string {
-  const p = mtParts(new Date());
+  const p = zoneParts(new Date());
   return `${p.year}-${pad2(p.month)}-${pad2(p.day)}`;
 }
 
@@ -54,7 +65,7 @@ export function localToday(): string {
  * Convert a Date to "YYYY-MM-DD" in Mountain Time (not the device zone, not UTC).
  */
 export function dateToLocalYMD(d: Date): string {
-  const p = mtParts(d);
+  const p = zoneParts(d);
   return `${p.year}-${pad2(p.month)}-${pad2(p.day)}`;
 }
 
@@ -118,7 +129,7 @@ export function formatShortTime(dateStr: string | null | undefined): string {
   if (!dateStr) return '';
   const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: APP_TIME_ZONE });
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: displayTimeZone() });
 }
 
 /**
@@ -128,7 +139,7 @@ export function formatShortTime(dateStr: string | null | undefined): string {
 export function formatDateTime(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '';
-  const p = mtParts(d);
+  const p = zoneParts(d);
   return `${pad2(p.month)}/${pad2(p.day)}/${p.year} ${pad2(p.hour)}:${pad2(p.minute)}:${pad2(p.second)}`;
 }
 
@@ -138,7 +149,7 @@ export function formatDateTime(dateStr: string | null | undefined): string {
 export function formatDate(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '';
-  const p = mtParts(d);
+  const p = zoneParts(d);
   return `${pad2(p.month)}/${pad2(p.day)}/${p.year}`;
 }
 
@@ -147,7 +158,7 @@ export function formatDate(dateStr: string | null | undefined): string {
  */
 export function formatDateLong(dateStr: string | null | undefined): string {
   const d = parseTimestamp(dateStr);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: APP_TIME_ZONE });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: displayTimeZone() });
 }
 
 // ── Safe formatting for inline JSX (returns '—' for null/invalid) ───
@@ -156,21 +167,21 @@ export function formatDateLong(dateStr: string | null | undefined): string {
 export function safeDateStr(value: string | null | undefined, fallback = '—'): string {
   if (!value) return fallback;
   const d = parseTimestamp(value);
-  return isNaN(d.getTime()) ? fallback : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', timeZone: APP_TIME_ZONE });
+  return isNaN(d.getTime()) ? fallback : d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', timeZone: displayTimeZone() });
 }
 
 /** Safe locale date+time string — replaces `new Date(x).toLocaleString()` */
 export function safeDateTimeStr(value: string | null | undefined, fallback = '—'): string {
   if (!value) return fallback;
   const d = parseTimestamp(value);
-  return isNaN(d.getTime()) ? fallback : d.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: APP_TIME_ZONE });
+  return isNaN(d.getTime()) ? fallback : d.toLocaleString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: displayTimeZone() });
 }
 
 /** Safe locale time string — replaces `new Date(x).toLocaleTimeString()` */
 export function safeTimeStr(value: string | null | undefined, fallback = '—'): string {
   if (!value) return fallback;
   const d = parseTimestamp(value);
-  return isNaN(d.getTime()) ? fallback : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: APP_TIME_ZONE });
+  return isNaN(d.getTime()) ? fallback : d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: displayTimeZone() });
 }
 
 /**
@@ -206,7 +217,7 @@ export function formatDateRange(start: string | null | undefined, end: string | 
   const s = parseTimestamp(start);
   const e = parseTimestamp(end);
   if (s.getFullYear() === e.getFullYear()) {
-    return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: APP_TIME_ZONE })} – ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: APP_TIME_ZONE })}`;
+    return `${s.toLocaleDateString('en-US', { month: 'short', day: 'numeric', timeZone: displayTimeZone() })} – ${e.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: displayTimeZone() })}`;
   }
   return `${formatDateLong(start)} – ${formatDateLong(end)}`;
 }
@@ -258,7 +269,7 @@ export function toDatetimeLocalValue(dateStr: string | null | undefined): string
   if (!dateStr) return '';
   const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '';
-  const p = mtParts(d);
+  const p = zoneParts(d);
   return `${p.year}-${pad2(p.month)}-${pad2(p.day)}T${pad2(p.hour)}:${pad2(p.minute)}`;
 }
 
@@ -275,6 +286,6 @@ export function mtDatetimeLocalToUtc(localStr: string | null | undefined): strin
   // the actual Mountain Time offset at that instant to get the true UTC time.
   const provisional = new Date(`${naive}Z`);
   if (isNaN(provisional.getTime())) return '';
-  const utc = new Date(provisional.getTime() - mtOffsetMs(provisional));
+  const utc = new Date(provisional.getTime() - zoneOffsetMs(provisional));
   return utc.toISOString().replace('T', ' ').slice(0, 19);
 }
