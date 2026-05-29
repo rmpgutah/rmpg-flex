@@ -661,6 +661,16 @@ const API_ROUTES: RouteRule[] = [
   // we don't accidentally swallow /api/records/searchfoo if someone
   // adds an adjacent endpoint later.
   { kind: 'regex', value: /^\/api\/records\/search(\?|$)/ },
+  // /api/records/links (+ /links/:id) — manual cross-entity linkage
+  // (LinkRecordModal + LinkedRecordsSection). The legacy handler never
+  // persisted a single row in production (record_links stayed empty, no
+  // record_linked audit) — its created_by bind relied on a `userId` claim
+  // that isn't guaranteed, so every INSERT threw and the link "vanished"
+  // on refresh. The rewrite handler (src/routes/records.ts) sources
+  // created_by from the DB-verified user.id and writes UTC timestamps.
+  // Regex covers GET/POST /links and DELETE /links/:id; matched on
+  // pathname (no query), so no `\?` branch needed.
+  { kind: 'regex', value: /^\/api\/records\/links(\/\d+)?$/ },
 
   // ── Warrants watch (rewrite has /watch/runs, /watch/scan) ──
   { kind: 'prefix', value: '/api/warrants/watch' },

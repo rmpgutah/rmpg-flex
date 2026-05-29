@@ -363,7 +363,7 @@ export default function MapPage() {
   const [showMapStyles, setShowMapStyles] = useState(false);
 
   // Routing
-  const { activeRoute, routeLoading, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
+  const { activeRoute, routeLoading, routeProgress, offRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
 
   // Search (sidebar)
   const [searchQuery, setSearchQuery] = useState('');
@@ -561,9 +561,11 @@ export default function MapPage() {
   // Change-detection so call/property pins are only rebuilt when THEY change —
   // not on every unit GPS poll (which previously destroyed + recreated every
   // pin, making them flicker / "fly around").
-  const prevCallsRef = useRef<typeof calls | null>(null);
-  const prevPropsRef = useRef<typeof properties | null>(null);
-  const prevLayersRef = useRef<typeof layers | null>(null);
+  // Content signatures (NOT array references) — the calls/properties arrays get
+  // a fresh reference on every poll even when nothing changed, so reference
+  // equality would rebuild every pin each poll. Compare a stable signature.
+  const prevCallsSigRef = useRef<string>('');
+  const prevPropsSigRef = useRef<string>('');
   // Always-fresh units, so a call marker's popup (built once when calls change)
   // still shows current assigned units between rebuilds.
   const unitsRef = useRef(units);
@@ -1279,10 +1281,10 @@ export default function MapPage() {
           if (existing) {
             (existing as any).setLngLat(unit.longitude, unit.latitude);
             const el = (existing as any).getElement?.();
-            if (el) el.replaceChildren(buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source));
+            if (el) el.replaceChildren(buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed));
             (existing as any)._rmpgClick = makeUnitClick;
           } else {
-            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source);
+            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed);
             const marker = createMarker({
               map,
               position: [unit.longitude, unit.latitude],
@@ -1305,7 +1307,10 @@ export default function MapPage() {
     });
 
     // ---- Call markers: rebuild only when calls / incidents-layer change ----
-    const callsChanged = calls !== prevCallsRef.current || (prevLayersRef.current?.incidents !== layers.incidents);
+    const callsSig = layers.incidents
+      ? calls.map(c => `${c.id}:${c.latitude}:${c.longitude}:${c.priority}:${c.status}:${c.incident_type}:${c.call_number}`).join('|')
+      : '';
+    const callsChanged = callsSig !== prevCallsSigRef.current;
     if (callsChanged) {
       callMarkersArrayRef.current.forEach((m) => removeMarker(m));
       callMarkersArrayRef.current = [];
@@ -1387,7 +1392,10 @@ export default function MapPage() {
     }
 
     // ---- Property markers: rebuild only when properties / layer change ----
-    const propsChanged = properties !== prevPropsRef.current || (prevLayersRef.current?.properties !== layers.properties);
+    const propsSig = layers.properties
+      ? properties.map(p => `${p.id}:${p.latitude}:${p.longitude}:${p.name}:${p.client_name || ''}`).join('|')
+      : '';
+    const propsChanged = propsSig !== prevPropsSigRef.current;
     if (propsChanged) {
       propMarkersArrayRef.current.forEach((m) => removeMarker(m));
       propMarkersArrayRef.current = [];
@@ -1545,9 +1553,8 @@ export default function MapPage() {
       ...callMarkersArrayRef.current,
       ...propMarkersArrayRef.current,
     ] as any;
-    prevCallsRef.current = calls;
-    prevPropsRef.current = properties;
-    prevLayersRef.current = layers;
+    prevCallsSigRef.current = callsSig;
+    prevPropsSigRef.current = propsSig;
   }, [layers, units, calls, properties, mapLoaded, createMarker, removeMarker]);
 
   // ============================================================
@@ -2605,18 +2612,18 @@ export default function MapPage() {
         if (typeof selfMarkerRef.current.updatePosition === 'function') {
           // OverlayView fallback marker
           selfMarkerRef.current.updatePosition(gps.latitude, gps.longitude);
-          selfMarkerRef.current.updateContent(buildSelfPositionMarker(gps.accuracy, gps.heading));
+          selfMarkerRef.current.updateContent(buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed));
         } else {
           // AdvancedMarkerElement
           selfMarkerRef.current.position = pos;
-          selfMarkerRef.current.content = buildSelfPositionMarker(gps.accuracy, gps.heading);
+          selfMarkerRef.current.content = buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed);
         }
       } else {
         // Create new self marker
         selfMarkerRef.current = createMarker({
           map,
           position: pos,
-          content: buildSelfPositionMarker(gps.accuracy, gps.heading),
+          content: buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed),
           zIndex: 9999,
           title: `Your Position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`,
         });
@@ -5786,10 +5793,34 @@ export default function MapPage() {
                 ✕
               </button>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>{activeRoute.eta}</span>
-              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>{activeRoute.distance}</span>
+            <div style={{ display: 'flex', alignItems: 'baseline', gap: 12 }}>
+              {/* Live remaining ETA when the unit is en route; otherwise full-route ETA. */}
+              <span style={{ fontSize: 16, color: isLightMapStyle(mapStyle) ? '#181818' : '#fff', fontWeight: 900 }}>
+                {routeProgress ? routeProgress.remainingEta : activeRoute.eta}
+              </span>
+              <span style={{ fontSize: 11, color: isLightMapStyle(mapStyle) ? '#666666' : '#999999' }}>
+                {routeProgress ? routeProgress.remainingDistance : activeRoute.distance}
+              </span>
+              {/* Traffic-aware congestion badge. */}
+              {activeRoute.trafficAware && activeRoute.worstCongestion !== 'unknown' && (() => {
+                const c = activeRoute.worstCongestion;
+                const cc = c === 'severe' ? '#ef4444' : c === 'heavy' ? '#f97316' : c === 'moderate' ? '#eab308' : '#22c55e';
+                return (
+                  <span style={{ fontSize: 8, fontWeight: 900, letterSpacing: '0.06em', color: cc, border: `1px solid ${cc}66`, padding: '1px 5px', borderRadius: 2, textTransform: 'uppercase' }}>
+                    {c} traffic
+                  </span>
+                );
+              })()}
             </div>
+            {/* Progress bar toward the call. */}
+            {routeProgress && routeProgress.fraction > 0.01 && (
+              <div style={{ marginTop: 5, height: 3, background: 'rgba(136,136,136,0.18)', borderRadius: 2, overflow: 'hidden' }}>
+                <div style={{ width: `${Math.round(routeProgress.fraction * 100)}%`, height: '100%', background: '#d4a017', transition: 'width 0.5s ease' }} />
+              </div>
+            )}
+            {offRoute && (
+              <div style={{ fontSize: 8, color: '#ef4444', marginTop: 4, fontWeight: 900, letterSpacing: '0.05em' }}>⚠ OFF ROUTE — RECALCULATING</div>
+            )}
             {routeLoading && (
               <div style={{ fontSize: 8, color: '#f59e0b', marginTop: 4 }}>Updating route…</div>
             )}
