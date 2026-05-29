@@ -85,7 +85,13 @@ auth.post('/login', async (c) => {
 
 auth.post('/refresh', async (c) => {
   try {
-    const { refresh_token } = await c.req.json();
+    // Accept both spellings. The client (AuthContext + apiFetch) sends
+    // camelCase `refreshToken`; older/legacy callers send snake_case
+    // `refresh_token`. Tolerating both mirrors the auth middleware's
+    // user_id/userId handling and prevents a silent 401 → forced-logout
+    // loop when the body key doesn't match.
+    const body = await c.req.json<{ refresh_token?: string; refreshToken?: string }>();
+    const refresh_token = body.refresh_token ?? body.refreshToken;
     if (!refresh_token) {
       return c.json({ error: 'Refresh token required' }, 400);
     }

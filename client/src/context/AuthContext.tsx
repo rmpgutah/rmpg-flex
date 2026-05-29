@@ -183,7 +183,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         const res = await fetchWithTimeout('/api/auth/refresh', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-          body: JSON.stringify({ refreshToken }),
+          // Send both spellings so the request works against either the legacy
+          // worker (reads `refreshToken`) or the /src/ worker (reads `refresh_token`).
+          body: JSON.stringify({ refreshToken, refresh_token: refreshToken }),
         });
 
         if (res.ok) {
@@ -288,7 +290,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             const refreshRes = await fetchWithTimeout('/api/auth/refresh', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-              body: JSON.stringify({ refreshToken }),
+              // Both spellings — legacy worker reads `refreshToken`, /src/ reads `refresh_token`.
+              body: JSON.stringify({ refreshToken, refresh_token: refreshToken }),
             });
 
             if (gen !== generationRef.current) return; // stale
