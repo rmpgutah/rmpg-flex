@@ -171,4 +171,55 @@ panic.post('/panic/:id/false-alarm', async (c) => {
   return c.json(updated);
 });
 
+// POST /request-backup — officer requests backup from the quick-action
+// (RadialMenu) menu. Unlike /panic this is a transient broadcast, not a
+// tracked alert row: it fans a dispatch_update to every client with the
+// requesting officer's unit + GPS location and writes a non-fatal audit
+// row. Mirrors the welfare/help broadcast pattern. Nobody implemented
+// this before (legacy + rewrite both 404'd), so the RadialMenu "Backup"
+// action silently failed.
+panic.post('/request-backup', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number;
+    const body = await c.req.json<{ latitude?: number; longitude?: number; message?: string }>()
+      .catch(() => ({} as { latitude?: number; longitude?: number; message?: string }));
+
+    const officer = await queryFirst<{ full_name: string; badge_number: string | null }>(
+      db, 'SELECT full_name, badge_number FROM users WHERE id = ?', userId,
+    );
+    const unit = await queryFirst<{ id: number; call_sign: string; current_call_id: number | null }>(
+      db, 'SELECT id, call_sign, current_call_id FROM units WHERE officer_id = ? LIMIT 1', userId,
+    );
+
+    const payload = {
+      action: 'backup_requested',
+      user_id: userId,
+      officer_name: officer?.full_name ?? 'Unknown officer',
+      badge_number: officer?.badge_number ?? null,
+      call_sign: unit?.call_sign ?? null,
+      call_id: unit?.current_call_id ?? null,
+      latitude: body.latitude ?? null,
+      longitude: body.longitude ?? null,
+      message: body.message ?? 'Backup requested',
+      at: new Date().toISOString(),
+    };
+
+    try {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+         VALUES (?, 'backup_requested', 'user', ?, ?, ?)`,
+        userId, userId,
+        `Backup requested${unit?.call_sign ? ` by ${unit.call_sign}` : ''}${body.message ? `: ${body.message}` : ''}`,
+        c.req.header('cf-connecting-ip') || 'unknown');
+    } catch { /* audit is non-fatal */ }
+
+    broadcastAll('dispatch_update', payload);
+    return c.json({ success: true, broadcast: payload });
+  } catch (err) {
+    console.error('[dispatch] request-backup error', err);
+    return c.json({ error: 'Failed to request backup', code: 'REQUEST_BACKUP_ERR' }, 500);
+  }
+});
+
 export default panic;

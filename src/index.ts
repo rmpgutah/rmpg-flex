@@ -24,6 +24,7 @@ import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runUtahWarrantScan } from './utils/utahWarrantPoller';
+import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 
@@ -156,6 +157,15 @@ export default {
       runUtahWarrantScan(env.DB).catch((err) => {
         console.error('Utah warrant scheduled scan failed:', err);
       }),
+    );
+    // Dispatch anomaly detection — populates anomaly_alerts for the
+    // AnomalyAlertBanner. Independent of the warrant scan; its own
+    // catch so a failure here can't abort the warrant scan or crash
+    // the cron loop.
+    ctx.waitUntil(
+      detectDispatchAnomalies(env.DB)
+        .then((r) => console.log(`[anomaly] raised/updated ${r.raised}, auto-resolved ${r.resolved}`))
+        .catch((err) => console.error('Dispatch anomaly detection failed:', err)),
     );
   },
 };

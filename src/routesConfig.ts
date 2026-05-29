@@ -98,6 +98,7 @@ import dispatchGeography from './routes/dispatch/geography';
 import dispatchAggregates from './routes/dispatch/aggregates';
 import dispatchPremiseHistory from './routes/dispatch/premiseHistory';
 import dispatchPanic from './routes/dispatch/panic';
+import dispatchAnomalies from './routes/dispatch/anomalies';
 import dispatchCallLinks from './routes/dispatch/callLinks';
 import runCards from './routes/runCards';
 import welfare from './routes/welfare';
@@ -158,6 +159,7 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch', router: dispatchCallLinks, auth: 'required',
     note: 'BEFORE dispatchCalls — handles /calls/:id/{persons,vehicles,property}' },
   { prefix: '/api/dispatch', router: dispatchPanic, auth: 'required' },
+  { prefix: '/api/dispatch', router: dispatchAnomalies, auth: 'required' },
   { prefix: '/api/dispatch', router: dispatchPremiseHistory, auth: 'required' },
 
   // Dispatch extensions BEFORE canonical resources — more-specific

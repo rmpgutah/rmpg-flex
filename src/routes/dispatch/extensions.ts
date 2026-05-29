@@ -17,6 +17,7 @@
 // ============================================================
 
 import { Hono } from 'hono';
+import type { Context } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
@@ -155,6 +156,29 @@ audioMode.put('/:id/audio-mode', requireRole(...READ_ROLES), async (c) => {
   } catch (err) {
     console.error('[dispatch] PUT audio-mode error', err);
     return c.json({ error: 'Failed to update audio mode', code: 'AUDIO_MODE_SET_ERR' }, 500);
+  }
+});
+
+// PUT /:id/mileage — CAD "MI" command sets a unit's odometer reading.
+// Neither legacy nor the rewrite implemented this before, so the CAD
+// command 404'd. units.mileage is REAL; we accept a non-negative number.
+audioMode.put('/:id/mileage', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const unitId = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(unitId) || unitId <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
+    const body = await c.req.json().catch(() => ({} as any));
+    const mileage = Number(body.mileage);
+    if (!Number.isFinite(mileage) || mileage < 0) {
+      return c.json({ error: 'mileage must be a non-negative number', code: 'INVALID_MILEAGE' }, 400);
+    }
+    const unit = await queryFirst<{ id: number }>(db, 'SELECT id FROM units WHERE id = ?', unitId);
+    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+    await execute(db, "UPDATE units SET mileage = ?, updated_at = datetime('now') WHERE id = ?", mileage, unitId);
+    return c.json({ success: true, unit_id: unitId, mileage });
+  } catch (err) {
+    console.error('[dispatch] PUT mileage error', err);
+    return c.json({ error: 'Failed to update mileage', code: 'MILEAGE_SET_ERR' }, 500);
   }
 });
 
@@ -1228,11 +1252,13 @@ callActions.delete('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) 
   }
 });
 
-// POST /:id/generate-incident — spawn a draft incident from a cleared/closed call.
-// Returns 409 if one already exists (client handles this). The lean incidents
-// table has no tactical-flag / PSO / district columns, so all of that call
-// detail is packed into the narrative instead of structured columns.
-callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c) => {
+// Shared incident-generation logic behind two routes:
+//   POST /:id/generate-incident   — post-clear action; requires cleared/closed.
+//   POST /:id/promote-to-incident — CAD "PI" command; promotes a LIVE call,
+//                                   so it does NOT require cleared/closed.
+// Both build a draft incident from the call, dedup on call_id (409), and
+// write an audit row. Kept as one helper so the two routes can't drift.
+async function generateIncidentFromCall(c: Context<Env>, requireCleared: boolean) {
   try {
     const db = getDb(c.env);
     const userId = c.get('userId') as number | undefined;
@@ -1243,7 +1269,7 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
     const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
 
-    if (!['cleared', 'closed'].includes(call.status)) {
+    if (requireCleared && !['cleared', 'closed'].includes(call.status)) {
       return c.json({ error: 'Can only generate incident reports from cleared or closed calls', code: 'CALL_NOT_CLEARED' }, 400);
     }
 
@@ -1310,5 +1336,87 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
   } catch (err) {
     console.error('[dispatch] generate-incident error', err);
     return c.json({ error: 'Failed to generate incident', code: 'GENERATE_INCIDENT_ERROR' }, 500);
+  }
+}
+
+// Post-clear: requires the call to be cleared/closed first.
+callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+  (c) => generateIncidentFromCall(c, true));
+
+// CAD "PI" command: promote a live call to an incident report immediately,
+// without first clearing it. Same dedup + audit behavior.
+callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
+  (c) => generateIncidentFromCall(c, false));
+
+// POST /:id/send-to-serve — seed a serve_queue entry from a dispatch call
+// (DispatchPage "Send to Serve Queue" button). The create-side mirror of
+// legacy's GET /:id/serve-link, which reads the same row back. Dedups on
+// call_id so a double-click doesn't create two jobs. Neither backend
+// implemented this before → the button 404'd. Returns the serve_queue row
+// (the client stores it as `serveLink`).
+callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    if (userId == null) return c.json({ error: 'Unauthenticated', code: 'NO_AUTH' }, 401);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    // Dedup: one serve job per call. Return the existing row if present.
+    const existing = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE call_id = ?', id);
+    if (existing) return c.json(existing, 200);
+
+    const result = await execute(db,
+      `INSERT INTO serve_queue (
+         call_id, officer_id, created_by, recipient_address, recipient_lat, recipient_lng,
+         property_id, priority, status, notes, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
+      id, userId, userId,
+      call.location_address ?? null, call.latitude ?? null, call.longitude ?? null,
+      call.property_id ?? null,
+      `Created from dispatch call ${call.call_number}`);
+
+    try {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+         VALUES (?, 'serve_queued', 'serve_queue', ?, ?, ?)`,
+        userId, result.meta.last_row_id, `Sent call ${call.call_number} to serve queue`,
+        c.req.header('cf-connecting-ip') || 'unknown');
+    } catch { /* audit non-fatal */ }
+
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE id = ?', result.meta.last_row_id);
+    return c.json(created ?? { id: result.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[dispatch] send-to-serve error', err);
+    return c.json({ error: 'Failed to send to serve queue', code: 'SEND_TO_SERVE_ERR' }, 500);
+  }
+});
+
+// PATCH /:id/pin — pin/unpin a call to the top of the dispatch queue.
+// `pinned` lives on calls_for_service_ext (the base table is at the D1
+// 100-column cap), so we upsert the ext row. Nobody implemented this
+// before → the DispatchPage pin toggle 404'd and the optimistic update
+// always reverted. The list query (GET /calls) reads cfse.pinned and
+// sorts pinned-first so the state persists across refreshes.
+callActions.patch('/:id/pin', requireRole('admin', 'manager', 'supervisor', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    const body = await c.req.json().catch(() => ({} as any));
+    const pinned = body.pinned ? 1 : 0;
+
+    const call = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+    await execute(db, 'UPDATE calls_for_service_ext SET pinned = ? WHERE id = ?', pinned, id);
+    return c.json({ success: true, id, pinned: Boolean(pinned) });
+  } catch (err) {
+    console.error('[dispatch] pin error', err);
+    return c.json({ error: 'Failed to toggle pin', code: 'PIN_ERR' }, 500);
   }
 });

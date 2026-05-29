@@ -772,9 +772,12 @@ const STUBS: StubRule[] = [
 const API_ROUTES: RouteRule[] = [
   // ── More specific dispatch sub-paths (new in rewrite) ──
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,
-  // timeline, warnings} all live on env.API. Listed BEFORE the
-  // bare /api/dispatch/calls/:id rule so they win the match.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail)(\/.*)?$/ },
+  // timeline, warnings, audit-trail, generate-incident, promote-to-incident}
+  // all live on env.API. generate-incident/promote-to-incident: the rewrite's
+  // shared generateIncidentFromCall() is schema-verified vs live incidents +
+  // audit_log; legacy lacked promote-to-incident entirely (CAD "PI" was 404).
+  // Listed BEFORE the bare /api/dispatch/calls/:id rule so they win the match.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve|pin)(\/.*)?$/ },
 
   // /api/dispatch/calls/:id/{persons,vehicles}[/...] — rewrite implements
   // POST/DELETE/PATCH plus the quick-add fast-path; legacy implements ONLY
@@ -785,6 +788,24 @@ const API_ROUTES: RouteRule[] = [
   // appear" symptom reported 2026-05-24. Routing ALL methods on the entire
   // sub-tree to the rewrite makes the round-trip self-consistent.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(persons|vehicles)(\/.*)?$/ },
+
+  // /api/dispatch/request-backup — officer backup request (RadialMenu).
+  // New rewrite handler (panic.ts); legacy never implemented it → 404.
+  { kind: 'prefix', value: '/api/dispatch/request-backup' },
+
+  // /api/dispatch/anomaly-alerts[/*] — AnomalyAlertBanner read + ack.
+  // New rewrite feature (anomalies.ts + anomaly_alerts table + cron
+  // detection); legacy never implemented it → the banner silently
+  // showed nothing.
+  { kind: 'prefix', value: '/api/dispatch/anomaly-alerts' },
+
+  // /api/dispatch/welfare/* — ENTIRE namespace lives on the rewrite. It
+  // implements ack/help/snooze/start/activity/active AND holds the
+  // WELFARE_WATCH durable-object binding (legacy has neither the handlers
+  // nor the DO, so the MDT welfare-check modal's ack/help/snooze all 404'd
+  // — an officer-safety break). Durable Objects can't be shared across
+  // Workers, so welfare can ONLY work on env.API.
+  { kind: 'prefix', value: '/api/dispatch/welfare' },
 
   // /api/dispatch/calls/check-duplicate — rewrite has correct route ordering
   // (literal /check-duplicate registered before parametric /:id). Legacy
@@ -974,6 +995,12 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/reports/crime-analysis' },
   // MDT page calls this on first render
   { kind: 'prefix', value: '/api/dispatch/units/mine/audio-mode' },
+  // /api/dispatch/units/:id/{audio-mode,mileage} — rewrite implements both
+  // (audioMode router). Legacy implemented NEITHER, so the MDT audio toggle
+  // and the CAD "MI" mileage command 404'd. Route the numeric-id sub-paths
+  // to the rewrite. (unit status stays on legacy — its transition-guard
+  // handler is solid and already working.)
+  { kind: 'regex', value: /^\/api\/dispatch\/units\/\d+\/(audio-mode|mileage)$/ },
 
   // ── Audit subsystem ──
   // Live D1 `audit_log` had only id+created_at columns (an unused stump)
