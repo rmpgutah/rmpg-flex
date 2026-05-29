@@ -686,6 +686,27 @@ calls.post('/:id/status', async (c) => {
     params.push(id);
     await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+
+    // Audit trail — parity with the legacy handler this replaced (which wrote
+    // a STATUS_CHANGE row). Without this the call's Audit tab showed nothing
+    // for dispatch transitions. Best-effort: never fail the transition on an
+    // audit write. entity_type/id match the audit-trail GET's filter so the
+    // entry surfaces on the call. created_at = UTC.
+    try {
+      const userId = c.get('userId') as number | undefined;
+      if (userId != null) {
+        const callNumber = (updated?.call_number as string) ?? `#${id}`;
+        await execute(
+          db,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+           VALUES (?, 'STATUS_CHANGE', 'call', ?, ?, datetime('now'))`,
+          userId, id, `Status changed to ${status} on ${callNumber}${typeof disposition === 'string' && disposition.length > 0 ? ` (disposition: ${disposition})` : ''}`,
+        );
+      }
+    } catch (auditErr) {
+      console.warn('audit_log insert failed for status change:', auditErr);
+    }
+
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
