@@ -15,12 +15,12 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { parseTimestamp } from './dateUtils';
 import {
   COLOR, BORDER, SPACING, LAYOUT, PDF_VALUE_FONT,
   getContentWidth,
 } from './pdfTokens';
 import { sanitizePdfText } from './pdfGenerator';
-import { parseTimestamp } from './dateUtils';
 
 // ── Quick-reference banner ──────────────────────────────
 //
@@ -356,12 +356,12 @@ export function addLinkedRecordsStrip(
 // ── Helpers ─────────────────────────────────────────────
 
 function formatTimestamp(iso: string): string {
-  // Server timestamps are naive UTC; parseTimestamp reads them correctly.
-  // Display is Mountain-Time-pinned by the global enforceMountainTime shim.
+  // parseTimestamp reads naive server strings as UTC (Date.parse treats them as
+  // device-local → wrong instant); display pinned to Mountain Time.
   const d = parseTimestamp(iso);
   if (isNaN(d.getTime())) return iso;
-  return d
-    .toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
-    .replace(',', '');
+  const date = d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'America/Denver' });
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'America/Denver' });
+  return `${date} ${time}`;
 }
 

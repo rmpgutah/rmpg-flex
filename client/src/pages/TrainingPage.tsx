@@ -829,7 +829,7 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
       thirtyDays.setDate(thirtyDays.getDate() + 30);
       result = result.filter(r => {
         if (!r.expiry_date) return false;
-        const exp = new Date(r.expiry_date);
+        const exp = parseTimestamp(r.expiry_date);
         return exp > now && exp <= thirtyDays;
       });
     } else if (statusFilter !== 'all') {
@@ -941,12 +941,12 @@ function RecordsTab({ records, officers, isAdmin, onEdit, onDelete }: {
                     {record.expiry_date ? (
                       <span className="flex items-center gap-1">
                         <span className={
-                          new Date(record.expiry_date) < new Date() ? 'text-red-400 font-bold' :
-                          new Date(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) ? 'text-amber-400' :
-                          new Date(record.expiry_date) <= new Date(Date.now() + 60 * 86400000) ? 'text-yellow-400' : ''
+                          parseTimestamp(record.expiry_date) < new Date() ? 'text-red-400 font-bold' :
+                          parseTimestamp(record.expiry_date) <= new Date(Date.now() + 30 * 86400000) ? 'text-amber-400' :
+                          parseTimestamp(record.expiry_date) <= new Date(Date.now() + 60 * 86400000) ? 'text-yellow-400' : ''
                         }>{formatDate(record.expiry_date)}</span>
                         {(() => {
-                          const days = Math.ceil((new Date(record.expiry_date).getTime() - Date.now()) / 86400000);
+                          const days = Math.ceil((parseTimestamp(record.expiry_date).getTime() - Date.now()) / 86400000);
                           if (days < 0) return <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase animate-pulse">EXPIRED {Math.abs(days)}d</span>;
                           if (days <= 30) return <span className="text-[8px] px-1 py-0 bg-red-900/50 text-red-400 border border-red-700/50 font-bold uppercase">{days}d LEFT</span>;
                           if (days <= 60) return <span className="text-[8px] px-1 py-0 bg-amber-900/50 text-amber-400 border border-amber-700/50 font-bold uppercase">{days}d LEFT</span>;

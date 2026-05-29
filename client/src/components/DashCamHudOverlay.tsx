@@ -12,11 +12,12 @@
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import type { DashCamVideo as DashcamVideo } from '../types';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── Helpers ──────────────────────────────────────────────
 
 function formatHudTimestamp(baseDate: string | null | undefined, offsetSec: number): string {
-  const base = baseDate ? new Date(baseDate) : new Date();
+  const base = baseDate ? parseTimestamp(baseDate) : new Date();
   const ts = new Date(base.getTime() + offsetSec * 1000);
   const mm = String(ts.getMonth() + 1).padStart(2, '0');
   const dd = String(ts.getDate()).padStart(2, '0');

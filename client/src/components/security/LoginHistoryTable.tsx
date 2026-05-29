@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { CheckCircle, XCircle, ChevronLeft, ChevronRight, RefreshCw, History } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { LoginHistoryEntry } from '../../types';
@@ -16,7 +17,7 @@ function parseDevice(ua: string): string {
 }
 
 function formatDate(dateStr: string): string {
-  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const d = parseTimestamp(dateStr);
   const now = new Date();
   const diff = now.getTime() - d.getTime();
   const mins = Math.floor(diff / 60000);

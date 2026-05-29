@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
 
@@ -102,8 +103,8 @@ export default function BolosCard() {
       items.push({ kind: 'alert', id: a.id, created_at: a.created_at || '', row: a });
     }
     items.sort((x, y) => {
-      const tx = x.created_at ? new Date(x.created_at).getTime() : 0;
-      const ty = y.created_at ? new Date(y.created_at).getTime() : 0;
+      const tx = x.created_at ? parseTimestamp(x.created_at).getTime() : 0;
+      const ty = y.created_at ? parseTimestamp(y.created_at).getTime() : 0;
       return ty - tx;
     });
     return items.slice(0, 8);

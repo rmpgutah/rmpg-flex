@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
@@ -37,7 +38,7 @@ function haversineMiles(a: number, b: number, c: number, d: number): number {
 
 function ageLabel(iso?: string): string {
   if (!iso) return '';
-  const then = new Date(iso).getTime();
+  const then = parseTimestamp(iso).getTime();
   if (isNaN(then)) return '';
   const mins = Math.max(0, Math.floor((Date.now() - then) / 60000));
   if (mins < 60) return `${mins}m`;
@@ -112,8 +113,8 @@ export default function ActiveCallsCard() {
 
   const visible = useMemo(() => {
     const sorted = [...calls].sort((a, b) => {
-      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      const ta = a.created_at ? parseTimestamp(a.created_at).getTime() : 0;
+      const tb = b.created_at ? parseTimestamp(b.created_at).getTime() : 0;
       return tb - ta;
     });
     return sorted.slice(0, 6);

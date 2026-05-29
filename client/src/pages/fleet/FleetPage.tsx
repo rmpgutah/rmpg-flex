@@ -5,7 +5,6 @@ import {
   Tag, Radio, Archive, DollarSign, Fuel,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
-import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useFormDraft } from '../../hooks/useFormDraft';
@@ -18,6 +17,7 @@ import PrintButton from '../../components/PrintButton';
 import FloatingSaveBar from '../../components/FloatingSaveBar';
 import UnsavedChangesGuard from '../../components/UnsavedChangesGuard';
 import { nowLocalISO, toDatetimeLocal } from './utils/fleetFormatters';
+import { parseTimestamp } from '../../utils/dateUtils';
 import GaugeRing from './components/GaugeRing';
 import FleetDetailPanel, { type DetailTab } from './FleetDetailPanel';
 import FleetAnalyticsTab from './tabs/FleetAnalyticsTab';
@@ -1187,7 +1187,7 @@ export default function FleetPage() {
         onClose={() => setDeletingFuel(null)}
         onConfirm={handleDeleteFuel}
         title="Delete Fuel Log"
-        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? safeDateStr(deletingFuel.fuel_date, '') : ''}? This cannot be undone.`}
+        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? parseTimestamp(deletingFuel.fuel_date).toLocaleDateString() : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
@@ -1209,7 +1209,7 @@ export default function FleetPage() {
         onClose={() => setDeletingInspection(null)}
         onConfirm={handleDeleteInspection}
         title="Delete Inspection"
-        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ') || ''} inspection from ${deletingInspection?.inspection_date ? safeDateStr(deletingInspection.inspection_date, '') : ''}? This cannot be undone.`}
+        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ') || ''} inspection from ${deletingInspection?.inspection_date ? parseTimestamp(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}

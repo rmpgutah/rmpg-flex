@@ -7,6 +7,7 @@
 // data in a structured, readable format.
 
 import { useState, useEffect } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import { formatEnumValue } from '../utils/formatters';
 import {
   X, FileSearch, AlertTriangle, Shield, Gavel,
@@ -14,7 +15,6 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import type { BackgroundRecord } from '../utils/ncicFormatter';
-import { safeDateTimeStr } from '../utils/dateUtils';
 
 interface BackgroundCheckDetailProps {
   searchId: number;
@@ -109,7 +109,7 @@ export default function BackgroundCheckDetail({ searchId, onClose }: BackgroundC
                 <div className="flex items-center gap-4 text-[10px] text-rmpg-400">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3 h-3" />
-                    Searched: {data.search?.created_at ? safeDateTimeStr(data.search.created_at) : 'N/A'}
+                    Searched: {data.search?.created_at ? parseTimestamp(data.search.created_at).toLocaleString() : 'N/A'}
                   </span>
                   <span>Search ID: #{searchId}</span>
                   <span>{records.length} record(s) found</span>

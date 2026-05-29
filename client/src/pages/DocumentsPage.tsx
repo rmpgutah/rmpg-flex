@@ -11,6 +11,7 @@ import DocumentsAppsShelf from './documents/DocumentsAppsShelf';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface Folder {
   id: number;
@@ -463,7 +464,7 @@ export default function DocumentsPage() {
                 <span className="text-lg flex-shrink-0">{getFileIcon(file.mime_type)}</span>
                 <div className="flex-1 min-w-0">
                   <span className="text-xs font-medium text-rmpg-200 truncate block">{file.original_name}</span>
-                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {new Date(file.created_at).toLocaleDateString()} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
+                  <span className="text-[9px] text-rmpg-500">{formatSize(file.file_size)} · {parseTimestamp(file.created_at).toLocaleDateString()} · {file.mime_type?.split('/')[1]?.toUpperCase()}</span>
                 </div>
                 <div className="flex items-center gap-1">
                   <button type="button" onClick={() => setInfoFile(file)}
@@ -576,7 +577,7 @@ export default function DocumentsPage() {
         const category = isImage ? 'Image' : isVideo ? 'Video' : isAudio ? 'Audio' : isPdf ? 'PDF Document' : f.mime_type?.includes('word') ? 'Word Document' : f.mime_type?.includes('sheet') ? 'Spreadsheet' : 'File';
         const sizeKB = (f.file_size / 1024).toFixed(1);
         const sizeMB = (f.file_size / 1048576).toFixed(2);
-        const created = new Date(f.created_at);
+        const created = parseTimestamp(f.created_at);
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm" onClick={() => setInfoFile(null)}>

@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { Monitor, Smartphone, Tablet, Globe, Trash2, RefreshCw, Shield } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { TrustedDevice } from '../../types';
@@ -15,7 +16,7 @@ function deviceIcon(name: string) {
 }
 
 function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseTimestamp(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'Just now';
   if (mins < 60) return `${mins}m ago`;
@@ -23,11 +24,11 @@ function timeAgo(dateStr: string): string {
   if (hrs < 24) return `${hrs}h ago`;
   const days = Math.floor(hrs / 24);
   if (days < 30) return `${days}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  return parseTimestamp(dateStr).toLocaleDateString();
 }
 
 function daysUntil(dateStr: string): string {
-  const diff = new Date(dateStr).getTime() - Date.now();
+  const diff = parseTimestamp(dateStr).getTime() - Date.now();
   const days = Math.ceil(diff / 86400000);
   if (days <= 0) return 'Expired';
   if (days === 1) return '1 day';

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { getOverlayMarkerClass } from '../utils/mapMarkerBuilders';
 import { whenStyleReady } from '../utils/safeAddSource';
 
@@ -46,7 +47,7 @@ function buildFIInfoContent(fi: FIRecord): string {
         ${fi.action_taken ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Action</td><td style="color:#e0e0e0">${fi.action_taken}</td></tr>` : ''}
         ${fi.officer_name ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Officer</td><td style="color:#e0e0e0">${fi.officer_name}</td></tr>` : ''}
         ${fi.location ? `<tr><td style="color:#888888;padding:1px 6px 1px 0">Location</td><td style="color:#e0e0e0">${fi.location}</td></tr>` : ''}
-        <tr><td style="color:#888888;padding:1px 6px 1px 0">Date</td><td style="color:#e0e0e0">${fi.created_at ? new Date(fi.created_at).toLocaleString() : ''}</td></tr>
+        <tr><td style="color:#888888;padding:1px 6px 1px 0">Date</td><td style="color:#e0e0e0">${fi.created_at ? parseTimestamp(fi.created_at).toLocaleString() : ''}</td></tr>
       </table>
     </div>
   `;

@@ -41,6 +41,7 @@ const STATUS_COLOR: Record<FleetVehicleStatus, string> = {
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
+  // parseTimestamp reads naive timestamps as UTC and date-only strings as local
   const exp = parseTimestamp(dateStr);
   const now = new Date();
   if (exp < now) return 'expired';

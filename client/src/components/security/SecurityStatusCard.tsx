@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { parseTimestamp } from '../../utils/dateUtils';
 import { Shield, Key, Monitor, Clock, Bell, RefreshCw, AlertTriangle } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import type { SecurityStatus } from '../../types';
@@ -156,7 +157,7 @@ export default function SecurityStatusCard() {
           className="px-3 py-1.5 text-[9px] font-mono"
           style={{ borderTop: '1px solid #2b2b2b', color: '#555555' }}
         >
-          Password last changed: {status.passwordChangedAt ? new Date(status.passwordChangedAt).toLocaleDateString() : 'N/A'}
+          Password last changed: {status.passwordChangedAt ? parseTimestamp(status.passwordChangedAt).toLocaleDateString() : 'N/A'}
         </div>
       )}
     </div>
@@ -164,7 +165,7 @@ export default function SecurityStatusCard() {
 }
 
 function formatExpiry(dateStr: string): string {
-  const d = new Date(dateStr);
+  const d = parseTimestamp(dateStr);
   const diff = d.getTime() - Date.now();
   const days = Math.ceil(diff / 86400000);
   if (days <= 0) return 'now';

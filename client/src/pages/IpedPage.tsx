@@ -13,6 +13,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { useToast } from '../components/ToastProvider';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── Types ───────────────────────────────────────────────────
 
@@ -95,8 +96,8 @@ const JOB_TYPE_LABELS: Record<string, string> = {
 
 function formatDuration(startedAt: string | null, completedAt: string | null): string {
   if (!startedAt) return '--';
-  const start = new Date(startedAt).getTime();
-  const end = completedAt ? new Date(completedAt).getTime() : Date.now();
+  const start = parseTimestamp(startedAt).getTime();
+  const end = completedAt ? parseTimestamp(completedAt).getTime() : Date.now();
   const sec = Math.floor((end - start) / 1000);
   if (sec < 60) return `${sec}s`;
   if (sec < 3600) return `${Math.floor(sec / 60)}m ${sec % 60}s`;
@@ -105,7 +106,7 @@ function formatDuration(startedAt: string | null, completedAt: string | null): s
 
 function formatDate(d: string | null): string {
   if (!d) return '--';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', {
+  return parseTimestamp(d).toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
   });
 }

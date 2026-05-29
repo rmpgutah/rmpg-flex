@@ -12,7 +12,7 @@ import { toDisplayLabel } from '../utils/formatters';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { formatAddressDisplay } from '../utils/statusLabels';
-import { parseTimestamp, safeDateStr } from '../utils/dateUtils';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface PersonResult {
   id: string;
@@ -387,7 +387,7 @@ export default function CriminalHistoryPage() {
                               {entry.type.replace(/_/g, ' ')}
                             </span>
                             <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
-                            <span className="text-[9px] text-rmpg-500">{entry.date ? safeDateStr(entry.date, '') : ''}</span>
+                            <span className="text-[9px] text-rmpg-500">{entry.date ? parseTimestamp(entry.date).toLocaleDateString() : ''}</span>
                           </div>
                           <p className="text-[10px] text-rmpg-300 mt-0.5 truncate">{entry.description}</p>
                           <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">

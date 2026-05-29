@@ -19,7 +19,7 @@ interface Props {
   entry: TimeEntry | null;
 }
 
-/** Convert ISO / DB datetime string (server UTC) to a Mountain-Time datetime-local input value */
+/** Convert a stored (UTC) datetime string to a Mountain-Time datetime-local input value. */
 function toLocalInput(dt?: string): string {
   return toDatetimeLocalValue(dt);
 }
@@ -65,12 +65,11 @@ export default function TimeEntryEditModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!entry) return;
-    // Inputs hold Mountain-Time wall-clock; convert back to naive UTC for
-    // storage (inverse of toDatetimeLocalValue) so the round-trip is stable.
+    // Inputs are Mountain-Time wall-clock; store as UTC (app standard).
     onSubmit({
       id: entry.id,
       clock_in: mtDatetimeLocalToUtc(form.clockIn),
-      clock_out: form.clockOut ? mtDatetimeLocalToUtc(form.clockOut) : '',
+      clock_out: form.clockOut ? mtDatetimeLocalToUtc(form.clockOut) : form.clockOut,
     });
   };
 

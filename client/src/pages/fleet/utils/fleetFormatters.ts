@@ -16,7 +16,9 @@ import { parseTimestamp } from '../../../utils/dateUtils';
  */
 export function formatMilitary(isoString: string | undefined | null): string {
   if (!isoString) return '-';
-  const d = parseTimestamp(isoString);
+  // Force local-time parse for date-only strings
+  const normalized = /^\d{4}-\d{2}-\d{2}$/.test(isoString) ? `${isoString}T00:00:00` : isoString;
+  const d = new Date(normalized);
   if (isNaN(d.getTime())) return isoString; // fallback for unparseable strings
   const yyyy = d.getFullYear();
   const MM = String(d.getMonth() + 1).padStart(2, '0');
@@ -34,7 +36,8 @@ export function formatMilitaryDate(isoString: string | undefined | null): string
   if (!isoString) return '-';
   // Date-only strings can be returned directly — avoids UTC timezone shift
   if (/^\d{4}-\d{2}-\d{2}$/.test(isoString)) return isoString;
-  const d = parseTimestamp(isoString);
+  const normalized = isoString.replace(' ', 'T'); // SQLite space → T
+  const d = new Date(normalized);
   if (isNaN(d.getTime())) return isoString;
   const yyyy = d.getFullYear();
   const MM = String(d.getMonth() + 1).padStart(2, '0');
@@ -78,6 +81,7 @@ export function toDatetimeLocal(d: string | undefined | null): string {
  */
 export function daysUntilExpiry(dateStr: string | undefined | null): number | null {
   if (!dateStr) return null;
+  // parseTimestamp reads naive timestamps as UTC and date-only strings as local
   const exp = parseTimestamp(dateStr);
   if (isNaN(exp.getTime())) return null;
   return Math.ceil((exp.getTime() - Date.now()) / 86_400_000);

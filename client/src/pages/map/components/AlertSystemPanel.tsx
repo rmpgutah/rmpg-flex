@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, Siren, Check, ChevronDown, ChevronRight, Trash2, Clock, ShieldCheck } from 'lucide-react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 const ALERT_TYPE_COLORS: Record<string, string> = {
   officer_down: '#ef4444',
@@ -50,7 +51,7 @@ interface AlertSystemPanelProps {
 
 function formatTimestamp(ts: string): string {
   try {
-    const d = new Date(ts.includes('T') ? ts : ts + 'T00:00:00');
+    const d = parseTimestamp(ts);
     return d.toLocaleTimeString('en-US', {
       hour: '2-digit',
       minute: '2-digit',
@@ -64,7 +65,7 @@ function formatTimestamp(ts: string): string {
 
 function relativeTime(ts: string): string {
   try {
-    const diff = Date.now() - new Date(ts).getTime();
+    const diff = Date.now() - parseTimestamp(ts).getTime();
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return 'just now';
     if (mins < 60) return `${mins}m ago`;

@@ -18,6 +18,7 @@ import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { initMapbox, getMapboxInstance, mapboxgl, MAPBOX_STYLE_DARK } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── GPS Track Types ─────────────────────────────────────────
 
@@ -107,7 +108,7 @@ function formatDuration(sec?: number): string {
 
 function formatTimestamp(isoStr: string | undefined, offsetSec: number): string {
   if (!isoStr) return '--:--:--';
-  const base = new Date(isoStr.includes('T') ? isoStr : isoStr + 'T00:00:00');
+  const base = parseTimestamp(isoStr);
   const d = new Date(base.getTime() + offsetSec * 1000);
   const mm = String(d.getMonth() + 1).padStart(2, '0');
   const dd = String(d.getDate()).padStart(2, '0');
@@ -120,7 +121,7 @@ function formatTimestamp(isoStr: string | undefined, offsetSec: number): string 
 
 function formatDate(d?: string): string {
   if (!d) return '-';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', {
+  return parseTimestamp(d).toLocaleDateString('en-US', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit',
   });

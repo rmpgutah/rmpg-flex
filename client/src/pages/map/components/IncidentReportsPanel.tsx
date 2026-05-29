@@ -7,6 +7,7 @@
 
 import React, { useMemo } from 'react';
 import { X, FileText, Info, Navigation, Clock } from 'lucide-react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface IncidentReport {
   id: number;
@@ -45,7 +46,7 @@ function getStatusStyle(status: string) {
 // ─── Time-ago helper ────────────────────────────────────────
 
 function timeAgo(ts: string): string {
-  const diff = Date.now() - new Date(ts).getTime();
+  const diff = Date.now() - parseTimestamp(ts).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return 'just now';
   if (mins < 60) return `${mins}m ago`;
@@ -98,7 +99,7 @@ export default function IncidentReportsPanel({
   const recentReports = useMemo(() => {
     if (!reports || reports.length === 0) return [];
     return [...reports]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .sort((a, b) => parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime())
       .slice(0, 5);
   }, [reports]);
 

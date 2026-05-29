@@ -7,7 +7,7 @@ import React, { useState, useEffect } from 'react';
 import RmpgLogo from './RmpgLogo';
 import BatteryIndicator from './BatteryIndicator';
 
-import { safeTimeStr } from '../utils/dateUtils';
+import { safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 
 const APP_VERSION: string =
   typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : '0.0.0';
@@ -82,7 +82,7 @@ export default function StatusBar({
       {/* 30: GPS Status with tabular-nums for accuracy/time */}
       <div className="status-bar-section">
         {gpsTracking ? (() => {
-          const ageSec = gpsLastSent ? (Date.now() - new Date(gpsLastSent).getTime()) / 1000 : Infinity;
+          const ageSec = gpsLastSent ? (Date.now() - parseTimestamp(gpsLastSent).getTime()) / 1000 : Infinity;
           const isLost = ageSec > 600;     // >10 min
           const isStale = ageSec > 120;    // >2 min
           const ledClass = isLost ? 'led-red' : isStale ? 'led-amber' : 'led-green';
