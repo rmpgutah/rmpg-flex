@@ -7,7 +7,7 @@
 import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
-import { getDb, query } from '../utils/db';
+import { getDb, query, execute } from '../utils/db';
 import { requireRole } from '../middleware/auth';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 
@@ -248,5 +248,214 @@ for (const path of ['/utah/sync-status', '/utah-search/auto-poll-status', '/scra
     }
   });
 }
+
+// ============================================================
+// Scraper Sources — WarrantsPage Sources/Scrapers tab + Layout badge
+// ============================================================
+// Surfaces /warrants/scrapers + /scrapers/health, fed by warrant_scraper_config
+// (one config row per source) joined with run-derived metrics from
+// warrant_watch_runs. Legacy implemented NONE of these; the tab was 404-empty.
+//
+// Per-source presentation metadata (display name, URL, state) lives here as a
+// small registry rather than on warrant_scraper_config — adding a new source
+// in the future = one entry here + one seed row in the table.
+const SOURCE_REGISTRY: Record<string, { display_name: string; state: string; county: string | null; source_url: string }> = {
+  'utah-warrant-watch': {
+    display_name: 'Utah Warrant Watch',
+    state: 'UT',
+    county: null,
+    source_url: 'https://warrants.utah.gov',
+  },
+};
+
+function gradeFromSuccessRate(rate: number, totalRuns: number): 'A' | 'B' | 'C' | 'D' | 'F' {
+  if (totalRuns === 0) return 'A'; // no runs in window → no failure signal
+  if (rate >= 0.95) return 'A';
+  if (rate >= 0.85) return 'B';
+  if (rate >= 0.70) return 'C';
+  if (rate >= 0.50) return 'D';
+  return 'F';
+}
+
+function percentile(sorted: number[], p: number): number {
+  if (sorted.length === 0) return 0;
+  const idx = Math.min(sorted.length - 1, Math.floor((p / 100) * sorted.length));
+  return sorted[idx];
+}
+
+// Computes 24h SourceMetrics + presentation fields for one config row.
+async function buildScraperSource(c: Context<Env>, config: Record<string, any>) {
+  const db = getDb(c.env);
+  const sourceKey = config.source_name;
+  const meta = SOURCE_REGISTRY[sourceKey] ?? {
+    display_name: sourceKey, state: '', county: null, source_url: '',
+  };
+
+  const runs = await query<Record<string, any>>(
+    db,
+    `SELECT started_at, completed_at, status, persons_checked, new_warrants_found,
+            warrants_cleared, errors, error_message
+       FROM warrant_watch_runs
+      WHERE started_at >= datetime('now', '-24 hours')
+      ORDER BY started_at DESC`,
+  );
+
+  const total = runs.length;
+  const successful = runs.filter((r) => r.status === 'completed').length;
+  const failed = runs.filter((r) => r.status === 'failed').length;
+  const unchanged = runs.filter((r) => r.status === 'completed' && (r.new_warrants_found ?? 0) === 0).length;
+  const successRate = total > 0 ? successful / total : 1;
+  const grade = gradeFromSuccessRate(successRate, total);
+
+  const durations = runs
+    .filter((r) => r.completed_at && r.started_at)
+    .map((r) => new Date(r.completed_at).getTime() - new Date(r.started_at).getTime())
+    .filter((d) => Number.isFinite(d) && d >= 0)
+    .sort((a, b) => a - b);
+  const avgDuration = durations.length ? Math.round(durations.reduce((s, d) => s + d, 0) / durations.length) : 0;
+
+  const totalInserted = runs.reduce((s, r) => s + (r.new_warrants_found ?? 0), 0);
+  const totalUpdated = runs.reduce((s, r) => s + (r.warrants_cleared ?? 0), 0);
+  const lastFailed = runs.find((r) => r.status === 'failed');
+  const lastCompleted = runs.find((r) => r.status === 'completed');
+
+  // Consecutive failures at the head (most recent first) → circuit-broken
+  // heuristic. 3+ consecutive failures = broken; self-clears on next success.
+  let consecutiveErrors = 0;
+  for (const r of runs) {
+    if (r.status === 'failed') consecutiveErrors++;
+    else break;
+  }
+  const circuitBroken = consecutiveErrors >= 3 ? 1 : 0;
+
+  const warrantCountRows = await query<{ warrant_count: number }>(
+    db, 'SELECT COUNT(*) AS warrant_count FROM utah_warrants WHERE source = ? AND is_active = 1', sourceKey);
+  const warrant_count = warrantCountRows[0]?.warrant_count ?? 0;
+
+  return {
+    source_key: sourceKey,
+    display_name: meta.display_name,
+    state: meta.state,
+    county: meta.county,
+    source_url: meta.source_url,
+    source_type: config.source_type ?? 'api',
+    enabled: 1 as 1,
+    circuit_broken: circuitBroken as 0 | 1,
+    priority: (config.priority ?? 1) as 1 | 2 | 3 | 4,
+    consecutive_errors: consecutiveErrors,
+    warrant_count,
+    last_scrape_at: config.last_run_at ?? lastCompleted?.completed_at ?? lastCompleted?.started_at ?? null,
+    last_success_at: config.last_success_at ?? lastCompleted?.completed_at ?? null,
+    last_error: config.last_error ?? lastFailed?.error_message ?? null,
+    avg_parse_count: config.avg_parse_count ?? null,
+    p95_latency_ms: config.p95_latency_ms ?? (durations.length ? percentile(durations, 95) : null),
+    metrics_24h: {
+      source_key: sourceKey,
+      window_hours: 24,
+      total_runs: total,
+      successful_runs: successful,
+      unchanged_runs: unchanged,
+      failed_runs: failed,
+      success_rate: Math.round(successRate * 1000) / 1000,
+      avg_duration_ms: avgDuration,
+      p50_duration_ms: percentile(durations, 50),
+      p95_duration_ms: percentile(durations, 95),
+      avg_parsed: total > 0 ? Math.round(totalInserted / total) : 0,
+      total_inserted: totalInserted,
+      total_updated: totalUpdated,
+      last_error: lastFailed?.error_message ?? null,
+      last_error_at: lastFailed?.started_at ?? null,
+      last_success_at: lastCompleted?.completed_at ?? null,
+      status_distribution: { completed: successful, failed, running: total - successful - failed },
+      health_grade: grade,
+    },
+  };
+}
+
+// GET /warrants/scrapers — list configured sources with synthesized metrics.
+warrants.get('/scrapers', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const configs = await query<Record<string, any>>(
+      db, 'SELECT * FROM warrant_scraper_config ORDER BY priority, source_name');
+    const sources = await Promise.all(configs.map((cfg) => buildScraperSource(c, cfg)));
+    return c.json({ sources });
+  } catch (err) {
+    console.error('[warrants] scrapers list error', err);
+    return c.json({ sources: [] });
+  }
+});
+
+// GET /warrants/scrapers/health — aggregate over the sources list. Also drives
+// the global header badge in Layout.tsx (polled every 30s).
+warrants.get('/scrapers/health', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const configs = await query<Record<string, any>>(db, 'SELECT * FROM warrant_scraper_config');
+    const sources = await Promise.all(configs.map((cfg) => buildScraperSource(c, cfg)));
+
+    let healthy = 0, degraded = 0, failed = 0, circuit_broken = 0;
+    for (const s of sources) {
+      if (s.circuit_broken) circuit_broken++;
+      const g = s.metrics_24h.health_grade;
+      if (g === 'A' || g === 'B') healthy++;
+      else if (g === 'C' || g === 'D') degraded++;
+      else failed++;
+    }
+
+    const hourly = await query<{ runs: number; inserted: number }>(
+      db,
+      `SELECT COUNT(*) AS runs, COALESCE(SUM(new_warrants_found), 0) AS inserted
+         FROM warrant_watch_runs WHERE started_at >= datetime('now', '-1 hour')`,
+    );
+
+    return c.json({
+      healthy, degraded, failed, circuit_broken,
+      total: sources.length,
+      last_hour_runs: hourly[0]?.runs ?? 0,
+      last_hour_inserted: hourly[0]?.inserted ?? 0,
+    });
+  } catch (err) {
+    console.error('[warrants] scrapers health error', err);
+    return c.json({
+      healthy: 0, degraded: 0, failed: 0, circuit_broken: 0,
+      total: 0, last_hour_runs: 0, last_hour_inserted: 0,
+    });
+  }
+});
+
+// POST /warrants/scrapers/:source_key/trigger — manual on-demand run.
+// utah-warrant-watch is the only source today; fires runUtahWarrantScan
+// fire-and-forget (same async pattern as the cron + /watch/scan).
+warrants.post('/scrapers/:source_key/trigger', requireRole(...SCAN_ROLES), async (c) => {
+  const sourceKey = c.req.param('source_key');
+  if (sourceKey !== 'utah-warrant-watch') {
+    return c.json({ error: `Unknown source '${sourceKey}'`, code: 'UNKNOWN_SOURCE' }, 404);
+  }
+  const db = getDb(c.env);
+  c.executionCtx.waitUntil(
+    runUtahWarrantScan(db).catch((err) => console.error('[scrapers] manual trigger failed:', err)),
+  );
+  return c.json({ success: true, started: true, source_key: sourceKey }, 202);
+});
+
+// POST /warrants/scrapers/:source_key/reset-circuit — operator clears the
+// circuit-broken state by zeroing the persisted last_error on the config row.
+// circuit_broken itself is DERIVED (consecutive_errors>=3 head of run window),
+// so it self-clears on the next successful run; this endpoint is the
+// "I've looked at the error, move on" acknowledgment gesture.
+warrants.post('/scrapers/:source_key/reset-circuit', requireRole(...SCAN_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const sourceKey = c.req.param('source_key');
+    const cfg = await query<{ id: number }>(db, 'SELECT id FROM warrant_scraper_config WHERE source_name = ?', sourceKey);
+    if (cfg.length === 0) return c.json({ error: 'Unknown source', code: 'UNKNOWN_SOURCE' }, 404);
+    await execute(db, 'UPDATE warrant_scraper_config SET last_error = NULL WHERE id = ?', cfg[0].id);
+    return c.json({ success: true, source_key: sourceKey });
+  } catch (err) {
+    console.error('[warrants] reset-circuit error', err);
+    return c.json({ error: 'Failed to reset circuit', code: 'RESET_CIRCUIT_ERR' }, 500);
+  }
+});
 
 export default warrants;

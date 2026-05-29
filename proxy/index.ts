@@ -667,6 +667,14 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/warrants/utah' },
   { kind: 'prefix', value: '/api/warrants/scraped/status' },
   { kind: 'regex', value: /^\/api\/warrants\/person\/\d+\/profile$/, methods: ['GET'] },
+  // /api/warrants/scrapers — Sources/Scrapers tab + Layout health badge.
+  // Legacy implemented NONE of these, so the tab was 404-empty. The rewrite
+  // reads warrant_scraper_config + derives metrics from warrant_watch_runs.
+  // Prefix covers list, /health, /:source_key/{trigger,reset-circuit},
+  // and the admin /bulk path (which falls back to 404 in the rewrite for
+  // unknown sources — kept on this prefix so all scrapers traffic stays
+  // server-consistent).
+  { kind: 'prefix', value: '/api/warrants/scrapers' },
 
   // ── TTS + PDF signing (rewrite ports of legacy/server-vps endpoints) ──
   // Both currently return 503 from the rewrite (configurable in a follow-up).
