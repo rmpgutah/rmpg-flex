@@ -7,6 +7,7 @@
 
 import React, { useMemo } from 'react';
 import { X, Clock, Phone, TrendingUp, MapPin } from 'lucide-react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface CallHistoryPanelProps {
   calls: {
@@ -33,7 +34,7 @@ const PRIORITY_COLORS: Record<string, string> = {
 };
 
 function timeAgo(dateStr: string): string {
-  const diff = Date.now() - new Date(dateStr).getTime();
+  const diff = Date.now() - parseTimestamp(dateStr).getTime();
   const mins = Math.floor(diff / 60000);
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
@@ -88,7 +89,7 @@ export default function CallHistoryPanel({
 
     // Recent 10 calls (sorted newest first)
     const recent = [...calls]
-      .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+      .sort((a, b) => parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime())
       .slice(0, 10);
 
     return { total, avgResponse, priorities, topTypes, maxTypeCount, recent };

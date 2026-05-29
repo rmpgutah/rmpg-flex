@@ -6,7 +6,7 @@ import {
 import { apiFetch } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
-import { safeDateStr } from '../../utils/dateUtils';
+import { safeDateStr, parseTimestamp } from '../../utils/dateUtils';
 import VehicleFormModal from '../../components/VehicleFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import StatusBadge from '../../components/StatusBadge';
@@ -478,7 +478,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
         if (filterFlag === 'stolen') return v.stolen_status && v.stolen_status !== 'None' && v.stolen_status !== 'Recovered';
         if (filterFlag === 'towed') return v.tow_status && v.tow_status !== 'None';
         if (filterFlag === 'commercial') return v.commercial_vehicle;
-        if (filterFlag === 'expired') return v.registration_expiry && new Date(v.registration_expiry) < new Date();
+        if (filterFlag === 'expired') return v.registration_expiry && parseTimestamp(v.registration_expiry) < new Date();
         return true;
       });
     }

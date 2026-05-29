@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { toDisplayLabel, formatPhoneInput } from '../utils/formatters';
+import { parseTimestamp } from '../utils/dateUtils';
 import {
   X,
   User,
@@ -1003,6 +1004,8 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           <option value="light">Light</option>
                         </select>
                       </div>
+                      {/* Time Zone is fixed to Mountain Time (Utah) for all users —
+                          intentionally not a setting. */}
                       {/* Feature 33: Font Size Adjustment */}
                       <div className="flex items-center justify-between">
                         <span className="text-[11px] text-rmpg-200">Font Size</span>
@@ -1388,7 +1391,7 @@ export default function UserProfileModal({ isOpen, onClose, initialTab = 'profil
                           {session.user_agent?.substring(0, 60)}...
                         </div>
                         <div className="text-[9px]" style={{ color: '#666666' }}>
-                          Last used: {(session.last_used_at || session.created_at) ? new Date(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
+                          Last used: {(session.last_used_at || session.created_at) ? parseTimestamp(session.last_used_at || session.created_at).toLocaleString() : 'N/A'}
                         </div>
                       </div>
                       <button type="button"

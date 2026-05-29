@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { apiFetch } from '../../../hooks/useApi';
 import { useAuth } from '../../../context/AuthContext';
 import { useWebSocket } from '../../../context/WebSocketContext';
@@ -20,7 +21,7 @@ interface ShiftState {
 
 function hoursSince(iso: string | null): number {
   if (!iso) return 0;
-  const t = new Date(iso.replace(' ', 'T')).getTime();
+  const t = parseTimestamp(iso).getTime();
   if (isNaN(t)) return 0;
   const h = (Date.now() - t) / 3600000;
   return Math.max(0, Math.round(h * 10) / 10);

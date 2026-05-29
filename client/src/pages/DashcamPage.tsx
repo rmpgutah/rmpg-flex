@@ -3,6 +3,7 @@ import { apiFetch } from '../hooks/useApi';
 import PanelTitleBar from '../components/PanelTitleBar';
 import { Camera, MapPin, AlertTriangle, Radio, RefreshCw, Activity, Power, PowerOff, Search, Monitor, Smartphone } from 'lucide-react';
 import IconButton from '../components/IconButton';
+import { parseTimestamp } from '../utils/dateUtils';
 
 const SEVERITY_COLORS: Record<string, string> = {
   critical: 'text-red-400',
@@ -244,7 +245,7 @@ export default function DashcamPage() {
                           ) : '—'}
                         </td>
                         <td className="px-3 py-1.5 text-center">
-                          <span className={`inline-block w-2 h-2 rounded-full ${d.last_connection_at && Date.now() - new Date(d.last_connection_at).getTime() < 300000 ? 'bg-green-400 shadow-green' : d.is_active ? 'bg-amber-400' : 'bg-red-400'}`} />
+                          <span className={`inline-block w-2 h-2 rounded-full ${d.last_connection_at && Date.now() - parseTimestamp(d.last_connection_at).getTime() < 300000 ? 'bg-green-400 shadow-green' : d.is_active ? 'bg-amber-400' : 'bg-red-400'}`} />
                         </td>
                       </tr>
                     ))}

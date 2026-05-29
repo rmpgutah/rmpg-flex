@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
   LayoutDashboard,
@@ -359,7 +360,7 @@ export default function Layout() {
     const changedAt = user.passwordChangedAt || user.last_password_change;
     if (!changedAt) return;
     const EXPIRY_DAYS = 90; // 90-day password policy
-    const changed = new Date(changedAt).getTime();
+    const changed = parseTimestamp(changedAt).getTime();
     const expiresAt = changed + EXPIRY_DAYS * 86400000;
     const daysLeft = Math.ceil((expiresAt - Date.now()) / 86400000);
     if (daysLeft <= 7 && daysLeft > 0) {

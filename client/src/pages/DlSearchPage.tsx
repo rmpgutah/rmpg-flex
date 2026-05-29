@@ -12,6 +12,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import { useIsMobile } from '../hooks/useIsMobile';
 import ManualDlEntryModal, { type ManualDlFormData } from '../components/ManualDlEntryModal';
 import { useToast } from '../components/ToastProvider';
+import { parseTimestamp } from '../utils/dateUtils';
 
 const US_STATES = [
   'AL','AK','AZ','AR','CA','CO','CT','DE','FL','GA','HI','ID','IL','IN','IA','KS','KY',
@@ -300,7 +301,7 @@ export default function DlSearchPage() {
   const formatDate = (d: string | undefined) => {
     if (!d) return '—';
     try {
-      const dt = new Date(d);
+      const dt = parseTimestamp(d);
       return isNaN(dt.getTime()) ? d : dt.toLocaleDateString();
     } catch { return d; }
   };
@@ -498,7 +499,7 @@ export default function DlSearchPage() {
 
                 {/* License Status Alert */}
                 {(() => {
-                  const isExpired = selected.dl_expiration && new Date(selected.dl_expiration) < new Date();
+                  const isExpired = selected.dl_expiration && parseTimestamp(selected.dl_expiration) < new Date();
                   const isSuspended = selected.dl_status && ['SUSPENDED', 'REVOKED', 'CANCELLED', 'DISQUALIFIED'].includes(selected.dl_status.toUpperCase());
                   if (isExpired || isSuspended) {
                     return (

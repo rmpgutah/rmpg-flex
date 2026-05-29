@@ -78,6 +78,7 @@ export function toDatetimeLocal(d: string | undefined | null): string {
  */
 export function daysUntilExpiry(dateStr: string | undefined | null): number | null {
   if (!dateStr) return null;
+  // parseTimestamp reads naive timestamps as UTC and date-only strings as local
   const exp = parseTimestamp(dateStr);
   if (isNaN(exp.getTime())) return null;
   return Math.ceil((exp.getTime() - Date.now()) / 86_400_000);

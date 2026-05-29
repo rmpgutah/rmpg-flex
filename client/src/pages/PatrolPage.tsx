@@ -30,7 +30,7 @@ import PrintButton from '../components/PrintButton';
 import ExportButton from '../components/ExportButton';
 import TabBar from '../components/TabBar';
 import { useIsMobile } from '../hooks/useIsMobile';
-import { safeDateStr, safeTimeStr } from '../utils/dateUtils';
+import { safeDateStr, safeTimeStr, parseTimestamp } from '../utils/dateUtils';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 import { useToast } from '../components/ToastProvider';
@@ -182,7 +182,7 @@ function PatrolMapView({ checkpoints, scans }: { checkpoints: Checkpoint[]; scan
     const colors = ['#888888', '#a855f7', '#f59e0b', '#ef4444', '#22c55e'];
     let colorIdx = 0;
     scansByDate.forEach((dayScans) => {
-      const sorted = dayScans.sort((a, b) => new Date(a.scanned_at).getTime() - new Date(b.scanned_at).getTime());
+      const sorted = dayScans.sort((a, b) => parseTimestamp(a.scanned_at).getTime() - parseTimestamp(b.scanned_at).getTime());
       const coords: [number, number][] = [];
       sorted.forEach(s => {
         const lngLat: [number, number] = [s.longitude!, s.latitude!];
@@ -542,7 +542,7 @@ const PatrolPage: React.FC = () => {
   };
 
   const formatDateTime = (dateString: string) => {
-    return new Date(dateString).toLocaleString('en-US', {
+    return parseTimestamp(dateString).toLocaleString('en-US', {
       month: 'short', day: 'numeric', year: 'numeric',
       hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
     });
@@ -550,7 +550,7 @@ const PatrolPage: React.FC = () => {
 
   const formatTimeAgo = (dateString: string | null) => {
     if (!dateString) return 'Never';
-    const date = new Date(dateString);
+    const date = parseTimestamp(dateString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
     const diffMins = Math.floor(diffMs / 60000);
@@ -565,7 +565,7 @@ const PatrolPage: React.FC = () => {
 
   const isOverdue = (nextDue: string | null) => {
     if (!nextDue) return false;
-    return new Date(nextDue) < new Date();
+    return parseTimestamp(nextDue) < new Date();
   };
 
   // ── Feature 1: Route Optimization ──
@@ -702,7 +702,7 @@ const PatrolPage: React.FC = () => {
             <span className="text-gray-400 font-bold">
               {scans.filter(s => {
                 const today = new Date().toDateString();
-                return new Date(s.scanned_at).toDateString() === today;
+                return parseTimestamp(s.scanned_at).toDateString() === today;
               }).length}
             </span>
           </div>

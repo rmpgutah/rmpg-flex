@@ -5,6 +5,7 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import RichTextArea from '../RichTextArea';
+import { parseTimestamp } from '../../utils/dateUtils';
 import {
   Search, Plus, RefreshCw, X, ExternalLink, Save, Loader2, CheckSquare, Square,
   ArrowRight, UserPlus, XCircle, FileText, Phone, Mail, MapPin, Building2, Clock,
@@ -82,12 +83,12 @@ function formatCurrency(val: number | null | undefined): string {
 
 function formatDate(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function formatDateTime(d?: string | null): string {
   if (!d) return '\u2014';
-  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
+  return parseTimestamp(d).toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function toDisplayLabel(s: string): string {

@@ -2,11 +2,12 @@ import React, { useMemo } from 'react';
 import { Radio, MapPin, PlusCircle, Plus, Edit, Trash2, AlertTriangle } from 'lucide-react';
 import type { Unit, UnitStatus } from '../types';
 import StatusBadge from './StatusBadge';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // Feature 2: GPS stale indicator thresholds
 function getGpsStaleStatus(unit: Unit): 'ok' | 'stale' | 'lost' {
   if (!unit.gps_updated_at || unit.status === 'off_duty') return 'ok';
-  const elapsed = Date.now() - new Date(unit.gps_updated_at).getTime();
+  const elapsed = Date.now() - parseTimestamp(unit.gps_updated_at).getTime();
   if (elapsed > 5 * 60 * 1000) return 'lost';  // >5 min = red (lost)
   if (elapsed > 2 * 60 * 1000) return 'stale'; // >2 min = amber (stale)
   return 'ok';
@@ -155,7 +156,7 @@ export default React.memo(function UnitStatusBoard({
                     <MapPin className="w-3 h-3" />
                     <span className="truncate max-w-[150px]">{unit.location}</span>
                     {unit.gps_updated_at && unit.status !== 'off_duty' && (() => {
-                      const mins = Math.floor((Date.now() - new Date(unit.gps_updated_at).getTime()) / 60000);
+                      const mins = Math.floor((Date.now() - parseTimestamp(unit.gps_updated_at).getTime()) / 60000);
                       const color = mins > 10 ? '#ef4444' : mins > 5 ? '#f59e0b' : '#666666';
                       return <span className="text-[8px] font-mono ml-1" style={{ color }}>{mins}m</span>;
                     })()}

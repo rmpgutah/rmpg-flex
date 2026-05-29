@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 import {
   Shield,
   FileText,

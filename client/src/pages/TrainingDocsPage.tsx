@@ -19,7 +19,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import type { CompanyDocCategory } from '../types';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
-import { safeDateStr } from '../utils/dateUtils';
+import { safeDateStr, parseTimestamp } from '../utils/dateUtils';
 
 // ── Category config ─────────────────────────────────────────
 const CATEGORIES: { key: CompanyDocCategory | 'all'; label: string }[] = [
@@ -63,7 +63,7 @@ function formatFileSize(bytes?: number) {
 // ── Main component ──────────────────────────────────────────
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);

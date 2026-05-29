@@ -4,6 +4,7 @@
 // ============================================================
 
 import React, { useState, useEffect, useRef } from 'react';
+import { parseTimestamp } from '../utils/dateUtils';
 
 interface ElapsedTimerProps {
   startTime: string;
@@ -30,7 +31,7 @@ export default React.memo(function ElapsedTimer({ startTime, className = '' }: E
 
   // Use refs + direct DOM updates to avoid triggering React re-renders every second
   useEffect(() => {
-    const start = new Date(startTime).getTime();
+    const start = parseTimestamp(startTime).getTime();
     if (isNaN(start)) return;
 
     let prevColorClass = '';
@@ -56,7 +57,7 @@ export default React.memo(function ElapsedTimer({ startTime, className = '' }: E
 
   // Initial render values
   const initMs = (() => {
-    const t = new Date(startTime).getTime();
+    const t = parseTimestamp(startTime).getTime();
     return isNaN(t) ? 0 : Date.now() - t;
   })();
 

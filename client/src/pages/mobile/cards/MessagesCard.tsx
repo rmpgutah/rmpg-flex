@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { useNavigate } from 'react-router-dom';
 import { apiFetch } from '../../../hooks/useApi';
 import { useWebSocket } from '../../../context/WebSocketContext';
@@ -21,7 +22,7 @@ interface MessageRow {
 
 function relativeTime(iso: string): string {
   if (!iso) return '';
-  const s = (Date.now() - new Date(iso).getTime()) / 1000;
+  const s = (Date.now() - parseTimestamp(iso).getTime()) / 1000;
   if (isNaN(s)) return '';
   if (s < 60) return 'now';
   if (s < 3600) return `${Math.floor(s / 60)}m ago`;
@@ -79,8 +80,8 @@ export default function MessagesCard() {
 
   const topThree = useMemo(() => {
     const sorted = [...messages].sort((a, b) => {
-      const ta = a.created_at ? new Date(a.created_at).getTime() : 0;
-      const tb = b.created_at ? new Date(b.created_at).getTime() : 0;
+      const ta = a.created_at ? parseTimestamp(a.created_at).getTime() : 0;
+      const tb = b.created_at ? parseTimestamp(b.created_at).getTime() : 0;
       return tb - ta;
     });
     return sorted.slice(0, 3);

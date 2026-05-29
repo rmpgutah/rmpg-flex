@@ -15,7 +15,7 @@ import { useLiveSync } from '../hooks/useLiveSync';
 import type { EmailMessage, EmailFolder, EmailAttachment } from '../types';
 import { useToast } from '../components/ToastProvider';
 import IconButton from '../components/IconButton';
-import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
+import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 import sanitizeHtml from 'sanitize-html';
 import EnrollmentBanner from '../components/email/EnrollmentBanner';
 
@@ -46,7 +46,7 @@ const FOLDER_ICONS: Record<string, React.ElementType> = {
 
 function formatDate(dateStr: string): string {
   if (!dateStr) return '';
-  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const d = parseTimestamp(dateStr);
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const msgDate = new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -623,7 +623,7 @@ function ScheduledEmailsPanel({ onSnackbar }: { onSnackbar: (msg: string, type?:
     <div className="space-y-1 py-1">
       {emails.map(email => {
         const toList = (() => { try { return JSON.parse(email.to_addresses) as string[]; } catch { return [email.to_addresses]; } })();
-        const scheduledDate = new Date(email.scheduled_at);
+        const scheduledDate = parseTimestamp(email.scheduled_at);
         const isPast = scheduledDate.getTime() < Date.now();
         return (
           <div key={email.id} className="px-3 py-1.5 border-b border-border-subtle/30 group">
@@ -2538,7 +2538,7 @@ export default function EmailPage() {
                         <span className="text-[10px] text-rmpg-500">&lt;{fullMessage.fromAddress}&gt;</span>
                       </div>
                       <div className="text-[10px] text-rmpg-500 mt-0.5">
-                        {new Date(fullMessage.receivedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
+                        {parseTimestamp(fullMessage.receivedAt).toLocaleString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}
                       </div>
                       {fullMessage.toAddresses.length > 0 && (
                         <div className="text-[10px] text-rmpg-500 mt-0.5 truncate">

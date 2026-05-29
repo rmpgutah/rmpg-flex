@@ -3,23 +3,25 @@
 // ============================================================
 
 import { toDisplayLabel } from '../../../utils/formatters';
-import { parseTimestamp, APP_TIME_ZONE } from '../../../utils/dateUtils';
+import { parseTimestamp } from '../../../utils/dateUtils';
+import { displayTimeZone } from '../../../utils/timeZoneMode';
 
 /** Filter tab type for the dispatch call queue. */
 export type FilterTab = 'all' | 'pending' | 'active' | 'cleared' | 'archived' | 'serve' | 'mine';
 
 /**
- * Format a server timestamp to MM/DD/YYYY @ HH:MM:SS (24-hour) in Mountain Time.
+ * Format a server timestamp to MM/DD/YYYY @ HH:MM:SS (24-hour) in the active
+ * display zone (Mountain by default, or the device zone if the user opted in).
  * Must go through parseTimestamp — server strings are naive UTC, and raw
  * `new Date("2026-05-29 00:59:41")` parses as device-LOCAL in V8 (wrong instant).
- * Display is pinned to America/Denver so it's MT regardless of device.
  */
 export function formatTime(dateStr: string): string {
   if (!dateStr) return '--';
   const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '--';
-  const date = d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: APP_TIME_ZONE });
-  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: APP_TIME_ZONE });
+  const tz = displayTimeZone();
+  const date = d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: tz });
+  const time = d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false, timeZone: tz });
   return `${date} @ ${time}`;
 }
 

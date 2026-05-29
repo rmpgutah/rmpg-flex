@@ -696,9 +696,9 @@ function renderLinkedTable(
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '';
+  // parseTimestamp reads naive server strings as UTC; display in Mountain Time.
   const d = parseTimestamp(iso);
   if (isNaN(d.getTime())) return String(iso);
-  const p2 = (n: number) => String(n).padStart(2, '0');
-  return `${p2(d.getMonth() + 1)}/${p2(d.getDate())}/${d.getFullYear()}`;
+  return d.toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'America/Denver' });
 }
 
