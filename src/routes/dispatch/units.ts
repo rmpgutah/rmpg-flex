@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
+import { requireRole } from '../../middleware/auth';
 
 const units = new Hono<Env>();
 
@@ -70,12 +71,22 @@ units.put('/:id', async (c) => {
   }
 });
 
-// DELETE /dispatch/units/:id
-units.delete('/:id', async (c) => {
+// DELETE /dispatch/units/:id — admin/manager only. Validates the id, confirms
+// the unit exists, and refuses to delete a unit currently assigned to a call
+// (deleting it would orphan that unit id inside calls_for_service.assigned_unit_ids).
+units.delete('/:id', requireRole('admin', 'manager'), async (c) => {
   try {
     const db = getDb(c.env);
-    await execute(db, 'DELETE FROM units WHERE id = ?', c.req.param('id'));
-    return c.json({ message: 'Unit deleted' });
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid unit id', code: 'INVALID_ID' }, 400);
+    const unit = await queryFirst<{ id: number; current_call_id: number | null }>(
+      db, 'SELECT id, current_call_id FROM units WHERE id = ?', id);
+    if (!unit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+    if (unit.current_call_id != null) {
+      return c.json({ error: 'Unit is assigned to an active call — clear it first', code: 'UNIT_ON_CALL' }, 409);
+    }
+    await execute(db, 'DELETE FROM units WHERE id = ?', id);
+    return c.json({ message: 'Unit deleted', id });
   } catch (err) {
     return c.json({ error: 'Failed to delete unit' }, 500);
   }
