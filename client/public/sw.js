@@ -69,7 +69,11 @@
 // v603: turn-by-turn redesigned as a bottom nav banner (one direction at a time,
 //       ETA + miles above) with voice announcement of each direction as it
 //       becomes current (steps[0] from the live-origin recompute).
-const CACHE_NAME = 'rmpg-flex-v603';
+// v604: fix assigned-unit matching on the dispatch map — assigned_units arrives
+//       as unit OBJECTS, but the code did assigned_units.includes(String(id))
+//       (always false) so the unit marker, route line, and turn-by-turn
+//       directions never appeared. Normalize to an id Set.
+const CACHE_NAME = 'rmpg-flex-v604';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

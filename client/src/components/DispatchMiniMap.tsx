@@ -29,6 +29,18 @@ function maneuverGlyph(type?: string, modifier?: string): string {
   return '↑';
 }
 
+// `call.assigned_units` can arrive as id strings/numbers OR as full unit
+// objects (the call-detail endpoint returns objects). Normalize to a Set of
+// id-strings so assigned-unit matching works either way. Previously the code
+// did `assigned_units.includes(String(u.id))`, which is always false when the
+// array holds objects — so the assigned unit never matched, and the unit
+// marker, route line, and turn-by-turn directions never appeared.
+function assignedUnitIdSet(call: { assigned_units?: unknown } | null | undefined): Set<string> {
+  const a = (call as { assigned_units?: unknown } | null | undefined)?.assigned_units;
+  if (!Array.isArray(a)) return new Set();
+  return new Set(a.map((x) => String(x && typeof x === 'object' ? (x as { id: unknown }).id : x)));
+}
+
 interface DispatchMiniMapProps {
   call: CallForService | null;
   units: Unit[];
@@ -133,8 +145,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
 
     // Assigned unit markers
+    const assignedIds = assignedUnitIdSet(call);
     const assignedUnits = units.filter(u =>
-      call?.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
+      assignedIds.has(String(u.id)) && u.latitude != null && u.longitude != null
     );
 
     for (const unit of assignedUnits) {
@@ -161,8 +174,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       return;
     }
 
+    const assignedIds = assignedUnitIdSet(call);
     const assignedWithGps = units.filter(u =>
-      call.assigned_units?.includes(String(u.id)) && u.latitude != null && u.longitude != null
+      assignedIds.has(String(u.id)) && u.latitude != null && u.longitude != null
     );
 
     if (assignedWithGps.length === 1) {
