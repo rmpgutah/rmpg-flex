@@ -3,6 +3,9 @@
 // Electron Chromium. Without this, PDF rendering throws
 // `TypeError: this[#t].getOrInsertComputed is not a function`.
 import './utils/jsPolyfills';
+// Mandatory Mountain Time: pin every date/time display to America/Denver
+// regardless of the device timezone. Must run before any rendering.
+import './utils/enforceMountainTime';
 import React from 'react';
 import ReactDOM from 'react-dom/client';
 import { BrowserRouter } from 'react-router-dom';

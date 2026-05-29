@@ -77,7 +77,7 @@ import VehicleFormModal, { type VehicleFormData } from '../../components/Vehicle
 import AIDispatchSidebar from '../../components/dispatch/AIDispatchSidebar';
 import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
-import { safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
+import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
   humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo,
@@ -2279,14 +2279,14 @@ export default function DispatchPage() {
                               type="datetime-local"
                               step="1"
                               className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
-                              defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
+                              defaultValue={toDatetimeLocalValue(ts.value)}
                               autoFocus
                               onKeyDown={(e) => {
-                                if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                if (e.key === 'Enter') handleTimelineEdit(ts.field, mtDatetimeLocalToUtc((e.target as HTMLInputElement).value));
                                 if (e.key === 'Escape') setEditingTimestamp(null);
                               }}
                               onBlur={(e) => {
-                                if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                if (e.target.value) handleTimelineEdit(ts.field, mtDatetimeLocalToUtc(e.target.value));
                                 else setEditingTimestamp(null);
                               }}
                             />
@@ -3901,14 +3901,14 @@ export default function DispatchPage() {
                                   type="datetime-local"
                                   step="1"
                                   className="input-dark text-[10px] font-mono px-1 py-0.5 w-[175px]"
-                                  defaultValue={ts.value ? new Date(new Date(ts.value).getTime() - new Date(ts.value).getTimezoneOffset() * 60000).toISOString().slice(0, 19) : ''}
+                                  defaultValue={toDatetimeLocalValue(ts.value)}
                                   autoFocus
                                   onKeyDown={(e) => {
-                                    if (e.key === 'Enter') handleTimelineEdit(ts.field, new Date((e.target as HTMLInputElement).value).toISOString());
+                                    if (e.key === 'Enter') handleTimelineEdit(ts.field, mtDatetimeLocalToUtc((e.target as HTMLInputElement).value));
                                     if (e.key === 'Escape') setEditingTimestamp(null);
                                   }}
                                   onBlur={(e) => {
-                                    if (e.target.value) handleTimelineEdit(ts.field, new Date(e.target.value).toISOString());
+                                    if (e.target.value) handleTimelineEdit(ts.field, mtDatetimeLocalToUtc(e.target.value));
                                     else setEditingTimestamp(null);
                                   }}
                                 />
