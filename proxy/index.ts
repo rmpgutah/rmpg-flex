@@ -657,8 +657,6 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'regex', value: /^\/api\/records\/search(\?|$)/ },
 
   // ── Warrants watch (rewrite has /watch/runs, /watch/scan) ──
-  // Legacy uses /warrants/scrapers/* against a different table — those stay
-  // on legacy. Only /watch/* is moved.
   { kind: 'prefix', value: '/api/warrants/watch' },
   // Utah warrant pull — display + status + person profile, all on the rewrite
   // (src/routes/warrants.ts over utah_warrants + warrant_watch_runs).
@@ -667,6 +665,21 @@ const API_ROUTES: RouteRule[] = [
   { kind: 'prefix', value: '/api/warrants/utah' },
   { kind: 'prefix', value: '/api/warrants/scraped/status' },
   { kind: 'regex', value: /^\/api\/warrants\/person\/\d+\/profile$/, methods: ['GET'] },
+  // /api/warrants/scrapers* — Sources tab + Layout header badge + per-source
+  // trigger/reset-circuit buttons. Legacy `rmpg-flex` had /scrapers handlers
+  // but they queried columns that don't exist on live D1 (`source_key`,
+  // `enabled`, `circuit_broken`, `consecutive_errors`, `last_scrape_at`) and
+  // joined a non-existent `scraped_warrants` table — falling through to
+  // legacy returned silently-empty data (the "F-grade Utah scraper showing
+  // stale error" / "Sources tab was 404-empty" symptoms). The rewrite
+  // synthesizes the ScraperSource shape from warrant_scraper_config +
+  // warrant_watch_runs + utah_warrants (see src/routes/warrants.ts) with
+  // a SOURCE_REGISTRY for display metadata. Prefix covers /scrapers,
+  // /scrapers/health, /scrapers/:source_key/trigger,
+  // /scrapers/:source_key/reset-circuit. NOTE: /scrapers/bulk (admin
+  // batch toggle, Phase 4) has no rewrite handler yet; will 404 from
+  // env.API the same way it 404s from legacy today.
+  { kind: 'prefix', value: '/api/warrants/scrapers' },
 
   // ── TTS + PDF signing (rewrite ports of legacy/server-vps endpoints) ──
   // Both currently return 503 from the rewrite (configurable in a follow-up).
