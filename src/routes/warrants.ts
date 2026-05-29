@@ -238,7 +238,13 @@ function emptyStatus() {
     enabled: true, polling: false, lastRunAt: null, lastRunStatus: null,
   };
 }
-for (const path of ['/utah/sync-status', '/utah-search/auto-poll-status', '/scraped/status']) {
+// /utah/sync-status + /scraped/status share the slim status shape. NOTE:
+// /utah-search/auto-poll-status is deliberately NOT in this list — the
+// WarrantsPage "Watch" tab needs the richer flaggedPersons/recentHits/runs
+// payload (see the dedicated handler below). Collapsing all three onto the
+// slim builder is what dropped those keys in the VPS→CF port and white-screened
+// the watch tab (`autoPollStatus.flaggedPersons.length` on undefined).
+for (const path of ['/utah/sync-status', '/scraped/status']) {
   warrants.get(path, requireRole(...READ_ROLES), async (c) => {
     try {
       return c.json(await buildUtahStatus(c));
@@ -248,6 +254,95 @@ for (const path of ['/utah/sync-status', '/utah-search/auto-poll-status', '/scra
     }
   });
 }
+
+// GET /warrants/utah-search/auto-poll-status — rich payload for the WarrantsPage
+// "Watch" tab. Restores the legacy VPS shape (server-vps/src/routes/warrants.ts)
+// that the CF port dropped: { syncStatus, blocked, runs, flaggedPersons,
+// recentHits, totalPersons }. All columns below were verified against live D1
+// (785de7ae) on 2026-05-29 — warrants uses subject_person_id (parallel
+// person_id is unused drift); status convention is 'active'.
+warrants.get('/utah-search/auto-poll-status', requireRole(...READ_ROLES), async (c) => {
+  // Empty-but-complete shape so the client always gets every key it reads,
+  // even on cold/missing tables — the watch tab renders empty instead of 500.
+  const empty = {
+    syncStatus: { lastSync: null, warrantCount: 0, status: 'idle', lastError: null },
+    blocked: false,
+    runs: [] as Record<string, unknown>[],
+    flaggedPersons: [] as Record<string, unknown>[],
+    recentHits: [] as Record<string, unknown>[],
+    totalPersons: 0,
+  };
+  try {
+    const db = getDb(c.env);
+
+    // Latest 10 runs, newest first (started_at matches /watch/runs above).
+    const runs = await query<Record<string, any>>(
+      db, 'SELECT * FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 10');
+    const latest = runs[0] ?? null;
+
+    // Persons with ≥1 active local warrant OR a name match in the Utah feed.
+    // `warrant_severity IS NULL, ...` is the portable form of NULLS LAST.
+    const flagged = await query<Record<string, any>>(db, `
+      SELECT p.id, p.first_name, p.last_name, p.dob, p.gender, p.race, p.height,
+        p.weight, p.hair_color, p.eye_color, p.address, p.photo_url,
+        (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') AS local_warrant_count,
+        (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) AS utah_hit_count,
+        (SELECT w2.offense_level FROM warrants w2 WHERE w2.subject_person_id = p.id AND w2.status = 'active'
+          ORDER BY CASE w2.offense_level WHEN 'felony' THEN 1 WHEN 'misdemeanor' THEN 2 ELSE 3 END LIMIT 1) AS warrant_severity
+      FROM persons p
+      WHERE (SELECT COUNT(*) FROM warrants w WHERE w.subject_person_id = p.id AND w.status = 'active') > 0
+        OR (SELECT COUNT(*) FROM utah_warrants uw WHERE LOWER(uw.first_name) = LOWER(p.first_name) AND LOWER(uw.last_name) = LOWER(p.last_name)) > 0
+      ORDER BY warrant_severity IS NULL, warrant_severity, p.last_name
+      LIMIT 200`);
+
+    // Per-person warrant detail. N+1, but bounded by LIMIT 200 and flagged sets
+    // are tiny in practice; Promise.all collapses it to two parallel D1 rounds.
+    const flaggedPersons = await Promise.all(flagged.map(async (p) => {
+      const [localWarrants, utahWarrants] = await Promise.all([
+        query(db, `SELECT id, warrant_number, type, status, charge_description, offense_level,
+                     bail_amount, issuing_court, source, created_at
+                   FROM warrants WHERE subject_person_id = ? AND status = 'active'
+                   ORDER BY created_at DESC`, p.id),
+        query(db, `SELECT utah_warrant_id, charges, court_name, issue_date
+                   FROM utah_warrants WHERE LOWER(first_name) = LOWER(?) AND LOWER(last_name) = LOWER(?)
+                   ORDER BY fetched_at DESC LIMIT 20`, p.first_name, p.last_name),
+      ]);
+      return { ...p, warrants: localWarrants, utahWarrants };
+    }));
+
+    const recentHits = await query<Record<string, any>>(db, `
+      SELECT id, person_id, person_name, event, charges, court_name, created_at
+      FROM warrant_watch_log WHERE event IN ('warrant_found', 'warrant_cleared')
+      ORDER BY created_at DESC LIMIT 50`);
+
+    const totalRows = await query<{ cnt: number }>(db,
+      `SELECT COUNT(*) AS cnt FROM persons WHERE first_name IS NOT NULL AND last_name IS NOT NULL`);
+    const activeUtah = await query<{ cnt: number }>(db,
+      `SELECT COUNT(*) AS cnt FROM utah_warrants WHERE is_active = 1`);
+
+    // No isUtahApiBlocked() helper in the CF worker (it was VPS-only); infer a
+    // block from the latest run's error text instead of asserting ONLINE blind.
+    const lastErr = latest?.error_message ? String(latest.error_message) : null;
+    const blocked = !!(lastErr && /block|403|denied|captcha/i.test(lastErr));
+
+    return c.json({
+      syncStatus: {
+        lastSync: latest ? (latest.completed_at ?? latest.started_at ?? null) : null,
+        warrantCount: activeUtah[0]?.cnt ?? 0,
+        status: (latest?.status as string) ?? 'idle',
+        lastError: lastErr,
+      },
+      blocked,
+      runs,
+      flaggedPersons,
+      recentHits,
+      totalPersons: totalRows[0]?.cnt ?? 0,
+    });
+  } catch (err) {
+    // Pre-migration / table-missing → complete empty shape, never 500.
+    return c.json(empty);
+  }
+});
 
 // ============================================================
 // /scrapers — Sources tab on WarrantsPage + AdminWarrantScrapersTab
