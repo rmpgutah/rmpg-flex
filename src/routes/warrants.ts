@@ -346,7 +346,13 @@ async function buildScraperSource(c: Context<Env>, config: Record<string, any>) 
     warrant_count,
     last_scrape_at: config.last_run_at ?? lastCompleted?.completed_at ?? lastCompleted?.started_at ?? null,
     last_success_at: config.last_success_at ?? lastCompleted?.completed_at ?? null,
-    last_error: config.last_error ?? lastFailed?.error_message ?? null,
+    // Top-level last_error answers "is it currently broken?" — only surface
+    // when the run tail is still failing (consecutive_errors > 0). When the
+    // tail has recovered, the persisted config.last_error is still shown
+    // (operator hasn't dismissed via reset-circuit), but a stale 24h-window
+    // failure doesn't get re-presented as a current problem. Historical
+    // failures remain in metrics_24h.last_error/last_error_at.
+    last_error: consecutiveErrors > 0 ? (lastFailed?.error_message ?? config.last_error ?? null) : (config.last_error ?? null),
     avg_parse_count: config.avg_parse_count ?? null,
     p95_latency_ms: config.p95_latency_ms ?? (durations.length ? percentile(durations, 95) : null),
     metrics_24h: {
