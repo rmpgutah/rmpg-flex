@@ -249,4 +249,370 @@ for (const path of ['/utah/sync-status', '/utah-search/auto-poll-status', '/scra
   });
 }
 
+// ============================================================
+// /scrapers — Sources tab on WarrantsPage + AdminWarrantScrapersTab
+// ============================================================
+// Live `warrant_scraper_config` carries only operational state
+// (source_name + timestamps + errors + perf hints). Display metadata
+// (display_name, state, county, source_url) is code-resident in
+// SOURCE_REGISTRY below so adding a new scraper is a 5-line patch
+// rather than a schema migration. The client's ScraperSource shape
+// (client/src/types/scrapers.ts) is the contract; we synthesize it
+// from JOIN(warrant_scraper_config, warrant_watch_runs, utah_warrants).
+//
+// `circuit_broken` and `consecutive_errors` are DERIVED from the
+// trailing run history — live schema has no backing columns. The
+// reset-circuit endpoint nulls `last_error` (the surfaced symptom);
+// the next successful run keeps it null on its own via the poller's
+// CASE statement (see src/utils/utahWarrantPoller.ts).
+
+interface ScraperRegistryEntry {
+  display_name: string;
+  state: string;
+  county: string | null;
+  source_url: string;
+  source_type: string;
+  priority: 1 | 2 | 3 | 4;
+}
+
+const SOURCE_REGISTRY: Record<string, ScraperRegistryEntry> = {
+  'utah-warrant-watch': {
+    display_name: 'Utah State Warrants',
+    state: 'UT',
+    county: null,
+    source_url: 'https://warrants.utah.gov',
+    source_type: 'api',
+    priority: 1,
+  },
+};
+
+// A-F grade per client/src/types/scrapers.ts cutoffs. Threshold-only —
+// no time-of-day weighting; if you want "today only," filter the input
+// by started_at first.
+function gradeFromSuccessRate(rate: number): 'A' | 'B' | 'C' | 'D' | 'F' {
+  if (rate >= 0.95) return 'A';
+  if (rate >= 0.85) return 'B';
+  if (rate >= 0.70) return 'C';
+  if (rate >= 0.50) return 'D';
+  return 'F';
+}
+
+// Nearest-rank percentile on a pre-sorted ascending array. Inputs are
+// duration-or-other numeric arrays from warrant_watch_runs; size is
+// always small (≤ a few hundred rows / window) so the O(n log n) sort
+// is cheap.
+function percentile(sortedAsc: number[], p: number): number {
+  if (sortedAsc.length === 0) return 0;
+  const idx = Math.min(sortedAsc.length - 1, Math.max(0, Math.floor(p * sortedAsc.length)));
+  return sortedAsc[idx];
+}
+
+interface RunRow {
+  started_at: string;
+  completed_at: string | null;
+  status: string;
+  errors: number | null;
+  persons_checked: number | null;
+  new_warrants_found: number | null;
+  warrants_cleared: number | null;
+  error_message: string | null;
+}
+
+// Read the run history once and project it into:
+//   - the rich `metrics_24h` block returned per source
+//   - the trailing `consecutive_errors` count (used for circuit derivation)
+//   - last_error_at (the started_at of the most recent failed run)
+function summarizeRuns(runs24h: RunRow[], trailingRuns: RunRow[]) {
+  const total = runs24h.length;
+  const failed = runs24h.filter((r) => r.errors && r.errors > 0).length;
+  const successful = total - failed;
+  // "unchanged" runs = successful runs that found and cleared nothing —
+  // the steady-state with no roster churn. Matters because the dashboard
+  // wants to distinguish "nothing happened" from "scan didn't run."
+  const unchanged = runs24h.filter(
+    (r) => (!r.errors || r.errors === 0) && !r.new_warrants_found && !r.warrants_cleared,
+  ).length;
+
+  const durations: number[] = runs24h
+    .filter((r) => r.completed_at)
+    .map((r) => new Date(r.completed_at!).getTime() - new Date(r.started_at).getTime())
+    .filter((d) => d > 0 && d < 24 * 60 * 60 * 1000) // discard zombies
+    .sort((a, b) => a - b);
+
+  const avgDuration = durations.length ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
+  const successRate = total > 0 ? successful / total : 0;
+
+  // Trailing consecutive failures, walking from most-recent backwards.
+  // Stops at the first success (or at the start of history).
+  let consecutiveErrors = 0;
+  for (const r of trailingRuns) {
+    if (r.errors && r.errors > 0) consecutiveErrors++;
+    else break;
+  }
+
+  // last_error_at: started_at of the most recent failed run in the 24h
+  // window. Distinct from `last_error` (the message), which lives on
+  // warrant_scraper_config and survives across the window.
+  const lastFailed = runs24h.find((r) => r.errors && r.errors > 0);
+
+  return {
+    total_runs: total,
+    successful_runs: successful,
+    unchanged_runs: unchanged,
+    failed_runs: failed,
+    success_rate: Number(successRate.toFixed(4)),
+    avg_duration_ms: avgDuration,
+    p50_duration_ms: percentile(durations, 0.5),
+    p95_duration_ms: percentile(durations, 0.95),
+    avg_parsed: total
+      ? Number(
+          (runs24h.reduce((a, r) => a + (r.new_warrants_found ?? 0), 0) / total).toFixed(2),
+        )
+      : 0,
+    total_inserted: runs24h.reduce((a, r) => a + (r.new_warrants_found ?? 0), 0),
+    total_updated: runs24h.reduce((a, r) => a + (r.warrants_cleared ?? 0), 0),
+    last_error_at: lastFailed ? lastFailed.started_at : null,
+    consecutive_errors: consecutiveErrors,
+    health_grade: gradeFromSuccessRate(successRate),
+  };
+}
+
+// GET /warrants/scrapers — { sources: ScraperSource[] }
+// Polled by WarrantsPage Sources tab + AdminWarrantScrapersTab on mount.
+warrants.get('/scrapers', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const configRows = await query<Record<string, any>>(
+      db,
+      'SELECT * FROM warrant_scraper_config ORDER BY priority, source_name',
+    );
+
+    const sources = await Promise.all(
+      configRows.map(async (cfg) => {
+        const sourceKey = String(cfg.source_name);
+        const registry = SOURCE_REGISTRY[sourceKey] ?? {
+          // Unknown source — show its key as the display name so it's
+          // visible (not silently dropped) and an operator can decide
+          // whether to register it or remove the row.
+          display_name: sourceKey,
+          state: '',
+          county: null,
+          source_url: '',
+          source_type: cfg.source_type ?? 'unknown',
+          priority: (cfg.priority as 1 | 2 | 3 | 4) ?? 4,
+        };
+
+        const runs24h = await query<RunRow>(
+          db,
+          `SELECT started_at, completed_at, status, errors, persons_checked,
+                  new_warrants_found, warrants_cleared, error_message
+             FROM warrant_watch_runs
+            WHERE started_at >= datetime('now', '-24 hours')
+            ORDER BY started_at DESC`,
+        );
+        const trailingRuns = await query<RunRow>(
+          db,
+          `SELECT started_at, completed_at, status, errors, persons_checked,
+                  new_warrants_found, warrants_cleared, error_message
+             FROM warrant_watch_runs
+            ORDER BY started_at DESC
+            LIMIT 10`,
+        );
+        const metrics = summarizeRuns(runs24h, trailingRuns);
+
+        const warrantCountRow = await query<{ n: number }>(
+          db,
+          `SELECT COUNT(*) AS n FROM utah_warrants
+            WHERE COALESCE(source, 'utah-warrant-watch') = ? AND is_active = 1`,
+          sourceKey,
+        );
+        const warrant_count = warrantCountRow[0]?.n ?? 0;
+
+        // Circuit derivation: 5+ consecutive failures = circuit broken.
+        // Keeps the dashboard usable when a scrape is wedged — operator
+        // hits "Reset Circuit" which clears last_error so the next
+        // successful run renders healthy.
+        const circuit_broken: 0 | 1 = metrics.consecutive_errors >= 5 ? 1 : 0;
+
+        return {
+          source_key: sourceKey,
+          display_name: registry.display_name,
+          state: registry.state,
+          county: registry.county,
+          source_url: registry.source_url,
+          source_type: registry.source_type,
+          enabled: 1 as const,
+          circuit_broken,
+          priority: registry.priority,
+          consecutive_errors: metrics.consecutive_errors,
+          warrant_count,
+          last_scrape_at: cfg.last_run_at ?? null,
+          last_success_at: cfg.last_success_at ?? null,
+          // Sticky-error gotcha: the poller's CASE clears last_error on
+          // every successful run, so a stale message here means the most
+          // recent run actually failed. Don't synthetically null it on
+          // "consecutive_errors === 0" — that hides legitimate state.
+          last_error: cfg.last_error ?? null,
+          avg_parse_count: cfg.avg_parse_count ?? null,
+          p95_latency_ms: cfg.p95_latency_ms ?? null,
+          metrics_24h: {
+            source_key: sourceKey,
+            window_hours: 24,
+            ...metrics,
+            last_success_at: cfg.last_success_at ?? null,
+            last_error: cfg.last_error ?? null,
+            // Client SourceMetrics expects status_distribution but the
+            // legacy `warrant_scraper_runs` table doesn't exist here —
+            // we project the same insight from run statuses we DO have.
+            status_distribution: {
+              completed: metrics.successful_runs,
+              failed: metrics.failed_runs,
+            } as Record<string, number>,
+          },
+        };
+      }),
+    );
+
+    return c.json({ sources });
+  } catch (err) {
+    console.error('[warrants] /scrapers error', err);
+    // Empty shape is what the legacy handler returned on its own (broken)
+    // schema queries. Keep the same degraded UX so the page renders.
+    return c.json({ sources: [] });
+  }
+});
+
+// GET /warrants/scrapers/health — header badge in Layout.tsx (30s poll).
+// Aggregates each source's grade into healthy/degraded/failed buckets so
+// the badge can show "🟢 3/3 healthy" / "🟡 2/3 degraded" / "🔴 1/3 failed."
+warrants.get('/scrapers/health', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const configRows = await query<Record<string, any>>(
+      db,
+      'SELECT source_name FROM warrant_scraper_config',
+    );
+    let healthy = 0;
+    let degraded = 0;
+    let failed = 0;
+    let circuit_broken = 0;
+    const total = configRows.length;
+
+    for (const cfg of configRows) {
+      const runs24h = await query<RunRow>(
+        db,
+        `SELECT started_at, completed_at, status, errors, persons_checked,
+                new_warrants_found, warrants_cleared, error_message
+           FROM warrant_watch_runs
+          WHERE started_at >= datetime('now', '-24 hours')
+          ORDER BY started_at DESC`,
+      );
+      const trailing = await query<RunRow>(
+        db,
+        `SELECT started_at, completed_at, status, errors, persons_checked,
+                new_warrants_found, warrants_cleared, error_message
+           FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 10`,
+      );
+      const m = summarizeRuns(runs24h, trailing);
+      // Same A-F → 3-bucket roll-up as the legacy handler so the badge
+      // colors don't shift when this Worker takes over the path.
+      if (m.total_runs === 0) failed++;
+      else if (m.health_grade === 'A' || m.health_grade === 'B') healthy++;
+      else if (m.health_grade === 'C' || m.health_grade === 'D') degraded++;
+      else failed++;
+      if (m.consecutive_errors >= 5) circuit_broken++;
+    }
+
+    // Last-hour activity is read directly from runs because it's a
+    // global figure (not per-source) — the badge shows "12 runs in the
+    // last hour" as a freshness hint.
+    const lastHourRow = await query<{ runs: number; inserted: number }>(
+      db,
+      `SELECT COUNT(*) AS runs,
+              COALESCE(SUM(new_warrants_found), 0) AS inserted
+         FROM warrant_watch_runs
+        WHERE started_at >= datetime('now', '-1 hour')`,
+    );
+    const last_hour_runs = lastHourRow[0]?.runs ?? 0;
+    const last_hour_inserted = lastHourRow[0]?.inserted ?? 0;
+
+    return c.json({
+      healthy,
+      degraded,
+      failed,
+      circuit_broken,
+      total,
+      last_hour_runs,
+      last_hour_inserted,
+    });
+  } catch (err) {
+    console.error('[warrants] /scrapers/health error', err);
+    // Degraded UX > 500. The badge will render "0/0 healthy" which is
+    // a self-evidently weird state and the operator opens the Sources
+    // tab to dig in (where the real error surfaces).
+    return c.json({
+      healthy: 0,
+      degraded: 0,
+      failed: 0,
+      circuit_broken: 0,
+      total: 0,
+      last_hour_runs: 0,
+      last_hour_inserted: 0,
+    });
+  }
+});
+
+// POST /warrants/scrapers/:source_key/trigger — "Scan Now" button on a
+// specific scraper card. Same fire-and-forget pattern as /watch/scan
+// (waitUntil → return 202 immediately) because a full scan paces
+// ~8s/person and blows past the request timeout if awaited.
+//
+// Tighter role gate (SCAN_ROLES) than reads — triggering pulls an
+// external API for every roster row.
+warrants.post('/scrapers/:source_key/trigger', requireRole(...SCAN_ROLES), async (c) => {
+  const sourceKey = c.req.param('source_key');
+  if (sourceKey !== 'utah-warrant-watch') {
+    // Future-proofing: when a second scraper lands, dispatch on
+    // sourceKey to its own runner. For now, refuse loudly so we
+    // don't silently pretend to scan something unimplemented.
+    return c.json({ error: `No scraper registered for source_key '${sourceKey}'` }, 404);
+  }
+  const db = getDb(c.env);
+  c.executionCtx.waitUntil(
+    runUtahWarrantScan(db).catch((err) => {
+      console.error('[warrants] scrapers/:key/trigger scan failed:', err);
+    }),
+  );
+  return c.json(
+    { success: true, started: true, message: `Scan started for ${sourceKey}; poll /watch/runs.` },
+    202,
+  );
+});
+
+// POST /warrants/scrapers/:source_key/reset-circuit — "Reset Circuit"
+// button. We have no circuit_broken column to flip, so clearing
+// last_error is the operationally equivalent action: the dashboard
+// derives circuit state from consecutive_errors (which falls to 0
+// the moment the next run succeeds). Nulling last_error lets the
+// next render show a clean state without waiting for a run.
+warrants.post('/scrapers/:source_key/reset-circuit', requireRole(...SCAN_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const sourceKey = c.req.param('source_key');
+    const result = await db
+      .prepare('UPDATE warrant_scraper_config SET last_error = NULL WHERE source_name = ?')
+      .bind(sourceKey)
+      .run();
+    // changes === 0 means no row matched. Honest 404 prevents the
+    // user from thinking they cleared a circuit they didn't.
+    if ((result.meta?.changes ?? 0) === 0) {
+      return c.json({ error: `No scraper registered for source_key '${sourceKey}'` }, 404);
+    }
+    return c.json({ success: true, message: `Circuit reset for ${sourceKey}` });
+  } catch (err) {
+    console.error('[warrants] reset-circuit error', err);
+    return c.json({ error: 'Failed to reset circuit' }, 500);
+  }
+});
+
 export default warrants;
