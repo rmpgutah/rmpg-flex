@@ -96,21 +96,26 @@ calls.get('/', async (c) => {
 
     // Narrow projection — see LIST_VIEW_COLUMNS comment for the D1 100-col
     // result-set cap. SELECT c.* + JOIN columns 500s; this stays under ~60.
-    // cfse.pinned is ONE explicit column from the ext table — safe under the
-    // result-set cap (the cap problem is SELECT c.*, not a single joined col).
-    // Sorted pinned-first so a dispatcher's pinned calls stay on top across
-    // refreshes (the PATCH /:id/pin handler writes cfse.pinned).
+    // cfe.pinned + cfe.held_at are TWO explicit columns off the ext table —
+    // safe under the result-set cap (the cap problem is SELECT c.*, not a few
+    // joined cols). Sorted pinned-first so a dispatcher's pinned calls stay on
+    // top across refreshes (PATCH /:id/pin writes cfe.pinned).
+    //   NOTE: a parallel PR added the `cfe.held_at` join with alias `cfe`
+    //   while #728 had added pinning with alias `cfse`; the squash kept
+    //   `cfse` in the ORDER BY but only the `cfe` join, 500ing the queue.
+    //   Both now use the single `cfe` alias.
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name, cfe.held_at
+        cl.name as client_name, cfe.held_at,
+        COALESCE(cfe.pinned, 0) as pinned
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
       LEFT JOIN calls_for_service_ext cfe ON cfe.id = c.id
       ${where}
-      ORDER BY COALESCE(cfse.pinned, 0) DESC, c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
+      ORDER BY COALESCE(cfe.pinned, 0) DESC, c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
       LIMIT ? OFFSET ?
     `, ...params, limitNum, offset);
 
