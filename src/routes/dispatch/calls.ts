@@ -583,6 +583,27 @@ calls.put('/:id', async (c) => {
     if (!existing) return c.json({ error: 'Call not found' }, 404);
 
     const body = await c.req.json<Record<string, unknown>>();
+
+    // Re-geocode on address change: if this update changes location_address and
+    // doesn't carry explicit valid coordinates, resolve fresh coords so the
+    // call's map pin follows the new address. Without this, editing an address
+    // strands the call off the map ("NO LOCATION DATA" / "Call has no GPS"),
+    // since the edit form may send null/stale lat/lng. Mirrors the create-path
+    // geocode (#735). Best-effort — never block the update on a geocode miss.
+    if (typeof body.location_address === 'string'
+        && body.location_address.trim().length >= 3
+        && body.location_address !== existing.location_address) {
+      const hasLat = body.latitude != null && body.latitude !== '';
+      const hasLng = body.longitude != null && body.longitude !== '';
+      if (!hasLat || !hasLng) {
+        const coords = await geocodeAddress(c.env, body.location_address);
+        if (coords) {
+          body.latitude = coords.lat;
+          body.longitude = coords.lng;
+        }
+      }
+    }
+
     const baseUpdates: string[] = [];
     const baseParams: unknown[] = [];
     const extUpdates: string[] = [];
