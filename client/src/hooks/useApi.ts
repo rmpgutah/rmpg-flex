@@ -324,6 +324,14 @@ async function tryRefreshToken(): Promise<string | null> {
   _refreshPromise = (async () => {
     try {
       const refreshToken = localStorage.getItem('rmpg_refresh_token');
+      // The /api/auth/refresh handler (legacy worker) requires BOTH refreshToken
+      // AND sessionId — it looks up `sessions WHERE session_id = ? AND
+      // refresh_token_hash = ?`. Omitting sessionId made the lookup match
+      // nothing → 401 on every refresh → users were silently logged out at each
+      // 15-minute access-token expiry. AuthContext's refresh already sends it;
+      // this path (apiFetch — the main data path) did not. Login stores it as
+      // 'rmpg_session_id'.
+      const sessionId = localStorage.getItem('rmpg_session_id');
       if (!refreshToken) {
         // No refresh token = effectively logged out. Don't silently spin —
         // clear residual access token and bounce to login so the user can
@@ -343,7 +351,7 @@ async function tryRefreshToken(): Promise<string | null> {
       const res = await fetch('/api/auth/refresh', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
-        body: JSON.stringify({ refreshToken }),
+        body: JSON.stringify({ refreshToken, sessionId }),
         signal: controller.signal,
       }).finally(() => clearTimeout(timeout));
 
