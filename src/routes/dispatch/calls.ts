@@ -103,13 +103,12 @@ calls.get('/', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name,
-        COALESCE(cfse.pinned, 0) as pinned
+        cl.name as client_name, cfe.held_at
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
-      LEFT JOIN calls_for_service_ext cfse ON cfse.id = c.id
+      LEFT JOIN calls_for_service_ext cfe ON cfe.id = c.id
       ${where}
       ORDER BY COALESCE(cfse.pinned, 0) DESC, c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
       LIMIT ? OFFSET ?
@@ -658,24 +657,29 @@ calls.post('/:id/status', async (c) => {
     // The clear/close flow (client handleConfirmClear) sends { status, disposition }.
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
-    const { status, disposition } = await c.req.json<{ status: string; disposition?: string }>();
-    // NOTE: 'on_hold' is intentionally NOT in this list yet. The live
-    // calls_for_service.status CHECK constraint does not include 'on_hold', so
-    // writing it returns SQLITE_CONSTRAINT → a 500. Migration 0040 adds it to
-    // the enum; re-add 'on_hold' here only AFTER that migration is applied to
-    // live D1 (verify with: SELECT sql FROM sqlite_master WHERE name='calls_for_service').
+    const { status, disposition, notes } = await c.req.json<{ status: string; disposition?: string; notes?: string }>();
+    // 'on_hold' is intentionally NOT a status value — hold is an orthogonal flag
+    // in calls_for_service_ext.held_at (see /:id/hold). The live status CHECK
+    // enum has no 'on_hold'.
     const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
     if (!valid.includes(status)) return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
 
+    // ALL timestamps use datetime('now') (UTC). This is the canonical status
+    // writer once the proxy routes /:id/status here. The legacy worker's
+    // localNow() stamped Denver-local time as +00:00, so dispatched/enroute/
+    // onscene rendered ~6h off. status_changed_at + archived_at + notes are
+    // written here for parity with the legacy handler this replaces.
     const timeField = `${status}_at`;
-    const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at'];
+    const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at', 'archived_at'];
     const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now'))` : '';
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
+    const notesSql = typeof notes === 'string' && notes.length > 0 ? ', notes = ?' : '';
 
     const params: unknown[] = [status];
     if (dispSql) params.push(disposition);
+    if (notesSql) params.push(notes);
     params.push(id);
-    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
+    await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
@@ -704,18 +708,35 @@ calls.post('/:id/unarchive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/hold
-// GUARDED: the live status CHECK constraint has no 'on_hold' value, so the
-// UPDATE below would fail with SQLITE_CONSTRAINT and return a 500. Until
-// migration 0040 adds 'on_hold' to the enum, return a clean 409 instead of
-// attempting the write. Restore the UPDATE after 0040 is applied to live D1.
+// Hold is an orthogonal flag in the _ext overflow table (held_at), NOT a status
+// enum value — this avoids a CHECK rebuild of the 100-column, FK-referenced
+// calls_for_service table (migration 0041 adds the column). Status is preserved
+// while held; the queue badges held calls via held_at. The _ext row is created
+// lazily if it doesn't exist yet (mirrors the run_card / PSO ext-write pattern).
 calls.post('/:id/hold', async (c) => {
-  return c.json({ error: 'Call hold is not yet enabled (pending schema migration 0040)', code: 'HOLD_NOT_ENABLED' }, 409);
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+    await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?", id);
+    await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", id);
+    return c.json({ message: 'On hold' });
+  } catch (err) {
+    return c.json({ error: 'Hold failed' }, 500);
+  }
 });
 
-// POST /dispatch/calls/:id/resume
+// POST /dispatch/calls/:id/resume — clears the hold flag; status is untouched.
 calls.post('/:id/resume', async (c) => {
-  try { const db = getDb(c.env); await execute(db, "UPDATE calls_for_service SET status = 'pending' WHERE id = ? AND status = 'on_hold'", c.req.param('id')); return c.json({ message: 'Resumed' }); }
-  catch (err) { return c.json({ error: 'Resume failed' }, 500); }
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, 'UPDATE calls_for_service_ext SET held_at = NULL WHERE id = ?', id);
+    await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", id);
+    return c.json({ message: 'Resumed' });
+  } catch (err) {
+    return c.json({ error: 'Resume failed' }, 500);
+  }
 });
 
 // POST /dispatch/calls/:id/assign-unit

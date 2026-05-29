@@ -1,0 +1,23 @@
+-- 0041_calls_ext_add_held_at.sql
+-- =====================================================================
+-- "Call hold" as an orthogonal flag, NOT a status enum value.
+--
+-- held_at: NULL = not held; a timestamp = when the call was placed on hold.
+-- Status is left untouched while held, so resume simply clears the flag.
+--
+-- WHY THIS, NOT a status='on_hold' CHECK rebuild:
+--   The prior attempt (0040, reverted) rebuilt calls_for_service to add
+--   'on_hold' to the status CHECK. It FAILED on live D1 with
+--   "FOREIGN KEY constraint failed": D1 runs each migration inside a
+--   transaction where PRAGMA foreign_keys=OFF is a no-op, so dropping the
+--   100-column table referenced by 8 child FKs tripped enforcement and rolled
+--   back. ADD COLUMN has no DROP and no FK interaction, so it is
+--   transaction-safe on D1.
+--
+-- calls_for_service_ext is the established 1:1 overflow table (FK id ->
+-- calls_for_service(id) ON DELETE CASCADE), currently 29 columns — well under
+-- the D1 100-column cap. Note: D1 does not support IF NOT EXISTS on ADD COLUMN;
+-- this migration applies exactly once (tracked by name in d1_migrations).
+-- =====================================================================
+
+ALTER TABLE calls_for_service_ext ADD COLUMN held_at TEXT;

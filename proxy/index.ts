@@ -844,6 +844,14 @@ const API_ROUTES: RouteRule[] = [
   // the legacy worker doesn't. Without this rule MDT requests fall
   // through to legacy and skip both behaviors.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(assign-unit|unassign-unit|dispatch)$/, methods: ['POST'] },
+  // POST /api/dispatch/calls/:id/status — MUST route to the rewrite. The legacy
+  // handler writes status_changed_at + dispatched_at/enroute_at/onscene_at via
+  // localNow(), which stamps Denver-local wall-clock as +00:00 — so every
+  // transition rendered ~6h off (e.g. an 11:35 MDT dispatch stored as
+  // "11:35+00:00" → displayed 05:35). The rewrite uses datetime('now') (UTC)
+  // and sets status_changed_at/archived_at/notes for parity. Without this rule
+  // the path fell through to env.LEGACY and the timezone bug persisted.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/status$/, methods: ['POST'] },
 
   // ── Records search (rewrite has all three; legacy is missing /search
   // and /vehicles/search and returns empty `[]` instead) ──
