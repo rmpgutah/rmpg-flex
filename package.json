@@ -9,8 +9,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "migrate:local": "wrangler d1 migrations apply rmpg-flex-db --local",
-    "migrate:prod": "wrangler d1 migrations apply rmpg-flex-db --remote"
+    "migrate:local": "wrangler d1 migrations apply rmpg-flex --local",
+    "migrate:prod": "wrangler d1 migrations apply rmpg-flex --remote"
   },
   "dependencies": {
     "@cloudflare/containers": "^0.3.4",

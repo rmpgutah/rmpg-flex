@@ -67,7 +67,7 @@ deploy/             VPS deploy scripts — likely dead, retained until confirmed
 **Canonical trigger**: `git push origin main` → `.github/workflows/deploy.yml`:
 
 1. `npm run typecheck` (Worker)
-2. `wrangler d1 migrations apply rmpg-flex-db --remote` (`continue-on-error: true`; the Worker reconciles missing columns at boot)
+2. `wrangler d1 migrations apply rmpg-flex --remote` (`continue-on-error: true`; the Worker reconciles missing columns at boot)
 3. `wrangler deploy` (Worker)
 4. `cd client && npm ci && npm run build`
 5. `wrangler pages deploy client/dist --project-name=rmpg-flex --branch=main`
@@ -181,7 +181,7 @@ There is no Worker test suite yet — only typecheck. **Adding vitest for `/src/
 1. **`/server/` is dead** — it's been moved to `legacy/server-vps/`. If you see `import ... from 'server/...'` anywhere outside `legacy/`, that's a bug from before the rehoming and should be ported to `/src/`.
 2. **`/src/` and `/client/src/` both contain TypeScript** — `/src/` is the Worker, `/client/src/` is React. They share no build, no `tsconfig`, no `package.json`. Edits to one do not affect the other.
 3. **D1 queries are async** — `await db.prepare(...).first()`. Forgetting `await` returns a Promise that JSON-serialises to `{}`, which the client then logs as "empty response."
-4. **`deploy.yml` step `Apply D1 migrations` has `continue-on-error: true`** — the Worker reconciles missing columns at boot, but you cannot rely on the deploy log alone to tell you a migration succeeded. After deploying, query the table directly via `wrangler d1 execute rmpg-flex-db --remote --command 'SELECT name FROM sqlite_master ...'` to confirm.
+4. **`deploy.yml` step `Apply D1 migrations` has `continue-on-error: true`** — the Worker reconciles missing columns at boot, but you cannot rely on the deploy log alone to tell you a migration succeeded. After deploying, query the table directly via `wrangler d1 execute rmpg-flex --remote --command 'SELECT name FROM sqlite_master ...'` to confirm.
 5. **D1 has dirty schema in prod** — earlier migrations partially applied during the rehoming. New migrations must be idempotent. See [`migrations/README.md`](migrations/README.md).
 6. **Service worker cache** — bump `CACHE_NAME` in `client/public/sw.js` on every client change. Without a bump, users keep serving the old hash-named bundles from cache for up to 24 h.
 7. **Mapbox token** — `client/src/utils/mapboxApiKey.ts` reads `VITE_MAPBOX_ACCESS_TOKEN` at build time. The error string in that file still says "Add MAPBOX_ACCESS_TOKEN to server/.env" — that's stale (no `.env` on Workers); the token must be embedded into the Vite build via `client/.env` or Cloudflare Pages env vars.
