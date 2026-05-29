@@ -561,9 +561,11 @@ export default function MapPage() {
   // Change-detection so call/property pins are only rebuilt when THEY change —
   // not on every unit GPS poll (which previously destroyed + recreated every
   // pin, making them flicker / "fly around").
-  const prevCallsRef = useRef<typeof calls | null>(null);
-  const prevPropsRef = useRef<typeof properties | null>(null);
-  const prevLayersRef = useRef<typeof layers | null>(null);
+  // Content signatures (NOT array references) — the calls/properties arrays get
+  // a fresh reference on every poll even when nothing changed, so reference
+  // equality would rebuild every pin each poll. Compare a stable signature.
+  const prevCallsSigRef = useRef<string>('');
+  const prevPropsSigRef = useRef<string>('');
   // Always-fresh units, so a call marker's popup (built once when calls change)
   // still shows current assigned units between rebuilds.
   const unitsRef = useRef(units);
@@ -1305,7 +1307,10 @@ export default function MapPage() {
     });
 
     // ---- Call markers: rebuild only when calls / incidents-layer change ----
-    const callsChanged = calls !== prevCallsRef.current || (prevLayersRef.current?.incidents !== layers.incidents);
+    const callsSig = layers.incidents
+      ? calls.map(c => `${c.id}:${c.latitude}:${c.longitude}:${c.priority}:${c.status}:${c.incident_type}:${c.call_number}`).join('|')
+      : '';
+    const callsChanged = callsSig !== prevCallsSigRef.current;
     if (callsChanged) {
       callMarkersArrayRef.current.forEach((m) => removeMarker(m));
       callMarkersArrayRef.current = [];
@@ -1387,7 +1392,10 @@ export default function MapPage() {
     }
 
     // ---- Property markers: rebuild only when properties / layer change ----
-    const propsChanged = properties !== prevPropsRef.current || (prevLayersRef.current?.properties !== layers.properties);
+    const propsSig = layers.properties
+      ? properties.map(p => `${p.id}:${p.latitude}:${p.longitude}:${p.name}:${p.client_name || ''}`).join('|')
+      : '';
+    const propsChanged = propsSig !== prevPropsSigRef.current;
     if (propsChanged) {
       propMarkersArrayRef.current.forEach((m) => removeMarker(m));
       propMarkersArrayRef.current = [];
@@ -1545,9 +1553,8 @@ export default function MapPage() {
       ...callMarkersArrayRef.current,
       ...propMarkersArrayRef.current,
     ] as any;
-    prevCallsRef.current = calls;
-    prevPropsRef.current = properties;
-    prevLayersRef.current = layers;
+    prevCallsSigRef.current = callsSig;
+    prevPropsSigRef.current = propsSig;
   }, [layers, units, calls, properties, mapLoaded, createMarker, removeMarker]);
 
   // ============================================================
