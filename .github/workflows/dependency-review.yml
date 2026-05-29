@@ -17,6 +17,11 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Dependency Review
+        # Pinned to v4 intentionally: v5 may remove `deny-licenses` (deprecated
+        # upstream — see actions/dependency-review-action#938). The only
+        # current replacement is `allow-licenses`, which flips to an allowlist
+        # and is more restrictive than our actual policy intent (block GPL
+        # family only). Revisit when upstream ships a config-file denylist.
         uses: actions/dependency-review-action@v4
         with:
           # Block PRs that add dependencies with known critical/high vulns
