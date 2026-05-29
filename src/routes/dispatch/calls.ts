@@ -653,8 +653,13 @@ calls.post('/:id/status', async (c) => {
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
     const { status, disposition } = await c.req.json<{ status: string; disposition?: string }>();
-    const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
-    if (!valid.includes(status)) return c.json({ error: 'Invalid status' }, 400);
+    // NOTE: 'on_hold' is intentionally NOT in this list yet. The live
+    // calls_for_service.status CHECK constraint does not include 'on_hold', so
+    // writing it returns SQLITE_CONSTRAINT → a 500. Migration 0040 adds it to
+    // the enum; re-add 'on_hold' here only AFTER that migration is applied to
+    // live D1 (verify with: SELECT sql FROM sqlite_master WHERE name='calls_for_service').
+    const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
+    if (!valid.includes(status)) return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
 
     const timeField = `${status}_at`;
     const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at'];
@@ -693,9 +698,12 @@ calls.post('/:id/unarchive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/hold
+// GUARDED: the live status CHECK constraint has no 'on_hold' value, so the
+// UPDATE below would fail with SQLITE_CONSTRAINT and return a 500. Until
+// migration 0040 adds 'on_hold' to the enum, return a clean 409 instead of
+// attempting the write. Restore the UPDATE after 0040 is applied to live D1.
 calls.post('/:id/hold', async (c) => {
-  try { const db = getDb(c.env); await execute(db, "UPDATE calls_for_service SET status = 'on_hold' WHERE id = ?", c.req.param('id')); return c.json({ message: 'On hold' }); }
-  catch (err) { return c.json({ error: 'Hold failed' }, 500); }
+  return c.json({ error: 'Call hold is not yet enabled (pending schema migration 0040)', code: 'HOLD_NOT_ENABLED' }, 409);
 });
 
 // POST /dispatch/calls/:id/resume
