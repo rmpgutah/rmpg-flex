@@ -28,7 +28,7 @@ panic.get('/panic', async (c) => {
             ack.full_name as acknowledged_by_name,
             res.full_name as resolved_by_name
      FROM panic_alerts p
-     LEFT JOIN users u ON p.user_id = u.id
+     LEFT JOIN users u ON u.id = COALESCE(p.user_id, p.officer_id)
      LEFT JOIN users ack ON p.acknowledged_by = ack.id
      LEFT JOIN users res ON p.resolved_by = res.id
      WHERE (? = 'all' OR p.status = ?)
@@ -55,20 +55,25 @@ panic.post('/panic', async (c) => {
 
   const result = await execute(
     db,
-    // created_at / updated_at explicit overrides — schema DEFAULT is UTC.
-    `INSERT INTO panic_alerts (user_id, unit_id, call_id, latitude, longitude, location_address, source, created_at, updated_at)
+    // Schema reality (live panic_alerts): officer_id is NOT NULL (no default);
+    // the trigger column is `trigger_method` (NOT `source`); and there is NO
+    // `unit_id` column — the unit is resolved via the officer on read. The
+    // previous INSERT named unit_id + source and omitted officer_id, so it
+    // would fail on every panic (SQLITE constraint / no such column) if this
+    // handler were ever routed live. created_at/updated_at = UTC.
+    `INSERT INTO panic_alerts (officer_id, user_id, call_id, latitude, longitude, location_address, trigger_method, created_at, updated_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))`,
-    userId, unit?.id ?? null, body.call_id ?? unit?.current_call_id ?? null,
+    userId, userId, body.call_id ?? unit?.current_call_id ?? null,
     body.latitude ?? null, body.longitude ?? null, body.location_address ?? null,
-    body.source ?? 'manual',
+    body.source ?? 'ui_button',
   );
   const panicId = Number(result.meta.last_row_id);
   const created = await queryFirst<Record<string, unknown>>(
     db,
     `SELECT p.*, u.full_name as user_name, u.badge_number, un.call_sign
      FROM panic_alerts p
-     LEFT JOIN users u ON p.user_id = u.id
-     LEFT JOIN units un ON p.unit_id = un.id
+     LEFT JOIN users u ON u.id = COALESCE(p.user_id, p.officer_id)
+     LEFT JOIN units un ON un.officer_id = p.officer_id
      WHERE p.id = ?`,
     panicId,
   );
