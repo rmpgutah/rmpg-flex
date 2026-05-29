@@ -422,11 +422,25 @@ var STUBS = [
   // tiles, page-specific reports, dispatch GPS analytics).
   //
   // ── Reports comparison (ReportsPage period-over-period card) ────────
+  // Body MUST match the ComparisonData shape ReportsPage.tsx:790 reads:
+  // { period, calls/incidents/citations:{current,previous,change},
+  //   responseTime:{current,previous,change} }. The old {current,previous,
+  //   deltas} shape had no `responseTime`, so ReportsPage's
+  //   `comparisonData.responseTime.current` (line ~1020) threw
+  //   "Cannot read properties of undefined (reading 'current')" and the
+  //   ErrorBoundary took down the ENTIRE Reports page (observed 2026-05-29).
+  //   Zeros/nulls render an empty comparison card; the page works.
   {
     match: /^\/api\/reports\/comparison(\?.*)?$/,
     methods: ["GET"],
-    body: { current: {}, previous: {}, deltas: {} },
-    reason: "no comparison endpoint in src/routes/reports.ts; period card tolerates empty deltas"
+    body: {
+      period: "week",
+      calls: { current: 0, previous: 0, change: 0 },
+      incidents: { current: 0, previous: 0, change: 0 },
+      citations: { current: 0, previous: 0, change: 0 },
+      responseTime: { current: null, previous: null, change: null }
+    },
+    reason: "no comparison handler in src/; shape matches ReportsPage ComparisonData so the card renders empty instead of crashing the page"
   },
   // ── Arrests status (AdminPage tile, separate from /arrests/recent) ──
   {
