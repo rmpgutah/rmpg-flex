@@ -104,7 +104,7 @@ import welfare from './routes/welfare';
 import {
   recommendedUnits, audioMode, premiseAlerts, callWarnings,
   unitStatus, bolos as bolosRouter, welfareActive,
-  closestUnit, autoAssign, callTimeline,
+  closestUnit, autoAssign, callTimeline, callActions,
 } from './routes/dispatch/extensions';
 // Business records
 import businessVehicles from './routes/business/vehicles';
@@ -167,6 +167,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
   { prefix: '/api/dispatch/calls', router: closestUnit, auth: 'required' },
   { prefix: '/api/dispatch/calls', router: autoAssign, auth: 'required' },
   { prefix: '/api/dispatch/calls', router: callTimeline, auth: 'required' },
+  { prefix: '/api/dispatch/calls', router: callActions, auth: 'required',
+    note: 'BEFORE dispatchCalls — handles /:id/{revert-status,le-notification,transfer,broadcast-note,notes/:noteId,generate-incident}' },
   { prefix: '/api/dispatch/calls', router: callWarnings, auth: 'required' },
   { prefix: '/api/dispatch/units', router: audioMode, auth: 'required' },
   { prefix: '/api/dispatch/units', router: unitStatus, auth: 'required' },

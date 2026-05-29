@@ -391,8 +391,22 @@ calls.get('/archive-bulk', async (c) => {
 calls.post('/archive-bulk', async (c) => {
   try {
     const db = getDb(c.env);
-    await execute(db, "UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE status IN ('cleared','closed','cancelled')");
-    return c.json({ message: 'Bulk archive completed' });
+    // Honor the client's { statuses } body (handleBulkArchive sends
+    // ['cleared','closed','cancelled']) and return { archived_count } — the
+    // client gates its list refresh on archived_count > 0, so the old
+    // {message} response meant the UI never refreshed after a bulk archive.
+    const body = await c.req.json<{ statuses?: string[] }>().catch(() => ({} as { statuses?: string[] }));
+    const ARCHIVABLE = ['cleared', 'closed', 'cancelled'];
+    const requested = Array.isArray(body.statuses) && body.statuses.length > 0 ? body.statuses : ARCHIVABLE;
+    const statuses = requested.filter((s) => ARCHIVABLE.includes(s));
+    if (statuses.length === 0) return c.json({ archived_count: 0 });
+
+    const placeholders = statuses.map(() => '?').join(',');
+    const result = await execute(db,
+      `UPDATE calls_for_service SET status = 'archived', archived_at = datetime('now') WHERE status IN (${placeholders})`,
+      ...statuses);
+    const archived_count = (result as any)?.meta?.changes ?? 0;
+    return c.json({ archived_count });
   } catch (err) {
     return c.json({ error: 'Bulk archive failed' }, 500);
   }
@@ -619,15 +633,22 @@ calls.post('/:id/status', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const { status } = await c.req.json<{ status: string }>();
+    // The clear/close flow (client handleConfirmClear) sends { status, disposition }.
+    // Persist disposition alongside the status transition — dropping it left the
+    // call's outcome blank and the disposition column NULL after every clear.
+    const { status, disposition } = await c.req.json<{ status: string; disposition?: string }>();
     const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived', 'on_hold'];
     if (!valid.includes(status)) return c.json({ error: 'Invalid status' }, 400);
 
     const timeField = `${status}_at`;
     const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at'];
     const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now'))` : '';
+    const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
 
-    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql} WHERE id = ?`, status, id);
+    const params: unknown[] = [status];
+    if (dispSql) params.push(disposition);
+    params.push(id);
+    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
@@ -760,7 +781,11 @@ calls.post('/:id/dispatch', async (c) => {
       await execute(db, "UPDATE units SET status = 'dispatched', current_call_id = ? WHERE id = ?", parseInt(id, 10), uid);
     }
 
-    return c.json({ message: 'Units dispatched' });
+    // Return the updated call row, not a {message}. The client
+    // (handleMultiUnitDispatch) feeds this straight into mapDbCall() and splices
+    // it into dispatch state — a bare message produced a blank-id corrupted call.
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    return c.json(updated);
   } catch (err) { return c.json({ error: 'Dispatch failed' }, 500); }
 });
 

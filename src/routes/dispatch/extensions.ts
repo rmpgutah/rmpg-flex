@@ -20,6 +20,7 @@ import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { requireRole } from '../../middleware/auth';
+import { broadcastAll } from '../ws';
 
 const READ_ROLES  = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'];
 const WRITE_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'];
@@ -326,8 +327,16 @@ callWarnings.get('/:id/warnings', requireRole(...READ_ROLES), async (c) => {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
     if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
-    const call = await queryFirst<any>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
-    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    const base = await queryFirst<any>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!base) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+    // Tactical flags overflowed to calls_for_service_ext when the base table hit
+    // the D1 100-col cap (see calls.ts UPDATABLE_CALL_COLUMNS_EXT). The write path
+    // stores e.g. `hazmat` in ext, so the safety briefing must merge ext over base
+    // — same precedence as GET /calls/:id — or those flags read as stale 0.
+    let ext: Record<string, unknown> | null = null;
+    try { ext = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service_ext WHERE id = ?', id); }
+    catch { /* ext table may not exist in dev */ }
+    const call = { ...base, ...(ext || {}) };
 
     const warnings: Array<{ type: string; label: string; severity: 'critical' | 'high' | 'medium'; source: string }> = [];
 
@@ -649,6 +658,17 @@ function safeJson<T>(s: string | null | undefined, fb: T): T {
   try { return JSON.parse(s) as T; } catch { return fb; }
 }
 
+// MST/UTC-7 wall-clock timestamp string (matches the convention used by the
+// auto-assign / timeline handlers above and the legacy `localNow()` helper).
+const localNow = () => new Date(Date.now() - 6 * 3600_000).toISOString().replace('T', ' ').slice(0, 19);
+
+// Canonical updated-call payload: bare base row (no JOINs) so we stay under the
+// D1 100-column result-set cap. The client maps this through mapDbCall(), which
+// only reads base columns, so a flat SELECT * is sufficient.
+async function fetchCallRow(db: D1Database, id: number) {
+  return queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+}
+
 // =====================================================================
 // DEV-8: Closest-unit suggestion (single-result analogue to recommended-units)
 // GET /api/dispatch/calls/:id/closest-unit
@@ -856,5 +876,435 @@ callTimeline.post('/:id/timeline', requireRole(...READ_ROLES), async (c) => {
   } catch (err) {
     console.error('[dispatch] add timeline entry error', err);
     return c.json({ error: 'Failed to add timeline entry', code: 'TIMELINE_ADD_ERROR' }, 500);
+  }
+});
+
+// PUT /api/dispatch/calls/:id/timeline/:entryId — edit a timeline entry.
+// Ported from legacy callLifecycle.ts:479. Only `details` is editable —
+// created_at is an immutable audit-log timestamp. The entry is matched by
+// (id, entity_type='call', entity_id) so one call can't edit another's rows.
+callTimeline.put('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    const entryId = parseInt(c.req.param('entryId') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(entryId) || entryId <= 0) return c.json({ error: 'Invalid timeline entry ID', code: 'INVALID_TIMELINE_ENTRY_ID' }, 400);
+
+    const entry = await queryFirst<{ id: number }>(db,
+      'SELECT id FROM audit_log WHERE id = ? AND entity_type = ? AND entity_id = ?', entryId, 'call', id);
+    if (!entry) return c.json({ error: 'Timeline entry not found', code: 'TIMELINE_ENTRY_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ details?: string }>();
+    if (body.details === undefined) return c.json({ error: 'No fields to update', code: 'NO_FIELDS_TO_UPDATE' }, 400);
+    if (typeof body.details !== 'string' || body.details.length > 5000) {
+      return c.json({ error: 'details must be a string of 5000 characters or less', code: 'DETAILS_INVALID' }, 400);
+    }
+
+    await execute(db, 'UPDATE audit_log SET details = ? WHERE id = ?', body.details, entryId);
+
+    const updated = await queryFirst<Record<string, unknown>>(db,
+      'SELECT al.*, u.full_name AS user_name FROM audit_log al LEFT JOIN users u ON u.id = al.user_id WHERE al.id = ?', entryId);
+    return c.json(updated ?? { id: entryId, details: body.details });
+  } catch (err) {
+    console.error('[dispatch] edit timeline entry error', err);
+    return c.json({ error: 'Failed to update timeline entry', code: 'TIMELINE_UPDATE_ERROR' }, 500);
+  }
+});
+
+// DELETE /api/dispatch/calls/:id/timeline/:entryId — delete a timeline entry.
+// Ported from legacy callLifecycle.ts:526. Client (handleDeleteTimeline) only
+// checks for a non-error response, so { success: true } is the contract.
+callTimeline.delete('/:id/timeline/:entryId', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    const entryId = parseInt(c.req.param('entryId') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+    if (!Number.isFinite(entryId) || entryId <= 0) return c.json({ error: 'Invalid timeline entry ID', code: 'INVALID_TIMELINE_ENTRY_ID' }, 400);
+
+    const entry = await queryFirst<{ id: number }>(db,
+      'SELECT id FROM audit_log WHERE id = ? AND entity_type = ? AND entity_id = ?', entryId, 'call', id);
+    if (!entry) return c.json({ error: 'Timeline entry not found', code: 'TIMELINE_ENTRY_NOT_FOUND' }, 404);
+
+    await execute(db, 'DELETE FROM audit_log WHERE id = ?', entryId);
+    return c.json({ success: true });
+  } catch (err) {
+    console.error('[dispatch] delete timeline entry error', err);
+    return c.json({ error: 'Failed to delete timeline entry', code: 'TIMELINE_DELETE_ERROR' }, 500);
+  }
+});
+
+// =====================================================================
+// DEV-11: Call action cluster — the call-lifecycle endpoints the lean API
+// never ported from the legacy Express server. All mount under
+// /api/dispatch/calls and operate on a single call by :id.
+//
+//   POST   /:id/revert-status      — step status back one stage
+//   POST   /:id/le-notification    — record law-enforcement notification
+//   POST   /:id/transfer           — move a call between two units
+//   POST   /:id/broadcast-note     — add a note + WS-broadcast to all units
+//   PUT    /:id/notes/:noteId      — edit a note in the JSON notes array
+//   DELETE /:id/notes/:noteId      — delete a note from the JSON notes array
+//   POST   /:id/generate-incident  — spawn a draft incident from a cleared call
+//
+// Ported from legacy/server-vps/src/routes/dispatch/{callActions,callLifecycle}.ts.
+// D1 has no multi-statement transactions, so writes run sequentially (no
+// rollback) — acceptable here: each handler's writes are independent and a
+// partial failure surfaces as a 500 the client retries. activity_log → audit_log,
+// req.user!.userId → c.get('userId'), req.ip → CF-Connecting-IP header.
+// Every handler returns the updated base call row (mapDbCall-compatible) so the
+// client can splice it into state without a refetch — see the client hooks
+// useDispatchCallActions / useDispatchNotesActions / useDispatchMultiUnitActions.
+// =====================================================================
+export const callActions = new Hono<Env>();
+
+// POST /:id/revert-status — step the call back one stage in the status chain.
+// Re-dispatches assigned units only when reverting out of cleared/closed, and
+// only if the unit isn't already committed to another call (guarded UPDATE).
+callActions.post('/:id/revert-status', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<{ id: number; status: string; call_number: string; assigned_unit_ids: string | null }>(
+      db, 'SELECT id, status, call_number, assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    const statusChain: Record<string, string> = {
+      dispatched: 'pending', enroute: 'dispatched', onscene: 'enroute',
+      cleared: 'onscene', closed: 'cleared',
+    };
+    const previousStatus = statusChain[call.status];
+    if (!previousStatus) return c.json({ error: `Cannot revert from status "${call.status}"`, code: 'CANNOT_REVERT_STATUS' }, 400);
+
+    const timestampField: Record<string, string> = {
+      dispatched: 'dispatched_at', enroute: 'enroute_at', onscene: 'onscene_at',
+      cleared: 'cleared_at', closed: 'closed_at',
+    };
+    const tsField = timestampField[call.status];
+    const now = localNow();
+
+    await execute(db,
+      `UPDATE calls_for_service SET status = ?${tsField ? `, ${tsField} = NULL` : ''}, updated_at = ? WHERE id = ?`,
+      previousStatus, now, id);
+
+    // Re-dispatch units when stepping out of cleared/closed.
+    const revertedUnitIds: number[] = [];
+    if (call.status === 'cleared' || call.status === 'closed') {
+      const unitIds = safeJson<number[]>(call.assigned_unit_ids, []);
+      const prevUnitStatus = previousStatus === 'onscene' ? 'onscene' : previousStatus === 'enroute' ? 'enroute' : 'dispatched';
+      for (const unitId of unitIds) {
+        const res = await execute(db,
+          `UPDATE units SET status = ?, current_call_id = ?, last_status_change = ?
+           WHERE id = ? AND (current_call_id IS NULL OR current_call_id = ?)`,
+          prevUnitStatus, id, now, unitId, id);
+        if (((res as any)?.meta?.changes ?? 0) > 0) revertedUnitIds.push(unitId);
+      }
+    }
+
+    if (userId != null) {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+         VALUES (?, 'status_reverted', 'call', ?, ?, ?)`,
+        userId, id, `${call.call_number} status reverted from ${call.status} to ${previousStatus}`,
+        c.req.header('CF-Connecting-IP') || 'unknown');
+    }
+
+    const updated = await fetchCallRow(db, id);
+    broadcastAll('dispatch_update', { action: 'call_status_changed', call: updated, status: previousStatus });
+    for (const unitId of revertedUnitIds) {
+      const unit = await queryFirst<Record<string, unknown>>(db,
+        `SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON usr.id = u.officer_id WHERE u.id = ?`, unitId);
+      if (unit) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit });
+    }
+    return c.json(updated);
+  } catch (err) {
+    console.error('[dispatch] revert-status error', err);
+    return c.json({ error: 'Failed to revert status', code: 'REVERT_STATUS_ERROR' }, 500);
+  }
+});
+
+// POST /:id/le-notification — record that an outside law-enforcement agency was
+// notified. Client sends { agency }; case_number/notes are optional extras.
+callActions.post('/:id/le-notification', requireRole(...READ_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<{ id: number }>(db, 'SELECT id FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ agency?: string; case_number?: string }>().catch(() => ({} as { agency?: string; case_number?: string }));
+    const { agency, case_number } = body;
+    if (agency != null && (typeof agency !== 'string' || agency.length > 200)) {
+      return c.json({ error: 'Agency must be 200 characters or less', code: 'INVALID_AGENCY' }, 400);
+    }
+    if (case_number != null && (typeof case_number !== 'string' || case_number.length > 100)) {
+      return c.json({ error: 'Case number must be 100 characters or less', code: 'INVALID_CASE_NUMBER' }, 400);
+    }
+
+    const now = localNow();
+    const agencyName = agency || 'Local PD';
+    await execute(db,
+      `UPDATE calls_for_service
+       SET le_notified = 1, le_agency = ?, le_case_number = ?, updated_at = ?
+       WHERE id = ?`,
+      agencyName, case_number || null, now, id);
+
+    if (userId != null) {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address, created_at)
+         VALUES (?, 'le_notification', 'call', ?, ?, ?, ?)`,
+        userId, id, `LE notified: ${agencyName}${case_number ? ` (Case #${case_number})` : ''}`,
+        c.req.header('CF-Connecting-IP') || 'unknown', now);
+    }
+
+    const updated = await fetchCallRow(db, id);
+    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    return c.json(updated);
+  } catch (err) {
+    console.error('[dispatch] le-notification error', err);
+    return c.json({ error: 'Failed to record LE notification', code: 'LE_NOTIFICATION_ERROR' }, 500);
+  }
+});
+
+// POST /:id/transfer — move a call from one unit to another. Frees the source
+// unit, dispatches the target, and rewrites assigned_unit_ids.
+callActions.post('/:id/transfer', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<{ id: number; call_number: string; assigned_unit_ids: string | null }>(
+      db, 'SELECT id, call_number, assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ from_unit_id?: number | string; to_unit_id?: number | string }>().catch(() => ({} as { from_unit_id?: number | string; to_unit_id?: number | string }));
+    const fromUnitId = Number(body.from_unit_id);
+    const toUnitId = Number(body.to_unit_id);
+    if (!Number.isFinite(fromUnitId) || !Number.isFinite(toUnitId) || fromUnitId <= 0 || toUnitId <= 0) {
+      return c.json({ error: 'from_unit_id and to_unit_id are required', code: 'TRANSFER_UNITS_REQUIRED' }, 400);
+    }
+
+    const fromUnit = await queryFirst<{ id: number; call_sign: string }>(db, 'SELECT id, call_sign FROM units WHERE id = ?', fromUnitId);
+    const toUnit = await queryFirst<{ id: number; call_sign: string }>(db, 'SELECT id, call_sign FROM units WHERE id = ?', toUnitId);
+    if (!fromUnit || !toUnit) return c.json({ error: 'Unit not found', code: 'UNIT_NOT_FOUND' }, 404);
+
+    let units = safeJson<number[]>(call.assigned_unit_ids, []).filter((u) => u !== fromUnitId);
+    if (!units.includes(toUnitId)) units.push(toUnitId);
+
+    const now = localNow();
+    await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ?, updated_at = ? WHERE id = ?', JSON.stringify(units), now, id);
+    await execute(db, `UPDATE units SET status = 'available', current_call_id = NULL, last_status_change = ? WHERE id = ?`, now, fromUnitId);
+    await execute(db, `UPDATE units SET status = 'dispatched', current_call_id = ?, last_status_change = ? WHERE id = ?`, id, now, toUnitId);
+
+    if (userId != null) {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+         VALUES (?, 'call_transferred', 'call', ?, ?, ?)`,
+        userId, id, `Transferred ${call.call_number} from ${fromUnit.call_sign} to ${toUnit.call_sign}`,
+        c.req.header('CF-Connecting-IP') || 'unknown');
+    }
+
+    const updated = await fetchCallRow(db, id);
+    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    for (const unitId of [fromUnitId, toUnitId]) {
+      const unit = await queryFirst<Record<string, unknown>>(db,
+        `SELECT u.*, usr.full_name AS officer_name FROM units u LEFT JOIN users usr ON usr.id = u.officer_id WHERE u.id = ?`, unitId);
+      if (unit) broadcastAll('dispatch_update', { action: 'unit_status_changed', unit });
+    }
+    return c.json(updated);
+  } catch (err) {
+    console.error('[dispatch] transfer error', err);
+    return c.json({ error: 'Failed to transfer call', code: 'TRANSFER_CALL_ERROR' }, 500);
+  }
+});
+
+// POST /:id/broadcast-note — append a flagged note and WS-broadcast it so every
+// dispatcher/MDT sees it live. Client sends { message }.
+callActions.post('/:id/broadcast-note', requireRole(...WRITE_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<{ id: number; call_number: string; notes: string | null; assigned_unit_ids: string | null }>(
+      db, 'SELECT id, call_number, notes, assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ message?: string }>().catch(() => ({} as { message?: string }));
+    const message = typeof body.message === 'string' ? body.message.trim() : '';
+    if (message.length < 2 || message.length > 2000) {
+      return c.json({ error: 'message is required (2-2000 chars)', code: 'MESSAGE_INVALID' }, 400);
+    }
+
+    const now = localNow();
+    const notes = safeJson<any[]>(call.notes, []);
+    notes.push({ id: `bn-${Date.now()}`, author: 'DISPATCH BROADCAST', text: message, timestamp: now, broadcast: true });
+    await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
+
+    const updated = await fetchCallRow(db, id);
+    const unitIds = safeJson<number[]>(call.assigned_unit_ids, []);
+    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    broadcastAll('dispatch_update', {
+      action: 'dispatch_broadcast', call_id: id, call_number: call.call_number, message, unit_ids: unitIds,
+    });
+    return c.json(updated);
+  } catch (err) {
+    console.error('[dispatch] broadcast-note error', err);
+    return c.json({ error: 'Failed to broadcast note', code: 'BROADCAST_NOTE_ERROR' }, 500);
+  }
+});
+
+// PUT /:id/notes/:noteId — edit a note inside the JSON notes array (admin/manager).
+callActions.put('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const user = c.get('user') as { username?: string } | undefined;
+    const id = parseInt(c.req.param('id') || '', 10);
+    const noteId = c.req.param('noteId');
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<{ id: number; notes: string | null }>(db, 'SELECT id, notes FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    const body = await c.req.json<{ text?: string }>().catch(() => ({} as { text?: string }));
+    const text = typeof body.text === 'string' ? body.text.trim() : '';
+    if (text.length < 1) return c.json({ error: 'text is required', code: 'TEXT_REQUIRED' }, 400);
+
+    const notes = safeJson<any[]>(call.notes, []);
+    const idx = notes.findIndex((n) => String(n.id) === String(noteId));
+    if (idx === -1) return c.json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }, 404);
+
+    const now = localNow();
+    notes[idx] = { ...notes[idx], text, edited_at: now, edited_by: user?.username || 'admin' };
+    await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
+
+    const updated = await fetchCallRow(db, id);
+    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    return c.json(updated);
+  } catch (err) {
+    console.error('[dispatch] edit note error', err);
+    return c.json({ error: 'Failed to edit note', code: 'EDIT_NOTE_ERROR' }, 500);
+  }
+});
+
+// DELETE /:id/notes/:noteId — remove a note from the JSON notes array (admin/manager).
+callActions.delete('/:id/notes/:noteId', requireRole(...ADMIN_ROLES), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const id = parseInt(c.req.param('id') || '', 10);
+    const noteId = c.req.param('noteId');
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<{ id: number; notes: string | null }>(db, 'SELECT id, notes FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    const notes = safeJson<any[]>(call.notes, []);
+    const idx = notes.findIndex((n) => String(n.id) === String(noteId));
+    if (idx === -1) return c.json({ error: 'Note not found', code: 'NOTE_NOT_FOUND' }, 404);
+
+    notes.splice(idx, 1);
+    const now = localNow();
+    await execute(db, 'UPDATE calls_for_service SET notes = ?, updated_at = ? WHERE id = ?', JSON.stringify(notes), now, id);
+
+    const updated = await fetchCallRow(db, id);
+    broadcastAll('dispatch_update', { action: 'call_updated', call: updated });
+    return c.json(updated);
+  } catch (err) {
+    console.error('[dispatch] delete note error', err);
+    return c.json({ error: 'Failed to delete note', code: 'DELETE_NOTE_ERROR' }, 500);
+  }
+});
+
+// POST /:id/generate-incident — spawn a draft incident from a cleared/closed call.
+// Returns 409 if one already exists (client handles this). The lean incidents
+// table has no tactical-flag / PSO / district columns, so all of that call
+// detail is packed into the narrative instead of structured columns.
+callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supervisor', 'officer'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    if (userId == null) return c.json({ error: 'Unauthenticated', code: 'NO_AUTH' }, 401);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    if (!['cleared', 'closed'].includes(call.status)) {
+      return c.json({ error: 'Can only generate incident reports from cleared or closed calls', code: 'CALL_NOT_CLEARED' }, 400);
+    }
+
+    const existing = await queryFirst<{ id: number; incident_number: string }>(db, 'SELECT id, incident_number FROM incidents WHERE call_id = ?', id);
+    if (existing) {
+      return c.json({ error: 'An incident report already exists for this call', incident_id: existing.id, incident_number: existing.incident_number }, 409);
+    }
+
+    // Incident number: YY-RMP-NNNNN (matches src/routes/incidents.ts convention).
+    const year = new Date().getFullYear().toString().slice(-2);
+    const [{ max }] = await query<{ max: string | null }>(db,
+      'SELECT MAX(incident_number) AS max FROM incidents WHERE incident_number LIKE ?', `${year}-RMP-%`);
+    const seq = max ? String(parseInt(max.split('-RMP-')[1] || '0', 10) + 1).padStart(5, '0') : '00001';
+    const incidentNumber = `${year}-RMP-${seq}`;
+
+    // Build narrative template from call data (carries detail the lean incidents
+    // schema can't hold as columns).
+    const flagLabels: Array<[string, string]> = [
+      ['alcohol_involved', 'Alcohol'], ['drugs_involved', 'Drugs'], ['domestic_violence', 'Domestic Violence'],
+      ['injuries_reported', 'Injuries'], ['mental_health_crisis', 'Mental Health Crisis'],
+      ['juvenile_involved', 'Juvenile'], ['felony_in_progress', 'Felony In Progress'],
+      ['officer_safety_caution', 'Officer Safety Caution'], ['k9_requested', 'K9'], ['ems_requested', 'EMS'],
+    ];
+    const activeFlags = flagLabels.filter(([k]) => call[k]).map(([, label]) => label);
+
+    const np: string[] = [];
+    np.push(`Incident generated from dispatch call ${call.call_number}.`);
+    np.push(`\nCall Type: ${(call.incident_type || '').replace(/_/g, ' ').toUpperCase()}`);
+    np.push(`Priority: ${call.priority}`);
+    np.push(`Location: ${call.location_address || 'Unknown'}`);
+    if (call.caller_name) np.push(`Caller: ${call.caller_name}${call.caller_phone ? ` (${call.caller_phone})` : ''}`);
+    if (call.description) np.push(`\nCall Description: ${call.description}`);
+    if (call.disposition) np.push(`Disposition: ${call.disposition}`);
+    if (activeFlags.length) np.push(`Flags: ${activeFlags.join(', ')}`);
+    np.push(`\nCall Timeline:`);
+    if (call.created_at) np.push(`  Created: ${call.created_at}`);
+    if (call.dispatched_at) np.push(`  Dispatched: ${call.dispatched_at}`);
+    if (call.enroute_at) np.push(`  En Route: ${call.enroute_at}`);
+    if (call.onscene_at) np.push(`  On Scene: ${call.onscene_at}`);
+    if (call.cleared_at) np.push(`  Cleared: ${call.cleared_at}`);
+    np.push(`\n--- Officer narrative below ---\n`);
+    const narrative = np.join('\n');
+
+    const result = await execute(db,
+      `INSERT INTO incidents (incident_number, call_id, incident_type, priority, status, location_address, latitude, longitude, narrative, officer_id)
+       VALUES (?, ?, ?, ?, 'draft', ?, ?, ?, ?, ?)`,
+      incidentNumber, id, call.incident_type, call.priority || 'P3',
+      call.location_address || null, call.latitude ?? null, call.longitude ?? null, narrative, userId);
+    const incidentId = result.meta.last_row_id;
+
+    await execute(db,
+      `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+       VALUES (?, 'incident_created', 'incident', ?, ?, ?)`,
+      userId, incidentId, `Generated ${incidentNumber} from call ${call.call_number}`,
+      c.req.header('CF-Connecting-IP') || 'unknown');
+
+    const incident = await queryFirst<Record<string, unknown>>(db, `
+      SELECT i.*, o.full_name AS officer_name, c.call_number
+      FROM incidents i
+      LEFT JOIN users o ON o.id = i.officer_id
+      LEFT JOIN calls_for_service c ON c.id = i.call_id
+      WHERE i.id = ?`, incidentId);
+    return c.json(incident ?? { id: incidentId, incident_number: incidentNumber }, 201);
+  } catch (err) {
+    console.error('[dispatch] generate-incident error', err);
+    return c.json({ error: 'Failed to generate incident', code: 'GENERATE_INCIDENT_ERROR' }, 500);
   }
 });
