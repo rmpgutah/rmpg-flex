@@ -19,40 +19,22 @@ export type TimeZoneMode = 'mountain' | 'device';
 
 export const TZ_MODE_STORAGE_KEY = 'rmpg_tz_mode';
 export const MOUNTAIN_TIME_ZONE = 'America/Denver';
-const DEFAULT_MODE: TimeZoneMode = 'mountain';
 
-let cachedMode: TimeZoneMode | null = null;
-
-function readMode(): TimeZoneMode {
-  try {
-    return localStorage.getItem(TZ_MODE_STORAGE_KEY) === 'device' ? 'device' : DEFAULT_MODE;
-  } catch {
-    return DEFAULT_MODE;
-  }
-}
-
+// MANDATORY MOUNTAIN TIME. RMPG is a Utah operation and every displayed
+// date/time MUST render in Mountain Time, always — it is NOT user-configurable
+// and does NOT follow the device clock. (A 'device' mode was briefly added and
+// then removed per requirement: "MT MUST BE MT".) These functions are kept so
+// existing imports keep working, but the mode is hard-locked to 'mountain'.
 export function getTimeZoneMode(): TimeZoneMode {
-  if (cachedMode === null) cachedMode = readMode();
-  return cachedMode;
+  return 'mountain';
 }
 
-export function setTimeZoneMode(mode: TimeZoneMode): void {
-  cachedMode = mode === 'device' ? 'device' : 'mountain';
-  try { localStorage.setItem(TZ_MODE_STORAGE_KEY, cachedMode); } catch { /* storage full / unavailable */ }
+// No-op: the display zone is fixed to Mountain Time and cannot be changed.
+export function setTimeZoneMode(_mode: TimeZoneMode): void {
+  /* intentionally does nothing — Mountain Time is mandatory */
 }
 
-/**
- * The IANA zone to format display times in, or `undefined` to mean "use the
- * device's local zone". Passing `undefined` as a toLocale / Intl `timeZone`
- * option is valid and yields native device-local behavior.
- */
+/** The IANA zone to format display times in — always America/Denver (DST-aware). */
 export function displayTimeZone(): string | undefined {
-  return getTimeZoneMode() === 'device' ? undefined : MOUNTAIN_TIME_ZONE;
-}
-
-// Keep the cache fresh if the preference changes in another tab.
-if (typeof window !== 'undefined') {
-  window.addEventListener('storage', (e) => {
-    if (e.key === TZ_MODE_STORAGE_KEY) cachedMode = readMode();
-  });
+  return MOUNTAIN_TIME_ZONE;
 }
