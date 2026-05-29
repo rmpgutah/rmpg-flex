@@ -2253,6 +2253,36 @@ export default function DispatchPage() {
                   </div>
                 )}
 
+                {/* Premise intel — joined from the linked property. hazard_notes
+                    renders as a red officer-safety banner; post_orders/gate_code
+                    as standard premise instructions. Only shown when present, so
+                    non-property calls don't get an empty block. */}
+                {(selectedCall.hazard_notes || selectedCall.post_orders || selectedCall.gate_code) && (
+                  <div className="panel-inset p-3 space-y-2">
+                    <div className="field-label mb-1">Premise / Officer Safety</div>
+                    {selectedCall.hazard_notes && (
+                      <div className="flex items-start gap-1.5 px-2 py-1.5 rounded-sm border border-red-700/50 bg-red-950/30">
+                        <AlertTriangle className="w-3.5 h-3.5 text-red-400 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <div className="text-[9px] font-bold uppercase text-red-400 tracking-wide">Hazard</div>
+                          <div className="text-xs text-red-200 whitespace-pre-wrap">{selectedCall.hazard_notes}</div>
+                        </div>
+                      </div>
+                    )}
+                    {selectedCall.post_orders && (
+                      <div>
+                        <div className="text-[9px] font-bold uppercase text-rmpg-400 tracking-wide mb-0.5">Post Orders</div>
+                        <div className="text-xs text-rmpg-200 whitespace-pre-wrap">{selectedCall.post_orders}</div>
+                      </div>
+                    )}
+                    {selectedCall.gate_code && (
+                      <div className="text-xs text-rmpg-300">
+                        <span className="text-rmpg-500">Gate code:</span> <span className="font-mono text-brand-400">{selectedCall.gate_code}</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* Timestamps — editable by admin/manager */}
                 <div className="panel-inset p-3">
                   <div className="flex items-center justify-between mb-2">

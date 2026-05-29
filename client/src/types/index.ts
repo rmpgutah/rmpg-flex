@@ -261,6 +261,11 @@ export interface CallForService {
   longitude?: number | null;
   property_id?: string;
   property_name?: string;
+  // Premise intel joined from the linked property (call detail GET).
+  property_address?: string;
+  gate_code?: string;
+  post_orders?: string;
+  hazard_notes?: string;
   client_id?: string;
   client_name?: string;
   description: string;
