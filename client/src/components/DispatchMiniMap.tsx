@@ -144,10 +144,15 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       markersRef.current.push(marker);
     }
 
-    // Assigned unit markers
+    // Assigned unit markers — match by the call's assigned_units OR the unit's
+    // own current_call_id. The calls LIST endpoint (and the WebSocket payload)
+    // omit assigned_units, so the `selectedCall` passed in usually has none;
+    // current_call_id on the unit is the reliable unit→call link.
     const assignedIds = assignedUnitIdSet(call);
     const assignedUnits = units.filter(u =>
-      assignedIds.has(String(u.id)) && u.latitude != null && u.longitude != null
+      (assignedIds.has(String(u.id)) ||
+        (u.current_call_id != null && String(u.current_call_id) === String(call?.id))) &&
+      u.latitude != null && u.longitude != null
     );
 
     for (const unit of assignedUnits) {
@@ -176,7 +181,9 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
 
     const assignedIds = assignedUnitIdSet(call);
     const assignedWithGps = units.filter(u =>
-      assignedIds.has(String(u.id)) && u.latitude != null && u.longitude != null
+      (assignedIds.has(String(u.id)) ||
+        (u.current_call_id != null && String(u.current_call_id) === String(call.id))) &&
+      u.latitude != null && u.longitude != null
     );
 
     if (assignedWithGps.length === 1) {
