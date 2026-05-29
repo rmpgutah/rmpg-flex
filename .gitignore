@@ -11,3 +11,7 @@ client/dist/
 
 # Generated PDFs that shouldn't be tracked in source
 client/RMPG-Dispatch-Guide-*.pdf
+
+# Per-session scratch from Utah statute scraping work (XML downloads,
+# generated SQL, parser scripts). Lives in worktrees only; never ship.
+.firecrawl/
