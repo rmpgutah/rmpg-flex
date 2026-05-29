@@ -6,6 +6,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
+import { geocodeAddress } from '../geocode';
 
 const calls = new Hono<Env>();
 
@@ -210,6 +211,22 @@ calls.post('/', async (c) => {
     );
     if (!dispatcherExists) {
       return c.json({ error: 'Your user account no longer exists; please re-login' }, 401);
+    }
+
+    // Always populate map coordinates for the CFS location. If the caller
+    // didn't supply lat/lng (created via the API, the CAD command line, or any
+    // path that skipped the address-autocomplete pick), forward-geocode the
+    // address server-side so EVERY call plots on the dispatch map and
+    // closest-unit ranking works. Best-effort — a geocode miss must never block
+    // call creation; the call just keeps null coords as before.
+    const hasLat = body.latitude != null && body.latitude !== '';
+    const hasLng = body.longitude != null && body.longitude !== '';
+    if ((!hasLat || !hasLng) && typeof body.location_address === 'string' && body.location_address.trim().length >= 3) {
+      const coords = await geocodeAddress(c.env, body.location_address);
+      if (coords) {
+        body.latitude = coords.lat;
+        body.longitude = coords.lng;
+      }
     }
 
     const cols: string[] = [];

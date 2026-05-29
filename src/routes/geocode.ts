@@ -39,6 +39,44 @@ const NOMINATIM_BASE = 'https://nominatim.openstreetmap.org/search';
 const USER_AGENT = 'RMPG-Flex-Dispatch/1.0 (https://rmpgutah.us)';
 const CACHE_TTL_SECONDS = 24 * 3600;
 
+// Forward-geocode a single address to coordinates (server-side), reusing the
+// same Nominatim source + Utah viewbox bias + KV cache as /geocode/search.
+// Returns null on any miss/error — callers MUST treat geocoding as best-effort
+// and never block their write on it. Used by the dispatch call-create flow so
+// every CFS gets map coordinates even when the client didn't supply lat/lng
+// (created via API, the CAD command line, or a path that skipped autocomplete).
+export async function geocodeAddress(
+  env: { KV: KVNamespace },
+  address: string,
+): Promise<{ lat: number; lng: number } | null> {
+  const q = (address || '').trim();
+  if (q.length < 3) return null;
+  const cacheKey = `geocode:fwd:${q.toLowerCase()}`;
+  try {
+    const cached = (await env.KV.get(cacheKey, 'json').catch(() => null)) as { lat: number; lng: number } | null;
+    if (cached && Number.isFinite(cached.lat) && Number.isFinite(cached.lng)) return cached;
+    const params = new URLSearchParams({
+      q, format: 'json', addressdetails: '0', limit: '1', countrycodes: 'us',
+      viewbox: '-114.052,42.001,-109.041,36.998', bounded: '1',
+    });
+    const resp = await fetch(`${NOMINATIM_BASE}?${params}`, {
+      headers: { 'User-Agent': USER_AGENT, 'Accept-Language': 'en' },
+    });
+    if (!resp.ok) return null;
+    const raw = await resp.json<Array<{ lat?: string; lon?: string }>>();
+    const first = raw?.[0];
+    if (!first?.lat || !first?.lon) return null;
+    const lat = parseFloat(first.lat);
+    const lng = parseFloat(first.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+    const coords = { lat, lng };
+    await env.KV.put(cacheKey, JSON.stringify(coords), { expirationTtl: CACHE_TTL_SECONDS }).catch(() => {});
+    return coords;
+  } catch {
+    return null;
+  }
+}
+
 // GET /api/geocode/search?q=…&limit=…
 // Mounted at /api so the inner paths below match what the client
 // expects: /api/geocode/search and /api/integrations/mapbox/client-token.
