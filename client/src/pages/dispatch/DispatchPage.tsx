@@ -47,7 +47,7 @@ import { useIsMobile } from '../../hooks/useIsMobile';
 import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import MobileCardList from '../../components/mobile/MobileCardList';
 import MobileDetailView from '../../components/mobile/MobileDetailView';
-import { mapDbCall, mapDbUnit } from './utils/dispatchMappers';
+import { mapDbCall, mapDbUnit, looksLikeCallRow } from './utils/dispatchMappers';
 import { applyCallPdfAutofill } from './utils/callPdfAutofill';
 import {
   formatTime, formatElapsed, formatActivityDetails, type FilterTab,
@@ -1484,9 +1484,8 @@ export default function DispatchPage() {
       // real one from the UI ("editing time destructs the call"). When the
       // response isn't a full row, patch just the edited field locally —
       // the DB write already succeeded (or the catch below fires).
-      const looksLikeFullRow = result && (result.incident_type || result.call_number);
       const apply = (c: typeof selectedCall) =>
-        looksLikeFullRow ? mapDbCall(result) : ({ ...c, [field]: value || null } as typeof c);
+        looksLikeCallRow(result) ? mapDbCall(result) : ({ ...c, [field]: value || null } as typeof c);
       setCalls(prev => prev.map(c => (c.id === callId ? apply(c) : c)));
       setSelectedCall(prev => (prev && prev.id === callId ? apply(prev) : prev));
       addToast(`Timeline updated: ${field.replace(/_at$/, '').replace(/_/g, ' ')}`, 'success');

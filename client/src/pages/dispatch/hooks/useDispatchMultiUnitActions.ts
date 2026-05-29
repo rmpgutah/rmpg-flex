@@ -21,7 +21,7 @@ import { useCallback, useState } from 'react';
 import type { CallForService, Unit } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
-import { mapDbCall, mapDbUnit } from '../utils/dispatchMappers';
+import { mapDbCall, mapDbUnit, looksLikeCallRow } from '../utils/dispatchMappers';
 
 export interface UseDispatchMultiUnitActionsArgs {
   setCalls: React.Dispatch<React.SetStateAction<CallForService[]>>;
@@ -62,9 +62,13 @@ export function useDispatchMultiUnitActions(args: UseDispatchMultiUnitActionsArg
   const handleAutoAssign = useCallback(async (callId: string) => {
     try {
       const result = await apiFetch<any>(`/dispatch/calls/${callId}/auto-assign`, { method: 'POST' });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // DEFENSIVE: only replace the call if the response is a full row; never let
+      // a partial/error body blank the dispatch (refreshUnits + live-sync reconcile).
+      if (looksLikeCallRow(result)) {
+        const updatedCall = mapDbCall(result);
+        setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
+        setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      }
       await refreshUnits();
       addToast(`Auto-assigned ${result.auto_assigned_unit} (${result.distance_miles} mi)`, 'success');
     } catch (err: any) {
@@ -79,9 +83,13 @@ export function useDispatchMultiUnitActions(args: UseDispatchMultiUnitActionsArg
         method: 'POST',
         body: JSON.stringify({ unit_ids: unitIds.map(Number) }),
       });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // DEFENSIVE: fall back to merging the dispatched ids locally rather than
+      // letting a non-row response blank the call.
+      const apply = (c: CallForService): CallForService => looksLikeCallRow(result)
+        ? mapDbCall(result)
+        : { ...c, assigned_units: Array.from(new Set([...(c.assigned_units || []), ...unitIds.map(String)])) };
+      setCalls((prev) => prev.map((c) => c.id === callId ? apply(c) : c));
+      setSelectedCall((prev) => prev?.id === callId ? apply(prev) : prev);
       await refreshUnits();
       setMultiSelectUnits([]);
       addToast(`${unitIds.length} units dispatched`, 'success');
@@ -96,9 +104,13 @@ export function useDispatchMultiUnitActions(args: UseDispatchMultiUnitActionsArg
         method: 'POST',
         body: JSON.stringify({ from_unit_id: fromUnitId, to_unit_id: toUnitId }),
       });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // DEFENSIVE: only replace the call if the response is a full row; never let
+      // a partial/error body blank the dispatch (refreshUnits + live-sync reconcile).
+      if (looksLikeCallRow(result)) {
+        const updatedCall = mapDbCall(result);
+        setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
+        setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      }
       await refreshUnits();
       addToast('Call transferred', 'success');
     } catch (err: any) {

@@ -19,7 +19,7 @@ import { useCallback, useState } from 'react';
 import type { CallForService, Unit } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
-import { mapDbCall, mapDbUnit } from '../utils/dispatchMappers';
+import { mapDbCall, mapDbUnit, looksLikeCallRow } from '../utils/dispatchMappers';
 import { announceLocalAction } from '../../../utils/voiceAlerts';
 
 export interface UseDispatchUnitActionsArgs {
@@ -122,9 +122,15 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
         method: 'POST',
         body: JSON.stringify({ unit_id: unitId }),
       });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
+      // DEFENSIVE: only adopt the server response if it's a full call row.
+      // If a backend regression returns a bare {message}/{error} body, mapDbCall
+      // would emit a blank-id 'Other' call that wipes the dispatch panel. Fall
+      // back to patching assigned_units locally from the unit we just assigned.
+      const apply = (c: CallForService): CallForService => looksLikeCallRow(result)
+        ? mapDbCall(result)
+        : { ...c, assigned_units: Array.from(new Set([...(c.assigned_units || []), String(unitId)])) };
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? apply(c) : c));
+      setSelectedCall((prev) => prev ? apply(prev) : prev);
       onAssignSuccess?.();
       const assignedUnit = units.find((u) => String(u.id) === String(unitId));
       if (assignedUnit) {
@@ -143,9 +149,12 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
         method: 'POST',
         body: JSON.stringify({ unit_id: unitId }),
       });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === callId ? updatedCall : c));
-      setSelectedCall((prev) => prev?.id === callId ? updatedCall : prev);
+      // DEFENSIVE: see handleAssignUnit — never let a non-row response blank the call.
+      const apply = (c: CallForService): CallForService => looksLikeCallRow(result)
+        ? mapDbCall(result)
+        : { ...c, assigned_units: Array.from(new Set([...(c.assigned_units || []), String(unitId)])) };
+      setCalls((prev) => prev.map((c) => c.id === callId ? apply(c) : c));
+      setSelectedCall((prev) => prev?.id === callId ? apply(prev) : prev);
       await refreshUnits();
       addToast(`Unit assigned to call`, 'success');
     } catch (err: any) {
@@ -160,9 +169,13 @@ export function useDispatchUnitActions(args: UseDispatchUnitActionsArgs) {
         method: 'POST',
         body: JSON.stringify({ unit_id: unitId }),
       });
-      const updatedCall = mapDbCall(result);
-      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? updatedCall : c));
-      setSelectedCall(updatedCall);
+      // DEFENSIVE: see handleAssignUnit — fall back to removing the unit locally
+      // rather than letting a non-row response blank the call.
+      const apply = (c: CallForService): CallForService => looksLikeCallRow(result)
+        ? mapDbCall(result)
+        : { ...c, assigned_units: (c.assigned_units || []).filter((u) => String(u) !== String(unitId)) };
+      setCalls((prev) => prev.map((c) => c.id === selectedCall.id ? apply(c) : c));
+      setSelectedCall((prev) => prev ? apply(prev) : prev);
       await refreshUnits();
     } catch (err: any) {
       console.error('Failed to unassign unit:', err);
