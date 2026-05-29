@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../types';
 import { getDb, query, queryFirst, execute } from '../utils/db';
+import { normalizeDob } from '../utils/normalizeDob';
 
 const records = new Hono<Env>();
 
@@ -27,9 +28,13 @@ records.post('/persons', async (c) => {
     const db = getDb(c.env);
     const body = await c.req.json<Record<string, unknown>>();
     if (!body.first_name || !body.last_name) return c.json({ error: 'first_name and last_name required' }, 400);
+    // Normalize DOB to ISO at the write boundary so age-matching + display
+    // get a consistent format. normalizeDob returns null for unparseable
+    // input (honest) rather than a guessed-wrong date.
+    const dob = normalizeDob(typeof body.dob === 'string' ? body.dob : null);
     const result = await execute(db,
       'INSERT INTO persons (first_name, last_name, dob, gender, race, height, weight, hair_color, eye_color, address, phone, email, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-      body.first_name, body.last_name, body.dob || null, body.gender || null, body.race || null,
+      body.first_name, body.last_name, dob, body.gender || null, body.race || null,
       body.height || null, body.weight || null, body.hair_color || null, body.eye_color || null,
       body.address || null, body.phone || null, body.email || null, body.notes || null
     );

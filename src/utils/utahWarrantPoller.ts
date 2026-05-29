@@ -40,13 +40,22 @@ const MAX_PERSONS_PER_RUN = 50;
 interface PersonRow {
   id: number;
   first_name: string;
+  middle_name: string | null;
   last_name: string;
   dob: string | null;
 }
 
+/**
+ * Upstream person candidate. Verified live 2026-05-24 against
+ * POST warrants.utah.gov/api/v1/persons — the real shape includes
+ * homeAddress.city and age (as a STRING, e.g. "64"), neither of which
+ * the prior PersonStub declared, so both were silently discarded.
+ */
 interface PersonStub {
   id: string;
   name: { first: string; middle?: string; last: string };
+  homeAddress?: { city?: string };
+  age?: string; // API returns a string, NOT a number
 }
 
 /** Full upstream warrant shape from /persons/:id/warrants. */
@@ -83,6 +92,60 @@ export interface WatchRunResult {
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+
+/** Whole-years age from an ISO-ish dob string, or null if unparseable. */
+function ageFromDob(dob: string | null): number | null {
+  if (!dob) return null;
+  const born = new Date(dob);
+  if (isNaN(born.getTime())) return null;
+  const now = new Date();
+  let age = now.getFullYear() - born.getFullYear();
+  const m = now.getMonth() - born.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < born.getDate())) age--;
+  return age >= 0 && age < 130 ? age : null;
+}
+
+// How many years the local DOB-derived age may differ from the upstream
+// `age` field and still count as the same person. ±1 absorbs the
+// birthday-timing gap between when the state computed `age` and now.
+const AGE_MATCH_TOLERANCE = 1;
+
+/**
+ * Decide whether an upstream candidate is plausibly the SAME human as the
+ * local person — the guard against attributing a namesake's warrant to the
+ * wrong local file. "John Smith" returns 8 distinct people; without this
+ * filter every one of their warrants lands on a single local person_id.
+ *
+ * Confident path: local DOB present → derive age, require the upstream
+ * `age` to be within AGE_MATCH_TOLERANCE years. Middle-initial agreement
+ * (when both sides have one) further confirms.
+ *
+ * Ambiguous path: local person has NO dob, so age can't disambiguate.
+ * That branch is a deliberate policy decision — see TODO below.
+ */
+function isLikelyMatch(local: PersonRow, candidate: PersonStub): boolean {
+  const localAge = ageFromDob(local.dob);
+  const upstreamAge = candidate.age != null ? parseInt(candidate.age, 10) : NaN;
+
+  if (localAge != null && Number.isFinite(upstreamAge)) {
+    if (Math.abs(localAge - upstreamAge) > AGE_MATCH_TOLERANCE) return false;
+    // Age agrees. If BOTH have a middle name, require first-initial match
+    // to reject "JOHN K SMITH" vs "JOHN E SMITH" same-age collisions.
+    const lm = local.middle_name?.trim()?.[0]?.toUpperCase();
+    const um = candidate.name.middle?.trim()?.[0]?.toUpperCase();
+    if (lm && um && lm !== um) return false;
+    return true;
+  }
+
+  // Policy (operator decision 2026-05-24): when the local record has no DOB,
+  // age-matching is impossible, so attribute the namesake rather than skip
+  // the person entirely. Age-from-DOB remains the PRIMARY matcher above —
+  // this branch only runs for DOB-less local records (≈25% of the roster).
+  // Tradeoff accepted: some namesake false-positives on DOB-less records,
+  // in exchange for never silently leaving a person unchecked. Backfilling
+  // DOBs on those records upgrades them to the confident path automatically.
+  return true;
+}
 
 async function fetchWithTimeout(url: string, init: RequestInit): Promise<Response> {
   const ctrl = new AbortController();
@@ -123,7 +186,12 @@ async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant
   }
 
   const personsJson = (await personsRes.json()) as { persons?: PersonStub[] };
-  const candidates = personsJson.persons ?? [];
+  const allCandidates = personsJson.persons ?? [];
+  if (allCandidates.length === 0) return [];
+
+  // Reject namesakes BEFORE fetching their warrants — saves rate budget and
+  // prevents attributing a stranger's warrant to this local person.
+  const candidates = allCandidates.filter((c) => isLikelyMatch(person, c));
   if (candidates.length === 0) return [];
 
   const out: FetchedWarrant[] = [];
@@ -135,6 +203,7 @@ async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant
     if (warrantsRes.status === 404) continue;
     if (!warrantsRes.ok) throw new Error(`warrants/${candidate.id} ${warrantsRes.status}`);
     const wJson = (await warrantsRes.json()) as { warrants?: UtahApiWarrant[] };
+    const ageNum = candidate.age != null ? parseInt(candidate.age, 10) : NaN;
     for (const w of wJson.warrants ?? []) {
       out.push({
         utah_person_id: candidate.id,
@@ -142,10 +211,10 @@ async function fetchWarrantsForPerson(person: PersonRow): Promise<FetchedWarrant
         first_name: candidate.name.first,
         middle_name: candidate.name.middle ?? null,
         last_name: candidate.name.last,
-        age: typeof (candidate as PersonStub & { age?: number | string }).age === 'number'
-          ? (candidate as PersonStub & { age?: number }).age ?? null
-          : null,
-        city: null, // PersonStub doesn't currently expose homeAddress; extend if/when needed
+        // API returns age as a string ("64"); parse to int, null if absent.
+        age: Number.isFinite(ageNum) ? ageNum : null,
+        // homeAddress.city IS exposed by the upstream API (verified live).
+        city: candidate.homeAddress?.city ?? null,
         issue_date: w.issueDate ?? null,
         court_name: w.court?.name ?? null,
         case_id: w.court?.caseId ?? null,
@@ -259,7 +328,7 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     // Filtered rows return HTTP 400 from warrants.utah.gov and burn rate budget.
     const persons = await query<PersonRow>(
       db,
-      `SELECT id, first_name, last_name, dob
+      `SELECT id, first_name, middle_name, last_name, dob
          FROM persons
         WHERE first_name IS NOT NULL AND first_name != ''
           AND last_name  IS NOT NULL AND last_name  != ''
