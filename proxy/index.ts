@@ -666,7 +666,7 @@ const API_ROUTES: RouteRule[] = [
   // startsWith — intended, both go to the rewrite now.
   { kind: 'prefix', value: '/api/warrants/utah' },
   { kind: 'prefix', value: '/api/warrants/scraped/status' },
-  { kind: 'regex', value: /^\/api\/warrants\/person\/\d+\/profile$/ },
+  { kind: 'regex', value: /^\/api\/warrants\/person\/\d+\/profile$/, methods: ['GET'] },
 
   // ── TTS + PDF signing (rewrite ports of legacy/server-vps endpoints) ──
   // Both currently return 503 from the rewrite (configurable in a follow-up).

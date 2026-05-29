@@ -8,16 +8,26 @@ import { Hono } from 'hono';
 import type { Context } from 'hono';
 import type { Env } from '../types';
 import { getDb, query } from '../utils/db';
+import { requireRole } from '../middleware/auth';
 import { runUtahWarrantScan } from '../utils/utahWarrantPoller';
 
 const warrants = new Hono<Env>();
+
+// authMiddleware (mounted per-prefix in routesConfig) only verifies a valid
+// JWT — it does NOT enforce a role. Every other sensitive route adds an inline
+// requireRole gate; these match that convention. READ covers all internal
+// dispatch/records roles but excludes client_viewer (read-only external) and
+// human_resources from pulling subject warrant data. SCAN is stricter — it
+// fires an ~80s external scan, so limit it to dispatch supervisors+.
+const READ_ROLES = ['admin', 'manager', 'supervisor', 'officer', 'dispatcher'] as const;
+const SCAN_ROLES = ['admin', 'manager', 'supervisor', 'dispatcher'] as const;
 
 // GET /warrants/watch/runs?limit=N — recent warrant watch runs
 // Used by:
 //   - client/src/pages/DashboardPage.tsx (widget — limit=1)
 //   - client/src/pages/WarrantsPage.tsx Sources tab (limit=20)
 // Returns { data: WatchRun[] } shape to match legacy server.
-warrants.get('/watch/runs', async (c) => {
+warrants.get('/watch/runs', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const limitRaw = c.req.query('limit');
@@ -40,7 +50,7 @@ warrants.get('/watch/runs', async (c) => {
 // past the browser/request timeout if awaited. We hand it to
 // executionCtx.waitUntil (same async pattern as the cron) and return 202
 // immediately; the UI polls /watch/runs to observe the run row complete.
-warrants.post('/watch/scan', async (c) => {
+warrants.post('/watch/scan', requireRole(...SCAN_ROLES), async (c) => {
   const db = getDb(c.env);
   c.executionCtx.waitUntil(
     runUtahWarrantScan(db).catch((err) => {
@@ -58,7 +68,7 @@ warrants.post('/watch/scan', async (c) => {
 //   limit=N      default 100, capped at 500
 // Returns flat array; client paginates with `offset` (deferred to v2 when
 // total roster makes that needed).
-warrants.get('/utah', async (c) => {
+warrants.get('/utah', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const active = c.req.query('active') ?? '1';
@@ -105,7 +115,7 @@ warrants.get('/utah', async (c) => {
 // utah_warrants table, filtered by person_id) shaped into the SPA's
 // PersonProfile { person, warrants[], scanHistory[], lastChecked }.
 // Was 404 everywhere → the person drawer silently failed to open.
-warrants.get('/person/:id/profile', async (c) => {
+warrants.get('/person/:id/profile', requireRole(...READ_ROLES), async (c) => {
   try {
     const db = getDb(c.env);
     const id = parseInt(c.req.param('id') || '', 10);
@@ -189,8 +199,12 @@ async function buildUtahStatus(c: Context<Env>) {
   const runs = await query<Record<string, any>>(
     db, 'SELECT * FROM warrant_watch_runs ORDER BY started_at DESC LIMIT 1');
   const latest = runs[0] ?? null;
-  const [{ active }] = await query<{ active: number }>(
+  // COUNT(*) always returns one row on an existing table; the ?? guards the
+  // pre-migration window where the driver could hand back an empty array,
+  // so we never destructure undefined.
+  const activeRows = await query<{ active: number }>(
     db, 'SELECT COUNT(*) AS active FROM utah_warrants WHERE is_active = 1');
+  const active = activeRows[0]?.active ?? 0;
   const running = latest?.status === 'running';
 
   return {
@@ -212,20 +226,25 @@ async function buildUtahStatus(c: Context<Env>) {
   };
 }
 
-// All three resolve to the same rich status (see buildUtahStatus).
-const EMPTY_STATUS = {
-  lastSync: null, lastStatus: null, lastPersonsChecked: 0, lastNewWarrants: 0,
-  lastWarrantsCleared: 0, lastErrors: 0, activeWarrants: 0,
-  nextScheduledRun: null, isRunning: false, enabled: true, polling: false,
-  lastRunAt: null, lastRunStatus: null,
-};
+// Empty-status fallback for the pre-migration / table-missing path. Built
+// fresh per request so nextScheduledRun is always a real ISO string (the
+// helper is pure and can't throw) — matching the live shape so cold-D1
+// clients never see a null where they expect a date.
+function emptyStatus() {
+  return {
+    lastSync: null, lastStatus: null, lastPersonsChecked: 0, lastNewWarrants: 0,
+    lastWarrantsCleared: 0, lastErrors: 0, activeWarrants: 0,
+    nextScheduledRun: nextScheduledRun(new Date()), isRunning: false,
+    enabled: true, polling: false, lastRunAt: null, lastRunStatus: null,
+  };
+}
 for (const path of ['/utah/sync-status', '/utah-search/auto-poll-status', '/scraped/status']) {
-  warrants.get(path, async (c) => {
+  warrants.get(path, requireRole(...READ_ROLES), async (c) => {
     try {
       return c.json(await buildUtahStatus(c));
     } catch (err) {
       // Pre-migration / table-missing → harmless empty status.
-      return c.json(EMPTY_STATUS);
+      return c.json(emptyStatus());
     }
   });
 }
