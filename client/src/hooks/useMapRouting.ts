@@ -11,6 +11,20 @@ import { getMapboxAccessToken } from '../utils/mapboxApiKey';
 
 // ─── Types ──────────────────────────────────────────────────
 
+/** One turn-by-turn maneuver along the driving route. */
+export interface RouteStep {
+  /** Human-readable instruction, e.g. "Turn left onto S Main St". */
+  instruction: string;
+  /** Distance covered by this step, in meters. */
+  distanceMeters: number;
+  /** Formatted distance, e.g. "0.3 mi" or "400 ft". */
+  distanceText: string;
+  /** Mapbox maneuver type: depart | turn | merge | arrive | … */
+  maneuverType: string;
+  /** Mapbox maneuver modifier: left | right | straight | … (optional). */
+  modifier?: string;
+}
+
 export interface RouteInfo {
   /** Origin unit call sign */
   unitCallSign: string;
@@ -24,6 +38,8 @@ export interface RouteInfo {
   durationSec: number;
   /** Raw distance in meters */
   distanceMeters: number;
+  /** Point-by-point turn-by-turn directions (unit → call). */
+  steps: RouteStep[];
 }
 
 interface UseMapRoutingOptions {
@@ -93,7 +109,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         if (!token) return null;
 
         const coords = `${originLatLng.lng},${originLatLng.lat};${destinationLatLng.lng},${destinationLatLng.lat}`;
-        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?access_token=${token}&geometries=geojson&overview=full`;
+        const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coords}?access_token=${token}&geometries=geojson&overview=full&steps=true`;
 
         const res = await fetch(url);
         if (!res.ok) throw new Error(`Directions HTTP ${res.status}`);
@@ -127,6 +143,23 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
         const distanceMi = (distance * 0.000621371).toFixed(1);
         const etaMin = Math.round(duration / 60);
 
+        // Turn-by-turn maneuvers (steps=true). Mapbox nests them under
+        // legs[].steps[].maneuver; flatten the first leg (unit → call is a
+        // single leg) into a display-ready list.
+        const fmtStepDist = (m: number) =>
+          m >= 1609 ? `${(m * 0.000621371).toFixed(1)} mi` : `${Math.round(m * 3.28084)} ft`;
+        const steps: RouteStep[] = ((route.legs?.[0]?.steps ?? []) as any[]).map((s) => {
+          const man = s.maneuver || {};
+          const meters = typeof s.distance === 'number' ? s.distance : 0;
+          return {
+            instruction: man.instruction || s.name || 'Continue',
+            distanceMeters: Math.round(meters),
+            distanceText: fmtStepDist(meters),
+            maneuverType: man.type || '',
+            modifier: man.modifier,
+          };
+        });
+
         const info: RouteInfo = {
           unitCallSign: metaRef.current.unitCallSign,
           callNumber: metaRef.current.callNumber,
@@ -134,6 +167,7 @@ export function useMapRouting({ map }: UseMapRoutingOptions) {
           distance: `${distanceMi} mi`,
           durationSec: Math.round(duration),
           distanceMeters: Math.round(distance),
+          steps,
         };
 
         lastOriginRef.current = originLatLng;

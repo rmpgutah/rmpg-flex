@@ -6,6 +6,7 @@ import { getDb, query, queryFirst, execute } from '../../utils/db';
 import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
+import { geocodeAddress } from '../geocode';
 
 const calls = new Hono<Env>();
 
@@ -210,6 +211,22 @@ calls.post('/', async (c) => {
     );
     if (!dispatcherExists) {
       return c.json({ error: 'Your user account no longer exists; please re-login' }, 401);
+    }
+
+    // Always populate map coordinates for the CFS location. If the caller
+    // didn't supply lat/lng (created via the API, the CAD command line, or any
+    // path that skipped the address-autocomplete pick), forward-geocode the
+    // address server-side so EVERY call plots on the dispatch map and
+    // closest-unit ranking works. Best-effort — a geocode miss must never block
+    // call creation; the call just keeps null coords as before.
+    const hasLat = body.latitude != null && body.latitude !== '';
+    const hasLng = body.longitude != null && body.longitude !== '';
+    if ((!hasLat || !hasLng) && typeof body.location_address === 'string' && body.location_address.trim().length >= 3) {
+      const coords = await geocodeAddress(c.env, body.location_address);
+      if (coords) {
+        body.latitude = coords.lat;
+        body.longitude = coords.lng;
+      }
     }
 
     const cols: string[] = [];
@@ -566,6 +583,27 @@ calls.put('/:id', async (c) => {
     if (!existing) return c.json({ error: 'Call not found' }, 404);
 
     const body = await c.req.json<Record<string, unknown>>();
+
+    // Re-geocode on address change: if this update changes location_address and
+    // doesn't carry explicit valid coordinates, resolve fresh coords so the
+    // call's map pin follows the new address. Without this, editing an address
+    // strands the call off the map ("NO LOCATION DATA" / "Call has no GPS"),
+    // since the edit form may send null/stale lat/lng. Mirrors the create-path
+    // geocode (#735). Best-effort — never block the update on a geocode miss.
+    if (typeof body.location_address === 'string'
+        && body.location_address.trim().length >= 3
+        && body.location_address !== existing.location_address) {
+      const hasLat = body.latitude != null && body.latitude !== '';
+      const hasLng = body.longitude != null && body.longitude !== '';
+      if (!hasLat || !hasLng) {
+        const coords = await geocodeAddress(c.env, body.location_address);
+        if (coords) {
+          body.latitude = coords.lat;
+          body.longitude = coords.lng;
+        }
+      }
+    }
+
     const baseUpdates: string[] = [];
     const baseParams: unknown[] = [];
     const extUpdates: string[] = [];
@@ -686,6 +724,27 @@ calls.post('/:id/status', async (c) => {
     params.push(id);
     await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+
+    // Audit trail — parity with the legacy handler this replaced (which wrote
+    // a STATUS_CHANGE row). Without this the call's Audit tab showed nothing
+    // for dispatch transitions. Best-effort: never fail the transition on an
+    // audit write. entity_type/id match the audit-trail GET's filter so the
+    // entry surfaces on the call. created_at = UTC.
+    try {
+      const userId = c.get('userId') as number | undefined;
+      if (userId != null) {
+        const callNumber = (updated?.call_number as string) ?? `#${id}`;
+        await execute(
+          db,
+          `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, created_at)
+           VALUES (?, 'STATUS_CHANGE', 'call', ?, ?, datetime('now'))`,
+          userId, id, `Status changed to ${status} on ${callNumber}${typeof disposition === 'string' && disposition.length > 0 ? ` (disposition: ${disposition})` : ''}`,
+        );
+      }
+    } catch (auditErr) {
+      console.warn('audit_log insert failed for status change:', auditErr);
+    }
+
     return c.json(updated);
   } catch (err) {
     return c.json({ error: 'Failed to update status' }, 500);
