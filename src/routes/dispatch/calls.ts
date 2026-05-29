@@ -214,12 +214,11 @@ calls.post('/', async (c) => {
       dispatcher_id: '@dispatcher_id',
     };
     
-    // Explicit created_at override — the schema DEFAULT for this column
-    // is datetime('now') / datetime('now','localtime'), both UTC on
-    // Workers. We pin to MST (UTC-7) year-round (no DST) per the
-    // 2026-05-26 cutover; in summer this means the timestamp is 1 hour
-    // behind wall-clock, but the offset stays stable across the year so
-    // audit trails are unambiguous.
+    // created_at / updated_at use datetime('now') = UTC (the Workers/D1 host
+    // runs in UTC). App standard is UTC storage + browser-local display via
+    // the client's parseTimestamp. Do NOT store local/MST wall-clock here —
+    // the display layer reads naive strings as UTC and would render them ~6h
+    // off (see the utcNow() note in dispatch/extensions.ts).
     cols.push('call_number', 'dispatcher_id', 'created_at', 'updated_at');
     vals.push('?', '?', "datetime('now')", "datetime('now')");
     bindParams.push(callNumber, userId);
