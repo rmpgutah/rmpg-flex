@@ -777,7 +777,7 @@ const API_ROUTES: RouteRule[] = [
   // shared generateIncidentFromCall() is schema-verified vs live incidents +
   // audit_log; legacy lacked promote-to-incident entirely (CAD "PI" was 404).
   // Listed BEFORE the bare /api/dispatch/calls/:id rule so they win the match.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident)(\/.*)?$/ },
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve)(\/.*)?$/ },
 
   // /api/dispatch/calls/:id/{persons,vehicles}[/...] — rewrite implements
   // POST/DELETE/PATCH plus the quick-add fast-path; legacy implements ONLY
@@ -788,6 +788,10 @@ const API_ROUTES: RouteRule[] = [
   // appear" symptom reported 2026-05-24. Routing ALL methods on the entire
   // sub-tree to the rewrite makes the round-trip self-consistent.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(persons|vehicles)(\/.*)?$/ },
+
+  // /api/dispatch/request-backup — officer backup request (RadialMenu).
+  // New rewrite handler (panic.ts); legacy never implemented it → 404.
+  { kind: 'prefix', value: '/api/dispatch/request-backup' },
 
   // /api/dispatch/welfare/* — ENTIRE namespace lives on the rewrite. It
   // implements ack/help/snooze/start/activity/active AND holds the

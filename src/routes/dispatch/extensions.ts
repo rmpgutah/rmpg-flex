@@ -1347,3 +1347,50 @@ callActions.post('/:id/generate-incident', requireRole('admin', 'manager', 'supe
 // without first clearing it. Same dedup + audit behavior.
 callActions.post('/:id/promote-to-incident', requireRole('admin', 'manager', 'supervisor', 'officer'),
   (c) => generateIncidentFromCall(c, false));
+
+// POST /:id/send-to-serve — seed a serve_queue entry from a dispatch call
+// (DispatchPage "Send to Serve Queue" button). The create-side mirror of
+// legacy's GET /:id/serve-link, which reads the same row back. Dedups on
+// call_id so a double-click doesn't create two jobs. Neither backend
+// implemented this before → the button 404'd. Returns the serve_queue row
+// (the client stores it as `serveLink`).
+callActions.post('/:id/send-to-serve', requireRole('admin', 'manager', 'supervisor', 'officer', 'dispatcher'), async (c) => {
+  try {
+    const db = getDb(c.env);
+    const userId = c.get('userId') as number | undefined;
+    if (userId == null) return c.json({ error: 'Unauthenticated', code: 'NO_AUTH' }, 401);
+    const id = parseInt(c.req.param('id') || '', 10);
+    if (!Number.isFinite(id) || id <= 0) return c.json({ error: 'Invalid call id', code: 'INVALID_ID' }, 400);
+
+    const call = await queryFirst<Record<string, any>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    if (!call) return c.json({ error: 'Call not found', code: 'CALL_NOT_FOUND' }, 404);
+
+    // Dedup: one serve job per call. Return the existing row if present.
+    const existing = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE call_id = ?', id);
+    if (existing) return c.json(existing, 200);
+
+    const result = await execute(db,
+      `INSERT INTO serve_queue (
+         call_id, officer_id, created_by, recipient_address, recipient_lat, recipient_lng,
+         property_id, priority, status, notes, created_at, updated_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, 'normal', 'pending', ?, datetime('now'), datetime('now'))`,
+      id, userId, userId,
+      call.location_address ?? null, call.latitude ?? null, call.longitude ?? null,
+      call.property_id ?? null,
+      `Created from dispatch call ${call.call_number}`);
+
+    try {
+      await execute(db,
+        `INSERT INTO audit_log (user_id, action, entity_type, entity_id, details, ip_address)
+         VALUES (?, 'serve_queued', 'serve_queue', ?, ?, ?)`,
+        userId, result.meta.last_row_id, `Sent call ${call.call_number} to serve queue`,
+        c.req.header('cf-connecting-ip') || 'unknown');
+    } catch { /* audit non-fatal */ }
+
+    const created = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM serve_queue WHERE id = ?', result.meta.last_row_id);
+    return c.json(created ?? { id: result.meta.last_row_id }, 201);
+  } catch (err) {
+    console.error('[dispatch] send-to-serve error', err);
+    return c.json({ error: 'Failed to send to serve queue', code: 'SEND_TO_SERVE_ERR' }, 500);
+  }
+});
