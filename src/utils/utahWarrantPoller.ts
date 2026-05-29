@@ -28,6 +28,14 @@
 
 import type { D1Database } from '@cloudflare/workers-types';
 import { execute, query, queryFirst } from './db';
+import { broadcastAll } from '../routes/ws';
+
+// Source key tying this poller to its warrant_scraper_config row + the
+// scraper_events WebSocket channel + the dispatcher-facing display name
+// shown in the Sources/Scrapers tab.
+const SOURCE_KEY = 'utah-warrant-watch';
+const DISPLAY_NAME = 'Utah Warrant Watch';
+const SOURCE_PRIORITY = 1;
 
 const API_BASE = 'https://warrants.utah.gov/api/v1';
 const USER_AGENT =
@@ -312,6 +320,20 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     started_at,
   );
 
+  // WebSocket fan-out to anyone watching the Sources/Scrapers Live Feed.
+  // No-op when run from the cron isolate (no connected clients) — that's
+  // fine; the broadcasts matter for the manual-trigger UX where the
+  // operator is on the page waiting for completion.
+  try {
+    broadcastAll('scraper_events', {
+      event: 'run_started',
+      source_key: SOURCE_KEY,
+      display_name: DISPLAY_NAME,
+      priority: SOURCE_PRIORITY,
+      started_at,
+    });
+  } catch { /* non-fatal */ }
+
   let persons_checked = 0;
   let new_warrants_found = 0;
   let warrants_cleared = 0;
@@ -373,13 +395,14 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     error_message = err instanceof Error ? err.message : String(err);
   }
 
+  const completed_at = new Date().toISOString();
   await execute(
     db,
     `UPDATE warrant_watch_runs
        SET completed_at = ?, status = ?, persons_checked = ?,
            new_warrants_found = ?, warrants_cleared = ?, errors = ?, error_message = ?
        WHERE run_id = ?`,
-    new Date().toISOString(),
+    completed_at,
     status,
     persons_checked,
     new_warrants_found,
@@ -388,6 +411,52 @@ export async function runUtahWarrantScan(db: D1Database): Promise<WatchRunResult
     error_message ?? null,
     run_id,
   );
+
+  // Persist current scraper state to warrant_scraper_config so /scrapers
+  // shows the correct "current state" even without joining warrant_watch_runs.
+  // CASE clauses keep last_success_at on a failed run and clear last_error
+  // on a successful one, so the field reads as "is it broken NOW?".
+  try {
+    await execute(
+      db,
+      `UPDATE warrant_scraper_config
+          SET last_run_at = ?,
+              last_success_at = CASE WHEN ? = 'completed' THEN ? ELSE last_success_at END,
+              last_error      = CASE WHEN ? = 'failed'    THEN ? ELSE NULL END
+        WHERE source_name = ?`,
+      completed_at,
+      status, completed_at,
+      status, error_message ?? null,
+      SOURCE_KEY,
+    );
+  } catch (err) {
+    console.warn('[Utah Warrants] config update failed:', err);
+  }
+
+  // Broadcast run completion (Live Feed). Discriminated union on `event` per
+  // ScraperWsEvent in client/src/types/scrapers.ts.
+  try {
+    if (status === 'completed') {
+      broadcastAll('scraper_events', {
+        event: 'run_completed',
+        source_key: SOURCE_KEY,
+        display_name: DISPLAY_NAME,
+        http_status: 200,
+        parsed: new_warrants_found,
+        inserted: new_warrants_found,
+        updated: warrants_cleared,
+        unchanged: new_warrants_found === 0,
+        parser_used: 'custom',
+      });
+    } else {
+      broadcastAll('scraper_events', {
+        event: 'run_failed',
+        source_key: SOURCE_KEY,
+        display_name: DISPLAY_NAME,
+        error: error_message ?? 'Scan failed',
+      });
+    }
+  } catch { /* non-fatal */ }
 
   return {
     run_id,
