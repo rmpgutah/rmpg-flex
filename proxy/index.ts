@@ -793,6 +793,12 @@ const API_ROUTES: RouteRule[] = [
   // New rewrite handler (panic.ts); legacy never implemented it → 404.
   { kind: 'prefix', value: '/api/dispatch/request-backup' },
 
+  // /api/dispatch/anomaly-alerts[/*] — AnomalyAlertBanner read + ack.
+  // New rewrite feature (anomalies.ts + anomaly_alerts table + cron
+  // detection); legacy never implemented it → the banner silently
+  // showed nothing.
+  { kind: 'prefix', value: '/api/dispatch/anomaly-alerts' },
+
   // /api/dispatch/welfare/* — ENTIRE namespace lives on the rewrite. It
   // implements ack/help/snooze/start/activity/active AND holds the
   // WELFARE_WATCH durable-object binding (legacy has neither the handlers
