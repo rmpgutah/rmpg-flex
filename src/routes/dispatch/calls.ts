@@ -653,24 +653,29 @@ calls.post('/:id/status', async (c) => {
     // The clear/close flow (client handleConfirmClear) sends { status, disposition }.
     // Persist disposition alongside the status transition — dropping it left the
     // call's outcome blank and the disposition column NULL after every clear.
-    const { status, disposition } = await c.req.json<{ status: string; disposition?: string }>();
-    // NOTE: 'on_hold' is intentionally NOT in this list yet. The live
-    // calls_for_service.status CHECK constraint does not include 'on_hold', so
-    // writing it returns SQLITE_CONSTRAINT → a 500. Migration 0040 adds it to
-    // the enum; re-add 'on_hold' here only AFTER that migration is applied to
-    // live D1 (verify with: SELECT sql FROM sqlite_master WHERE name='calls_for_service').
+    const { status, disposition, notes } = await c.req.json<{ status: string; disposition?: string; notes?: string }>();
+    // 'on_hold' is intentionally NOT a status value — hold is an orthogonal flag
+    // in calls_for_service_ext.held_at (see /:id/hold). The live status CHECK
+    // enum has no 'on_hold'.
     const valid = ['pending', 'dispatched', 'enroute', 'onscene', 'cleared', 'closed', 'cancelled', 'archived'];
     if (!valid.includes(status)) return c.json({ error: 'Invalid status', code: 'INVALID_STATUS' }, 400);
 
+    // ALL timestamps use datetime('now') (UTC). This is the canonical status
+    // writer once the proxy routes /:id/status here. The legacy worker's
+    // localNow() stamped Denver-local time as +00:00, so dispatched/enroute/
+    // onscene rendered ~6h off. status_changed_at + archived_at + notes are
+    // written here for parity with the legacy handler this replaces.
     const timeField = `${status}_at`;
-    const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at'];
+    const validTimeFields = ['dispatched_at', 'enroute_at', 'onscene_at', 'cleared_at', 'closed_at', 'archived_at'];
     const timeSql = validTimeFields.includes(timeField) ? `, ${timeField} = COALESCE(${timeField}, datetime('now'))` : '';
     const dispSql = typeof disposition === 'string' && disposition.length > 0 ? ', disposition = ?' : '';
+    const notesSql = typeof notes === 'string' && notes.length > 0 ? ', notes = ?' : '';
 
     const params: unknown[] = [status];
     if (dispSql) params.push(disposition);
+    if (notesSql) params.push(notes);
     params.push(id);
-    await execute(db, `UPDATE calls_for_service SET status = ?, updated_at = datetime('now')${timeSql}${dispSql} WHERE id = ?`, ...params);
+    await execute(db, `UPDATE calls_for_service SET status = ?, status_changed_at = datetime('now'), updated_at = datetime('now')${timeSql}${dispSql}${notesSql} WHERE id = ?`, ...params);
     const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
     return c.json(updated);
   } catch (err) {
