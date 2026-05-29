@@ -66,7 +66,10 @@
 // v602: turn-by-turn driving directions panel on the dispatch map (useMapRouting
 //       now requests steps=true + parses maneuvers; DispatchMiniMap renders a
 //       scrollable point-by-point list for the unit→call route).
-const CACHE_NAME = 'rmpg-flex-v602';
+// v603: turn-by-turn redesigned as a bottom nav banner (one direction at a time,
+//       ETA + miles above) with voice announcement of each direction as it
+//       becomes current (steps[0] from the live-origin recompute).
+const CACHE_NAME = 'rmpg-flex-v603';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

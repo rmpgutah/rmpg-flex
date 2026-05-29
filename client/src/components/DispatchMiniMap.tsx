@@ -14,7 +14,20 @@ import { useNavigate } from 'react-router-dom';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
+import { speak } from '../utils/edgeTTS';
 import type { CallForService, Unit } from '../types';
+
+// Compact maneuver glyph for the nav banner, from the Mapbox maneuver
+// type + modifier (e.g. turn + left → ↰, merge → ⤚, arrive → ◉).
+function maneuverGlyph(type?: string, modifier?: string): string {
+  if (type === 'arrive') return '◉';
+  if (type === 'depart') return '▲';
+  if (type === 'roundabout' || type === 'rotary') return '↻';
+  if (modifier?.includes('left')) return modifier === 'slight left' ? '↖' : '↰';
+  if (modifier?.includes('right')) return modifier === 'slight right' ? '↗' : '↱';
+  if (modifier === 'uturn') return '⤺';
+  return '↑';
+}
 
 interface DispatchMiniMapProps {
   call: CallForService | null;
@@ -182,6 +195,23 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
     }
   }, [activeRoute, onRouteUpdate]);
 
+  // Voice-announce the current driving direction at the appropriate time.
+  // Because useMapRouting recomputes from the unit's live origin, steps[0]
+  // becomes the next maneuver as the unit drives — so we speak whenever that
+  // instruction CHANGES (the moment it becomes current). Throttled to one
+  // utterance per distinct instruction so we don't repeat on every re-render.
+  const lastSpokenRef = useRef<string>('');
+  useEffect(() => {
+    const current = activeRoute?.steps?.[0]?.instruction?.trim();
+    if (!current) { lastSpokenRef.current = ''; return; }
+    if (current === lastSpokenRef.current) return;
+    lastSpokenRef.current = current;
+    // distanceText gives the lead-in ("In 0.3 mi, turn left …") for natural cadence.
+    const dist = activeRoute?.steps?.[0]?.distanceText;
+    const phrase = dist ? `In ${dist}, ${current}` : current;
+    void speak(phrase, 'moderate', 'conversational');
+  }, [activeRoute?.steps]);
+
   // Cleanup: unregister map instance on unmount
   useEffect(() => {
     return () => {
@@ -248,43 +278,44 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
         </div>
       )}
 
-      {/* Turn-by-turn driving directions (unit → call). Shown in the full
-          dispatch-detail map where there's room; scrollable point-by-point list. */}
-      {fullHeight && activeRoute?.steps && activeRoute.steps.length > 0 && (
+      {/* Turn-by-turn nav banner — ONE direction at a time, pinned to the bottom
+          of the map. ETA + remaining miles sit above the current instruction.
+          useMapRouting recomputes the route from the unit's live origin, so
+          steps[0] is always the current/next maneuver; it auto-advances as the
+          unit drives, and each new instruction is announced by voice (effect
+          below). */}
+      {activeRoute?.steps && activeRoute.steps.length > 0 && (
         <div style={{
-          position: 'absolute', top: 28, left: 4, zIndex: 10, width: 248, maxHeight: '58%',
-          background: 'rgba(0,0,0,0.92)', border: '1px solid #2e2e2e', borderRadius: 2,
-          overflowY: 'auto', pointerEvents: 'auto',
+          position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 11,
+          background: 'rgba(0,0,0,0.94)', borderTop: '1px solid #2e2e2e', pointerEvents: 'auto',
         }}>
+          {/* ETA + miles, above */}
           <div style={{
-            position: 'sticky', top: 0, background: '#141414', borderBottom: '1px solid #222222',
-            padding: '3px 6px', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12,
+            padding: '2px 6px', borderBottom: '1px solid #1a1a1a', background: '#141414',
           }}>
-            <span style={{ fontSize: 8, color: '#d4a017', fontWeight: 900, letterSpacing: '0.05em' }}>
-              DRIVING DIRECTIONS · {activeRoute.unitCallSign}→{activeRoute.callNumber}
+            <span style={{ fontSize: 8, color: '#888888', fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>
+              {activeRoute.unitCallSign}→{activeRoute.callNumber}
             </span>
-            <span style={{ fontSize: 8, color: '#888888', whiteSpace: 'nowrap' }}>
-              {activeRoute.eta} · {activeRoute.distance}
+            <span style={{ fontSize: 13, color: '#22c55e', fontWeight: 900, letterSpacing: '0.02em' }}>
+              {activeRoute.eta} <span style={{ fontSize: 8, color: '#16a34a' }}>ETA</span>
             </span>
+            <span style={{ fontSize: 12, color: '#d4a017', fontWeight: 900 }}>{activeRoute.distance}</span>
           </div>
-          <ol style={{ margin: 0, padding: 0, listStyle: 'none' }}>
-            {activeRoute.steps.map((s, i) => (
-              <li key={i} style={{
-                display: 'flex', gap: 6, padding: '3px 6px',
-                borderBottom: '1px solid #1a1a1a', alignItems: 'baseline',
-              }}>
-                <span style={{ fontSize: 9, color: '#d4a017', fontWeight: 900, minWidth: 14, fontFamily: "'JetBrains Mono', monospace" }}>
-                  {i + 1}
-                </span>
-                <span style={{ fontSize: 10, color: '#e5e5e5', flex: 1, lineHeight: 1.3 }}>
-                  {s.instruction}
-                </span>
-                {s.distanceMeters > 0 && (
-                  <span style={{ fontSize: 8, color: '#888888', whiteSpace: 'nowrap' }}>{s.distanceText}</span>
-                )}
-              </li>
-            ))}
-          </ol>
+          {/* Current direction, one at a time */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
+            <span aria-hidden style={{ fontSize: 22, color: '#d4a017', lineHeight: 1, minWidth: 24, textAlign: 'center' }}>
+              {maneuverGlyph(activeRoute.steps[0].maneuverType, activeRoute.steps[0].modifier)}
+            </span>
+            <span style={{ fontSize: 13, color: '#ffffff', fontWeight: 700, flex: 1, lineHeight: 1.25 }}>
+              {activeRoute.steps[0].instruction}
+            </span>
+            {activeRoute.steps[0].distanceMeters > 0 && (
+              <span style={{ fontSize: 11, color: '#aaaaaa', fontWeight: 700, whiteSpace: 'nowrap' }}>
+                {activeRoute.steps[0].distanceText}
+              </span>
+            )}
+          </div>
         </div>
       )}
 
