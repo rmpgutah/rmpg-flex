@@ -412,6 +412,10 @@ export class MapboxOverlayMarkerImpl {
 
   getLngLat() { return this.marker.getLngLat(); }
 
+  /** Move the marker in place (so GPS updates glide the pin instead of
+   *  destroying + recreating it, which made pins flicker / "fly around"). */
+  setLngLat(lng: number, lat: number) { this.marker.setLngLat([lng, lat]); }
+
   addTo(map: MapboxMap) { this.marker.addTo(map); }
 
   getElement() { return this.marker.getElement(); }

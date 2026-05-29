@@ -557,6 +557,17 @@ export default function MapPage() {
   const unitMarkersMapRef = useRef<Map<string, mapboxgl.Marker>>(new Map());
   const callMarkersMapRef = useRef<Map<string, { marker: mapboxgl.Marker; callId: string }>>(new Map());
   const callMarkersArrayRef = useRef<mapboxgl.Marker[]>([]);
+  const propMarkersArrayRef = useRef<mapboxgl.Marker[]>([]);
+  // Change-detection so call/property pins are only rebuilt when THEY change —
+  // not on every unit GPS poll (which previously destroyed + recreated every
+  // pin, making them flicker / "fly around").
+  const prevCallsRef = useRef<typeof calls | null>(null);
+  const prevPropsRef = useRef<typeof properties | null>(null);
+  const prevLayersRef = useRef<typeof layers | null>(null);
+  // Always-fresh units, so a call marker's popup (built once when calls change)
+  // still shows current assigned units between rebuilds.
+  const unitsRef = useRef(units);
+  unitsRef.current = units;
 
   // Intel layers
   const [intelLayers, setIntelLayers] = useState({ warrants: false, trespass: false, offenders: false, bolos: false });
@@ -1204,29 +1215,22 @@ export default function MapPage() {
     const map = mapInstanceRef.current;
     if (!map || !mapLoaded) return;
 
-    // Clear existing markers
-    markersRef.current.forEach((m) => removeMarker(m));
-    markersRef.current = [];
-    unitMarkersMapRef.current.clear();
-    callMarkersMapRef.current.clear();
-    callMarkersArrayRef.current = [];
-    infoWindowRef.current?.remove();
+    // Incremental updates: move/keep markers that didn't change instead of
+    // destroying + recreating every pin on each unit GPS poll (the cause of
+    // the flicker / "flying" pins). Units move in place; calls & properties are
+    // rebuilt only when they actually change.
 
-    // Add unit markers
+    // ---- Unit markers: move in place, create new, remove stale ----
+    const nextUnitIds = new Set<string>();
     if (layers.units) {
       units.forEach((unit) => {
         if (unit.latitude != null && unit.longitude != null) {
-          const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source);
+          const id = String(unit.id);
+          nextUnitIds.add(id);
           const statusColor = UNIT_STATUS_COLORS[unit.status];
           const location = unit.current_call_location || 'No active assignment';
-
-          const marker = createMarker({
-            map,
-            position: [unit.longitude, unit.latitude],
-            content,
-            zIndex: 1000,
-            title: `${unit.call_sign} - ${unit.officer_name}`,
-            onClick: () => {
+          // Rebuilt each run so the popup always reflects current unit + calls.
+          const makeUnitClick = () => {
               // Find the assigned call (for route button)
               const assignedCall = unit.current_call_id
                 ? calls.find(c => String(c.id) === String(unit.current_call_id))
@@ -1270,17 +1274,44 @@ export default function MapPage() {
               `);
               infoWindowRef.current?.setLngLat([unit.longitude!, unit.latitude!]);
               infoWindowRef.current?.addTo(map);
-            },
-          });
-
-          markersRef.current.push(marker);
-          if (marker) unitMarkersMapRef.current.set(String(unit.id), marker);
+          };
+          const existing = unitMarkersMapRef.current.get(id);
+          if (existing) {
+            (existing as any).setLngLat(unit.longitude, unit.latitude);
+            const el = (existing as any).getElement?.();
+            if (el) el.replaceChildren(buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source));
+            (existing as any)._rmpgClick = makeUnitClick;
+          } else {
+            const content = buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source);
+            const marker = createMarker({
+              map,
+              position: [unit.longitude, unit.latitude],
+              content,
+              zIndex: 1000,
+              title: `${unit.call_sign} - ${unit.officer_name}`,
+              onClick: () => (marker as any)?._rmpgClick?.(),
+            });
+            if (marker) {
+              (marker as any)._rmpgClick = makeUnitClick;
+              unitMarkersMapRef.current.set(id, marker);
+            }
+          }
         }
       });
     }
+    // Remove unit markers for units that are gone / when the layer is off
+    unitMarkersMapRef.current.forEach((m, id) => {
+      if (!layers.units || !nextUnitIds.has(id)) { removeMarker(m); unitMarkersMapRef.current.delete(id); }
+    });
 
-    // Add incident markers
-    if (layers.incidents) {
+    // ---- Call markers: rebuild only when calls / incidents-layer change ----
+    const callsChanged = calls !== prevCallsRef.current || (prevLayersRef.current?.incidents !== layers.incidents);
+    if (callsChanged) {
+      callMarkersArrayRef.current.forEach((m) => removeMarker(m));
+      callMarkersArrayRef.current = [];
+      callMarkersMapRef.current.clear();
+    }
+    if (callsChanged && layers.incidents) {
       calls.forEach((call) => {
         if (call.latitude != null && call.longitude != null) {
           const content = buildIncidentMarkerContent(call.priority, call.incident_type, call.call_number);
@@ -1293,7 +1324,7 @@ export default function MapPage() {
             zIndex: call.priority === 'P1' ? 2000 : 500,
             title: `${call.call_number} - ${formatIncidentType(call.incident_type)}`,
             onClick: () => {
-              const assignedUnits = units.filter(u => String(u.current_call_id) === String(call.id));
+              const assignedUnits = unitsRef.current.filter(u => String(u.current_call_id) === String(call.id));
               let unitsHtml = '';
               if (assignedUnits.length > 0) {
                 unitsHtml = `<div style="margin-top:6px;padding-top:6px;border-top:1px solid #2b2b2b;">
@@ -1347,7 +1378,6 @@ export default function MapPage() {
             },
           });
 
-          markersRef.current.push(marker);
           if (marker) {
             callMarkersMapRef.current.set(String(call.id), { marker, callId: String(call.id) });
             callMarkersArrayRef.current.push(marker);
@@ -1356,8 +1386,13 @@ export default function MapPage() {
       });
     }
 
-    // Add property markers (small dot with hover tooltip, click for details)
-    if (layers.properties) {
+    // ---- Property markers: rebuild only when properties / layer change ----
+    const propsChanged = properties !== prevPropsRef.current || (prevLayersRef.current?.properties !== layers.properties);
+    if (propsChanged) {
+      propMarkersArrayRef.current.forEach((m) => removeMarker(m));
+      propMarkersArrayRef.current = [];
+    }
+    if (propsChanged && layers.properties) {
       properties.forEach((prop) => {
         if (prop.latitude != null && prop.longitude != null) {
           const content = buildPropertyMarkerContent(prop.name, prop.address, prop.client_name || undefined);
@@ -1498,10 +1533,21 @@ export default function MapPage() {
             },
           });
 
-          markersRef.current.push(marker);
+          if (marker) propMarkersArrayRef.current.push(marker);
         }
       });
     }
+
+    // Keep the flat markersRef (used by the map-teardown cleanup) in sync with
+    // all live markers, and record this run's inputs for next-run change detection.
+    markersRef.current = [
+      ...Array.from(unitMarkersMapRef.current.values()),
+      ...callMarkersArrayRef.current,
+      ...propMarkersArrayRef.current,
+    ] as any;
+    prevCallsRef.current = calls;
+    prevPropsRef.current = properties;
+    prevLayersRef.current = layers;
   }, [layers, units, calls, properties, mapLoaded, createMarker, removeMarker]);
 
   // ============================================================
