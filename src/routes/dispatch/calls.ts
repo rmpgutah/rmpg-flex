@@ -99,11 +99,12 @@ calls.get('/', async (c) => {
     const rows = await query<Record<string, unknown>>(db, `
       SELECT ${LIST_VIEW_SELECT},
         p.name as property_name, u.full_name as dispatcher_name,
-        cl.name as client_name
+        cl.name as client_name, cfe.held_at
       FROM calls_for_service c
       LEFT JOIN properties p ON c.property_id = p.id
       LEFT JOIN users u ON c.dispatcher_id = u.id
       LEFT JOIN clients cl ON COALESCE(c.client_id, p.client_id) = cl.id
+      LEFT JOIN calls_for_service_ext cfe ON cfe.id = c.id
       ${where}
       ORDER BY c.priority_score IS NOT NULL, c.priority_score DESC, c.created_at DESC
       LIMIT ? OFFSET ?
@@ -698,18 +699,35 @@ calls.post('/:id/unarchive', async (c) => {
 });
 
 // POST /dispatch/calls/:id/hold
-// GUARDED: the live status CHECK constraint has no 'on_hold' value, so the
-// UPDATE below would fail with SQLITE_CONSTRAINT and return a 500. Until
-// migration 0040 adds 'on_hold' to the enum, return a clean 409 instead of
-// attempting the write. Restore the UPDATE after 0040 is applied to live D1.
+// Hold is an orthogonal flag in the _ext overflow table (held_at), NOT a status
+// enum value — this avoids a CHECK rebuild of the 100-column, FK-referenced
+// calls_for_service table (migration 0041 adds the column). Status is preserved
+// while held; the queue badges held calls via held_at. The _ext row is created
+// lazily if it doesn't exist yet (mirrors the run_card / PSO ext-write pattern).
 calls.post('/:id/hold', async (c) => {
-  return c.json({ error: 'Call hold is not yet enabled (pending schema migration 0040)', code: 'HOLD_NOT_ENABLED' }, 409);
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, 'INSERT OR IGNORE INTO calls_for_service_ext (id) VALUES (?)', id);
+    await execute(db, "UPDATE calls_for_service_ext SET held_at = datetime('now') WHERE id = ?", id);
+    await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", id);
+    return c.json({ message: 'On hold' });
+  } catch (err) {
+    return c.json({ error: 'Hold failed' }, 500);
+  }
 });
 
-// POST /dispatch/calls/:id/resume
+// POST /dispatch/calls/:id/resume — clears the hold flag; status is untouched.
 calls.post('/:id/resume', async (c) => {
-  try { const db = getDb(c.env); await execute(db, "UPDATE calls_for_service SET status = 'pending' WHERE id = ? AND status = 'on_hold'", c.req.param('id')); return c.json({ message: 'Resumed' }); }
-  catch (err) { return c.json({ error: 'Resume failed' }, 500); }
+  try {
+    const db = getDb(c.env);
+    const id = c.req.param('id');
+    await execute(db, 'UPDATE calls_for_service_ext SET held_at = NULL WHERE id = ?', id);
+    await execute(db, "UPDATE calls_for_service SET updated_at = datetime('now') WHERE id = ?", id);
+    return c.json({ message: 'Resumed' });
+  } catch (err) {
+    return c.json({ error: 'Resume failed' }, 500);
+  }
 });
 
 // POST /dispatch/calls/:id/assign-unit
