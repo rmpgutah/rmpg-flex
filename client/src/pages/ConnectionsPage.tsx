@@ -52,12 +52,15 @@ const NODE_COLORS: Record<string, string> = {
   field_interview: '#64748b',
   trespass_order: '#a855f7',
   serve_job: '#14b8a6',
+  call: '#22d3ee',
+  report: '#ec4899',
 };
 
 const NODE_RADIUS: Record<string, number> = {
   person: 28, vehicle: 18, property: 18, evidence: 16,
   case: 18, incident: 20, warrant: 18, citation: 16,
   arrest: 18, field_interview: 14, trespass_order: 16, serve_job: 16,
+  call: 20, report: 14,
 };
 
 const VIEW_W = 1000;
