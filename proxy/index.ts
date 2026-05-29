@@ -51,23 +51,9 @@ interface StubRule {
 }
 
 const STUBS: StubRule[] = [
-  // /api/warrants/utah-search/auto-poll-status — no handler exists in legacy
-  // OR rewrite. WarrantsPage polls this on mount of the Watch tab, so a 404
-  // floods the console. Return the empty AutoPollStatus shape the UI tolerates.
-  // Remove this stub once the poller is actually implemented in /src/routes/warrants.ts.
-  {
-    match: /^\/api\/warrants\/utah-search\/auto-poll-status$/,
-    methods: ['GET'],
-    body: {
-      syncStatus: { lastSync: null, warrantCount: 0, status: 'disabled', lastError: null },
-      blocked: false,
-      runs: [],
-      flaggedPersons: [],
-      recentHits: [],
-      totalPersons: 0,
-    },
-    reason: 'no poller backend; UI tolerates empty status',
-  },
+  // (removed 2026-05-29) /api/warrants/utah-search/auto-poll-status stub —
+  // the rewrite now serves a real status handler (src/routes/warrants.ts).
+  // Routed to env.API below.
   // /api/personnel/equipment — no equipment table or handler in either backend.
   // PersonnelPage's Equipment tab issues this GET on mount; without a stub
   // it 404s and produces visible console noise. Return [] (callsites do
@@ -507,16 +493,9 @@ const STUBS: StubRule[] = [
     body: { enabled: false, status: 'disabled', last_run_at: null, total: 0 },
     reason: 'no skiptracer v1 backend in rewrite; dashboard tolerates disabled',
   },
-  // ── Warrants scraped status (legacy 404) ──────────────────────────────
-  // Legacy never had a /warrants/scraped/status handler; the page polls
-  // for it as part of the watch tab. WarrantsPage tolerates the empty
-  // shape: { syncStatus, runs, recentHits }.
-  {
-    match: /^\/api\/warrants\/scraped\/status$/,
-    methods: ['GET'],
-    body: { syncStatus: { status: 'disabled', lastSync: null }, runs: [], recentHits: [] },
-    reason: 'no scraper status endpoint; WarrantsPage Watch tab tolerates empty',
-  },
+  // (removed 2026-05-29) /api/warrants/scraped/status stub — the rewrite
+  // now serves a real status handler (src/routes/warrants.ts). Routed to
+  // env.API below.
   // ── HR sub-modules with no backing tables on live D1 yet ─────────────
   // /api/hr/leave* now has a real handler in src/routes/hr.ts (uses the
   // leave_requests table). The remaining sub-paths still 500 on legacy
@@ -855,10 +834,22 @@ const API_ROUTES: RouteRule[] = [
   // adds an adjacent endpoint later.
   { kind: 'regex', value: /^\/api\/records\/search(\?|$)/ },
 
-  // ── Warrants watch (rewrite has /watch/runs, /watch/scan) ──
-  // Legacy uses /warrants/scrapers/* against a different table — those stay
-  // on legacy. Only /watch/* is moved.
+  // ── Utah warrant pull — full surface on the rewrite ──
+  // /watch/{runs,scan}, /utah (scraped-warrant list + ?person_id filter),
+  // /utah/sync-status, /utah-search/auto-poll-status, /scraped/status all
+  // live in src/routes/warrants.ts and read utah_warrants + warrant_watch_runs
+  // (populated by the cron poller). Legacy uses /warrants/scrapers/* against a
+  // different table — those stay on legacy.
+  //   NOTE ordering: `/api/warrants/utah` (prefix) also matches
+  //   `/api/warrants/utah-search/...` via startsWith, which is intended —
+  //   both go to the rewrite now.
   { kind: 'prefix', value: '/api/warrants/watch' },
+  { kind: 'prefix', value: '/api/warrants/utah' },
+  { kind: 'prefix', value: '/api/warrants/scraped/status' },
+  // /api/warrants/person/:id/profile — WarrantsPage person drawer, surfaces
+  // a person's Utah warrants. Regex (not /person prefix) so other /person/*
+  // paths (person-intel, check) stay on legacy.
+  { kind: 'regex', value: /^\/api\/warrants\/person\/\d+\/profile$/ },
 
   // ── TTS + PDF signing (rewrite ports of legacy/server-vps endpoints) ──
   // Both currently return 503 from the rewrite (configurable in a follow-up).
