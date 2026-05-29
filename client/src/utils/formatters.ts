@@ -5,6 +5,8 @@
 // These do NOT validate — use validate.ts for input checking.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 /**
  * Normalize a snake_case / lowercase enum value for display.
  *
@@ -191,7 +193,7 @@ export function formatAddress(
  */
 export function formatDOBWithAge(dob: string | null | undefined): string {
   if (!dob) return '';
-  const d = new Date(dob + 'T00:00:00');
+  const d = parseTimestamp(dob);
   if (isNaN(d.getTime())) return dob;
   const formatted = d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
   const today = new Date();

@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import type { FleetPersonnelData, FleetPersonnelNote, FleetAssignment, Unit } from '../../../types';
+import { parseTimestamp } from '../../../utils/dateUtils';
 import { formatMilitary, daysUntilExpiry, expiryProgress } from '../utils/fleetFormatters';
 import { toDisplayLabel } from '../../../utils/formatters';
 
@@ -37,8 +38,8 @@ function credentialStatusColor(status: string): string {
 }
 
 function formatDuration(start: string, end?: string): string {
-  const s = new Date(start);
-  const e = end ? new Date(end) : new Date();
+  const s = parseTimestamp(start);
+  const e = end ? parseTimestamp(end) : new Date();
   const diffMs = e.getTime() - s.getTime();
   const days = Math.floor(diffMs / 86400000);
   const hours = Math.floor((diffMs % 86400000) / 3600000);

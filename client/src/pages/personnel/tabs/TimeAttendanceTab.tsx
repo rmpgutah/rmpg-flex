@@ -7,6 +7,7 @@ import { Clock, LogIn, LogOut, Coffee, Users, BarChart3, Pencil, Trash2 } from '
 import type { TimeEntry } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import ConfirmDialog from '../../../components/ConfirmDialog';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   timeEntries: TimeEntry[];
@@ -43,12 +44,12 @@ export default function TimeAttendanceTab({ timeEntries, officers, onEditTimeEnt
 
   function formatClockTime(dateStr?: string): string {
     if (!dateStr) return '-';
-    const d = new Date(dateStr);
+    const d = parseTimestamp(dateStr);
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
   function getElapsedHours(clockIn: string): string {
-    const diff = Date.now() - new Date(clockIn).getTime();
+    const diff = Date.now() - parseTimestamp(clockIn).getTime();
     const hrs = (diff / 3600000).toFixed(1);
     return `${hrs}h`;
   }

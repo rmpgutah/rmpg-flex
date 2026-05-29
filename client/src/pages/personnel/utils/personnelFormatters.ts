@@ -2,6 +2,8 @@
 // RMPG Flex — Personnel Formatting Utilities
 // ============================================================
 
+import { parseTimestamp } from '../../../utils/dateUtils';
+
 export const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
 export function getWeekMonday(date: Date): Date {
@@ -24,21 +26,21 @@ export function dateToYMD(d: Date): string {
 
 export function calcYearsOfService(hireDate?: string): string {
   if (!hireDate) return '-';
-  const hire = new Date(hireDate);
+  const hire = parseTimestamp(hireDate);
   const now = new Date();
   const years = Math.floor((now.getTime() - hire.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
   return `${years} yr${years !== 1 ? 's' : ''}`;
 }
 
 export function calcDaysUntilExpiry(expiryDate: string): number {
-  const exp = new Date(expiryDate);
+  const exp = parseTimestamp(expiryDate);
   const now = new Date();
   return Math.ceil((exp.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
 }
 
 export function formatMilitary(dateStr: string): string {
   if (!dateStr) return '-';
-  return new Date(dateStr).toLocaleString('en-US', {
+  return parseTimestamp(dateStr).toLocaleString('en-US', {
     month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false,
   });
 }

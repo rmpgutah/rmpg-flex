@@ -5,6 +5,7 @@ import {
   Tag, Radio, Archive, DollarSign, Fuel,
 } from 'lucide-react';
 import { apiFetch } from '../../hooks/useApi';
+import { parseTimestamp, safeDateStr } from '../../utils/dateUtils';
 import { useLiveSync } from '../../hooks/useLiveSync';
 import { usePersistedTab } from '../../hooks/usePersistedState';
 import { useFormDraft } from '../../hooks/useFormDraft';
@@ -58,7 +59,7 @@ const VEHICLE_STATUSES: { value: FleetVehicleStatus; label: string }[] = [
 
 function getExpiryStatus(dateStr?: string): 'ok' | 'expiring' | 'expired' | 'none' {
   if (!dateStr) return 'none';
-  const exp = new Date(dateStr);
+  const exp = parseTimestamp(dateStr);
   const now = new Date();
   if (exp < now) return 'expired';
   const thirtyDays = new Date();
@@ -337,12 +338,12 @@ export default function FleetPage() {
 
   const needsService = vehicles.filter(v => {
     if (!v.next_service_due) return false;
-    return new Date(v.next_service_due) <= new Date();
+    return parseTimestamp(v.next_service_due) <= new Date();
   }).length;
 
   const registrationExpiring = vehicles.filter(v => {
     if (!v.registration_expiry) return false;
-    const exp = new Date(v.registration_expiry);
+    const exp = parseTimestamp(v.registration_expiry);
     const thirtyDays = new Date();
     thirtyDays.setDate(thirtyDays.getDate() + 30);
     return exp <= thirtyDays;
@@ -350,7 +351,7 @@ export default function FleetPage() {
 
   const insuranceExpiring = vehicles.filter(v => {
     if (!v.insurance_expiry) return false;
-    const exp = new Date(v.insurance_expiry);
+    const exp = parseTimestamp(v.insurance_expiry);
     const thirtyDays = new Date();
     thirtyDays.setDate(thirtyDays.getDate() + 30);
     return exp <= thirtyDays;
@@ -1018,7 +1019,7 @@ export default function FleetPage() {
                       {insStatus === 'expiring' && <span className="text-[8px] text-amber-400">INS SOON</span>}
                       {/* Maintenance due alert with days count */}
                       {v.next_service_due && (() => {
-                        const daysUntil = Math.ceil((new Date(v.next_service_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                        const daysUntil = Math.ceil((parseTimestamp(v.next_service_due).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
                         if (daysUntil < 0) return <span className="text-[8px] bg-red-900/50 text-red-400 border border-red-700/50 px-1.5 py-0.5 rounded-sm font-bold">OVERDUE {Math.abs(daysUntil)}d</span>;
                         if (daysUntil <= 14) return <span className="text-[8px] bg-amber-900/50 text-amber-400 border border-amber-700/50 px-1.5 py-0.5 rounded-sm font-bold">SERVICE {daysUntil}d</span>;
                         return null;
@@ -1186,7 +1187,7 @@ export default function FleetPage() {
         onClose={() => setDeletingFuel(null)}
         onConfirm={handleDeleteFuel}
         title="Delete Fuel Log"
-        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? new Date(deletingFuel.fuel_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the fuel log for ${deletingFuel?.gallons?.toFixed(3) || ''} gallons on ${deletingFuel?.fuel_date ? safeDateStr(deletingFuel.fuel_date, '') : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}
@@ -1208,7 +1209,7 @@ export default function FleetPage() {
         onClose={() => setDeletingInspection(null)}
         onConfirm={handleDeleteInspection}
         title="Delete Inspection"
-        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ') || ''} inspection from ${deletingInspection?.inspection_date ? new Date(deletingInspection.inspection_date).toLocaleDateString() : ''}? This cannot be undone.`}
+        message={`Delete the ${deletingInspection?.inspection_type?.replace(/_/g, ' ') || ''} inspection from ${deletingInspection?.inspection_date ? safeDateStr(deletingInspection.inspection_date, '') : ''}? This cannot be undone.`}
         confirmLabel="Delete"
         confirmVariant="danger"
         isLoading={isDeleting}

@@ -12,6 +12,7 @@ import { toDisplayLabel } from '../utils/formatters';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { formatAddressDisplay } from '../utils/statusLabels';
+import { parseTimestamp, safeDateStr } from '../utils/dateUtils';
 
 interface PersonResult {
   id: string;
@@ -130,7 +131,7 @@ export default function CriminalHistoryPage() {
         });
       });
 
-      entries.sort((a, b) => (new Date(b.date || 0).getTime() || 0) - (new Date(a.date || 0).getTime() || 0));
+      entries.sort((a, b) => ((b.date ? parseTimestamp(b.date).getTime() : 0) || 0) - ((a.date ? parseTimestamp(a.date).getTime() : 0) || 0));
       setHistory(entries);
     } catch (err) {
       console.error('History fetch error:', err);
@@ -386,7 +387,7 @@ export default function CriminalHistoryPage() {
                               {entry.type.replace(/_/g, ' ')}
                             </span>
                             <span className="text-[10px] font-mono font-bold text-rmpg-200">{entry.reference_number}</span>
-                            <span className="text-[9px] text-rmpg-500">{entry.date ? new Date(entry.date).toLocaleDateString() : ''}</span>
+                            <span className="text-[9px] text-rmpg-500">{entry.date ? safeDateStr(entry.date, '') : ''}</span>
                           </div>
                           <p className="text-[10px] text-rmpg-300 mt-0.5 truncate">{entry.description}</p>
                           <div className="flex items-center gap-3 mt-0.5 text-[9px] text-rmpg-500">
@@ -413,7 +414,7 @@ export default function CriminalHistoryPage() {
                           <div className={`absolute -left-[15px] top-1.5 w-2.5 h-2.5 rounded-full border-2 border-surface-base ${dotColor}`} />
                           {/* Date label */}
                           <div className="text-[9px] font-mono text-rmpg-500 mb-0.5">
-                            {entry.date ? new Date(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
+                            {entry.date ? parseTimestamp(entry.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }) : 'Unknown date'}
                           </div>
                           {/* Card */}
                           <button type="button" onClick={() => setExpandedEntry(isExpanded ? null : `${entry.type}-${entry.id}`)}

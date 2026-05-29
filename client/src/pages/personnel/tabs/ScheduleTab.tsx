@@ -7,6 +7,7 @@ import { ChevronLeft, ChevronRight, Calendar, Plus } from 'lucide-react';
 import type { Schedule } from '../../../types';
 import type { OfficerWithStatus } from '../utils/personnelMappers';
 import { DAYS, getWeekMonday, formatWeekLabel, dateToYMD } from '../utils/personnelFormatters';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   officers: OfficerWithStatus[];
@@ -35,7 +36,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
     const idsInWeek = new Set<string>();
     for (const s of schedules) {
-      const shiftDate = s.shift_start ? dateToYMD(new Date(s.shift_start)) : '';
+      const shiftDate = s.shift_start ? dateToYMD(parseTimestamp(s.shift_start)) : '';
       if (shiftDate >= weekStart && shiftDate <= weekEnd) {
         idsInWeek.add(s.officer_id);
       }
@@ -53,7 +54,7 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
     const map = new Map<string, Schedule[]>();
     for (const s of schedules) {
       if (!s.shift_start) continue;
-      const ymd = dateToYMD(new Date(s.shift_start));
+      const ymd = dateToYMD(parseTimestamp(s.shift_start));
       const key = `${s.officer_id}_${ymd}`;
       if (!map.has(key)) map.set(key, []);
       map.get(key)!.push(s);
@@ -79,13 +80,13 @@ export default function ScheduleTab({ officers, schedules, weekMonday, onWeekCha
 
   function formatTime(dateStr: string): string {
     if (!dateStr) return '';
-    const d = new Date(dateStr);
+    const d = parseTimestamp(dateStr);
     return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
   }
 
   function isNightShift(s: Schedule): boolean {
     if (!s.shift_start) return false;
-    const hour = new Date(s.shift_start).getHours();
+    const hour = parseTimestamp(s.shift_start).getHours();
     return hour >= 18 || hour < 6;
   }
 

@@ -2,12 +2,12 @@ import { useState, useEffect } from 'react';
 import { Activity, Award, Plus, TrendingUp, Star, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
-import { localToday } from '../../../utils/dateUtils';
+import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 
 import RichTextArea from '../../../components/RichTextArea';
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '';
-  try { return new Date(d + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
+  try { return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); } catch { return d; }
 }
 
 interface FitnessScore {

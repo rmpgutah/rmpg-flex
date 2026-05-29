@@ -9,6 +9,7 @@ import {
 import type { TrainingRecord } from '../../../types';
 import { TRAINING_CATEGORY_COLORS } from '../utils/personnelConstants';
 import FileAttachments from '../../../components/FileAttachments';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   training: TrainingRecord[];
@@ -24,7 +25,7 @@ export default function TrainingDetailTab({ training, loading, onAddTraining, of
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   };
 
   const borderColor = (status: string) => {

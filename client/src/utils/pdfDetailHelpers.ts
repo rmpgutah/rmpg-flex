@@ -20,6 +20,7 @@ import {
   getContentWidth,
 } from './pdfTokens';
 import { sanitizePdfText } from './pdfGenerator';
+import { parseTimestamp } from './dateUtils';
 
 // ── Quick-reference banner ──────────────────────────────
 //
@@ -355,10 +356,12 @@ export function addLinkedRecordsStrip(
 // ── Helpers ─────────────────────────────────────────────
 
 function formatTimestamp(iso: string): string {
-  const t = Date.parse(iso);
-  if (!isFinite(t)) return iso;
-  const d = new Date(t);
-  const p2 = (n: number) => String(n).padStart(2, '0');
-  return `${p2(d.getMonth() + 1)}/${p2(d.getDate())}/${d.getFullYear()} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+  // Server timestamps are naive UTC; parseTimestamp reads them correctly.
+  // Display is Mountain-Time-pinned by the global enforceMountainTime shim.
+  const d = parseTimestamp(iso);
+  if (isNaN(d.getTime())) return iso;
+  return d
+    .toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+    .replace(',', '');
 }
 

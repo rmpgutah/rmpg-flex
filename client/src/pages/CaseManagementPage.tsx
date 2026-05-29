@@ -26,7 +26,7 @@ import { useIsMobile } from '../hooks/useIsMobile';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
 import { humanizeCaseType, humanizeSolvabilityFactor } from '../utils/statusLabels';
-import { safeDateTimeStr } from '../utils/dateUtils';
+import { safeDateTimeStr, safeDateStr, parseTimestamp } from '../utils/dateUtils';
 
 const STATUS_OPTIONS: { value: CaseStatus; label: string; color: string }[] = [
   { value: 'open', label: 'Open', color: 'bg-gray-900/50 text-gray-400 border-gray-700/50' },
@@ -888,9 +888,9 @@ export default function CaseManagementPage() {
                       ['Case Number', selected.case_number],
                       ['Type', humanizeCaseType(selected.case_type)],
                       ['Lead Investigator', selected.lead_investigator_name || '—'],
-                      ['Opened', selected.opened_date ? new Date(selected.opened_date).toLocaleDateString() : '—'],
-                      ['Due Date', selected.due_date ? new Date(selected.due_date).toLocaleDateString() : '—'],
-                      ['Closed', selected.closed_date ? new Date(selected.closed_date).toLocaleDateString() : '—'],
+                      ['Opened', selected.opened_date ? safeDateStr(selected.opened_date) : '—'],
+                      ['Due Date', selected.due_date ? safeDateStr(selected.due_date) : '—'],
+                      ['Closed', selected.closed_date ? safeDateStr(selected.closed_date) : '—'],
                     ].map(([label, value]) => (
                       <div key={label as string}>
                         <div className="text-[9px] font-mono text-rmpg-500 uppercase">{label}</div>
@@ -924,7 +924,7 @@ export default function CaseManagementPage() {
                     { key: 'priority', label: 'Priority', render: (v) => <span className="font-bold uppercase">{v || '—'}</span> },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
-                    { key: 'created_at', label: 'Date', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? safeDateStr(v) : '—' },
                   ]}
                   entityType="calls"
                   caseId={selected.id}
@@ -942,7 +942,7 @@ export default function CaseManagementPage() {
                     { key: 'incident_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'location', label: 'Location' },
-                    { key: 'created_at', label: 'Date', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'created_at', label: 'Date', render: (v) => v ? safeDateStr(v) : '—' },
                   ]}
                   entityType="incidents"
                   caseId={selected.id}
@@ -957,7 +957,7 @@ export default function CaseManagementPage() {
                   items={caseFull?.persons || []}
                   columns={[
                     { key: 'last_name', label: 'Name', render: (_v, row) => <span className="font-bold text-white">{row.last_name}, {row.first_name}</span> },
-                    { key: 'date_of_birth', label: 'DOB', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'date_of_birth', label: 'DOB', render: (v) => v ? safeDateStr(v) : '—' },
                     { key: 'role', label: 'Role', render: (v) => <span className="text-[9px] px-1 border border-rmpg-700 bg-rmpg-800/50">{v || 'involved'}</span> },
                     { key: 'phone', label: 'Phone' },
                   ]}
@@ -1032,7 +1032,7 @@ export default function CaseManagementPage() {
                     { key: 'warrant_type', label: 'Type' },
                     { key: 'status', label: 'Status' },
                     { key: 'subject_name', label: 'Subject' },
-                    { key: 'issued_date', label: 'Issued', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? safeDateStr(v) : '—' },
                   ]}
                   entityType="warrants"
                   caseId={selected.id}
@@ -1050,7 +1050,7 @@ export default function CaseManagementPage() {
                     { key: 'violation', label: 'Violation' },
                     { key: 'status', label: 'Status' },
                     { key: 'violator_name', label: 'Violator' },
-                    { key: 'issued_date', label: 'Issued', render: (v) => v ? new Date(v).toLocaleDateString() : '—' },
+                    { key: 'issued_date', label: 'Issued', render: (v) => v ? safeDateStr(v) : '—' },
                   ]}
                   entityType="citations"
                   caseId={selected.id}
@@ -1073,7 +1073,7 @@ export default function CaseManagementPage() {
                         ...(caseFull?.incidents || []).map((i: any) => ({ date: i.created_at, type: 'Incident', label: `${i.incident_number || '#' + i.id} — ${i.incident_type || 'Unknown'}`, color: '#f59e0b' })),
                         ...(caseFull?.notes || []).map((n: any) => ({ date: n.created_at, type: 'Note', label: n.content?.substring(0, 80) || 'Note', color: '#8b5cf6' })),
                       ]
-                        .sort((a, b) => new Date(b.date || 0).getTime() - new Date(a.date || 0).getTime())
+                        .sort((a, b) => (b.date ? parseTimestamp(b.date).getTime() : 0) - (a.date ? parseTimestamp(a.date).getTime() : 0))
                         .map((event, idx) => (
                           <div key={idx} className="relative">
                             <div className="absolute -left-[21px] w-2.5 h-2.5 rounded-full border-2 border-surface-base" style={{ background: event.color }} />

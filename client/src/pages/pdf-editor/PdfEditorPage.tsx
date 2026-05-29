@@ -23,6 +23,7 @@ import AnnotationContextMenu from './components/AnnotationContextMenu';
 import { Annotation, BatesConfig, DocumentMeta, EditorState, EditorPreferences, DEFAULT_PREFERENCES, PageCrop, PageMeta, RecentFile, StampLabel, Tool, WatermarkConfig, DEFAULT_RENDER_SCALE } from './types';
 import { buildPdfFromEditorState, extractPagesAsBytes, mergePdfFiles, saveToDocuments } from './save';
 import { authedImageUrl } from '../../hooks/useApi';
+import { parseTimestamp } from '../../utils/dateUtils';
 
 // PDF rendering goes through our company-owned engine facade
 // (client/src/lib/rmpg-pdf-engine). It tries our native backend first and
@@ -505,7 +506,7 @@ export default function PdfEditorPage() {
       const parsed = JSON.parse(raw) as { annotations?: Annotation[]; savedAt?: string };
       if (Array.isArray(parsed.annotations) && parsed.annotations.length > 0) {
         const ageMin = parsed.savedAt
-          ? Math.round((Date.now() - new Date(parsed.savedAt).getTime()) / 60000)
+          ? Math.round((Date.now() - parseTimestamp(parsed.savedAt).getTime()) / 60000)
           : -1;
         const restore = window.confirm(
           `Restore unsaved draft for this PDF? It contains ${parsed.annotations.length} annotation(s)` +

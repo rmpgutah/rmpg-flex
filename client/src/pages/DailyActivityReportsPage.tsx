@@ -18,6 +18,7 @@ import PanelTitleBar from '../components/PanelTitleBar';
 import IconButton from '../components/IconButton';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
+import { safeDateStr } from '../utils/dateUtils';
 import { useLiveSync } from '../hooks/useLiveSync';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { useAuth } from '../context/AuthContext';
@@ -268,7 +269,7 @@ export default function DailyActivityReportsPage() {
                 </div>
                 <div className="flex items-center gap-2 mt-1 text-[9px] text-rmpg-500">
                   <Calendar style={{ width: 9, height: 9 }} />
-                  {dar.shift_date ? new Date(dar.shift_date).toLocaleDateString() : '—'}
+                  {safeDateStr(dar.shift_date)}
                   {dar.officer_name && (
                     <span className="flex items-center gap-1">
                       <User style={{ width: 9, height: 9 }} />
@@ -294,7 +295,7 @@ export default function DailyActivityReportsPage() {
       <div className="flex-1 flex flex-col bg-surface-base">
         {selected ? (
           <>
-            <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? new Date(selected.shift_date).toLocaleDateString() : ''}`} icon={ClipboardCheck}>
+            <PanelTitleBar title={`${selected.dar_number} — ${selected.shift_date ? safeDateStr(selected.shift_date, '') : ''}`} icon={ClipboardCheck}>
               {(selected.status === 'draft' || isGodMode) && (
                 <button type="button" onClick={handleSubmit} className="toolbar-btn toolbar-btn-primary print:hidden">
                   <Send style={{ width: 11, height: 11 }} /> Submit
@@ -350,7 +351,7 @@ export default function DailyActivityReportsPage() {
 
               {/* Shift Info */}
               <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-white">{selected.shift_date ? new Date(selected.shift_date).toLocaleDateString() : '—'}</div></div>
+                <div><div className="text-[9px] font-mono text-rmpg-500">Shift Date</div><div className="text-xs text-white">{safeDateStr(selected.shift_date)}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">Start</div><div className="text-xs text-white">{selected.shift_start || '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">End</div><div className="text-xs text-white">{selected.shift_end || '—'}</div></div>
                 <div><div className="text-[9px] font-mono text-rmpg-500">Total Hours</div><div className="text-xs font-bold text-brand-400">{(() => {

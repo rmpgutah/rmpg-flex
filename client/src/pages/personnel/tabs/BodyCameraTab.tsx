@@ -17,6 +17,7 @@ import {
 import PrintButton from '../../../components/PrintButton';
 import ExportButton from '../../../components/ExportButton';
 import RmpgLogo from '../../../components/RmpgLogo';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 // ── Filters ──────────────────────────────────────────────────
 
@@ -136,7 +137,7 @@ export default function BodyCameraTab({
 
   function formatDate(dateStr?: string): string {
     if (!dateStr) return '-';
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   }
 
   function statusLabel(status: string): string {

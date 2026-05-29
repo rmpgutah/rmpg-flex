@@ -3,6 +3,7 @@ import { Clock } from 'lucide-react';
 import FormModal from '../../../components/FormModal';
 import { useFormDraft } from '../../../hooks/useFormDraft';
 import type { TimeEntry } from '../../../types';
+import { toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../../utils/dateUtils';
 
 export interface TimeEntryEditData {
   id: string;
@@ -18,14 +19,9 @@ interface Props {
   entry: TimeEntry | null;
 }
 
-/** Convert ISO / DB datetime string to datetime-local input value */
+/** Convert ISO / DB datetime string (server UTC) to a Mountain-Time datetime-local input value */
 function toLocalInput(dt?: string): string {
-  if (!dt) return '';
-  // Handle both ISO (2024-01-15T08:00:00.000Z) and DB (2024-01-15 08:00:00) formats
-  const d = new Date(dt);
-  if (isNaN(d.getTime())) return '';
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return toDatetimeLocalValue(dt);
 }
 
 export default function TimeEntryEditModal({
@@ -69,10 +65,12 @@ export default function TimeEntryEditModal({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!entry) return;
+    // Inputs hold Mountain-Time wall-clock; convert back to naive UTC for
+    // storage (inverse of toDatetimeLocalValue) so the round-trip is stable.
     onSubmit({
       id: entry.id,
-      clock_in: form.clockIn,
-      clock_out: form.clockOut,
+      clock_in: mtDatetimeLocalToUtc(form.clockIn),
+      clock_out: form.clockOut ? mtDatetimeLocalToUtc(form.clockOut) : '',
     });
   };
 

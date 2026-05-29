@@ -27,6 +27,7 @@ import {
 import { apiFetch, authedImageUrl } from '../../hooks/useApi';
 import { useAuth } from '../../context/AuthContext';
 import { openRecordWindow } from '../../utils/windowManager';
+import { parseTimestamp } from '../../utils/dateUtils';
 import PersonFormModal from '../../components/PersonFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import AlertBanner from '../../components/AlertBanner';
@@ -60,7 +61,7 @@ function parseFlags(raw: unknown): string[] {
 /** Safely format a date string as MM/DD/YYYY, returning '—' for empty/invalid */
 function safeDateDisplay(d?: string | null): string {
   if (!d) return '—';
-  const parsed = new Date(d.includes('T') ? d : d + 'T00:00:00');
+  const parsed = parseTimestamp(d);
   if (isNaN(parsed.getTime())) return '—';
   return parsed.toLocaleDateString('en-US', { timeZone: 'America/Denver', month: '2-digit', day: '2-digit', year: 'numeric' });
 }
@@ -680,7 +681,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                   <WarrantBadge flags={person.flags} size="sm" />
                 </div>
                 <div className="flex items-center gap-3 mt-0.5 text-[10px] text-rmpg-400">
-                  {person.date_of_birth && <span>DOB: {safeDateDisplay(person.date_of_birth)}{(() => { const b = new Date(person.date_of_birth.includes('T') ? person.date_of_birth : person.date_of_birth + 'T00:00:00'); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
+                  {person.date_of_birth && <span>DOB: {safeDateDisplay(person.date_of_birth)}{(() => { const b = parseTimestamp(person.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
                   {person.gender && <span>{humanizeGender(person.gender)}</span>}
                   {person.race && <span>{humanizeRace(person.race)}</span>}
                   {person.phone && (
@@ -871,7 +872,7 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         )}
         {/* Compact person ID line */}
         <div className="flex items-center gap-3 mt-1 text-[10px] text-rmpg-400">
-          {selectedPerson.date_of_birth && <span>DOB: {safeDateDisplay(selectedPerson.date_of_birth)}{(() => { const b = new Date(selectedPerson.date_of_birth.includes('T') ? selectedPerson.date_of_birth : selectedPerson.date_of_birth + 'T00:00:00'); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
+          {selectedPerson.date_of_birth && <span>DOB: {safeDateDisplay(selectedPerson.date_of_birth)}{(() => { const b = parseTimestamp(selectedPerson.date_of_birth); if (isNaN(b.getTime())) return ''; const today = new Date(); let age = today.getFullYear() - b.getFullYear(); if (today.getMonth() < b.getMonth() || (today.getMonth() === b.getMonth() && today.getDate() < b.getDate())) age--; return age >= 0 ? ` (${age})` : ''; })()}</span>}
           {selectedPerson.gender && <span>{humanizeGender(selectedPerson.gender)}</span>}
           {selectedPerson.race && <span>{humanizeRace(selectedPerson.race)}</span>}
         </div>

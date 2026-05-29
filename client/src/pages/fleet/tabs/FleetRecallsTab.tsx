@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { AlertOctagon, Plus, CheckCircle, Calendar, Loader2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { useToast } from '../../../components/ToastProvider';
-import { localToday } from '../../../utils/dateUtils';
+import { localToday, parseTimestamp } from '../../../utils/dateUtils';
 
 import RichTextArea from '../../../components/RichTextArea';
 interface Recall {
@@ -116,7 +116,7 @@ export default function FleetRecallsTab({ vehicleId }: { vehicleId?: number | st
                   </div>
                   <p className="text-[10px] text-rmpg-200">{r.description}</p>
                   {r.remedy && <p className="text-[10px] text-rmpg-400 mt-1">Remedy: {r.remedy}</p>}
-                  {r.completed_date && <p className="text-[10px] text-green-400">Completed: {new Date(r.completed_date + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
+                  {r.completed_date && <p className="text-[10px] text-green-400">Completed: {parseTimestamp(r.completed_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</p>}
                 </div>
                 {r.status !== 'completed' && r.status !== 'not_applicable' && (
                   <div className="flex gap-1">

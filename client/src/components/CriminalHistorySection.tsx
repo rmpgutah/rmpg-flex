@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { apiFetch } from '../hooks/useApi';
 import { toDisplayLabel } from '../utils/formatters';
+import { parseTimestamp } from '../utils/dateUtils';
 
 // ── Types ──────────────────────────────────────────
 
@@ -90,7 +91,7 @@ const OFFENSE_LEVEL_CLASSES: Record<string, string> = {
 function formatDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '--';
   try {
-    return new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00').toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    return parseTimestamp(dateStr).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
   } catch { return dateStr; }
 }
 

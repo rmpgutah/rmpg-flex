@@ -22,7 +22,7 @@ import CollapsibleSection from '../components/CollapsibleSection';
 import CriminalHistorySection from '../components/CriminalHistorySection';
 import ArrestFormModal from '../components/ArrestFormModal';
 import type { ArrestFormData } from '../components/ArrestFormModal';
-import { localToday } from '../utils/dateUtils';
+import { localToday, parseTimestamp } from '../utils/dateUtils';
 import { useWebSocket } from '../context/WebSocketContext';
 import { useToast } from '../components/ToastProvider';
 import { useAuth } from '../context/AuthContext';
@@ -143,7 +143,7 @@ function fmtDate(d: string | null | undefined): string {
 
 function calcAge(dob: string | null | undefined): string {
   if (!dob) return '';
-  const birth = new Date(dob);
+  const birth = parseTimestamp(dob);
   if (isNaN(birth.getTime())) return '';
   const today = new Date();
   let age = today.getFullYear() - birth.getFullYear();

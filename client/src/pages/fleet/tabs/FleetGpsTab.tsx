@@ -7,6 +7,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { MapPin, Navigation, AlertTriangle, Loader2, Clock, Route, Gauge, Zap } from 'lucide-react';
 import type { CpgpsVehicle, CpgpsTrip, CpgpsAlert } from '../../../types';
 import { apiFetch } from '../../../hooks/useApi';
+import { parseTimestamp } from '../../../utils/dateUtils';
 
 interface Props {
   vehicleId: string | number;
@@ -68,7 +69,7 @@ export default function FleetGpsTab({ vehicleId }: Props) {
 
   const formatDate = (d?: string) => {
     if (!d) return '-';
-    return new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+    return parseTimestamp(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' });
   };
 
   const formatDuration = (seconds?: number) => {

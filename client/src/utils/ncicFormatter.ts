@@ -5,6 +5,8 @@
 // Fixed-width, coded field headers, monospace presentation.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 const ORI = 'RMPGFLEX01';  // Originating Agency Identifier
 const MKE = 'QH';           // Message Key (query hit)
 
@@ -94,7 +96,7 @@ function pad(val: string | null | undefined, width: number): string {
 function ncicDate(dateStr: string | null | undefined): string {
   if (!dateStr) return '        ';
   try {
-    const d = new Date(dateStr);
+    const d = parseTimestamp(dateStr);
     if (isNaN(d.getTime())) return '        ';
     const y = d.getFullYear();
     const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -926,7 +928,7 @@ export function formatBackgroundResponse(
   lines.push(`  ${'─'.repeat(56)}`);
   lines.push(`  ** ${records.length} RECORD(S) FOUND — ${cached ? 'CACHED' : 'LIVE SEARCH'} **`);
   if (cached && cachedAt) {
-    const cachedDate = new Date(cachedAt);
+    const cachedDate = parseTimestamp(cachedAt);
     const dateStr = `${String(cachedDate.getMonth() + 1).padStart(2, '0')}/${String(cachedDate.getDate()).padStart(2, '0')}/${cachedDate.getFullYear()}`;
     lines.push(`  CACHED RESULT FROM ${dateStr} — USE QB! TO FORCE FRESH`);
   }

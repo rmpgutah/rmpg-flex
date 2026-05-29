@@ -20,6 +20,7 @@
 // ============================================================
 
 import jsPDF from 'jspdf';
+import { parseTimestamp } from './dateUtils';
 import {
   openAutoSection, closeAutoSection, addTableWithShading, checkPageBreak,
 } from './pdfGenerator';
@@ -501,9 +502,8 @@ const VEHICLE_TABLE_CONFIG: Record<VehicleSectionKey, TableConfig> = {
 
 function formatDate(iso: string | null | undefined): string {
   if (!iso) return '';
-  const t = Date.parse(iso);
-  if (!isFinite(t)) return String(iso);
-  const d = new Date(t);
+  const d = parseTimestamp(iso);
+  if (isNaN(d.getTime())) return String(iso);
   const p2 = (n: number) => String(n).padStart(2, '0');
   return `${p2(d.getMonth() + 1)}/${p2(d.getDate())}/${d.getFullYear()}`;
 }

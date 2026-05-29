@@ -23,7 +23,7 @@ import { useFormDraft } from '../hooks/useFormDraft';
 import UnsavedChangesGuard from '../components/UnsavedChangesGuard';
 import FloatingSaveBar from '../components/FloatingSaveBar';
 import { getMapboxAccessToken } from '../utils/mapboxApiKey';
-import { safeDateTimeStr } from '../utils/dateUtils';
+import { safeDateTimeStr, safeDateStr, parseTimestamp } from '../utils/dateUtils';
 
 const ALERT_TYPES: { value: OffenderAlertType; label: string }[] = [
   { value: 'ban_zone', label: 'Ban Zone' }, { value: 'watch_list', label: 'Watch List' },
@@ -129,7 +129,7 @@ function CdocSearchPanel() {
               <div className="flex-1">
                 <div className="text-sm font-bold text-white">{selectedOffender.last_name}, {selectedOffender.first_name}</div>
                 <div className="text-[10px] text-rmpg-400 font-mono">DOC# {selectedOffender.doc_number}</div>
-                {selectedOffender.dob && <div className="text-[10px] text-rmpg-400">DOB: {new Date(selectedOffender.dob).toLocaleDateString()}</div>}
+                {selectedOffender.dob && <div className="text-[10px] text-rmpg-400">DOB: {safeDateStr(selectedOffender.dob)}</div>}
                 {selectedOffender.status && (
                   <span className={`inline-block mt-1 text-[9px] px-1.5 py-0.5 font-bold border ${
                     selectedOffender.status.toLowerCase().includes('incarcerat') ? 'bg-red-900/50 text-red-300 border-red-700/50' :
@@ -207,7 +207,7 @@ function CdocSearchPanel() {
 
 const timeAgo = (date: string): string => {
   if (!date) return '—';
-  const parsed = new Date(date).getTime();
+  const parsed = parseTimestamp(date).getTime();
   if (Number.isNaN(parsed)) return '—';
   const ms = Date.now() - parsed;
   const mins = Math.floor(ms / 60000);
@@ -529,7 +529,7 @@ export default function OffenderRegistryPage() {
                 <div className="text-[9px] font-mono text-[#d4a017] uppercase tracking-wider mb-2">Person Information</div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div><span className="text-[9px] text-rmpg-500">Name:</span> <span className="text-xs text-white font-bold">{selected.person_name || '—'}</span></div>
-                  <div><span className="text-[9px] text-rmpg-500">DOB:</span> <span className="text-xs text-white">{selected.dob ? new Date(selected.dob).toLocaleDateString() : '—'}</span></div>
+                  <div><span className="text-[9px] text-rmpg-500">DOB:</span> <span className="text-xs text-white">{safeDateStr(selected.dob)}</span></div>
                   {selected.is_sex_offender && (
                     <span className="text-[9px] px-1.5 py-0.5 bg-purple-900/50 text-purple-300 border border-purple-600/50 col-span-2 w-fit">SEX OFFENDER</span>
                   )}
@@ -575,8 +575,8 @@ export default function OffenderRegistryPage() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
                   ['Description', selected.description],
-                  ['Effective Date', selected.effective_date ? new Date(selected.effective_date).toLocaleDateString() : '—'],
-                  ['Expiration Date', selected.expiration_date ? new Date(selected.expiration_date).toLocaleDateString() : 'No expiration'],
+                  ['Effective Date', safeDateStr(selected.effective_date)],
+                  ['Expiration Date', safeDateStr(selected.expiration_date, 'No expiration')],
                   ['Restriction Radius', selected.restriction_radius_ft ? `${selected.restriction_radius_ft} ft` : '—'],
                   ['Created', safeDateTimeStr(selected.created_at)],
                 ].map(([label, value]) => (
@@ -650,7 +650,7 @@ export default function OffenderRegistryPage() {
                             onClick={() => { setSelectedPerson(p); setFormData(prev => ({ ...prev, person_id: String(p.id) })); setPersonResults([]); }}
                             className="w-full text-left px-3 py-1.5 text-xs text-rmpg-300 hover:bg-rmpg-700/40 hover:text-white border-b border-rmpg-800"
                           >
-                            {p.first_name} {p.last_name} {p.dob ? `(${new Date(p.dob).toLocaleDateString()})` : ''}
+                            {p.first_name} {p.last_name} {p.dob ? `(${safeDateStr(p.dob)})` : ''}
                           </button>
                         ))}
                       </div>

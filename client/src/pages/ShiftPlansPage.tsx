@@ -18,12 +18,12 @@ import StatusBadge from '../components/StatusBadge';
 import { useToast } from '../components/ToastProvider';
 import ExportButton from '../components/ExportButton';
 import { apiFetch } from '../hooks/useApi';
-import { localToday, dateToLocalYMD, safeDateTimeStr } from '../utils/dateUtils';
+import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../utils/dateUtils';
 
 // ── Date helpers ───────────────────────────────────────────
 
 function formatDate(dateStr: string) {
-  const d = new Date(dateStr.includes('T') ? dateStr : dateStr + 'T00:00:00');
+  const d = parseTimestamp(dateStr);
   return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
 

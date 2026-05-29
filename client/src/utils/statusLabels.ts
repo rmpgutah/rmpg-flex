@@ -5,6 +5,8 @@
 // user-friendly display labels throughout the application.
 // ============================================================
 
+import { parseTimestamp } from './dateUtils';
+
 // ── Call Status Labels ────────────────────────────────
 export const CALL_STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
@@ -342,7 +344,7 @@ export function humanizeFlag(flag: string): string {
 // ── Relative Time Formatting ──────────────────────────
 export function timeAgo(dateStr: string | null | undefined): string {
   if (!dateStr) return '\u2014';
-  const date = new Date(dateStr);
+  const date = parseTimestamp(dateStr);
   if (isNaN(date.getTime())) return '\u2014';
   const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
   if (seconds < 60) return 'just now';
@@ -397,7 +399,7 @@ export function formatYesNo(val: boolean | number | null | undefined): string {
 // ── Date-Only Display ─────────────────────────────────
 export function formatDateShort(dateStr: string | null | undefined): string {
   if (!dateStr) return '\u2014';
-  const d = new Date(dateStr);
+  const d = parseTimestamp(dateStr);
   if (isNaN(d.getTime())) return '\u2014';
   return d.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
 }
