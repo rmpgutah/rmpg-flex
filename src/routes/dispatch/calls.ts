@@ -808,7 +808,11 @@ calls.post('/:id/assign-unit', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const { unit_id } = await c.req.json<{ unit_id: number }>();
+    const body = await c.req.json<{ unit_id: number | string }>();
+    // Client sends unit_id as a string; coerce so dedup against the numeric
+    // assigned_unit_ids array works and we never store mixed [5172, "5172"].
+    const unit_id = Number(body.unit_id);
+    if (!Number.isFinite(unit_id) || unit_id <= 0) return c.json({ error: 'Invalid unit_id' }, 400);
     const call = await queryFirst<{ assigned_unit_ids: string; call_number: string; latitude: number | null; longitude: number | null }>(
       db, 'SELECT assigned_unit_ids, call_number, latitude, longitude FROM calls_for_service WHERE id = ?', id
     );
@@ -857,7 +861,13 @@ calls.post('/:id/assign-unit', async (c) => {
       }
     } catch (err) { console.error('[dispatch] premise auto-push:', err); }
 
-    return c.json({ message: 'Unit assigned', assigned_unit_ids: assigned, premise_pushed });
+    // Return the full updated call row (not a bare {message}). The client
+    // (handleAssignUnit) feeds this straight into mapDbCall() and replaces the
+    // selected call with it — a partial response yields a blank-id corrupted
+    // call that wipes the call out of the dispatch UI. Mirrors /dispatch,
+    // /auto-assign, and /transfer, which all return the full row.
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    return c.json({ ...(updated || {}), premise_pushed });
   } catch (err) { return c.json({ error: 'Assign failed' }, 500); }
 });
 
@@ -866,13 +876,21 @@ calls.post('/:id/unassign-unit', async (c) => {
   try {
     const db = getDb(c.env);
     const id = c.req.param('id');
-    const { unit_id } = await c.req.json<{ unit_id: number }>();
+    const body = await c.req.json<{ unit_id: number | string }>();
+    // Coerce to number: the client sends a string, and a string vs number
+    // filter (5172 !== "5172") is always true — the unit would never be removed.
+    const unit_id = Number(body.unit_id);
+    if (!Number.isFinite(unit_id) || unit_id <= 0) return c.json({ error: 'Invalid unit_id' }, 400);
     const call = await queryFirst<{ assigned_unit_ids: string }>(db, 'SELECT assigned_unit_ids FROM calls_for_service WHERE id = ?', id);
     if (!call) return c.json({ error: 'Call not found' }, 404);
     const assigned = (JSON.parse(call.assigned_unit_ids || '[]') as number[]).filter(u => u !== unit_id);
     await execute(db, 'UPDATE calls_for_service SET assigned_unit_ids = ? WHERE id = ?', JSON.stringify(assigned), id);
     await execute(db, "UPDATE units SET status = 'available', current_call_id = NULL WHERE id = ?", unit_id);
-    return c.json({ message: 'Unit unassigned', assigned_unit_ids: assigned });
+    // Return the full updated call row — the client (handleUnassignUnit) runs it
+    // through mapDbCall() and replaces the selected call; a bare {message}
+    // corrupts the call to a blank-id object. Mirrors /assign-unit.
+    const updated = await queryFirst<Record<string, unknown>>(db, 'SELECT * FROM calls_for_service WHERE id = ?', id);
+    return c.json(updated || {});
   } catch (err) { return c.json({ error: 'Unassign failed' }, 500); }
 });
 
