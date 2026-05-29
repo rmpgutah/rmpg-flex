@@ -64,12 +64,17 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   const [tilesStalled, setTilesStalled] = useState(false);
   const [retrying, setRetrying] = useState(false);
   const [mapTokenRetry, setMapTokenRetry] = useState(0);
+  // Bumped to true the moment the Mapbox instance is created. mapRef is a ref
+  // (assigning it does NOT re-render), so without this the useMapRouting hook
+  // below would stay bound to map=null forever and queryRoute would bail before
+  // ever fetching the Directions API — no route line, no turn-by-turn banner.
+  const [mapReady, setMapReady] = useState(false);
 
   // Classify error: auth/config vs connectivity
   const isAuthError = error != null && (error.includes('token') || error.includes('configured'));
 
   // Routing (auto-route when a single assigned unit has GPS)
-  const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapRef.current });
+  const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapReady ? mapRef.current : null });
   const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
 
   // Load Mapbox token + init map
@@ -115,6 +120,7 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       });
       mapRef.current = map;
       registerMapInstance(map);
+      setMapReady(true); // re-render so useMapRouting picks up the real map instance
 
       // Monitor tile loading
       map.on('idle', () => setTilesStalled(false));
@@ -191,8 +197,13 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       const combo = `${u.call_sign}:${call.call_number}`;
 
       if (combo !== lastAutoRouteRef.current) {
+        // Set the combo eagerly to avoid spamming the Directions API across
+        // rapid re-renders, but clear it again if the query actually failed
+        // (e.g. the map wasn't ready yet) so the next render retries instead
+        // of falling through to the throttled updateOrigin path forever.
         lastAutoRouteRef.current = combo;
-        showRoute(u.call_sign, call.call_number || 'CALL', u.latitude!, u.longitude!, call.latitude, call.longitude);
+        showRoute(u.call_sign, call.call_number || 'CALL', u.latitude!, u.longitude!, call.latitude, call.longitude)
+          .then((info) => { if (!info) lastAutoRouteRef.current = ''; });
       } else {
         updateOrigin(u.latitude!, u.longitude!);
       }
