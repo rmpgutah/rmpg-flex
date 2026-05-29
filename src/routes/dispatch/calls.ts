@@ -349,8 +349,25 @@ calls.get('/export', async (c) => {
       FROM calls_for_service c ${where} ORDER BY c.created_at DESC LIMIT 50000
     `, ...params);
 
+    // Timestamps are stored UTC; the app's primary timezone is Mountain
+    // (America/Denver). Render the exported created_at/cleared_at in MT so the
+    // CSV matches what dispatchers see in the UI. Workers ship full ICU, so
+    // Intl with an IANA zone is available. DST-aware.
+    const toMountain = (v: unknown): string => {
+      if (v == null || v === '') return '';
+      const s = String(v);
+      // Parse naive "YYYY-MM-DD HH:MM:SS" as UTC; pass through tz-aware forms.
+      const hasTz = (s.includes('T') && (/[zZ]$/.test(s) || /[+-]\d{2}:?\d{2}$/.test(s)));
+      const iso = hasTz ? s : (s.includes(' ') ? s.replace(' ', 'T') + 'Z' : (s.includes('T') ? s + 'Z' : s));
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return s;
+      const p = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/Denver', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).formatToParts(d);
+      const g = (t: string) => p.find((x) => x.type === t)?.value ?? '';
+      return `${g('year')}-${g('month')}-${g('day')} ${g('hour')}:${g('minute')}:${g('second')} MT`;
+    };
+
     const csv = ['call_number,incident_type,priority,status,caller_name,location_address,description,source,disposition,created_at,cleared_at',
-      ...rows.map(r => [r.call_number, r.incident_type, r.priority, r.status, r.caller_name, r.location_address, r.description, r.source, r.disposition, r.created_at, r.cleared_at].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
+      ...rows.map(r => [r.call_number, r.incident_type, r.priority, r.status, r.caller_name, r.location_address, r.description, r.source, r.disposition, toMountain(r.created_at), toMountain(r.cleared_at)].map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(','))
     ].join('\n');
 
     return c.newResponse(csv, 200, { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename=calls_export.csv' });
