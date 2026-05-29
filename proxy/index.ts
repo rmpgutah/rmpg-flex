@@ -624,6 +624,12 @@ const API_ROUTES: RouteRule[] = [
   // the legacy worker doesn't. Without this rule MDT requests fall
   // through to legacy and skip both behaviors.
   { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(assign-unit|unassign-unit|dispatch)$/, methods: ['POST'] },
+  // POST /api/dispatch/calls/:id/{hold,resume} — "call hold" is a rewrite-only
+  // feature: hold is an orthogonal flag in calls_for_service_ext.held_at
+  // (migration 0041), preserving status while held. The legacy worker never
+  // implemented either route, so without this rule both fell through to
+  // env.LEGACY and 404'd — the DispatchPage hold button silently failed.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(hold|resume)$/, methods: ['POST'] },
   // POST /api/dispatch/calls/:id/status — MUST route to the rewrite. The legacy
   // handler writes status_changed_at + dispatched_at/enroute_at/onscene_at via
   // localNow(), which stamps Denver-local wall-clock as +00:00 — so every
