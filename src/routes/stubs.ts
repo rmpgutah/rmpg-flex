@@ -3,9 +3,51 @@ import type { Env } from '../types';
 
 const stubs = new Hono<Env>();
 
-// User preferences
-stubs.get('/preferences', (c) => c.json({ theme: 'dark', sidebar_width: 240, notifications_enabled: true, map_default_zoom: 13, map_center_lat: 40.76, map_center_lng: -111.89 }));
-stubs.put('/preferences', async (c) => c.json({ success: true }));
+// User preferences — D1-backed (user_preferences table, migrations/0001 + 0046).
+// Defaults mirror the table DDL and the client's UserPreferencesContext DEFAULTS,
+// so a user with no row still gets a complete, correctly-shaped object.
+const PREF_DEFAULTS = {
+  notify_dispatch_email: 1, notify_dispatch_inapp: 1,
+  notify_bolo_email: 1, notify_bolo_inapp: 1,
+  notify_warrant_email: 0, notify_warrant_inapp: 1,
+  notify_system_email: 0, notify_system_inapp: 1,
+  quiet_hours_start: null, quiet_hours_end: null,
+  font_scale: 1.0, compact_mode: 0, show_map_labels: 1,
+  default_map_style: 'dark', dispatch_sort: 'priority',
+  dispatch_show_cleared: 0, theme_preference: 'dark',
+} as const;
+
+// Only these columns may be written via PUT (guards against arbitrary/unsafe
+// column names — the SET clause is built from this validated set, not raw input).
+const PREF_COLUMNS = new Set<string>(Object.keys(PREF_DEFAULTS));
+
+stubs.get('/preferences', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json(PREF_DEFAULTS);
+  const row = await c.env.DB.prepare('SELECT * FROM user_preferences WHERE user_id = ?')
+    .bind(userId).first();
+  return c.json(row ? { ...PREF_DEFAULTS, ...row } : PREF_DEFAULTS);
+});
+
+stubs.put('/preferences', async (c) => {
+  const userId = c.get('userId') as number | undefined;
+  if (userId == null) return c.json({ error: 'unauthorized' }, 401);
+  let body: Record<string, unknown> = {};
+  try { body = await c.req.json(); } catch { /* tolerate empty body */ }
+  const keys = Object.keys(body).filter((k) => PREF_COLUMNS.has(k));
+  if (keys.length === 0) return c.json({ success: true, updated: 0 });
+  // Ensure a row exists, then update only the whitelisted keys.
+  await c.env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)')
+    .bind(userId).run();
+  const setClause = keys.map((k) => `${k} = ?`).join(', ');
+  const values = keys.map((k) => body[k] as string | number | null);
+  await c.env.DB.prepare(
+    `UPDATE user_preferences SET ${setClause}, updated_at = datetime('now') WHERE user_id = ?`,
+  ).bind(...values, userId).run();
+  const row = await c.env.DB.prepare('SELECT * FROM user_preferences WHERE user_id = ?')
+    .bind(userId).first();
+  return c.json({ success: true, preferences: row ? { ...PREF_DEFAULTS, ...row } : PREF_DEFAULTS });
+});
 
 // Notifications
 stubs.get('/unread-count', (c) => c.json({ count: 0 }));
