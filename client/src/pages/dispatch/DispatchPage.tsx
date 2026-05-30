@@ -14,7 +14,7 @@ import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/D
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
-import { zoneLeaf, beatLeaf } from '../../utils/dispatchCodeParts';
+import { zoneLeaf, beatLeaf, sectionPrefix } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -1121,6 +1121,10 @@ export default function DispatchPage() {
 
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
+  // Effective queue sort mode (server pref → local fallback → default). Hoisted
+  // to component scope so both the sort memo and the render (GEO dividers) share it.
+  const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
+
   const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : calls).filter((call) => {
     switch (filterTab) {
       case 'pending': return call.status === 'pending';
@@ -1169,7 +1173,6 @@ export default function DispatchPage() {
     const bPin = b.pinned ? 1 : 0;
     if (aPin !== bPin) return bPin - aPin;
     // User-selectable sort for active tabs
-    const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
     if (sortMode === 'time') {
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
@@ -3261,21 +3264,38 @@ export default function DispatchPage() {
               )}
             </div>
           ) : (
-            filteredCalls.map((call) => (
-              <CallCard
-                key={call.id}
-                call={call}
-                isSelected={selectedCall?.id === call.id}
-                onClick={setSelectedCall}
-                onUnitDrop={handleDragAssignUnit}
-                onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
-                onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
-                stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
-                onQuickNote={handleQuickNote}
-                hasActiveWarrant={!!(call as any).has_active_warrant}
-                onTogglePin={handleTogglePin}
-              />
-            ))
+            filteredCalls.map((call, i) => {
+              // GEO sort groups calls by section → zone → beat; render a sticky
+              // district header before the first call of each new section so a
+              // dispatcher can scan and work one district at a time.
+              const showSectionDivider =
+                sortMode === 'geo' &&
+                (i === 0 || (filteredCalls[i - 1]?.sector_name || '') !== (call.sector_name || ''));
+              const sectionCode = sectionPrefix(call.zone_id);
+              const sectionLabel = call.sector_name || 'Unassigned';
+              return (
+                <React.Fragment key={call.id}>
+                  {showSectionDivider && (
+                    <div className="sticky top-0 z-10 flex items-center gap-1.5 px-2 py-0.5 bg-[#0d0d0d] border-y border-amber-900/30 text-[9px] font-bold uppercase tracking-wider text-amber-400/90">
+                      <MapPin className="w-3 h-3" />
+                      {sectionCode ? `${sectionCode} · ${sectionLabel}` : sectionLabel}
+                    </div>
+                  )}
+                  <CallCard
+                    call={call}
+                    isSelected={selectedCall?.id === call.id}
+                    onClick={setSelectedCall}
+                    onUnitDrop={handleDragAssignUnit}
+                    onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
+                    onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
+                    stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
+                    onQuickNote={handleQuickNote}
+                    hasActiveWarrant={!!(call as any).has_active_warrant}
+                    onTogglePin={handleTogglePin}
+                  />
+                </React.Fragment>
+              );
+            })
           )}
         </div>
       </div>
