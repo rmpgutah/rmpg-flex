@@ -85,7 +85,7 @@ import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { whenStyleReady } from './utils/safeAddSource';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
-import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
+import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, injectKeyframes } from './utils/mapMarkerBuilders';
 import { useMapHeatmapTimelapse } from './hooks/useMapHeatmapTimelapse';
 import { useMapHeatmapAdvanced, type HeatmapAdvancedMode, type HeatmapColorScheme, type HeatmapResolution, type HeatmapAdvancedOptions } from './hooks/useMapHeatmapAdvanced';
 import { useMapPredictions } from './hooks/useMapPredictions';
@@ -234,7 +234,6 @@ export default function MapPage() {
   const trackingLinesRef = useRef<any[]>([]);
   const mapConfigRef = useRef<MapSettings | null>(null);
   const [trackingLineCount, setTrackingLineCount] = useState(0);
-  const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapRetry, setMapRetry] = useState(0);
@@ -411,7 +410,7 @@ export default function MapPage() {
   // Keep the screen awake while the map is foregrounded — officers can't be
   // glancing down to wake the device mid-pursuit. Auto-released on unmount.
   useScreenWakeLock(true);
-  const selfMarkerRef = useRef<any>(null);
+  const selfMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   // WebSocket
   const { isConnected, subscribe } = useWebSocket();
@@ -1053,12 +1052,7 @@ export default function MapPage() {
 
       // CartoDB dark_matter tiles handled by Mapbox style
 
-      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
-      // Without mapId, markers are created but silently never render.
-      // Since we use a raster styled map (no mapId), always use the
-      // OverlayView-based fallback which works reliably on all map types.
-      useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using CartoDB dark_matter overlay + OverlayView markers');
+      devLog('[MapPage] Map ready — using native mapbox-gl markers');
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
@@ -1207,22 +1201,26 @@ export default function MapPage() {
     zIndex?: number;
     title?: string;
     onClick?: () => void;
-  }): any => {
-    if (useAdvancedMarkersRef.current) {
-      try {
-        const marker = new mapboxgl.Marker(opts.content)
-          .setLngLat(opts.position)
-          .addTo(opts.map);
-        if (opts.onClick) opts.content.addEventListener('click', opts.onClick);
-        return marker;
-      } catch {
-        // Fall through to overlay
-      }
+  }): mapboxgl.Marker | null => {
+    // Always use native mapbox-gl Marker. The old OverlayView fallback was a
+    // Google-Maps-port leftover (its "AdvancedMarkerElement needs a mapId"
+    // comment is Google terminology that does not apply to Mapbox) and it
+    // exposed an incompatible API surface (no setDraggable / .on() / two-arg
+    // setLngLat), which crashed useMapDragDispatch and the self-marker updater.
+    // Native markers render on any style — raster included — and support the
+    // full method set the map relies on.
+    try {
+      if (opts.title) opts.content.title = opts.title;
+      if (opts.zIndex != null) opts.content.style.zIndex = String(opts.zIndex);
+      const marker = new mapboxgl.Marker(opts.content)
+        .setLngLat(opts.position)
+        .addTo(opts.map);
+      if (opts.onClick) opts.content.addEventListener('click', opts.onClick);
+      return marker;
+    } catch (err) {
+      console.warn('[MapPage] createMarker failed:', err);
+      return null;
     }
-    // Fallback: OverlayView-based marker
-    const Cls = getOverlayMarkerClass();
-    if (!Cls) return null as any;
-    return new Cls(opts);
   }, []);
 
   // Helper: remove a marker (works for both types)
@@ -1296,8 +1294,8 @@ export default function MapPage() {
           };
           const existing = unitMarkersMapRef.current.get(id);
           if (existing) {
-            (existing as any).setLngLat(unit.longitude, unit.latitude);
-            const el = (existing as any).getElement?.();
+            existing.setLngLat([unit.longitude, unit.latitude]);
+            const el = existing.getElement?.();
             if (el) el.replaceChildren(buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed));
             (existing as any)._rmpgClick = makeUnitClick;
           } else {
@@ -2625,16 +2623,12 @@ export default function MapPage() {
     if (gps.isTracking && gps.latitude != null && gps.longitude != null) {
       const pos: [number, number] = [gps.longitude, gps.latitude];
       if (selfMarkerRef.current) {
-        // Update existing marker
-        if (typeof selfMarkerRef.current.updatePosition === 'function') {
-          // OverlayView fallback marker
-          selfMarkerRef.current.updatePosition(gps.latitude, gps.longitude);
-          selfMarkerRef.current.updateContent(buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed));
-        } else {
-          // AdvancedMarkerElement
-          selfMarkerRef.current.position = pos;
-          selfMarkerRef.current.content = buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed);
-        }
+        // Update existing native marker in place: glide it to the new fix and
+        // swap the inner content (accuracy ring + heading arrow) so it reflects
+        // the latest GPS reading without destroying/recreating the pin.
+        selfMarkerRef.current.setLngLat(pos);
+        const el = selfMarkerRef.current.getElement?.();
+        if (el) el.replaceChildren(buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed));
       } else {
         // Create new self marker
         selfMarkerRef.current = createMarker({
