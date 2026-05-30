@@ -22,6 +22,7 @@ import { secureHeaders } from 'hono/secure-headers';
 import { authMiddleware } from './middleware/auth';
 import { handleWebSocket, sendToUser, broadcastAll } from './routes/ws';
 import { WelfareWatchDO } from './durable-objects/WelfareWatchDO';
+import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
@@ -31,7 +32,7 @@ import { ROUTE_REGISTRY } from './routesConfig';
 // Export Durable Object classes so wrangler can find them at build time.
 // The Container subclass extends DurableObject and is configured by
 // [[containers]] + [[durable_objects.bindings]] in wrangler.toml.
-export { WelfareWatchDO, PdfToolsContainer };
+export { WelfareWatchDO, VoiceHubDO, PdfToolsContainer };
 
 // Exported so sub-routers that need to dispatch internal subrequests
 // (e.g. src/routes/offline.ts replaying queued offline writes through
@@ -143,6 +144,20 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/api/ws') {
       return handleWebSocket(request, env);
+    }
+    // Dedicated voice socket → VoiceHubDO. This is a SEPARATE channel
+    // from /api/ws (which lives on the legacy worker and carries
+    // alerts/GPS/dispatch). Voice gets its own DO-backed hub here so
+    // real-time fan-out across units actually works. The client opens
+    // this straight at api.rmpgutah.us, bypassing the proxy. Room is in
+    // ?room=radio-<id> / panic-<id>; JWT auth happens inside the DO.
+    if (url.pathname === '/api/voice-ws') {
+      const room = url.searchParams.get('room') || '';
+      if (!/^(radio|panic)-\d+$/.test(room)) {
+        return new Response('Bad or missing room', { status: 400 });
+      }
+      const id = env.VOICE_HUB.idFromName(room);
+      return env.VOICE_HUB.get(id).fetch(request);
     }
     return app.fetch(request, env, ctx);
   },

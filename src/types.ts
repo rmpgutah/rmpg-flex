@@ -15,6 +15,10 @@ export type Bindings = {
   PRIMARY_DOMAIN?: string;
   // WelfareWatchDO namespace — DI-4 automated escalation timer
   WELFARE_WATCH: DurableObjectNamespace;
+  // VoiceHubDO namespace — one instance per radio channel / panic
+  // incident; the single shared hub that relays + records live voice.
+  // See src/durable-objects/VoiceHubDO.ts.
+  VOICE_HUB: DurableObjectNamespace;
   // PDF Tools sidecar — Cloudflare Container holding qpdf + pdftotext
   // + ocrmypdf. Worker proxies to it via getContainer(env.PDF_TOOLS,
   // 'shared').fetch(req). Parameterized so getContainer<T> narrows

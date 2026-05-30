@@ -1,0 +1,211 @@
+// useVoiceChannel — live radio voice for the console.
+//
+// Opens a DEDICATED WebSocket straight to the rewrite worker's voice
+// hub (wss://api.rmpgutah.us/api/voice-ws), separate from the app's
+// main /api/ws alert socket. The server side is a Durable Object
+// (src/durable-objects/VoiceHubDO.ts) — one instance per channel —
+// that relays PTT audio to everyone on the channel and records each
+// transmission to R2.
+//
+// Half-duplex: one talker at a time. Mic capture is WebM/Opus in
+// ~250ms chunks (base64 over JSON, matching the panic-audio wire
+// format). Incoming transmissions play through StreamPlayer; a fresh
+// player is created per transmission because each is a self-contained
+// WebM (concatenating headers into one buffer breaks decoding).
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { StreamPlayer } from '../../utils/StreamPlayer';
+
+function voiceWsBase(): string {
+  const host = window.location.hostname;
+  // Dev: the worker runs on wrangler dev (8787). Prod: the rewrite
+  // worker's custom domain (CSP connect-src already allows wss: +
+  // api.rmpgutah.us). Going direct dodges the zone proxy, which would
+  // otherwise route /api/voice-ws to the legacy worker (no VoiceHubDO).
+  if (host === 'localhost' || host === '127.0.0.1') return `ws://${host}:8787`;
+  return 'wss://api.rmpgutah.us';
+}
+
+const MIC_CONSTRAINTS: MediaStreamConstraints = {
+  audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+};
+
+export interface VoiceChannelState {
+  connected: boolean;
+  members: number;
+  transmitting: boolean;            // am I holding the PTT
+  activeSpeaker: { userId: number; label: string } | null; // who's talking (null = quiet)
+  busy: boolean;                    // tried to talk while someone else held the channel
+  supported: boolean;               // mic + MediaRecorder available
+  pttDown: () => void;
+  pttUp: () => void;
+}
+
+export function useVoiceChannel(
+  channelId: number | null,
+  onRecorded?: (transmission: any) => void,
+): VoiceChannelState {
+  const [connected, setConnected] = useState(false);
+  const [members, setMembers] = useState(0);
+  const [transmitting, setTransmitting] = useState(false);
+  const [activeSpeaker, setActiveSpeaker] = useState<{ userId: number; label: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const wsRef = useRef<WebSocket | null>(null);
+  const myIdRef = useRef<number>(0);
+  const recorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const playerRef = useRef<StreamPlayer | null>(null);
+  const playerDestroyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onRecordedRef = useRef(onRecorded);
+  onRecordedRef.current = onRecorded;
+
+  const supported = typeof navigator !== 'undefined'
+    && !!navigator.mediaDevices?.getUserMedia
+    && typeof MediaRecorder !== 'undefined';
+
+  const send = (obj: unknown) => {
+    const ws = wsRef.current;
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      try { ws.send(JSON.stringify(obj)); } catch { /* in-flight */ }
+    }
+  };
+
+  const teardownPlayer = useCallback(() => {
+    if (playerDestroyTimer.current) { clearTimeout(playerDestroyTimer.current); playerDestroyTimer.current = null; }
+    if (playerRef.current) { try { playerRef.current.destroy(); } catch { /* noop */ } playerRef.current = null; }
+  }, []);
+
+  // ── Connect / reconnect to the channel's voice room ──
+  useEffect(() => {
+    if (channelId == null) { setConnected(false); return; }
+    let alive = true;
+    let retry: ReturnType<typeof setTimeout> | null = null;
+    let attempts = 0;
+
+    const open = () => {
+      const token = localStorage.getItem('rmpg_token');
+      if (!token) return;
+      const ws = new WebSocket(`${voiceWsBase()}/api/voice-ws?room=radio-${channelId}`);
+      wsRef.current = ws;
+
+      ws.onopen = () => { if (alive) { attempts = 0; ws.send(JSON.stringify({ type: 'authenticate', token })); } };
+
+      ws.onmessage = (ev) => {
+        let msg: any;
+        try { msg = JSON.parse(ev.data); } catch { return; }
+        switch (msg.type) {
+          case 'voice_ready':
+            setConnected(true); setMembers(msg.members ?? 1);
+            // Decode my own id from the JWT so I don't play back my own voice.
+            try { myIdRef.current = JSON.parse(atob(token.split('.')[1])).user_id ?? JSON.parse(atob(token.split('.')[1])).userId ?? 0; } catch { /* noop */ }
+            break;
+          case 'voice_presence':
+            setMembers(msg.members ?? 0);
+            break;
+          case 'voice_busy':
+            setBusy(true); setTimeout(() => setBusy(false), 1500);
+            break;
+          case 'radio_transmit_start': {
+            if (msg.user_id === myIdRef.current) break; // don't echo myself
+            teardownPlayer();
+            const p = new StreamPlayer();
+            p.init('audio/webm;codecs=opus');
+            playerRef.current = p;
+            setActiveSpeaker({ userId: msg.user_id, label: msg.unit_label || msg.full_name || 'Unit' });
+            break;
+          }
+          case 'radio_audio':
+            if (msg.user_id === myIdRef.current) break;
+            playerRef.current?.appendChunk(msg.chunk);
+            break;
+          case 'radio_transmit_end':
+            setActiveSpeaker(null);
+            // Let the tail finish, then free the decoder.
+            if (playerDestroyTimer.current) clearTimeout(playerDestroyTimer.current);
+            playerDestroyTimer.current = setTimeout(teardownPlayer, 1500);
+            break;
+          case 'radio_recorded':
+            onRecordedRef.current?.(msg.transmission);
+            break;
+        }
+      };
+
+      ws.onclose = () => {
+        if (!alive) return;
+        setConnected(false); setActiveSpeaker(null);
+        // Backoff reconnect while this channel stays selected.
+        if (attempts < 6) {
+          attempts++;
+          retry = setTimeout(open, Math.min(1000 * attempts, 5000));
+        }
+      };
+      ws.onerror = () => { try { ws.close(); } catch { /* noop */ } };
+    };
+
+    open();
+    return () => {
+      alive = false;
+      if (retry) clearTimeout(retry);
+      teardownPlayer();
+      try { wsRef.current?.close(); } catch { /* noop */ }
+      wsRef.current = null;
+      setConnected(false); setActiveSpeaker(null); setMembers(0);
+    };
+  }, [channelId, teardownPlayer]);
+
+  // transmittingRef mirrors state for use inside async getUserMedia
+  // (the closure captured by getUserMedia().then needs the live value).
+  const transmittingRef = useRef(false);
+  transmittingRef.current = transmitting;
+
+  // ── PTT key-down: capture mic, stream chunks ──
+  const pttDown = useCallback(() => {
+    if (!supported || !connected || transmitting || activeSpeaker) return;
+    StreamPlayer.preWarm(); // unlock playback under the same user gesture
+    setTransmitting(true);
+    send({ type: 'transmit_start' });
+
+    navigator.mediaDevices.getUserMedia(MIC_CONSTRAINTS).then((stream) => {
+      // If the user released before the mic opened, abort cleanly.
+      if (!wsRef.current || !transmittingRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return;
+      }
+      streamRef.current = stream;
+      const mime = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? 'audio/webm;codecs=opus' : 'audio/webm';
+      const rec = new MediaRecorder(stream, { mimeType: mime });
+      recorderRef.current = rec;
+      rec.ondataavailable = (e) => {
+        if (!e.data || e.data.size === 0) return;
+        e.data.arrayBuffer().then((buf) => {
+          const bytes = new Uint8Array(buf);
+          let bin = '';
+          for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+          send({ type: 'audio', chunk: btoa(bin) });
+        }).catch(() => { /* drop */ });
+      };
+      rec.start(250); // 250ms chunks — snappy without flooding
+    }).catch(() => {
+      // Mic denied/unavailable — abandon the transmission.
+      setTransmitting(false);
+      send({ type: 'transmit_end' });
+    });
+  }, [supported, connected, transmitting, activeSpeaker]);
+
+  // ── PTT key-up: stop the mic, close the transmission ──
+  const pttUp = useCallback(() => {
+    if (!transmitting) return;
+    setTransmitting(false);
+    const rec = recorderRef.current;
+    if (rec && rec.state !== 'inactive') {
+      try { rec.stop(); } catch { /* noop */ }
+    }
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    recorderRef.current = null;
+    send({ type: 'transmit_end' });
+  }, [transmitting]);
+
+  return { connected, members, transmitting, activeSpeaker, busy, supported, pttDown, pttUp };
+}

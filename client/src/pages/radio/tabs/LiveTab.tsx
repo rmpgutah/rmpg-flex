@@ -1,12 +1,15 @@
 // LiveTab — current channel + scrolling TX feed with filters.
-// Polls /api/radio/transmissions every 5s (cheap; the WS will replace
-// this later — see TODO at the bottom of the file).
+// Polls /api/radio/transmissions every 5s for the log; live voice
+// (PTT + playback of others) rides the dedicated voice socket via
+// useVoiceChannel → VoiceHubDO. Recorded clips replay from R2.
+import type React from 'react';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Search, Filter, Star, Volume2 } from 'lucide-react';
+import { Search, Filter, Star, Volume2, Mic, Radio as RadioIcon, Play, Pause } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { matchesSearch, COMPARE_DATE, ls, playBeep, isInQuietHours } from '../helpers';
 import { DATE_RANGES, DURATION_FILTERS } from '../constants';
 import { FilterChip, SectionHeader, EmptyConsole, Waveform, Sep } from '../components';
+import { useVoiceChannel } from '../useVoiceChannel';
 import type { RadioChannel, RadioTransmission } from '../types';
 
 interface Props {
@@ -100,6 +103,14 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
 
   const currentChannel = channels.find((c) => c.id === selectedChannelId) || null;
 
+  // Live voice for the selected channel. A new recorded transmission
+  // is prepended immediately (radio_recorded) so the operator doesn't
+  // wait for the next 5s poll.
+  const voice = useVoiceChannel(selectedChannelId, (txn: RadioTransmission) => {
+    if (!txn) return;
+    setTx((prev) => [txn, ...prev.filter((t) => t.id !== txn.id)]);
+  });
+
   return (
     <div className="h-full flex flex-col">
       <SectionHeader
@@ -150,6 +161,9 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
         </div>
       )}
 
+      {/* Push-to-talk bar — live voice for the selected channel */}
+      <PttBar channelSelected={selectedChannelId != null} voice={voice} />
+
       {/* TX list */}
       <div className="flex-1 min-h-0 overflow-auto">
         {visibleTx.length === 0
@@ -176,7 +190,107 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
       <span className="font-bold" style={{ color: 'var(--rt-accent)', minWidth: 80 }}>{tx.unit_label || tx.user_name || '—'}</span>
       <span style={{ color: 'var(--rt-muted)', minWidth: 60 }}>{tx.channel_name || '—'}</span>
       <span className="flex-1" style={{ color: 'var(--rt-text)' }}>{tx.transcript || <em style={{ opacity: 0.5 }}>no transcript</em>}</span>
+      {tx.audio_url ? <AudioPlayButton transmissionId={tx.id} /> : <span style={{ width: 16 }} />}
       <span className="tabular-nums" style={{ color: 'var(--rt-muted)' }}>{tx.duration_seconds.toFixed(1)}s</span>
     </li>
+  );
+}
+
+// Same-origin relative URL so it passes CSP media-src 'self'; the zone
+// proxy forwards /api/radio/* to the rewrite worker. <audio> can't set
+// an Authorization header, so the JWT rides the ?token= fallback the
+// auth middleware accepts (same trick as bodycam video streams).
+export function transmissionAudioUrl(transmissionId: number): string {
+  const token = localStorage.getItem('rmpg_token') || '';
+  return `/api/radio/transmissions/${transmissionId}/audio${token ? `?token=${encodeURIComponent(token)}` : ''}`;
+}
+
+export function AudioPlayButton({ transmissionId }: { transmissionId: number }) {
+  const [playing, setPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  useEffect(() => () => { try { audioRef.current?.pause(); } catch { /* noop */ } }, []);
+
+  const toggle = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    let a = audioRef.current;
+    if (!a) {
+      a = new Audio(transmissionAudioUrl(transmissionId));
+      a.onended = () => setPlaying(false);
+      a.onerror = () => setPlaying(false);
+      a.onpause = () => setPlaying(false);
+      audioRef.current = a;
+    }
+    if (a.paused) a.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
+    else a.pause();
+  };
+
+  return (
+    <button type="button" onClick={toggle}
+      aria-label={playing ? 'Pause recording' : 'Play recording'}
+      className="shrink-0 hover:opacity-80" style={{ color: 'var(--rt-accent)' }}>
+      {playing ? <Pause className="w-3 h-3" /> : <Play className="w-3 h-3" />}
+    </button>
+  );
+}
+
+// PttBar — hold-to-talk control + live channel status. Voice is per
+// channel, so it's only meaningful once a specific channel is picked.
+function PttBar({ channelSelected, voice }: {
+  channelSelected: boolean;
+  voice: ReturnType<typeof useVoiceChannel>;
+}) {
+  if (!channelSelected) {
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 text-[10px] font-mono"
+        style={{ borderBottom: '1px solid var(--rt-border)', background: 'var(--rt-panel)', color: 'var(--rt-muted)' }}>
+        <RadioIcon className="w-3 h-3" />
+        <span>Select a single channel to talk &amp; hear live voice.</span>
+      </div>
+    );
+  }
+
+  const receiving = !!voice.activeSpeaker && !voice.transmitting;
+  const dot = voice.transmitting ? 'var(--rt-tx)' : receiving ? '#22c55e' : voice.connected ? 'var(--rt-accent)' : 'var(--rt-muted)';
+  const status = !voice.supported ? 'MIC UNSUPPORTED'
+    : !voice.connected ? 'CONNECTING…'
+    : voice.transmitting ? 'ON AIR'
+    : voice.busy ? 'CHANNEL BUSY'
+    : receiving ? `RX — ${voice.activeSpeaker!.label.toUpperCase()}`
+    : 'IDLE';
+
+  const holdProps = {
+    onMouseDown: () => voice.pttDown(),
+    onMouseUp: () => voice.pttUp(),
+    onMouseLeave: () => voice.pttUp(),
+    onTouchStart: (e: React.TouchEvent) => { e.preventDefault(); voice.pttDown(); },
+    onTouchEnd: (e: React.TouchEvent) => { e.preventDefault(); voice.pttUp(); },
+  };
+  const disabled = !voice.supported || !voice.connected || receiving;
+
+  return (
+    <div className="flex items-center gap-3 px-3 py-2"
+      style={{ borderBottom: '1px solid var(--rt-border)', background: 'var(--rt-panel)' }}>
+      <span className="inline-block rounded-full" style={{ width: 8, height: 8, background: dot }} />
+      <span className="text-[9px] font-mono tracking-[0.2em] tabular-nums" style={{ color: 'var(--rt-muted)', minWidth: 120 }}>
+        {status}
+      </span>
+      <button type="button" disabled={disabled} {...holdProps}
+        aria-label="Push to talk (hold)"
+        className="flex items-center gap-2 px-4 py-1.5 text-[10px] font-mono font-bold tracking-wider uppercase select-none"
+        style={{
+          border: `1px solid ${voice.transmitting ? 'var(--rt-tx)' : 'var(--rt-border)'}`,
+          color: voice.transmitting ? '#000' : disabled ? 'var(--rt-muted)' : 'var(--rt-text)',
+          background: voice.transmitting ? 'var(--rt-tx)' : 'transparent',
+          cursor: disabled ? 'not-allowed' : 'pointer',
+          opacity: disabled ? 0.5 : 1,
+        }}>
+        <Mic className="w-3 h-3" />
+        {voice.transmitting ? 'TRANSMITTING' : 'HOLD TO TALK'}
+      </button>
+      <span className="ml-auto text-[9px] font-mono" style={{ color: 'var(--rt-muted)' }}>
+        {voice.members} on channel
+      </span>
+    </div>
   );
 }
