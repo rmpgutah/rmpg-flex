@@ -18,6 +18,7 @@ import StatusBadge from '../../components/StatusBadge';
 import NewCallModal from '../../components/NewCallModal';
 import AddressAutocomplete, { type ParsedAddress } from '../../components/AddressAutocomplete';
 import PanelTitleBar from '../../components/PanelTitleBar';
+import LiveClock from '../../components/LiveClock';
 import ExportButton from '../../components/ExportButton';
 import TabBar from '../../components/TabBar';
 import { apiFetch } from '../../hooks/useApi';
@@ -265,14 +266,9 @@ export default function DispatchPage() {
   const [filterTab, setFilterTab] = usePersistedTab('rmpg_dispatch_tab', 'all' as FilterTab, ['all', 'pending', 'active', 'cleared', 'archived', 'serve', 'mine'] as const);
   const [showNewCallModal, setShowNewCallModal] = useState(false);
   const [showQuickPsoModal, setShowQuickPsoModal] = useState(false);
-  // Status-bar clock — ticks every 1s so the bottom-bar time isn't frozen
-  // at the parent's last render. Pinned to America/Denver via the formatter
-  // below so it shows local wall-clock (MST/MDT) regardless of browser TZ.
-  const [statusBarTime, setStatusBarTime] = useState(() => Date.now());
-  useEffect(() => {
-    const id = setInterval(() => setStatusBarTime(Date.now()), 1000);
-    return () => clearInterval(id);
-  }, []);
+  // Status-bar clock is rendered via the self-ticking <LiveClock/> component
+  // (bottom bar, below). It owns its own 1s interval so the per-second tick no
+  // longer re-renders this entire 6,300-line page — only the clock span.
   const [searchQuery, setSearchQuery] = useState('');
   const noteTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [onSceneElapsed, setOnSceneElapsed] = useState('');
@@ -760,9 +756,14 @@ export default function DispatchPage() {
       .catch((err) => { console.warn('[DispatchPage] fetch properties list failed:', err); });
   }, [fetchData]);
 
-  // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI)
+  // Live sync — auto-refresh when any device modifies dispatch data (silent to avoid unmounting UI).
+  // Each refresh refetches the active call list + units, so on a busy shift a
+  // burst of status changes from many units would otherwise fire a full refetch
+  // per event over cellular. A 1.5s debounce coalesces those bursts into a single
+  // refetch (the acting officer's own UI already updates optimistically; this
+  // path only mirrors *other* devices' changes, where ~1s latency is invisible).
   const silentRefresh = useCallback(() => fetchData({ silent: true }), [fetchData]);
-  useLiveSync('dispatch', silentRefresh);
+  useLiveSync('dispatch', silentRefresh, { debounceMs: 1500 });
 
   // Call-lifecycle state + handlers (extracted to keep this component below the
   // 6,500-line ceiling). The hook owns: 6 transient state items (delete/disposition/
@@ -6328,7 +6329,7 @@ export default function DispatchPage() {
           <span style={{ color: '#555555' }}>F8:CMD</span>
           <span style={{ color: '#555555' }}>F12:NCIC</span>
           <span style={{ color: '#444444' }}>|</span>
-          <span style={{ color: '#999999' }}>{new Date(statusBarTime).toLocaleTimeString('en-US', { hour12: false, timeZone: 'America/Denver' })}</span>
+          <LiveClock style={{ color: '#999999' }} />
         </div>
       </div>
     </div>

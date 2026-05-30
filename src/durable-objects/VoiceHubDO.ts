@@ -29,14 +29,33 @@
 // ============================================================
 
 import { jwtVerify } from 'jose';
-import { getDb, queryFirst, execute } from '../utils/db';
+import { getDb, queryFirst, query, execute } from '../utils/db';
+import {
+  transcribeTransmission,
+  decideDispatcherReply,
+  phraseLookupReply,
+  synthesizeDispatcherVoice,
+  estimateSpeechSeconds,
+  bytesToBase64,
+  type DispatcherTurn,
+} from '../utils/aiDispatcher';
+import { gatherAwareness, runLookup } from '../utils/dispatcherAwareness';
 
 interface VoiceEnv {
   DB: D1Database;
   UPLOADS: R2Bucket;
   KV: KVNamespace;
   JWT_SECRET: string;
+  // Workers AI — powers the AI dispatcher (Whisper transcription,
+  // Llama 3.3 intent routing, melotts reply synthesis). See
+  // src/utils/aiDispatcher.ts.
+  AI: Ai;
 }
+
+// Synthetic call-sign for the AI dispatcher's own transmissions. Used
+// both as the TX label AND as the guard that keeps the dispatcher from
+// replying to itself (its replies are never fed back through the brain).
+const DISPATCH_CALLSIGN = 'DISPATCH';
 
 interface ConnMeta {
   userId: number;
@@ -282,6 +301,16 @@ export class VoiceHubDO {
         id,
       );
       this.broadcast({ type: 'radio_recorded', transmission: row });
+
+      // ── AI dispatcher: transcribe → reason → speak back ──
+      // Kicked off after the clip is saved so the live relay is never
+      // blocked on model latency. The dispatcher's own replies are written
+      // directly by runDispatcher (not through persist), so they never loop
+      // back through here.
+      this.state.waitUntil(
+        this.runDispatcher(id, blob, transcript).catch((err) =>
+          console.error('[VoiceHubDO] dispatcher', err)),
+      );
       return;
     }
 
@@ -302,5 +331,113 @@ export class VoiceHubDO {
       );
       this.broadcast({ type: 'panic_audio_recorded', panic_id: this.refId, duration_seconds: durationSec });
     }
+  }
+
+  // ── AI Dispatcher pipeline ──────────────────────────────────
+  // Given a just-recorded radio transmission, transcribe it, decide a
+  // dispatcher reply, synthesize speech, persist it as a DISPATCH
+  // transmission, and broadcast it so the whole channel hears it live.
+  // Every stage is best-effort — a missing piece just means no reply this
+  // round, never a thrown error into the relay path.
+  private async runDispatcher(
+    sourceTxId: number,
+    audio: Uint8Array,
+    clientTranscript: string | null,
+  ): Promise<void> {
+    const db = getDb(this.env as any);
+
+    // 1. Transcript — prefer the client's, else transcribe the clip.
+    let transcript = (clientTranscript || '').trim();
+    if (!transcript) {
+      const t = await transcribeTransmission(this.env.AI, audio);
+      if (!t) return; // unintelligible → nothing to answer
+      transcript = t;
+      // Backfill the source row so the operator's feed shows what was said.
+      await execute(db, 'UPDATE radio_transmissions SET transcript = ? WHERE id = ?', transcript, sourceTxId)
+        .catch(() => { /* best-effort */ });
+    }
+
+    // 2. Context — speaker call-sign, channel name, recent traffic.
+    const speaker = await queryFirst<{ unit_label: string | null }>(
+      db, 'SELECT unit_label FROM radio_transmissions WHERE id = ?', sourceTxId,
+    );
+    const channel = await queryFirst<{ name: string }>(
+      db, 'SELECT name FROM radio_channels WHERE id = ?', this.refId,
+    );
+    const recentRows = await query<{ unit_label: string | null; transcript: string | null }>(
+      db,
+      `SELECT unit_label, transcript FROM radio_transmissions
+       WHERE channel_id = ? AND id < ? AND transcript IS NOT NULL
+       ORDER BY id DESC LIMIT 5`,
+      this.refId, sourceTxId,
+    );
+    const recent = recentRows
+      .reverse()
+      .map((r) => ({ speaker: r.unit_label, text: (r.transcript as string) }));
+
+    // Advanced awareness — a live CAD board snapshot grounds every reply.
+    const awareness = await gatherAwareness(db, this.refId, speaker?.unit_label ?? null)
+      .catch(() => 'No active CAD activity on the board.');
+
+    const turn: DispatcherTurn = {
+      transcript,
+      speaker: speaker?.unit_label ?? null,
+      channelName: channel?.name ?? null,
+      recent,
+      awareness,
+    };
+
+    // 3. Decide the reply (intent routing + spoken text + optional lookup).
+    const decision = await decideDispatcherReply(this.env.AI, turn);
+    if (!decision || !decision.reply) return;
+
+    // 3a. If the unit asked for a record check, run it for real and let the
+    // dispatcher read the result back instead of the holding "stand by".
+    let replyText = decision.reply;
+    if (decision.lookup) {
+      const result = await runLookup(db, decision.lookup).catch(() => null);
+      if (result) replyText = await phraseLookupReply(this.env.AI, turn, decision.lookup, result);
+    }
+
+    // 4. Synthesize the dispatcher's voice (melotts MP3 bytes).
+    const audioBytes = await synthesizeDispatcherVoice(this.env.AI, replyText);
+    if (!audioBytes) return;
+
+    // 5. Persist as a DISPATCH transmission — INSERT mints the id, then key
+    // the R2 object by it so the serve route stays a pure id→key map. MP3
+    // bytes under the .webm key replay fine (the client decodes by sniffing).
+    const durationSec = estimateSpeechSeconds(replyText);
+    const res = await execute(
+      db,
+      `INSERT INTO radio_transmissions (channel_id, user_id, unit_label, transmitted_at, duration_seconds, transcript, tags)
+       VALUES (?, NULL, ?, datetime('now'), ?, ?, ?)`,
+      this.refId, DISPATCH_CALLSIGN, durationSec, replyText, `ai:${decision.intent}`,
+    );
+    const dispId = Number(res.meta.last_row_id);
+    await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {
+      httpMetadata: { contentType: 'audio/mpeg' },
+    });
+    await execute(
+      db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
+      `/api/radio/transmissions/${dispId}/audio`, dispId,
+    );
+
+    const row = await queryFirst(
+      db,
+      `SELECT t.*, ch.name AS channel_name, NULL AS user_name
+       FROM radio_transmissions t LEFT JOIN radio_channels ch ON ch.id = t.channel_id
+       WHERE t.id = ?`,
+      dispId,
+    );
+
+    // 6. Broadcast. dispatch_speak carries the inline reply audio so every
+    // listener plays it immediately through the P25 radio-haze chain; it
+    // also doubles as the feed-insert signal (handled like radio_recorded).
+    this.broadcast({
+      type: 'dispatch_speak',
+      transmission: row,
+      audio: bytesToBase64(audioBytes),
+      intent: decision.intent,
+    });
   }
 }

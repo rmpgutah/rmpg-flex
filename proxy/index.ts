@@ -595,6 +595,18 @@ const API_ROUTES: RouteRule[] = [
   // Workers, so welfare can ONLY work on env.API.
   { kind: 'prefix', value: '/api/dispatch/welfare' },
 
+  // /api/dispatch/geography/* — ENTIRE namespace lives on the rewrite
+  // (src/routes/dispatch/geography.ts): /tree, /codes, /districts, and
+  // /districts/identify (server-side point-in-polygon over the dispatch_*
+  // tables + beat.geojson). Legacy never ported these, so without this rule
+  // they fell through to env.LEGACY and 404'd — breaking BOTH the district
+  // dropdowns (useDistrictOptions → /districts) AND the address autofill
+  // (useDistrictIdentify → /districts/identify), which the New Call form and
+  // the dispatch edit panel both depend on for section/zone/beat. Confirmed
+  // live: the rewrite handlers are deployed and back the same identifyBeat
+  // that already geocodes geography on POST /api/dispatch/calls.
+  { kind: 'prefix', value: '/api/dispatch/geography' },
+
   // /api/dispatch/calls/check-duplicate — rewrite has correct route ordering
   // (literal /check-duplicate registered before parametric /:id). Legacy
   // hits the /:id handler first and 500s on NaN cast.

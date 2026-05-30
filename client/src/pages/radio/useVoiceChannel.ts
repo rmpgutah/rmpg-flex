@@ -14,7 +14,22 @@
 // WebM (concatenating headers into one buffer breaks decoding).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StreamPlayer } from '../../utils/StreamPlayer';
+import { RadioHazePlayer } from '../../utils/radioProcessor';
 import { voiceWsUrl } from '../../utils/voiceWs';
+
+// AI-dispatcher replies arrive as a single inline clip (base64), not a
+// chunk stream, so they play through RadioHazePlayer (full P25 haze)
+// rather than StreamPlayer. A synthetic userId marks the active speaker.
+const DISPATCH_USER_ID = -1;
+
+function base64ToArrayBuffer(b64: string): ArrayBuffer | null {
+  try {
+    const bin = atob(b64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return bytes.buffer;
+  } catch { return null; }
+}
 
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -46,6 +61,7 @@ export function useVoiceChannel(
   const recorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const playerRef = useRef<StreamPlayer | null>(null);
+  const dispatchPlayerRef = useRef<RadioHazePlayer | null>(null);
   const playerDestroyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onRecordedRef = useRef(onRecorded);
   onRecordedRef.current = onRecorded;
@@ -118,6 +134,19 @@ export function useVoiceChannel(
           case 'radio_recorded':
             onRecordedRef.current?.(msg.transmission);
             break;
+          case 'dispatch_speak': {
+            // AI dispatcher reply: drop it into the feed AND play it live
+            // through the radio-haze chain so the channel hears DISPATCH.
+            if (msg.transmission) onRecordedRef.current?.(msg.transmission);
+            const buf = typeof msg.audio === 'string' ? base64ToArrayBuffer(msg.audio) : null;
+            if (buf) {
+              setActiveSpeaker({ userId: DISPATCH_USER_ID, label: msg.transmission?.unit_label || 'DISPATCH' });
+              const p = dispatchPlayerRef.current ?? (dispatchPlayerRef.current = new RadioHazePlayer());
+              p.playBytes(buf, () => setActiveSpeaker((cur) => (cur?.userId === DISPATCH_USER_ID ? null : cur)))
+                .catch(() => setActiveSpeaker((cur) => (cur?.userId === DISPATCH_USER_ID ? null : cur)));
+            }
+            break;
+          }
         }
       };
 
@@ -138,6 +167,8 @@ export function useVoiceChannel(
       alive = false;
       if (retry) clearTimeout(retry);
       teardownPlayer();
+      try { dispatchPlayerRef.current?.stop(); } catch { /* noop */ }
+      dispatchPlayerRef.current = null;
       try { wsRef.current?.close(); } catch { /* noop */ }
       wsRef.current = null;
       setConnected(false); setActiveSpeaker(null); setMembers(0);

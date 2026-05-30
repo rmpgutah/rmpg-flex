@@ -2010,58 +2010,57 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
 
     // Spreadsheet-style grid (one row per prior visit) routed through the
-    // shared addTableWithShading helper — zebra rows, column dividers, and an
-    // automatic header re-draw + "VISIT HISTORY -- CONTINUED" sub-bar on page
-    // breaks. Every field is broken out explicitly: the timeline phases stack
-    // as their own lines in the TIMELINE cell (wordWrapText honors '\n'), and
-    // Vehicle / Start / End / Total / Units each get their own column rather
-    // than being folded into Miles or Disposition.
-    const vColFr = [0.07, 0.10, 0.22, 0.09, 0.09, 0.09, 0.07, 0.08, 0.19];
+    // shared addTableWithShading helper — same look as LINKED PERSONS, with
+    // zebra rows, column dividers, and an automatic header re-draw +
+    // "VISIT HISTORY -- CONTINUED" sub-bar on page breaks. Replaces the old
+    // hand-drawn multi-line text block (cramped spacing + the full date
+    // repeated on every phase). A dedicated DATE column lets each phase show
+    // time-only (HH:MM:SS), so the date prints once per visit.
+    const vColFr = [0.08, 0.11, 0.085, 0.085, 0.085, 0.085, 0.085, 0.13, 0.165];
     const vColPos: number[] = [];
     { let cx = lx; for (const fr of vColFr) { vColPos.push(cx); cx += fr * ffw; } }
-    const vHeaders = ['VISIT', 'DATE', 'TIMELINE', 'VEHICLE', 'START', 'END', 'TOTAL', 'UNITS', 'DISPOSITION']
+    const vHeaders = ['VISIT', 'DATE', 'DISP', 'EN RT', 'ON SC', 'CLR', 'CLS', 'MILES', 'DISPOSITION']
       .map((label, i) => ({ label, x: vColPos[i] }));
 
     const vRows = data.visit_history.map((visit) => {
-      // Visit number + status on their own lines (\n is honored by the cell
-      // wrapper) so neither is dropped.
-      const visitCell = `#${visit.visit_number}${visit.status ? '\n' + String(visit.status).toUpperCase() : ''}`;
+      // Status rides in the VISIT cell ("#1 ARCHIVED") — word-wraps to its own
+      // line in the narrow column, keeping it without burning a full column.
+      const visitCell = `#${visit.visit_number}${visit.status ? ' ' + String(visit.status).toUpperCase() : ''}`;
 
-      // TIMELINE: one labeled line per phase that actually has a timestamp.
-      const phases: string[] = [];
-      if (visit.dispatched_at) phases.push(`Disp ${fmtClock(visit.dispatched_at)}`);
-      if (visit.enroute_at)    phases.push(`EnRt ${fmtClock(visit.enroute_at)}`);
-      if (visit.onscene_at)    phases.push(`OnSc ${fmtClock(visit.onscene_at)}`);
-      if (visit.cleared_at)    phases.push(`Clr  ${fmtClock(visit.cleared_at)}`);
-      if (visit.closed_at)     phases.push(`Cls  ${fmtClock(visit.closed_at)}`);
-      const timelineCell = phases.length ? phases.join('\n') : '—';
-
-      // Mileage broken out into Start / End / Total columns.
+      // MILES: total, with the odometer range folded in when both ends are
+      // known (word-wraps to a second line within the cell).
+      let milesCell = '—';
       const sMi = visit.starting_mileage, eMi = visit.ending_mileage;
-      const startCell = sMi != null ? sMi.toLocaleString() : '—';
-      const endCell = eMi != null ? eMi.toLocaleString() : '—';
-      const totalCell = (sMi != null && eMi != null) ? (eMi - sMi).toFixed(1) : '—';
+      if (sMi != null && eMi != null) {
+        milesCell = `${(eMi - sMi).toFixed(1)} (${sMi.toLocaleString()}-${eMi.toLocaleString()})`;
+      } else if (eMi != null) {
+        milesCell = `End ${eMi.toLocaleString()}`;
+      } else if (sMi != null) {
+        milesCell = `Start ${sMi.toLocaleString()}`;
+      }
 
-      // Units in their own column (one call sign per line); Vehicle its own column.
+      // DISPOSITION cell carries responding units / vehicle when present.
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
-      const unitsCell = unitsList.length > 0 ? unitsList.join('\n') : '—';
-      const vehicleCell = visit.responding_vehicle_id ? String(visit.responding_vehicle_id) : '—';
+      const dispExtras: string[] = [];
+      if (unitsList.length > 0) dispExtras.push(unitsList.join(', '));
+      if (visit.responding_vehicle_id) dispExtras.push(`Veh ${visit.responding_vehicle_id}`);
+      const dispCell = [visit.disposition || '—', ...dispExtras].join(' / ');
 
-      // DATE column = the visit's dispatched date (falls back to the first
-      // available phase / record timestamp).
+      // Single DATE column = the visit's dispatched date (falls back to the
+      // first available phase / record timestamp).
       const visitDate = fmtDateOnly(visit.dispatched_at || visit.onscene_at || visit.cleared_at || visit.created_at);
 
       return [
         visitCell,
         visitDate,
-        timelineCell,
-        vehicleCell,
-        startCell,
-        endCell,
-        totalCell,
-        unitsCell,
-        visit.disposition || '—',
+        fmtClock(visit.dispatched_at),
+        fmtClock(visit.enroute_at),
+        fmtClock(visit.onscene_at),
+        fmtClock(visit.cleared_at),
+        fmtClock(visit.closed_at),
+        milesCell,
+        dispCell,
       ];
     });
 
@@ -2323,7 +2322,15 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // seal slot with the "SCAN FOR MOBILE PSO" caption fitting alongside
   // — pre-fix the 18mm QR was overflowing the slot and visually
   // crowding the date/time row (caught 2026-05-04).
-  if (data.incident_type === 'pso_client_request' && data.id) {
+  // Mobile-PSO QR badge is gated OFF until the mobile-PSO backend subsystem
+  // (POST /api/cfs/:id/qr-token + the /api/mobile/cfs/* challenge/auth/status/
+  // narrative/pso routes from legacy mobileCfs.ts) is ported to the rewrite.
+  // Until then the endpoint 404s; firing the request only produced console
+  // noise — the PDF already degrades gracefully without the QR. Flip this to
+  // true once that backend lands to re-enable the "SCAN FOR MOBILE PSO" badge;
+  // no other change is needed here.
+  const MOBILE_PSO_QR_ENABLED: boolean = false;
+  if (MOBILE_PSO_QR_ENABLED && data.incident_type === 'pso_client_request' && data.id) {
     try {
       const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
         method: 'POST',
