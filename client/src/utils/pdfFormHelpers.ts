@@ -1118,6 +1118,14 @@ export interface TimelineEvent {
   label: string;   // "RECEIVED", "DISPATCHED", "EN ROUTE", "ON SCENE", "CLEARED"
   time?: string;   // "14:23:07"
   elapsed?: string; // "+00:02:14" — delta from previous stage
+  // Lifecycle state — drives status-aware rendering of stages that have no
+  // timestamp yet (an open call). 'done' = has a time; 'active' = the NEXT
+  // expected stage (rendered "PENDING" in amber with a tinted header cell so
+  // a reviewer instantly sees where the call is in its lifecycle); 'future' =
+  // a later stage not yet reached (rendered as a faint placeholder rather than
+  // the old "--:--:--" dash-soup that made open calls look broken). Omit for
+  // legacy callers — empty cells then fall back to a single clean placeholder.
+  state?: 'done' | 'active' | 'pending' | 'future';
 }
 
 /**
@@ -1147,8 +1155,21 @@ export function drawDispatchTimelineStrip(
   doc.setFillColor(...COLOR.BG_TABLE_HDR);
   doc.rect(margin, y, w, headerH, 'F');
 
+  const ACTIVE_AMBER: [number, number, number] = [183, 121, 12];
   for (let i = 0; i < events.length; i++) {
+    const ev = events[i];
     const cellX = margin + i * cellW;
+    const isActive = ev.state === 'active';
+    const isFuture = ev.state === 'future';
+
+    // Active-stage header cell — overpaint the dark header strip for this one
+    // cell in amber so the "where is this call right now?" stage is the first
+    // thing the eye lands on.
+    if (isActive) {
+      doc.setFillColor(ACTIVE_AMBER[0], ACTIVE_AMBER[1], ACTIVE_AMBER[2]);
+      doc.rect(cellX, y, cellW, headerH, 'F');
+    }
+
     // Vertical divider
     if (i > 0) {
       doc.setDrawColor(...COLOR.BORDER_COLUMN);
@@ -1161,41 +1182,64 @@ export function drawDispatchTimelineStrip(
     doc.setFontSize(FONT.SIZE_TIMELINE_LABEL);
     doc.setTextColor(...COLOR.TEXT_INVERTED);
     doc.text(
-      sanitizePdfText(events[i].label.toUpperCase()),
+      sanitizePdfText(ev.label.toUpperCase()),
       cellX + cellW / 2,
       y + 1.9,
       { align: 'center' },
     );
 
-    // Timestamp (bold courier, center)
+    // Timestamp / status (bold courier, center). Stages with a time render it
+    // normally; the active stage reads "PENDING" in amber; future stages get a
+    // faint single placeholder instead of the old "--:--:--" dash-soup.
+    let stageText: string;
+    let stageColor: readonly [number, number, number];
+    if (ev.time) {
+      stageText = ev.time;
+      stageColor = COLOR.TEXT_PRIMARY;
+    } else if (isActive) {
+      stageText = 'PENDING';
+      stageColor = ACTIVE_AMBER;
+    } else if (isFuture) {
+      stageText = '-';
+      stageColor = COLOR.TEXT_TERTIARY;
+    } else {
+      // Legacy callers (no state) — clean single placeholder.
+      stageText = '-';
+      stageColor = COLOR.TEXT_TERTIARY;
+    }
     doc.setFont(PDF_VALUE_FONT, 'bold');
-    doc.setFontSize(FONT.SIZE_TIMELINE_VALUE);
-    doc.setTextColor(...COLOR.TEXT_PRIMARY);
+    doc.setFontSize(stageText === 'PENDING' ? FONT.SIZE_TIMELINE_LABEL : FONT.SIZE_TIMELINE_VALUE);
+    doc.setTextColor(stageColor[0], stageColor[1], stageColor[2]);
     doc.text(
-      sanitizePdfText(events[i].time || '--:--:--'),
+      sanitizePdfText(stageText),
       cellX + cellW / 2,
       y + headerH + 3.2,
       { align: 'center' },
     );
 
     // Elapsed delta
-    if (events[i].elapsed) {
+    if (ev.elapsed) {
       doc.setFont(PDF_VALUE_FONT, 'normal');
       doc.setFontSize(FONT.SIZE_TIMELINE_LABEL);
       doc.setTextColor(...COLOR.TEXT_SECONDARY);
       doc.text(
-        sanitizePdfText(events[i].elapsed!),
+        sanitizePdfText(ev.elapsed!),
         cellX + cellW / 2,
         y + h - 1.1,
         { align: 'center' },
       );
     }
 
-    // Progress LED between stages
-    if (i < events.length - 1 && events[i].time) {
+    // Progress LED between stages — green up to the last completed stage,
+    // amber on the active stage to mark the live edge of the lifecycle.
+    if (i < events.length - 1 && (ev.time || isActive)) {
       const ledX = cellX + cellW - 1.5;
       const ledY = y + headerH + 1.5;
-      doc.setFillColor(60, 180, 80);
+      if (isActive && !ev.time) {
+        doc.setFillColor(ACTIVE_AMBER[0], ACTIVE_AMBER[1], ACTIVE_AMBER[2]);
+      } else {
+        doc.setFillColor(60, 180, 80);
+      }
       doc.circle(ledX, ledY, 0.5, 'F');
     }
   }

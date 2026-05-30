@@ -13,7 +13,7 @@ export type RGBColor = readonly [number, number, number];
 export const COLOR = {
   // Text hierarchy
   TEXT_PRIMARY:    [0, 0, 0]        as const,  // Courier field values
-  TEXT_SECONDARY:  [74, 85, 104]    as const,  // Helvetica labels (#545454)
+  TEXT_SECONDARY:  [84, 84, 84]     as const,  // Helvetica labels (#545454 — neutralized 2026-05-30: the value had silently drifted to blue-slate [74,85,104], violating the zero-blue rule + contradicting this very comment)
   TEXT_TERTIARY:   [100, 100, 100]  as const,  // Placeholders, sub-labels
   TEXT_INVERTED:   [255, 255, 255]  as const,  // White on dark backgrounds
   TEXT_MUTED:      [140, 140, 140]  as const,  // Form number, report date
@@ -25,22 +25,34 @@ export const COLOR = {
   // structure of a real PD form where every cell is bounded by a
   // visible line. Field bodies stay white; only the rule colors
   // change.
-  BORDER_FIELD:    [80, 92, 110]    as const,  // Field box borders (was 113/128/150)
-  BORDER_TABLE:    [120, 122, 130]  as const,  // Row separator lines (was 180/180/185)
-  BORDER_COLUMN:   [110, 112, 122]  as const,  // Vertical column separators (was 170/170/175)
-  BORDER_OUTER:    [40, 44, 55]     as const,  // Table outer border (was 80/80/85)
-  BORDER_SECTION:  [50, 55, 68]     as const,  // Section outline (was 100/100/105)
-  BORDER_FIELD_RULE: [140, 148, 162] as const, // Field underline rule (was 200/200/208 — soft)
+  // Neutralized 2026-05-30: every border value carried a blue cast (B channel
+  // 20-30 above R/G — e.g. [80,92,110], [140,148,162]) which read as cool slate
+  // against the white field bodies and violated the zero-blue rule. Each is now
+  // a luminance-matched neutral gray (R=G=B at the same perceived brightness)
+  // so the form's line structure is visually identical minus the blue tint.
+  BORDER_FIELD:    [90, 90, 90]     as const,  // Field box borders
+  BORDER_TABLE:    [122, 122, 122]  as const,  // Row separator lines
+  BORDER_COLUMN:   [112, 112, 112]  as const,  // Vertical column separators
+  BORDER_OUTER:    [44, 44, 44]     as const,  // Table outer border
+  BORDER_SECTION:  [55, 55, 55]     as const,  // Section outline
+  BORDER_FIELD_RULE: [148, 148, 148] as const, // Field underline rule
 
   // Backgrounds — page stays white; structural elements (headers,
   // banners) deepen to true charcoal for strong contrast against
   // white field bodies (2026-05-05 darker-shading pass).
-  BG_ZEBRA:        [242, 242, 246]  as const,  // Even-row table shading
-  BG_SECTION_HDR:  [44, 50, 64]     as const,  // Subheader bar (was 22/26/34 — lightened 2026-05-05 per user)
-  BG_TABLE_HDR:    [54, 60, 76]     as const,  // Table column header (proportionally lightened)
-  BG_SECTION_TINT: [248, 248, 252]  as const,  // Field-body tint (kept near-white for readability)
-  BG_TABLE_HDR_LIGHT: [220, 225, 234] as const, // Nested table header (light slate)
-  TEXT_TABLE_HDR_LIGHT: [45, 55, 72]  as const,  // Dark slate text on light hdr
+  // Neutralized 2026-05-30: the header / subheader / table-header fills were
+  // blue-slate ([44,50,64], [54,60,76], [45,55,72] all have B well above R/G),
+  // so the big agency header bar, the "FORM PS-XXX" subheader strip, and every
+  // section/column header read with a cool blue tint — the exact thing the
+  // zero-blue rule forbids. Remapped to luminance-matched neutral charcoals so
+  // the headers stay strong/dark but are true gray. Zebra + tint backgrounds
+  // also de-blued ([242,242,246]→[243,243,243], [248,248,252]→[249,249,249]).
+  BG_ZEBRA:        [243, 243, 243]  as const,  // Even-row table shading
+  BG_SECTION_HDR:  [46, 46, 46]     as const,  // Header + subheader bar (neutral charcoal)
+  BG_TABLE_HDR:    [58, 58, 58]     as const,  // Table column header (neutral charcoal)
+  BG_SECTION_TINT: [249, 249, 249]  as const,  // Field-body tint (kept near-white for readability)
+  BG_TABLE_HDR_LIGHT: [224, 224, 224] as const, // Nested table header (light gray)
+  TEXT_TABLE_HDR_LIGHT: [54, 54, 54]  as const,  // Dark gray text on light hdr
 
   // Brand accent — pivoted to grayscale 2026-05-04 (user request).
   // Token name retained for backwards compatibility with existing call
@@ -67,11 +79,11 @@ export const COLOR = {
   FLAG_GANG:       [120, 40, 140]   as const,  // Gang affiliation
   FLAG_MENTAL:     [40, 90, 170]    as const,  // Mental health
   FLAG_MEDICAL:    [0, 130, 80]     as const,  // Medical condition
-  FLAG_DEFAULT:    [80, 80, 90]     as const,  // Generic flag
+  FLAG_DEFAULT:    [84, 84, 84]     as const,  // Generic flag (de-blued 2026-05-30)
 
   // NIBRS Grid Form — sidebar tabs + dense cells
-  BG_SIDEBAR_TAB:      [25, 25, 30]     as const,  // Dark sidebar tab background
-  BG_FORM_CELL_LABEL:  [240, 240, 245]  as const,  // Light gray label strip inside cell
+  BG_SIDEBAR_TAB:      [27, 27, 27]     as const,  // Dark sidebar tab background (de-blued 2026-05-30)
+  BG_FORM_CELL_LABEL:  [241, 241, 241]  as const,  // Light gray label strip inside cell (de-blued 2026-05-30)
   BORDER_FORM_GRID:    [60, 60, 60]     as const,  // Dark grid lines (shared borders)
 
   // Police-form furniture (added 2026-04-17 for enhanced LE styling)
