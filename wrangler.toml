@@ -44,11 +44,6 @@ tag = "v1"
 # SQLite-backed DO storage; same API surface for our use case.
 new_sqlite_classes = ["WelfareWatchDO"]
 
-# VoiceHubDO added in its own migration tag so it doesn't rewrite v1.
-[[migrations]]
-tag = "v2-voicehub"
-new_sqlite_classes = ["VoiceHubDO"]
-
 # KV for sessions and caching
 [[kv_namespaces]]
 binding = "KV"
@@ -102,6 +97,16 @@ class_name = "PdfToolsContainer"
 [[migrations]]
 tag = "v1-pdftools"
 new_sqlite_classes = ["PdfToolsContainer"]
+
+# VoiceHubDO — MUST be the LAST migration. Cloudflare requires the
+# already-applied tags ([v1, v1-pdftools] on the live worker) to be a
+# prefix of this list, so new DO migrations are APPENDED, never inserted
+# mid-list. A prior insert between v1 and v1-pdftools failed deploy with
+# "class VoiceHubDO is not currently configured to implement Durable
+# Objects" [code 10061].
+[[migrations]]
+tag = "v2-voicehub"
+new_sqlite_classes = ["VoiceHubDO"]
 
 # ─── Workers AI ────────────────────────────────────────────
 # Used by /api/serve-intake/scan-document + /api/serve-intake/upload
