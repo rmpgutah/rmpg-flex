@@ -2324,7 +2324,15 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // seal slot with the "SCAN FOR MOBILE PSO" caption fitting alongside
   // — pre-fix the 18mm QR was overflowing the slot and visually
   // crowding the date/time row (caught 2026-05-04).
-  if (data.incident_type === 'pso_client_request' && data.id) {
+  // Mobile-PSO QR badge is gated OFF until the mobile-PSO backend subsystem
+  // (POST /api/cfs/:id/qr-token + the /api/mobile/cfs/* challenge/auth/status/
+  // narrative/pso routes from legacy mobileCfs.ts) is ported to the rewrite.
+  // Until then the endpoint 404s; firing the request only produced console
+  // noise — the PDF already degrades gracefully without the QR. Flip this to
+  // true once that backend lands to re-enable the "SCAN FOR MOBILE PSO" badge;
+  // no other change is needed here.
+  const MOBILE_PSO_QR_ENABLED: boolean = false;
+  if (MOBILE_PSO_QR_ENABLED && data.incident_type === 'pso_client_request' && data.id) {
     try {
       const resp = await fetch(`/api/cfs/${data.id}/qr-token`, {
         method: 'POST',
