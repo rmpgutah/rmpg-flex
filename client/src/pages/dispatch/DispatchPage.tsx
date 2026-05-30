@@ -1828,6 +1828,18 @@ export default function DispatchPage() {
     return counts;
   }, [calls]);
 
+  // Active-call load per district (section), busiest first — situational
+  // awareness of where the workload is concentrated. Keyed by the Spillman
+  // section code (from the composite zone_id) with sector_name fallback.
+  const districtLoad = useMemo(() => {
+    const counts = new Map<string, number>();
+    calls.filter(c => ['pending', 'dispatched', 'enroute', 'onscene', 'on_hold'].includes(c.status)).forEach(c => {
+      const key = sectionPrefix(c.zone_id) || c.sector_name || '';
+      if (key) counts.set(key, (counts.get(key) || 0) + 1);
+    });
+    return [...counts.entries()].sort((a, b) => b[1] - a[1]);
+  }, [calls]);
+
   // Other active calls at the SAME address as the selected call — surfaces the
   // stack the queue card already counts, so a dispatcher seeing one call knows
   // about the others at that location (officer-safety + dedupe).
@@ -3081,6 +3093,17 @@ export default function DispatchPage() {
                   }
                   return null;
                 })()}
+                {/* Busiest district — active-call load concentration. Full
+                    per-section breakdown on hover. */}
+                {districtLoad.length > 0 && (
+                  <span
+                    className="flex items-center gap-1 px-1.5 py-0.5 font-bold text-[9px] rounded-sm"
+                    style={{ background: 'rgba(212,160,23,0.12)', color: '#d4a017', border: '1px solid rgba(212,160,23,0.3)' }}
+                    title={`Active calls by district — ${districtLoad.map(([k, n]) => `${k}: ${n}`).join(' · ')}`}
+                  >
+                    <MapPin className="w-2.5 h-2.5" /> {districtLoad[0][0]}: {districtLoad[0][1]}
+                  </span>
+                )}
                 {/* Feature 4: Unit availability counter — extended breakdown */}
                 <span className="flex items-center gap-2 text-[#888888]" title={`${unitAvailability.available} available · ${unitAvailability.enroute} enroute/dispatched · ${unitAvailability.onscene} on-scene · ${unitAvailability.oos} out-of-service`}>
                   <span className="w-1.5 h-1.5 rounded-full flex-shrink-0" style={{ background: unitAvailability.available > 0 ? '#22c55e' : '#ef4444', boxShadow: `0 0 4px ${unitAvailability.available > 0 ? '#22c55e80' : '#ef444480'}` }} />

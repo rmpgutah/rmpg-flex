@@ -113,7 +113,9 @@
 //       a sticky "SECTION · Name" header before each new section's calls.
 // v641: keyboard-shortcut cheat sheet overlay (toggle with "?") documenting the
 //       Spillman-style F-key + letter + nav shortcuts.
-const CACHE_NAME = 'rmpg-flex-v641';
+// v642: busiest-district chip in the dispatch stats strip — active-call load
+//       per section (busiest first), full breakdown on hover.
+const CACHE_NAME = 'rmpg-flex-v642';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
