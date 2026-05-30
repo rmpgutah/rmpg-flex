@@ -2372,12 +2372,33 @@ export default function DispatchPage() {
                             )}
                           </div>
                         ) : (
-                          <span
-                            className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
-                            onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
-                            title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
-                          >
-                            {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic">—</span>}
+                          <span className="flex items-center gap-1.5">
+                            <span
+                              className={`font-mono text-rmpg-200 tabular-nums ${isAdminOrManager ? 'cursor-pointer hover:text-[#d4a017] group-hover:underline transition-colors' : ''}`}
+                              onClick={() => isAdminOrManager && setEditingTimestamp(ts.field)}
+                              title={isAdminOrManager ? 'Click to edit timestamp' : undefined}
+                            >
+                              {ts.value ? formatTime(ts.value) : <span className="text-rmpg-600 italic">—</span>}
+                            </span>
+                            {/* Elapsed since the previous populated stage — the response
+                                breakdown (Created→Dispatched→Enroute→On Scene→…). */}
+                            {ts.value && (() => {
+                              const prevChain: Record<string, string[]> = {
+                                dispatched_at: ['created_at'],
+                                enroute_at: ['dispatched_at', 'created_at'],
+                                onscene_at: ['enroute_at', 'dispatched_at', 'created_at'],
+                                cleared_at: ['onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
+                                closed_at: ['cleared_at', 'onscene_at', 'enroute_at', 'dispatched_at', 'created_at'],
+                              };
+                              const chain = prevChain[ts.field];
+                              const prevField = chain?.find(f => (selectedCall as any)[f]);
+                              if (!prevField) return null;
+                              const d = parseTimestamp(ts.value).getTime() - parseTimestamp((selectedCall as any)[prevField]).getTime();
+                              if (!isFinite(d) || d <= 0) return null;
+                              const m = Math.floor(d / 60000);
+                              const s = Math.floor((d % 60000) / 1000);
+                              return <span className="text-rmpg-500 font-mono text-[9px] tabular-nums" title={`+${m}m ${s}s since ${prevField.replace(/_at$/, '').replace(/_/g, ' ')}`}>(+{m > 0 ? `${m}m ` : ''}{s}s)</span>;
+                            })()}
                           </span>
                         )}
                       </div>

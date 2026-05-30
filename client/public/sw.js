@@ -98,7 +98,10 @@
 // v635: unit status board now shows time-in-status (dwell) next to the status
 //       badge, color-escalating per status so dispatchers catch units stuck
 //       en route / with long scene times.
-const CACHE_NAME = 'rmpg-flex-v635';
+// v636: call timeline now shows the elapsed delta between each populated stage
+//       (Created→Dispatched→Enroute→On Scene→Cleared→Closed) — the full
+//       response-time breakdown, not just dispatched→onscene.
+const CACHE_NAME = 'rmpg-flex-v636';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
