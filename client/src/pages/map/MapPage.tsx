@@ -71,6 +71,8 @@ import { useScreenWakeLock } from '../../hooks/useScreenWakeLock';
 import { formatIncidentType } from '../../utils/caseNumbers';
 import { generatePatrolTrackingPdf } from '../../utils/patrolTrackingPdfGenerator';
 import { escapeHtml } from '../../utils/sanitize';
+import { getMapPreferences } from '../../utils/mapPreferences';
+import { subscribeSettings } from '../../utils/settingsBus';
 import { isAndroidNative, navigateTo } from '../../utils/organicMapsNav';
 import { useToast } from '../../components/ToastProvider';
 import { localToday, dateToLocalYMD, safeDateTimeStr, parseTimestamp } from '../../utils/dateUtils';
@@ -284,8 +286,8 @@ export default function MapPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Heat map state
-  const [showHeatmap, setShowHeatmap] = useState(false);
+  // Heat map state — default seeded from per-user map preferences (Settings page)
+  const [showHeatmap, setShowHeatmap] = useState(() => getMapPreferences().overlays.heatmap);
   const [showTrackingLines, setShowTrackingLines] = useState(true);
   const [heatmapData, setHeatmapData] = useState<HeatmapPoint[]>([]);
   const [heatmapDays, setHeatmapDays] = useState(30);
@@ -322,8 +324,8 @@ export default function MapPage() {
     comparisonDays: advHeatmapComparisonDays,
   }), [advancedHeatmapEnabled, showHeatmap, heatmapDays, advHeatmapMode, advHeatmapTypes, advHeatmapHourRange, advHeatmapDayFilter, advHeatmapResolution, advHeatmapColorScheme, advHeatmapOpacity, advHeatmapRadius, advHeatmapShowClusters, advHeatmapComparisonDays]);
 
-  // Breadcrumb trail state
-  const [showBreadcrumbs, setShowBreadcrumbs] = useState(true);
+  // Breadcrumb trail state — default seeded from per-user map preferences
+  const [showBreadcrumbs, setShowBreadcrumbs] = useState(() => getMapPreferences().overlays.breadcrumbs);
   const [breadcrumbHours, setBreadcrumbHours] = useState(8);
   const [exportingPdf, setExportingPdf] = useState(false);
   const [breadcrumbColorMode, setBreadcrumbColorMode] = useState<'unit' | 'speed' | 'status' | 'accel'>('unit');
@@ -361,6 +363,21 @@ export default function MapPage() {
   const serverDefaultStyle = (userPrefs?.default_map_style || 'dark') as MapStyleId;
   const [mapStyle, setMapStyle] = usePersistedTab('rmpg_map_style', serverDefaultStyle, ['dark', 'satellite', 'hybrid', 'streets', 'terrain', 'night_nav'] as const);
   const [showMapStyles, setShowMapStyles] = useState(false);
+
+  // Live-apply: when map preferences change (Settings page, or another tab),
+  // update style / base layers / overlay defaults in place — no reload.
+  // Marker pulse / font / clustering / GPS flow through useMapConfig, which is
+  // reactive on its own. (useGpsTracking reads gps prefs on its next tick.)
+  useEffect(() => {
+    return subscribeSettings((domain) => {
+      if (domain !== 'map' && domain !== 'all') return;
+      const p = getMapPreferences();
+      setMapStyle(p.defaultStyle);
+      setLayers(p.layers);
+      setShowHeatmap(p.overlays.heatmap);
+      setShowBreadcrumbs(p.overlays.breadcrumbs);
+    });
+  }, [setMapStyle]);
 
   // Routing
   const { activeRoute, routeLoading, routeProgress, offRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapInstanceRef.current });
@@ -2627,6 +2644,12 @@ export default function MapPage() {
           zIndex: 9999,
           title: `Your Position${gps.unitCallSign ? ` (${gps.unitCallSign})` : ''}`,
         });
+      }
+
+      // Auto-center on my unit when the user has opted in (Settings page).
+      // Read the pref live so toggling it takes effect without a remount.
+      if (getMapPreferences().gps.autoCenterOnUnit) {
+        map.easeTo({ center: pos, duration: 600 });
       }
     } else {
       // Remove self marker if GPS stopped

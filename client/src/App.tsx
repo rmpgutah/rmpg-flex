@@ -89,6 +89,7 @@ const GeoDataViewerPage = lazyRetry(() => import('./pages/GeoDataViewerPage'));
 const InvoicesPage = lazyRetry(() => import('./pages/InvoicesPage'));
 const IpedPage = lazyRetry(() => import('./pages/IpedPage'));
 const NationalWarrantSearchPage = lazyRetry(() => import('./pages/NationalWarrantSearchPage'));
+const SettingsPage = lazyRetry(() => import('./pages/SettingsPage'));
 const DashcamPage = lazyRetry(() => import('./pages/DashcamPage'));
 const RadioPage = lazyRetry(() => import('./pages/radio'));
 const IncidentDetailWindow = lazyRetry(() => import('./pages/detached/IncidentDetailWindow'));
@@ -344,6 +345,7 @@ function AppRoutes() {
             <Route path="/invoices" element={<RouteErrorBoundary><InvoicesPage /></RouteErrorBoundary>} />
             <Route path="/iped" element={<RouteErrorBoundary><IpedPage /></RouteErrorBoundary>} />
             <Route path="/national-warrant-search" element={<RouteErrorBoundary><NationalWarrantSearchPage /></RouteErrorBoundary>} />
+            <Route path="/settings" element={<RouteErrorBoundary><SettingsPage /></RouteErrorBoundary>} />
             {/* 404 within layout */}
             <Route path="*" element={<NotFoundPage />} />
           </Route>
