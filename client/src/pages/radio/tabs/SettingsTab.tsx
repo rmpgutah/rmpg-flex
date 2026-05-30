@@ -7,6 +7,13 @@ import { Settings as SettingsIcon } from 'lucide-react';
 import { ls, playBeep, isInQuietHours } from '../helpers';
 import { THEMES, type Theme, NOTIF_SOUNDS } from '../constants';
 import { SectionHeader, SettingRow, SettingCheckbox, ToolbarBtn } from '../components';
+import { useAuth } from '../../../context/AuthContext';
+import AdminRadioSettings from '../../admin/AdminRadioSettings';
+
+// Roles allowed to edit ORG-WIDE radio settings (mirrors the PUT
+// /api/radio/settings guard: admin/manager/supervisor). Everyone else sees
+// only their per-device preferences below.
+const ORG_SETTINGS_ROLES = ['admin', 'manager', 'supervisor'];
 
 interface Props {
   theme: Theme;
@@ -16,6 +23,9 @@ interface Props {
 }
 
 export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: Props) {
+  const { user } = useAuth();
+  const canManageOrg = !!user && ORG_SETTINGS_ROLES.includes(user.role);
+
   const [notifEnabled, setNotifEnabled] = useState(() => ls.get('radio_notif_enabled') !== 'false');
   const [soundEnabled, setSoundEnabled] = useState(() => ls.get('radio_sound_enabled') !== 'false');
   const [notifSound, setNotifSound] = useState(() => ls.get('radio_notif_sound') || 'chime');
@@ -120,6 +130,25 @@ export default function SettingsTab({ theme, onTheme, fontScale, onFontScale }: 
             </div>
           )}
         </section>
+
+        {/* ── Organization-wide radio settings (admin/manager/supervisor) ──
+            The AI dispatcher, recording, and audio controls apply to EVERY
+            operator and the server-side dispatcher. Surfaced here so a
+            supervisor can tune dispatch from the radio console without leaving
+            for the Admin area. Reuses the same panel as Admin → Radio →
+            Settings (one source of truth, server-persisted via
+            /api/radio/settings). Hidden entirely for non-privileged roles. */}
+        {canManageOrg && (
+          <section className="flex flex-col gap-2 pt-2 border-t" style={{ borderColor: 'var(--rt-border)' }}>
+            <h3 className="text-[9px] font-mono tracking-[0.3em]" style={{ color: 'var(--rt-muted)' }}>
+              ORGANIZATION · APPLIES TO ALL OPERATORS
+            </h3>
+            <p className="text-[10px]" style={{ color: 'var(--rt-muted)' }}>
+              AI dispatcher, recording, and audio — changes take effect on the next transmission.
+            </p>
+            <AdminRadioSettings />
+          </section>
+        )}
       </div>
     </div>
   );

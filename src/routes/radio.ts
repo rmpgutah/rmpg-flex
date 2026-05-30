@@ -36,6 +36,7 @@ import {
 } from '../utils/aiDispatcher';
 import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
 import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS, RADIO_SETTING_OPTIONS } from '../utils/radioSettings';
+import { generateIncidentNarrative, generateShiftSummary } from '../utils/aiReports';
 import type { Bindings } from '../types';
 
 const rt = new Hono<Env>();
@@ -535,6 +536,92 @@ rt.put('/settings', async (c) => {
   }
 
   return c.json({ settings });
+});
+
+// ============================================================
+// AI reports — incident narrative + shift summary
+// ============================================================
+// Grounded LLM writeups from real CAD data (see src/utils/aiReports.ts). Any
+// logged-in user may generate; the model only rewrites the facts it's given.
+
+// POST /ai/incident-narrative  body: { call_id } or { call_number }
+// Returns a drafted narrative for the call + the radio traffic logged during it.
+rt.post('/ai/incident-narrative', async (c) => {
+  const body = await c.req.json<{ call_id?: number; call_number?: string }>().catch(() => null);
+  const db = getDb(c.env);
+  const call = body?.call_id
+    ? await queryFirst<Record<string, unknown>>(
+        db,
+        `SELECT call_number, incident_type, priority, status, location_address, description, notes,
+                disposition, unit_call_signs, caller_name, created_at, cleared_at
+         FROM calls_for_service WHERE id = ? LIMIT 1`, body.call_id)
+    : body?.call_number
+      ? await queryFirst<Record<string, unknown>>(
+          db,
+          `SELECT call_number, incident_type, priority, status, location_address, description, notes,
+                  disposition, unit_call_signs, caller_name, created_at, cleared_at
+           FROM calls_for_service WHERE UPPER(call_number) = UPPER(?) LIMIT 1`, body.call_number)
+      : null;
+  if (!call) return c.json({ error: 'call_id or call_number required (and must exist)' }, 400);
+
+  // Radio traffic logged while the call was active (received → cleared/now).
+  const start = (call.created_at as string) || null;
+  const end = (call.cleared_at as string) || null;
+  const tx = start
+    ? await query<{ unit_label: string | null; transcript: string | null; transmitted_at: string | null }>(
+        db,
+        `SELECT unit_label, transcript, transmitted_at FROM radio_transmissions
+         WHERE transcript IS NOT NULL AND datetime(transmitted_at) >= datetime(?)
+           AND datetime(transmitted_at) <= datetime(${end ? '?' : "'now'"})
+         ORDER BY datetime(transmitted_at) ASC LIMIT 40`,
+        ...(end ? [start, end] : [start]),
+      ).catch(() => [])
+    : [];
+
+  const narrative = await generateIncidentNarrative(c.env.AI, {
+    call: call as any,
+    transmissions: tx.map((t) => ({ unit: t.unit_label, text: t.transcript || '', at: t.transmitted_at })),
+  });
+  if (!narrative) return c.json({ error: 'Narrative generation failed — try again.' }, 502);
+  return c.json({ call_number: call.call_number, narrative });
+});
+
+// GET /ai/shift-summary?unit=12-Adam&hours=12
+rt.get('/ai/shift-summary', async (c) => {
+  const unit = (c.req.query('unit') || '').trim();
+  if (!unit) return c.json({ error: 'unit query parameter required' }, 400);
+  const hours = Math.min(Math.max(parseInt(c.req.query('hours') || '12', 10) || 12, 1), 72);
+  const db = getDb(c.env);
+  const since = `-${hours} hours`;
+
+  const calls = await query<{ call_number: string | null; incident_type: string | null; disposition: string | null; status: string | null }>(
+    db,
+    `SELECT call_number, incident_type, disposition, status FROM calls_for_service
+     WHERE (unit_call_signs LIKE ? OR COALESCE(responding_officer,'') LIKE ?)
+       AND datetime(created_at) >= datetime('now', ?)
+     ORDER BY datetime(created_at) DESC LIMIT 50`,
+    `%${unit}%`, `%${unit}%`, since,
+  ).catch(() => []);
+
+  const txRow = await queryFirst<{ n: number }>(
+    db,
+    `SELECT COUNT(*) AS n FROM radio_transmissions
+     WHERE UPPER(unit_label) = UPPER(?) AND datetime(transmitted_at) >= datetime('now', ?)`,
+    unit, since,
+  ).catch(() => ({ n: 0 }));
+
+  const unitRow = await queryFirst<{ status: string | null }>(
+    db, 'SELECT status FROM units WHERE UPPER(call_sign) = UPPER(?) LIMIT 1', unit,
+  ).catch(() => null);
+
+  const summary = await generateShiftSummary(c.env.AI, {
+    unit, hours,
+    calls,
+    transmissionCount: txRow?.n ?? 0,
+    statuses: unitRow?.status ? [unitRow.status] : [],
+  });
+  if (!summary) return c.json({ error: 'Shift summary generation failed — try again.' }, 502);
+  return c.json({ unit, hours, summary, stats: { calls: calls.length, transmissions: txRow?.n ?? 0 } });
 });
 
 export default rt;
