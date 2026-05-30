@@ -12,6 +12,8 @@ import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
 import RecordField from '../../components/records/RecordField';
 import FieldGrid from '../../components/records/FieldGrid';
+import RecordBadge from '../../components/records/RecordBadge';
+import RecordHero from '../../components/records/RecordHero';
 import type { Property, RecordEntityType } from '../../types';
 import type { PropertyFormData } from '../../components/PropertyFormModal';
 
@@ -415,28 +417,30 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
 
   if (!selectedProperty) return null;
 
+  const propertyPosturalFlags: Array<string | null | undefined> = [
+    selectedProperty.hazard_notes ? 'hazard' : null,
+    selectedProperty.known_hazards ? 'hazard' : null,
+  ];
+  const propertyAddress = `${selectedProperty.address}${selectedProperty.city ? `, ${selectedProperty.city}` : ''}${selectedProperty.state ? `, ${selectedProperty.state}` : ''} ${selectedProperty.zip || ''}`.trim();
+
   return (
     <div className="h-full flex flex-col overflow-hidden">
-      {/* Status header */}
-      <div className="px-4 pt-3 pb-2 border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
-        <div className="flex items-center gap-1.5 text-[10px] text-rmpg-300">
-          <MapPin className="w-3 h-3 text-rmpg-400" />
-          {selectedProperty.address}{selectedProperty.city ? `, ${selectedProperty.city}` : ''}{selectedProperty.state ? `, ${selectedProperty.state}` : ''} {selectedProperty.zip}
-        </div>
-        <div className="flex items-center gap-2 mt-1.5">
-          <span className={`px-2 py-0.5 text-[9px] font-bold uppercase border ${
-            selectedProperty.is_active
-              ? 'bg-green-900/50 text-green-400 border-green-700/50'
-              : 'bg-rmpg-700 text-rmpg-400 border-rmpg-600'
-          }`}>
+      {/* Hero identity band + actions */}
+      <div className="border-b border-rmpg-600 bg-surface-sunken flex-shrink-0">
+        <RecordHero
+          name={selectedProperty.name || propertyAddress || 'PROPERTY'}
+          subtitle={<span className="flex items-center gap-1.5"><MapPin className="w-3 h-3 text-rmpg-400" />{propertyAddress}</span>}
+          flags={propertyPosturalFlags}
+          tone="gold"
+        >
+          <RecordBadge tone={selectedProperty.is_active ? 'green' : 'gray'} glow={false}>
             {selectedProperty.is_active ? 'ACTIVE' : 'INACTIVE'}
-          </span>
+          </RecordBadge>
           {selectedProperty.property_type && (
-            <span className="px-2 py-0.5 text-[9px] font-bold uppercase bg-rmpg-700 text-rmpg-300 border border-rmpg-600">
-              {selectedProperty.property_type}
-            </span>
+            <RecordBadge tone="gray" glow={false}>{selectedProperty.property_type}</RecordBadge>
           )}
-          {selectedProperty.hazard_notes && <AlertTriangle className="w-3.5 h-3.5 text-red-400" />}
+        </RecordHero>
+        <div className="px-4 pb-2 flex items-center gap-2">
           {/* Inline action buttons for properties (edit/delete/archive in detail header) */}
           <div className="ml-auto flex items-center gap-1">
             {(!showArchived || user?.role === 'admin') && (
