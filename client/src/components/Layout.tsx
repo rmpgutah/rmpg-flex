@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback, useState, useRef } from 'react';
+import React, { useEffect, useCallback, useState, useRef, useMemo } from 'react';
 import { parseTimestamp } from '../utils/dateUtils';
 import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import {
@@ -68,6 +68,7 @@ import PanicButton from './PanicButton';
 import UserProfileModal from './UserProfileModal';
 import DispatcherTranscript from './DispatcherTranscript';
 import UpdateBanner from './UpdateBanner';
+import CommandPalette from './CommandPalette';
 import OfflineStatusBar from './OfflineStatusBar';
 import PinEntryModal from './PinEntryModal';
 import ForcePasswordChangeModal from './ForcePasswordChangeModal';
@@ -507,9 +508,9 @@ export default function Layout() {
   const [showShortcutHelp, setShowShortcutHelp] = useState(false);
 
   // ── Command Palette (Ctrl+K / Cmd+K) ─────────────────────
+  // State lives here so the global Cmd+K handler can toggle it; the palette
+  // UI + search/nav logic is the self-contained <CommandPalette> component.
   const [showCommandPalette, setShowCommandPalette] = useState(false);
-  const [paletteQuery, setPaletteQuery] = useState('');
-  const paletteInputRef = useRef<HTMLInputElement>(null);
 
   // ── Unsaved Changes Warning ─────────────────────────────
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -533,7 +534,6 @@ export default function Layout() {
       if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
         e.preventDefault();
         setShowCommandPalette(prev => !prev);
-        setPaletteQuery('');
         return;
       }
       if (e.key === 'Escape' && showCommandPalette) {
@@ -583,22 +583,31 @@ export default function Layout() {
   }, [location.pathname]);
 
   // Command palette search results
-  const paletteResults = paletteQuery.trim().length > 0
-    ? TOOLBAR_NAV.flatMap(item => {
-        const items: { path: string; label: string; icon: React.ElementType }[] = [];
-        if (item.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
-          items.push({ path: item.path, label: item.label, icon: item.icon });
+  // Flattened, role-filtered navigation targets (parents + children) for the
+  // command palette. Mirrors the toolbar's role gating so the palette never
+  // surfaces a page the user can't open. De-duped by path.
+  const paletteNavTargets = useMemo(() => {
+    const seen = new Set<string>();
+    const targets: { path: string; label: string; icon: React.ElementType }[] = [];
+    const allow = (path: string, adminOnly?: boolean) => {
+      if (adminOnly && !isAdmin) return false;
+      if (isClientViewer && CLIENT_VIEWER_BLOCKED_PATHS.has(path)) return false;
+      return true;
+    };
+    for (const item of TOOLBAR_NAV) {
+      if (allow(item.path, item.adminOnly) && !seen.has(item.path)) {
+        seen.add(item.path);
+        targets.push({ path: item.path, label: item.label, icon: item.icon });
+      }
+      item.children?.forEach((child) => {
+        if (allow(child.path, child.adminOnly) && !seen.has(child.path)) {
+          seen.add(child.path);
+          targets.push({ path: child.path, label: child.label, icon: child.icon });
         }
-        if (item.children) {
-          item.children.forEach(child => {
-            if (child.label.toLowerCase().includes(paletteQuery.toLowerCase())) {
-              items.push({ path: child.path, label: child.label, icon: child.icon });
-            }
-          });
-        }
-        return items;
-      }).slice(0, 10)
-    : [];
+      });
+    }
+    return targets;
+  }, [isAdmin, isClientViewer]);
 
   // Mobile menu & responsive detection
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -1619,56 +1628,12 @@ export default function Layout() {
         </div>
       )}
 
-      {/* Command Palette */}
-      {showCommandPalette && (
-        <div className="fixed inset-0 z-[100] flex items-start justify-center pt-[15vh] bg-black/60 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Command palette" onClick={() => setShowCommandPalette(false)}>
-          {/* 15: Command palette with top accent and deeper shadow */}
-          <div className="bg-[#141414] border border-[#2b2b2b] rounded-sm w-full max-w-lg mx-4 animate-dropdown-appear" style={{ borderTop: '2px solid #888888', boxShadow: '0 16px 48px rgba(0,0,0,0.6), 0 4px 16px rgba(0,0,0,0.4)' }} onClick={e => e.stopPropagation()}>
-            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2b2b2b]">
-              <Search className="w-4 h-4 text-brand-400 flex-shrink-0" />
-              <input
-                ref={paletteInputRef}
-                autoFocus
-                value={paletteQuery}
-                onChange={e => setPaletteQuery(e.target.value)}
-                onKeyDown={e => {
-                  if (e.key === 'Enter' && paletteResults.length > 0) {
-                    navigate(paletteResults[0].path);
-                    setShowCommandPalette(false);
-                  }
-                  if (e.key === 'Escape') setShowCommandPalette(false);
-                }}
-                placeholder="Search pages, modules..."
-                className="flex-1 bg-transparent text-sm text-white placeholder-rmpg-500 focus:outline-none"
-              />
-              <kbd className="px-1.5 py-0.5 text-[9px] font-mono bg-[#0c0c0c] border border-[#2a2a2a] text-rmpg-500 rounded-sm">ESC</kbd>
-            </div>
-            <div className="max-h-80 overflow-y-auto scrollbar-dark">
-              {paletteQuery.trim() === '' ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">Type to search pages and modules<span className="text-rmpg-600 ml-1">-- start typing</span></div>
-              ) : paletteResults.length === 0 ? (
-                <div className="p-4 text-center text-rmpg-500 text-xs">No results found</div>
-              ) : (
-                paletteResults.map((result, idx) => {
-                  const Icon = result.icon;
-                  return (
-                    <button type="button"
-                      key={`${result.path}-${idx}`}
-                      onClick={() => { navigate(result.path); setShowCommandPalette(false); }}
-                      className="w-full flex items-center gap-3 px-4 py-2.5 text-left hover:bg-brand-500/10 transition-colors duration-150 border-b border-[#2b2b2b]/50 last:border-0 focus-visible:ring-1 focus-visible:ring-inset focus-visible:ring-[#888888] focus-visible:outline-none"
-                    >
-                      {/* 17: Command palette results with matched text style */}
-                      <Icon className="w-4 h-4 text-brand-400 flex-shrink-0" />
-                      <span className="text-sm text-white font-medium">{result.label}</span>
-                      <span className="text-[10px] text-rmpg-500 ml-auto font-mono">{result.path}</span>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Command Palette (Cmd/Ctrl+K) — nav + live record search + NCIC quick-run */}
+      <CommandPalette
+        open={showCommandPalette}
+        onClose={() => setShowCommandPalette(false)}
+        navTargets={paletteNavTargets}
+      />
 
 
     </div>

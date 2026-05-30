@@ -85,7 +85,7 @@ import MobileBottomSheet from '../../components/mobile/MobileBottomSheet';
 import type { MapUnit as Unit, ActiveCall, MapProperty as Property, MapStyleId } from './utils/mapConstants';
 import { whenStyleReady } from './utils/safeAddSource';
 import { UNIT_STATUS_COLORS, UNIT_STATUS_LABELS, PRIORITY_COLORS, MAP_STYLE_LABELS, MAP_STYLE_DESCRIPTIONS, getIncidentCategory, isLightMapStyle, isSatelliteStyle } from './utils/mapConstants';
-import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, getOverlayMarkerClass, injectKeyframes, type OverlayMarker } from './utils/mapMarkerBuilders';
+import { buildUnitMarkerContent, buildIncidentMarkerContent, buildPropertyMarkerContent, buildSelfPositionMarker, injectKeyframes } from './utils/mapMarkerBuilders';
 import { useMapHeatmapTimelapse } from './hooks/useMapHeatmapTimelapse';
 import { useMapHeatmapAdvanced, type HeatmapAdvancedMode, type HeatmapColorScheme, type HeatmapResolution, type HeatmapAdvancedOptions } from './hooks/useMapHeatmapAdvanced';
 import { useMapPredictions } from './hooks/useMapPredictions';
@@ -234,7 +234,6 @@ export default function MapPage() {
   const trackingLinesRef = useRef<any[]>([]);
   const mapConfigRef = useRef<MapSettings | null>(null);
   const [trackingLineCount, setTrackingLineCount] = useState(0);
-  const useAdvancedMarkersRef = useRef(false); // whether AdvancedMarkerElement is available
   const [mapLoaded, setMapLoaded] = useState(false);
   const [mapError, setMapError] = useState<string | null>(null);
   const [mapRetry, setMapRetry] = useState(0);
@@ -411,7 +410,7 @@ export default function MapPage() {
   // Keep the screen awake while the map is foregrounded — officers can't be
   // glancing down to wake the device mid-pursuit. Auto-released on unmount.
   useScreenWakeLock(true);
-  const selfMarkerRef = useRef<any>(null);
+  const selfMarkerRef = useRef<mapboxgl.Marker | null>(null);
 
   // WebSocket
   const { isConnected, subscribe } = useWebSocket();
@@ -450,10 +449,19 @@ export default function MapPage() {
           beatDescriptor: d.beat_descriptor || '',
           dispatchCode: d.dispatch_code || '',
         });
-        if (d.sector_id) sectionSet.set(d.sector_id, d.sector_name || '');
+        // sector_id arrives from the API as a number on live D1; coerce to a
+        // string so the Map key, React key, getSectionColor() lookup, and the
+        // localeCompare sort below all operate on strings. Without this the
+        // sort threw ("e.id.localeCompare is not a function") and silently
+        // killed the district sections list.
+        if (d.sector_id != null && d.sector_id !== '') sectionSet.set(String(d.sector_id), d.sector_name || '');
       }
       setBeatDistrictMap(map);
-      setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
+      setDistrictSections(
+        Array.from(sectionSet.entries())
+          .map(([id, name]) => ({ id, name }))
+          .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
+      );
     }).catch((err) => { console.warn('[MapPage] fetch districts failed:', err); });
     return () => { cancelled = true; };
   }, []);
@@ -1053,12 +1061,7 @@ export default function MapPage() {
 
       // CartoDB dark_matter tiles handled by Mapbox style
 
-      // AdvancedMarkerElement requires a cloud mapId on the Map constructor.
-      // Without mapId, markers are created but silently never render.
-      // Since we use a raster styled map (no mapId), always use the
-      // OverlayView-based fallback which works reliably on all map types.
-      useAdvancedMarkersRef.current = false;
-      devLog('[MapPage] Using CartoDB dark_matter overlay + OverlayView markers');
+      devLog('[MapPage] Map ready — using native mapbox-gl markers');
 
       // Monitor tile loading — detect blank map on slow WiFi
       if (tileMonitorCleanupRef.current) tileMonitorCleanupRef.current();
@@ -1207,22 +1210,26 @@ export default function MapPage() {
     zIndex?: number;
     title?: string;
     onClick?: () => void;
-  }): any => {
-    if (useAdvancedMarkersRef.current) {
-      try {
-        const marker = new mapboxgl.Marker(opts.content)
-          .setLngLat(opts.position)
-          .addTo(opts.map);
-        if (opts.onClick) opts.content.addEventListener('click', opts.onClick);
-        return marker;
-      } catch {
-        // Fall through to overlay
-      }
+  }): mapboxgl.Marker | null => {
+    // Always use native mapbox-gl Marker. The old OverlayView fallback was a
+    // Google-Maps-port leftover (its "AdvancedMarkerElement needs a mapId"
+    // comment is Google terminology that does not apply to Mapbox) and it
+    // exposed an incompatible API surface (no setDraggable / .on() / two-arg
+    // setLngLat), which crashed useMapDragDispatch and the self-marker updater.
+    // Native markers render on any style — raster included — and support the
+    // full method set the map relies on.
+    try {
+      if (opts.title) opts.content.title = opts.title;
+      if (opts.zIndex != null) opts.content.style.zIndex = String(opts.zIndex);
+      const marker = new mapboxgl.Marker(opts.content)
+        .setLngLat(opts.position)
+        .addTo(opts.map);
+      if (opts.onClick) opts.content.addEventListener('click', opts.onClick);
+      return marker;
+    } catch (err) {
+      console.warn('[MapPage] createMarker failed:', err);
+      return null;
     }
-    // Fallback: OverlayView-based marker
-    const Cls = getOverlayMarkerClass();
-    if (!Cls) return null as any;
-    return new Cls(opts);
   }, []);
 
   // Helper: remove a marker (works for both types)
@@ -1296,8 +1303,8 @@ export default function MapPage() {
           };
           const existing = unitMarkersMapRef.current.get(id);
           if (existing) {
-            (existing as any).setLngLat(unit.longitude, unit.latitude);
-            const el = (existing as any).getElement?.();
+            existing.setLngLat([unit.longitude, unit.latitude]);
+            const el = existing.getElement?.();
             if (el) el.replaceChildren(buildUnitMarkerContent(unit.call_sign, unit.status, unit.gps_source, unit.gps_heading, unit.gps_speed));
             (existing as any)._rmpgClick = makeUnitClick;
           } else {
@@ -1814,7 +1821,6 @@ export default function MapPage() {
   // GPS Breadcrumb Trails (enhanced: color modes, arrows, road names, playback)
   // ============================================================
 
-  const breadcrumbArrowsRef = useRef<any[]>([]);
   const breadcrumbInfoRef = useRef<mapboxgl.Popup | null>(null);
   // Holds the latest fetched trails so the (singly-registered) dot click
   // handler can resolve a clicked feature back to its full point data
@@ -1832,6 +1838,13 @@ export default function MapPage() {
   // so the click-handler effect and fetchTrails agree on naming.
   const DOTS_SOURCE_ID = 'rmpg-breadcrumb-dots';
   const DOTS_LAYER_ID = 'rmpg-breadcrumb-dots';
+  // Heading arrows render as a GPU-drawn symbol layer (not per-point DOM
+  // markers). Hundreds of DOM markers forced Mapbox to rewrite a transform on
+  // every element each frame during pan/zoom, so the pins visibly lagged and
+  // "flew" across the map. A symbol layer draws them all in one WebGL pass.
+  const ARROWS_SOURCE_ID = 'rmpg-breadcrumb-arrows';
+  const ARROWS_LAYER_ID = 'rmpg-breadcrumb-arrows';
+  const ARROW_IMAGE_ID = 'rmpg-breadcrumb-arrow-icon';
 
   // Single-bind dot click handler. Resolves the clicked circle feature
   // back to its trail+point via breadcrumbTrailsRef, then renders the
@@ -1975,8 +1988,8 @@ export default function MapPage() {
     if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
     if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
     if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
-    breadcrumbArrowsRef.current.forEach((a) => a.remove());
-    breadcrumbArrowsRef.current = [];
+    if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
+    if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
     speedAlertMarkersRef.current.forEach((m) => m.remove());
     speedAlertMarkersRef.current = [];
     breadcrumbTrailsRef.current = [];
@@ -2008,8 +2021,6 @@ export default function MapPage() {
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     const fetchTrails = async () => {
-      breadcrumbArrowsRef.current.forEach((a) => a.remove());
-      breadcrumbArrowsRef.current = [];
       speedAlertMarkersRef.current.forEach((m) => m.remove());
       speedAlertMarkersRef.current = [];
 
@@ -2022,6 +2033,8 @@ export default function MapPage() {
           breadcrumbTrailsRef.current = [];
           const existingDotSrc = map.getSource(DOTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
           if (existingDotSrc) existingDotSrc.setData({ type: 'FeatureCollection', features: [] });
+          const existingArrowSrc = map.getSource(ARROWS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+          if (existingArrowSrc) existingArrowSrc.setData({ type: 'FeatureCollection', features: [] });
           return;
         }
         setPlaybackTrails(trails);
@@ -2029,6 +2042,7 @@ export default function MapPage() {
 
         const lineFeatures: any[] = [];
         const dotFeatures: any[] = [];
+        const arrowFeatures: any[] = [];
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
@@ -2066,30 +2080,18 @@ export default function MapPage() {
             });
           }
 
+          // Heading arrows → GeoJSON features (drawn by the symbol layer below).
+          // Min opacity raised to 0.45 so older arrows still read as "solid".
           trail.points.forEach((pt, ptIdx) => {
             if (ptIdx % 8 !== 4 || pt.heading == null) return;
+            if (!isFinite(pt.lng) || !isFinite(pt.lat) || !isFinite(pt.heading)) return;
             const freshness = (ptIdx + 1) / trail.points.length;
             const arrowColor = breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : breadcrumbColorMode === 'status' ? statusToColor(pt.status) : breadcrumbColorMode === 'accel' ? accelToColor(null) : unitColor;
-            const arrowOpacity = 0.3 + freshness * 0.5;
-
-            const arrowEl = document.createElement('div');
-            arrowEl.style.cssText = 'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:12px solid transparent;line-height:0;';
-            const arrowSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            arrowSvg.setAttribute('width', '14');
-            arrowSvg.setAttribute('height', '14');
-            arrowSvg.setAttribute('viewBox', '0 0 24 24');
-            arrowSvg.style.cssText = `transform:rotate(${pt.heading}deg);opacity:${arrowOpacity};overflow:visible;`;
-            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-            poly.setAttribute('points', '12,2 22,22 2,22');
-            poly.setAttribute('fill', arrowColor);
-            poly.setAttribute('stroke', '#fff');
-            poly.setAttribute('stroke-width', '0.5');
-            arrowSvg.appendChild(poly);
-            arrowEl.appendChild(arrowSvg);
-
-            if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
-            const arrow = new mapboxgl.Marker({ element: arrowEl }).setLngLat([pt.lng, pt.lat]).addTo(map);
-            breadcrumbArrowsRef.current.push(arrow);
+            arrowFeatures.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [pt.lng, pt.lat] },
+              properties: { heading: pt.heading, color: arrowColor, opacity: 0.45 + freshness * 0.45 },
+            });
           });
 
           // Build dot features for the GeoJSON circle layer. Per-point click
@@ -2170,6 +2172,55 @@ export default function MapPage() {
           });
         }
 
+        // Heading arrows symbol layer. setData on refresh; first run registers
+        // the SDF arrow icon (so `icon-color` tints per feature) + the layer.
+        const arrowsData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: arrowFeatures };
+        const existingArrowSrc = map.getSource(ARROWS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        if (existingArrowSrc) {
+          existingArrowSrc.setData(arrowsData);
+        } else {
+          whenStyleReady(map, () => {
+            if (!map.hasImage(ARROW_IMAGE_ID)) {
+              // A white triangle pointing up (north). Registered as SDF so the
+              // layer can tint each arrow by speed/status/accel color.
+              const S = 24;
+              const cv = document.createElement('canvas');
+              cv.width = S; cv.height = S;
+              const ctx = cv.getContext('2d');
+              if (ctx) {
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.moveTo(S / 2, 2);
+                ctx.lineTo(S - 3, S - 4);
+                ctx.lineTo(3, S - 4);
+                ctx.closePath();
+                ctx.fill();
+                map.addImage(ARROW_IMAGE_ID, ctx.getImageData(0, 0, S, S), { sdf: true });
+              }
+            }
+            if (!map.getSource(ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
+            if (!map.getLayer(ARROWS_LAYER_ID)) {
+              map.addLayer({
+                id: ARROWS_LAYER_ID,
+                type: 'symbol',
+                source: ARROWS_SOURCE_ID,
+                layout: {
+                  'icon-image': ARROW_IMAGE_ID,
+                  'icon-size': 0.55,
+                  'icon-rotate': ['get', 'heading'],
+                  'icon-rotation-alignment': 'map',
+                  'icon-allow-overlap': true,
+                  'icon-ignore-placement': true,
+                },
+                paint: {
+                  'icon-color': ['get', 'color'],
+                  'icon-opacity': ['get', 'opacity'],
+                },
+              });
+            }
+          });
+        }
+
         // Speed alert triangle markers (>= 80 mph)
         speedAlertMarkersRef.current.forEach((m) => m.remove());
         speedAlertMarkersRef.current = [];
@@ -2200,9 +2251,9 @@ export default function MapPage() {
       if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
       if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
       if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
+      if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
+      if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
       breadcrumbTrailsRef.current = [];
-      breadcrumbArrowsRef.current.forEach((a) => a.remove());
-      breadcrumbArrowsRef.current = [];
       speedAlertMarkersRef.current.forEach((m) => m.remove());
       speedAlertMarkersRef.current = [];
     };
@@ -2625,16 +2676,12 @@ export default function MapPage() {
     if (gps.isTracking && gps.latitude != null && gps.longitude != null) {
       const pos: [number, number] = [gps.longitude, gps.latitude];
       if (selfMarkerRef.current) {
-        // Update existing marker
-        if (typeof selfMarkerRef.current.updatePosition === 'function') {
-          // OverlayView fallback marker
-          selfMarkerRef.current.updatePosition(gps.latitude, gps.longitude);
-          selfMarkerRef.current.updateContent(buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed));
-        } else {
-          // AdvancedMarkerElement
-          selfMarkerRef.current.position = pos;
-          selfMarkerRef.current.content = buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed);
-        }
+        // Update existing native marker in place: glide it to the new fix and
+        // swap the inner content (accuracy ring + heading arrow) so it reflects
+        // the latest GPS reading without destroying/recreating the pin.
+        selfMarkerRef.current.setLngLat(pos);
+        const el = selfMarkerRef.current.getElement?.();
+        if (el) el.replaceChildren(buildSelfPositionMarker(gps.accuracy, gps.heading, gps.speed));
       } else {
         // Create new self marker
         selfMarkerRef.current = createMarker({

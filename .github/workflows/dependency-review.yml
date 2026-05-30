@@ -17,12 +17,13 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Dependency Review
-        # Pinned to v4 intentionally: v5 may remove `deny-licenses` (deprecated
-        # upstream — see actions/dependency-review-action#938). The only
-        # current replacement is `allow-licenses`, which flips to an allowlist
-        # and is more restrictive than our actual policy intent (block GPL
-        # family only). Revisit when upstream ships a config-file denylist.
-        uses: actions/dependency-review-action@v4
+        # v5.0.0 is purely the Node 20 -> 24 runtime bump (the `@v4` tag is
+        # still node20, which GitHub deprecates 2026-06-16). The earlier fear
+        # that v5 would drop `deny-licenses` (actions/dependency-review-action#938)
+        # did NOT materialize — v5.0.0 keeps `deny-licenses`, `fail-on-severity`,
+        # and `comment-summary-in-pr` unchanged, so the block-GPL-family policy
+        # below is preserved exactly.
+        uses: actions/dependency-review-action@v5
         with:
           # Block PRs that add dependencies with known critical/high vulns
           fail-on-severity: high

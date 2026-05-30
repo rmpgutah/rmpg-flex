@@ -103,7 +103,10 @@
 //       response-time breakdown, not just dispatched→onscene.
 // v637: hint district search in the queue search placeholder; show the card
 //       geography line even when only a section is assigned (no zone/beat yet).
-const CACHE_NAME = 'rmpg-flex-v637';
+// v638: merge origin/main (16 commits) into the dispatch geography/police-format
+//       batch; bump above both lineages (mine v637, main v632) for a clean
+//       cache invalidation on the combined deploy.
+const CACHE_NAME = 'rmpg-flex-v638';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

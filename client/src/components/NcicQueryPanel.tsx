@@ -19,6 +19,7 @@ import {
   formatArrestResponse,
   formatSkipTracerResponse,
   formatNoRecord,
+  formatServiceUnavailable,
   getNcicLineClass,
   type NcicPerson,
   type NcicVehicle,
@@ -49,7 +50,7 @@ const QUICK_QUERIES = [
 interface NcicQueryPanelProps {
   isOpen: boolean;
   onClose: () => void;
-  initialQuery?: { type: 'person' | 'vehicle' | 'warrant'; query: string } | null;
+  initialQuery?: { type: 'person' | 'vehicle' | 'warrant' | 'xref' | 'phone' | 'address' | 'dl' | 'ofac'; query: string } | null;
   embedded?: boolean;
 }
 
@@ -116,7 +117,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
   // Process initial query from command line
   useEffect(() => {
     if (initialQuery && isOpen) {
-      const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO' };
+      const cmdMap: Record<string, string> = { person: 'QH', vehicle: 'QV', warrant: 'QW', dl: 'QD', ofac: 'QO', xref: 'QX', phone: 'QT', address: 'QA' };
       const cmd = `${cmdMap[initialQuery.type] || 'QH'} ${initialQuery.query}`;
       runQuery(cmd);
     }
@@ -373,9 +374,11 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             ), 'SKIP'),
           ]);
 
-          // Collect results, track errors
+          // Collect results, track errors. Local data sources (person/warrant/
+          // arrest) failing is a real ERROR; external services (DL/OFAC/skip-
+          // trace APIs) being unavailable is a soft SERVICE NOTE, not a fault.
           const xref: CrossReferenceResults = {
-            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [],
+            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [], serviceWarnings: [],
           };
 
           if (personResult.status === 'fulfilled') {
@@ -399,13 +402,13 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (dlResult.status === 'fulfilled') {
             xref.dlSubjects = dlResult.value.subjects || [];
           } else {
-            xref.errors.push('DL QUERY FAILED');
+            xref.serviceWarnings!.push('DRIVER LICENSE SERVICE UNAVAILABLE');
           }
 
           if (ofacResult.status === 'fulfilled') {
             xref.ofacSubjects = ofacResult.value.subjects || [];
           } else {
-            xref.errors.push('OFAC QUERY FAILED');
+            xref.serviceWarnings!.push('OFAC SANCTIONS SERVICE UNAVAILABLE');
           }
 
           if (arrestResult.status === 'fulfilled') {
@@ -417,7 +420,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (skipResult.status === 'fulfilled') {
             xref.skipTracerPeople = skipResult.value.PeopleDetails || [];
           } else {
-            xref.errors.push('SKIP TRACKER QUERY FAILED');
+            xref.serviceWarnings!.push('SKIP TRACER SERVICE UNAVAILABLE');
           }
 
           // ── Cross-load: enrich empty sections from person records ──
@@ -733,14 +736,27 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         hasHit,
       }]);
     } catch (err: any) {
+      // External paid-API commands (skip-trace / DL / OFAC / background) being
+      // down or unconfigured is an advisory, not a system fault — render an
+      // amber SERVICE NOTE instead of a red ERROR. Local-DB commands still
+      // surface a real error.
+      const EXTERNAL_SOURCES: Record<string, string> = {
+        QS: 'SKIP TRACKER', QD: "DRIVER'S LICENSE", QL: "DRIVER'S LICENSE",
+        QO: 'OFAC SANCTIONS', QB: 'BACKGROUND CHECK',
+      };
+      const source = EXTERNAL_SOURCES[verb];
+      const reason = /timeout/i.test(err?.message || '') ? 'REQUEST TIMED OUT' : 'SERVICE UNAVAILABLE';
+      const response = source
+        ? formatServiceUnavailable(source, queryText, reason)
+        : `ERROR: ${err.message || 'Query failed'}`;
       setEntries(prev => [...prev, {
         id: ++queryIdCounterRef.current,
         timestamp,
         command,
-        response: `ERROR: ${err.message || 'Query failed'}`,
+        response,
         hasHit: false,
       }]);
-      playTone('error');
+      playTone(source ? 'info' : 'error');
     } finally {
       setLoading(false);
     }

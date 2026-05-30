@@ -626,18 +626,40 @@ export async function generateJailBookingReport(doc: jsPDF, data: JailBookingPdf
   }
 
   // ── Charges ───────────────────────────────────────────
-  // Prefer pre-parsed `charge_lines` array; fall back to parsing
-  // the free-text `charges` field on commas/newlines.
+  // Prefer pre-parsed `charge_lines` array; fall back to parsing the
+  // `charges` field, which may be:
+  //   - a JSON-stringified array (e.g. `'["BATTERY"]'`) — that's what
+  //     ArrestFormModal + PersonIntelPanel write today. Naive
+  //     String(charges).split(",") rendered the literal `["BATTERY"]`
+  //     as a single charge row on the warrant PDF (Karl Turley, 2026-05-30).
+  //   - a plain delimited string (e.g. "BATTERY, ASSAULT") from
+  //     legacy hand-typed entries
+  //   - an already-parsed array (defensive — same shape after JSON.parse)
   const chargeRows: string[][] = [];
   if (data.charge_lines && data.charge_lines.length > 0) {
     for (let i = 0; i < data.charge_lines.length; i++) {
       chargeRows.push([String(i + 1), data.charge_lines[i]]);
     }
-  } else if (data.charges) {
-    const lines = String(data.charges)
-      .split(/\r?\n|;|,(?=\s)/)
-      .map(s => s.trim())
-      .filter(Boolean);
+  } else if (data.charges != null && data.charges !== '') {
+    let lines: string[] = [];
+    if (Array.isArray(data.charges)) {
+      lines = (data.charges as unknown[]).map(String).map(s => s.trim()).filter(Boolean);
+    } else {
+      const raw = String(data.charges).trim();
+      // JSON-array fast path — only try parse if the string looks like a
+      // JSON literal, otherwise pay a thrown SyntaxError on every read.
+      if (raw.startsWith('[')) {
+        try {
+          const arr = JSON.parse(raw);
+          if (Array.isArray(arr)) lines = arr.map(String).map(s => s.trim()).filter(Boolean);
+        } catch {
+          // fall through to delimiter split
+        }
+      }
+      if (lines.length === 0) {
+        lines = raw.split(/\r?\n|;|,(?=\s)|,/).map(s => s.trim()).filter(Boolean);
+      }
+    }
     for (let i = 0; i < lines.length; i++) {
       chargeRows.push([String(i + 1), lines[i]]);
     }

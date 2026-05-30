@@ -7,6 +7,8 @@ import {
   Undo2, Pencil, Search, Building2, Terminal, Briefcase, Copy, Printer,
 } from 'lucide-react';
 import type { CallForService, Unit, CallStatus, CallNote, UnitStatus } from '../../types';
+import { callPosture } from '../../utils/callThreat';
+import { BADGE_TONES } from '../../components/records/recordVisuals';
 import CallCard from '../../components/CallCard';
 import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/DuplicateCandidatesModal';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
@@ -4382,6 +4384,32 @@ export default function DispatchPage() {
                     <label className="field-label !flex items-center gap-1.5 mb-2" style={{ color: '#d4a017', fontSize: '9px', letterSpacing: '0.05em' }}>
                       <Shield className="w-3 h-3" /> Subject / Threat Info
                     </label>
+                    {/* Aggregate threat posture — rolls the call's own flags +
+                        every linked person/vehicle flag (warrants, RSO, gang,
+                        stolen) into one officer-safety read so a unit sees the
+                        danger before responding. */}
+                    {(() => {
+                      const p = callPosture(selectedCall, callPersons, callVehicles);
+                      if (p.level === 'clear') return null;
+                      const t = BADGE_TONES[p.tone];
+                      const linked = [
+                        callPersons.length ? `${callPersons.length} subject${callPersons.length === 1 ? '' : 's'}` : '',
+                        callVehicles.length ? `${callVehicles.length} vehicle${callVehicles.length === 1 ? '' : 's'}` : '',
+                      ].filter(Boolean).join(' · ');
+                      return (
+                        <div
+                          className={`flex items-center gap-2 px-2 py-1 mb-2 rounded-[2px] ${p.pulse ? 'animate-led-pulse' : ''}`}
+                          style={{ color: t.text, background: t.bg, border: `1px solid ${t.border}`, boxShadow: p.level === 'critical' ? `0 0 8px ${t.glow}` : undefined }}
+                          title="Aggregate officer-safety posture from this call + its linked subjects/vehicles"
+                        >
+                          <Shield className="w-3.5 h-3.5 flex-shrink-0" />
+                          <span className="text-[10px] font-bold uppercase tracking-wider">
+                            {p.label}{p.level === 'critical' ? ' — EXERCISE CAUTION' : ''}
+                          </span>
+                          {linked && <span className="text-[9px] opacity-80 ml-auto whitespace-nowrap">{linked} linked</span>}
+                        </div>
+                      );
+                    })()}
                     {isEditing ? (() => {
                       const weaponsIsOther = editData.weapons_involved && !(WEAPONS_OPTIONS as readonly string[]).includes(editData.weapons_involved);
                       return (

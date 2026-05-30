@@ -55,14 +55,23 @@ export function useMapDragDispatch(
 
     originalPositions.current.clear();
 
+    // Defensive: marker objects must be native mapbox-gl Markers for drag to
+    // work. If a non-conforming object ever lands in the map (e.g. a custom
+    // overlay), skip it rather than throwing — a thrown error inside this
+    // effect would propagate to the page-level error boundary and blank the
+    // entire map, which is exactly the regression this guard prevents.
+    const supportsDrag = (m: unknown): m is mapboxgl.Marker =>
+      !!m && typeof (m as mapboxgl.Marker).setDraggable === 'function';
+
     if (!enabled) {
       unitMarkers.forEach((marker) => {
-        marker.setDraggable(false);
+        if (supportsDrag(marker)) marker.setDraggable(false);
       });
       return;
     }
 
     unitMarkers.forEach((marker, unitId) => {
+      if (!supportsDrag(marker)) return;
       marker.setDraggable(true);
 
       const pos = marker.getLngLat();
@@ -113,7 +122,7 @@ export function useMapDragDispatch(
 
     return () => {
       unitMarkers.forEach((marker) => {
-        marker.setDraggable(false);
+        if (supportsDrag(marker)) marker.setDraggable(false);
       });
     };
   }, [map, enabled, unitMarkers, callMarkers, findNearestCall, onDispatch]);

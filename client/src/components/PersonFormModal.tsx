@@ -8,6 +8,7 @@ import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
 import { formatPhoneInput } from '../utils/formatters';
 
 import RichTextArea from './RichTextArea';
+import FormField from './records/FormField';
 import {
   GENDER_OPTIONS, RACE_OPTIONS, MARITAL_OPTIONS, CITIZENSHIP_OPTIONS,
   IMMIGRATION_OPTIONS, LANGUAGE_OPTIONS, BLOOD_TYPE_OPTIONS,
@@ -478,69 +479,58 @@ export default function PersonFormModal({
       {activeSection === 'basic' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">First Name *</label>
+            <FormField label="First Name" required>
               <input name="first_name" type="text" required className="input-dark mt-1" value={form.first_name} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Middle Name</label>
+            </FormField>
+            <FormField label="Middle Name">
               <input name="middle_name" type="text" className="input-dark mt-1" value={form.middle_name} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Last Name *</label>
+            </FormField>
+            <FormField label="Last Name" required>
               <input name="last_name" type="text" required className="input-dark mt-1" value={form.last_name} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Alias / Nickname</label>
+            <FormField label="Alias / Nickname">
               <input name="alias_nickname" type="text" className="input-dark mt-1" placeholder="AKA, street name" value={form.alias_nickname} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Date of Birth</label>
+            </FormField>
+            <FormField label="Date of Birth">
               <input name="dob" type="date" className="input-dark mt-1" value={form.dob} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Alias / Alt. DOB</label>
+            </FormField>
+            <FormField label="Alias / Alt. DOB">
               <input name="alias_dob" type="date" className="input-dark mt-1" title="Alternate or reported date of birth" value={form.alias_dob} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Gender</label>
+            <FormField label="Gender">
               <select name="gender" className="select-dark mt-1" value={form.gender} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {GENDER_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Race / Ethnicity</label>
+            <FormField label="Race / Ethnicity">
               <select name="race" className="select-dark mt-1" value={form.race} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {RACE_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Language</label>
+            </FormField>
+            <FormField label="Language">
               <select name="language" className="select-dark mt-1" value={form.language} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {LANGUAGE_OPTIONS.map((l) => <option key={l} value={l}>{l}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">SSN (Last 4)</label>
+            </FormField>
+            <FormField label="SSN (Last 4)">
               <input name="ssn_last4" type="text" maxLength={4} className="input-dark mt-1" placeholder="XXXX" value={form.ssn_last4} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-             <div>
-               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Place of Birth</label>
+             <FormField label="Place of Birth">
                <AddressAutocomplete
                  name="place_of_birth"
                  className="input-dark mt-1 w-full"
@@ -549,35 +539,31 @@ export default function PersonFormModal({
                  onChange={(val) => setForm((prev) => ({ ...prev, place_of_birth: val }))}
                  addressOnly={false}
                />
-             </div>
-             <div>
-               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Citizenship</label>
+             </FormField>
+             <FormField label="Citizenship">
                <select name="citizenship" className="select-dark mt-1" value={form.citizenship} onChange={handleChange}>
                  <option value="">-- Select --</option>
                 {CITIZENSHIP_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Marital Status</label>
+            </FormField>
+            <FormField label="Marital Status">
               <select name="marital_status" className="select-dark mt-1" value={form.marital_status} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {MARITAL_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Blood Type</label>
+            <FormField label="Blood Type">
               <select name="blood_type" className="select-dark mt-1" value={form.blood_type} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {BLOOD_TYPE_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Social Media</label>
+            </FormField>
+            <FormField label="Social Media">
               <input name="social_media" type="text" className="input-dark mt-1" placeholder="@handle, profiles, etc." value={form.social_media} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
         </>
       )}
@@ -586,95 +572,82 @@ export default function PersonFormModal({
       {activeSection === 'physical' && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Height (ft)</label>
+            <FormField label="Height (ft)">
               <select name="height_feet" className="select-dark mt-1" value={form.height_feet} onChange={handleChange}>
                 <option value="">--</option>
                 {[3,4,5,6,7].map(f => <option key={f} value={String(f)}>{f}&apos;</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Height (in)</label>
+            </FormField>
+            <FormField label="Height (in)">
               <select name="height_inches" className="select-dark mt-1" value={form.height_inches} onChange={handleChange}>
                 <option value="">--</option>
                 {[0,1,2,3,4,5,6,7,8,9,10,11].map(i => <option key={i} value={String(i)}>{i}&quot;</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Weight</label>
+            </FormField>
+            <FormField label="Weight">
               <input name="weight" type="text" className="input-dark mt-1" placeholder="e.g. 185 lbs" value={form.weight} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Build</label>
+            </FormField>
+            <FormField label="Build">
               <select name="build" className="select-dark mt-1" value={form.build} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {BUILD_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Complexion</label>
+            </FormField>
+            <FormField label="Complexion">
               <select name="complexion" className="select-dark mt-1" value={form.complexion} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {COMPLEXION_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Hair Color</label>
+            <FormField label="Hair Color">
               <select name="hair_color" className="select-dark mt-1" value={form.hair_color} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {HAIR_COLOR_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Eye Color</label>
+            </FormField>
+            <FormField label="Eye Color">
               <select name="eye_color" className="select-dark mt-1" value={form.eye_color} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {EYE_COLOR_OPTIONS.map((e) => <option key={e} value={e}>{e}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Hair Length</label>
+            <FormField label="Hair Length">
               <select name="hair_length" className="select-dark mt-1" value={form.hair_length} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {HAIR_LENGTH_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Hair Style</label>
+            </FormField>
+            <FormField label="Hair Style">
               <select name="hair_style" className="select-dark mt-1" value={form.hair_style} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {HAIR_STYLE_OPTIONS.map((h) => <option key={h} value={h}>{h}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Facial Hair</label>
+            </FormField>
+            <FormField label="Facial Hair">
               <select name="facial_hair" className="select-dark mt-1" value={form.facial_hair} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {FACIAL_HAIR_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Glasses</label>
+            </FormField>
+            <FormField label="Glasses">
               <select name="glasses" className="select-dark mt-1" value={form.glasses} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {GLASSES_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Shoe Size</label>
+            <FormField label="Shoe Size">
               <input name="shoe_size" type="text" className="input-dark mt-1" placeholder="e.g. 10.5" value={form.shoe_size} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Aliases (comma-separated)</label>
+            </FormField>
+            <FormField label="Aliases (comma-separated)">
               <input
                 name="aliases"
                 type="text"
@@ -683,44 +656,37 @@ export default function PersonFormModal({
                 value={form.aliases}
                 onChange={handleChange}
               />
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scars / Marks / Tattoos</label>
+          <FormField label="Scars / Marks / Tattoos">
             <RichTextArea name="scars_marks_tattoos" rows={2} className="input-dark mt-1" placeholder="Describe location, type, and detail of any distinguishing marks" value={form.scars_marks_tattoos} onChange={handleChange} />
-          </div>
+          </FormField>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tattoo Description</label>
+            <FormField label="Tattoo Description">
               <RichTextArea name="tattoo_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of tattoos — location, design, text, color" value={form.tattoo_description} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Scar Description</label>
+            </FormField>
+            <FormField label="Scar Description">
               <RichTextArea name="scar_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of scars — location, size, type" value={form.scar_description} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Piercing Description</label>
+            <FormField label="Piercing Description">
               <RichTextArea name="piercing_description" rows={2} className="input-dark mt-1" placeholder="Specific descriptions of piercings — location, type" value={form.piercing_description} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Distinguishing Features</label>
+            </FormField>
+            <FormField label="Distinguishing Features">
               <RichTextArea name="distinguishing_features" rows={2} className="input-dark mt-1" placeholder="Any other distinguishing features — birthmarks, prosthetics, etc." value={form.distinguishing_features} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Identifying Marks Location</label>
+          <FormField label="Identifying Marks Location">
             <input name="identifying_marks_location" type="text" className="input-dark mt-1" placeholder="Body location of marks (e.g. Left forearm, Right neck)" value={form.identifying_marks_location} onChange={handleChange} />
-          </div>
+          </FormField>
 
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Clothing Description</label>
+          <FormField label="Clothing Description">
             <input name="clothing_description" type="text" className="input-dark mt-1" placeholder="Last known clothing description" value={form.clothing_description} onChange={handleChange} />
-          </div>
+          </FormField>
         </>
       )}
 
@@ -728,28 +694,24 @@ export default function PersonFormModal({
       {activeSection === 'id' && (
         <>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div className="col-span-2">
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Driver License #</label>
+            <FormField label="Driver License #" className="col-span-2">
               <input name="dl_number" type="text" className="input-dark mt-1" value={form.dl_number} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">DL State</label>
+            </FormField>
+            <FormField label="DL State">
               <input name="dl_state" type="text" maxLength={2} className="input-dark mt-1" placeholder="UT" value={form.dl_state} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">DL Class</label>
+            </FormField>
+            <FormField label="DL Class">
               <select name="dl_class" className="select-dark mt-1" value={form.dl_class} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {DL_CLASS_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">DL Expiry</label>
+            <FormField label="DL Expiry">
               <input name="dl_expiry" type="date" className="input-dark mt-1" value={form.dl_expiry} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           {/* Confidential ID Section */}
@@ -758,8 +720,7 @@ export default function PersonFormModal({
               <CreditCard className="w-3 h-3" /> Confidential Information
             </label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Full SSN</label>
+              <FormField label="Full SSN" hint="Auto-populates Last 4">
                 <div className="relative mt-1">
                   <input
                     name="ssn_full"
@@ -780,12 +741,10 @@ export default function PersonFormModal({
                     {showSSN ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                   </button>
                 </div>
-                <p className="text-[9px] text-rmpg-500 mt-0.5">Auto-populates Last 4</p>
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">SSN (Last 4 — Display)</label>
+              </FormField>
+              <FormField label="SSN (Last 4 — Display)">
                 <input name="ssn_last4" type="text" maxLength={4} className="input-dark mt-1 font-mono" placeholder="XXXX" value={form.ssn_last4} onChange={handleChange} />
-              </div>
+              </FormField>
             </div>
           </div>
 
@@ -793,25 +752,21 @@ export default function PersonFormModal({
           <div className="border-t border-rmpg-600 pt-3 mt-3">
             <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">Other ID / Government ID</label>
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ID Type</label>
+              <FormField label="ID Type">
                 <select name="id_type" className="select-dark mt-1" value={form.id_type} onChange={handleChange}>
                   <option value="">-- Select --</option>
                   {ID_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ID Number</label>
+              </FormField>
+              <FormField label="ID Number">
                 <input name="id_number" type="text" className="input-dark mt-1" value={form.id_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ID State</label>
+              </FormField>
+              <FormField label="ID State">
                 <input name="id_state" type="text" maxLength={2} className="input-dark mt-1" placeholder="UT" value={form.id_state} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ID Expiry</label>
+              </FormField>
+              <FormField label="ID Expiry">
                 <input name="id_expiry" type="date" className="input-dark mt-1" value={form.id_expiry} onChange={handleChange} />
-              </div>
+              </FormField>
             </div>
           </div>
 
@@ -819,30 +774,24 @@ export default function PersonFormModal({
           <div className="border-t border-rmpg-600 pt-3 mt-3">
             <label className="text-[10px] text-rmpg-400 uppercase font-bold tracking-wider mb-2 block">Law Enforcement Identifiers</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">NCIC Number</label>
+              <FormField label="NCIC Number">
                 <input name="ncic_number" type="text" className="input-dark mt-1" value={form.ncic_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">SOR Number</label>
+              </FormField>
+              <FormField label="SOR Number">
                 <input name="sor_number" type="text" className="input-dark mt-1" placeholder="Sex Offender Registry #" value={form.sor_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">FBI Number</label>
+              </FormField>
+              <FormField label="FBI Number">
                 <input name="fbi_number" type="text" className="input-dark mt-1" value={form.fbi_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">State ID Number</label>
+              </FormField>
+              <FormField label="State ID Number">
                 <input name="state_id_number" type="text" className="input-dark mt-1" value={form.state_id_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Number</label>
+              </FormField>
+              <FormField label="Passport Number">
                 <input name="passport_number" type="text" className="input-dark mt-1" value={form.passport_number} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Passport Country</label>
+              </FormField>
+              <FormField label="Passport Country">
                 <input name="passport_country" type="text" className="input-dark mt-1" placeholder="Issuing country" value={form.passport_country} onChange={handleChange} />
-              </div>
+              </FormField>
             </div>
           </div>
 
@@ -915,17 +864,15 @@ export default function PersonFormModal({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Employer</label>
+            <FormField label="Employer">
               <input name="employer" type="text" className="input-dark mt-1" value={form.employer} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Occupation</label>
+            </FormField>
+            <FormField label="Occupation">
               <select name="occupation" className="select-dark mt-1" value={form.occupation} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {OCCUPATION_OPTIONS.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
         </>
       )}
@@ -933,8 +880,7 @@ export default function PersonFormModal({
       {/* ── CONTACT INFO ── */}
       {activeSection === 'contact' && (
         <>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Street Address</label>
+          <FormField label="Street Address">
             <AddressAutocomplete
               name="address"
               className="input-dark mt-1"
@@ -951,10 +897,9 @@ export default function PersonFormModal({
                 }));
               }}
             />
-          </div>
+          </FormField>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-           <div>
-             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">City</label>
+           <FormField label="City">
              <AddressAutocomplete
                name="city"
                className="input-dark mt-1 w-full"
@@ -963,9 +908,8 @@ export default function PersonFormModal({
                onChange={(val) => setForm((prev) => ({ ...prev, city: val }))}
                addressOnly={false}
              />
-           </div>
-           <div>
-             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">State</label>
+           </FormField>
+           <FormField label="State">
              <AddressAutocomplete
                name="state"
                className="input-dark mt-1 w-full"
@@ -975,9 +919,8 @@ export default function PersonFormModal({
                addressOnly={false}
                country="us"
              />
-           </div>
-           <div>
-             <label className="text-[10px] text-rmpg-400 uppercase font-semibold">ZIP</label>
+           </FormField>
+           <FormField label="ZIP">
              <AddressAutocomplete
                name="zip"
                className="input-dark mt-1 w-full"
@@ -986,54 +929,45 @@ export default function PersonFormModal({
                onChange={(val) => setForm((prev) => ({ ...prev, zip: val }))}
                addressOnly={false}
              />
-           </div>
+           </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone</label>
+            <FormField label="Phone">
               <input name="phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.phone} onChange={(e) => setForm(prev => ({ ...prev, phone: formatPhoneInput(e.target.value) }))} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Phone (Secondary)</label>
+            </FormField>
+            <FormField label="Phone (Secondary)">
               <input name="phone_secondary" type="text" inputMode="tel" className="input-dark mt-1" value={form.phone_secondary} onChange={(e) => setForm(prev => ({ ...prev, phone_secondary: formatPhoneInput(e.target.value) }))} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Email</label>
+            </FormField>
+            <FormField label="Email">
               <input name="email" type="email" inputMode="email" className="input-dark mt-1" value={form.email} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Home Phone</label>
+            <FormField label="Home Phone">
               <input name="home_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.home_phone} onChange={(e) => setForm(prev => ({ ...prev, home_phone: formatPhoneInput(e.target.value) }))} placeholder="Home landline" />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Work Phone</label>
+            </FormField>
+            <FormField label="Work Phone">
               <input name="work_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.work_phone} onChange={(e) => setForm(prev => ({ ...prev, work_phone: formatPhoneInput(e.target.value) }))} placeholder="Work number" />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Secondary Email</label>
+            </FormField>
+            <FormField label="Secondary Email">
               <input name="email_secondary" type="email" inputMode="email" className="input-dark mt-1" value={form.email_secondary} onChange={handleChange} placeholder="Secondary / alternate email" />
-            </div>
+            </FormField>
           </div>
 
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-red-400 uppercase font-semibold mb-2 block">Emergency Contact</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Name</label>
+              <FormField label="Contact Name">
                 <input name="emergency_contact_name" type="text" className="input-dark mt-1" value={form.emergency_contact_name} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Contact Phone</label>
+              </FormField>
+              <FormField label="Contact Phone">
                 <input name="emergency_contact_phone" type="text" inputMode="tel" className="input-dark mt-1" value={form.emergency_contact_phone} onChange={(e) => setForm(prev => ({ ...prev, emergency_contact_phone: formatPhoneInput(e.target.value) }))} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Relationship</label>
+              </FormField>
+              <FormField label="Relationship">
                 <input name="emergency_contact_relationship" type="text" className="input-dark mt-1" placeholder="e.g. Spouse, Parent" value={form.emergency_contact_relationship} onChange={handleChange} />
-              </div>
+              </FormField>
             </div>
           </div>
         </>
@@ -1043,45 +977,39 @@ export default function PersonFormModal({
       {activeSection === 'law' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Immigration Status</label>
+            <FormField label="Immigration Status">
               <select name="immigration_status" className="select-dark mt-1" value={form.immigration_status} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {IMMIGRATION_OPTIONS.map((i) => <option key={i} value={i}>{i}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Disability Flags</label>
+            </FormField>
+            <FormField label="Disability Flags">
               <select name="disability_flags" className="select-dark mt-1" value={form.disability_flags} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {DISABILITY_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Mental Health Flags</label>
+            </FormField>
+            <FormField label="Mental Health Flags">
               <input name="mental_health_flags" type="text" className="input-dark mt-1" placeholder="Known mental health conditions" value={form.mental_health_flags} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Substance Abuse</label>
+            <FormField label="Substance Abuse">
               <input name="substance_abuse" type="text" className="input-dark mt-1" placeholder="Known substance abuse history" value={form.substance_abuse} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Education Level</label>
+            </FormField>
+            <FormField label="Education Level">
               <select name="education_level" className="select-dark mt-1" value={form.education_level} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {EDUCATION_OPTIONS.map((e) => <option key={e} value={e}>{e}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tribal Affiliation</label>
+            </FormField>
+            <FormField label="Tribal Affiliation">
               <select name="tribal_affiliation" className="select-dark mt-1" value={form.tribal_affiliation} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {TRIBAL_AFFILIATION_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           {/* ── Additional Identifiers ─────────────────────────────────
@@ -1091,8 +1019,7 @@ export default function PersonFormModal({
               were removed because PERSON_FIELD_MAP doesn't include them —
               the live Worker silently dropped them on save. */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Suffix</label>
+            <FormField label="Suffix">
               <input
                 name="suffix"
                 type="text"
@@ -1101,9 +1028,8 @@ export default function PersonFormModal({
                 value={form.suffix}
                 onChange={handleChange}
               />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Sex (Birth/Legal)</label>
+            </FormField>
+            <FormField label="Sex (Birth/Legal)">
               <select name="sex" className="select-dark mt-1" value={form.sex} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 <option value="M">M</option>
@@ -1111,9 +1037,8 @@ export default function PersonFormModal({
                 <option value="X">X / Non-binary</option>
                 <option value="U">Unknown</option>
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Nationality</label>
+            </FormField>
+            <FormField label="Nationality">
               <input
                 name="nationality"
                 type="text"
@@ -1122,30 +1047,27 @@ export default function PersonFormModal({
                 value={form.nationality}
                 onChange={handleChange}
               />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Military Branch</label>
+            <FormField label="Military Branch">
               <select name="military_branch" className="select-dark mt-1" value={form.military_branch} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {MILITARY_BRANCH_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Military Status</label>
+            </FormField>
+            <FormField label="Military Status">
               <select name="military_status" className="select-dark mt-1" value={form.military_status} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {MILITARY_STATUS_OPTIONS.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Medication Notes</label>
+          <FormField label="Medication Notes">
             <RichTextArea name="medication_notes" rows={2} className="input-dark mt-1" placeholder="Known medications or medical needs" value={form.medication_notes} onChange={handleChange} />
-          </div>
+          </FormField>
         </>
       )}
 
@@ -1153,27 +1075,24 @@ export default function PersonFormModal({
       {activeSection === 'other' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Gang Affiliation</label>
+            <FormField label="Gang Affiliation">
               <select name="gang_affiliation" className="select-dark mt-1" value={form.gang_affiliation} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {GANG_OPTIONS.map((g) => <option key={g} value={g}>{g}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Probation / Parole</label>
+            </FormField>
+            <FormField label="Probation / Parole">
               <select name="probation_parole" className="select-dark mt-1" value={form.probation_parole} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {PROBATION_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           {form.probation_parole && form.probation_parole !== 'None' && (
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">P.O. / Parole Officer Name</label>
+            <FormField label="P.O. / Parole Officer Name">
               <input name="probation_parole_officer" type="text" className="input-dark mt-1" placeholder="Officer name and contact" value={form.probation_parole_officer} onChange={handleChange} />
-            </div>
+            </FormField>
           )}
 
           <div className="flex items-center gap-6 py-2">
@@ -1189,10 +1108,9 @@ export default function PersonFormModal({
             </label>
           </div>
 
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Associates</label>
+          <FormField label="Known Associates">
             <RichTextArea name="known_associates" rows={2} className="input-dark mt-1" placeholder="Names of known associates" value={form.known_associates} onChange={handleChange} />
-          </div>
+          </FormField>
 
           <div>
             <label className="text-[10px] text-red-400 uppercase font-semibold">Officer Safety / Caution Flags</label>
@@ -1200,12 +1118,10 @@ export default function PersonFormModal({
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-             <div>
-               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Date Last Seen</label>
+             <FormField label="Date Last Seen">
                <input name="date_last_seen" type="date" className="input-dark mt-1" value={form.date_last_seen} onChange={handleChange} />
-             </div>
-             <div>
-               <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Location Last Seen</label>
+             </FormField>
+             <FormField label="Location Last Seen">
                <AddressAutocomplete
                  name="location_last_seen"
                  className="input-dark mt-1 w-full"
@@ -1213,13 +1129,12 @@ export default function PersonFormModal({
                  value={form.location_last_seen}
                  onChange={(val) => setForm((prev) => ({ ...prev, location_last_seen: val }))}
                />
-             </div>
+             </FormField>
           </div>
 
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
+          <FormField label="Notes">
             <RichTextArea name="notes" rows={4} className="input-dark mt-1" value={form.notes} onChange={handleChange} />
-          </div>
+          </FormField>
         </>
       )}
     </FormModal>
