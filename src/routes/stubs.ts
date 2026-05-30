@@ -28,6 +28,57 @@ stubs.get('/evidence-pending', (c) => c.json({ count: 0 }));
 stubs.get('/activity-feed', (c) => c.json([]));
 stubs.get('/bolos/active', (c) => c.json([]));
 
+// GET /api/comms/bolos/check?address=&subject=&vehicle= — active-BOLO match.
+// Powers BoloAlertBanner on the New Call / dispatch-edit forms. Ported from
+// the legacy comms router (was never carried into the rewrite, so it 404'd —
+// the banner silently never fired). Keyword-matches the caller's free text
+// against active BOLO descriptions. Defensive: any failure returns an empty
+// match set rather than 500, so a transient DB error can't break call entry.
+stubs.get('/bolos/check', async (c) => {
+  try {
+    const address = c.req.query('address') || '';
+    const subject = c.req.query('subject') || '';
+    const vehicle = c.req.query('vehicle') || '';
+    if (!address && !subject && !vehicle) return c.json({ matches: [], count: 0 });
+
+    // 3+ char keywords, capped at 5 per field to bound the query size.
+    const keywords = (text: string) =>
+      text.toUpperCase().split(/[\s,;]+/).filter((w) => w.length >= 3).slice(0, 5);
+
+    const matchClauses: string[] = [];
+    const params: unknown[] = [];
+
+    for (const kw of keywords(subject)) {
+      matchClauses.push('(UPPER(subject_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    for (const kw of keywords(vehicle)) {
+      matchClauses.push('(UPPER(vehicle_description) LIKE ? OR UPPER(description) LIKE ?)');
+      params.push(`%${kw}%`, `%${kw}%`);
+    }
+    if (address && address.length >= 3) {
+      matchClauses.push('UPPER(description) LIKE ?');
+      params.push(`%${address.toUpperCase()}%`);
+    }
+    if (matchClauses.length === 0) return c.json({ matches: [], count: 0 });
+
+    const sql = `
+      SELECT id, bolo_number, type, title, description,
+             subject_description, vehicle_description, priority,
+             created_at, expires_at
+      FROM bolos
+      WHERE status = 'active' AND (${matchClauses.join(' OR ')})
+      ORDER BY priority ASC, created_at DESC
+      LIMIT 10`;
+    const rows = await c.env.DB.prepare(sql).bind(...params).all();
+    const matches = rows.results || [];
+    return c.json({ matches, count: matches.length });
+  } catch (err) {
+    console.error('GET /comms/bolos/check failed:', err);
+    return c.json({ matches: [], count: 0 });
+  }
+});
+
 // Warrants
 stubs.get('/', (c) => c.json([]));
 stubs.get('/scrapers', (c) => c.json({ scrapers: [], last_run: null }));
