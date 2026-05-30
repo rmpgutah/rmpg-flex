@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { apiFetch } from '../../../hooks/useApi';
+import { getMapPreferences } from '../../../utils/mapPreferences';
+import { subscribeSettings } from '../../../utils/settingsBus';
 
 export interface MapSettings {
   default_center_lat: number;
@@ -163,38 +165,78 @@ const DEFAULT_MAP_SETTINGS: MapSettings = {
   marker_font_size: 9,
 };
 
-let cachedConfig: MapSettings | null = null;
+// `cachedBase` is the server + shipped-default config WITHOUT the per-user
+// local overrides. We keep it separate so a settings change can recompute the
+// resolved config (base + current overrides) live, without re-fetching.
+let cachedBase: MapSettings | null = null;
 let fetchPromise: Promise<MapSettings> | null = null;
 
+/** Current resolved config = server base + live local overrides. */
+function resolvedConfig(): MapSettings {
+  return applyLocalMapOverrides(cachedBase ?? DEFAULT_MAP_SETTINGS);
+}
+
+/**
+ * Layer the per-user local map preferences over the admin/server config.
+ * Precedence: shipped defaults < server (admin) config < user preference.
+ *
+ * This is the single integration seam that lets the Settings panel's
+ * marker/GPS/clustering controls reach MapPage's deep internals — MapPage
+ * already reads all of these fields from this hook, so no MapPage edits
+ * are needed for them to take effect on the next map mount.
+ */
+function applyLocalMapOverrides(config: MapSettings): MapSettings {
+  try {
+    const prefs = getMapPreferences();
+    return {
+      ...config,
+      unit_marker_pulse: prefs.markers.unitPulse,
+      call_marker_pulse: prefs.markers.callPulse,
+      marker_font_size: prefs.markers.fontSize,
+      clustering_enabled: prefs.markers.clusteringEnabled,
+      cluster_radius: prefs.markers.clusterRadius,
+      gps_high_accuracy: prefs.gps.highAccuracy,
+      gps_batch_interval_ms: prefs.gps.batchIntervalMs,
+    };
+  } catch {
+    // Preferences unreadable — fall back to the server/default config.
+    return config;
+  }
+}
+
 export async function fetchMapConfig(): Promise<MapSettings> {
-  if (cachedConfig) return cachedConfig;
+  if (cachedBase) return resolvedConfig();
   if (fetchPromise) return fetchPromise;
 
   fetchPromise = (async () => {
     try {
       const data = await apiFetch<MapSettings>('/admin/map-config');
-      cachedConfig = { ...DEFAULT_MAP_SETTINGS, ...data };
-      return cachedConfig;
+      cachedBase = { ...DEFAULT_MAP_SETTINGS, ...data };
     } catch {
-      cachedConfig = { ...DEFAULT_MAP_SETTINGS };
-      return cachedConfig;
+      cachedBase = { ...DEFAULT_MAP_SETTINGS };
     }
+    return resolvedConfig();
   })();
 
   return fetchPromise;
 }
 
 export function useMapConfig(): MapSettings {
-  const [config, setConfig] = useState<MapSettings>(DEFAULT_MAP_SETTINGS);
+  const [config, setConfig] = useState<MapSettings>(resolvedConfig);
 
   useEffect(() => {
     fetchMapConfig().then(setConfig);
+    // Live-apply: recompute (base + current local overrides) whenever the
+    // user changes map preferences — in this tab or another.
+    return subscribeSettings((domain) => {
+      if (domain === 'map' || domain === 'all') setConfig(resolvedConfig());
+    });
   }, []);
 
   return config;
 }
 
 export function invalidateMapConfigCache(): void {
-  cachedConfig = null;
+  cachedBase = null;
   fetchPromise = null;
 }

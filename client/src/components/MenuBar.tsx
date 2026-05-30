@@ -529,6 +529,8 @@ export default function MenuBar({
       { type: 'separator' },
       { type: 'action', label: 'Refresh Data', icon: RefreshCw, shortcut: 'F5', action: onRefreshData },
       { type: 'separator' },
+      { type: 'action', label: 'Settings / Preferences', icon: SlidersHorizontal, shortcut: 'Ctrl+,', action: () => navigate('/settings') },
+      { type: 'separator' },
       { type: 'action', label: 'Sign Out', icon: LogOut, action: onLogout },
     ],
   };

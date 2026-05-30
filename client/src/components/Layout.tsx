@@ -52,6 +52,8 @@ import {
 } from 'lucide-react';
 import { Navigation2, Sun, Moon } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import PttController from './PttController';
+import { initSettingsSync } from '../utils/settingsSync';
 import { useWebSocket } from '../context/WebSocketContext';
 import { apiFetch, OfflineUnauthorizedError, authedImageUrl } from '../hooks/useApi';
 import { useGpsTracking } from '../hooks/useGpsTracking';
@@ -566,6 +568,14 @@ export default function Layout() {
     (window as any).__rmpgSetUnsavedChanges = setHasUnsavedChanges;
     return () => { delete (window as any).__rmpgSetUnsavedChanges; };
   }, []);
+
+  // Settings sync — pull this user's saved prefs (+ org defaults) once on
+  // login, then debounce-push local changes so they follow the user across
+  // devices. Lives here so it runs for the whole authenticated session.
+  useEffect(() => {
+    if (!user) return;
+    return initSettingsSync();
+  }, [user]);
 
   // Clear unsaved changes on navigation
   useEffect(() => {
@@ -1501,6 +1511,10 @@ export default function Layout() {
           </ErrorBoundary>
         </main>
       </div>
+
+      {/* Global Push-To-Talk — works on every page; every transmission is
+          relayed to the channel and recorded to Radio → Recordings. */}
+      <PttController />
 
       {/* Mobile Bottom Navigation */}
       {isMobile && (

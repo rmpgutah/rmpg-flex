@@ -219,6 +219,48 @@ export function getVoiceAlertsEnabled(): boolean {
   return localStorage.getItem(VOICE_ALERTS_KEY) !== 'false';
 }
 
+// ─── Per-Event Category Gating ──────────────────────────────
+// Lets the user mute individual classes of announcement (e.g. silence
+// routine status changes but keep new-call and panic alerts) without
+// turning off voice entirely. Each category maps to one localStorage
+// key; absent/anything-but-'false' means enabled (opt-out, not opt-in).
+
+export type VoiceEventCategory = 'new_call' | 'panic' | 'bolo' | 'status';
+
+const EVENT_KEYS: Record<VoiceEventCategory, string> = {
+  new_call: 'rmpg-voice-ev-new-call',
+  panic:    'rmpg-voice-ev-panic',
+  bolo:     'rmpg-voice-ev-bolo',
+  status:   'rmpg-voice-ev-status',
+};
+
+export function setEventEnabled(category: VoiceEventCategory, enabled: boolean): void {
+  try { localStorage.setItem(EVENT_KEYS[category], String(enabled)); } catch { /* noop */ }
+}
+
+export function getEventEnabled(category: VoiceEventCategory): boolean {
+  try { return localStorage.getItem(EVENT_KEYS[category]) !== 'false'; } catch { return true; }
+}
+
+/**
+ * Whether a given event category is allowed to speak right now.
+ *
+ * SAFETY POLICY (your decision): 'panic' covers officer-down / panic-button
+ * announcements. In a CAD/RMS for active field officers, silencing those is a
+ * life-safety risk. Decide here whether the per-event mute is even honored for
+ * 'panic', or whether panic always overrides the user's preference.
+ *
+ * TODO(you): implement the panic policy. ~5 lines. Options to weigh:
+ *   (a) Always speak panic, ignoring the toggle (safest; toggle is cosmetic).
+ *   (b) Honor the toggle, but only if the user is a dispatcher, not a unit.
+ *   (c) Honor the toggle fully (max user control, least safe).
+ * For now this honors the toggle for every category — change the 'panic'
+ * branch to reflect the policy you want.
+ */
+export function isEventEnabled(category: VoiceEventCategory): boolean {
+  return getEventEnabled(category);
+}
+
 // ─── Deduplication Cache ────────────────────────────────────
 
 const announcedCache = new Map<string, number>();
@@ -627,7 +669,7 @@ export async function announceCallAlerts(call: CallFlags & {
  * "PANIC ALERT. OFFICER NEEDS IMMEDIATE ASSISTANCE. Officer Smith, unit S19. All units respond."
  */
 export async function announcePanicAlert(officerName?: string, location?: string, callSign?: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isSpeechAvailable() || !isEventEnabled('panic')) return;
 
   const dedupKey = `panic:${officerName || 'unknown'}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -740,7 +782,7 @@ export async function announceNewCall(call: CallFlags & {
   city?: string;
   description?: string;
 }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isSpeechAvailable() || !isEventEnabled('new_call')) return;
 
   const dedupKey = `newcall:${call.id || 'unknown'}:${call.call_number || ''}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
@@ -802,7 +844,7 @@ export async function announceNewCall(call: CallFlags & {
  * "Unit S19, clear from call 26-CFS00110. Disposition: Personal Service."
  */
 export async function announceStatusChange(callOrSign: string | { call_sign?: string; call_number?: string; location?: string; location_address?: string; disposition?: string; assigned_units?: string[] }, newStatus: string): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isSpeechAvailable() || !isEventEnabled('status')) return;
 
   // Support both simple callSign string and rich call object
   let callSign: string;
@@ -897,7 +939,7 @@ export async function announceUnitDispatched(callOrSign: string | { call_sign?: 
  * "Attention all units. Be on the lookout. [Title]. [Description]. Use caution."
  */
 export async function announceBolo(title: string, priority?: string, details?: { description?: string; vehicle_description?: string; suspect_description?: string; last_seen_location?: string; call_number?: string }): Promise<void> {
-  if (!isVoiceEnabled() || !isSpeechAvailable()) return;
+  if (!isVoiceEnabled() || !isSpeechAvailable() || !isEventEnabled('bolo')) return;
   const dedupKey = `bolo:${title}`;
   if (wasRecentlyAnnounced(dedupKey)) return;
   markAnnounced(dedupKey);

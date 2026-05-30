@@ -15,19 +15,8 @@ import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregiste
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
 import { speak } from '../utils/edgeTTS';
+import ManeuverArrow from './ManeuverArrow';
 import type { CallForService, Unit } from '../types';
-
-// Compact maneuver glyph for the nav banner, from the Mapbox maneuver
-// type + modifier (e.g. turn + left → ↰, merge → ⤚, arrive → ◉).
-function maneuverGlyph(type?: string, modifier?: string): string {
-  if (type === 'arrive') return '◉';
-  if (type === 'depart') return '▲';
-  if (type === 'roundabout' || type === 'rotary') return '↻';
-  if (modifier?.includes('left')) return modifier === 'slight left' ? '↖' : '↰';
-  if (modifier?.includes('right')) return modifier === 'slight right' ? '↗' : '↱';
-  if (modifier === 'uturn') return '⤺';
-  return '↑';
-}
 
 // `call.assigned_units` can arrive as id strings/numbers OR as full unit
 // objects (the call-detail endpoint returns objects). Normalize to a Set of
@@ -371,9 +360,11 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
           </div>
           {/* Current direction, one at a time */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '7px 12px' }}>
-            <span aria-hidden style={{ fontSize: 22, color: '#d4a017', lineHeight: 1, minWidth: 24, textAlign: 'center' }}>
-              {maneuverGlyph(activeRoute.steps[0].maneuverType, activeRoute.steps[0].modifier)}
-            </span>
+            <ManeuverArrow
+              type={activeRoute.steps[0].maneuverType}
+              modifier={activeRoute.steps[0].modifier}
+              size={28}
+            />
             <span style={{ fontSize: 13, color: '#ffffff', fontWeight: 700, flex: 1, lineHeight: 1.25 }}>
               {activeRoute.steps[0].instruction}
             </span>

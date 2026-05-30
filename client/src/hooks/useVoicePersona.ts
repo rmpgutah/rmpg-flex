@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from './useApi';
+import { emitSettingsChange } from '../utils/settingsBus';
 
 export interface VoicePersona {
   voiceId: string;
@@ -89,6 +90,7 @@ export function useVoicePersona() {
     const next = { ...readLocal(), ...patch };
     writeLocal(patch);
     setPersonaState(next);
+    emitSettingsChange('voice');
 
     const serverPatch: Record<string, unknown> = {};
     if (patch.voiceId      !== undefined) serverPatch.voice_persona       = patch.voiceId;

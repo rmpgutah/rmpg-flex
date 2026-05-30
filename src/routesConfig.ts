@@ -89,6 +89,7 @@ import skiptracer from './routes/skiptracer';
 import shiftPlans from './routes/shiftPlans';
 import court from './routes/court';
 import serve from './routes/serve';
+import settings from './routes/settings';
 import reports from './routes/reports';
 import stubs from './routes/stubs';
 // Dispatch domain
@@ -246,6 +247,8 @@ export const ROUTE_REGISTRY: RouteMount[] = [
     note: 'Channels + transmissions (append-only) + per-user recordings + stats' },
   { prefix: '/api/serve', router: serve, auth: 'required',
     note: 'Officer-facing serve workflow (shares tables with /api/serve-intake)' },
+  { prefix: '/api/settings', router: settings, auth: 'required',
+    note: 'Per-user + org-wide preference blobs for cross-device sync (migrations/0045)' },
   { prefix: '/api/serve-intake', router: serveIntake, auth: 'required',
     note: 'Upload + OCR (Tesseract container) + Workers-AI field extraction; commits to serve_queue + serve_intake_documents' },
   { prefix: '/api/ocr', router: ocr, auth: 'required',
