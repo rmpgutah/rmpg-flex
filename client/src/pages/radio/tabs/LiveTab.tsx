@@ -9,7 +9,8 @@ import { apiFetch } from '../../../hooks/useApi';
 import { matchesSearch, COMPARE_DATE, ls, playBeep, isInQuietHours } from '../helpers';
 import { DATE_RANGES, DURATION_FILTERS } from '../constants';
 import { FilterChip, SectionHeader, EmptyConsole, Waveform, Sep } from '../components';
-import { useVoiceChannel } from '../useVoiceChannel';
+import { useVoiceChannel, type DispatchRecordRef } from '../useVoiceChannel';
+import DispatchRecordPanel from '../../../components/DispatchRecordPanel';
 import { RadioHazePlayer } from '../../../utils/radioProcessor';
 import type { RadioChannel, RadioTransmission } from '../types';
 
@@ -26,6 +27,9 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   const [minDur, setMinDur] = useState('0');
   const [showFilters, setShowFilters] = useState(false);
   const [favsOnly, setFavsOnly] = useState(false);
+  // Record file the AI dispatcher auto-opened (plate/person check) — shown in
+  // the side panel beside the live feed. Null = panel closed.
+  const [openRecord, setOpenRecord] = useState<DispatchRecordRef | null>(null);
 
   // Highest transmission id seen so far. `null` until the first poll
   // lands so we never beep for the backlog that's already on screen
@@ -107,13 +111,20 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
   // Live voice for the selected channel. A new recorded transmission
   // is prepended immediately (radio_recorded) so the operator doesn't
   // wait for the next 5s poll.
-  const voice = useVoiceChannel(selectedChannelId, (txn: RadioTransmission) => {
-    if (!txn) return;
-    setTx((prev) => [txn, ...prev.filter((t) => t.id !== txn.id)]);
-  });
+  const voice = useVoiceChannel(
+    selectedChannelId,
+    (txn: RadioTransmission) => {
+      if (!txn) return;
+      setTx((prev) => [txn, ...prev.filter((t) => t.id !== txn.id)]);
+    },
+    // AI dispatcher ran a plate/person check — pop the record into the side
+    // panel so the operator sees the file the moment dispatch reads it back.
+    (ref) => setOpenRecord(ref),
+  );
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex min-h-0">
+      <div className="flex-1 min-w-0 flex flex-col">
       <SectionHeader
         icon={<Volume2 className="w-3 h-3" style={{ color: 'var(--rt-accent)' }} />}
         label={currentChannel ? `LIVE — ${currentChannel.name.toUpperCase()}` : 'LIVE — NO CHANNEL'}
@@ -175,6 +186,8 @@ export default function LiveTab({ selectedChannelId, onSelectChannel }: Props) {
             </ul>
           )}
       </div>
+      </div>
+      {openRecord && <DispatchRecordPanel record={openRecord} onClose={() => setOpenRecord(null)} />}
     </div>
   );
 }

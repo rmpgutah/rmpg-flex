@@ -46,9 +46,17 @@ export interface VoiceChannelState {
   pttUp: () => void;
 }
 
+// A pointer to a record file the AI dispatcher looked up, carried on a
+// dispatch_speak message so the operator console can auto-open it.
+export interface DispatchRecordRef { kind: 'person' | 'vehicle'; id: number }
+
 export function useVoiceChannel(
   channelId: number | null,
   onRecorded?: (transmission: any) => void,
+  // `fromMe` = the looked-up record was THIS device's own request. The operator
+  // console opens regardless (it monitors all traffic); a field MDT opens only
+  // its own. See DispatchRecordPanel consumers.
+  onRecordOpen?: (ref: DispatchRecordRef, ctx: { fromMe: boolean }) => void,
 ): VoiceChannelState {
   const [connected, setConnected] = useState(false);
   const [members, setMembers] = useState(0);
@@ -65,6 +73,8 @@ export function useVoiceChannel(
   const playerDestroyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const onRecordedRef = useRef(onRecorded);
   onRecordedRef.current = onRecorded;
+  const onRecordOpenRef = useRef(onRecordOpen);
+  onRecordOpenRef.current = onRecordOpen;
 
   const supported = typeof navigator !== 'undefined'
     && !!navigator.mediaDevices?.getUserMedia
@@ -138,6 +148,14 @@ export function useVoiceChannel(
             // AI dispatcher reply: drop it into the feed AND play it live
             // through the radio-haze chain so the channel hears DISPATCH.
             if (msg.transmission) onRecordedRef.current?.(msg.transmission);
+            // If the dispatcher ran a plate/person check, auto-open the record
+            // file (operator-gated server-side via ai_auto_open_records).
+            // source_user_id is the requesting officer — fromMe lets a field MDT
+            // open only its own request while the operator console opens all.
+            if (msg.record && (msg.record.kind === 'person' || msg.record.kind === 'vehicle') && typeof msg.record.id === 'number') {
+              const fromMe = msg.source_user_id != null && msg.source_user_id === myIdRef.current;
+              onRecordOpenRef.current?.(msg.record as DispatchRecordRef, { fromMe });
+            }
             const buf = typeof msg.audio === 'string' ? base64ToArrayBuffer(msg.audio) : null;
             if (buf) {
               setActiveSpeaker({ userId: DISPATCH_USER_ID, label: msg.transmission?.unit_label || 'DISPATCH' });

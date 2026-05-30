@@ -322,7 +322,8 @@ function parseLookup(value: unknown): LookupRequest | undefined {
   const obj = value as Record<string, unknown>;
   const type = typeof obj.type === 'string' ? obj.type.toLowerCase() : '';
   const q = typeof obj.query === 'string' ? obj.query.trim() : '';
-  if (!q || !(LOOKUP_TYPES as readonly string[]).includes(type)) return undefined;
+  if (!(LOOKUP_TYPES as readonly string[]).includes(type)) return undefined;
+  if (!q && !UNIT_CENTRIC_LOOKUPS.has(type)) return undefined;
   return { type: type as LookupRequest['type'], query: q };
 }
 
