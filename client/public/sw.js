@@ -109,7 +109,11 @@
 // v639: stacked-calls panel in the call detail — lists other active calls at the
 //       same address (click to jump). Real D1-backed /user/preferences (no SW
 //       impact, listed here for the deploy log).
-const CACHE_NAME = 'rmpg-flex-v639';
+// v640: GEO-sort section dividers — when the queue is sorted by district, render
+//       a sticky "SECTION · Name" header before each new section's calls.
+// v641: keyboard-shortcut cheat sheet overlay (toggle with "?") documenting the
+//       Spillman-style F-key + letter + nav shortcuts.
+const CACHE_NAME = 'rmpg-flex-v641';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

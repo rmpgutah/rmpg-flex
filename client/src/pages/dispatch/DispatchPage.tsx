@@ -14,7 +14,7 @@ import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/D
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
-import { zoneLeaf, beatLeaf } from '../../utils/dispatchCodeParts';
+import { zoneLeaf, beatLeaf, sectionPrefix } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -1121,6 +1121,10 @@ export default function DispatchPage() {
 
   // Filter calls (defined before keyboard shortcuts so it's available)
   // Active calls (non-archived) are in `calls`, archived calls are in `archivedCalls`
+  // Effective queue sort mode (server pref → local fallback → default). Hoisted
+  // to component scope so both the sort memo and the render (GEO dividers) share it.
+  const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
+
   const filteredCalls = useMemo(() => (filterTab === 'archived' ? archivedCalls : calls).filter((call) => {
     switch (filterTab) {
       case 'pending': return call.status === 'pending';
@@ -1169,7 +1173,6 @@ export default function DispatchPage() {
     const bPin = b.pinned ? 1 : 0;
     if (aPin !== bPin) return bPin - aPin;
     // User-selectable sort for active tabs
-    const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
     if (sortMode === 'time') {
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
@@ -1197,6 +1200,9 @@ export default function DispatchPage() {
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
   }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
+
+  // Shortcut cheat-sheet overlay (toggled with "?").
+  const [showShortcutHelp, setShowShortcutHelp] = useState(false);
 
   // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
   useEffect(() => {
@@ -1277,6 +1283,13 @@ export default function DispatchPage() {
 
       // Don't process letter keys when typing in inputs
       if (isInput) return;
+
+      // ? — toggle the keyboard-shortcut cheat sheet.
+      if (e.key === '?') {
+        e.preventDefault();
+        setShowShortcutHelp((prev) => !prev);
+        return;
+      }
 
       // Shift+C — quick clear on selected call (mirrors F7, faster muscle
       // memory). MUST sit below the input guard above; otherwise typing a
@@ -1378,6 +1391,7 @@ export default function DispatchPage() {
         setShowCreateUnitModal(false);
         setQuickTemplateData(null);
         setDispositionPromptCallId(null);
+        setShowShortcutHelp(false);
         return;
       }
     };
@@ -3261,21 +3275,38 @@ export default function DispatchPage() {
               )}
             </div>
           ) : (
-            filteredCalls.map((call) => (
-              <CallCard
-                key={call.id}
-                call={call}
-                isSelected={selectedCall?.id === call.id}
-                onClick={setSelectedCall}
-                onUnitDrop={handleDragAssignUnit}
-                onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
-                onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
-                stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
-                onQuickNote={handleQuickNote}
-                hasActiveWarrant={!!(call as any).has_active_warrant}
-                onTogglePin={handleTogglePin}
-              />
-            ))
+            filteredCalls.map((call, i) => {
+              // GEO sort groups calls by section → zone → beat; render a sticky
+              // district header before the first call of each new section so a
+              // dispatcher can scan and work one district at a time.
+              const showSectionDivider =
+                sortMode === 'geo' &&
+                (i === 0 || (filteredCalls[i - 1]?.sector_name || '') !== (call.sector_name || ''));
+              const sectionCode = sectionPrefix(call.zone_id);
+              const sectionLabel = call.sector_name || 'Unassigned';
+              return (
+                <React.Fragment key={call.id}>
+                  {showSectionDivider && (
+                    <div className="sticky top-0 z-10 flex items-center gap-1.5 px-2 py-0.5 bg-[#0d0d0d] border-y border-amber-900/30 text-[9px] font-bold uppercase tracking-wider text-amber-400/90">
+                      <MapPin className="w-3 h-3" />
+                      {sectionCode ? `${sectionCode} · ${sectionLabel}` : sectionLabel}
+                    </div>
+                  )}
+                  <CallCard
+                    call={call}
+                    isSelected={selectedCall?.id === call.id}
+                    onClick={setSelectedCall}
+                    onUnitDrop={handleDragAssignUnit}
+                    onStatusChange={(callId, newStatus) => handleStatusChange(callId, newStatus as CallStatus)}
+                    onContextMenu={(e, c) => setContextMenu({ x: e.clientX, y: e.clientY, call: c })}
+                    stackCount={call.location ? stackedCallCounts.get(call.location.toLowerCase().trim()) : undefined}
+                    onQuickNote={handleQuickNote}
+                    hasActiveWarrant={!!(call as any).has_active_warrant}
+                    onTogglePin={handleTogglePin}
+                  />
+                </React.Fragment>
+              );
+            })
           )}
         </div>
       </div>
@@ -5687,6 +5718,56 @@ export default function DispatchPage() {
           </div>
         </div>
       </div>
+
+      {/* Keyboard-shortcut cheat sheet (toggle with "?") */}
+      {showShortcutHelp && (
+        <div
+          className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70"
+          onClick={() => setShowShortcutHelp(false)}
+        >
+          <div
+            className="bg-[#0a0a0a] border border-[#2e2e2e] rounded-sm max-w-2xl w-[92%] max-h-[85vh] overflow-auto scrollbar-dark"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between px-4 py-2 border-b border-[#2e2e2e] sticky top-0 bg-[#0a0a0a]">
+              <div className="flex items-center gap-2 text-[#d4a017] text-xs font-bold uppercase tracking-wider">
+                <Terminal className="w-3.5 h-3.5" /> Keyboard Shortcuts
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setShowShortcutHelp(false)} className="text-rmpg-400 hover:text-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="p-4 grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {([
+                { group: 'Selected Call', items: [
+                  ['F3 / D', 'Dispatch (pending)'], ['F5 / E', 'En route'], ['F6 / O', 'On scene'],
+                  ['F7 / ⇧C', 'Clear + disposition'], ['F9 / H', 'Hold / resume'], ['F4', 'Edit call'],
+                ] },
+                { group: 'Create / Panels', items: [
+                  ['F2 / N', 'New call'], ['F10 / P', 'Quick PSO request'], ['F8', 'Focus CAD command line'],
+                  ['F12', 'Toggle NCIC panel'], ['R', 'Refresh'],
+                ] },
+                { group: 'Navigate / Filter', items: [
+                  ['↑ / k', 'Previous call'], ['↓ / j', 'Next call'], ['1–6', 'Filter tabs'],
+                  ['Esc', 'Close modals'], ['?', 'This help'],
+                ] },
+              ] as const).map(({ group, items }) => (
+                <div key={group}>
+                  <div className="text-[9px] font-bold uppercase tracking-wide text-rmpg-400 mb-1.5">{group}</div>
+                  <div className="space-y-1">
+                    {items.map(([keys, desc]) => (
+                      <div key={keys} className="flex items-center justify-between gap-2 text-[11px]">
+                        <kbd className="font-mono text-amber-300 bg-amber-900/20 border border-amber-700/30 px-1 py-0 rounded-sm whitespace-nowrap">{keys}</kbd>
+                        <span className="text-rmpg-300 text-right">{desc}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Right-Click Context Menu */}
       {contextMenu && (
