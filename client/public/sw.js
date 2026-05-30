@@ -116,7 +116,11 @@
 // v642: busiest-district chip in the dispatch stats strip — active-call load
 //       per section (busiest first), full breakdown on hover. Click to filter
 //       the queue to that district (wires into the district-aware search).
-const CACHE_NAME = 'rmpg-flex-v642';
+// v643: fix Beat picker in call edit — when a Section is chosen but no Zone,
+//       scope beats to that section (not all ~719) with zone-disambiguated
+//       names, backfill zone + dispatch_code on select, disable until a section
+//       is picked. Previously dumped every beat as a raw code.
+const CACHE_NAME = 'rmpg-flex-v643';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

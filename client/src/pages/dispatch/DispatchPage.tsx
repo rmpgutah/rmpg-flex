@@ -260,7 +260,7 @@ export default function DispatchPage() {
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
-  const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel } = useDistrictOptions();
   const { resolve: resolveAddress } = useAddressAutofill();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
@@ -4367,7 +4367,12 @@ export default function DispatchPage() {
                     </label>
                     {isEditing ? (() => {
                       const filteredZones = zonesForSection(editData.sector_id);
-                      const filteredBeats = beatsForZone(editData.zone_id);
+                      // Scope the Beat list to the Zone when chosen, else to the
+                      // Section (short, relevant list) — never the full ~719 beats.
+                      const sectionScopedBeats = !editData.zone_id;
+                      const filteredBeats = editData.zone_id
+                        ? beatsForZone(editData.zone_id)
+                        : beatsForSection(editData.sector_id);
                       return (
                         <div className="space-y-2 mt-1">
                           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -4403,16 +4408,35 @@ export default function DispatchPage() {
                             </div>
                             <div>
                               <label className="text-[9px] text-brand-gold-500">Beat</label>
-                              <select className="input-dark text-xs" value={editData.beat_id} onChange={(e) => {
+                              <select className="input-dark text-xs" value={editData.beat_id} disabled={!editData.sector_id} onChange={(e) => {
                                 const beatVal = e.target.value;
-                                // Auto-resolve dispatch code when beat is selected
-                                const match = beatVal && editData.sector_id && editData.zone_id
+                                if (!beatVal) { setEditData(prev => ({ ...prev, beat_id: '', dispatch_code: '' })); return; }
+                                // Resolve the district for this beat. If a Zone is
+                                // already chosen, match within it; otherwise resolve
+                                // by (section, beat) and BACKFILL the zone too.
+                                const match = editData.zone_id
                                   ? districts.find(d => d.sector_id === editData.sector_id && d.zone_id === editData.zone_id && d.beat_id === beatVal)
-                                  : null;
-                                setEditData(prev => ({ ...prev, beat_id: beatVal, dispatch_code: match?.dispatch_code || '' }));
+                                  : districtForSectionBeat(editData.sector_id, beatVal);
+                                setEditData(prev => ({
+                                  ...prev,
+                                  beat_id: beatVal,
+                                  zone_id: prev.zone_id || match?.zone_id || '',
+                                  dispatch_code: match?.dispatch_code || '',
+                                }));
                               }}>
-                                <option value="">— Select —</option>
-                                {filteredBeats.map(b => <option key={b} value={b}>{getBeatLabel(editData.zone_id, b)}</option>)}
+                                <option value="">{editData.sector_id ? '— Select —' : '— Pick a section first —'}</option>
+                                {filteredBeats.map(b => {
+                                  // When scoped to the whole section, the zone isn't known
+                                  // yet — resolve each beat's own zone for an accurate,
+                                  // zone-disambiguated label ("HER · B2 — name").
+                                  if (sectionScopedBeats) {
+                                    const d = districtForSectionBeat(editData.sector_id, b);
+                                    const label = getBeatLabel(d?.zone_id || '', b);
+                                    const zoneTag = d?.zone_id ? zoneLeaf(d.zone_id) : '';
+                                    return <option key={b} value={b}>{zoneTag ? `${zoneTag} · ${label}` : label}</option>;
+                                  }
+                                  return <option key={b} value={b}>{getBeatLabel(editData.zone_id, b)}</option>;
+                                })}
                               </select>
                             </div>
                             <div>
