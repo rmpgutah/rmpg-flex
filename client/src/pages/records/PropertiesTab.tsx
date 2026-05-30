@@ -10,6 +10,8 @@ import PropertyFormModal from '../../components/PropertyFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import RecordField from '../../components/records/RecordField';
+import FieldGrid from '../../components/records/FieldGrid';
 import type { Property, RecordEntityType } from '../../types';
 import type { PropertyFormData } from '../../components/PropertyFormModal';
 
@@ -78,16 +80,10 @@ export function mapDbProperty(row: Record<string, unknown>): Property {
 
 // ── Helpers ──────────────────────────────────────
 
+// Delegates to the shared RecordField primitive. See PersonsTab for the pattern.
 function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
   if (!value) return null;
-  const Icon = icon;
-  return (
-    <div className="flex items-start gap-2 text-xs group">
-      {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
-      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
-    </div>
-  );
+  return <RecordField label={label} value={value} icon={icon} />;
 }
 
 function safeDateTimeDisplay(value?: string | null): string | null {
@@ -477,7 +473,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
 
         {/* ── Property Details ────────────────── */}
         <CollapsibleSection title="Property Details" icon={Building2} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <FieldGrid cols={2}>
             {renderInfoRow('Property Type', selectedProperty.property_type)}
             {renderInfoRow('Business Type', selectedProperty.business_type)}
             {renderInfoRow('Structure Type', selectedProperty.structure_type)}
@@ -488,43 +484,43 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
             {selectedProperty.latitude != null && selectedProperty.longitude != null && (
               renderInfoRow('Coordinates', `${selectedProperty.latitude.toFixed(5)}, ${selectedProperty.longitude.toFixed(5)}`, Globe)
             )}
-          </div>
+          </FieldGrid>
         </CollapsibleSection>
 
         {/* ── Security & Access ────────────────── */}
-        <CollapsibleSection title="Security & Access" icon={Shield} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {renderInfoRow('Gate Code', selectedProperty.gate_code, Shield)}
-            {renderInfoRow('Alarm Code', selectedProperty.alarm_code, Shield)}
+        <CollapsibleSection title="Security & Access" icon={Shield} defaultOpen accent="amber">
+          <FieldGrid cols={2}>
+            <RecordField label="Gate Code" value={selectedProperty.gate_code} icon={Shield} mono copyable />
+            <RecordField label="Alarm Code" value={selectedProperty.alarm_code} icon={Shield} mono copyable />
             {renderInfoRow('Alarm Company', selectedProperty.alarm_company)}
             {renderInfoRow('Alarm Account', selectedProperty.alarm_account)}
             {renderInfoRow('Camera System', selectedProperty.camera_system, Camera)}
             {renderInfoRow('Security Features', selectedProperty.security_features)}
             {renderInfoRow('Roof Access', selectedProperty.roof_access)}
             {renderInfoRow('Emergency Contact', selectedProperty.emergency_contact, Phone)}
-          </div>
+          </FieldGrid>
         </CollapsibleSection>
 
         {/* ── Key Holder & Owner (conditional) ──── */}
         {(selectedProperty.key_holder_name || selectedProperty.owner_name) && (
           <CollapsibleSection title="Key Holder & Owner" icon={Key}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <FieldGrid cols={2}>
               {renderInfoRow('Key Holder', selectedProperty.key_holder_name)}
               {renderInfoRow('KH Phone', selectedProperty.key_holder_phone, Phone)}
               {renderInfoRow('KH Relationship', selectedProperty.key_holder_relationship)}
               {renderInfoRow('Owner Name', selectedProperty.owner_name)}
               {renderInfoRow('Owner Phone', selectedProperty.owner_phone, Phone)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Inspection (conditional) ──────────── */}
         {(selectedProperty.last_inspection_date || selectedProperty.inspection_status) && (
           <CollapsibleSection title="Inspection" icon={Wrench}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <FieldGrid cols={2}>
               {renderInfoRow('Last Inspection', selectedProperty.last_inspection_date, Calendar)}
               {renderInfoRow('Status', selectedProperty.inspection_status)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
@@ -537,7 +533,7 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
 
         {/* ── Hazard Notes (conditional) ─────── */}
         {(selectedProperty.hazard_notes || selectedProperty.known_hazards) && (
-          <CollapsibleSection title="Hazard Notes" icon={FileWarning}>
+          <CollapsibleSection title="Hazard Notes" icon={FileWarning} accent="red">
             {selectedProperty.hazard_notes && <p className="text-xs text-red-300/80 leading-relaxed whitespace-pre-wrap">{selectedProperty.hazard_notes}</p>}
             {selectedProperty.known_hazards && (
               <div className="mt-1.5"><span className="text-[10px] text-red-400 uppercase font-semibold">Known Hazards:</span> <span className="text-xs text-red-300/80 ml-1">{selectedProperty.known_hazards}</span></div>
@@ -581,10 +577,10 @@ export function PropertiesTabDetail({ state }: { state: PropertiesTabState }) {
 
         {/* ── Record Info ─────────────────────── */}
         <CollapsibleSection title="Record Info" icon={Calendar} defaultOpen={false}>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <FieldGrid cols={2}>
             {renderInfoRow('Created', safeDateTimeDisplay(selectedProperty.created_at), Calendar)}
             {renderInfoRow('Updated', safeDateTimeDisplay(selectedProperty.updated_at), Calendar)}
-          </div>
+          </FieldGrid>
         </CollapsibleSection>
 
         {/* ── Linked Records ───────────────────── */}

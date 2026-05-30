@@ -13,6 +13,9 @@ import StatusBadge from '../../components/StatusBadge';
 import AlertBanner from '../../components/AlertBanner';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import RecordField from '../../components/records/RecordField';
+import FieldGrid from '../../components/records/FieldGrid';
+import RecordBadge from '../../components/records/RecordBadge';
 import type { Vehicle, RecordAlert, RecordEntityType } from '../../types';
 import type { VehicleFormData } from '../../components/VehicleFormModal';
 import {
@@ -117,16 +120,11 @@ const FLAG_COLORS: Record<string, string> = {
 
 // ── Helpers ──────────────────────────────────────
 
+// Delegates to the shared RecordField primitive (hover highlight,
+// empty-state, consistent label hierarchy). See PersonsTab for the same pattern.
 function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
   if (!value) return null;
-  const Icon = icon;
-  return (
-    <div className="flex items-start gap-2 text-xs group">
-      {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
-      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
-    </div>
-  );
+  return <RecordField label={label} value={value} icon={icon} />;
 }
 
 function safeVehicleDate(value?: string | null): string | null {
@@ -628,9 +626,7 @@ export function VehiclesTabList({ state }: { state: VehiclesTabState }) {
                     {v.flags.slice(0, 2).map((flag, i) => {
                       const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
                       return (
-                        <span key={`${label}-${i}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                          {label}
-                        </span>
+                        <RecordBadge key={`${label}-${i}`} flag={label} glow={false}>{label}</RecordBadge>
                       );
                     })}
                   </div>
@@ -759,9 +755,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {selectedVehicle.flags.map((flag, i) => {
               const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
               return (
-                <span key={`${label}-${i}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`}>
-                  {label}
-                </span>
+                <RecordBadge key={`${label}-${i}`} flag={label}>{label}</RecordBadge>
               );
             })}
           </div>
@@ -773,7 +767,7 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
 
         {/* ── Vehicle Details ─────────────────────── */}
         <CollapsibleSection title="Vehicle Details" icon={Car} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 text-xs">
+          <FieldGrid cols={3}>
             {renderInfoRow('Plate', selectedVehicle.license_plate)}
             {renderInfoRow('State', selectedVehicle.plate_state)}
             {renderInfoRow('Plate Type', selectedVehicle.plate_type)}
@@ -785,14 +779,14 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
             {renderInfoRow('Body Style', selectedVehicle.body_style)}
             {renderInfoRow('Doors', selectedVehicle.doors ? String(selectedVehicle.doors) : null)}
             {renderInfoRow('Owner', selectedVehicle.owner_name)}
-          </div>
+          </FieldGrid>
           {selectedVehicle.vin && (
-            <div className="mt-2 text-xs"><span className="text-rmpg-400">VIN:</span> <span className="text-rmpg-200 font-mono ml-1">{selectedVehicle.vin}</span></div>
+            <div className="mt-2"><RecordField label="VIN" value={selectedVehicle.vin} mono copyable /></div>
           )}
           {(selectedVehicle.commercial_vehicle || selectedVehicle.hazmat) && (
-            <div className="flex gap-2 mt-2">
-              {selectedVehicle.commercial_vehicle && <span className="px-2 py-0.5 text-[10px] font-bold bg-gray-900/50 text-gray-400 border border-gray-700/50">COMMERCIAL</span>}
-              {selectedVehicle.hazmat && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">HAZMAT</span>}
+            <div className="flex gap-1.5 mt-2">
+              {selectedVehicle.commercial_vehicle && <RecordBadge tone="gray" glow={false}>COMMERCIAL</RecordBadge>}
+              {selectedVehicle.hazmat && <RecordBadge tone="red" pulse>HAZMAT</RecordBadge>}
             </div>
           )}
         </CollapsibleSection>
@@ -800,39 +794,39 @@ export function VehiclesTabDetail({ state }: { state: VehiclesTabState }) {
         {/* ── Mechanical (conditional) ─────────── */}
         {(selectedVehicle.engine_type || selectedVehicle.fuel_type || selectedVehicle.transmission || selectedVehicle.drive_type || selectedVehicle.odometer) && (
           <CollapsibleSection title="Mechanical" icon={Hash} defaultOpen={false}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <FieldGrid cols={3}>
               {renderInfoRow('Engine', selectedVehicle.engine_type)}
               {renderInfoRow('Fuel', selectedVehicle.fuel_type)}
               {renderInfoRow('Transmission', selectedVehicle.transmission)}
               {renderInfoRow('Drive', selectedVehicle.drive_type)}
               {renderInfoRow('Odometer', selectedVehicle.odometer)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Registration & Insurance ────────── */}
         <CollapsibleSection title="Registration & Insurance" icon={Shield} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <FieldGrid cols={2}>
             {renderInfoRow('Reg. Expiry', safeVehicleDate(selectedVehicle.registration_expiry), Calendar)}
             {renderInfoRow('Insurance', selectedVehicle.insurance_company)}
             {renderInfoRow('Policy #', selectedVehicle.insurance_policy, Hash)}
             {renderInfoRow('Lien Holder', selectedVehicle.lien_holder)}
             {renderInfoRow('Owner Address', selectedVehicle.owner_address ? formatAddressDisplay(selectedVehicle.owner_address) : undefined, MapPin)}
             {renderInfoRow('Owner Phone', selectedVehicle.owner_phone ? formatPhoneDisplay(selectedVehicle.owner_phone) : undefined, Phone)}
-          </div>
+          </FieldGrid>
         </CollapsibleSection>
 
         {/* ── Stolen / Tow Status (conditional) ── */}
         {(selectedVehicle.stolen_status || selectedVehicle.tow_status) && (
-          <CollapsibleSection title="Stolen / Tow Status" icon={AlertTriangle}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <CollapsibleSection title="Stolen / Tow Status" icon={AlertTriangle} accent="red">
+            <FieldGrid cols={3}>
               {renderInfoRow('Stolen Status', selectedVehicle.stolen_status)}
               {renderInfoRow('Stolen Date', safeVehicleDate(selectedVehicle.stolen_date), Calendar)}
               {renderInfoRow('Recovery Date', safeVehicleDate(selectedVehicle.recovery_date), Calendar)}
               {renderInfoRow('Tow Status', selectedVehicle.tow_status)}
               {renderInfoRow('Tow Company', selectedVehicle.tow_company)}
               {renderInfoRow('Tow Date', safeVehicleDate(selectedVehicle.tow_date), Calendar)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 

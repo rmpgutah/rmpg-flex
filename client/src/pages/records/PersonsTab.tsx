@@ -37,6 +37,9 @@ import CriminalHistorySection from '../../components/CriminalHistorySection';
 import { PersonClientLinks } from '../../components/ClientPersonLinksSection';
 import PersonHistoryPanel from '../../components/PersonHistoryPanel';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import RecordField from '../../components/records/RecordField';
+import FieldGrid from '../../components/records/FieldGrid';
+import RecordBadge from '../../components/records/RecordBadge';
 import type { Person, RecordAlert, RecordEntityType } from '../../types';
 import type { PersonFormData } from '../../components/PersonFormModal';
 import WarrantBadge from '../../components/WarrantBadge';
@@ -186,6 +189,11 @@ function mapDbPerson(row: Record<string, unknown>): Person {
 
 // ── Constants ──────────────────────────────────────
 
+// Detail-panel flags now render via RecordBadge + classifyFlag()
+// (recordVisuals.ts), which substring-matches flag text into severity
+// tones + pulse so unknown flags still carry weight. FLAG_COLORS is
+// retained below for the LIST-view row chips and the re-export consumed
+// elsewhere; migrate those to RecordBadge in a follow-up.
 const FLAG_COLORS: Record<string, string> = {
   'Trespass Warning': 'bg-amber-900/50 text-amber-400 border-amber-700/50',
   'Known Offender': 'bg-red-900/50 text-red-400 border-red-700/50',
@@ -209,16 +217,12 @@ function getAvatarColor(name: string): string {
   return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
 }
 
+// Thin wrapper over the shared RecordField primitive so every existing
+// call site (Contact, Legal, Emergency …) picks up the polished row —
+// hover highlight, consistent label hierarchy, empty-state handling.
 function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
   if (!value) return null;
-  const Icon = icon;
-  return (
-    <div className="flex items-start gap-2 text-xs group">
-      {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
-      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
-    </div>
-  );
+  return <RecordField label={label} value={value} icon={icon} />;
 }
 
 // ── Props ──────────────────────────────────────────
@@ -703,9 +707,7 @@ export function PersonsTabList({ state }: { state: PersonsTabState }) {
                     {person.flags.slice(0, 2).map((flag, i) => {
                       const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
                       return (
-                        <span key={`${label}-${i}`} className={`inline-flex items-center px-1.5 py-0.5 text-[9px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`} title={humanizeFlag(label)}>
-                          {label}
-                        </span>
+                        <RecordBadge key={`${label}-${i}`} flag={label} glow={false} title={humanizeFlag(label)}>{label}</RecordBadge>
                       );
                     })}
                     {person.flags.length > 2 && (
@@ -854,20 +856,20 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         <AlertBanner alerts={personAlerts} />
         {/* Special Flags */}
         {(selectedPerson.flags.length > 0 || selectedPerson.is_sex_offender || selectedPerson.is_veteran || selectedPerson.gang_affiliation || selectedPerson.watchlist_match || (selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None')) && (
-          <div className="flex flex-wrap gap-2 mt-1">
+          <div className="flex flex-wrap gap-1.5 mt-1">
             {selectedPerson.flags.map((flag, i) => {
               const label = typeof flag === 'object' ? (flag.type || 'FLAG') : flag;
               return (
-                <span key={`${label}-${i}`} className={`inline-flex items-center px-2 py-0.5 text-[10px] font-semibold border ${FLAG_COLORS[label] || 'bg-rmpg-700 text-rmpg-300 border-rmpg-600'}`} title={humanizeFlag(label)}>
+                <RecordBadge key={`${label}-${i}`} flag={label} title={humanizeFlag(label)}>
                   {label}
-                </span>
+                </RecordBadge>
               );
             })}
-            {selectedPerson.watchlist_match && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/80 text-red-300 border border-red-500/70 animate-pulse">⚠ OFAC WATCHLIST MATCH</span>}
-            {selectedPerson.is_sex_offender && <span className="px-2 py-0.5 text-[10px] font-bold bg-red-900/50 text-red-400 border border-red-700/50">SEX OFFENDER</span>}
-            {selectedPerson.is_veteran && <span className="px-2 py-0.5 text-[10px] font-bold bg-brand-900/50 text-brand-400 border border-brand-700/50">VETERAN</span>}
-            {selectedPerson.gang_affiliation && <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-900/50 text-amber-400 border border-amber-700/50">GANG: {selectedPerson.gang_affiliation}</span>}
-            {selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None' && <span className="px-2 py-0.5 text-[10px] font-bold bg-orange-900/50 text-orange-400 border border-orange-700/50">{selectedPerson.probation_parole.toUpperCase()}</span>}
+            {selectedPerson.watchlist_match && <RecordBadge tone="red" pulse icon={AlertTriangle}>OFAC WATCHLIST MATCH</RecordBadge>}
+            {selectedPerson.is_sex_offender && <RecordBadge tone="red">SEX OFFENDER</RecordBadge>}
+            {selectedPerson.is_veteran && <RecordBadge tone="blue" glow={false}>VETERAN</RecordBadge>}
+            {selectedPerson.gang_affiliation && <RecordBadge tone="orange">GANG: {selectedPerson.gang_affiliation}</RecordBadge>}
+            {selectedPerson.probation_parole && selectedPerson.probation_parole !== 'None' && <RecordBadge tone="orange">{selectedPerson.probation_parole.toUpperCase()}</RecordBadge>}
           </div>
         )}
         {/* Compact person ID line */}
@@ -883,46 +885,46 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Physical Description ─────────────────── */}
         <CollapsibleSection title="Physical Description" icon={Eye} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5 text-xs">
-            {(selectedPerson.height_feet != null || selectedPerson.height) && <div><span className="text-rmpg-400">Height:</span> <span className="text-rmpg-200">{selectedPerson.height_feet != null ? `${selectedPerson.height_feet}'${String(selectedPerson.height_inches ?? 0).padStart(2, '0')}"` : selectedPerson.height}</span></div>}
-            {selectedPerson.weight && <div><span className="text-rmpg-400">Weight:</span> <span className="text-rmpg-200">{selectedPerson.weight}</span></div>}
-            {selectedPerson.build && <div><span className="text-rmpg-400">Build:</span> <span className="text-rmpg-200">{selectedPerson.build}</span></div>}
-            {selectedPerson.complexion && <div><span className="text-rmpg-400">Complexion:</span> <span className="text-rmpg-200">{selectedPerson.complexion}</span></div>}
-            {selectedPerson.hair_color && <div><span className="text-rmpg-400">Hair:</span> <span className="text-rmpg-200">{selectedPerson.hair_color}</span></div>}
-            {selectedPerson.hair_length && <div><span className="text-rmpg-400">Length:</span> <span className="text-rmpg-200">{selectedPerson.hair_length}</span></div>}
-            {selectedPerson.hair_style && <div><span className="text-rmpg-400">Style:</span> <span className="text-rmpg-200">{selectedPerson.hair_style}</span></div>}
-            {selectedPerson.eye_color && <div><span className="text-rmpg-400">Eyes:</span> <span className="text-rmpg-200">{selectedPerson.eye_color}</span></div>}
-            {selectedPerson.facial_hair && <div><span className="text-rmpg-400">Facial Hair:</span> <span className="text-rmpg-200">{selectedPerson.facial_hair}</span></div>}
-            {selectedPerson.glasses && <div><span className="text-rmpg-400">Glasses:</span> <span className="text-rmpg-200">{selectedPerson.glasses}</span></div>}
-            {selectedPerson.shoe_size && <div><span className="text-rmpg-400">Shoe:</span> <span className="text-rmpg-200">{selectedPerson.shoe_size}</span></div>}
-            {selectedPerson.language && <div><span className="text-rmpg-400">Language:</span> <span className="text-rmpg-200">{selectedPerson.language}</span></div>}
-          </div>
+          <FieldGrid cols={3}>
+            <RecordField label="Height" value={selectedPerson.height_feet != null ? `${selectedPerson.height_feet}'${String(selectedPerson.height_inches ?? 0).padStart(2, '0')}"` : selectedPerson.height} />
+            <RecordField label="Weight" value={selectedPerson.weight} />
+            <RecordField label="Build" value={selectedPerson.build} />
+            <RecordField label="Complexion" value={selectedPerson.complexion} />
+            <RecordField label="Hair" value={selectedPerson.hair_color} />
+            <RecordField label="Length" value={selectedPerson.hair_length} />
+            <RecordField label="Style" value={selectedPerson.hair_style} />
+            <RecordField label="Eyes" value={selectedPerson.eye_color} />
+            <RecordField label="Facial Hair" value={selectedPerson.facial_hair} />
+            <RecordField label="Glasses" value={selectedPerson.glasses} />
+            <RecordField label="Shoe" value={selectedPerson.shoe_size} />
+            <RecordField label="Language" value={selectedPerson.language} />
+          </FieldGrid>
           {selectedPerson.scars_marks_tattoos && (
-            <div className="mt-2"><span className="text-[10px] text-amber-400 uppercase font-semibold">Scars/Marks/Tattoos:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.scars_marks_tattoos}</span></div>
+            <div className="mt-2"><RecordField label="Scars/Marks/Tattoos" value={selectedPerson.scars_marks_tattoos} valueColor="#fbbf24" /></div>
           )}
           {selectedPerson.clothing_description && (
-            <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Clothing:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.clothing_description}</span></div>
+            <div className="mt-1"><RecordField label="Clothing" value={selectedPerson.clothing_description} /></div>
           )}
           {selectedPerson.alias_nickname && (
-            <div className="mt-1"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Alias:</span> <span className="text-xs text-amber-400 ml-1">{selectedPerson.alias_nickname}</span></div>
+            <div className="mt-1"><RecordField label="Alias" value={selectedPerson.alias_nickname} valueColor="#e8b820" /></div>
           )}
         </CollapsibleSection>
 
         {/* ── Contact & Address ────────────────────── */}
         <CollapsibleSection title="Contact & Address" icon={Phone} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-            {renderInfoRow('Phone', selectedPerson.phone ? formatPhoneDisplay(selectedPerson.phone) : undefined, Phone)}
-            {renderInfoRow('Phone 2', selectedPerson.phone_secondary ? formatPhoneDisplay(selectedPerson.phone_secondary) : undefined, Phone)}
-            {renderInfoRow('Email', selectedPerson.email, Mail)}
-            {renderInfoRow('Address', [formatAddressDisplay(selectedPerson.address), formatAddressDisplay(selectedPerson.city), selectedPerson.state?.toUpperCase(), selectedPerson.zip].filter(Boolean).join(', '), MapPin)}
-            {renderInfoRow('Employer', selectedPerson.employer, Briefcase)}
-            {renderInfoRow('Occupation', selectedPerson.occupation)}
-            {renderInfoRow('Social Media', selectedPerson.social_media)}
-            {renderInfoRow('Place of Birth', selectedPerson.place_of_birth)}
-            {renderInfoRow('Citizenship', selectedPerson.citizenship)}
-            {renderInfoRow('Marital Status', selectedPerson.marital_status)}
-            {renderInfoRow('Blood Type', selectedPerson.blood_type)}
-          </div>
+          <FieldGrid cols={2}>
+            <RecordField label="Phone" value={selectedPerson.phone ? formatPhoneDisplay(selectedPerson.phone) : undefined} icon={Phone} copyable />
+            <RecordField label="Phone 2" value={selectedPerson.phone_secondary ? formatPhoneDisplay(selectedPerson.phone_secondary) : undefined} icon={Phone} copyable />
+            <RecordField label="Email" value={selectedPerson.email} icon={Mail} copyable />
+            <RecordField label="Address" value={[formatAddressDisplay(selectedPerson.address), formatAddressDisplay(selectedPerson.city), selectedPerson.state?.toUpperCase(), selectedPerson.zip].filter(Boolean).join(', ')} icon={MapPin} copyable />
+            <RecordField label="Employer" value={selectedPerson.employer} icon={Briefcase} />
+            <RecordField label="Occupation" value={selectedPerson.occupation} />
+            <RecordField label="Social Media" value={selectedPerson.social_media} />
+            <RecordField label="Place of Birth" value={selectedPerson.place_of_birth} />
+            <RecordField label="Citizenship" value={selectedPerson.citizenship} />
+            <RecordField label="Marital Status" value={selectedPerson.marital_status} />
+            <RecordField label="Blood Type" value={selectedPerson.blood_type} />
+          </FieldGrid>
         </CollapsibleSection>
 
         {/* ── Identification ──────────────────────── */}
@@ -955,22 +957,19 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
               )}
               <div className="flex-1 space-y-1.5">
                 {selectedPerson.dl_number && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
-                    <div><span className="text-rmpg-400">DL:</span> <span className="text-rmpg-200 font-mono">{selectedPerson.dl_number}</span></div>
-                    {selectedPerson.dl_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.dl_state}</span></div>}
-                    {selectedPerson.dl_class && <div><span className="text-rmpg-400">Class:</span> <span className="text-rmpg-200">{selectedPerson.dl_class}</span></div>}
-                    {selectedPerson.dl_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{safeDateDisplay(selectedPerson.dl_expiry)}</span></div>}
-                  </div>
+                  <FieldGrid cols={2}>
+                    <RecordField label="DL" value={selectedPerson.dl_number} mono copyable />
+                    <RecordField label="State" value={selectedPerson.dl_state} />
+                    <RecordField label="Class" value={selectedPerson.dl_class} />
+                    <RecordField label="Expiry" value={selectedPerson.dl_expiry ? safeDateDisplay(selectedPerson.dl_expiry) : undefined} />
+                  </FieldGrid>
                 )}
                 {selectedPerson.id_number && (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-xs">
-                    <div>
-                      <span className="text-rmpg-400">{selectedPerson.id_type ? selectedPerson.id_type.replace(/_/g, ' ').toUpperCase() : 'ID'}:</span>{' '}
-                      <span className="text-rmpg-200 font-mono">{selectedPerson.id_number}</span>
-                    </div>
-                    {selectedPerson.id_state && <div><span className="text-rmpg-400">State:</span> <span className="text-rmpg-200">{selectedPerson.id_state}</span></div>}
-                    {selectedPerson.id_expiry && <div><span className="text-rmpg-400">Expiry:</span> <span className="text-rmpg-200">{safeDateDisplay(selectedPerson.id_expiry)}</span></div>}
-                  </div>
+                  <FieldGrid cols={2}>
+                    <RecordField label={selectedPerson.id_type ? selectedPerson.id_type.replace(/_/g, ' ').toUpperCase() : 'ID'} value={selectedPerson.id_number} mono copyable />
+                    <RecordField label="State" value={selectedPerson.id_state} />
+                    <RecordField label="Expiry" value={selectedPerson.id_expiry ? safeDateDisplay(selectedPerson.id_expiry) : undefined} />
+                  </FieldGrid>
                 )}
                 {/* SSN Section */}
                 {(selectedPerson.ssn_last4 || selectedPerson.ssn_full) && (
@@ -1008,11 +1007,11 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
 
         {/* ── Legal & Associations (conditional) ──── */}
         {(selectedPerson.probation_parole || selectedPerson.known_associates) && (
-          <CollapsibleSection title="Legal & Associations" icon={Shield}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          <CollapsibleSection title="Legal & Associations" icon={Shield} accent="amber">
+            <FieldGrid cols={2}>
               {renderInfoRow('Probation/Parole', selectedPerson.probation_parole)}
               {renderInfoRow('P.O. / Officer', selectedPerson.probation_parole_officer)}
-            </div>
+            </FieldGrid>
             {selectedPerson.known_associates && (
               <div className="mt-1.5"><span className="text-[10px] text-rmpg-400 uppercase font-semibold">Known Associates:</span> <span className="text-xs text-rmpg-200 ml-1">{selectedPerson.known_associates}</span></div>
             )}
@@ -1022,18 +1021,18 @@ export function PersonsTabDetail({ state }: { state: PersonsTabState }) {
         {/* ── Emergency Contact (conditional) ─────── */}
         {selectedPerson.emergency_contact_name && (
           <CollapsibleSection title="Emergency Contact" icon={AlertTriangle}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1.5">
+            <FieldGrid cols={3}>
               {renderInfoRow('Name', selectedPerson.emergency_contact_name)}
               {renderInfoRow('Phone', selectedPerson.emergency_contact_phone, Phone)}
               {renderInfoRow('Relationship', selectedPerson.emergency_contact_relationship)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Officer Safety / Caution (conditional)  */}
         {selectedPerson.caution_flags && (
-          <CollapsibleSection title="Officer Safety / Caution" icon={AlertTriangle}>
-            <p className="text-xs text-amber-300/80 leading-relaxed">{selectedPerson.caution_flags}</p>
+          <CollapsibleSection title="Officer Safety / Caution" icon={AlertTriangle} accent="red">
+            <p className="text-xs text-red-200/90 leading-relaxed">{selectedPerson.caution_flags}</p>
           </CollapsibleSection>
         )}
 

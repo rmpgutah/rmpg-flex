@@ -30,21 +30,17 @@ import EvidenceFormModal from '../../components/EvidenceFormModal';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import RecordField from '../../components/records/RecordField';
+import FieldGrid from '../../components/records/FieldGrid';
 import PrintRecordButton from '../../components/PrintRecordButton';
 import type { CustodyEntry, RecordEntityType } from '../../types';
 
 // ── Helpers ──────────────────────────────────────
 
+// Delegates to the shared RecordField primitive. See PersonsTab for the pattern.
 function renderInfoRow(label: string, value?: string | null, icon?: React.ElementType) {
   if (!value) return null;
-  const Icon = icon;
-  return (
-    <div className="flex items-start gap-2 text-xs group">
-      {Icon && <Icon className="w-3 h-3 text-rmpg-400 mt-0.5 flex-shrink-0" />}
-      <span className="text-rmpg-400 min-w-[80px] select-none">{label}:</span>
-      <span className="text-rmpg-200 group-hover:text-white transition-colors">{value}</span>
-    </div>
-  );
+  return <RecordField label={label} value={value} icon={icon} />;
 }
 
 // ── Props ──────────────────────────────────────────
@@ -574,60 +570,48 @@ export function EvidenceTabDetail({ state }: { state: EvidenceTabState }) {
 
         {/* ── Collection & Storage ──────────── */}
         <CollapsibleSection title="Collection & Storage" icon={Warehouse} defaultOpen>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <FieldGrid cols={3}>
             {renderInfoRow('Collected By', selectedEvidence.collected_by_name)}
             {renderInfoRow('Date Collected', selectedEvidence.collected_date, Calendar)}
             {renderInfoRow('Storage Location', selectedEvidence.storage_location, MapPin)}
             {renderInfoRow('Packaging', selectedEvidence.packaging_type, Boxes)}
             {renderInfoRow('Condition', selectedEvidence.condition)}
             {renderInfoRow('Location Found', selectedEvidence.location_found, MapPin)}
-          </div>
+          </FieldGrid>
         </CollapsibleSection>
 
         {/* ── Item Details (conditional) ──────── */}
         {(selectedEvidence.serial_number || selectedEvidence.brand || selectedEvidence.estimated_value || selectedEvidence.dimensions || selectedEvidence.weight) && (
           <CollapsibleSection title="Item Details" icon={Package} defaultOpen>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-              {selectedEvidence.serial_number && (
-                <div className="text-xs"><span className="text-rmpg-400">Serial #:</span> <span className="text-rmpg-200 font-mono">{selectedEvidence.serial_number}</span></div>
-              )}
-              {selectedEvidence.brand && (
-                <div className="text-xs"><span className="text-rmpg-400">Brand/Model:</span> <span className="text-rmpg-200">{selectedEvidence.brand}{selectedEvidence.model ? ` ${selectedEvidence.model}` : ''}</span></div>
-              )}
-              {selectedEvidence.estimated_value && (
-                <div className="text-xs"><span className="text-rmpg-400">Est. Value:</span> <span className="text-green-400 font-bold">${Number(selectedEvidence.estimated_value).toLocaleString()}</span></div>
-              )}
-              {selectedEvidence.dimensions && (
-                <div className="text-xs"><span className="text-rmpg-400">Dimensions:</span> <span className="text-rmpg-200">{selectedEvidence.dimensions}</span></div>
-              )}
-              {selectedEvidence.weight && (
-                <div className="text-xs"><span className="text-rmpg-400">Weight:</span> <span className="text-rmpg-200">{selectedEvidence.weight}</span></div>
-              )}
-              {selectedEvidence.quantity && (
-                <div className="text-xs"><span className="text-rmpg-400">Quantity:</span> <span className="text-rmpg-200">{selectedEvidence.quantity}</span></div>
-              )}
-            </div>
+            <FieldGrid cols={3}>
+              <RecordField label="Serial #" value={selectedEvidence.serial_number} mono copyable />
+              <RecordField label="Brand/Model" value={selectedEvidence.brand ? `${selectedEvidence.brand}${selectedEvidence.model ? ` ${selectedEvidence.model}` : ''}` : undefined} />
+              <RecordField label="Est. Value" value={selectedEvidence.estimated_value ? `$${Number(selectedEvidence.estimated_value).toLocaleString()}` : undefined} valueColor="#4ade80" />
+              <RecordField label="Dimensions" value={selectedEvidence.dimensions} />
+              <RecordField label="Weight" value={selectedEvidence.weight} />
+              <RecordField label="Quantity" value={selectedEvidence.quantity} />
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Lab / Analysis (conditional) ────── */}
         {selectedEvidence.lab_submitted && (
           <CollapsibleSection title="Lab / Analysis" icon={FlaskConical}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <FieldGrid cols={2}>
               {renderInfoRow('Lab Name', selectedEvidence.lab_name)}
               {renderInfoRow('Lab Case #', selectedEvidence.lab_case_number, Hash)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 
         {/* ── Disposal (conditional) ──────────── */}
         {selectedEvidence.disposal_method && (
           <CollapsibleSection title="Disposal" icon={Trash2}>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <FieldGrid cols={3}>
               {renderInfoRow('Method', selectedEvidence.disposal_method)}
               {renderInfoRow('Date', selectedEvidence.disposal_date, Calendar)}
               {renderInfoRow('Authorized By', selectedEvidence.disposal_authorized_by)}
-            </div>
+            </FieldGrid>
           </CollapsibleSection>
         )}
 

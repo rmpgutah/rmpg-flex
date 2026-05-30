@@ -10,6 +10,8 @@ import { useAuth } from '../../context/AuthContext';
 import FileAttachments from '../../components/FileAttachments';
 import LinkedRecordsSection from '../../components/LinkedRecordsSection';
 import CollapsibleSection from '../../components/CollapsibleSection';
+import RecordField from '../../components/records/RecordField';
+import FieldGrid from '../../components/records/FieldGrid';
 import type { RecordEntityType } from '../../types';
 
 // ── Types ──────────────────────────────────────
@@ -331,34 +333,34 @@ export function BusinessTabDetail({ state }: { state: BusinessTabState }) {
       </div>
 
       <CollapsibleSection title="Business Information" icon={Briefcase} defaultOpen>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <div><span className="text-rmpg-500">EIN:</span> <span className="text-rmpg-200">{b.ein || '—'}</span></div>
-          <div><span className="text-rmpg-500">License #:</span> <span className="text-rmpg-200">{b.license_number || '—'}</span></div>
-          <div><span className="text-rmpg-500">Type:</span> <span className="text-rmpg-200">{b.business_type || '—'}</span></div>
-          <div><span className="text-rmpg-500">Industry:</span> <span className="text-rmpg-200">{b.industry || '—'}</span></div>
-          <div><span className="text-rmpg-500">Employees:</span> <span className="text-rmpg-200">{b.employee_count || '—'}</span></div>
-          <div><span className="text-rmpg-500">Revenue:</span> <span className="text-rmpg-200">{b.annual_revenue || '—'}</span></div>
-          <div><span className="text-rmpg-500">Status:</span> <span className={b.status === 'active' ? 'text-green-400' : 'text-rmpg-400'}>{(b.status || 'N/A').toUpperCase()}</span></div>
-        </div>
+        <FieldGrid cols={2}>
+          <RecordField label="EIN" value={b.ein} mono copyable showEmpty />
+          <RecordField label="License #" value={b.license_number} mono copyable showEmpty />
+          <RecordField label="Type" value={b.business_type} showEmpty />
+          <RecordField label="Industry" value={b.industry} showEmpty />
+          <RecordField label="Employees" value={b.employee_count} showEmpty />
+          <RecordField label="Revenue" value={b.annual_revenue} showEmpty />
+          <RecordField label="Status" value={(b.status || 'N/A').toUpperCase()} valueColor={b.status === 'active' ? '#4ade80' : undefined} />
+        </FieldGrid>
       </CollapsibleSection>
 
       <CollapsibleSection title="Contact & Address" icon={Phone} defaultOpen>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <div><span className="text-rmpg-500">Phone:</span> <span className="text-rmpg-200">{b.phone || '—'}</span></div>
-          <div><span className="text-rmpg-500">Email:</span> <span className="text-rmpg-200">{b.email || '—'}</span></div>
-          <div><span className="text-rmpg-500">Website:</span> <span className="text-rmpg-200">{b.website || '—'}</span></div>
-          <div className="col-span-2"><span className="text-rmpg-500">Address:</span> <span className="text-rmpg-200">{[b.address, b.city, b.state, b.zip].filter(Boolean).join(', ') || '—'}</span></div>
-        </div>
+        <FieldGrid cols={2}>
+          <RecordField label="Phone" value={b.phone} copyable showEmpty />
+          <RecordField label="Email" value={b.email} copyable showEmpty />
+          <RecordField label="Website" value={b.website} copyable showEmpty />
+          <RecordField label="Address" value={[b.address, b.city, b.state, b.zip].filter(Boolean).join(', ')} copyable showEmpty className="col-span-2" />
+        </FieldGrid>
       </CollapsibleSection>
 
       <CollapsibleSection title="Owner & Key Contact" icon={Users}>
-        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
-          <div><span className="text-rmpg-500">Owner:</span> <span className="text-rmpg-200">{b.owner_name || '—'}</span></div>
-          <div><span className="text-rmpg-500">Owner Phone:</span> <span className="text-rmpg-200">{b.owner_phone || '—'}</span></div>
-          <div><span className="text-rmpg-500">Contact:</span> <span className="text-rmpg-200">{b.contact_name || '—'}</span></div>
-          <div><span className="text-rmpg-500">Contact Phone:</span> <span className="text-rmpg-200">{b.contact_phone || '—'}</span></div>
-          <div className="col-span-2"><span className="text-rmpg-500">Contact Email:</span> <span className="text-rmpg-200">{b.contact_email || '—'}</span></div>
-        </div>
+        <FieldGrid cols={2}>
+          <RecordField label="Owner" value={b.owner_name} showEmpty />
+          <RecordField label="Owner Phone" value={b.owner_phone} copyable showEmpty />
+          <RecordField label="Contact" value={b.contact_name} showEmpty />
+          <RecordField label="Contact Phone" value={b.contact_phone} copyable showEmpty />
+          <RecordField label="Contact Email" value={b.contact_email} copyable showEmpty className="col-span-2" />
+        </FieldGrid>
       </CollapsibleSection>
 
       {b.notes && (
