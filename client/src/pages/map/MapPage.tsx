@@ -1821,7 +1821,6 @@ export default function MapPage() {
   // GPS Breadcrumb Trails (enhanced: color modes, arrows, road names, playback)
   // ============================================================
 
-  const breadcrumbArrowsRef = useRef<any[]>([]);
   const breadcrumbInfoRef = useRef<mapboxgl.Popup | null>(null);
   // Holds the latest fetched trails so the (singly-registered) dot click
   // handler can resolve a clicked feature back to its full point data
@@ -1839,6 +1838,13 @@ export default function MapPage() {
   // so the click-handler effect and fetchTrails agree on naming.
   const DOTS_SOURCE_ID = 'rmpg-breadcrumb-dots';
   const DOTS_LAYER_ID = 'rmpg-breadcrumb-dots';
+  // Heading arrows render as a GPU-drawn symbol layer (not per-point DOM
+  // markers). Hundreds of DOM markers forced Mapbox to rewrite a transform on
+  // every element each frame during pan/zoom, so the pins visibly lagged and
+  // "flew" across the map. A symbol layer draws them all in one WebGL pass.
+  const ARROWS_SOURCE_ID = 'rmpg-breadcrumb-arrows';
+  const ARROWS_LAYER_ID = 'rmpg-breadcrumb-arrows';
+  const ARROW_IMAGE_ID = 'rmpg-breadcrumb-arrow-icon';
 
   // Single-bind dot click handler. Resolves the clicked circle feature
   // back to its trail+point via breadcrumbTrailsRef, then renders the
@@ -1982,8 +1988,8 @@ export default function MapPage() {
     if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
     if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
     if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
-    breadcrumbArrowsRef.current.forEach((a) => a.remove());
-    breadcrumbArrowsRef.current = [];
+    if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
+    if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
     speedAlertMarkersRef.current.forEach((m) => m.remove());
     speedAlertMarkersRef.current = [];
     breadcrumbTrailsRef.current = [];
@@ -2015,8 +2021,6 @@ export default function MapPage() {
     let retryTimeout: ReturnType<typeof setTimeout>;
 
     const fetchTrails = async () => {
-      breadcrumbArrowsRef.current.forEach((a) => a.remove());
-      breadcrumbArrowsRef.current = [];
       speedAlertMarkersRef.current.forEach((m) => m.remove());
       speedAlertMarkersRef.current = [];
 
@@ -2029,6 +2033,8 @@ export default function MapPage() {
           breadcrumbTrailsRef.current = [];
           const existingDotSrc = map.getSource(DOTS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
           if (existingDotSrc) existingDotSrc.setData({ type: 'FeatureCollection', features: [] });
+          const existingArrowSrc = map.getSource(ARROWS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+          if (existingArrowSrc) existingArrowSrc.setData({ type: 'FeatureCollection', features: [] });
           return;
         }
         setPlaybackTrails(trails);
@@ -2036,6 +2042,7 @@ export default function MapPage() {
 
         const lineFeatures: any[] = [];
         const dotFeatures: any[] = [];
+        const arrowFeatures: any[] = [];
 
         trails.forEach((trail, idx) => {
           if (trail.points.length === 0) return;
@@ -2073,30 +2080,18 @@ export default function MapPage() {
             });
           }
 
+          // Heading arrows → GeoJSON features (drawn by the symbol layer below).
+          // Min opacity raised to 0.45 so older arrows still read as "solid".
           trail.points.forEach((pt, ptIdx) => {
             if (ptIdx % 8 !== 4 || pt.heading == null) return;
+            if (!isFinite(pt.lng) || !isFinite(pt.lat) || !isFinite(pt.heading)) return;
             const freshness = (ptIdx + 1) / trail.points.length;
             const arrowColor = breadcrumbColorMode === 'speed' ? speedToColor(pt.speed) : breadcrumbColorMode === 'status' ? statusToColor(pt.status) : breadcrumbColorMode === 'accel' ? accelToColor(null) : unitColor;
-            const arrowOpacity = 0.3 + freshness * 0.5;
-
-            const arrowEl = document.createElement('div');
-            arrowEl.style.cssText = 'width:0;height:0;border-left:5px solid transparent;border-right:5px solid transparent;border-bottom:12px solid transparent;line-height:0;';
-            const arrowSvg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-            arrowSvg.setAttribute('width', '14');
-            arrowSvg.setAttribute('height', '14');
-            arrowSvg.setAttribute('viewBox', '0 0 24 24');
-            arrowSvg.style.cssText = `transform:rotate(${pt.heading}deg);opacity:${arrowOpacity};overflow:visible;`;
-            const poly = document.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-            poly.setAttribute('points', '12,2 22,22 2,22');
-            poly.setAttribute('fill', arrowColor);
-            poly.setAttribute('stroke', '#fff');
-            poly.setAttribute('stroke-width', '0.5');
-            arrowSvg.appendChild(poly);
-            arrowEl.appendChild(arrowSvg);
-
-            if (!isFinite(pt.lng) || !isFinite(pt.lat)) return;
-            const arrow = new mapboxgl.Marker({ element: arrowEl }).setLngLat([pt.lng, pt.lat]).addTo(map);
-            breadcrumbArrowsRef.current.push(arrow);
+            arrowFeatures.push({
+              type: 'Feature',
+              geometry: { type: 'Point', coordinates: [pt.lng, pt.lat] },
+              properties: { heading: pt.heading, color: arrowColor, opacity: 0.45 + freshness * 0.45 },
+            });
           });
 
           // Build dot features for the GeoJSON circle layer. Per-point click
@@ -2177,6 +2172,55 @@ export default function MapPage() {
           });
         }
 
+        // Heading arrows symbol layer. setData on refresh; first run registers
+        // the SDF arrow icon (so `icon-color` tints per feature) + the layer.
+        const arrowsData: GeoJSON.FeatureCollection = { type: 'FeatureCollection', features: arrowFeatures };
+        const existingArrowSrc = map.getSource(ARROWS_SOURCE_ID) as mapboxgl.GeoJSONSource | undefined;
+        if (existingArrowSrc) {
+          existingArrowSrc.setData(arrowsData);
+        } else {
+          whenStyleReady(map, () => {
+            if (!map.hasImage(ARROW_IMAGE_ID)) {
+              // A white triangle pointing up (north). Registered as SDF so the
+              // layer can tint each arrow by speed/status/accel color.
+              const S = 24;
+              const cv = document.createElement('canvas');
+              cv.width = S; cv.height = S;
+              const ctx = cv.getContext('2d');
+              if (ctx) {
+                ctx.fillStyle = '#ffffff';
+                ctx.beginPath();
+                ctx.moveTo(S / 2, 2);
+                ctx.lineTo(S - 3, S - 4);
+                ctx.lineTo(3, S - 4);
+                ctx.closePath();
+                ctx.fill();
+                map.addImage(ARROW_IMAGE_ID, ctx.getImageData(0, 0, S, S), { sdf: true });
+              }
+            }
+            if (!map.getSource(ARROWS_SOURCE_ID)) map.addSource(ARROWS_SOURCE_ID, { type: 'geojson', data: arrowsData });
+            if (!map.getLayer(ARROWS_LAYER_ID)) {
+              map.addLayer({
+                id: ARROWS_LAYER_ID,
+                type: 'symbol',
+                source: ARROWS_SOURCE_ID,
+                layout: {
+                  'icon-image': ARROW_IMAGE_ID,
+                  'icon-size': 0.55,
+                  'icon-rotate': ['get', 'heading'],
+                  'icon-rotation-alignment': 'map',
+                  'icon-allow-overlap': true,
+                  'icon-ignore-placement': true,
+                },
+                paint: {
+                  'icon-color': ['get', 'color'],
+                  'icon-opacity': ['get', 'opacity'],
+                },
+              });
+            }
+          });
+        }
+
         // Speed alert triangle markers (>= 80 mph)
         speedAlertMarkersRef.current.forEach((m) => m.remove());
         speedAlertMarkersRef.current = [];
@@ -2207,9 +2251,9 @@ export default function MapPage() {
       if (map.getSource('rmpg-breadcrumb-lines')) map.removeSource('rmpg-breadcrumb-lines');
       if (map.getLayer(DOTS_LAYER_ID)) map.removeLayer(DOTS_LAYER_ID);
       if (map.getSource(DOTS_SOURCE_ID)) map.removeSource(DOTS_SOURCE_ID);
+      if (map.getLayer(ARROWS_LAYER_ID)) map.removeLayer(ARROWS_LAYER_ID);
+      if (map.getSource(ARROWS_SOURCE_ID)) map.removeSource(ARROWS_SOURCE_ID);
       breadcrumbTrailsRef.current = [];
-      breadcrumbArrowsRef.current.forEach((a) => a.remove());
-      breadcrumbArrowsRef.current = [];
       speedAlertMarkersRef.current.forEach((m) => m.remove());
       speedAlertMarkersRef.current = [];
     };
