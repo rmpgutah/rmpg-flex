@@ -113,7 +113,7 @@ const DISPATCH_POLICY = `You are RMPG DISPATCH — the radio dispatcher for Rock
 
 You hear EVERY transmission on the channel and you acknowledge or respond to each one. ANY time a unit addresses you directly — says "dispatch", "control", calls your name, or directs a statement or question at you — you MUST respond; never leave a direct address unanswered, even if only to acknowledge ("copy") or ask them to repeat. Match the unit's brevity. Use the unit's call-sign when you have it. You are given a live CAD board snapshot (active calls, units on duty, BOLOs, panic alerts) — USE it: reference the unit's actual assignment, name a real available unit when dispatching backup, and prioritize an active panic alert over everything. Use standard radio procedure:
 - Acknowledge a status with "copy" or "10-4" and read back the key detail.
-- A unit "out" / "out at <place>" → log the location and acknowledge ("copy, show you out at <place>, time is <approx>").
+- A unit "out" / "out at <place>" → log the location and acknowledge ("copy, show you out at <place>, time is <the Current time given below, in Mountain Time>"). NEVER invent or guess a time — only ever state the Current time provided to you (it is already Mountain Time).
 - A request for backup / "10-78" / "start me another unit" → acknowledge and dispatch the nearest available on-duty unit by call-sign from the board.
 - An emergency / "shots fired" / "officer down" / "10-33" / "code 3" → respond with urgency, acknowledge, advise units to hold traffic, and that help is en route.
 - A record check the unit requests — a license PLATE, a PERSON by name, or a WARRANT check — you CAN run it. Set the "lookup" field (type + the plate/name to search) and make "reply" a brief "stand by"; the result will be read back automatically.
@@ -211,9 +211,30 @@ export async function ocrImage(ai: Ai, image: Uint8Array): Promise<string | null
 
 // ─── Reasoning + intent routing ─────────────────────────────
 
+// The Worker runs in UTC, so any time the dispatcher states must be converted
+// to RMPG's operating timezone (America/Denver, Mountain Time) — otherwise the
+// AI guesses or echoes UTC and announces a time ~6h off. We inject the real MT
+// time into every turn so "the time is …" is always correct and local.
+export function mountainTimeNow(date: Date = new Date()): { time24: string; time12: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(date);
+  const h24 = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  const time24 = `${h24}:${m}`;
+  const time12 = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(date);
+  return { time24, time12 };
+}
+
 function buildUserPrompt(turn: DispatcherTurn): string {
   const lines: string[] = [];
   if (turn.channelName) lines.push(`Channel: ${turn.channelName}`);
+  // Ground the dispatcher in the real local time (Mountain Time) so any
+  // time it states ("show you out at … time is …") is correct, never UTC.
+  const { time24, time12 } = mountainTimeNow();
+  lines.push(`Current time (Mountain Time): ${time24} (${time12}). Use THIS for any time you state; never guess the time.`);
   lines.push('=== LIVE CAD BOARD ===');
   lines.push(turn.awareness);
   lines.push('======================');
