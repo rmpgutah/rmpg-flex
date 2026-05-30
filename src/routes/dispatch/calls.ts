@@ -518,20 +518,26 @@ calls.get('/:id', async (c) => {
     let visit_history: Record<string, unknown>[] | undefined;
     if (['pso_client_request', 'process_service'].includes(String(call.incident_type))) {
       const rootId = Number((ext?.parent_call_id as number | null) ?? call.id);
-      const currentAttempt = Number((ext?.pso_attempt_number as number | null) ?? (call.pso_attempt_number as number | null) ?? 1);
+      // "Prior visits" = every other call in the re-dispatch chain that was
+      // created BEFORE this one. We key off c.id (monotonic — a re-dispatch
+      // always mints a higher id) rather than pso_attempt_number arithmetic:
+      // a NULL/duplicated attempt number used to make `< currentAttempt` drop
+      // rows and silently blank the whole section. visit_number falls back to
+      // a sequential ROW_NUMBER so labels stay 1..N even when the stored
+      // attempt numbers are missing.
       visit_history = await query<Record<string, unknown>>(db, `
         SELECT c.id,
-          COALESCE(e.pso_attempt_number, c.pso_attempt_number, 1) AS visit_number,
+          COALESCE(e.pso_attempt_number, c.pso_attempt_number,
+                   ROW_NUMBER() OVER (ORDER BY c.id ASC)) AS visit_number,
           c.status, c.disposition, c.unit_call_signs AS assigned_units,
           c.dispatched_at, c.enroute_at, c.onscene_at, c.cleared_at, c.closed_at,
           c.responding_vehicle_id, c.starting_mileage, c.ending_mileage
         FROM calls_for_service c
         LEFT JOIN calls_for_service_ext e ON e.id = c.id
         WHERE (c.id = ? OR e.parent_call_id = ?)
-          AND c.id != ?
-          AND COALESCE(e.pso_attempt_number, c.pso_attempt_number, 1) < ?
-        ORDER BY visit_number ASC, c.id ASC
-      `, rootId, rootId, Number(id), currentAttempt);
+          AND c.id < ?
+        ORDER BY c.id ASC
+      `, rootId, rootId, Number(id));
     }
 
     const joined = await queryFirst<Record<string, unknown>>(db, `

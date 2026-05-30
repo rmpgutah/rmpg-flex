@@ -2010,57 +2010,58 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
 
     // Spreadsheet-style grid (one row per prior visit) routed through the
-    // shared addTableWithShading helper — same look as LINKED PERSONS, with
-    // zebra rows, column dividers, and an automatic header re-draw +
-    // "VISIT HISTORY -- CONTINUED" sub-bar on page breaks. Replaces the old
-    // hand-drawn multi-line text block (cramped spacing + the full date
-    // repeated on every phase). A dedicated DATE column lets each phase show
-    // time-only (HH:MM:SS), so the date prints once per visit.
-    const vColFr = [0.08, 0.11, 0.085, 0.085, 0.085, 0.085, 0.085, 0.13, 0.165];
+    // shared addTableWithShading helper — zebra rows, column dividers, and an
+    // automatic header re-draw + "VISIT HISTORY -- CONTINUED" sub-bar on page
+    // breaks. Every field is broken out explicitly: the timeline phases stack
+    // as their own lines in the TIMELINE cell (wordWrapText honors '\n'), and
+    // Vehicle / Start / End / Total / Units each get their own column rather
+    // than being folded into Miles or Disposition.
+    const vColFr = [0.07, 0.10, 0.22, 0.09, 0.09, 0.09, 0.07, 0.08, 0.19];
     const vColPos: number[] = [];
     { let cx = lx; for (const fr of vColFr) { vColPos.push(cx); cx += fr * ffw; } }
-    const vHeaders = ['VISIT', 'DATE', 'DISP', 'EN RT', 'ON SC', 'CLR', 'CLS', 'MILES', 'DISPOSITION']
+    const vHeaders = ['VISIT', 'DATE', 'TIMELINE', 'VEHICLE', 'START', 'END', 'TOTAL', 'UNITS', 'DISPOSITION']
       .map((label, i) => ({ label, x: vColPos[i] }));
 
     const vRows = data.visit_history.map((visit) => {
-      // Status rides in the VISIT cell ("#1 ARCHIVED") — word-wraps to its own
-      // line in the narrow column, keeping it without burning a full column.
-      const visitCell = `#${visit.visit_number}${visit.status ? ' ' + String(visit.status).toUpperCase() : ''}`;
+      // Visit number + status on their own lines (\n is honored by the cell
+      // wrapper) so neither is dropped.
+      const visitCell = `#${visit.visit_number}${visit.status ? '\n' + String(visit.status).toUpperCase() : ''}`;
 
-      // MILES: total, with the odometer range folded in when both ends are
-      // known (word-wraps to a second line within the cell).
-      let milesCell = '—';
+      // TIMELINE: one labeled line per phase that actually has a timestamp.
+      const phases: string[] = [];
+      if (visit.dispatched_at) phases.push(`Disp ${fmtClock(visit.dispatched_at)}`);
+      if (visit.enroute_at)    phases.push(`EnRt ${fmtClock(visit.enroute_at)}`);
+      if (visit.onscene_at)    phases.push(`OnSc ${fmtClock(visit.onscene_at)}`);
+      if (visit.cleared_at)    phases.push(`Clr  ${fmtClock(visit.cleared_at)}`);
+      if (visit.closed_at)     phases.push(`Cls  ${fmtClock(visit.closed_at)}`);
+      const timelineCell = phases.length ? phases.join('\n') : '—';
+
+      // Mileage broken out into Start / End / Total columns.
       const sMi = visit.starting_mileage, eMi = visit.ending_mileage;
-      if (sMi != null && eMi != null) {
-        milesCell = `${(eMi - sMi).toFixed(1)} (${sMi.toLocaleString()}-${eMi.toLocaleString()})`;
-      } else if (eMi != null) {
-        milesCell = `End ${eMi.toLocaleString()}`;
-      } else if (sMi != null) {
-        milesCell = `Start ${sMi.toLocaleString()}`;
-      }
+      const startCell = sMi != null ? sMi.toLocaleString() : '—';
+      const endCell = eMi != null ? eMi.toLocaleString() : '—';
+      const totalCell = (sMi != null && eMi != null) ? (eMi - sMi).toFixed(1) : '—';
 
-      // DISPOSITION cell carries responding units / vehicle when present.
+      // Units in their own column (one call sign per line); Vehicle its own column.
       let unitsList: string[] = [];
       try { unitsList = JSON.parse(visit.assigned_units || '[]'); } catch { /* ignore */ }
-      const dispExtras: string[] = [];
-      if (unitsList.length > 0) dispExtras.push(unitsList.join(', '));
-      if (visit.responding_vehicle_id) dispExtras.push(`Veh ${visit.responding_vehicle_id}`);
-      const dispCell = [visit.disposition || '—', ...dispExtras].join(' / ');
+      const unitsCell = unitsList.length > 0 ? unitsList.join('\n') : '—';
+      const vehicleCell = visit.responding_vehicle_id ? String(visit.responding_vehicle_id) : '—';
 
-      // Single DATE column = the visit's dispatched date (falls back to the
-      // first available phase / record timestamp).
+      // DATE column = the visit's dispatched date (falls back to the first
+      // available phase / record timestamp).
       const visitDate = fmtDateOnly(visit.dispatched_at || visit.onscene_at || visit.cleared_at || visit.created_at);
 
       return [
         visitCell,
         visitDate,
-        fmtClock(visit.dispatched_at),
-        fmtClock(visit.enroute_at),
-        fmtClock(visit.onscene_at),
-        fmtClock(visit.cleared_at),
-        fmtClock(visit.closed_at),
-        milesCell,
-        dispCell,
+        timelineCell,
+        vehicleCell,
+        startCell,
+        endCell,
+        totalCell,
+        unitsCell,
+        visit.disposition || '—',
       ];
     });
 
