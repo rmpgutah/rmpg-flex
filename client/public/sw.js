@@ -73,7 +73,11 @@
 //       as unit OBJECTS, but the code did assigned_units.includes(String(id))
 //       (always false) so the unit marker, route line, and turn-by-turn
 //       directions never appeared. Normalize to an id Set.
-const CACHE_NAME = 'rmpg-flex-v626';
+// v627: police-format geography output on the call detail panel — render the
+//       Spillman sector code ("SL1") instead of the raw numeric sector_id,
+//       prefix the beat code to its name, and add the Area line. The codes
+//       were already on the wire from /districts; the client had discarded them.
+const CACHE_NAME = 'rmpg-flex-v627';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

@@ -257,7 +257,7 @@ export default function DispatchPage() {
   const { subscribe } = useWebSocket();
   const isMobile = useIsMobile();
   const { prefs: userPrefs, reload: reloadPrefs } = useUserPreferences();
-  const { districts, sections, sectionLabels, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
+  const { districts, sections, sectionLabels, getSectionCode, getArea, zoneLabels, zonesForSection, beatsForZone, getBeatLabel } = useDistrictOptions();
   const { resolve: resolveAddress } = useAddressAutofill();
   const [calls, setCalls] = useState<CallForService[]>([]);
   const recentlyCreatedIdsRef = useRef<Set<string | number>>(new Set()); // synchronous dedup for POST + WS race
@@ -4221,7 +4221,11 @@ export default function DispatchPage() {
                                 setEditData(prev => ({ ...prev, sector_id: val, zone_id: '', beat_id: '', dispatch_code: '' }));
                               }}>
                                 <option value="">— Select —</option>
-                                {sections.map(s => <option key={s} value={s}>{sectionLabels.get(s) || s}</option>)}
+                                {sections.map(s => {
+                                  const code = getSectionCode(s);
+                                  const name = sectionLabels.get(s) || s;
+                                  return <option key={s} value={s}>{code ? `${code} — ${name}` : name}</option>;
+                                })}
                               </select>
                             </div>
                             <div>
@@ -4266,9 +4270,26 @@ export default function DispatchPage() {
                             {selectedCall.dispatch_code}
                           </span>
                         )}
-                        {selectedCall.sector_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {selectedCall.sector_id} — {sectionLabels.get(selectedCall.sector_id) || ''}</span>}
-                        {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {selectedCall.zone_id} — {zoneLabels.get(selectedCall.zone_id) || ''}</span>}
-                        {selectedCall.beat_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id)}</span>}
+                        {selectedCall.sector_id && (() => {
+                          const area = getArea(selectedCall.sector_id);
+                          return area ? <span className="text-rmpg-200"><span className="text-rmpg-400">Area:</span> {[area.code, area.name].filter(Boolean).join(' — ')}</span> : null;
+                        })()}
+                        {selectedCall.sector_id && (() => {
+                          // Police format: show the Spillman sector code ("SL1"), not the
+                          // numeric dispatch_sectors.id row key. Fall back to the id only
+                          // if the districts lookup hasn't loaded / has no code.
+                          const code = getSectionCode(selectedCall.sector_id) || selectedCall.sector_id;
+                          const name = sectionLabels.get(selectedCall.sector_id) || '';
+                          return <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
+                        })()}
+                        {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {[selectedCall.zone_id, zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
+                        {selectedCall.beat_id && (() => {
+                          // Prefix the beat code (e.g. "A1") to its name; getBeatLabel
+                          // falls back to the code itself, so avoid an "A1 — A1" echo.
+                          const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
+                          const text = label && label !== selectedCall.beat_id ? `${selectedCall.beat_id} — ${label}` : selectedCall.beat_id;
+                          return <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {text}</span>;
+                        })()}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
                           <span className="text-rmpg-400 font-mono text-[9px] tabular-nums select-all">
                             GPS: {Number(selectedCall.latitude).toFixed(5)}, {Number(selectedCall.longitude).toFixed(5)}
