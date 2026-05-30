@@ -37,7 +37,16 @@ const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 // NOTE: @cf/openai/gpt-4o-transcribe is NOT available on this account (5007).
 const TRANSCRIBE_FALLBACK_MODEL = '@cf/openai/whisper';
 const LLM_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
-const TTS_MODEL = '@cf/myshell-ai/melotts';
+// Voice: Deepgram Aura-2 is a context-aware, genuinely human-sounding TTS
+// (natural pacing, expressiveness, fillers) — a large step up from melotts.
+// Verified live: returns raw MP3 (audio/mpeg) via returnRawResponse. melotts
+// is kept as a fallback so the dispatcher is never voiceless. Pricing for the
+// dispatcher's short replies is negligible (~300 chars/reply).
+const TTS_PRIMARY_MODEL = '@cf/deepgram/aura-2-en';
+const TTS_FALLBACK_MODEL = '@cf/myshell-ai/melotts';
+// Deepgram Aura speaker. Calm, clear, professional female dispatcher voice.
+// Other options: orion/zeus/perseus (male), athena/luna/hera (female).
+const DISPATCH_VOICE = 'asteria';
 
 // Radio brevity — keep replies tight. melotts is billed per audio-minute
 // and real dispatchers don't monologue. ~60 words ≈ 20s of speech.
@@ -76,7 +85,7 @@ export interface DispatcherDecision {
 // runs the radio. Keep it tight — every extra rule is tokens per reply.
 const DISPATCH_POLICY = `You are RMPG DISPATCH — the radio dispatcher for Rocky Mountain Protective Group, a private security / law-enforcement agency in Salt Lake City, Utah. You are calm, terse, and professional, exactly like a Spillman/Motorola CAD dispatcher. You speak ONLY what would go out over a P25 radio — never narrate, never explain yourself.
 
-You hear EVERY transmission on the channel and you acknowledge or respond to each one. Match the unit's brevity. Use the unit's call-sign when you have it. You are given a live CAD board snapshot (active calls, units on duty, BOLOs, panic alerts) — USE it: reference the unit's actual assignment, name a real available unit when dispatching backup, and prioritize an active panic alert over everything. Use standard radio procedure:
+You hear EVERY transmission on the channel and you acknowledge or respond to each one. ANY time a unit addresses you directly — says "dispatch", "control", calls your name, or directs a statement or question at you — you MUST respond; never leave a direct address unanswered, even if only to acknowledge ("copy") or ask them to repeat. Match the unit's brevity. Use the unit's call-sign when you have it. You are given a live CAD board snapshot (active calls, units on duty, BOLOs, panic alerts) — USE it: reference the unit's actual assignment, name a real available unit when dispatching backup, and prioritize an active panic alert over everything. Use standard radio procedure:
 - Acknowledge a status with "copy" or "10-4" and read back the key detail.
 - A unit "out" / "out at <place>" → log the location and acknowledge ("copy, show you out at <place>, time is <approx>").
 - A request for backup / "10-78" / "start me another unit" → acknowledge and dispatch the nearest available on-duty unit by call-sign from the board.
@@ -297,21 +306,63 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
+// ── Pronunciation: make text read like a human dispatcher ───
+// TTS reads raw glyphs literally ("10-4" → "ten dash four", "Blvd" →
+// "blvd"). We rewrite the radio shorthand into spoken English so the voice
+// pronounces it the way a real dispatcher would say it out loud.
+const STREET_ABBR: Record<string, string> = {
+  st: 'Street', ave: 'Avenue', blvd: 'Boulevard', rd: 'Road', dr: 'Drive',
+  ln: 'Lane', ct: 'Court', pkwy: 'Parkway', hwy: 'Highway', ste: 'Suite',
+};
+
+export function humanizeForSpeech(text: string): string {
+  let s = text;
+  // 10-codes → "ten ...": "10-4" → "ten 4" (TTS then says "ten four"),
+  // "10-78" → "ten 78" ("ten seventy-eight"). Avoids "ten dash four".
+  s = s.replace(/\b10-(\d{1,3})\b/g, 'ten $1');
+  // "code-4" / "code4" → "code 4" so it isn't run together.
+  s = s.replace(/\bcode[-\s]?(\d{1,2})\b/gi, 'code $1');
+  // Expand street-type abbreviations (word-boundary, optional trailing dot).
+  s = s.replace(/\b([A-Za-z]{2,5})\.?\b/g, (m, w) => {
+    const full = STREET_ABBR[String(w).toLowerCase()];
+    return full ? full : m;
+  });
+  return s;
+}
+
 /**
- * Synthesize the dispatcher's reply with melotts. Returns raw audio bytes
- * (melotts emits WAV; the client's decodeAudioData sniffs the container, so
- * storing them at the existing radio-audio/<id>.webm key replays fine
- * through the haze chain). Returns null on failure.
+ * Synthesize the dispatcher's reply as natural human speech. Primary voice is
+ * Deepgram Aura-2 (returns raw MP3 via returnRawResponse); melotts is the
+ * fallback so the dispatcher is never voiceless. The client's decodeAudioData
+ * sniffs the container, so MP3/WAV bytes stored at radio-audio/<id>.webm both
+ * replay fine through the haze chain. Returns null only if both fail.
  */
 export async function synthesizeDispatcherVoice(ai: Ai, text: string): Promise<Uint8Array | null> {
+  const speech = humanizeForSpeech(text);
+
+  // Primary — Deepgram Aura-2 (raw MP3 Response).
   try {
-    const res = (await ai.run(TTS_MODEL, { prompt: text, lang: 'en' } as never)) as { audio?: string };
+    const resp = (await ai.run(
+      TTS_PRIMARY_MODEL,
+      { text: speech, speaker: DISPATCH_VOICE } as never,
+      { returnRawResponse: true } as never,
+    )) as unknown as Response;
+    const bytes = new Uint8Array(await resp.arrayBuffer());
+    if (bytes.byteLength > 0) return bytes;
+    console.warn('[aiDispatcher] aura returned empty — falling back to melotts');
+  } catch (err) {
+    console.warn('[aiDispatcher] aura TTS failed, falling back to melotts:', (err as Error)?.message);
+  }
+
+  // Fallback — melotts ({audio} base64).
+  try {
+    const res = (await ai.run(TTS_FALLBACK_MODEL, { prompt: speech, lang: 'en' } as never)) as { audio?: string };
     const b64 = res?.audio;
     if (!b64) return null;
     const bytes = base64ToBytes(b64);
     return bytes.byteLength > 0 ? bytes : null;
   } catch (err) {
-    console.error('[aiDispatcher] TTS failed:', (err as Error)?.message);
+    console.error('[aiDispatcher] TTS failed (both voices):', (err as Error)?.message);
     return null;
   }
 }
@@ -320,4 +371,39 @@ export async function synthesizeDispatcherVoice(ai: Ai, text: string): Promise<U
 export function estimateSpeechSeconds(text: string): number {
   const words = text.trim().split(/\s+/).filter(Boolean).length;
   return Math.max(1, Math.round(words * 0.42));
+}
+
+// ─── "Always answer a direct address" guarantee ─────────────
+// A unit talking TO dispatch must never be met with silence, even if the
+// LLM call fails or returns nothing. We detect a direct address from the
+// transcript and, as a last resort, speak a deterministic acknowledgment.
+
+// Spoken forms of "dispatch": the word itself, common aliases, and the
+// fillers units use to open a call to dispatch ("control", "comms", "base").
+const DISPATCH_ADDRESS_RE = /\b(dispatch|dispatcher|control|comm?s|base|radio)\b/i;
+
+/**
+ * True when the transmission is plausibly directed at dispatch — either it
+ * names dispatch/control, or it's a question (units rarely ask the open air).
+ * Deliberately liberal: a false positive just means an extra "copy", while a
+ * false negative means ignoring an officer who called us. We err toward
+ * answering.
+ */
+export function isAddressedToDispatch(transcript: string): boolean {
+  const t = (transcript || '').trim();
+  if (!t) return false;
+  if (DISPATCH_ADDRESS_RE.test(t)) return true;
+  // A direct question ("what's my next call?", "do you copy?") is an address.
+  if (/\?\s*$/.test(t) || /^\s*(what|where|when|who|can you|do you|is there|are there|any)\b/i.test(t)) return true;
+  return false;
+}
+
+/**
+ * Deterministic last-resort reply for a direct address the model couldn't
+ * answer — guarantees dispatch is never silent when called. Acknowledges
+ * receipt and asks for a repeat rather than pretending to have an answer.
+ */
+export function fallbackAcknowledgement(callSign: string | null): string {
+  const who = callSign && callSign.trim() ? callSign.trim() : 'Unit calling';
+  return `${who}, dispatch copies — go ahead with your traffic.`;
 }

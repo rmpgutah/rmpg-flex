@@ -36,6 +36,8 @@ import {
   phraseLookupReply,
   synthesizeDispatcherVoice,
   estimateSpeechSeconds,
+  isAddressedToDispatch,
+  fallbackAcknowledgement,
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
@@ -389,17 +391,27 @@ export class VoiceHubDO {
 
     // 3. Decide the reply (intent routing + spoken text + optional lookup).
     const decision = await decideDispatcherReply(this.env.AI, turn);
-    if (!decision || !decision.reply) return;
+    const addressed = isAddressedToDispatch(transcript);
 
     // 3a. If the unit asked for a record check, run it for real and let the
     // dispatcher read the result back instead of the holding "stand by".
-    let replyText = decision.reply;
-    if (decision.lookup) {
+    let replyText = decision?.reply ?? '';
+    if (decision?.lookup) {
       const result = await runLookup(db, decision.lookup).catch(() => null);
       if (result) replyText = await phraseLookupReply(this.env.AI, turn, decision.lookup, result);
     }
 
-    // 4. Synthesize the dispatcher's voice (melotts MP3 bytes).
+    // 3b. GUARANTEE: a unit who addressed dispatch directly is never met with
+    // silence. If the model produced nothing usable, fall back to a
+    // deterministic acknowledgment. Undirected chatter the model declined to
+    // answer stays silent (no need to step on unit-to-unit traffic).
+    const intent = decision?.intent ?? (addressed ? 'forced_ack' : 'chatter');
+    if (!replyText.trim()) {
+      if (!addressed) return;
+      replyText = fallbackAcknowledgement(speaker?.unit_label ?? null);
+    }
+
+    // 4. Synthesize the dispatcher's voice.
     const audioBytes = await synthesizeDispatcherVoice(this.env.AI, replyText);
     if (!audioBytes) return;
 
@@ -411,7 +423,7 @@ export class VoiceHubDO {
       db,
       `INSERT INTO radio_transmissions (channel_id, user_id, unit_label, transmitted_at, duration_seconds, transcript, tags)
        VALUES (?, NULL, ?, datetime('now'), ?, ?, ?)`,
-      this.refId, DISPATCH_CALLSIGN, durationSec, replyText, `ai:${decision.intent}`,
+      this.refId, DISPATCH_CALLSIGN, durationSec, replyText, `ai:${intent}`,
     );
     const dispId = Number(res.meta.last_row_id);
     await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {
@@ -437,7 +449,7 @@ export class VoiceHubDO {
       type: 'dispatch_speak',
       transmission: row,
       audio: bytesToBase64(audioBytes),
-      intent: decision.intent,
+      intent,
     });
   }
 }
