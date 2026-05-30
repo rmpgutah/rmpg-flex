@@ -101,7 +101,9 @@
 // v636: call timeline now shows the elapsed delta between each populated stage
 //       (Created→Dispatched→Enroute→On Scene→Cleared→Closed) — the full
 //       response-time breakdown, not just dispatched→onscene.
-const CACHE_NAME = 'rmpg-flex-v636';
+// v637: hint district search in the queue search placeholder; show the card
+//       geography line even when only a section is assigned (no zone/beat yet).
+const CACHE_NAME = 'rmpg-flex-v637';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

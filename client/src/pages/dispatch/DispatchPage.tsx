@@ -2881,7 +2881,7 @@ export default function DispatchPage() {
             <Search className="absolute left-2 w-3 h-3 text-[#545454] pointer-events-none" />
             <input
               type="text"
-              placeholder="Search calls..."
+              placeholder="Search calls, address, district (SL1, Herriman)…"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="input-dark text-xs w-full pl-6 pr-6"
