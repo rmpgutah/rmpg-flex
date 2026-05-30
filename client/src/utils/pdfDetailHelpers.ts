@@ -21,6 +21,7 @@ import {
   getContentWidth,
 } from './pdfTokens';
 import { sanitizePdfText } from './pdfGenerator';
+import type { BadgeTone, PostureLevel } from '../components/records/recordVisuals';
 
 // ── Quick-reference banner ──────────────────────────────
 //
@@ -245,6 +246,166 @@ export function addSeverityMeter(
   doc.setTextColor(...COLOR.TEXT_PRIMARY);
   doc.setFont(PDF_VALUE_FONT, 'normal');
   return barY + barH + SPACING.SM;
+}
+
+// ── Threat-posture band (print mirror of the screen RecordHero) ──
+//
+// #794 introduced a dynamic threat-posture layer (recordVisuals.ts:
+// recordPosture()) that rolls a record's many flags into one dominant
+// critical/high/caution/clear treatment, rendered on-screen as the
+// RecordHero threat bar. This band is the PRINT equivalent: it takes the
+// SAME posture object so the paper report and the live panel can never
+// disagree on how loud a record reads. Only the colors differ — screen
+// glows are translucent rgba (built for the pure-black CAD surface) and
+// wash out on white paper, so each tone maps to a saturated, ink-safe RGB.
+
+/** Tone → print-safe RGB. Saturated equivalents of the BADGE_TONES screen
+ *  palette, tuned to read against white paper (the screen rgba glows are
+ *  far too light to print). Keep the hue families aligned with
+ *  recordVisuals.BADGE_TONES so screen↔print stay visually coherent. */
+export const POSTURE_PRINT_RGB: Record<BadgeTone, [number, number, number]> = {
+  red:    [176, 28, 28],   // critical — armed / wanted / officer-safety
+  orange: [196, 104, 16],  // high — felony / supervision / pursuit
+  amber:  [183, 121, 12],  // caution — generic flag
+  gold:   [150, 110, 16],  // notable-but-mild
+  purple: [122, 70, 180],  // behavioral / mental-health
+  pink:   [188, 50, 120],  // medical / self-harm
+  blue:   [96, 104, 118],  // informational (neutral per zero-blue rule)
+  teal:   [22, 130, 120],  // status-good-but-watch
+  green:  [42, 120, 60],   // cleared / verified / positive
+  gray:   [120, 120, 120], // neutral default
+};
+
+export interface ThreatPostureBandConfig {
+  level: PostureLevel;
+  tone: BadgeTone;
+  /** Big posture label — OFFICER SAFETY / HIGH RISK / CAUTION / NO ACTIVE ALERTS. */
+  label: string;
+  /** Short context line beneath the label (e.g. "PRI P1 - DOMESTIC VIOLENCE"). */
+  context?: string;
+  /** Contributing flag labels rendered as small outlined chips on the right. */
+  flags?: string[];
+}
+
+/**
+ * Draw the posture band: a tinted full-width strip with a colored left
+ * accent, the dominant posture label in tone color, an optional context
+ * line, and right-aligned chips for the contributing flags. Mirrors the
+ * RecordHero threat bar so a printed Call report carries the same
+ * at-a-glance danger read as the on-screen record panel.
+ *
+ * Always renders (callers decide whether a 'clear' posture is worth the
+ * vertical space). Returns the new Y.
+ */
+export function drawThreatPostureBand(
+  doc: jsPDF,
+  cfg: ThreatPostureBandConfig,
+  startY: number,
+): number {
+  const margin = LAYOUT.PAGE_MARGIN;
+  const cw = getContentWidth(doc);
+  const rgb = POSTURE_PRINT_RGB[cfg.tone] ?? POSTURE_PRINT_RGB.gray;
+  const bandH = 8;
+  const accentW = BORDER.ACCENT_SECTION;
+
+  // Severity-adaptive treatment. critical/high get a SOLID loud band with
+  // white text — this is the "do not miss" register that replaces the old
+  // standalone red CAUTION strip. caution/clear get a faint tonal wash so the
+  // form isn't a christmas tree for low-severity calls (the tactical-CAD
+  // theme prizes restraint — one loud signal beats ten medium ones).
+  const solid = cfg.level === 'critical' || cfg.level === 'high';
+
+  if (solid) {
+    doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+    doc.rect(margin, startY, cw, bandH, 'F');
+  } else {
+    const tint: [number, number, number] = [
+      Math.round(rgb[0] * 0.12 + 255 * 0.88),
+      Math.round(rgb[1] * 0.12 + 255 * 0.88),
+      Math.round(rgb[2] * 0.12 + 255 * 0.88),
+    ];
+    doc.setFillColor(tint[0], tint[1], tint[2]);
+    doc.rect(margin, startY, cw, bandH, 'F');
+    doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+    doc.rect(margin, startY, accentW, bandH, 'F');
+  }
+  doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+  doc.setLineWidth(0.3);
+  doc.rect(margin, startY, cw, bandH);
+
+  // Text colors flip for the solid treatment.
+  const miniColor: readonly [number, number, number] = solid ? [235, 225, 225] : COLOR.TEXT_TERTIARY;
+  const labelColor: readonly [number, number, number] = solid ? COLOR.TEXT_INVERTED : rgb;
+  const ctxColor: readonly [number, number, number] = solid ? [240, 235, 235] : COLOR.TEXT_SECONDARY;
+
+  // ── Left block: mini-label + big posture word + context line ──
+  const tx = margin + accentW + 2.5;
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(5.5);
+  doc.setTextColor(miniColor[0], miniColor[1], miniColor[2]);
+  doc.text('THREAT POSTURE', tx, startY + 2.6);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(11);
+  doc.setTextColor(labelColor[0], labelColor[1], labelColor[2]);
+  const labelText = sanitizePdfText(cfg.label || '');
+  doc.text(labelText, tx, startY + 6.4);
+  const labelW = doc.getTextWidth(labelText);
+
+  if (cfg.context) {
+    doc.setFont(PDF_VALUE_FONT, 'normal');
+    doc.setFontSize(6.5);
+    doc.setTextColor(ctxColor[0], ctxColor[1], ctxColor[2]);
+    doc.text(sanitizePdfText(cfg.context), tx + labelW + 3, startY + 6.4);
+  }
+
+  // ── Right block: contributing-flag chips, packed right-to-left so the
+  //    most-severe (first) chip sits nearest the posture word. Capped so a
+  //    flag-heavy call doesn't overrun the left label. ──
+  if (cfg.flags && cfg.flags.length > 0) {
+    const chipY = startY + (bandH - 3.6) / 2;
+    const chipH = 3.6;
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(5.5);
+    let edge = margin + cw - 2;               // right inner edge
+    const minLeft = tx + labelW + (cfg.context ? 40 : 6); // don't crowd label
+    let shown = 0;
+    for (const raw of cfg.flags) {
+      const chipLabel = sanitizePdfText(raw);
+      const chipW = doc.getTextWidth(chipLabel) + 4;
+      if (edge - chipW < minLeft) {
+        const remaining = cfg.flags.length - shown;
+        if (remaining > 0) {
+          const moreText = `+${remaining}`;
+          const moreW = doc.getTextWidth(moreText) + 3;
+          doc.setTextColor(miniColor[0], miniColor[1], miniColor[2]);
+          doc.text(moreText, edge - moreW / 2, chipY + 2.5, { align: 'center' });
+        }
+        break;
+      }
+      const chipX = edge - chipW;
+      if (solid) {
+        // White-outline chips on the solid band.
+        doc.setDrawColor(...COLOR.TEXT_INVERTED);
+        doc.setLineWidth(0.25);
+        doc.roundedRect(chipX, chipY, chipW, chipH, 0.4, 0.4, 'D');
+        doc.setTextColor(...COLOR.TEXT_INVERTED);
+      } else {
+        doc.setDrawColor(rgb[0], rgb[1], rgb[2]);
+        doc.setLineWidth(0.25);
+        doc.setFillColor(255, 255, 255);
+        doc.roundedRect(chipX, chipY, chipW, chipH, 0.4, 0.4, 'FD');
+        doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+      }
+      doc.text(chipLabel, chipX + chipW / 2, chipY + 2.5, { align: 'center' });
+      edge = chipX - 1.5;
+      shown++;
+    }
+  }
+
+  doc.setTextColor(...COLOR.TEXT_PRIMARY);
+  doc.setFont(PDF_VALUE_FONT, 'normal');
+  return startY + bandH + SPACING.MD;
 }
 
 // ── Empty-state row ─────────────────────────────────────

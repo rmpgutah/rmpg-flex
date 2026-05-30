@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Microscope, Hash, Shield } from 'lucide-react';
 import FormModal from './FormModal';
+import FormField from './records/FormField';
 import { useFormDraft } from '../hooks/useFormDraft';
 import { apiFetch } from '../hooks/useApi';
 import type { Evidence } from '../types';
@@ -298,25 +299,21 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       {activeTab === 'basic' && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">
-                Evidence Type <span className="text-red-400">*</span>
-              </label>
+            <FormField label="Evidence Type" required>
               <select className="select-dark text-xs" value={form.evidence_type} onChange={(e) => updateField('evidence_type', e.target.value)}>
                 {EVIDENCE_TYPES.map((t) => (
                   <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Category</label>
+            </FormField>
+            <FormField label="Category">
               <select className="select-dark text-xs" value={form.category} onChange={(e) => updateField('category', e.target.value)}>
                 <option value="">-- Select --</option>
                 {EVIDENCE_CATEGORIES.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-            </div>
+            </FormField>
           </div>
 
           {/* F6 advanced detail — collection context (HOW evidence was acquired)
@@ -326,17 +323,15 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
               questions a court asks: "what is this, and how did it come
               into custody?" */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Collection Context</label>
+            <FormField label="Collection Context">
               <select className="select-dark text-xs" value={form.collection_context} onChange={(e) => updateField('collection_context', e.target.value)}>
                 <option value="">-- Select --</option>
                 {EVIDENCE_CATEGORY_OPTIONS.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Court Hold Reference</label>
+            </FormField>
+            <FormField label="Court Hold Reference">
               <input
                 type="text"
                 className="input-dark text-xs w-full"
@@ -344,13 +339,10 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
                 value={form.court_hold_reference}
                 onChange={(e) => updateField('court_hold_reference', e.target.value)}
               />
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">
-              Description <span className="text-red-400">*</span>
-            </label>
+          <FormField label="Description" required>
             <RichTextArea
               className={`textarea-dark text-xs ${formErrors.description ? '!border-red-500' : ''}`}
               rows={3}
@@ -360,48 +352,42 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
               autoFocus
             />
             {formErrors.description && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.description}</p>}
-          </div>
+          </FormField>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Date Collected</label>
+            <FormField label="Date Collected">
               <input type="date" className="input-dark text-xs" value={form.collected_date} onChange={(e) => updateField('collected_date', e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Storage Location *</label>
+            </FormField>
+            <FormField label="Storage Location" required>
               <input type="text" className={`input-dark text-xs ${formErrors.storage_location ? '!border-red-500' : ''}`} placeholder="e.g., Evidence Locker A-12" value={form.storage_location} onChange={(e) => updateField('storage_location', e.target.value)} />
               {formErrors.storage_location && <p className="text-red-400 text-[10px] mt-0.5">{formErrors.storage_location}</p>}
-            </div>
+            </FormField>
           </div>
 
-          <div>
-            <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Location Found</label>
+          <FormField label="Location Found">
             <input type="text" className="input-dark text-xs" placeholder="Where the evidence was discovered / collected" value={form.location_found} onChange={(e) => updateField('location_found', e.target.value)} />
-          </div>
+          </FormField>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Packaging Type</label>
+            <FormField label="Packaging Type">
               <select className="select-dark text-xs" value={form.packaging_type} onChange={(e) => updateField('packaging_type', e.target.value)}>
                 <option value="">-- Select --</option>
                 {PACKAGING_TYPES.map((p) => (
                   <option key={p} value={p}>{p}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Condition</label>
+            </FormField>
+            <FormField label="Condition">
               <select className="select-dark text-xs" value={form.condition} onChange={(e) => updateField('condition', e.target.value)}>
                 <option value="">-- Select --</option>
                 {CONDITION_OPTIONS.map((c) => (
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
-            </div>
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Quantity</label>
+            </FormField>
+            <FormField label="Quantity">
               <input type="number" min="1" className="input-dark text-xs" placeholder="1" value={form.quantity} onChange={(e) => updateField('quantity', e.target.value)} />
-            </div>
+            </FormField>
           </div>
 
           <div className="flex flex-wrap items-center gap-6">
@@ -423,11 +409,10 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
             </label>
           </div>
 
-          <div>
-            <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Notes</label>
+          <FormField label="Notes">
             <RichTextArea className="textarea-dark text-xs" rows={2} placeholder="Additional notes..." value={form.notes} onChange={(e) => updateField('notes', e.target.value)} maxLength={3000} />
             <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/3000</div>
-          </div>
+          </FormField>
         </div>
       )}
 
@@ -435,33 +420,27 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
       {activeTab === 'details' && (
         <div className="space-y-3">
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Serial Number</label>
+            <FormField label="Serial Number">
               <input type="text" className="input-dark text-xs" placeholder="S/N" value={form.serial_number} onChange={(e) => updateField('serial_number', e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Brand</label>
+            </FormField>
+            <FormField label="Brand">
               <input type="text" className="input-dark text-xs" placeholder="Brand / Manufacturer" value={form.brand} onChange={(e) => updateField('brand', e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Model</label>
+            </FormField>
+            <FormField label="Model">
               <input type="text" className="input-dark text-xs" placeholder="Model" value={form.model} onChange={(e) => updateField('model', e.target.value)} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Estimated Value ($)</label>
+            <FormField label="Estimated Value ($)">
               <input type="number" min="0" step="0.01" className="input-dark text-xs" placeholder="0.00" value={form.estimated_value} onChange={(e) => updateField('estimated_value', e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Dimensions</label>
+            </FormField>
+            <FormField label="Dimensions">
               <input type="text" className="input-dark text-xs" placeholder='e.g., 12" x 6" x 3"' value={form.dimensions} onChange={(e) => updateField('dimensions', e.target.value)} />
-            </div>
-            <div>
-              <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Weight</label>
+            </FormField>
+            <FormField label="Weight">
               <input type="text" className="input-dark text-xs" placeholder="e.g., 2.5 lbs" value={form.weight} onChange={(e) => updateField('weight', e.target.value)} />
-            </div>
+            </FormField>
           </div>
         </div>
       )}
@@ -479,14 +458,12 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
             </div>
             {form.lab_submitted && (
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-2">
-                <div>
-                  <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Lab Name</label>
+                <FormField label="Lab Name">
                   <input type="text" className="input-dark text-xs" placeholder="Lab name" value={form.lab_name} onChange={(e) => updateField('lab_name', e.target.value)} />
-                </div>
-                <div>
-                  <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Lab Case #</label>
+                </FormField>
+                <FormField label="Lab Case #">
                   <input type="text" className="input-dark text-xs" placeholder="Lab case number" value={form.lab_case_number} onChange={(e) => updateField('lab_case_number', e.target.value)} />
-                </div>
+                </FormField>
               </div>
             )}
           </div>
@@ -494,25 +471,22 @@ export default function EvidenceFormModal({ isOpen, onClose, incidentId, onCreat
           <div className="panel-beveled p-3">
             <label className="text-[10px] font-bold text-rmpg-300 uppercase tracking-wider mb-2 block">Disposal Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Disposal Method</label>
+              <FormField label="Disposal Method">
                 <select className="select-dark text-xs" value={form.disposal_method} onChange={(e) => updateField('disposal_method', e.target.value)}>
                   <option value="">-- None --</option>
                   {DISPOSAL_METHODS.map((m) => (
                     <option key={m} value={m}>{m}</option>
                   ))}
                 </select>
-              </div>
-              <div>
-                <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Disposal Date</label>
+              </FormField>
+              <FormField label="Disposal Date">
                 <input type="date" className="input-dark text-xs" value={form.disposal_date} onChange={(e) => updateField('disposal_date', e.target.value)} />
-              </div>
+              </FormField>
             </div>
             {form.disposal_method && (
-              <div className="mt-2">
-                <label className="block text-xs text-rmpg-300 font-bold uppercase tracking-wider mb-1">Authorized By</label>
+              <FormField label="Authorized By" className="mt-2">
                 <input type="text" className="input-dark text-xs" placeholder="Name of authorizing person" value={form.disposal_authorized_by} onChange={(e) => updateField('disposal_authorized_by', e.target.value)} />
-              </div>
+              </FormField>
             )}
           </div>
         </div>
