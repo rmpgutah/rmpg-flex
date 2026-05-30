@@ -83,7 +83,7 @@ import NarrativeAssist from '../../components/dispatch/NarrativeAssist';
 import FileAttachments from '../../components/FileAttachments';
 import { safeDateTimeStr, parseTimestamp, toDatetimeLocalValue, mtDatetimeLocalToUtc } from '../../utils/dateUtils';
 import {
-  humanizePriority, humanizeDisposition, getStatusTooltip, formatPhoneDisplay,
+  humanizePriority, formatDispositionCode, getStatusTooltip, formatPhoneDisplay,
   formatAddressDisplay, timeAgo,
 } from '../../utils/statusLabels';
 
@@ -2480,7 +2480,7 @@ export default function DispatchPage() {
                       {selectedCall.pso_requestor_phone && <div><span className="text-rmpg-400">Phone:</span> {formatPhoneDisplay(selectedCall.pso_requestor_phone)}</div>}
                       {selectedCall.pso_billing_code && <div><span className="text-rmpg-400">Billing:</span> {selectedCall.pso_billing_code}</div>}
                       {selectedCall.pso_authorization && <div><span className="text-rmpg-400">Auth:</span> {selectedCall.pso_authorization}</div>}
-                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {humanizeDisposition(selectedCall.disposition)}</div>}
+                      {selectedCall.disposition && <div><span className="text-rmpg-400">Disposition:</span> {formatDispositionCode(selectedCall.disposition)}</div>}
                     </div>
 
                     {/* Serve Queue Integration — Gold Status Panel */}

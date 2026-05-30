@@ -332,6 +332,17 @@ export function humanizeDisposition(code: string | null | undefined): string {
   return DISPOSITION_LABELS[code] || code;
 }
 
+/**
+ * Police-format disposition: "CODE \u2014 Description" (e.g. "RTF \u2014 Report Taken"),
+ * the standard CAD presentation. Falls back to the bare code when no label is
+ * known (avoiding a "RTF \u2014 RTF" echo), and an em-dash for empty input.
+ */
+export function formatDispositionCode(code: string | null | undefined): string {
+  if (!code) return '\u2014';
+  const label = DISPOSITION_LABELS[code];
+  return label && label !== code ? `${code} \u2014 ${label}` : code;
+}
+
 /** Translate a solvability factor key to its description */
 export function humanizeSolvabilityFactor(key: string): string {
   return SOLVABILITY_FACTOR_LABELS[key] || toDisplayLabel(key);
