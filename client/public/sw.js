@@ -106,7 +106,10 @@
 // v638: merge origin/main (16 commits) into the dispatch geography/police-format
 //       batch; bump above both lineages (mine v637, main v632) for a clean
 //       cache invalidation on the combined deploy.
-const CACHE_NAME = 'rmpg-flex-v638';
+// v639: stacked-calls panel in the call detail — lists other active calls at the
+//       same address (click to jump). Real D1-backed /user/preferences (no SW
+//       impact, listed here for the deploy log).
+const CACHE_NAME = 'rmpg-flex-v639';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
