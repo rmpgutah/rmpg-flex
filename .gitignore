@@ -1,17 +1,71 @@
+# ─── Dependencies ───────────────────────────────────────────
 node_modules/
-.cloudflare/
-*.log
+**/node_modules/
+
+# ─── Build outputs ──────────────────────────────────────────
+dist/
+**/dist/
+build/
+**/build/
+*.tsbuildinfo
+client/dist/
+desktop/dist/
+
+# ─── Environment / secrets ──────────────────────────────────
+.env
+.env.local
+.env.*.local
+**/.env
+**/.env.local
+*.pem
+.dev.vars
+
+# ─── OS files ───────────────────────────────────────────────
+.DS_Store
+**/.DS_Store
+Thumbs.db
+
+# ─── Editors / IDEs ─────────────────────────────────────────
+.vscode/
+.idea/
+**/.idea/
+.vs/
+**/.vs/
+*.swp
+*.swo
+
+# ─── Visual Studio project (stray C++ project artifacts) ────
+# These were never meant to be in the repo — a desktop-build side
+# project leaked them in. Ignore the solution, project files, and
+# the generated "RMPG Flare/" tree (incl. its bundled image cache).
+*.sln
+*.vcxproj
+*.vcxproj.filters
+*.vcxproj.user
+/RMPG Flare/
+
+# ─── Cloudflare / Wrangler ──────────────────────────────────
 .wrangler/
 
-# Vite build output (deploy.yml rebuilds this; never track it)
-client/dist/
+# ─── Logs ───────────────────────────────────────────────────
+logs/
+*.log
 
-# Claude Code tooling (per-worktree, not committed)
-.claude/
+# ─── Test / coverage output ─────────────────────────────────
+coverage/
+.cache/
+test-results/
+playwright-report/
 
-# Generated PDFs that shouldn't be tracked in source
-client/RMPG-Dispatch-Guide-*.pdf
+# ─── Local uploads / databases (dev only) ───────────────────
+uploads/
+server/uploads/
+data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
 
-# Per-session scratch from Utah statute scraping work (XML downloads,
-# generated SQL, parser scripts). Lives in worktrees only; never ship.
-.firecrawl/
+# ─── Local notes (never publish) ────────────────────────────
+*.notes.md
+CLAUDE-private.md
