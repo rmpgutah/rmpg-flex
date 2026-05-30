@@ -83,6 +83,37 @@ function parseJwtExpiry(token: string): number | null {
   }
 }
 
+// Last server-confirmed user, persisted so a returning field device can render
+// optimistically on the next cold boot instead of blocking the "Initializing"
+// splash on a slow-cellular /auth/me round-trip.
+const CACHED_USER_KEY = 'rmpg_cached_user';
+
+function readCachedUser(): User | null {
+  try {
+    const raw = localStorage.getItem(CACHED_USER_KEY);
+    return raw ? (JSON.parse(raw) as User) : null;
+  } catch { return null; }
+}
+
+function writeCachedUser(u: User): void {
+  try { localStorage.setItem(CACHED_USER_KEY, JSON.stringify(u)); } catch { /* quota / private mode */ }
+}
+
+/**
+ * Optimistic-boot user. Returns a cached user ONLY when a stored token exists
+ * and is NOT locally expired — so we never render the UI behind an obviously
+ * dead token. The token is still validated server-side on the background
+ * /auth/me call (and on every data fetch), so this is purely a perceived-speed
+ * win, not a security relaxation.
+ */
+function initialOptimisticUser(): User | null {
+  const tok = localStorage.getItem(TOKEN_KEY);
+  if (!tok) return null;
+  const exp = parseJwtExpiry(tok);
+  if (exp !== null && exp <= Date.now()) return null; // expired → must refresh first
+  return readCachedUser();
+}
+
 /** Fetch with an AbortController timeout so auth requests never hang indefinitely. */
 function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs = AUTH_FETCH_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController();
@@ -139,13 +170,30 @@ function safeSetItem(key: string, value: string): void {
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  // Optimistic boot: render from the cached user when the stored token is still
+  // locally valid, so a returning field device is interactive immediately rather
+  // than blocking the splash on a slow-cellular /auth/me round-trip. The loadUser
+  // effect below revalidates in the background.
+  const [user, setUser] = useState<User | null>(initialOptimisticUser);
   const [token, setToken] = useState<string | null>(localStorage.getItem(TOKEN_KEY));
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(() => user === null);
   const [error, setError] = useState<string | null>(null);
   const refreshTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isRefreshingRef = useRef(false);
   const refreshFailCountRef = useRef(0);
+  // One-shot flag: true when `user` came from cache at boot and therefore still
+  // owes a single background /auth/me validation. Seeded from the first-render
+  // `user` value (no extra localStorage read), consumed inside loadUser.
+  const needsBootValidationRef = useRef<boolean | null>(null);
+  if (needsBootValidationRef.current === null) needsBootValidationRef.current = user !== null;
+
+  // Persist the authenticated user on every change so the NEXT cold boot can
+  // render optimistically (see initialOptimisticUser). Centralized here so all
+  // login/refresh paths are covered; cleared on logout (setUser(null)).
+  useEffect(() => {
+    if (user) writeCachedUser(user);
+    else { try { localStorage.removeItem(CACHED_USER_KEY); } catch { /* ignore */ } }
+  }, [user]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -265,9 +313,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         return;
       }
 
-      // If we already have a user for this token (login() just set both)
-      // there is nothing to fetch — just make sure loading is off.
-      if (user) {
+      // Did this user come from the optimistic cache at boot? If so we still owe
+      // ONE background /auth/me validation — fall through (the splash is already
+      // down, so this validates silently). A network failure of it must NOT log
+      // the user out (see the catch below).
+      const optimisticBoot = !!user && needsBootValidationRef.current === true;
+      needsBootValidationRef.current = false; // consume the one-shot
+
+      // If we already have a user and it isn't an optimistic boot (login() just
+      // set it, or we already validated) there is nothing to fetch.
+      if (user && !optimisticBoot) {
         setIsLoading(false);
         return;
       }
@@ -321,6 +376,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } catch (err) {
         console.warn('[Auth] Initial auth check failed:', err);
         if (gen !== generationRef.current) return; // stale
+
+        // Background revalidation of an already-rendered (optimistic) user hit a
+        // network/timeout error — NOT a token rejection. Keep the user signed in;
+        // the scheduled refresh and the next authenticated data fetch will
+        // revalidate. A false logout here would punish flaky cellular, which is
+        // exactly when this path fires. The token is still enforced server-side
+        // on every request, so nothing unauthorized is exposed.
+        if (optimisticBoot) {
+          scheduleRefresh(token);
+          setIsLoading(false);
+          return;
+        }
 
         // API not available — attempt offline auth via Electron local cache
         const lastUsername = localStorage.getItem(LAST_USERNAME_KEY);
