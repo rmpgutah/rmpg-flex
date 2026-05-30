@@ -619,16 +619,53 @@ export default function WarrantsPage() {
     try {
       const res = await apiFetch<any>(`/warrants/${id}`);
       const raw = (res && typeof res === 'object' && 'data' in res ? res.data : res) || {};
+
+      // User display name fallback ladder — User.full_name is OPTIONAL on
+      // the interface (and unpopulated on a meaningful fraction of seeded
+      // user rows on live D1). Without the ladder, the audit footer
+      // collapsed to "Printed by: Unknown" even when the operator was
+      // clearly logged in (Karl Turley warrant printed 2026-05-30).
+      const printedByName = user
+        ? (user.full_name
+            || [user.first_name, user.last_name].filter(Boolean).join(' ').trim()
+            || user.username
+            || undefined)
+        : undefined;
+
       const data: any = {
         ...raw,
         subject_aliases: raw.subject_aliases
           ? (Array.isArray(raw.subject_aliases) ? raw.subject_aliases : [raw.subject_aliases])
           : undefined,
-        printed_by_name: user?.full_name,
+        printed_by_name: printedByName,
         printed_by_badge: user?.badge_number,
         printed_at: new Date().toISOString(),
       };
-      await downloadRecordPdf('warrant', data, `warrant-${data.warrant_number}.pdf`);
+
+      // Filename fallback ladder — warrant_number is often the literal
+      // sentinel "N/A" (the warrant create form defaults it that way for
+      // manually-entered warrants), so a naive `warrant-${warrant_number}`
+      // produced files named `warrant-N_A.pdf` / `N_A_warrant.pdf`
+      // depending on internal sanitization. Try real warrant_number first,
+      // then subject-name + local id, then bare id, so every download
+      // gets an operator-readable name.
+      const sentinelRe = /^(n\/a|none|null|undefined)$/i;
+      const rawWarrantNumber = typeof raw.warrant_number === 'string' ? raw.warrant_number.trim() : '';
+      const goodWarrantNumber = rawWarrantNumber && !sentinelRe.test(rawWarrantNumber) ? rawWarrantNumber : '';
+      const subjectSlug = [raw.subject_last_name, raw.subject_first_name]
+        .map((s: any) => (typeof s === 'string' ? s.trim() : ''))
+        .filter(Boolean)
+        .join('-');
+      const filenameStem =
+        goodWarrantNumber
+          || (subjectSlug ? `${subjectSlug}-${id}` : `warrant-${id}`);
+      // Sanitize: replace anything that would confuse a filesystem (path
+      // separators, control chars) with a hyphen. Allowed: word chars,
+      // hyphen, period, parens, space.
+      const safeStem = filenameStem.replace(/[^\w\-. ()]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '');
+      const filename = `warrant-${safeStem || id}.pdf`;
+
+      await downloadRecordPdf('warrant', data, filename);
     } catch (err: any) {
       alert(err?.message || 'Failed to print warrant PDF');
     }
