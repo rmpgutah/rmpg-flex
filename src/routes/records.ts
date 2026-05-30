@@ -91,6 +91,105 @@ records.get('/vehicles/search', async (c) => {
   } catch (err) { return c.json({ error: 'Failed' }, 500); }
 });
 
+// GET /records/ncic-query?type=person|vehicle|warrant|phone|address&query=...
+// Powers the NCIC/NLETS terminal (QH/QV/QW/QT/QA + the QX cross-reference
+// fan-out). Ported from the legacy VPS handler with the fixes that were
+// causing live "PERSON QUERY FAILED" / "WARRANT QUERY FAILED" errors:
+//   1. warrants are keyed on person_id — the legacy handler queried
+//      subject_person_id, a column that does NOT exist on the live warrants
+//      table, so every warrant/person query threw a SQL 500.
+//   2. each optional sub-query (criminal_history, warrants) is wrapped so a
+//      missing/drifted table degrades to an empty list instead of 500ing the
+//      whole request (live D1 schema drifts from /migrations/).
+// The terminal renders a 200 with whatever data exists ("NO RECORD FOUND")
+// rather than a scary red "QUERY FAILED".
+records.get('/ncic-query', async (c) => {
+  const db = getDb(c.env);
+  const type = c.req.query('type');
+  const q = c.req.query('query');
+  if (!type || !q || q.length < 2) {
+    return c.json({ error: 'type and query (min 2 chars) required', code: 'TYPE_AND_QUERY_MIN' }, 400);
+  }
+  const like = `%${q}%`;
+
+  // Run an OPTIONAL sub-query that must never fail the whole response. A
+  // missing table / drifted column resolves to [] instead of throwing.
+  const soft = async <T>(fn: () => Promise<T[]>): Promise<T[]> => {
+    try { return await fn(); } catch { return []; }
+  };
+  // Warrant projection aliased to the field names the client formatter reads
+  // (charge_description, bail_amount). offense_level isn't on the live table —
+  // the formatter tolerates its absence.
+  const WARRANT_COLS = `id, warrant_number, type, charge AS charge_description, status,
+    bond_amount AS bail_amount, jurisdiction, issuing_agency, issued_at, expires_at`;
+
+  try {
+    switch (type) {
+      case 'person': {
+        const persons = await query<Record<string, any>>(db, `
+          SELECT * FROM persons
+          WHERE first_name LIKE ? OR last_name LIKE ?
+            OR (first_name || ' ' || last_name) LIKE ?
+            OR (last_name || ', ' || first_name) LIKE ?
+          ORDER BY last_name, first_name LIMIT 5
+        `, like, like, like, like);
+
+        const results = [];
+        for (const p of persons) {
+          const criminalHistory = await soft(() => query<Record<string, any>>(db,
+            `SELECT * FROM criminal_history WHERE person_id = ? ORDER BY offense_date DESC LIMIT 50`,
+            p.id));
+          const warrants = await soft(() => query<Record<string, any>>(db,
+            `SELECT ${WARRANT_COLS} FROM warrants
+             WHERE person_id = ? AND status = 'active' ORDER BY created_at DESC LIMIT 50`,
+            p.id));
+          results.push({ person: p, criminalHistory, warrants });
+        }
+        return c.json({ type, results, query: q });
+      }
+      case 'warrant': {
+        const results = await soft(() => query<Record<string, any>>(db, `
+          SELECT ${WARRANT_COLS.split(',').map(s => 'w.' + s.trim()).join(', ')},
+                 p.first_name AS subject_first_name, p.last_name AS subject_last_name
+          FROM warrants w
+          LEFT JOIN persons p ON w.person_id = p.id
+          WHERE w.status = 'active'
+            AND (w.warrant_number LIKE ? OR p.first_name LIKE ? OR p.last_name LIKE ?
+                 OR (p.last_name || ', ' || p.first_name) LIKE ?)
+          ORDER BY w.created_at DESC LIMIT 10
+        `, like, like, like, like));
+        return c.json({ type, results, query: q });
+      }
+      case 'vehicle': {
+        const results = await soft(() => query<Record<string, any>>(db, `
+          SELECT v.*, p.first_name AS owner_first_name, p.last_name AS owner_last_name
+          FROM vehicles_records v
+          LEFT JOIN persons p ON v.owner_person_id = p.id
+          WHERE v.plate_number LIKE ? OR v.vin LIKE ?
+          ORDER BY v.plate_number LIMIT 10
+        `, like, like));
+        return c.json({ type, results, query: q });
+      }
+      case 'phone': {
+        const results = await soft(() => query<Record<string, any>>(db,
+          `SELECT * FROM persons WHERE phone LIKE ? ORDER BY last_name, first_name LIMIT 10`, like));
+        return c.json({ type, results, query: q });
+      }
+      case 'address': {
+        const results = await soft(() => query<Record<string, any>>(db,
+          `SELECT * FROM persons WHERE address LIKE ? ORDER BY last_name, first_name LIMIT 10`, like));
+        return c.json({ type, results, query: q });
+      }
+      default:
+        return c.json({ error: 'unknown query type', code: 'UNKNOWN_TYPE' }, 400);
+    }
+  } catch {
+    // Even the base persons query failing should render as "NO RECORD FOUND",
+    // not a terminal error — return an empty, flagged result set.
+    return c.json({ type, results: [], query: q, degraded: true });
+  }
+});
+
 // GET /records/search?q=...&type=person|vehicle|business
 // Used by client/src/components/LinkRecordModal.tsx for cross-type linking.
 // Returns an array of records matching the query for the given type. Legacy

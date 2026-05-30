@@ -676,6 +676,13 @@ const API_ROUTES: RouteRule[] = [
   // and /vehicles/search and returns empty `[]` instead) ──
   { kind: 'prefix', value: '/api/records/persons/search' },
   { kind: 'prefix', value: '/api/records/vehicles/search' },
+  // /api/records/ncic-query?type=person|warrant|vehicle|phone|address — the
+  // NCIC/NLETS terminal (QH/QV/QW/QT/QA + the QX cross-reference fan-out).
+  // Ported to the rewrite (src/routes/records.ts) which fixes the legacy
+  // warrants.subject_person_id SQL error (live column is person_id) and
+  // soft-fails missing tables so PERSON/WARRANT queries stop 500ing. Regex so
+  // we don't swallow an adjacent /api/records/ncic-* path later.
+  { kind: 'regex', value: /^\/api\/records\/ncic-query(\?|$)/ },
   // /api/records/search?q=...&type=person|vehicle|business — used by
   // client/src/components/LinkRecordModal.tsx. Regex (not prefix) so
   // we don't accidentally swallow /api/records/searchfoo if someone
