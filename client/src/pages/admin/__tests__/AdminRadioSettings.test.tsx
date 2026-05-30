@@ -14,6 +14,7 @@ const SETTINGS = {
   ai_dispatcher_enabled: true, ai_respond_mode: 'all', ai_voice: 'asteria',
   ai_dispatch_callsign: 'DISPATCH', ai_persona: '', ai_temperature: 0.3, ai_max_reply_chars: 400,
   auto_record: true, auto_transcribe: true, recording_retention_days: 0,
+  safety_alerts_enabled: true, stress_monitoring_enabled: true, duress_code: '',
   default_channel_id: null, default_operator_tab: 'live', notif_enabled_default: true,
   notif_sound_default: 'chime', quiet_start_default: '', quiet_end_default: '',
   haze_intensity: 'standard', noise_bed_level: 0.15, tts_over_radio: true,

@@ -102,6 +102,35 @@ export interface DispatcherDecision {
    * confirmation. This is the data-entry side of the dispatcher.
    */
   action?: ActionRequest;
+  /**
+   * Officer-safety read on THIS transmission. The model assesses whether the
+   * unit sounds stressed or under duress (panic language, calls for help,
+   * incomplete/urgent speech). The caller escalates on 'high'/duress — see
+   * VoiceHubDO. Always present; defaults to a calm read.
+   */
+  safety?: SafetyAssessment;
+}
+
+export interface SafetyAssessment {
+  /** 'normal' | 'elevated' | 'high' — urgency/stress in the transmission. */
+  stress: 'normal' | 'elevated' | 'high';
+  /** True if the unit may be under duress / coerced / calling for help. */
+  duress: boolean;
+  /** One short clause on why (for the TX tag / supervisor alert). */
+  reason?: string;
+}
+
+const STRESS_LEVELS = ['normal', 'elevated', 'high'] as const;
+
+function parseSafety(value: unknown): SafetyAssessment {
+  const fallback: SafetyAssessment = { stress: 'normal', duress: false };
+  if (!value || typeof value !== 'object') return fallback;
+  const obj = value as Record<string, unknown>;
+  const stress = typeof obj.stress === 'string' && (STRESS_LEVELS as readonly string[]).includes(obj.stress)
+    ? (obj.stress as SafetyAssessment['stress']) : 'normal';
+  const duress = obj.duress === true || obj.duress === 'true';
+  const reason = typeof obj.reason === 'string' && obj.reason.trim() ? obj.reason.trim().slice(0, 120) : undefined;
+  return { stress, duress, reason };
 }
 
 /**
@@ -143,21 +172,25 @@ You hear EVERY transmission on the channel and you acknowledge or respond to eac
 - A unit "out" / "out at <place>" → log the location and acknowledge ("copy, show you out at <place>, time is <the Current time given below, in Mountain Time>"). NEVER invent or guess a time — only ever state the Current time provided to you (it is already Mountain Time).
 - A request for backup / "10-78" / "start me another unit" → acknowledge and dispatch the nearest available on-duty unit by call-sign from the board.
 - An emergency / "shots fired" / "officer down" / "10-33" / "code 3" → respond with urgency, acknowledge, advise units to hold traffic, and that help is en route.
-- A record check the unit requests — a license PLATE, a PERSON by name, or a WARRANT check — you CAN run it. Set the "lookup" field (type + the plate/name to search) and make "reply" a brief "stand by"; the result will be read back automatically.
-- A CAD WRITE the unit requests — you CAN do data entry. Two writes are supported, set the "action" field:
-    • A unit reporting a STATUS change — "10-8 / in service", "10-7 / out of service", "show me out / out at <place> / on scene / arrived", "en route", "tied up" — set action {type:"set_unit_status", unit:"<their call-sign>", status:"<what they said, e.g. 'out at' or '10-8'>", location:"<place if they gave one>"}. Make "reply" the acknowledgement.
-    • A request to START / CREATE a call ("start a call", "create a call", "log a call", "I've got a <thing> at <place>") — set action {type:"create_call", incident_type:"<short type, e.g. 'suspicious vehicle'>", priority:"<P1 emergency | P2 urgent | P3 routine | P4 non-urgent>", location_address:"<address/place>", description:"<details>", caller_name:"<if given>"}. Make "reply" a brief acknowledgement; the real confirmation (with the call number) is read back automatically.
-  Only set "action" when the unit clearly asked you to log a status or start a call. If a detail you need (the location for a new call, or which status) is missing, ask for it instead of guessing.
-- If you are given OCR TEXT read from an image the unit sent (a driver's license, plate, registration, or document), treat it as facts you may read back or use to fill a lookup/action — but never invent fields the OCR didn't contain.
+- A record check the unit requests — you CAN run it. Set the "lookup" field and make "reply" a brief "stand by"; the result is read back automatically. Supported lookup types: PLATE, PERSON (by name), WARRANT, PREMISE (alerts/hazards at an address), VIN (vehicle by VIN). For premise use {type:"premise", query:"<address>"}; for VIN {type:"vin", query:"<vin or last digits>"}.
+- A CAD WRITE the unit requests — you CAN do data entry. Set the "action" field:
+    • STATUS change — "10-8 / in service", "10-7 / out of service", "show me out / out at <place> / on scene / arrived", "en route", "tied up" — action {type:"set_unit_status", unit:"<call-sign>", status:"<what they said>", location:"<place if given>"}.
+    • START / CREATE a call — action {type:"create_call", incident_type:"<short type>", priority:"<P1|P2|P3|P4>", location_address:"<address>", description:"<details>", caller_name:"<if given>"}; the call number is read back automatically.
+    • CLEAR / CLOSE a call ("clear me from <call>", "show <call> cleared", "10-8 from <call>") — action {type:"clear_call", call_number:"<call number, e.g. CFS26-00042>", disposition:"<outcome if given>"}.
+    • DISPATCH BACKUP ("start me another unit", "10-78", "need backup on <call>") — action {type:"dispatch_backup", unit:"<requesting call-sign if known>", call_number:"<call number if given>"}; the system picks the nearest available unit and you read back who's responding.
+  Only set "action" when the unit clearly asked. If a required detail is missing, ask for it instead of guessing.
+- If you are given OCR TEXT read from an image the unit sent, treat it as facts you may read back or use to fill a lookup/action — but never invent fields the OCR didn't contain.
 - Plain unit-to-unit chatter not directed at dispatch → a brief "copy" is enough.
 
-Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 location, 10-23 arrived, 10-28 plate/registration check, 10-29 wants/warrants check, 10-76 en route, 10-78 need backup, 10-97 arrived on scene, code 4 = scene secure / no further help needed.
+OFFICER SAFETY ASSESSMENT — on EVERY transmission, set the "safety" field reading the unit's stress/duress: {"stress":"normal|elevated|high","duress":true|false,"reason":"<short>"}. Use "high" stress for shouting, calls for help, "shots fired", "officer down", "10-33", panic, or a frantic/breathless delivery. Set "duress":true if the unit may be coerced, in danger, or covertly signaling distress. When stress is high or duress is true, your reply MUST be urgent: acknowledge immediately, confirm help is rolling, and tell other units to hold traffic. Default to {"stress":"normal","duress":false} for routine traffic.
 
-Never invent unit numbers, names, plates, warrants, or facts you were not given in the snapshot or a lookup result. If you don't have a detail, ask for it briefly.`;
+Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 location, 10-23 arrived, 10-28 plate check, 10-29 wants/warrants, 10-33 emergency/officer needs help, 10-76 en route, 10-78 need backup, 10-97 arrived on scene, code 4 = scene secure.
+
+Never invent unit numbers, names, plates, warrants, call numbers, or facts you were not given in the snapshot or a lookup result. If you don't have a detail, ask for it briefly.`;
 
 const FORMAT_INSTRUCTION = `Respond with ONLY a JSON object, no prose around it:
-{"intent":"<one of: status_update | out_at_location | backup_request | emergency | lookup_request | data_entry | en_route | arrived | code4 | chatter | unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","lookup":{"type":"plate|person|warrant","query":"<plate or name to run>"},"action":{"type":"set_unit_status|create_call","unit":"<call-sign>","status":"<radio status word/code>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>"}}
-Include "lookup" ONLY for a plate/person/warrant check (intent lookup_request, reply "stand by"). Include "action" ONLY when the unit asked you to log a status or start a call (intent data_entry); use type set_unit_status with only unit/status/location, or type create_call with only incident_type/priority/location_address/description/caller_name. Omit "lookup" and "action" entirely otherwise.
+{"intent":"<status_update|out_at_location|backup_request|emergency|lookup_request|data_entry|en_route|arrived|code4|chatter|unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","safety":{"stress":"normal|elevated|high","duress":false},"lookup":{"type":"plate|person|warrant|premise|vin","query":"<value>"},"action":{"type":"set_unit_status|create_call|clear_call|dispatch_backup","unit":"<call-sign>","status":"<status>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>","call_number":"<call #>","disposition":"<outcome>"}}
+ALWAYS include "safety". Include "lookup" ONLY for a record check. Include "action" ONLY for a status/call write; send only the fields that action type needs. Omit "lookup"/"action" otherwise.
 If the transmission is unintelligible, set intent to "unclear" and reply asking the unit to repeat their last.`;
 
 // ─── Transcription ──────────────────────────────────────────
@@ -282,7 +315,7 @@ function buildUserPrompt(turn: DispatcherTurn): string {
   return lines.join('\n');
 }
 
-const LOOKUP_TYPES = ['plate', 'person', 'warrant'] as const;
+const LOOKUP_TYPES = ['plate', 'person', 'warrant', 'premise', 'vin'] as const;
 
 function parseLookup(value: unknown): LookupRequest | undefined {
   if (!value || typeof value !== 'object') return undefined;
@@ -293,7 +326,7 @@ function parseLookup(value: unknown): LookupRequest | undefined {
   return { type: type as LookupRequest['type'], query: q };
 }
 
-const ACTION_TYPES = ['set_unit_status', 'create_call'] as const;
+const ACTION_TYPES = ['set_unit_status', 'create_call', 'clear_call', 'dispatch_backup'] as const;
 
 // Pull a string field off a loose object (the model may emit '', null, or
 // the wrong type). Returns undefined for anything not a non-empty string.
@@ -314,6 +347,17 @@ function parseAction(value: unknown): ActionRequest | undefined {
     const status = str(obj, 'status');
     if (!unit || !status) return undefined;
     return { type: type as ActionType, unit, status, location: str(obj, 'location') };
+  }
+  if (type === 'clear_call') {
+    const call_number = str(obj, 'call_number');
+    if (!call_number) return undefined;
+    return { type: type as ActionType, call_number, disposition: str(obj, 'disposition') };
+  }
+  if (type === 'dispatch_backup') {
+    const unit = str(obj, 'unit');
+    const call_number = str(obj, 'call_number');
+    if (!unit && !call_number) return undefined;
+    return { type: type as ActionType, unit, call_number };
   }
   // create_call
   const incident_type = str(obj, 'incident_type');
@@ -336,13 +380,17 @@ function decisionFromObject(obj: Record<string, unknown>): DispatcherDecision | 
   const reply = (typeof obj.reply === 'string' ? obj.reply : '').trim();
   const lookup = parseLookup(obj.lookup);
   const action = parseAction(obj.action);
-  // A lookup OR an action with only a holding reply is still actionable.
-  if (reply || lookup || action) {
+  const safety = parseSafety(obj.safety);
+  // A lookup OR an action OR a safety concern with only a holding reply is
+  // still actionable — a high-stress/duress read must never be dropped just
+  // because the spoken reply was terse.
+  if (reply || lookup || action || safety.stress !== 'normal' || safety.duress) {
     return {
       intent: (typeof obj.intent === 'string' ? obj.intent : 'general').trim() || 'general',
       reply: reply || (action ? 'Copy, stand by.' : 'Stand by.'),
       lookup,
       action,
+      safety,
     };
   }
   return null;

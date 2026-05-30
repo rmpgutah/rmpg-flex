@@ -44,6 +44,14 @@ export interface RadioSettings {
   /** Auto-purge transmissions/recordings older than N days (0 = keep forever). */
   recording_retention_days: number;
 
+  // ── Officer safety (AI dispatcher) ──
+  /** Speak proactive premise-hazard warnings when a unit goes "out at" a place. */
+  safety_alerts_enabled: boolean;
+  /** Have the AI assess stress/duress on each transmission and escalate. */
+  stress_monitoring_enabled: boolean;
+  /** Spoken duress phrase that forces a duress escalation when heard ('' = off). */
+  duress_code: string;
+
   // ── Channel defaults & operator UX (consumed by the client) ──
   /** Channel id flagged as the operator default (mirrors radio_channels.is_default). */
   default_channel_id: number | null;
@@ -78,6 +86,10 @@ export const RADIO_SETTING_DEFAULTS: RadioSettings = {
   auto_record: true,
   auto_transcribe: true,
   recording_retention_days: 0,
+
+  safety_alerts_enabled: true,
+  stress_monitoring_enabled: true,
+  duress_code: '',
 
   default_channel_id: null,
   default_operator_tab: 'live',
@@ -164,7 +176,11 @@ function coerce(key: keyof RadioSettings, raw: string): unknown {
     case 'auto_transcribe':
     case 'notif_enabled_default':
     case 'tts_over_radio':
+    case 'safety_alerts_enabled':
+    case 'stress_monitoring_enabled':
       return raw === 'true' || raw === '1';
+    case 'duress_code':
+      return raw.trim().slice(0, 64);
     case 'ai_respond_mode':
       return (RESPOND_MODES as string[]).includes(raw) ? raw : def;
     case 'haze_intensity':
