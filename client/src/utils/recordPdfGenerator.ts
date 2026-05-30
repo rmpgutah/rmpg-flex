@@ -36,9 +36,10 @@ export type {
 } from './recordPdfGeneratorExt';
 import {
   addQuickReferenceBanner, addLinkedRecordsStrip, addProvenanceLine,
-  addEmptyStateRow, addSeverityMeter,
+  addEmptyStateRow, addSeverityMeter, drawThreatPostureBand,
   type QuickRefBannerConfig,
 } from './pdfDetailHelpers';
+import { recordPosture } from '../components/records/recordVisuals';
 import type { PdfImage, PdfSignatureData } from './pdfGenerator';
 import { convertToGrayscale, getActiveSectionStyle, setFieldNumberingEnabled, resetActiveFieldCounter } from './pdfGenerator';
 import {
@@ -54,9 +55,9 @@ export interface RecordPdfOptions {
   printTarget?: PrintTarget;
 }
 import {
-  drawNibrsHeader, drawFormSection, drawCautionFlagStrip,
+  drawNibrsHeader, drawFormSection,
   drawDispatchTimelineStrip, drawChainOfCustodyTable,
-  type CautionFlag, type TimelineEvent, type CustodyTransfer,
+  type TimelineEvent, type CustodyTransfer,
 } from './pdfFormHelpers';
 
 // ── Active Officer Signature (set per-generation, cleared after) ─
@@ -101,6 +102,253 @@ function normalizeCaseNumber(raw: string | null | undefined): string {
   if (!trimmed) return '';
   if (!/\d/.test(trimmed)) return '';
   return trimmed;
+}
+
+// ── Call status-aware rendering helpers ──────────────────────
+//
+// An OPEN call (pending / dispatched / on-scene) has most of its timestamp
+// and resolution fields empty. Rendering those as "N/A" / "--:--:--" made a
+// perfectly healthy in-progress call look broken. computeCallLifecycle()
+// figures out WHERE a call sits in its lifecycle so empty fields can read
+// "PENDING" / "AWAITING DISPOSITION" and the timeline strip can highlight the
+// live edge instead of dash-soup.
+
+const CALL_CLOSED_STATES = ['closed', 'archived', 'cancelled', 'canceled', 'resolved', 'cleared', 'completed'];
+
+interface CallLifecycle {
+  /** true while the call is still open (no disposition + not closed). */
+  open: boolean;
+  /** Per-stage state for the 5-cell timeline strip (RECEIVED..CLEARED). */
+  stripStates: ('done' | 'active' | 'future')[];
+  /** Per-field state for the 6 DATE/TIME fields (created..closed). */
+  fieldStates: ('done' | 'active' | 'future')[];
+}
+
+function computeCallLifecycle(data: CallPdfData): CallLifecycle {
+  const status = String(data.status || '').toLowerCase();
+  const closed = !!data.closed_at || !!data.cleared_at || CALL_CLOSED_STATES.includes(status);
+
+  // Mark the FIRST stage with no timestamp as the active (next-expected) step;
+  // every later empty stage is 'future'. A closed call has no active edge.
+  const assign = (have: boolean[]): ('done' | 'active' | 'future')[] => {
+    const states: ('done' | 'active' | 'future')[] = have.map(h => (h ? 'done' : 'future'));
+    if (!closed) {
+      const idx = have.findIndex(h => !h);
+      if (idx >= 0) states[idx] = 'active';
+    }
+    return states;
+  };
+
+  return {
+    open: !closed && !data.disposition,
+    stripStates: assign([
+      !!data.created_at,
+      !!data.dispatched_at,
+      !!data.enroute_at,
+      !!data.onscene_at,
+      !!(data.cleared_at || data.closed_at),
+    ]),
+    fieldStates: assign([
+      !!data.created_at,
+      !!data.dispatched_at,
+      !!data.enroute_at,
+      !!data.onscene_at,
+      !!data.cleared_at,
+      !!data.closed_at,
+    ]),
+  };
+}
+
+// Flags fed into recordPosture() to compute the call's dominant threat
+// treatment — mirrors personPostureFlags()/vehiclePostureFlags() in
+// recordVisuals so the printed Call report and the on-screen RecordHero agree
+// on severity. Only TRUE boolean flags + a non-sentinel weapon string
+// contribute (a literal "None"/"0" weapon value never escalates posture — the
+// sentinel-string trap documented in the project memory).
+function callPostureFlags(data: CallPdfData): string[] {
+  const flags: string[] = [];
+  const push = (cond: unknown, label: string) => { if (cond) flags.push(label); };
+  push(data.officer_safety_caution, 'officer safety');
+  const wv = (data.weapons_involved || '').toLowerCase().trim();
+  if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) flags.push(`weapon ${wv}`);
+  push(data.felony_in_progress, 'felony in progress');
+  push(data.domestic_violence, 'violent');        // DV → violent/red tier
+  push(data.vehicle_pursuit, 'pursuit');
+  push(data.foot_pursuit, 'pursuit');
+  push(data.gang_related, 'gang');
+  push(data.hazmat, 'hazmat');
+  push(data.mental_health_crisis, 'mental crisis');
+  push(data.injuries_reported, 'medical');
+  push(data.trespass_issued, 'trespass');
+  return flags;
+}
+
+// Short human-facing chip labels for the posture band (parallel to
+// callPostureFlags, but worded for display rather than classification).
+function callPostureChips(data: CallPdfData): string[] {
+  const chips: string[] = [];
+  if (data.officer_safety_caution) chips.push('OFFICER SAFETY');
+  const wv = (data.weapons_involved || '').toLowerCase().trim();
+  if (wv && !['0', 'n/a', 'none', 'no', 'false', 'unknown'].includes(wv)) chips.push('WEAPONS');
+  if (data.felony_in_progress) chips.push('FELONY IP');
+  if (data.domestic_violence) chips.push('DV');
+  if (data.vehicle_pursuit) chips.push('VEH PURSUIT');
+  if (data.foot_pursuit) chips.push('FOOT PURSUIT');
+  if (data.gang_related) chips.push('GANG');
+  if (data.hazmat) chips.push('HAZMAT');
+  if (data.mental_health_crisis) chips.push('MENTAL HEALTH');
+  if (data.injuries_reported) chips.push('INJURIES');
+  if (data.trespass_issued) chips.push('TRESPASS');
+  return chips;
+}
+
+// ── Entity cross-reference (same person across multiple roles) ───────────────
+// The same individual frequently appears as caller AND responding officer AND a
+// linked person (e.g. an owner-operator filing on their own property). Without
+// linkage a reader sees three unrelated names. These helpers tag each linked
+// record with the OTHER roles that resolve to the same entity so the
+// cross-references are explicit on the printed form.
+function normalizeEntityName(raw?: string | null): string {
+  if (!raw) return '';
+  return String(raw)
+    .toUpperCase()
+    .replace(/[.,]/g, ' ')
+    .replace(/\b(JR|SR|II|III|IV)\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// True if two names refer to the same person, tolerant of "LAST, FIRST" vs
+// "FIRST LAST" ordering (compares token sets, requires ≥2 shared name tokens
+// so a lone shared surname doesn't false-positive).
+function sameEntityName(a?: string | null, b?: string | null): boolean {
+  const ta = normalizeEntityName(a).split(' ').filter(Boolean);
+  const tb = normalizeEntityName(b).split(' ').filter(Boolean);
+  if (ta.length < 2 || tb.length < 2) return false;
+  const setB = new Set(tb);
+  return ta.filter(t => setB.has(t)).length >= 2;
+}
+
+// Build the set of cross-reference tags for a person name against the call's
+// other entity roles (caller / responding officer / assigned units).
+function personCrossRefTags(name: string, data: CallPdfData): string[] {
+  const tags: string[] = [];
+  if (sameEntityName(name, data.caller_name)) tags.push('ALSO CALLER');
+  if (sameEntityName(name, data.responding_officer)) tags.push('RESP OFFICER');
+  if ((data.assigned_units_detail || []).some(u => sameEntityName(name, u.officer_name))) {
+    tags.push('ASSIGNED UNIT');
+  }
+  return tags;
+}
+
+// ── Shared threat-posture band rollout (all record types) ────────────────────
+// The Call report's threat band is now applied to EVERY threat-bearing record
+// type so the printed report and the on-screen RecordHero (#794) carry the same
+// at-a-glance danger read. Each generator builds a posture-flag array from its
+// own data shape; renderRecordPostureBand() runs it through the SAME
+// recordPosture() engine the UI uses and draws the band — skipped for a 'clear'
+// posture so low-risk records print exactly as before (no added length).
+
+// Sentinel guard mirroring PersonsTab.hasValue — live text columns store the
+// literal strings "None"/"N/A"/"0" rather than NULL (see project memory
+// [[project-sentinel-none-strings]]), so naive truthiness fires false alerts.
+const PDF_ABSENT_SENTINELS = ['none', 'n/a', 'na', '0', 'false', 'no', 'null', 'undefined', '--', ''];
+function hasValuePdf(v?: string | null): boolean {
+  return !!v && !PDF_ABSENT_SENTINELS.includes(String(v).trim().toLowerCase());
+}
+
+/** Run a posture-flag array through recordPosture() and render the band.
+ *  Returns y unchanged for a 'clear' posture. Chips are the matched flags,
+ *  de-duped + upper-cased; drawThreatPostureBand caps the count with "+N". */
+function renderRecordPostureBand(
+  doc: jsPDF,
+  flags: Array<string | null | undefined>,
+  context: string,
+  y: number,
+): number {
+  const posture = recordPosture(flags);
+  if (posture.level === 'clear') return y;
+  const chips: string[] = [];
+  const seen = new Set<string>();
+  for (const f of flags) {
+    if (!f) continue;
+    const c = String(f).replace(/_/g, ' ').toUpperCase().trim().slice(0, 22);
+    if (c && !seen.has(c)) { seen.add(c); chips.push(c); }
+  }
+  return drawThreatPostureBand(doc, {
+    level: posture.level,
+    tone: posture.tone,
+    label: posture.label,
+    context,
+    flags: chips,
+  }, y);
+}
+
+// Per-type posture-flag builders — mirror the React tab builders
+// (personPostureFlags/vehiclePostureFlags) but read the *PdfData shapes.
+function personPdfPostureFlags(data: PersonPdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  for (const f of data.flags || []) flags.push(typeof f === 'object' ? (f as any).type : f);
+  if ((data.warrants || []).some(w => (w.status || '').toLowerCase() === 'active')) flags.push('ACTIVE WARRANT');
+  if (data.bolo_active) flags.push('BOLO');
+  if (data.is_sex_offender) flags.push('SEX OFFENDER');
+  if (hasValuePdf(data.gang_affiliation)) flags.push('GANG');
+  if (hasValuePdf(data.probation_parole)) flags.push('PAROLE/PROBATION');
+  if (hasValuePdf(data.mental_health_flags)) flags.push('MENTAL HEALTH');
+  if (hasValuePdf(data.caution_flags)) flags.push(data.caution_flags!);
+  return flags;
+}
+
+function vehiclePdfPostureFlags(data: VehiclePdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  for (const f of data.flags || []) flags.push(typeof f === 'object' ? (f as any).type : f);
+  if (data.hazmat) flags.push('HAZMAT');
+  const ss = (data.stolen_status || '').toLowerCase();
+  if (ss && !['none', 'not_stolen', 'recovered', ''].includes(ss)) flags.push('STOLEN');
+  const ts = (data.tow_status || '').toLowerCase();
+  if (ts && ['impound', 'hold', 'evidence'].some(t => ts.includes(t))) flags.push('IMPOUND');
+  return flags;
+}
+
+function propertyPdfPostureFlags(data: PropertyPdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  if (hasValuePdf(data.known_hazards)) flags.push(data.known_hazards!);
+  if (hasValuePdf(data.hazard_notes)) flags.push('HAZARD');
+  if ((data.trespass_orders || []).some(t => (t.status || '').toLowerCase() === 'active')) flags.push('TRESPASS');
+  return flags;
+}
+
+function evidencePdfPostureFlags(data: EvidencePdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  const both = `${data.category || ''} ${data.evidence_type || ''}`.toLowerCase();
+  if (/weapon|firearm|gun|knife|rifle|pistol/.test(both)) flags.push('WEAPON');
+  if (/drug|narcotic|controlled|paraphernalia/.test(both)) flags.push('NARCOTICS');
+  if (/biohazard|blood|dna|bio|hazmat/.test(both)) flags.push('BIOHAZARD');
+  const st = (data.status || '').toLowerCase();
+  if (/seal|court.?hold|\bhold\b/.test(st)) flags.push('SEALED/HOLD');
+  return flags;
+}
+
+function citationPdfPostureFlags(data: CitationPdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  if (data.dui_related) flags.push('DUI');
+  if (data.hazmat) flags.push('HAZMAT');
+  if (data.accident_related) flags.push('ACCIDENT');
+  if ((data.offense_level || '').toLowerCase().includes('felony')) flags.push('FELONY');
+  if (data.school_zone) flags.push('SCHOOL ZONE');
+  if (data.construction_zone) flags.push('CONSTRUCTION ZONE');
+  if (data.commercial_vehicle) flags.push('COMMERCIAL');
+  return flags;
+}
+
+function warrantPdfPostureFlags(data: WarrantPdfData): Array<string | null | undefined> {
+  const flags: Array<string | null | undefined> = [];
+  if ((data.status || '').toLowerCase() === 'active') flags.push('ACTIVE WARRANT');
+  if ((data.offense_level || '').toLowerCase().includes('felony')) flags.push('FELONY');
+  const df = (data.subject_distinguishing_features || '').toLowerCase();
+  if (/armed|weapon|gun|dangerous/.test(df)) flags.push('ARMED & DANGEROUS');
+  if (/gang/.test(df)) flags.push('GANG');
+  return flags;
 }
 
 function drawDistrictBar(
@@ -1235,6 +1483,13 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   const ffw = getFullFieldWidth(doc);
   const prio = callPriorityLabel(data.priority);
 
+  // Status-aware lifecycle + rolled-up threat posture, computed once and
+  // threaded through the timeline strip, DATE/TIME grid, posture band, and
+  // Resolution Details so the whole report reads coherently for OPEN calls.
+  const lifecycle = computeCallLifecycle(data);
+  const posture = recordPosture(callPostureFlags(data));
+  const postureChips = callPostureChips(data);
+
   setActiveCaseNumber(data.call_number);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
@@ -1276,14 +1531,21 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     ];
     const events: TimelineEvent[] = [];
     let prevTs: number | null = null;
-    for (const s of stages) {
+    for (let i = 0; i < stages.length; i++) {
+      const s = stages[i];
       const t = s.iso ? Date.parse(s.iso) : NaN;
       const time = isFinite(t) ? new Date(t).toLocaleTimeString('en-US', { hour12: false }) : undefined;
       const elapsed = isFinite(t) && prevTs != null ? formatElapsed(t - prevTs) : undefined;
-      events.push({ label: s.label, time, elapsed });
+      // Status-aware state: done if timestamped, else active/future per the
+      // lifecycle. Lets the strip render "PENDING" on the live edge + faint
+      // placeholders ahead instead of "--:--:--" dash-soup on open calls.
+      events.push({ label: s.label, time, elapsed, state: lifecycle.stripStates[i] });
       if (isFinite(t)) prevTs = t;
     }
-    if (events.some(e => e.time)) {
+    // Render whenever the call has been created (i.e. always) so the lifecycle
+    // edge is visible even before dispatch — an open call's "what next?" is as
+    // useful as a closed call's chronology.
+    if (events.some(e => e.time || e.state === 'active')) {
       y = drawDispatchTimelineStrip(doc, events, y);
     }
   }
@@ -1295,30 +1557,23 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // underlying data is absent — so existing minimal-data calls
   // print at the same length as before.
 
-  // β.1 — Hazard chip strip (officer-safety glance).
-  // The officer_safety_caution flag is rendered as "REVIEW BEFORE
-  // APPROACH" rather than "OFFICER SAFETY" — the strip's own banner
-  // literal already reads "CAUTION -- OFFICER SAFETY", so a matching
-  // "OFFICER SAFETY" chip on the right side was visibly duplicative
-  // (caught 2026-05-04). The new label adds operational guidance
-  // instead of repeating the banner words while still ensuring the
-  // strip renders when officer_safety is the sole hazard flag.
-  {
-    const flags: CautionFlag[] = [];
-    if (data.officer_safety_caution) flags.push({ label: 'REVIEW BEFORE APPROACH', kind: 'armed' });
-    if (data.weapons_involved && data.weapons_involved !== '0' && data.weapons_involved.toLowerCase() !== 'n/a') {
-      flags.push({ label: `WEAPONS: ${data.weapons_involved.toUpperCase()}`, kind: 'armed' });
-    }
-    if (data.felony_in_progress) flags.push({ label: 'FELONY IN PROGRESS', kind: 'warrant' });
-    if (data.domestic_violence) flags.push({ label: 'DOMESTIC VIOLENCE', kind: 'violent' });
-    if (data.mental_health_crisis) flags.push({ label: 'MENTAL HEALTH CRISIS', kind: 'mental' });
-    if (data.hazmat) flags.push({ label: 'HAZMAT', kind: 'medical' });
-    if (data.gang_related) flags.push({ label: 'GANG RELATED', kind: 'gang' });
-    if (data.vehicle_pursuit) flags.push({ label: 'VEHICLE PURSUIT', kind: 'violent' });
-    if (data.foot_pursuit) flags.push({ label: 'FOOT PURSUIT', kind: 'violent' });
-    if (flags.length > 0) {
-      y = drawCautionFlagStrip(doc, flags, y);
-    }
+  // β.1 — Threat-posture band (rolled-up officer-safety glance).
+  // Replaces the old per-flag CAUTION chip strip with the #794 posture
+  // engine's single dominant treatment: recordPosture() ranks every flag and
+  // the band shows ONE loud signal (OFFICER SAFETY / HIGH RISK / CAUTION) in
+  // the matching severity color, with the contributing flags as chips on the
+  // right. This is the SAME posture object the on-screen RecordHero renders,
+  // so paper and panel can never disagree. Skipped entirely for a no-flag
+  // call so minimal records print at the same length as before.
+  if (posture.level !== 'clear' && postureChips.length > 0) {
+    const ctx = `PRI ${String(data.priority || '').toUpperCase() || 'STD'} - ${formatEnumValue(data.incident_type)}`;
+    y = drawThreatPostureBand(doc, {
+      level: posture.level,
+      tone: posture.tone,
+      label: posture.label,
+      context: ctx,
+      flags: postureChips,
+    }, y);
   }
 
   // β.2 — Cross-reference badge bar (linked persons/vehicles/properties)
@@ -1425,13 +1680,18 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   // Date / Time — 3-column grid (6 timestamps in 2 rows of 3) + Timeline subsection
   y = checkPageBreak(doc, y, 40, prio);
   { const sec = openAutoSection(doc, 'Date / Time', y); y = sec.contentY;
+    // Status-aware values: a populated stage prints its timestamp; the live
+    // edge of an open call prints "PENDING"; un-reached stages print a clean
+    // "-" instead of the old "N/A" wall that made open calls look incomplete.
+    const tsField = (iso: string | undefined, idx: number) =>
+      iso ? fmtTimestamp(iso) : lifecycle.fieldStates[idx] === 'active' ? 'PENDING' : '-';
     y = addThreeColumnFields(doc, [
-      { label: 'Created', value: fmtTimestamp(data.created_at || '') },
-      { label: 'Dispatched', value: fmtTimestamp(data.dispatched_at || '') },
-      { label: 'Enroute', value: fmtTimestamp(data.enroute_at || '') },
-      { label: 'On Scene', value: fmtTimestamp(data.onscene_at || '') },
-      { label: 'Cleared', value: fmtTimestamp(data.cleared_at || '') },
-      { label: 'Closed', value: fmtTimestamp(data.closed_at || '') },
+      { label: 'Created', value: tsField(data.created_at, 0) },
+      { label: 'Dispatched', value: tsField(data.dispatched_at, 1) },
+      { label: 'Enroute', value: tsField(data.enroute_at, 2) },
+      { label: 'On Scene', value: tsField(data.onscene_at, 3) },
+      { label: 'Cleared', value: tsField(data.cleared_at, 4) },
+      { label: 'Closed', value: tsField(data.closed_at, 5) },
     ], y);
 
     // Timeline sub-section — compact per-step waterfall with deltas + totals
@@ -1897,18 +2157,31 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 22, prio);
     const sec = openAutoSection(doc, 'LINKED PERSONS', y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const pColW = [ffw * 0.25, ffw * 0.15, ffw * 0.14, ffw * 0.26, ffw * 0.20];
+    // CROSS-REF column added 2026-05-30: surfaces (1) a threat token derived
+    // from the person's role (SUBJECT for suspect/wanted/offender roles) and
+    // (2) entity cross-references — when this linked person is ALSO the caller,
+    // the responding officer, or an assigned unit, so a reader sees the same
+    // individual isn't three different people.
+    const pColW = [ffw * 0.22, ffw * 0.12, ffw * 0.12, ffw * 0.18, ffw * 0.16, ffw * 0.20];
     const pColPos: number[] = [];
     { let cx = lx; for (const w of pColW) { pColPos.push(cx); cx += w; } }
-    const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE']
+    const pHeaders = ['NAME', 'ROLE', 'DOB', 'RACE/SEX', 'PHONE', 'CROSS-REF']
       .map((label, i) => ({ label, x: pColPos[i] }));
-    const pRows = data.linked_persons.map(p => [
-      `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
-      formatEnumValue(p.role) || '—',
-      (p.dob || '—').toUpperCase(),
-      [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
-      (p.phone || '—').toUpperCase(),
-    ]);
+    const pRows = data.linked_persons.map(p => {
+      const fullName = `${p.first_name || ''} ${p.last_name || ''}`;
+      const roleL = (p.role || '').toLowerCase();
+      const tokens: string[] = [];
+      if (/suspect|subject|wanted|arrest|offender|aggressor|perp/.test(roleL)) tokens.push('SUBJECT');
+      tokens.push(...personCrossRefTags(fullName, data));
+      return [
+        `${p.last_name || ''}, ${p.first_name || ''}`.trim().replace(/^,\s*/, '').toUpperCase() || '—',
+        formatEnumValue(p.role) || '—',
+        (p.dob || '—').toUpperCase(),
+        [p.race, p.gender].filter(Boolean).join('/').toUpperCase() || '—',
+        (p.phone || '—').toUpperCase(),
+        tokens.join(' / ') || '—',
+      ];
+    });
     y = addTableWithShading(doc, pHeaders, pRows, y, pColPos, { sectionTitle: 'LINKED PERSONS' });
   }
 
@@ -1917,21 +2190,31 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
     y = checkPageBreak(doc, y, 22, prio);
     const sec = openAutoSection(doc, 'LINKED VEHICLES', y);
     y = sec.sectionY + SPACING.SECTION_HEADER_H;
-    const vColW = [ffw * 0.13, ffw * 0.28, ffw * 0.12, ffw * 0.17, ffw * 0.30];
+    // FLAGS column added 2026-05-30: pulls the stolen status OUT of the OWNER
+    // cell (where it was a cramped "[STOLEN]" suffix) into its own threat
+    // column, and cross-references the owner against the call's other entities
+    // (OWNER=CALLER / OWNER LINKED) so a self-reported vehicle is obvious.
+    const vColW = [ffw * 0.11, ffw * 0.24, ffw * 0.10, ffw * 0.15, ffw * 0.22, ffw * 0.18];
     const vColPos: number[] = [];
     { let cx = lx; for (const w of vColW) { vColPos.push(cx); cx += w; } }
-    const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER']
+    const vHeaders = ['ROLE', 'YEAR/MAKE/MODEL', 'COLOR', 'PLATE', 'OWNER', 'FLAGS']
       .map((label, i) => ({ label, x: vColPos[i] }));
     const vRows = data.linked_vehicles.map(v => {
-      const stolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase())
-        ? ` [${formatEnumValue(v.stolen_status)}]`
-        : '';
+      const isStolen = v.stolen_status && !['none', 'not_stolen', 'recovered', ''].includes(v.stolen_status.toLowerCase());
+      const ownerName = `${v.owner_first_name || ''} ${v.owner_last_name || ''}`;
+      const tokens: string[] = [];
+      if (isStolen) tokens.push(formatEnumValue(v.stolen_status!) || 'STOLEN');
+      if (sameEntityName(ownerName, data.caller_name)) tokens.push('OWNER=CALLER');
+      else if ((data.linked_persons || []).some(p => sameEntityName(ownerName, `${p.first_name || ''} ${p.last_name || ''}`))) {
+        tokens.push('OWNER LINKED');
+      }
       return [
         formatEnumValue(v.role) || '—',
         [v.year, v.make, v.model].filter(Boolean).join(' ').toUpperCase() || '—',
         (v.color || '—').toUpperCase(),
         ((v.plate_number || '') + (v.plate_state ? `/${v.plate_state}` : '')).toUpperCase() || '—',
-        ([v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ') + stolen).toUpperCase() || '—',
+        [v.owner_last_name, v.owner_first_name].filter(Boolean).join(', ').toUpperCase() || '—',
+        tokens.join(' / ') || '—',
       ];
     });
     y = addTableWithShading(doc, vHeaders, vRows, y, vColPos, { sectionTitle: 'LINKED VEHICLES' });
@@ -2093,10 +2376,15 @@ async function generateCallReport(doc: jsPDF, data: CallPdfData) {
   y = checkPageBreak(doc, y, 20, prio);
 
   { const sec = openAutoSection(doc, 'Resolution Details', y); y = sec.contentY;
-    { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || '', lx, y, hfw);
-      const yR = addFieldPair(doc, 'Disposition', formatEnumValue(data.disposition), rx, y, hfw);
+    // Status-aware: an OPEN call has no disposition yet — print "PENDING" /
+    // "AWAITING DISPOSITION" rather than "N/A", which read as missing data on
+    // a call that simply hasn't been resolved.
+    const dispVal = formatEnumValue(data.disposition) || (lifecycle.open ? 'PENDING' : 'N/A');
+    const actionVal = data.action_taken || (lifecycle.open ? 'OPEN - AWAITING DISPOSITION' : 'N/A');
+    { const yL = addFieldPair(doc, 'Responding Officer', data.responding_officer || (lifecycle.open ? 'UNASSIGNED' : 'N/A'), lx, y, hfw);
+      const yR = addFieldPair(doc, 'Disposition', dispVal, rx, y, hfw);
       y = Math.max(yL, yR); }
-    y = addFieldPair(doc, 'Action Taken', data.action_taken || 'N/A', lx, y, ffw);
+    y = addFieldPair(doc, 'Action Taken', actionVal, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -2431,52 +2719,16 @@ async function generatePersonReport(doc: jsPDF, data: PersonPdfData) {
   // Cross-reference badge bar — only appears when records are linked
   y = addLinkedRecordsStrip(doc, data, y);
 
-  // Caution-flag strip — synthesized from BOLO state + caution_flags
-  // text + structured flags array. Renders only when at least one
-  // flag is detected; otherwise returns y unchanged.
+  // Threat-posture band — unified with the Call report + on-screen RecordHero.
+  // Replaces the old per-flag caution strip: recordPosture() ranks BOLO / sex-
+  // offender / gang / parole / active-warrant / structured-flags into ONE
+  // dominant treatment (critical=red OFFICER SAFETY, high=orange HIGH RISK,
+  // caution=amber). The sentinel guard in personPdfPostureFlags() keeps a
+  // literal "None" gang value from firing a false GANG signal. Skipped for a
+  // clear-posture person so unflagged records print unchanged.
   {
-    const flags: CautionFlag[] = [];
-    if (data.bolo_active) flags.push({ label: 'BOLO ACTIVE', kind: 'warrant' });
-    const flagsArr = Array.isArray(data.flags) ? data.flags : [];
-    for (const f of flagsArr) {
-      // Defensive flag-label extraction.
-      // The persons.flags column has been written historically as both
-      // a JSON array of strings AND a JSON array of { label, kind }
-      // objects (legacy migration). Naive String(f).toUpperCase() on
-      // an object gives "[OBJECT OBJECT]" which surfaces on the caution
-      // banner — visible 2026-05-04. Pull whatever label-like string
-      // is available; skip if the entry is empty or still gives garbage.
-      let raw = '';
-      if (typeof f === 'string') {
-        raw = f;
-      } else if (f && typeof f === 'object') {
-        const obj = f as Record<string, unknown>;
-        raw = String(obj.label ?? obj.name ?? obj.value ?? obj.flag ?? '').trim();
-      }
-      const fStr = raw.trim().toUpperCase();
-      if (!fStr || fStr === '[OBJECT OBJECT]') continue;
-      if (/ARMED|WEAPON/.test(fStr)) flags.push({ label: fStr, kind: 'armed' });
-      else if (/WARRANT/.test(fStr)) flags.push({ label: fStr, kind: 'warrant' });
-      else if (/GANG/.test(fStr)) flags.push({ label: fStr, kind: 'gang' });
-      else if (/MENTAL/.test(fStr)) flags.push({ label: fStr, kind: 'mental' });
-      else if (/MEDICAL|MEDICATION/.test(fStr)) flags.push({ label: fStr, kind: 'medical' });
-      else if (/VIOLENT/.test(fStr)) flags.push({ label: fStr, kind: 'violent' });
-      else flags.push({ label: fStr, kind: 'default' });
-    }
-    if (data.is_sex_offender) flags.push({ label: 'REGISTERED SEX OFFENDER', kind: 'warrant' });
-    // Only raise the GANG caution chip when gang_affiliation is an
-    // operationally significant value — explicit "None" / "N/A" / "0"
-    // selections must NOT trigger an officer-safety chip.
-    if (data.gang_affiliation
-        && !['none', '0', 'n/a', 'na', ''].includes(data.gang_affiliation.toLowerCase().trim())) {
-      flags.push({ label: `GANG: ${data.gang_affiliation.toUpperCase()}`, kind: 'gang' });
-    }
-    if (data.probation_parole && /probation|parole/i.test(data.probation_parole)) {
-      flags.push({ label: data.probation_parole.toUpperCase(), kind: 'default' });
-    }
-    if (flags.length > 0) {
-      y = drawCautionFlagStrip(doc, flags, y);
-    }
+    const dobCtx = hasValuePdf(data.date_of_birth) ? `DOB ${data.date_of_birth}` : '';
+    y = renderRecordPostureBand(doc, personPdfPostureFlags(data), dobCtx, y);
   }
 
   y = drawDistrictBar(doc, y, data as any);
@@ -3097,6 +3349,15 @@ async function generateVehicleReport(doc: jsPDF, data: VehiclePdfData) {
 
   y = addLinkedRecordsStrip(doc, data, y);
 
+  // Threat-posture band — stolen / hazmat / impound / structured flags rolled
+  // into one treatment, matching the on-screen vehicle RecordHero.
+  y = renderRecordPostureBand(
+    doc,
+    vehiclePdfPostureFlags(data),
+    [data.year, data.make, data.model].filter(Boolean).join(' ').toUpperCase(),
+    y,
+  );
+
   y = drawDistrictBar(doc, y, data as any);
 
   // ── Vehicle Identification ──
@@ -3410,24 +3671,17 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     }, x, y, w);
   }
 
-  // Caution-flag strip — warrants always carry "ACTIVE WARRANT"
-  // when active; surface armed/violent flags from subject metadata
-  // if the data shape includes them.
-  {
-    const flags: CautionFlag[] = [];
-    if (String(data.status).toLowerCase() === 'active') {
-      flags.push({ label: 'ACTIVE WARRANT', kind: 'warrant' });
-    }
-    if ((data.offense_level || '').toLowerCase() === 'felony') {
-      flags.push({ label: 'FELONY OFFENSE', kind: 'violent' });
-    }
-    const distinguishing = String(data.subject_distinguishing_features || '').toUpperCase();
-    if (/ARMED|WEAPON/.test(distinguishing)) flags.push({ label: 'ARMED & DANGEROUS', kind: 'armed' });
-    if (/GANG/.test(distinguishing)) flags.push({ label: 'GANG AFFILIATION', kind: 'gang' });
-    if (flags.length > 0) {
-      y = drawCautionFlagStrip(doc, flags, y);
-    }
-  }
+  // Threat-posture band — unified with the Call/Person reports + the on-screen
+  // RecordHero. recordPosture() rolls active-warrant / felony / armed-and-
+  // dangerous / gang into one dominant treatment. Kept ALONGSIDE the priority-
+  // score severity meter above (that's a numeric solvability/priority gauge,
+  // orthogonal to the threat read).
+  y = renderRecordPostureBand(
+    doc,
+    warrantPdfPostureFlags(data),
+    [data.offense_level, data.status].filter(Boolean).map(s => String(s).toUpperCase()).join(' - '),
+    y,
+  );
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -3812,6 +4066,16 @@ async function generateEvidenceReport(doc: jsPDF, data: EvidencePdfData) {
       pill,
     }, y);
   }
+
+  // Threat-posture band — weapon / narcotics / biohazard / sealed-hold, derived
+  // from the evidence category + type + custody status so a dangerous item
+  // reads loud on the custody report.
+  y = renderRecordPostureBand(
+    doc,
+    evidencePdfPostureFlags(data),
+    [data.category, data.status].filter(Boolean).map(s => String(s).toUpperCase()).join(' - '),
+    y,
+  );
 
   y = drawDistrictBar(doc, y, data as any);
 
@@ -4798,6 +5062,15 @@ async function generatePropertyReport(doc: jsPDF, data: PropertyPdfData) {
 
   y = addLinkedRecordsStrip(doc, data, y);
 
+  // Threat-posture band — known hazards / hazard notes / active trespass orders
+  // on the premise, so a responding officer sees site dangers up front.
+  y = renderRecordPostureBand(
+    doc,
+    propertyPdfPostureFlags(data),
+    (data.name || '').toUpperCase().slice(0, 32),
+    y,
+  );
+
   y = drawDistrictBar(doc, y, data as any);
 
   // ── Property Information ──
@@ -5096,6 +5369,15 @@ async function generateCitationReport(doc: jsPDF, data: CitationPdfData) {
       pill,
     }, y);
   }
+
+  // Threat-posture band — DUI / hazmat / accident / felony-level / zone flags
+  // surfaced on the citation so aggravating circumstances read at a glance.
+  y = renderRecordPostureBand(
+    doc,
+    citationPdfPostureFlags(data),
+    (formatEnumValue(data.type) || 'CITATION'),
+    y,
+  );
 
   y = drawDistrictBar(doc, y, data as any);
 
