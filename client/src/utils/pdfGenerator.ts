@@ -1026,8 +1026,28 @@ export function addFlagBadges(
     // Pick color based on flag content (partial match)
     const upperFlag = text;
     let bg = defaultColor;
+    let matched = false;
     for (const [key, color] of Object.entries(flagColors)) {
-      if (upperFlag.includes(key)) { bg = color; break; }
+      if (upperFlag.includes(key)) { bg = color; matched = true; break; }
+    }
+    // Severity fallback — mirrors the on-screen classifyFlag() so a NOVEL
+    // flag the exact-key map doesn't list ("ESCAPE RISK", "BIOHAZARD",
+    // "UNINSURED", "TRESPASS WARNING") still renders in a meaningful
+    // severity color instead of dropping to flat slate. Keeps the report
+    // chips consistent with the records UI badges.
+    if (!matched) {
+      const RED    = /ARMED|WEAPON|VIOLENT|WARRANT|WANTED|WATCHLIST|OFAC|ESCAPE|STOLEN|HAZMAT|HAZARD|OFFICER SAFETY/;
+      const ORANGE = /FELONY|OFFENDER|PURSUIT|GANG|PAROLE|PROBATION|SUPERVISION|IMPOUND|UNINSURED|NO INSURANCE|SUSPENDED/;
+      const PINK   = /SUICID|SELF.?HARM|BIOHAZARD|OVERDOSE|MEDICAL/;   // self-harm / medical
+      const BLUE   = /MENTAL|PSYCH|CRISIS|5150/;                       // behavioral
+      const AMBER  = /TRESPASS|BOLO|PARKING|NO CONTACT|RESTRAIN|EXPIR|HOLD|EVIDENCE/;
+      const GREEN  = /CLEARED|VERIFIED|COOPERATIVE|RELEASED|RETURNED|SERVED/;
+      if (RED.test(upperFlag))         bg = [180, 20, 20];
+      else if (PINK.test(upperFlag))   bg = [190, 40, 110];
+      else if (BLUE.test(upperFlag))   bg = [40, 90, 170];   // behavioral (FLAG_MENTAL)
+      else if (ORANGE.test(upperFlag)) bg = [200, 80, 10];
+      else if (GREEN.test(upperFlag))  bg = [60, 130, 80];
+      else if (AMBER.test(upperFlag))  bg = [200, 80, 10];
     }
 
     // Draw pill background
