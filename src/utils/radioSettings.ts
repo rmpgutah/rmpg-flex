@@ -93,12 +93,64 @@ export const RADIO_SETTING_DEFAULTS: RadioSettings = {
 
 const CATEGORY = 'radio_settings';
 
-// Allowed enum values — anything else falls back to the default on read AND
-// is rejected on write, so the UI and worker can never desync on a typo.
-const RESPOND_MODES: RespondMode[] = ['all', 'addressed'];
-const HAZE_LEVELS: HazeIntensity[] = ['clean', 'light', 'standard', 'heavy'];
-const AURA_VOICES = ['asteria', 'luna', 'stella', 'athena', 'hera', 'orion', 'arcas', 'perseus', 'angus', 'orpheus', 'helios', 'zeus'];
-const OPERATOR_TABS = ['live', 'channels', 'recordings', 'stats', 'references', 'settings'];
+// ── Canonical option lists (single source of truth) ──────────
+// The worker owns these. They are (1) the validation allow-lists below and
+// (2) returned verbatim by GET /api/radio/settings as `options`, so the admin
+// UI renders its dropdowns from the SAME list instead of a hardcoded copy —
+// add a voice/tab here and it shows up in the UI and validates, in one edit.
+export interface SettingOption { id: string; label: string }
+
+export const RADIO_SETTING_OPTIONS = {
+  ai_voice: [
+    { id: 'asteria', label: 'Asteria — Female, calm (default)' },
+    { id: 'luna', label: 'Luna — Female, warm' },
+    { id: 'stella', label: 'Stella — Female, bright' },
+    { id: 'athena', label: 'Athena — Female, mature' },
+    { id: 'hera', label: 'Hera — Female, business' },
+    { id: 'orion', label: 'Orion — Male, approachable' },
+    { id: 'arcas', label: 'Arcas — Male, natural' },
+    { id: 'perseus', label: 'Perseus — Male, confident' },
+    { id: 'angus', label: 'Angus — Male, Irish' },
+    { id: 'orpheus', label: 'Orpheus — Male, professional' },
+    { id: 'helios', label: 'Helios — Male, news' },
+    { id: 'zeus', label: 'Zeus — Male, deep' },
+  ],
+  ai_respond_mode: [
+    { id: 'all', label: 'all' },
+    { id: 'addressed', label: 'addressed' },
+  ],
+  default_operator_tab: [
+    { id: 'live', label: 'live' },
+    { id: 'channels', label: 'channels' },
+    { id: 'recordings', label: 'recordings' },
+    { id: 'stats', label: 'stats' },
+    { id: 'references', label: 'references' },
+    { id: 'settings', label: 'settings' },
+  ],
+  notif_sound_default: [
+    { id: 'chime', label: 'chime' },
+    { id: 'beep', label: 'beep' },
+    { id: 'ping', label: 'ping' },
+    { id: 'alert', label: 'alert' },
+    { id: 'soft', label: 'soft' },
+  ],
+  haze_intensity: [
+    { id: 'clean', label: 'clean' },
+    { id: 'light', label: 'light' },
+    { id: 'standard', label: 'standard' },
+    { id: 'heavy', label: 'heavy' },
+  ],
+} as const satisfies Record<string, readonly SettingOption[]>;
+
+// Allowed enum values, DERIVED from the options above — anything else falls
+// back to the default on read AND is rejected on write, so the UI and worker
+// can never desync on a typo.
+const idsOf = (opts: readonly SettingOption[]) => opts.map((o) => o.id);
+const RESPOND_MODES = idsOf(RADIO_SETTING_OPTIONS.ai_respond_mode) as RespondMode[];
+const HAZE_LEVELS = idsOf(RADIO_SETTING_OPTIONS.haze_intensity) as HazeIntensity[];
+const AURA_VOICES = idsOf(RADIO_SETTING_OPTIONS.ai_voice);
+const OPERATOR_TABS = idsOf(RADIO_SETTING_OPTIONS.default_operator_tab);
+const NOTIF_SOUNDS = idsOf(RADIO_SETTING_OPTIONS.notif_sound_default);
 
 const clampNum = (n: number, lo: number, hi: number, fallback: number) =>
   Number.isFinite(n) ? Math.min(Math.max(n, lo), hi) : fallback;
@@ -121,6 +173,8 @@ function coerce(key: keyof RadioSettings, raw: string): unknown {
       return AURA_VOICES.includes(raw) ? raw : def;
     case 'default_operator_tab':
       return OPERATOR_TABS.includes(raw) ? raw : def;
+    case 'notif_sound_default':
+      return NOTIF_SOUNDS.includes(raw) ? raw : def;
     case 'ai_temperature':
       return clampNum(Number(raw), 0, 1, def as number);
     case 'ai_max_reply_chars':

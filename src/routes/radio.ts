@@ -35,7 +35,7 @@ import {
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
 import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
-import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS } from '../utils/radioSettings';
+import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS, RADIO_SETTING_OPTIONS } from '../utils/radioSettings';
 import type { Bindings } from '../types';
 
 const rt = new Hono<Env>();
@@ -504,7 +504,9 @@ rt.post('/dispatcher/ocr', async (c) => {
 rt.get('/settings', async (c) => {
   const db = getDb(c.env);
   const settings = await getRadioSettings(db);
-  return c.json({ settings, defaults: RADIO_SETTING_DEFAULTS });
+  // `options` are the canonical dropdown lists — the UI renders from these so
+  // the worker stays the single source of truth for voices/tabs/etc.
+  return c.json({ settings, defaults: RADIO_SETTING_DEFAULTS, options: RADIO_SETTING_OPTIONS });
 });
 
 rt.put('/settings', async (c) => {

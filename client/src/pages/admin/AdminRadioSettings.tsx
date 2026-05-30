@@ -36,25 +36,19 @@ interface RadioSettings {
 
 interface ChannelOpt { id: number; name: string; archived_at: string | null }
 
-// Deepgram Aura-2 speakers with a plain-language label.
-const AURA_VOICES: Array<{ id: string; label: string }> = [
-  { id: 'asteria', label: 'Asteria — Female, calm (default)' },
-  { id: 'luna', label: 'Luna — Female, warm' },
-  { id: 'stella', label: 'Stella — Female, bright' },
-  { id: 'athena', label: 'Athena — Female, mature' },
-  { id: 'hera', label: 'Hera — Female, business' },
-  { id: 'orion', label: 'Orion — Male, approachable' },
-  { id: 'arcas', label: 'Arcas — Male, natural' },
-  { id: 'perseus', label: 'Perseus — Male, confident' },
-  { id: 'angus', label: 'Angus — Male, Irish' },
-  { id: 'orpheus', label: 'Orpheus — Male, professional' },
-  { id: 'helios', label: 'Helios — Male, news' },
-  { id: 'zeus', label: 'Zeus — Male, deep' },
-];
-
-const OPERATOR_TABS = ['live', 'channels', 'recordings', 'stats', 'references', 'settings'];
-const NOTIF_SOUNDS = ['chime', 'beep', 'ping', 'alert', 'soft'];
-const HAZE_LEVELS: RadioSettings['haze_intensity'][] = ['clean', 'light', 'standard', 'heavy'];
+// Dropdown options come from the server (GET /radio/settings → `options`), so
+// the worker stays the single source of truth for voices/tabs/sounds/etc.
+interface SettingOption { id: string; label: string }
+type OptionsMap = {
+  ai_voice: SettingOption[];
+  ai_respond_mode: SettingOption[];
+  default_operator_tab: SettingOption[];
+  notif_sound_default: SettingOption[];
+  haze_intensity: SettingOption[];
+};
+const EMPTY_OPTIONS: OptionsMap = {
+  ai_voice: [], ai_respond_mode: [], default_operator_tab: [], notif_sound_default: [], haze_intensity: [],
+};
 
 // ── Reusable field primitives (match the Admin dark theme) ──
 function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange: (v: boolean) => void; label: string; hint?: string }) {
@@ -83,24 +77,24 @@ function Toggle({ checked, onChange, label, hint }: { checked: boolean; onChange
   );
 }
 
-function Segmented<T extends string>({ value, options, onChange, label }: { value: T; options: readonly T[]; onChange: (v: T) => void; label: string }) {
+function Segmented({ value, options, onChange, label }: { value: string; options: SettingOption[]; onChange: (v: string) => void; label: string }) {
   return (
     <div className="flex items-center justify-between gap-3 py-1">
       <div className="text-[11px] text-gray-300">{label}</div>
       <div className="flex gap-1 flex-wrap justify-end">
         {options.map((o) => (
           <button
-            key={o}
+            key={o.id}
             type="button"
-            onClick={() => onChange(o)}
+            onClick={() => onChange(o.id)}
             className="px-2 py-1 text-[9px] font-mono font-bold uppercase tracking-wider rounded-sm"
             style={{
-              border: `1px solid ${value === o ? '#d4a017' : '#222'}`,
-              color: value === o ? '#d4a017' : '#888',
-              background: value === o ? 'rgba(212,160,23,0.10)' : 'transparent',
+              border: `1px solid ${value === o.id ? '#d4a017' : '#222'}`,
+              color: value === o.id ? '#d4a017' : '#888',
+              background: value === o.id ? 'rgba(212,160,23,0.10)' : 'transparent',
             }}
           >
-            {o}
+            {o.label}
           </button>
         ))}
       </div>
@@ -126,6 +120,7 @@ const inputCls =
 export default function AdminRadioSettings() {
   const [settings, setSettings] = useState<RadioSettings | null>(null);
   const [defaults, setDefaults] = useState<RadioSettings | null>(null);
+  const [options, setOptions] = useState<OptionsMap>(EMPTY_OPTIONS);
   const [channels, setChannels] = useState<ChannelOpt[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -136,11 +131,12 @@ export default function AdminRadioSettings() {
     setLoading(true);
     try {
       const [s, ch] = await Promise.all([
-        apiFetch<{ settings: RadioSettings; defaults: RadioSettings }>('/radio/settings'),
+        apiFetch<{ settings: RadioSettings; defaults: RadioSettings; options?: Partial<OptionsMap> }>('/radio/settings'),
         apiFetch<ChannelOpt[]>('/radio/channels'),
       ]);
       setSettings(s.settings);
       setDefaults(s.defaults);
+      setOptions({ ...EMPTY_OPTIONS, ...(s.options ?? {}) });
       setChannels(asArray<ChannelOpt>(ch).filter((c) => !c.archived_at));
       setError(null);
     } catch (err) {
@@ -223,12 +219,12 @@ export default function AdminRadioSettings() {
       {/* ── AI Dispatcher ── */}
       <GroupCard icon={<Bot size={14} className="text-[#d4a017]" />} title="AI Dispatcher">
         <Toggle label="AI dispatcher enabled" hint="Master switch. When off, the radio still records but never speaks back." checked={settings.ai_dispatcher_enabled} onChange={(v) => set('ai_dispatcher_enabled', v)} />
-        <Segmented label="Respond mode" value={settings.ai_respond_mode} options={['all', 'addressed'] as const} onChange={(v) => set('ai_respond_mode', v)} />
+        <Segmented label="Respond mode" value={settings.ai_respond_mode} options={options.ai_respond_mode} onChange={(v) => set('ai_respond_mode', v as RadioSettings['ai_respond_mode'])} />
         <div className="text-[10px] text-gray-600 -mt-1">“all” answers every transmission; “addressed” only when a unit calls dispatch (or asks for a lookup/log).</div>
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Dispatcher voice</div>
           <select aria-label="Dispatcher voice" className={inputCls} value={settings.ai_voice} onChange={(e) => set('ai_voice', e.target.value)}>
-            {AURA_VOICES.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
+            {options.ai_voice.map((v) => <option key={v.id} value={v.id}>{v.label}</option>)}
           </select>
         </div>
         <div className="flex items-center justify-between gap-3 py-1">
@@ -276,12 +272,12 @@ export default function AdminRadioSettings() {
             {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
           </select>
         </div>
-        <Segmented label="Operator landing tab" value={settings.default_operator_tab} options={OPERATOR_TABS} onChange={(v) => set('default_operator_tab', v)} />
+        <Segmented label="Operator landing tab" value={settings.default_operator_tab} options={options.default_operator_tab} onChange={(v) => set('default_operator_tab', v)} />
         <Toggle label="Desktop notifications (default)" checked={settings.notif_enabled_default} onChange={(v) => set('notif_enabled_default', v)} />
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300">Notification sound (default)</div>
           <select aria-label="Default notification sound" className={inputCls} value={settings.notif_sound_default} onChange={(e) => set('notif_sound_default', e.target.value)}>
-            {NOTIF_SOUNDS.map((s) => <option key={s} value={s}>{s}</option>)}
+            {options.notif_sound_default.map((s) => <option key={s.id} value={s.id}>{s.label}</option>)}
           </select>
         </div>
         <div className="flex items-center justify-between gap-3 py-1">
@@ -298,7 +294,7 @@ export default function AdminRadioSettings() {
       {/* ── Radio audio / P25 effect ── */}
       <GroupCard icon={<RadioIcon size={14} className="text-[#d4a017]" />} title="Radio Audio / P25 Effect">
         <Toggle label="Apply radio “haze” to speech" hint="Run dispatcher/alert TTS through the P25 effect chain." checked={settings.tts_over_radio} onChange={(v) => set('tts_over_radio', v)} />
-        <Segmented label="Haze intensity" value={settings.haze_intensity} options={HAZE_LEVELS} onChange={(v) => set('haze_intensity', v)} />
+        <Segmented label="Haze intensity" value={settings.haze_intensity} options={options.haze_intensity} onChange={(v) => set('haze_intensity', v as RadioSettings['haze_intensity'])} />
         <div className="flex items-center justify-between gap-3 py-1">
           <div className="text-[11px] text-gray-300 flex items-center gap-1"><Volume2 size={11} className="text-gray-600" /> Noise-bed level <span className="text-gray-600">({Math.round(settings.noise_bed_level * 100)}%)</span></div>
           <input aria-label="Noise bed level" type="range" min={0} max={1} step={0.05} value={settings.noise_bed_level} onChange={(e) => set('noise_bed_level', Number(e.target.value))} className="w-40" />
