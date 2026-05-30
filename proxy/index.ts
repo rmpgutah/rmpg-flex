@@ -550,6 +550,15 @@ const STUBS: StubRule[] = [
 ];
 
 const API_ROUTES: RouteRule[] = [
+  // ── DL records CRUD (new in rewrite) ──
+  // /api/dl-records (bare) + /api/dl-records/:id (numeric) → env.API.
+  // The legacy port of POST /dl-records 500s on live D1 (manual saves
+  // never persisted — live dl_records had 0 rows), so the rewrite owns
+  // the data layer. CRITICAL: the /\d+/ anchor means /dl-records/verify
+  // and /dl-records/ocr-scan (external RapidAPI / OCR round-trips) do NOT
+  // match and correctly fall through to env.LEGACY.
+  { kind: 'regex', value: /^\/api\/dl-records(\/\d+)?(\?.*)?$/ },
+
   // ── More specific dispatch sub-paths (new in rewrite) ──
   // /api/dispatch/calls/:id/{recommended-units, closest-unit, auto-assign,
   // timeline, warnings, audit-trail, generate-incident, promote-to-incident}
