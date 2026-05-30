@@ -31,10 +31,11 @@
 import type { LookupRequest } from './dispatcherAwareness';
 
 const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
-// Fallback transcriber. gpt-4o-transcribe explicitly lists `webm` as a
-// supported format and takes a data: URI, so it covers the case where
-// whisper's decoder rejects our WebM/Opus container.
-const TRANSCRIBE_FALLBACK_MODEL = '@cf/openai/gpt-4o-transcribe';
+// Fallback transcriber — the stable base whisper. Both models were verified
+// (2026-05-29) to transcribe our recorded WebM/Opus; turbo is higher quality
+// (base64 `audio`) and base whisper is the safety net (array-of-bytes `audio`).
+// NOTE: @cf/openai/gpt-4o-transcribe is NOT available on this account (5007).
+const TRANSCRIBE_FALLBACK_MODEL = '@cf/openai/whisper';
 const LLM_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const TTS_MODEL = '@cf/myshell-ai/melotts';
 
@@ -108,31 +109,25 @@ export { bytesToBase64 };
 
 /**
  * Transcribe a recorded transmission. Tries whisper-large-v3-turbo first
- * (core Workers AI, base64 `audio`); if that throws or returns empty —
- * e.g. its decoder rejects our WebM/Opus container — it automatically
- * falls back to gpt-4o-transcribe (explicit webm support, data: URI under
- * `file`). Returns null only when both fail, so the caller simply skips
- * the reply rather than crashing the relay.
+ * (higher quality, base64 `audio`); if that throws or returns empty it
+ * falls back to the base whisper model (array-of-bytes `audio`). Both were
+ * verified to accept our WebM/Opus recordings. Returns null only when both
+ * fail, so the caller simply skips the reply rather than crashing the relay.
  */
 export async function transcribeTransmission(ai: Ai, audio: Uint8Array): Promise<string | null> {
-  const b64 = bytesToBase64(audio);
-
-  // Primary — whisper-large-v3-turbo.
+  // Primary — whisper-large-v3-turbo (base64 string input).
   try {
-    const res = (await ai.run(WHISPER_MODEL, { audio: b64, language: 'en' } as never)) as { text?: string };
+    const res = (await ai.run(WHISPER_MODEL, { audio: bytesToBase64(audio), language: 'en' } as never)) as { text?: string };
     const text = (res?.text || '').trim();
     if (text) return text;
-    console.warn('[aiDispatcher] whisper returned empty — trying gpt-4o-transcribe');
+    console.warn('[aiDispatcher] turbo whisper returned empty — trying base whisper');
   } catch (err) {
-    console.warn('[aiDispatcher] whisper failed, trying gpt-4o-transcribe:', (err as Error)?.message);
+    console.warn('[aiDispatcher] turbo whisper failed, trying base whisper:', (err as Error)?.message);
   }
 
-  // Fallback — gpt-4o-transcribe with a webm data URI.
+  // Fallback — base whisper (classic array-of-bytes input).
   try {
-    const res = (await ai.run(TRANSCRIBE_FALLBACK_MODEL, {
-      file: `data:audio/webm;base64,${b64}`,
-      language: 'en',
-    } as never)) as { text?: string };
+    const res = (await ai.run(TRANSCRIBE_FALLBACK_MODEL, { audio: Array.from(audio) } as never)) as { text?: string };
     const text = (res?.text || '').trim();
     return text.length > 0 ? text : null;
   } catch (err) {
@@ -274,10 +269,10 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 /**
- * Synthesize the dispatcher's reply with melotts. Returns raw MP3 bytes
- * (decodeAudioData on the client sniffs the format, so storing them at the
- * existing radio-audio/<id>.webm key replays fine through the haze chain).
- * Returns null on failure.
+ * Synthesize the dispatcher's reply with melotts. Returns raw audio bytes
+ * (melotts emits WAV; the client's decodeAudioData sniffs the container, so
+ * storing them at the existing radio-audio/<id>.webm key replays fine
+ * through the haze chain). Returns null on failure.
  */
 export async function synthesizeDispatcherVoice(ai: Ai, text: string): Promise<Uint8Array | null> {
   try {
