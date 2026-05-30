@@ -35,6 +35,7 @@ import {
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
 import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
+import { getRadioSettings, setRadioSettings, RADIO_SETTING_DEFAULTS } from '../utils/radioSettings';
 import type { Bindings } from '../types';
 
 const rt = new Hono<Env>();
@@ -488,6 +489,50 @@ rt.post('/dispatcher/ocr', async (c) => {
     performed,
     audio,
   });
+});
+
+// ============================================================
+// Radio / AI-Dispatcher settings (org-wide, live)
+// ============================================================
+// GET  /settings — read the merged settings (any logged-in user; the operator
+//                  console reflects them). Also returns the defaults + option
+//                  lists so the admin UI can render without hardcoding.
+// PUT  /settings — admin/manager/supervisor only; persists a partial patch and
+//                  echoes the merged result. VoiceHubDO + aiDispatcher read
+//                  these on each dispatch, so changes are live.
+
+rt.get('/settings', async (c) => {
+  const db = getDb(c.env);
+  const settings = await getRadioSettings(db);
+  return c.json({ settings, defaults: RADIO_SETTING_DEFAULTS });
+});
+
+rt.put('/settings', async (c) => {
+  const roleErr = requireRole(c, 'admin', 'manager', 'supervisor');
+  if (roleErr) return c.json({ error: roleErr }, 403);
+  const db = getDb(c.env);
+  const patch = await c.req.json<Record<string, unknown>>().catch(() => null);
+  if (!patch || typeof patch !== 'object') {
+    return c.json({ error: 'Body must be a JSON object of setting key/values' }, 400);
+  }
+
+  const settings = await setRadioSettings(db, patch);
+
+  // Keep radio_channels.is_default in sync when the default channel changes —
+  // the operator picker reads is_default, so this makes the setting real.
+  if ('default_channel_id' in patch) {
+    const id = settings.default_channel_id;
+    try {
+      await execute(db, `UPDATE radio_channels SET is_default = 0 WHERE is_default = 1`);
+      if (id != null) {
+        await execute(db, `UPDATE radio_channels SET is_default = 1 WHERE id = ?`, id);
+      }
+    } catch (err) {
+      console.warn('[radio.settings] is_default sync failed:', (err as Error)?.message);
+    }
+  }
+
+  return c.json({ settings });
 });
 
 export default rt;

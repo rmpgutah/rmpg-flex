@@ -8,6 +8,7 @@ import { asArray } from '../../utils/asArray';
 import ConfirmDialog from '../../components/ConfirmDialog';
 import IconButton from '../../components/IconButton';
 import { safeDateTimeStr } from '../../utils/dateUtils';
+import AdminRadioSettings from './AdminRadioSettings';
 
 // ============================================================
 // Admin → Radio Channels
@@ -62,6 +63,7 @@ const emptyForm: FormState = {
 const COLOR_SWATCHES = ['#d4a017', '#a16207', '#9a3412', '#7f1d1d', '#374151', '#1f2937', '#0f766e', '#4d7c0f'];
 
 export default function AdminRadioTab() {
+  const [view, setView] = useState<'channels' | 'settings'>('channels');
   const [channels, setChannels] = useState<RadioChannel[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -197,8 +199,34 @@ export default function AdminRadioTab() {
   const activeCount = channels.filter(c => !c.archived_at).length;
   const totalTx = channels.reduce((sum, c) => sum + (Number(c.tx_count) || 0), 0);
 
+  // Sub-tab bar: Channels (CRUD) vs Settings (org-wide AI/recording/audio).
+  const subTabs = (
+    <div className="flex items-center gap-1 border-b border-[#181818] pb-2">
+      {(['channels', 'settings'] as const).map((v) => (
+        <button
+          key={v}
+          type="button"
+          onClick={() => setView(v)}
+          className="px-3 py-1 text-[11px] font-semibold uppercase tracking-wider rounded-sm"
+          style={{
+            color: view === v ? '#d4a017' : '#888',
+            background: view === v ? 'rgba(212,160,23,0.10)' : 'transparent',
+            border: `1px solid ${view === v ? '#d4a017' : 'transparent'}`,
+          }}
+        >
+          {v}
+        </button>
+      ))}
+    </div>
+  );
+
+  if (view === 'settings') {
+    return <div className="space-y-3">{subTabs}<AdminRadioSettings /></div>;
+  }
+
   return (
     <div className="space-y-3">
+      {subTabs}
       {/* Header */}
       <div className="bg-[#141414] border border-[#181818] rounded-sm p-3">
         <div className="flex items-center justify-between gap-3">

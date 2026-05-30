@@ -104,6 +104,33 @@ export interface DispatcherDecision {
   action?: ActionRequest;
 }
 
+/**
+ * Live, operator-tunable overrides for one dispatch turn. Built by the caller
+ * (VoiceHubDO) from the org-wide radio settings, so a change in Admin → Radio
+ * takes effect on the very next transmission. Everything is optional — an
+ * empty object reproduces the built-in defaults.
+ */
+export interface DispatcherOptions {
+  /** Extra directives appended to DISPATCH_POLICY (operator persona knob). */
+  persona?: string;
+  /** Deepgram Aura-2 speaker for the reply voice. */
+  voice?: string;
+  /** LLM sampling temperature (0–1). */
+  temperature?: number;
+  /** Hard cap on spoken reply length (characters). */
+  maxReplyChars?: number;
+}
+
+// Compose the system prompt: the built-in radio-procedure policy plus any
+// operator persona directives. Persona is APPENDED (not replaced) so the core
+// radio discipline + JSON contract always survive an operator edit.
+function buildSystemPrompt(persona?: string): string {
+  const extra = (persona || '').trim();
+  return extra
+    ? `${DISPATCH_POLICY}\n\nADDITIONAL OPERATOR DIRECTIVES (follow these; they refine the persona above but never the JSON output rules):\n${extra}`
+    : DISPATCH_POLICY;
+}
+
 // ─── DISPATCH POLICY (TUNE ME) ──────────────────────────────
 // This is the operator-owned brain of the dispatcher. The default below
 // is a working RMPG/Spillman-style policy; refine the persona, the agency
@@ -385,21 +412,26 @@ async function runLLM(
  * Decide what dispatch says back. Returns null when the model fails or
  * elects to stay silent (empty reply).
  */
-export async function decideDispatcherReply(ai: Ai, turn: DispatcherTurn): Promise<DispatcherDecision | null> {
+export async function decideDispatcherReply(
+  ai: Ai,
+  turn: DispatcherTurn,
+  opts: DispatcherOptions = {},
+): Promise<DispatcherDecision | null> {
   if (!turn.transcript.trim()) return null;
+  const cap = opts.maxReplyChars ?? MAX_REPLY_CHARS;
   const response = await runLLM(
     ai,
     [
-      { role: 'system', content: DISPATCH_POLICY },
+      { role: 'system', content: buildSystemPrompt(opts.persona) },
       { role: 'user', content: buildUserPrompt(turn) },
     ],
-    { max_tokens: 260, temperature: 0.3 },
+    { max_tokens: 260, temperature: opts.temperature ?? 0.3 },
   );
   if (response == null) return null;
   const decision = coerceDecision(response);
   if (!decision) return null;
-  if (decision.reply.length > MAX_REPLY_CHARS) {
-    decision.reply = decision.reply.slice(0, MAX_REPLY_CHARS).trimEnd();
+  if (decision.reply.length > cap) {
+    decision.reply = decision.reply.slice(0, cap).trimEnd();
   }
   return decision;
 }
@@ -414,12 +446,14 @@ export async function phraseLookupReply(
   turn: DispatcherTurn,
   lookup: LookupRequest,
   resultText: string,
+  opts: DispatcherOptions = {},
 ): Promise<string> {
+  const cap = opts.maxReplyChars ?? MAX_REPLY_CHARS;
   try {
     const response = await runLLM(
       ai,
       [
-        { role: 'system', content: DISPATCH_POLICY },
+        { role: 'system', content: buildSystemPrompt(opts.persona) },
         {
           role: 'user',
           content:
@@ -429,13 +463,13 @@ export async function phraseLookupReply(
             `State ONLY what the result says; never add facts. Respond with ONLY the spoken line, no JSON, no quotes.`,
         },
       ],
-      { max_tokens: 160, temperature: 0.2 },
+      { max_tokens: 160, temperature: opts.temperature ?? 0.2 },
     );
     let reply = coerceReplyText(response).replace(/```/g, '').trim();
     // If the model wrapped it in JSON anyway, recover the reply field.
     if (reply.startsWith('{')) reply = parseDecision(reply)?.reply ?? '';
     if (!reply) return resultText;
-    return reply.length > MAX_REPLY_CHARS ? reply.slice(0, MAX_REPLY_CHARS).trimEnd() : reply;
+    return reply.length > cap ? reply.slice(0, cap).trimEnd() : reply;
   } catch (err) {
     console.error('[aiDispatcher] phrase lookup failed:', (err as Error)?.message);
     return resultText;
@@ -493,14 +527,19 @@ export function humanizeForSpeech(text: string): string {
  * sniffs the container, so MP3/WAV bytes stored at radio-audio/<id>.webm both
  * replay fine through the haze chain. Returns null only if both fail.
  */
-export async function synthesizeDispatcherVoice(ai: Ai, text: string): Promise<Uint8Array | null> {
+export async function synthesizeDispatcherVoice(
+  ai: Ai,
+  text: string,
+  opts: DispatcherOptions = {},
+): Promise<Uint8Array | null> {
   const speech = humanizeForSpeech(text);
+  const speaker = opts.voice || DISPATCH_VOICE;
 
   // Primary — Deepgram Aura-2 (raw MP3 Response).
   try {
     const resp = (await ai.run(
       TTS_PRIMARY_MODEL,
-      { text: speech, speaker: DISPATCH_VOICE } as never,
+      { text: speech, speaker } as never,
       { returnRawResponse: true } as never,
     )) as unknown as Response;
     const bytes = new Uint8Array(await resp.arrayBuffer());
