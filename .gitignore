@@ -69,3 +69,7 @@ data/
 # ─── Local notes (never publish) ────────────────────────────
 *.notes.md
 CLAUDE-private.md
+
+# Dispatch-guide screenshot working dirs (sources for dispatchGuideShots.ts)
+client/.guide-shots/
+.shots/
