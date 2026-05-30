@@ -449,10 +449,19 @@ export default function MapPage() {
           beatDescriptor: d.beat_descriptor || '',
           dispatchCode: d.dispatch_code || '',
         });
-        if (d.sector_id) sectionSet.set(d.sector_id, d.sector_name || '');
+        // sector_id arrives from the API as a number on live D1; coerce to a
+        // string so the Map key, React key, getSectionColor() lookup, and the
+        // localeCompare sort below all operate on strings. Without this the
+        // sort threw ("e.id.localeCompare is not a function") and silently
+        // killed the district sections list.
+        if (d.sector_id != null && d.sector_id !== '') sectionSet.set(String(d.sector_id), d.sector_name || '');
       }
       setBeatDistrictMap(map);
-      setDistrictSections(Array.from(sectionSet.entries()).map(([id, name]) => ({ id, name })).sort((a, b) => a.id.localeCompare(b.id)));
+      setDistrictSections(
+        Array.from(sectionSet.entries())
+          .map(([id, name]) => ({ id, name }))
+          .sort((a, b) => a.id.localeCompare(b.id, undefined, { numeric: true })),
+      );
     }).catch((err) => { console.warn('[MapPage] fetch districts failed:', err); });
     return () => { cancelled = true; };
   }, []);
