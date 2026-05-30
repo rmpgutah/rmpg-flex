@@ -7,9 +7,12 @@
 //        │  transcribeTransmission()      @cf/openai/whisper-large-v3-turbo
 //        ▼
 //   "12-Adam, show me out at 200 South on a traffic stop"
-//        │  decideDispatcherReply()       @cf/meta/llama-3.3-70b-instruct-fp8-fast
-//        ▼  { intent: 'traffic_stop', reply: "12-Adam, copy, show you out…" }
-//   reply text
+//        │  decideDispatcherReply()       @cf/meta/llama-4-scout (fallback 3.3-70b)
+//        ▼  { intent, reply, lookup?, action? }   ← lookup = CAD read,
+//   reply text                                       action = CAD write (data entry)
+//
+// The brain can also READ an image a unit sends (ocrImage → @cf/…vision),
+// folding the OCR text into the same turn so it reads it back / files it.
 //        │  synthesizeDispatcherVoice()   @cf/myshell-ai/melotts (MP3)
 //        ▼
 //   MP3 bytes → stored as a DISPATCH radio_transmission + broadcast live,
@@ -28,7 +31,7 @@
 
 // `Ai` is a global type from @cloudflare/workers-types (same as src/types.ts
 // references it) — no import needed.
-import type { LookupRequest } from './dispatcherAwareness';
+import type { LookupRequest, ActionRequest, ActionType } from './dispatcherAwareness';
 
 const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 // Fallback transcriber — the stable base whisper. Both models were verified
@@ -36,7 +39,20 @@ const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
 // (base64 `audio`) and base whisper is the safety net (array-of-bytes `audio`).
 // NOTE: @cf/openai/gpt-4o-transcribe is NOT available on this account (5007).
 const TRANSCRIBE_FALLBACK_MODEL = '@cf/openai/whisper';
-const LLM_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+// Brain: Llama 4 Scout — Meta's natively-multimodal, function-calling MoE.
+// A real step up from llama-3.3-70b for agentic routing (it now decides
+// real CAD writes, not just lookups) AND it can read images, so the same
+// model powers the dispatcher's OCR (see ocrImage). llama-3.3-70b is kept
+// as the text fallback so a Scout hiccup never leaves the radio silent.
+const LLM_MODEL = '@cf/meta/llama-4-scout-17b-16e-instruct';
+const LLM_FALLBACK_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
+// Vision/OCR model — the proven serve-intake reader (verified on this
+// account). Used when a unit sends an image (a license, a plate, a doc) so
+// the dispatcher can read it back and file it. Scout can also see, but this
+// dedicated reader is the lower-risk default for OCR.
+const VISION_MODEL = '@cf/meta/llama-3.2-11b-vision-instruct';
+// Hard ceiling on an OCR image (bytes) — mirrors serve-intake's guard.
+const MAX_OCR_BYTES = 6 * 1024 * 1024;
 // Voice: Deepgram Aura-2 is a context-aware, genuinely human-sounding TTS
 // (natural pacing, expressiveness, fillers) — a large step up from melotts.
 // Verified live: returns raw MP3 (audio/mpeg) via returnRawResponse. melotts
@@ -63,6 +79,8 @@ export interface DispatcherTurn {
   recent: Array<{ speaker: string | null; text: string }>;
   /** Live CAD situational snapshot from gatherAwareness() (advanced awareness). */
   awareness: string;
+  /** Text OCR'd from an image the unit sent this turn, if any (see ocrImage). */
+  ocrText?: string | null;
 }
 
 export interface DispatcherDecision {
@@ -76,6 +94,41 @@ export interface DispatcherDecision {
    * phraseLookupReply(). `reply` then acts as the holding "stand by".
    */
   lookup?: LookupRequest;
+  /**
+   * If the unit asked the dispatcher to WRITE something to the CAD — log a
+   * status ("show me out at 200 South") or start a call ("create a call,
+   * suspicious vehicle at 5th and Main") — the model fills this and the
+   * caller runs runAction(). `reply` is then replaced by the write's spoken
+   * confirmation. This is the data-entry side of the dispatcher.
+   */
+  action?: ActionRequest;
+}
+
+/**
+ * Live, operator-tunable overrides for one dispatch turn. Built by the caller
+ * (VoiceHubDO) from the org-wide radio settings, so a change in Admin → Radio
+ * takes effect on the very next transmission. Everything is optional — an
+ * empty object reproduces the built-in defaults.
+ */
+export interface DispatcherOptions {
+  /** Extra directives appended to DISPATCH_POLICY (operator persona knob). */
+  persona?: string;
+  /** Deepgram Aura-2 speaker for the reply voice. */
+  voice?: string;
+  /** LLM sampling temperature (0–1). */
+  temperature?: number;
+  /** Hard cap on spoken reply length (characters). */
+  maxReplyChars?: number;
+}
+
+// Compose the system prompt: the built-in radio-procedure policy plus any
+// operator persona directives. Persona is APPENDED (not replaced) so the core
+// radio discipline + JSON contract always survive an operator edit.
+function buildSystemPrompt(persona?: string): string {
+  const extra = (persona || '').trim();
+  return extra
+    ? `${DISPATCH_POLICY}\n\nADDITIONAL OPERATOR DIRECTIVES (follow these; they refine the persona above but never the JSON output rules):\n${extra}`
+    : DISPATCH_POLICY;
 }
 
 // ─── DISPATCH POLICY (TUNE ME) ──────────────────────────────
@@ -87,10 +140,15 @@ const DISPATCH_POLICY = `You are RMPG DISPATCH — the radio dispatcher for Rock
 
 You hear EVERY transmission on the channel and you acknowledge or respond to each one. ANY time a unit addresses you directly — says "dispatch", "control", calls your name, or directs a statement or question at you — you MUST respond; never leave a direct address unanswered, even if only to acknowledge ("copy") or ask them to repeat. Match the unit's brevity. Use the unit's call-sign when you have it. You are given a live CAD board snapshot (active calls, units on duty, BOLOs, panic alerts) — USE it: reference the unit's actual assignment, name a real available unit when dispatching backup, and prioritize an active panic alert over everything. Use standard radio procedure:
 - Acknowledge a status with "copy" or "10-4" and read back the key detail.
-- A unit "out" / "out at <place>" → log the location and acknowledge ("copy, show you out at <place>, time is <approx>").
+- A unit "out" / "out at <place>" → log the location and acknowledge ("copy, show you out at <place>, time is <the Current time given below, in Mountain Time>"). NEVER invent or guess a time — only ever state the Current time provided to you (it is already Mountain Time).
 - A request for backup / "10-78" / "start me another unit" → acknowledge and dispatch the nearest available on-duty unit by call-sign from the board.
 - An emergency / "shots fired" / "officer down" / "10-33" / "code 3" → respond with urgency, acknowledge, advise units to hold traffic, and that help is en route.
 - A record check the unit requests — a license PLATE, a PERSON by name, or a WARRANT check — you CAN run it. Set the "lookup" field (type + the plate/name to search) and make "reply" a brief "stand by"; the result will be read back automatically.
+- A CAD WRITE the unit requests — you CAN do data entry. Two writes are supported, set the "action" field:
+    • A unit reporting a STATUS change — "10-8 / in service", "10-7 / out of service", "show me out / out at <place> / on scene / arrived", "en route", "tied up" — set action {type:"set_unit_status", unit:"<their call-sign>", status:"<what they said, e.g. 'out at' or '10-8'>", location:"<place if they gave one>"}. Make "reply" the acknowledgement.
+    • A request to START / CREATE a call ("start a call", "create a call", "log a call", "I've got a <thing> at <place>") — set action {type:"create_call", incident_type:"<short type, e.g. 'suspicious vehicle'>", priority:"<P1 emergency | P2 urgent | P3 routine | P4 non-urgent>", location_address:"<address/place>", description:"<details>", caller_name:"<if given>"}. Make "reply" a brief acknowledgement; the real confirmation (with the call number) is read back automatically.
+  Only set "action" when the unit clearly asked you to log a status or start a call. If a detail you need (the location for a new call, or which status) is missing, ask for it instead of guessing.
+- If you are given OCR TEXT read from an image the unit sent (a driver's license, plate, registration, or document), treat it as facts you may read back or use to fill a lookup/action — but never invent fields the OCR didn't contain.
 - Plain unit-to-unit chatter not directed at dispatch → a brief "copy" is enough.
 
 Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 location, 10-23 arrived, 10-28 plate/registration check, 10-29 wants/warrants check, 10-76 en route, 10-78 need backup, 10-97 arrived on scene, code 4 = scene secure / no further help needed.
@@ -98,8 +156,8 @@ Common 10-codes: 10-4 acknowledged, 10-8 in service, 10-7 out of service, 10-20 
 Never invent unit numbers, names, plates, warrants, or facts you were not given in the snapshot or a lookup result. If you don't have a detail, ask for it briefly.`;
 
 const FORMAT_INSTRUCTION = `Respond with ONLY a JSON object, no prose around it:
-{"intent":"<one of: status_update | out_at_location | backup_request | emergency | lookup_request | en_route | arrived | code4 | chatter | unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","lookup":{"type":"plate|person|warrant","query":"<plate or name to run>"}}
-Include "lookup" ONLY when the unit is asking you to run a plate, a person, or a warrant/wants check (set intent to lookup_request and reply with a brief "stand by"). Omit "lookup" entirely otherwise.
+{"intent":"<one of: status_update | out_at_location | backup_request | emergency | lookup_request | data_entry | en_route | arrived | code4 | chatter | unclear>","reply":"<exactly what dispatch says over the radio — one or two short sentences>","lookup":{"type":"plate|person|warrant","query":"<plate or name to run>"},"action":{"type":"set_unit_status|create_call","unit":"<call-sign>","status":"<radio status word/code>","location":"<place>","incident_type":"<type>","priority":"<P1|P2|P3|P4>","location_address":"<address>","description":"<details>","caller_name":"<name>"}}
+Include "lookup" ONLY for a plate/person/warrant check (intent lookup_request, reply "stand by"). Include "action" ONLY when the unit asked you to log a status or start a call (intent data_entry); use type set_unit_status with only unit/status/location, or type create_call with only incident_type/priority/location_address/description/caller_name. Omit "lookup" and "action" entirely otherwise.
 If the transmission is unintelligible, set intent to "unclear" and reply asking the unit to repeat their last.`;
 
 // ─── Transcription ──────────────────────────────────────────
@@ -145,17 +203,76 @@ export async function transcribeTransmission(ai: Ai, audio: Uint8Array): Promise
   }
 }
 
+// ─── OCR (read an image a unit sent) ────────────────────────
+
+/**
+ * Read all text off an image (a driver's license, a plate, a registration,
+ * a document) so the dispatcher can speak it back and/or use it for a
+ * lookup or a call. Uses the proven vision model. Best-effort: returns null
+ * on any failure or an out-of-range image, so the caller just skips the OCR
+ * leg rather than breaking the relay.
+ *
+ * Returns plain extracted text. The dispatcher's reasoning turn folds this
+ * in as "OCR TEXT" context (see DISPATCH_POLICY) — it is never treated as a
+ * command on its own.
+ */
+export async function ocrImage(ai: Ai, image: Uint8Array): Promise<string | null> {
+  if (!image || image.byteLength === 0 || image.byteLength > MAX_OCR_BYTES) return null;
+  try {
+    const out = (await ai.run(VISION_MODEL, {
+      image: Array.from(image),
+      prompt:
+        'You are reading an image for a police dispatcher. Transcribe ALL legible text exactly as printed — ' +
+        'names, dates of birth, license/plate numbers, addresses, document titles. ' +
+        'Output ONLY the transcribed text, no commentary. If nothing is legible, output an empty string.',
+      max_tokens: 1024,
+      temperature: 0.1,
+    } as never)) as { response?: unknown; description?: unknown };
+    const text = String(out?.response ?? out?.description ?? '').trim();
+    return text.length > 0 ? text : null;
+  } catch (err) {
+    console.warn('[aiDispatcher] OCR failed:', (err as Error)?.message);
+    return null;
+  }
+}
+
 // ─── Reasoning + intent routing ─────────────────────────────
+
+// The Worker runs in UTC, so any time the dispatcher states must be converted
+// to RMPG's operating timezone (America/Denver, Mountain Time) — otherwise the
+// AI guesses or echoes UTC and announces a time ~6h off. We inject the real MT
+// time into every turn so "the time is …" is always correct and local.
+export function mountainTimeNow(date: Date = new Date()): { time24: string; time12: string } {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver', hour: '2-digit', minute: '2-digit', hour12: false,
+  }).formatToParts(date);
+  const h24 = parts.find((p) => p.type === 'hour')?.value ?? '00';
+  const m = parts.find((p) => p.type === 'minute')?.value ?? '00';
+  const time24 = `${h24}:${m}`;
+  const time12 = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/Denver', hour: 'numeric', minute: '2-digit', hour12: true,
+  }).format(date);
+  return { time24, time12 };
+}
 
 function buildUserPrompt(turn: DispatcherTurn): string {
   const lines: string[] = [];
   if (turn.channelName) lines.push(`Channel: ${turn.channelName}`);
+  // Ground the dispatcher in the real local time (Mountain Time) so any
+  // time it states ("show you out at … time is …") is correct, never UTC.
+  const { time24, time12 } = mountainTimeNow();
+  lines.push(`Current time (Mountain Time): ${time24} (${time12}). Use THIS for any time you state; never guess the time.`);
   lines.push('=== LIVE CAD BOARD ===');
   lines.push(turn.awareness);
   lines.push('======================');
   if (turn.recent.length) {
     lines.push('Recent traffic (oldest first):');
     for (const r of turn.recent) lines.push(`  ${r.speaker || 'Unit'}: ${r.text}`);
+  }
+  if (turn.ocrText && turn.ocrText.trim()) {
+    lines.push('=== OCR TEXT (read from an image the unit sent) ===');
+    lines.push(turn.ocrText.trim());
+    lines.push('===================================================');
   }
   lines.push('');
   lines.push(`New transmission from ${turn.speaker || 'an unidentified unit'}:`);
@@ -176,18 +293,56 @@ function parseLookup(value: unknown): LookupRequest | undefined {
   return { type: type as LookupRequest['type'], query: q };
 }
 
+const ACTION_TYPES = ['set_unit_status', 'create_call'] as const;
+
+// Pull a string field off a loose object (the model may emit '', null, or
+// the wrong type). Returns undefined for anything not a non-empty string.
+function str(obj: Record<string, unknown>, key: string): string | undefined {
+  const v = obj[key];
+  return typeof v === 'string' && v.trim() ? v.trim() : undefined;
+}
+
+function parseAction(value: unknown): ActionRequest | undefined {
+  if (!value || typeof value !== 'object') return undefined;
+  const obj = value as Record<string, unknown>;
+  const type = typeof obj.type === 'string' ? obj.type.toLowerCase() : '';
+  if (!(ACTION_TYPES as readonly string[]).includes(type)) return undefined;
+  // Keep only the fields that belong to each action so a stray "unit" on a
+  // create_call (or vice-versa) can't confuse the executor / policy gate.
+  if (type === 'set_unit_status') {
+    const unit = str(obj, 'unit');
+    const status = str(obj, 'status');
+    if (!unit || !status) return undefined;
+    return { type: type as ActionType, unit, status, location: str(obj, 'location') };
+  }
+  // create_call
+  const incident_type = str(obj, 'incident_type');
+  const location_address = str(obj, 'location_address') ?? str(obj, 'location');
+  if (!incident_type || !location_address) return undefined;
+  return {
+    type: type as ActionType,
+    incident_type,
+    location_address,
+    priority: str(obj, 'priority'),
+    description: str(obj, 'description'),
+    caller_name: str(obj, 'caller_name'),
+  };
+}
+
 // Build a decision from an already-structured object. Workers AI's
 // llama-3.3 returns `response` as a PARSED OBJECT when the output is JSON
 // (not a string), so this is the COMMON path, not a fallback.
 function decisionFromObject(obj: Record<string, unknown>): DispatcherDecision | null {
   const reply = (typeof obj.reply === 'string' ? obj.reply : '').trim();
   const lookup = parseLookup(obj.lookup);
-  // A lookup with only a "stand by" reply is still actionable.
-  if (reply || lookup) {
+  const action = parseAction(obj.action);
+  // A lookup OR an action with only a holding reply is still actionable.
+  if (reply || lookup || action) {
     return {
       intent: (typeof obj.intent === 'string' ? obj.intent : 'general').trim() || 'general',
-      reply: reply || 'Stand by.',
+      reply: reply || (action ? 'Copy, stand by.' : 'Stand by.'),
       lookup,
+      action,
     };
   }
   return null;
@@ -231,30 +386,52 @@ function coerceReplyText(response: unknown): string {
 }
 
 /**
+ * Run the reasoning model with an automatic fallback: Llama 4 Scout first,
+ * the proven llama-3.3-70b if Scout throws or returns nothing. Returns the
+ * raw `response` (object when the model emits JSON, string otherwise) or
+ * null if BOTH fail — the dispatcher then degrades to a verbal ack.
+ */
+async function runLLM(
+  ai: Ai,
+  messages: Array<{ role: string; content: string }>,
+  opts: { max_tokens: number; temperature: number },
+): Promise<unknown> {
+  for (const model of [LLM_MODEL, LLM_FALLBACK_MODEL]) {
+    try {
+      const res = (await ai.run(model, { messages, ...opts } as never)) as { response?: unknown };
+      if (res?.response != null && res.response !== '') return res.response;
+      console.warn(`[aiDispatcher] ${model} returned empty — trying next`);
+    } catch (err) {
+      console.warn(`[aiDispatcher] ${model} failed:`, (err as Error)?.message);
+    }
+  }
+  return null;
+}
+
+/**
  * Decide what dispatch says back. Returns null when the model fails or
  * elects to stay silent (empty reply).
  */
-export async function decideDispatcherReply(ai: Ai, turn: DispatcherTurn): Promise<DispatcherDecision | null> {
+export async function decideDispatcherReply(
+  ai: Ai,
+  turn: DispatcherTurn,
+  opts: DispatcherOptions = {},
+): Promise<DispatcherDecision | null> {
   if (!turn.transcript.trim()) return null;
-  let response: unknown;
-  try {
-    const res = (await ai.run(LLM_MODEL, {
-      messages: [
-        { role: 'system', content: DISPATCH_POLICY },
-        { role: 'user', content: buildUserPrompt(turn) },
-      ],
-      max_tokens: 220,
-      temperature: 0.3,
-    } as never)) as { response?: unknown };
-    response = res?.response;
-  } catch (err) {
-    console.error('[aiDispatcher] LLM failed:', (err as Error)?.message);
-    return null;
-  }
+  const cap = opts.maxReplyChars ?? MAX_REPLY_CHARS;
+  const response = await runLLM(
+    ai,
+    [
+      { role: 'system', content: buildSystemPrompt(opts.persona) },
+      { role: 'user', content: buildUserPrompt(turn) },
+    ],
+    { max_tokens: 260, temperature: opts.temperature ?? 0.3 },
+  );
+  if (response == null) return null;
   const decision = coerceDecision(response);
   if (!decision) return null;
-  if (decision.reply.length > MAX_REPLY_CHARS) {
-    decision.reply = decision.reply.slice(0, MAX_REPLY_CHARS).trimEnd();
+  if (decision.reply.length > cap) {
+    decision.reply = decision.reply.slice(0, cap).trimEnd();
   }
   return decision;
 }
@@ -269,11 +446,14 @@ export async function phraseLookupReply(
   turn: DispatcherTurn,
   lookup: LookupRequest,
   resultText: string,
+  opts: DispatcherOptions = {},
 ): Promise<string> {
+  const cap = opts.maxReplyChars ?? MAX_REPLY_CHARS;
   try {
-    const res = (await ai.run(LLM_MODEL, {
-      messages: [
-        { role: 'system', content: DISPATCH_POLICY },
+    const response = await runLLM(
+      ai,
+      [
+        { role: 'system', content: buildSystemPrompt(opts.persona) },
         {
           role: 'user',
           content:
@@ -283,14 +463,13 @@ export async function phraseLookupReply(
             `State ONLY what the result says; never add facts. Respond with ONLY the spoken line, no JSON, no quotes.`,
         },
       ],
-      max_tokens: 160,
-      temperature: 0.2,
-    } as never)) as { response?: unknown };
-    let reply = coerceReplyText(res?.response).replace(/```/g, '').trim();
+      { max_tokens: 160, temperature: opts.temperature ?? 0.2 },
+    );
+    let reply = coerceReplyText(response).replace(/```/g, '').trim();
     // If the model wrapped it in JSON anyway, recover the reply field.
     if (reply.startsWith('{')) reply = parseDecision(reply)?.reply ?? '';
     if (!reply) return resultText;
-    return reply.length > MAX_REPLY_CHARS ? reply.slice(0, MAX_REPLY_CHARS).trimEnd() : reply;
+    return reply.length > cap ? reply.slice(0, cap).trimEnd() : reply;
   } catch (err) {
     console.error('[aiDispatcher] phrase lookup failed:', (err as Error)?.message);
     return resultText;
@@ -315,6 +494,11 @@ const STREET_ABBR: Record<string, string> = {
   ln: 'Lane', ct: 'Court', pkwy: 'Parkway', hwy: 'Highway', ste: 'Suite',
 };
 
+// Acronyms a dispatcher SPELLS OUT on the air ("PSO Client Request" is said
+// "P. S. O. Client Request", never the word "Pso"). Curated to unambiguous
+// letter-spoken codes — BOLO is deliberately absent (it's said as a word).
+const SPOKEN_ACRONYMS = new Set(['PSO', 'CFS', 'DV', 'DUI', 'DWI', 'NCIC', 'EMS', 'ATL']);
+
 export function humanizeForSpeech(text: string): string {
   let s = text;
   // 10-codes → "ten ...": "10-4" → "ten 4" (TTS then says "ten four"),
@@ -322,6 +506,12 @@ export function humanizeForSpeech(text: string): string {
   s = s.replace(/\b10-(\d{1,3})\b/g, 'ten $1');
   // "code-4" / "code4" → "code 4" so it isn't run together.
   s = s.replace(/\bcode[-\s]?(\d{1,2})\b/gi, 'code $1');
+  // Spell known UPPERCASE acronyms letter-by-letter ("PSO" → "P. S. O.") so
+  // Aura-2 announces the letters. Runs BEFORE the street-abbr pass so the
+  // resulting single letters aren't re-matched.
+  s = s.replace(/\b[A-Z]{2,5}\b/g, (m) =>
+    SPOKEN_ACRONYMS.has(m) ? m.split('').join('. ') + '.' : m,
+  );
   // Expand street-type abbreviations (word-boundary, optional trailing dot).
   s = s.replace(/\b([A-Za-z]{2,5})\.?\b/g, (m, w) => {
     const full = STREET_ABBR[String(w).toLowerCase()];
@@ -337,14 +527,19 @@ export function humanizeForSpeech(text: string): string {
  * sniffs the container, so MP3/WAV bytes stored at radio-audio/<id>.webm both
  * replay fine through the haze chain. Returns null only if both fail.
  */
-export async function synthesizeDispatcherVoice(ai: Ai, text: string): Promise<Uint8Array | null> {
+export async function synthesizeDispatcherVoice(
+  ai: Ai,
+  text: string,
+  opts: DispatcherOptions = {},
+): Promise<Uint8Array | null> {
   const speech = humanizeForSpeech(text);
+  const speaker = opts.voice || DISPATCH_VOICE;
 
   // Primary — Deepgram Aura-2 (raw MP3 Response).
   try {
     const resp = (await ai.run(
       TTS_PRIMARY_MODEL,
-      { text: speech, speaker: DISPATCH_VOICE } as never,
+      { text: speech, speaker } as never,
       { returnRawResponse: true } as never,
     )) as unknown as Response;
     const bytes = new Uint8Array(await resp.arrayBuffer());

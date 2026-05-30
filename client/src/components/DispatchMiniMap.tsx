@@ -14,6 +14,7 @@ import { useNavigate } from 'react-router-dom';
 import { initMapbox, mapboxgl, MAPBOX_STYLE_DARK, registerMapInstance, unregisterMapInstance } from '../utils/mapboxLoader';
 import { getMapboxAccessToken, getMapboxTokenErrorMessage } from '../utils/mapboxApiKey';
 import { useMapRouting } from '../hooks/useMapRouting';
+import { useGpsTracking } from '../hooks/useGpsTracking';
 import { speak } from '../utils/edgeTTS';
 import ManeuverArrow from './ManeuverArrow';
 import type { CallForService, Unit } from '../types';
@@ -66,6 +67,12 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
   // Routing (auto-route when a single assigned unit has GPS)
   const { activeRoute, showRoute, clearRoute, updateOrigin } = useMapRouting({ map: mapReady ? mapRef.current : null });
   const lastAutoRouteRef = useRef<string>(''); // track last auto-routed unit+call combo
+
+  // Device's OWN live GPS (read-only — Layout owns the upload). Drives
+  // continuous, phone-maps-style route recomputation from watchPosition
+  // (~1/sec) when THIS device is the unit being routed, instead of waiting
+  // for the server units feed to round-trip on a tab switch.
+  const devGps = useGpsTracking({ upload: false });
 
   // Load Mapbox token + init map
   useEffect(() => {
@@ -234,6 +241,22 @@ export default function DispatchMiniMap({ call, units, onClose, fullHeight, onRo
       }
     }
   }, [loaded, call?.id, call?.latitude, call?.longitude, call?.assigned_units, units, showRoute, clearRoute, updateOrigin]);
+
+  // ── Live turn-by-turn recompute from the DEVICE's own GPS ──
+  // Standard phone-GPS behavior: when the officer viewing this map IS the unit
+  // routed to the call (call-sign match), recompute the route from the device's
+  // continuous watchPosition fixes (~1/sec) rather than the server units poll.
+  // useMapRouting.updateOrigin re-snaps progress, advances the turn-by-turn
+  // step, and auto-reroutes when off-corridor — so directions + ETA stay live
+  // without ever leaving the page. Dispatchers watching ANOTHER unit are
+  // unaffected (the call-sign guard fails, server position keeps driving it).
+  useEffect(() => {
+    if (!activeRoute) return;
+    const { latitude: lat, longitude: lng, unitCallSign } = devGps;
+    if (lat == null || lng == null) return;
+    if (!unitCallSign || unitCallSign !== activeRoute.unitCallSign) return;
+    updateOrigin(lat, lng);
+  }, [devGps.latitude, devGps.longitude, devGps.unitCallSign, activeRoute, updateOrigin]);
 
   // Notify parent of route changes
   useEffect(() => {

@@ -61,6 +61,14 @@ interface UseGpsTrackingOptions {
   maxAccuracyMeters?: number;
   /** Maximum plausible speed in m/s for jump detection (default: 100 = ~360 km/h) */
   maxSpeedMs?: number;
+  /**
+   * READ-ONLY mode. When false, the hook still watches the device position
+   * (live latitude/longitude/heading/speed for the UI, plus my-unit info) but
+   * NEVER uploads breadcrumbs to the server. Use this for a *second* consumer
+   * on a page where Layout's always-mounted tracker already owns the upload —
+   * e.g. live turn-by-turn nav — so we don't double-POST GPS. Default: true.
+   */
+  upload?: boolean;
 }
 
 // ─── Constants ──────────────────────────────────────────────
@@ -221,7 +229,13 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     highAccuracy = true,
     maxAccuracyMeters = DEFAULT_MAX_ACCURACY,
     maxSpeedMs = DEFAULT_MAX_SPEED,
+    upload = true,
   } = options || {};
+
+  // Read in the POST helpers (empty-deps useCallbacks) so a read-only consumer
+  // never uploads. Kept in a ref so toggling the option doesn't re-create them.
+  const uploadRef = useRef(upload);
+  uploadRef.current = upload;
 
   // GPS is ALWAYS tracking — mandatory for all users
   const [isTracking, setIsTracking] = useState<boolean>(false);
@@ -308,6 +322,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
   const isSendingRef = useRef(false);
   const mountedRef = useRef(true);
   const sendBatch = useCallback(async () => {
+    // Read-only consumer — never upload; drain the queue so it can't grow.
+    if (!uploadRef.current) { queueRef.current = []; return; }
     // Guard against concurrent sends (interval can fire while await is pending)
     if (isSendingRef.current) return;
     isSendingRef.current = true;
@@ -366,6 +382,8 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
 
   // ─── Send single position immediately (for first fix) ────
   const sendImmediate = useCallback(async (point: QueuedPoint) => {
+    // Read-only consumer — never upload.
+    if (!uploadRef.current) return;
     // Skip POST when a hardware GPS tracker is managing this unit's position
     if (gpsSourceRef.current === 'clearpathgps') return;
 
@@ -835,9 +853,11 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
     );
     watchIdRef.current = watchId;
 
-    // Start batch send interval
-    const interval = setInterval(sendBatch, batchIntervalMs);
-    batchIntervalRef.current = interval;
+    // Start batch send interval (skip entirely for read-only consumers).
+    if (uploadRef.current) {
+      const interval = setInterval(sendBatch, batchIntervalMs);
+      batchIntervalRef.current = interval;
+    }
 
     // Start heartbeat — detects when watchPosition stops delivering callbacks
     // (common on mobile when OS reclaims resources or GPS hardware sleeps).

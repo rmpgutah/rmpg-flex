@@ -26,6 +26,7 @@ import { VoiceHubDO } from './durable-objects/VoiceHubDO';
 import { PdfToolsContainer } from './containers/pdfToolsContainer';
 import { runUtahWarrantScan } from './utils/utahWarrantPoller';
 import { detectDispatchAnomalies } from './routes/dispatch/anomalies';
+import { getRadioSettings, purgeOldRecordings } from './utils/radioSettings';
 import type { Bindings, Variables } from './types';
 import { ROUTE_REGISTRY } from './routesConfig';
 
@@ -181,6 +182,15 @@ export default {
       detectDispatchAnomalies(env.DB)
         .then((r) => console.log(`[anomaly] raised/updated ${r.raised}, auto-resolved ${r.resolved}`))
         .catch((err) => console.error('Dispatch anomaly detection failed:', err)),
+    );
+    // Radio recording retention — purge transmissions/audio older than the
+    // operator-set window (radio settings; 0 = keep forever). Own catch so a
+    // failure can't abort the other scans or crash the cron loop.
+    ctx.waitUntil(
+      getRadioSettings(env.DB)
+        .then((s) => purgeOldRecordings(env.DB, env.UPLOADS, s.recording_retention_days))
+        .then((r) => { if (r.deleted) console.log(`[radio] purged ${r.deleted} expired recording(s)`); })
+        .catch((err) => console.error('Radio retention purge failed:', err)),
     );
   },
 };

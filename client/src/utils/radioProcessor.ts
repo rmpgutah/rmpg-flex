@@ -120,6 +120,39 @@ export interface RadioChainNodes {
  * `hasWorklets` toggles the gate/bitcrusher; pass the result of
  * ensureRadioWorklets(ctx).
  */
+// ─── Org-configurable haze settings (Admin → Radio) ─────────
+// A module-level config the operator console sets from /api/radio/settings.
+// DEFAULTS reproduce the historical sound EXACTLY (standard intensity, the
+// original near-silent noise bed, chain enabled) — so behavior is unchanged
+// until an admin moves a slider.
+export type HazeIntensity = 'clean' | 'light' | 'standard' | 'heavy';
+
+export interface RadioHazeConfig {
+  /** Run playback through the P25 chain at all (tts_over_radio). */
+  enabled: boolean;
+  /** Strength of the codec-presence coloring. 'standard' == legacy sound. */
+  intensity: HazeIntensity;
+  /** Operator noise-bed knob, 0–1 (0.15 == legacy near-silent hiss). */
+  noiseLevel: number;
+}
+
+// 'standard' maps to 1.0 → presence gain 4dB (the original value).
+const INTENSITY_SCALE: Record<HazeIntensity, number> = { clean: 0, light: 0.5, standard: 1, heavy: 1.6 };
+// Maps the 0–1 operator knob onto the actual pink-noise level. 0.15 → ~0.004
+// (the original near-silent P25 bed), so the default is a perfect no-op.
+const NOISE_LEVEL_MAX = 0.027;
+
+let hazeConfig: RadioHazeConfig = { enabled: true, intensity: 'standard', noiseLevel: 0.15 };
+
+/** Set the org haze config (called once from the radio console on load). */
+export function setRadioHazeConfig(patch: Partial<RadioHazeConfig>): void {
+  hazeConfig = { ...hazeConfig, ...patch };
+}
+/** Current haze config (defaults reproduce the legacy sound). */
+export function getRadioHazeConfig(): RadioHazeConfig {
+  return hazeConfig;
+}
+
 export function buildRadioVoiceChain(ctx: AudioContext, hasWorklets: boolean): RadioChainNodes {
   // IMBE/AMBE vocoder band: ~300Hz–3400Hz.
   const highpass = ctx.createBiquadFilter();
@@ -132,12 +165,13 @@ export function buildRadioVoiceChain(ctx: AudioContext, hasWorklets: boolean): R
   lowpass.frequency.value = 3400;
   lowpass.Q.value = 0.7;
 
-  // Metallic codec presence — slightly higher than analog comms.
+  // Metallic codec presence — slightly higher than analog comms. Scaled by
+  // the org haze intensity (standard == 4dB, the legacy value).
   const presence = ctx.createBiquadFilter();
   presence.type = 'peaking';
   presence.frequency.value = 1800;
   presence.Q.value = 1.4;
-  presence.gain.value = 4;
+  presence.gain.value = 4 * INTENSITY_SCALE[hazeConfig.intensity];
 
   const voiceGain = ctx.createGain();
   voiceGain.gain.value = 0.85;
@@ -291,21 +325,29 @@ export class RadioHazePlayer {
     const now = ctx.currentTime;
     const lead = 0.06; // tiny squelch-open gap before voice
     const dur = audioBuffer.duration;
-
-    const { input, output } = buildRadioVoiceChain(ctx, hasWorklets);
-    output.connect(ctx.destination);
+    const cfg = hazeConfig;
 
     const src = ctx.createBufferSource();
     src.buffer = audioBuffer;
-    src.connect(input);
     this.source = src;
     this.endCb = onEnded ?? null;
 
-    this.noise = createRadioNoiseBed(ctx, {
-      startTime: now,
-      attackAt: now + lead,
-      holdUntil: now + lead + dur,
-    });
+    if (!cfg.enabled) {
+      // tts_over_radio off — play the clean voice with no P25 chain/noise.
+      src.connect(ctx.destination);
+      this.noise = null;
+    } else {
+      const { input, output } = buildRadioVoiceChain(ctx, hasWorklets);
+      output.connect(ctx.destination);
+      src.connect(input);
+      this.noise = createRadioNoiseBed(ctx, {
+        startTime: now,
+        attackAt: now + lead,
+        holdUntil: now + lead + dur,
+        // Map the 0–1 operator knob onto the real pink-noise level.
+        level: Math.max(0, Math.min(cfg.noiseLevel, 1)) * NOISE_LEVEL_MAX,
+      });
+    }
 
     src.onended = () => {
       const cb = this.endCb;

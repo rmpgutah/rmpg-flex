@@ -29,6 +29,7 @@
 // ============================================================
 
 import { jwtVerify } from 'jose';
+import type { Bindings } from '../types';
 import { getDb, queryFirst, query, execute } from '../utils/db';
 import {
   transcribeTransmission,
@@ -41,16 +42,22 @@ import {
   bytesToBase64,
   type DispatcherTurn,
 } from '../utils/aiDispatcher';
-import { gatherAwareness, runLookup } from '../utils/dispatcherAwareness';
+import { gatherAwareness, runLookup, runAction } from '../utils/dispatcherAwareness';
+import { getRadioSettings, type RadioSettings } from '../utils/radioSettings';
+import type { DispatcherOptions } from '../utils/aiDispatcher';
 
 interface VoiceEnv {
   DB: D1Database;
   UPLOADS: R2Bucket;
   KV: KVNamespace;
+  // R2 geofence (beat.geojson) — used when the dispatcher CREATES a call
+  // from the radio and backfills sector/zone/beat. DOs share the Worker's
+  // bindings at runtime; declared here so runAction's enrichment is typed.
+  MAP_DATA: R2Bucket;
   JWT_SECRET: string;
   // Workers AI — powers the AI dispatcher (Whisper transcription,
-  // Llama 3.3 intent routing, melotts reply synthesis). See
-  // src/utils/aiDispatcher.ts.
+  // Llama 4 Scout reasoning + data-entry + OCR, Aura-2 reply synthesis).
+  // See src/utils/aiDispatcher.ts.
   AI: Ai;
 }
 
@@ -276,6 +283,11 @@ export class VoiceHubDO {
     const db = getDb(this.env as any);
 
     if (this.kind === 'radio') {
+      // Org-wide radio settings — read once per transmission and reused for
+      // both the recording gate (auto_record) and the dispatcher pipeline, so
+      // an Admin → Radio change is live on the next transmission.
+      const settings = await getRadioSettings(db);
+
       // INSERT first to mint the id, then key the R2 object by it so the
       // serve route (GET /api/radio/transmissions/:id/audio) is a pure
       // id→key map with no extra column needed.
@@ -286,10 +298,17 @@ export class VoiceHubDO {
         this.refId, tx.userId, tx.unitLabel, durationSec, transcript,
       );
       const id = Number(res.meta.last_row_id);
-      const key = `radio-audio/${id}.webm`;
-      await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
-      const audioUrl = `/api/radio/transmissions/${id}/audio`;
-      await execute(db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?', audioUrl, id);
+
+      // Recording is gated by auto_record — when off, the transmission is still
+      // logged (audit trail) but no audio is kept and no play button appears.
+      if (settings.auto_record) {
+        const key = `radio-audio/${id}.webm`;
+        await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+        await execute(
+          db, 'UPDATE radio_transmissions SET audio_url = ? WHERE id = ?',
+          `/api/radio/transmissions/${id}/audio`, id,
+        );
+      }
 
       // Tell the room a recording is ready so feeds can show a play button
       // without waiting for the 5s poll.
@@ -308,9 +327,9 @@ export class VoiceHubDO {
       // Kicked off after the clip is saved so the live relay is never
       // blocked on model latency. The dispatcher's own replies are written
       // directly by runDispatcher (not through persist), so they never loop
-      // back through here.
+      // back through here. Gated by ai_dispatcher_enabled inside runDispatcher.
       this.state.waitUntil(
-        this.runDispatcher(id, blob, transcript).catch((err) =>
+        this.runDispatcher(id, blob, transcript, settings).catch((err) =>
           console.error('[VoiceHubDO] dispatcher', err)),
       );
       return;
@@ -345,12 +364,27 @@ export class VoiceHubDO {
     sourceTxId: number,
     audio: Uint8Array,
     clientTranscript: string | null,
+    settings: RadioSettings,
   ): Promise<void> {
+    // Master kill switch — when the AI dispatcher is disabled, the radio relay
+    // still records + broadcasts; it just never speaks back.
+    if (!settings.ai_dispatcher_enabled) return;
+
     const db = getDb(this.env as any);
 
-    // 1. Transcript — prefer the client's, else transcribe the clip.
+    // Tunables applied to every model call this turn (operator-owned, live).
+    const opts: DispatcherOptions = {
+      persona: settings.ai_persona,
+      voice: settings.ai_voice,
+      temperature: settings.ai_temperature,
+      maxReplyChars: settings.ai_max_reply_chars,
+    };
+
+    // 1. Transcript — prefer the client's, else transcribe the clip (only when
+    //    auto_transcribe is on; otherwise an un-transcribed clip is skipped).
     let transcript = (clientTranscript || '').trim();
     if (!transcript) {
+      if (!settings.auto_transcribe) return;
       const t = await transcribeTransmission(this.env.AI, audio);
       if (!t) return; // unintelligible → nothing to answer
       transcript = t;
@@ -390,15 +424,46 @@ export class VoiceHubDO {
     };
 
     // 3. Decide the reply (intent routing + spoken text + optional lookup).
-    const decision = await decideDispatcherReply(this.env.AI, turn);
+    const decision = await decideDispatcherReply(this.env.AI, turn, opts);
     const addressed = isAddressedToDispatch(transcript);
+
+    // 3-mode. Respond mode: in 'addressed' mode the dispatcher only speaks when
+    // a unit directs traffic at it (or explicitly asked for a lookup/write);
+    // it stays off undirected unit-to-unit chatter. 'all' answers everything.
+    const hasActionable = !!(decision?.lookup || decision?.action);
+    if (settings.ai_respond_mode === 'addressed' && !addressed && !hasActionable) return;
 
     // 3a. If the unit asked for a record check, run it for real and let the
     // dispatcher read the result back instead of the holding "stand by".
     let replyText = decision?.reply ?? '';
+    let actionIntent: string | null = null;
     if (decision?.lookup) {
       const result = await runLookup(db, decision.lookup).catch(() => null);
-      if (result) replyText = await phraseLookupReply(this.env.AI, turn, decision.lookup, result);
+      if (result) replyText = await phraseLookupReply(this.env.AI, turn, decision.lookup, result, opts);
+    }
+
+    // 3a-bis. If the unit asked for a CAD WRITE (data entry) — log a status
+    // or start a call — execute it for real and read back the confirmation
+    // (which carries the new call number / canonical status) instead of the
+    // holding ack. A refused/failed write falls through to the verbal ack.
+    if (decision?.action) {
+      const written = await runAction(
+        this.env as unknown as Bindings, db, decision.action,
+      ).catch(() => null);
+      if (written) {
+        replyText = written.spoken;
+        actionIntent = written.summary;
+      } else {
+        // HONESTY GUARANTEE: the model asked for a write but it was refused
+        // (unknown call-sign / missing location) or failed. Do NOT speak the
+        // model's optimistic "copy, show you out" — that would acknowledge a
+        // change that never persisted ("saves then vanishes"). Replace it with
+        // an honest correction so the unit knows to identify / repeat.
+        replyText = decision.action.type === 'set_unit_status'
+          ? `${speaker?.unit_label || 'Unit calling'}, dispatch did not catch your call-sign — say again your unit and status.`
+          : `${speaker?.unit_label || 'Unit calling'}, unable to start that call — say again the location and the nature.`;
+        actionIntent = `action_refused:${decision.action.type}`;
+      }
     }
 
     // 3b. GUARANTEE: a unit who addressed dispatch directly is never met with
@@ -411,8 +476,8 @@ export class VoiceHubDO {
       replyText = fallbackAcknowledgement(speaker?.unit_label ?? null);
     }
 
-    // 4. Synthesize the dispatcher's voice.
-    const audioBytes = await synthesizeDispatcherVoice(this.env.AI, replyText);
+    // 4. Synthesize the dispatcher's voice (operator-selected Aura-2 speaker).
+    const audioBytes = await synthesizeDispatcherVoice(this.env.AI, replyText, opts);
     if (!audioBytes) return;
 
     // 5. Persist as a DISPATCH transmission — INSERT mints the id, then key
@@ -423,7 +488,8 @@ export class VoiceHubDO {
       db,
       `INSERT INTO radio_transmissions (channel_id, user_id, unit_label, transmitted_at, duration_seconds, transcript, tags)
        VALUES (?, NULL, ?, datetime('now'), ?, ?, ?)`,
-      this.refId, DISPATCH_CALLSIGN, durationSec, replyText, `ai:${intent}`,
+      this.refId, settings.ai_dispatch_callsign || DISPATCH_CALLSIGN, durationSec, replyText,
+      `ai:${intent}${actionIntent ? `;${actionIntent}` : ''}`,
     );
     const dispId = Number(res.meta.last_row_id);
     await this.env.UPLOADS.put(`radio-audio/${dispId}.webm`, audioBytes, {
