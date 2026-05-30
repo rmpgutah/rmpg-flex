@@ -12,10 +12,17 @@ import WebUpdateBanner from './components/WebUpdateBanner';
 import AndroidUpdateChecker from './components/AndroidUpdateChecker';
 import LoginPage from './pages/LoginPage';
 import DownloadsPage from './pages/DownloadsPage';
-// Core pages loaded eagerly (most used)
+// Dashboard is the immediate post-login landing view, so it stays eager.
 import DashboardPage from './pages/DashboardPage';
-import DispatchPage from './pages/dispatch';
-const MapPage = lazyRetry(() => import('./pages/map'));
+// Dispatch + Map are the two heaviest field screens (~6k lines each plus deep
+// import trees). They're lazy-split to keep them OUT of the login/critical
+// bundle — but because they're the most-navigated-to pages, they're also
+// idle-prefetched right after auth (see AppRoutes below) so the first
+// navigation stays instant: the chunk is already warm in the module cache.
+const importDispatch = () => import('./pages/dispatch');
+const importMap = () => import('./pages/map');
+const DispatchPage = lazyRetry(importDispatch);
+const MapPage = lazyRetry(importMap);
 // Lazy import with auto-retry on chunk load failure (stale cache after deploys)
 function lazyRetry<T extends React.ComponentType<any>>(
   factory: () => Promise<{ default: T }>,
@@ -254,6 +261,30 @@ function RouteErrorBoundary({ children }: { children: React.ReactNode }) {
 
 function AppRoutes() {
   const { isAuthenticated, isLoading } = useAuth();
+
+  // Idle-prefetch the heaviest field routes once authenticated, so the first
+  // navigation to Dispatch/Map is instant rather than showing the loading
+  // splash while the chunk downloads over cellular. Scheduled during idle time
+  // (requestIdleCallback) so it never competes with the initial paint or the
+  // landing Dashboard's data fetches. import() is deduped, so this just warms
+  // the module cache — React.lazy then resolves synchronously on navigation.
+  React.useEffect(() => {
+    if (!isAuthenticated) return;
+    const w = window as any;
+    const schedule: (cb: () => void) => number =
+      w.requestIdleCallback || ((cb: () => void) => w.setTimeout(cb, 1500));
+    // Swallow prefetch failures — a transient cellular blip here is harmless;
+    // the real navigation still goes through lazyRetry (which reloads on a
+    // genuine chunk-load failure). We just don't want an unhandled rejection.
+    const id = schedule(() => {
+      importDispatch().catch(() => {});
+      importMap().catch(() => {});
+    });
+    return () => {
+      if (w.cancelIdleCallback) w.cancelIdleCallback(id);
+      else w.clearTimeout(id);
+    };
+  }, [isAuthenticated]);
 
   if (isLoading) {
     return <LoadingSplash message="Initializing" />;
