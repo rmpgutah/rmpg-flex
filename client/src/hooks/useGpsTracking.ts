@@ -847,8 +847,17 @@ export function useGpsTracking(options?: UseGpsTrackingOptions) {
       },
       {
         enableHighAccuracy: highAccuracy,
-        timeout: 10000,      // 10s — faster retry on poor signal
-        maximumAge: 1000,    // Accept positions up to 1s old (fresh fixes only)
+        // Freshness-first tuning for cellular field devices. The old 10s
+        // timeout fired the error callback before a weak-signal fix could
+        // land — and the error path never bumps lastCallbackTimeRef, so the
+        // heartbeat went stale and tore the watch down in a restart loop
+        // (symptom: "No position callback in 31/45/83s"). 27s sits just under
+        // HEARTBEAT_STALE_THRESHOLD (30s) so a slow fix has time to arrive
+        // before the watchdog restarts.
+        timeout: 27000,
+        // Keep positions current (≤3s old) — still a touch more tolerant than
+        // the old 1s, which forced a cold hardware acquisition on every tick.
+        maximumAge: 3000,
       }
     );
     watchIdRef.current = watchId;
