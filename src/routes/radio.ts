@@ -352,13 +352,26 @@ rt.get('/stats', async (c) => {
 
   const totals = await queryFirst<{ today: number; week: number; all: number }>(
     db,
+    // `all` is a SQL reserved word — it MUST be a quoted identifier or
+    // SQLite throws `near "all": syntax error`. The double quotes keep
+    // the result column named `all` (the client reads totals.all).
     `SELECT
        SUM(CASE WHEN date(transmitted_at) = date('now') THEN 1 ELSE 0 END) AS today,
        SUM(CASE WHEN transmitted_at >= datetime('now','-7 days') THEN 1 ELSE 0 END) AS week,
-       COUNT(*) AS all FROM radio_transmissions`,
+       COUNT(*) AS "all" FROM radio_transmissions`,
   );
 
-  return c.json({ sparkline, heatmap, totals: totals ?? { today: 0, week: 0, all: 0 } });
+  // SUM over an empty/zero-match set is NULL, not 0 — coalesce so the
+  // STATS tab never renders "null".
+  return c.json({
+    sparkline,
+    heatmap,
+    totals: {
+      today: totals?.today ?? 0,
+      week: totals?.week ?? 0,
+      all: totals?.all ?? 0,
+    },
+  });
 });
 
 export default rt;
