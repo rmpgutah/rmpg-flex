@@ -77,6 +77,22 @@ export function useDistrictOptions() {
     return Array.from(new Set(districts.filter(d => d.zone_id === zoneId).map(d => d.beat_id))).sort();
   }, [districts, beats]);
 
+  // Beats scoped to a whole section (across its zones) — used when a Section is
+  // chosen but no Zone yet, so the Beat picker shows a short relevant list
+  // instead of all ~719 beats. Returns [] when no section (forces picking one).
+  const beatsForSection = useCallback((sectionId: string) => {
+    if (!sectionId) return [] as string[];
+    return Array.from(new Set(districts.filter(d => d.sector_id === sectionId).map(d => d.beat_id))).sort();
+  }, [districts]);
+
+  // Resolve the full district row for a (section, beat) pair when the zone isn't
+  // known yet — lets the Beat picker backfill zone + dispatch_code on select.
+  const districtForSectionBeat = useCallback(
+    (sectionId: string, beatId: string) =>
+      districts.find(d => d.sector_id === sectionId && d.beat_id === beatId) || null,
+    [districts],
+  );
+
   // Labels: section/zone are globally unique, but beat labels must be scoped by zone
   const sectionLabels = useMemo(() => {
     const m = new Map<string, string>();
@@ -135,7 +151,7 @@ export function useDistrictOptions() {
     return beatLabels.get(`${zoneId}:${beatId}`) || beatId;
   }, [beatLabels]);
 
-  return { districts, sections, zones, beats, sectionLabels, sectionCodes, sectionAreas, getSectionCode, getArea, zoneLabels, beatLabels, zonesForSection, beatsForZone, getBeatLabel, loading, error, retry: loadDistricts };
+  return { districts, sections, zones, beats, sectionLabels, sectionCodes, sectionAreas, getSectionCode, getArea, zoneLabels, beatLabels, zonesForSection, beatsForZone, beatsForSection, districtForSectionBeat, getBeatLabel, loading, error, retry: loadDistricts };
 }
 
 /**
