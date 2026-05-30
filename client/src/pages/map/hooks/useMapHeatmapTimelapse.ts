@@ -41,7 +41,7 @@ export function useMapHeatmapTimelapse(
   map: mapboxgl.Map | null,
   enabled: boolean,
   days: number,
-  mode: 'all' | 'risk',
+  mode: 'all' | 'risk' | 'type',
 ): UseMapHeatmapTimelapseReturn {
   const [slices, setSlices] = useState<TimelapseSlice[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -63,7 +63,12 @@ export function useMapHeatmapTimelapse(
     let cancelled = false;
     setLoading(true);
 
-    apiFetch<TimelapseSlice[]>(`/dispatch/heatmap/timelapse?days=${days}&mode=${mode}`)
+    // The timelapse endpoint only accepts mode=all|risk (it's a temporal
+    // animation; the 'type' categorical filter has no timelapse equivalent and
+    // returns 400 "Invalid mode"). Coerce 'type' → 'all' so selecting the Type
+    // advanced-mode toggle doesn't spam a 400 on every timelapse load.
+    const tlMode = mode === 'risk' ? 'risk' : 'all';
+    apiFetch<TimelapseSlice[]>(`/dispatch/heatmap/timelapse?days=${days}&mode=${tlMode}`)
       .then((data) => {
         if (!cancelled) { setSlices(data || []); setCurrentIndex(0); setLoading(false); }
       })
