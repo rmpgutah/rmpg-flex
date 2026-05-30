@@ -73,7 +73,7 @@
 //       as unit OBJECTS, but the code did assigned_units.includes(String(id))
 //       (always false) so the unit marker, route line, and turn-by-turn
 //       directions never appeared. Normalize to an id Set.
-const CACHE_NAME = 'rmpg-flex-v621';
+const CACHE_NAME = 'rmpg-flex-v622';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
