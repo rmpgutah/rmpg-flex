@@ -206,6 +206,11 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       if (data.user_id) {
         panicAudio.setSenderUserId?.(data.user_id);
       }
+      // Open the panic voice room to hear the officer's distress audio
+      // live (and enable talk-back). Tolerates both broadcast shapes:
+      // rewrite { panic: {id} } and any flatter legacy form.
+      const panicId = data.panic?.id ?? data.panic_id ?? data.id;
+      if (panicId != null) panicAudio.listen?.(Number(panicId));
       // Play alarm
       alarmRef.current = playPanicAlarm(8000);
       // Auto-dismiss after 60 seconds (tracked for cleanup)
@@ -213,6 +218,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       autoDismissTimerRef.current = setTimeout(() => {
         setIncomingAlert(null);
         alarmRef.current?.stop();
+        panicAudio.stopListening?.();
       }, 60000);
     });
 
@@ -237,6 +243,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       setIncomingAlert(null);
       alarmRef.current?.stop();
       alarmRef.current = null;
+      panicAudio.stopListening?.();
       setOwnPanicId(null);
       setOwnPanicTime(null);
       addToast('Panic alert resolved', 'success', 5000);
@@ -247,6 +254,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       setIncomingAlert(null);
       alarmRef.current?.stop();
       alarmRef.current = null;
+      panicAudio.stopListening?.();
       setOwnPanicId(null);
       setOwnPanicTime(null);
     });
@@ -256,6 +264,7 @@ export default function PanicButton({ latitude, longitude }: PanicButtonProps) {
       setIncomingAlert(null);
       alarmRef.current?.stop();
       alarmRef.current = null;
+      panicAudio.stopListening?.();
       setOwnPanicId(null);
       setOwnPanicTime(null);
       addToast('Panic marked as false alarm', 'info', 5000);

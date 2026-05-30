@@ -74,6 +74,10 @@ export class VoiceHubDO {
   activeTx: ActiveTx | null = null;
   kind: 'radio' | 'panic' = 'radio';
   refId = 0; // channel_id for radio, panic_id for panic
+  // A panic room keeps only the FIRST transmission — the officer's
+  // distress broadcast. Later talk-backs relay live but don't overwrite
+  // the archived clip.
+  panicRecorded = false;
 
   constructor(state: DurableObjectState, env: VoiceEnv) {
     this.state = state;
@@ -278,8 +282,25 @@ export class VoiceHubDO {
         id,
       );
       this.broadcast({ type: 'radio_recorded', transmission: row });
+      return;
     }
-    // kind === 'panic' persistence is wired in Stage 4 (audio_file_id +
-    // audio_duration_seconds on panic_alerts).
+
+    // ── Panic: archive the officer's distress broadcast ──
+    // Keyed deterministically by panic id so the serve route
+    // (GET /api/dispatch/panic/:id/audio) is a pure id→key map. Only the
+    // first transmission is kept; audio_file_id = panic id doubles as a
+    // "recording present" flag for the dispatcher UI.
+    if (this.kind === 'panic') {
+      if (this.panicRecorded) return;
+      this.panicRecorded = true;
+      const key = `panic-audio/${this.refId}.webm`;
+      await this.env.UPLOADS.put(key, blob, { httpMetadata: { contentType: 'audio/webm' } });
+      await execute(
+        db,
+        `UPDATE panic_alerts SET audio_file_id = ?, audio_duration_seconds = ? WHERE id = ?`,
+        this.refId, durationSec, this.refId,
+      );
+      this.broadcast({ type: 'panic_audio_recorded', panic_id: this.refId, duration_seconds: durationSec });
+    }
   }
 }

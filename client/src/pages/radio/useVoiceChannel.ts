@@ -14,16 +14,7 @@
 // WebM (concatenating headers into one buffer breaks decoding).
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { StreamPlayer } from '../../utils/StreamPlayer';
-
-function voiceWsBase(): string {
-  const host = window.location.hostname;
-  // Dev: the worker runs on wrangler dev (8787). Prod: the rewrite
-  // worker's custom domain (CSP connect-src already allows wss: +
-  // api.rmpgutah.us). Going direct dodges the zone proxy, which would
-  // otherwise route /api/voice-ws to the legacy worker (no VoiceHubDO).
-  if (host === 'localhost' || host === '127.0.0.1') return `ws://${host}:8787`;
-  return 'wss://api.rmpgutah.us';
-}
+import { voiceWsUrl } from '../../utils/voiceWs';
 
 const MIC_CONSTRAINTS: MediaStreamConstraints = {
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
@@ -85,7 +76,7 @@ export function useVoiceChannel(
     const open = () => {
       const token = localStorage.getItem('rmpg_token');
       if (!token) return;
-      const ws = new WebSocket(`${voiceWsBase()}/api/voice-ws?room=radio-${channelId}`);
+      const ws = new WebSocket(voiceWsUrl(`radio-${channelId}`));
       wsRef.current = ws;
 
       ws.onopen = () => { if (alive) { attempts = 0; ws.send(JSON.stringify({ type: 'authenticate', token })); } };
