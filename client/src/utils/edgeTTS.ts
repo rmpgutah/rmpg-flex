@@ -17,6 +17,7 @@ import { playToneAsync } from './dispatchTones';
 import type { AlertSeverity } from './alertSeverity';
 import { getToneForSeverity, shouldPlayAudio } from './alertSeverity';
 import type { ToneType } from './dispatchTones';
+import { ensureRadioWorklets, buildRadioVoiceChain, createRadioNoiseBed } from './radioProcessor';
 
 // ─── Types ──────────────────────────────────────────────────
 
@@ -91,90 +92,14 @@ export function getEdgeTTSPayload(
   return { text, urgent, voice, rate, pitch };
 }
 
-// ─── AudioWorklet Registration ─────────────────────────────
-// Inline processor code as Blob URLs to avoid separate public files.
-// Registration is idempotent — only loads once per AudioContext.
-
-let workletsRegistered = false;
-
-const NOISE_GATE_CODE = `
-class NoiseGateProcessor extends AudioWorkletProcessor {
-  static get parameterDescriptors() {
-    return [{ name: 'threshold', defaultValue: -40, minValue: -100, maxValue: 0 }];
-  }
-  constructor() { super(); this.envelope = 0; this.attack = 0.01; this.release = 0.1; }
-  process(inputs, outputs, parameters) {
-    const input = inputs[0]; const output = outputs[0];
-    if (!input || !input[0]) return true;
-    const threshold = parameters.threshold[0];
-    for (let ch = 0; ch < input.length; ch++) {
-      const inp = input[ch]; const out = output[ch];
-      for (let i = 0; i < inp.length; i++) {
-        const amplitude = Math.abs(inp[i]);
-        const db = 20 * Math.log10(amplitude + 1e-10);
-        this.envelope = db > threshold
-          ? Math.min(1, this.envelope + this.attack)
-          : Math.max(0, this.envelope - this.release);
-        out[i] = inp[i] * this.envelope;
-      }
-    }
-    return true;
-  }
-}
-registerProcessor('noise-gate-processor', NoiseGateProcessor);
-`;
-
-const BITCRUSHER_CODE = `
-class BitcrusherProcessor extends AudioWorkletProcessor {
-  static get parameterDescriptors() {
-    return [{ name: 'bitDepth', defaultValue: 12, minValue: 1, maxValue: 16 }];
-  }
-  process(inputs, outputs, parameters) {
-    const input = inputs[0]; const output = outputs[0];
-    if (!input || !input[0]) return true;
-    const bits = parameters.bitDepth[0];
-    const step = 1 / Math.pow(2, bits);
-    for (let ch = 0; ch < input.length; ch++) {
-      const inp = input[ch]; const out = output[ch];
-      for (let i = 0; i < inp.length; i++) {
-        out[i] = Math.round(inp[i] / step) * step;
-      }
-    }
-    return true;
-  }
-}
-registerProcessor('bitcrusher-processor', BitcrusherProcessor);
-`;
-
-async function registerWorklets(ctx: AudioContext): Promise<boolean> {
-  if (workletsRegistered) return true;
-  if (!ctx.audioWorklet) return false; // AudioWorklet not supported
-
-  try {
-    const noiseBlob = new Blob([NOISE_GATE_CODE], { type: 'application/javascript' });
-    const noiseUrl = URL.createObjectURL(noiseBlob);
-    await ctx.audioWorklet.addModule(noiseUrl);
-    URL.revokeObjectURL(noiseUrl);
-
-    const crushBlob = new Blob([BITCRUSHER_CODE], { type: 'application/javascript' });
-    const crushUrl = URL.createObjectURL(crushBlob);
-    await ctx.audioWorklet.addModule(crushUrl);
-    URL.revokeObjectURL(crushUrl);
-
-    workletsRegistered = true;
-    return true;
-  } catch (err) {
-    console.warn('AudioWorklet registration failed, using fallback chain:', err);
-    return false;
-  }
-}
-
 // ─── AudioContext ───────────────────────────────────────────
+// The P25 coloring chain + its AudioWorklet processors (noise gate,
+// bitcrusher) now live in utils/radioProcessor.ts so TTS, saved-clip
+// playback, and the AI dispatcher all share one source of truth.
 
 function getAudioContext(): AudioContext {
   if (!audioCtx || audioCtx.state === 'closed') {
     audioCtx = new AudioContext();
-    workletsRegistered = false; // New context needs fresh registration
   }
   if (audioCtx.state === 'suspended') {
     audioCtx.resume().catch(() => {});
@@ -333,7 +258,7 @@ async function fetchAndPlay(
   const ctx = getAudioContext();
 
   // Register AudioWorklet processors (idempotent, graceful fallback)
-  const hasWorklets = await registerWorklets(ctx);
+  const hasWorklets = await ensureRadioWorklets(ctx);
 
   const res = await fetch('/api/tts', {
     method: 'POST',
@@ -371,112 +296,24 @@ async function fetchAndPlay(
       playP25KeyUp(ctx, now);
     }
 
-    // ── 2. P25 VOCODER FREQUENCY PROCESSING ───────────────
-    // IMBE/AMBE vocoder band: ~300Hz–3400Hz, with a characteristic
-    // metallic resonance around 2kHz from the codec quantization.
-    const highpass = ctx.createBiquadFilter();
-    highpass.type = 'highpass';
-    highpass.frequency.value = 300;
-    highpass.Q.value = 0.7;
+    // ── 2. RADIO HAZE CHAIN (shared P25 coloring) ─────────
+    // AGC → 300–3400Hz bandpass → 1.8kHz presence → 12-bit bitcrusher,
+    // the exact graph used for saved-clip + AI-dispatcher playback.
+    // See utils/radioProcessor.ts — one source of truth for the sound.
+    const { input, output } = buildRadioVoiceChain(ctx, hasWorklets);
+    source.connect(input);
+    output.connect(ctx.destination);
 
-    const lowpass = ctx.createBiquadFilter();
-    lowpass.type = 'lowpass';
-    lowpass.frequency.value = 3400;
-    lowpass.Q.value = 0.7;
-
-    // Presence/clarity boost at 1.8kHz — slightly higher than analog
-    // to give the "metallic" P25 codec coloration.
-    const presence = ctx.createBiquadFilter();
-    presence.type = 'peaking';
-    presence.frequency.value = 1800;
-    presence.Q.value = 1.4;
-    presence.gain.value = 4;
-
-    // Slight compression feel via gain staging
-    const voiceGain = ctx.createGain();
-    voiceGain.gain.value = 0.85;
-
-    // ── 2a. AGC (DynamicsCompressor) ──────────────────────
-    // Automatic gain control — levels out volume spikes/dips
-    const compressor = ctx.createDynamicsCompressor();
-    compressor.threshold.value = -24;
-    compressor.knee.value = 30;
-    compressor.ratio.value = 12;
-    compressor.attack.value = 0.003;
-    compressor.release.value = 0.25;
-
-    // ── 3. RADIO STATIC / BACKGROUND NOISE ────────────────
-    // Pink noise — continuous hiss during transmission
-    const noiseLen = voiceDuration + voiceDelay + 0.4;
-    const noiseBuf = ctx.createBuffer(1, Math.ceil(ctx.sampleRate * noiseLen), ctx.sampleRate);
-    const noiseData = noiseBuf.getChannelData(0);
-    let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
-    for (let i = 0; i < noiseData.length; i++) {
-      const white = Math.random() * 2 - 1;
-      b0 = 0.99886 * b0 + white * 0.0555179;
-      b1 = 0.99332 * b1 + white * 0.0750759;
-      b2 = 0.96900 * b2 + white * 0.1538520;
-      b3 = 0.86650 * b3 + white * 0.3104856;
-      b4 = 0.55000 * b4 + white * 0.5329522;
-      b5 = -0.7616 * b5 - white * 0.0168980;
-      noiseData[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
-      b6 = white * 0.115926;
-    }
-
-    const noiseSource = ctx.createBufferSource();
-    noiseSource.buffer = noiseBuf;
-
-    // Bandpass the noise too (radio-band static only)
-    const noiseHP = ctx.createBiquadFilter();
-    noiseHP.type = 'highpass';
-    noiseHP.frequency.value = 400;
-
-    const noiseLP = ctx.createBiquadFilter();
-    noiseLP.type = 'lowpass';
-    noiseLP.frequency.value = 3000;
-
-    // P25 noise profile — much quieter than analog FM. The digital
-    // vocoder sends near-silence between voice samples; the tiny bed
-    // of noise here is just receiver-path hiss for realism, not the
-    // continuous analog pink-noise wash of the old mix.
-    const noiseGain = ctx.createGain();
-    noiseGain.gain.setValueAtTime(0, now);
-    noiseGain.gain.linearRampToValueAtTime(0.004, now + voiceDelay);
-    noiseGain.gain.setValueAtTime(0.004, now + voiceDelay + voiceDuration);
-    noiseGain.gain.linearRampToValueAtTime(0, now + voiceDelay + voiceDuration + 0.1);
-
-    // Noise chain: source → HP → LP → gain → output
-    noiseSource.connect(noiseHP);
-    noiseHP.connect(noiseLP);
-    noiseLP.connect(noiseGain);
-    noiseGain.connect(ctx.destination);
-    noiseSource.start(now);
-    noiseSource.stop(now + noiseLen);
-
-    // ── 4. VOICE CHAIN ────────────────────────────────────
-    // Full chain: Source → NoiseGate → AGC → HP → LP → Presence → Bitcrusher → VoiceGain → Output
-    // Fallback (no AudioWorklet): Source → AGC → HP → LP → Presence → VoiceGain → Output
-    if (hasWorklets) {
-      const noiseGate = new AudioWorkletNode(ctx, 'noise-gate-processor');
-      const bitcrusher = new AudioWorkletNode(ctx, 'bitcrusher-processor');
-
-      source.connect(noiseGate);
-      noiseGate.connect(compressor);
-      compressor.connect(highpass);
-      highpass.connect(lowpass);
-      lowpass.connect(presence);
-      presence.connect(bitcrusher);
-      bitcrusher.connect(voiceGain);
-      voiceGain.connect(ctx.destination);
-    } else {
-      // Graceful fallback — skip worklet nodes, keep AGC + filters
-      source.connect(compressor);
-      compressor.connect(highpass);
-      highpass.connect(lowpass);
-      lowpass.connect(presence);
-      presence.connect(voiceGain);
-      voiceGain.connect(ctx.destination);
-    }
+    // ── 3. RADIO STATIC / RECEIVER BED ────────────────────
+    // Faint band-limited pink-noise hiss under the voice. squelchTail
+    // is off here because the conversational path emits its own P25
+    // courtesy beep below (step 5); doubling them sounds wrong.
+    const noiseSource = createRadioNoiseBed(ctx, {
+      startTime: now,
+      attackAt: now + voiceDelay,
+      holdUntil: now + voiceDelay + voiceDuration,
+      squelchTail: false,
+    });
 
     // ── 5. P25 SQUELCH TAIL (KEY-DOWN / un-key) ───────────
     // Only for the conversational / radio-channel path. Terminal

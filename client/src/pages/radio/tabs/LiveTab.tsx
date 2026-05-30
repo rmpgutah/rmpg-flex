@@ -10,6 +10,7 @@ import { matchesSearch, COMPARE_DATE, ls, playBeep, isInQuietHours } from '../he
 import { DATE_RANGES, DURATION_FILTERS } from '../constants';
 import { FilterChip, SectionHeader, EmptyConsole, Waveform, Sep } from '../components';
 import { useVoiceChannel } from '../useVoiceChannel';
+import { RadioHazePlayer } from '../../../utils/radioProcessor';
 import type { RadioChannel, RadioTransmission } from '../types';
 
 interface Props {
@@ -196,33 +197,39 @@ function TxRow({ tx }: { tx: RadioTransmission }) {
   );
 }
 
-// Same-origin relative URL so it passes CSP media-src 'self'; the zone
-// proxy forwards /api/radio/* to the rewrite worker. <audio> can't set
-// an Authorization header, so the JWT rides the ?token= fallback the
-// auth middleware accepts (same trick as bodycam video streams).
+// Same-origin relative URL so it passes CSP connect-src 'self'; the zone
+// proxy forwards /api/radio/* to the rewrite worker. We fetch the clip via
+// the Web Audio path (not an <audio> element) so it can't set an
+// Authorization header — the JWT rides the ?token= fallback the auth
+// middleware accepts (same trick as bodycam video streams).
 export function transmissionAudioUrl(transmissionId: number): string {
   const token = localStorage.getItem('rmpg_token') || '';
   return `/api/radio/transmissions/${transmissionId}/audio${token ? `?token=${encodeURIComponent(token)}` : ''}`;
 }
 
+// Recorded clips replay through the SAME P25 radio-haze chain as live
+// dispatch voice (bandpass + bitcrusher + AGC + receiver hiss), so a
+// saved transmission sounds like it did over the air rather than like a
+// dry mic file. The native <audio> element can't do Web Audio DSP, so we
+// fetch + decode + play through RadioHazePlayer instead.
 export function AudioPlayButton({ transmissionId }: { transmissionId: number }) {
   const [playing, setPlaying] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const playerRef = useRef<RadioHazePlayer | null>(null);
 
-  useEffect(() => () => { try { audioRef.current?.pause(); } catch { /* noop */ } }, []);
+  useEffect(() => () => { try { playerRef.current?.stop(); } catch { /* noop */ } }, []);
 
   const toggle = (e: React.MouseEvent) => {
     e.stopPropagation();
-    let a = audioRef.current;
-    if (!a) {
-      a = new Audio(transmissionAudioUrl(transmissionId));
-      a.onended = () => setPlaying(false);
-      a.onerror = () => setPlaying(false);
-      a.onpause = () => setPlaying(false);
-      audioRef.current = a;
+    if (playing) {
+      playerRef.current?.stop();
+      setPlaying(false);
+      return;
     }
-    if (a.paused) a.play().then(() => setPlaying(true)).catch(() => setPlaying(false));
-    else a.pause();
+    const player = playerRef.current ?? (playerRef.current = new RadioHazePlayer());
+    setPlaying(true);
+    player
+      .playUrl(transmissionAudioUrl(transmissionId), () => setPlaying(false))
+      .catch((err) => { console.error('[radio] haze playback failed', err); setPlaying(false); });
   };
 
   return (
