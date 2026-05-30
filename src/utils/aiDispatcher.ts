@@ -31,6 +31,11 @@
 import type { LookupRequest } from './dispatcherAwareness';
 
 const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
+// Fallback transcriber — the stable base whisper. Both models were verified
+// (2026-05-29) to transcribe our recorded WebM/Opus; turbo is higher quality
+// (base64 `audio`) and base whisper is the safety net (array-of-bytes `audio`).
+// NOTE: @cf/openai/gpt-4o-transcribe is NOT available on this account (5007).
+const TRANSCRIBE_FALLBACK_MODEL = '@cf/openai/whisper';
 const LLM_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const TTS_MODEL = '@cf/myshell-ai/melotts';
 
@@ -103,22 +108,30 @@ function bytesToBase64(bytes: Uint8Array): string {
 export { bytesToBase64 };
 
 /**
- * Transcribe a recorded transmission. whisper-large-v3-turbo's decoder
- * accepts the WebM/Opus we record; returns null (caller skips) on any
- * failure or empty result. If WebM transcription ever proves unreliable
- * on the account, @cf/openai/gpt-4o-transcribe explicitly supports webm
- * and is a drop-in (it takes a data: URI under `file` instead of `audio`).
+ * Transcribe a recorded transmission. Tries whisper-large-v3-turbo first
+ * (higher quality, base64 `audio`); if that throws or returns empty it
+ * falls back to the base whisper model (array-of-bytes `audio`). Both were
+ * verified to accept our WebM/Opus recordings. Returns null only when both
+ * fail, so the caller simply skips the reply rather than crashing the relay.
  */
 export async function transcribeTransmission(ai: Ai, audio: Uint8Array): Promise<string | null> {
+  // Primary — whisper-large-v3-turbo (base64 string input).
   try {
-    const res = (await ai.run(WHISPER_MODEL, {
-      audio: bytesToBase64(audio),
-      language: 'en',
-    } as never)) as { text?: string };
+    const res = (await ai.run(WHISPER_MODEL, { audio: bytesToBase64(audio), language: 'en' } as never)) as { text?: string };
+    const text = (res?.text || '').trim();
+    if (text) return text;
+    console.warn('[aiDispatcher] turbo whisper returned empty — trying base whisper');
+  } catch (err) {
+    console.warn('[aiDispatcher] turbo whisper failed, trying base whisper:', (err as Error)?.message);
+  }
+
+  // Fallback — base whisper (classic array-of-bytes input).
+  try {
+    const res = (await ai.run(TRANSCRIBE_FALLBACK_MODEL, { audio: Array.from(audio) } as never)) as { text?: string };
     const text = (res?.text || '').trim();
     return text.length > 0 ? text : null;
   } catch (err) {
-    console.error('[aiDispatcher] transcribe failed:', (err as Error)?.message);
+    console.error('[aiDispatcher] transcription failed (both models):', (err as Error)?.message);
     return null;
   }
 }
@@ -154,29 +167,58 @@ function parseLookup(value: unknown): LookupRequest | undefined {
   return { type: type as LookupRequest['type'], query: q };
 }
 
-// Tolerant extraction — Llama usually returns clean JSON but can wrap it
-// in stray prose or code fences. Grab the first {...} and parse that.
+// Build a decision from an already-structured object. Workers AI's
+// llama-3.3 returns `response` as a PARSED OBJECT when the output is JSON
+// (not a string), so this is the COMMON path, not a fallback.
+function decisionFromObject(obj: Record<string, unknown>): DispatcherDecision | null {
+  const reply = (typeof obj.reply === 'string' ? obj.reply : '').trim();
+  const lookup = parseLookup(obj.lookup);
+  // A lookup with only a "stand by" reply is still actionable.
+  if (reply || lookup) {
+    return {
+      intent: (typeof obj.intent === 'string' ? obj.intent : 'general').trim() || 'general',
+      reply: reply || 'Stand by.',
+      lookup,
+    };
+  }
+  return null;
+}
+
+// Tolerant extraction for the STRING form — Llama can wrap JSON in stray
+// prose or code fences. Grab the first {...}; else treat the whole thing as
+// the spoken reply.
 function parseDecision(raw: string): DispatcherDecision | null {
   const start = raw.indexOf('{');
   const end = raw.lastIndexOf('}');
   if (start !== -1 && end > start) {
     try {
-      const obj = JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>;
-      const reply = (typeof obj.reply === 'string' ? obj.reply : '').trim();
-      const lookup = parseLookup(obj.lookup);
-      // A lookup with only a "stand by" reply is still actionable.
-      if (reply || lookup) {
-        return {
-          intent: (typeof obj.intent === 'string' ? obj.intent : 'general').trim() || 'general',
-          reply: reply || 'Stand by.',
-          lookup,
-        };
-      }
+      const d = decisionFromObject(JSON.parse(raw.slice(start, end + 1)) as Record<string, unknown>);
+      if (d) return d;
     } catch { /* fall through */ }
   }
-  // No parseable JSON — treat the whole thing as the spoken reply.
   const reply = raw.replace(/```/g, '').trim();
   return reply ? { intent: 'general', reply } : null;
+}
+
+// Coerce Workers AI's `response` — which is an OBJECT when the model emits
+// JSON, or a string otherwise — into a decision. THE fix for the "AI
+// dispatcher silent" bug: response was an object, and the old code called
+// .trim() on it, which threw and was swallowed → null → no reply.
+function coerceDecision(response: unknown): DispatcherDecision | null {
+  if (response && typeof response === 'object' && !Array.isArray(response)) {
+    return decisionFromObject(response as Record<string, unknown>);
+  }
+  return parseDecision(String(response ?? ''));
+}
+
+// Coerce `response` to a plain spoken string (for the lookup read-back pass).
+function coerceReplyText(response: unknown): string {
+  if (typeof response === 'string') return response;
+  if (response && typeof response === 'object') {
+    const r = (response as Record<string, unknown>).reply;
+    return typeof r === 'string' ? r : '';
+  }
+  return '';
 }
 
 /**
@@ -185,7 +227,7 @@ function parseDecision(raw: string): DispatcherDecision | null {
  */
 export async function decideDispatcherReply(ai: Ai, turn: DispatcherTurn): Promise<DispatcherDecision | null> {
   if (!turn.transcript.trim()) return null;
-  let raw: string;
+  let response: unknown;
   try {
     const res = (await ai.run(LLM_MODEL, {
       messages: [
@@ -194,13 +236,13 @@ export async function decideDispatcherReply(ai: Ai, turn: DispatcherTurn): Promi
       ],
       max_tokens: 220,
       temperature: 0.3,
-    } as never)) as { response?: string };
-    raw = (res?.response || '').trim();
+    } as never)) as { response?: unknown };
+    response = res?.response;
   } catch (err) {
     console.error('[aiDispatcher] LLM failed:', (err as Error)?.message);
     return null;
   }
-  const decision = parseDecision(raw);
+  const decision = coerceDecision(response);
   if (!decision) return null;
   if (decision.reply.length > MAX_REPLY_CHARS) {
     decision.reply = decision.reply.slice(0, MAX_REPLY_CHARS).trimEnd();
@@ -234,8 +276,8 @@ export async function phraseLookupReply(
       ],
       max_tokens: 160,
       temperature: 0.2,
-    } as never)) as { response?: string };
-    let reply = (res?.response || '').replace(/```/g, '').trim();
+    } as never)) as { response?: unknown };
+    let reply = coerceReplyText(res?.response).replace(/```/g, '').trim();
     // If the model wrapped it in JSON anyway, recover the reply field.
     if (reply.startsWith('{')) reply = parseDecision(reply)?.reply ?? '';
     if (!reply) return resultText;
@@ -256,10 +298,10 @@ function base64ToBytes(b64: string): Uint8Array {
 }
 
 /**
- * Synthesize the dispatcher's reply with melotts. Returns raw MP3 bytes
- * (decodeAudioData on the client sniffs the format, so storing them at the
- * existing radio-audio/<id>.webm key replays fine through the haze chain).
- * Returns null on failure.
+ * Synthesize the dispatcher's reply with melotts. Returns raw audio bytes
+ * (melotts emits WAV; the client's decodeAudioData sniffs the container, so
+ * storing them at the existing radio-audio/<id>.webm key replays fine
+ * through the haze chain). Returns null on failure.
  */
 export async function synthesizeDispatcherVoice(ai: Ai, text: string): Promise<Uint8Array | null> {
   try {
