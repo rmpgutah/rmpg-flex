@@ -31,6 +31,15 @@ export function getNcicLineClass(line: string): string {
   // Pure divider lines (all ─ or ═ characters) — dim
   if (/^[─═]+$/.test(t)) return 'ncic-c-dim';
 
+  // Subject-status threat banner (top of cross-reference) — tiered color so
+  // the operator's eye lands on the overall posture before reading sections.
+  if (t.startsWith('*** SUBJECT STATUS:') || t.startsWith('▌ SUBJECT STATUS:')) {
+    if (t.includes('CRITICAL')) return 'ncic-c-danger ncic-status-critical';
+    if (t.includes('CAUTION')) return 'ncic-c-caution';
+    if (t.includes('CLEAR')) return 'ncic-c-clear';
+    return 'ncic-c-dim'; // NO RECORD ON FILE
+  }
+
   // Danger / warning lines — bright red, must check before section headers
   if (
     t.startsWith('*** CAUTION') || t.startsWith('*** WARRANT') ||
@@ -46,6 +55,7 @@ export function getNcicLineClass(line: string): string {
 
   // Section headers using ═══ — white, unless they contain danger keywords
   if (t.includes('═══')) {
+    if (t.includes('SERVICE NOTES')) return 'ncic-c-caution'; // amber advisory, not red
     if (t.includes('OFAC') || t.includes('TRESPASS') || t.includes('WARRANT') || t.includes('SEX OFFENDER') || (t.includes('ARREST') && t.includes('***'))) return 'ncic-c-danger';
     return 'ncic-c-section';
   }
@@ -638,7 +648,12 @@ export interface CrossReferenceResults {
   ofacSubjects: NcicOfacSubject[];
   arrestRecords: NcicArrestRecord[];
   skipTracerPeople: SkipTracerPerson[];
+  /** Hard failures of LOCAL data sources (person/warrant/arrest) — real errors. */
   errors: string[];
+  /** Soft unavailability of EXTERNAL services (DL/OFAC/skip-trace APIs) —
+   *  advisories, not errors. A missing API key or upstream hiccup shouldn't
+   *  read as a system fault. */
+  serviceWarnings?: string[];
 }
 
 export function formatCrossReferenceResponse(results: CrossReferenceResults, searchTerm: string): string {
@@ -646,6 +661,37 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
 
   lines.push('');
   lines.push(`  *** COMPLETE SUBJECT CHECK: ${searchTerm.toUpperCase()} ***`);
+  lines.push(`  ${'─'.repeat(56)}`);
+
+  // ── Subject-status threat banner ──────────────────────────────
+  // One-glance posture, computed before the section detail. CRITICAL =
+  // active warrant / OFAC sanction / active arrest; CAUTION = advisory flags
+  // on a person record (RSO, gang, caution); CLEAR = records found, no
+  // alerts; NO RECORD = nothing on file anywhere.
+  const isGangReal = (g?: string) => !!g && !['none', '0', 'n/a', 'na', ''].includes((g || '').toLowerCase().trim());
+  const hasWarrantHit = results.persons.some(r => r.warrants.length > 0) || results.directWarrants.length > 0;
+  const hasOfacHit = results.ofacSubjects.length > 0;
+  const hasActiveArrestHit = (results.arrestRecords || []).some(r => r.status === 'active');
+  const hasCautionPerson = results.persons.some(r => {
+    const p = r.person;
+    return !!p.caution_flags || !!p.is_sex_offender || isGangReal(p.gang_affiliation) || !!p.probation_parole;
+  });
+  const anyHit =
+    results.persons.length > 0 || results.directWarrants.length > 0 ||
+    results.dlSubjects.length > 0 || results.ofacSubjects.length > 0 ||
+    (results.arrestRecords || []).length > 0 || (results.skipTracerPeople || []).length > 0;
+
+  let statusBanner: string;
+  if (hasWarrantHit || hasOfacHit || hasActiveArrestHit) {
+    statusBanner = '  *** SUBJECT STATUS: CRITICAL — ACTIVE WARRANT / SANCTION / ARREST ***';
+  } else if (hasCautionPerson) {
+    statusBanner = '  *** SUBJECT STATUS: CAUTION — ADVISORIES ON FILE ***';
+  } else if (anyHit) {
+    statusBanner = '  *** SUBJECT STATUS: CLEAR — NO ACTIVE ALERTS ***';
+  } else {
+    statusBanner = '  *** SUBJECT STATUS: NO RECORD ON FILE ***';
+  }
+  lines.push(statusBanner);
   lines.push(`  ${'─'.repeat(56)}`);
 
   // Track what we found
@@ -816,7 +862,16 @@ export function formatCrossReferenceResponse(results: CrossReferenceResults, sea
     lines.push('');
   }
 
-  // ── Errors (sources that failed)
+  // ── Service notes (external sources unavailable — advisory, not error)
+  if (results.serviceWarnings && results.serviceWarnings.length > 0) {
+    lines.push(`  ═══ SERVICE NOTES ═══`);
+    for (const w of results.serviceWarnings) {
+      lines.push(`  >> ${w.toUpperCase()}`);
+    }
+    lines.push('');
+  }
+
+  // ── Errors (LOCAL sources that hard-failed)
   if (results.errors.length > 0) {
     lines.push(`  ═══ QUERY ERRORS ═══`);
     for (const e of results.errors) {

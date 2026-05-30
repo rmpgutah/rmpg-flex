@@ -373,9 +373,11 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
             ), 'SKIP'),
           ]);
 
-          // Collect results, track errors
+          // Collect results, track errors. Local data sources (person/warrant/
+          // arrest) failing is a real ERROR; external services (DL/OFAC/skip-
+          // trace APIs) being unavailable is a soft SERVICE NOTE, not a fault.
           const xref: CrossReferenceResults = {
-            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [],
+            persons: [], directWarrants: [], dlSubjects: [], ofacSubjects: [], arrestRecords: [], skipTracerPeople: [], errors: [], serviceWarnings: [],
           };
 
           if (personResult.status === 'fulfilled') {
@@ -399,13 +401,13 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (dlResult.status === 'fulfilled') {
             xref.dlSubjects = dlResult.value.subjects || [];
           } else {
-            xref.errors.push('DL QUERY FAILED');
+            xref.serviceWarnings!.push('DRIVER LICENSE SERVICE UNAVAILABLE');
           }
 
           if (ofacResult.status === 'fulfilled') {
             xref.ofacSubjects = ofacResult.value.subjects || [];
           } else {
-            xref.errors.push('OFAC QUERY FAILED');
+            xref.serviceWarnings!.push('OFAC SANCTIONS SERVICE UNAVAILABLE');
           }
 
           if (arrestResult.status === 'fulfilled') {
@@ -417,7 +419,7 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
           if (skipResult.status === 'fulfilled') {
             xref.skipTracerPeople = skipResult.value.PeopleDetails || [];
           } else {
-            xref.errors.push('SKIP TRACKER QUERY FAILED');
+            xref.serviceWarnings!.push('SKIP TRACER SERVICE UNAVAILABLE');
           }
 
           // ── Cross-load: enrich empty sections from person records ──
