@@ -79,7 +79,10 @@
 //       were already on the wire from /districts; the client had discarded them.
 // v628: surface zone › beat names on the queue CallCard (under the address) —
 //       the dispatch code was badged but the human geography wasn't shown.
-const CACHE_NAME = 'rmpg-flex-v628';
+// v629: use the existing zoneLeaf/beatLeaf parsers in the live geography output
+//       (detail panel + card) so Zone/Beat render as clean leaves ("HER", "C")
+//       instead of the redundant composite codes ("SL1-HER", "SL1-HER/C").
+const CACHE_NAME = 'rmpg-flex-v629';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

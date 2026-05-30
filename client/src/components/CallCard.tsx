@@ -7,6 +7,7 @@ import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
+import { beatLeaf } from '../utils/dispatchCodeParts';
 // Parse server timestamps as UTC (naive strings) — raw new Date() reads
 // them as browser-local and skews every elapsed/age calc by the offset.
 import { parseTimestamp } from '../utils/dateUtils';
@@ -434,7 +435,8 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
               code alone doesn't convey). Zero extra requests — these fields ride
               on the call record via LIST_VIEW_COLUMNS. */}
           {(call.zone_name || call.beat_name || call.beat_id) && (() => {
-            const beatLabel = [call.beat_id, call.beat_name].filter(Boolean).join(' ');
+            // beatLeaf strips the redundant "SL1-HER/" parent context → just "C".
+            const beatLabel = [beatLeaf(call.beat_id), call.beat_name].filter(Boolean).join(' ');
             const parts = [call.zone_name, beatLabel].filter(Boolean);
             return parts.length ? (
               <div className="text-[9px] text-rmpg-500 truncate" title={parts.join(' › ')}>

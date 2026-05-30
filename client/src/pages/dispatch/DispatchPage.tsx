@@ -12,6 +12,7 @@ import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/D
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
 import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
+import { zoneLeaf, beatLeaf } from '../../utils/dispatchCodeParts';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -4282,12 +4283,14 @@ export default function DispatchPage() {
                           const name = sectionLabels.get(selectedCall.sector_id) || '';
                           return <span className="text-rmpg-200"><span className="text-rmpg-400">Sec:</span> {[code, name].filter(Boolean).join(' — ')}</span>;
                         })()}
-                        {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {[selectedCall.zone_id, zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
+                        {selectedCall.zone_id && <span className="text-rmpg-200"><span className="text-rmpg-400">Zone:</span> {[zoneLeaf(selectedCall.zone_id), zoneLabels.get(selectedCall.zone_id) || ''].filter(Boolean).join(' — ')}</span>}
                         {selectedCall.beat_id && (() => {
-                          // Prefix the beat code (e.g. "A1") to its name; getBeatLabel
-                          // falls back to the code itself, so avoid an "A1 — A1" echo.
+                          // Show the leaf beat code (e.g. "C", not "SL1-HER/C") prefixed
+                          // to its name. getBeatLabel falls back to the raw code, so guard
+                          // against an "C — C" echo. Lookups stay keyed by the full code.
+                          const code = beatLeaf(selectedCall.beat_id);
                           const label = getBeatLabel(selectedCall.zone_id || '', selectedCall.beat_id);
-                          const text = label && label !== selectedCall.beat_id ? `${selectedCall.beat_id} — ${label}` : selectedCall.beat_id;
+                          const text = label && label !== selectedCall.beat_id ? `${code} — ${label}` : code;
                           return <span className="text-rmpg-200"><span className="text-rmpg-400">Beat:</span> {text}</span>;
                         })()}
                         {selectedCall.latitude != null && selectedCall.longitude != null && (
