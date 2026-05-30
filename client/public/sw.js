@@ -95,7 +95,10 @@
 //       Taken" (code + label) via new formatDispositionCode(), instead of the
 //       label alone. Shared humanizeDisposition left untouched.
 // v634: copy-to-clipboard button on the call detail-panel Location field.
-const CACHE_NAME = 'rmpg-flex-v634';
+// v635: unit status board now shows time-in-status (dwell) next to the status
+//       badge, color-escalating per status so dispatchers catch units stuck
+//       en route / with long scene times.
+const CACHE_NAME = 'rmpg-flex-v635';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
