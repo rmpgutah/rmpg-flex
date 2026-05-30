@@ -31,11 +31,23 @@ database_id = "785de7ae-3e7a-4e01-93bb-d24ddd813f6b"
 name = "WELFARE_WATCH"
 class_name = "WelfareWatchDO"
 
+# VoiceHubDO — one instance per radio channel / panic incident; the
+# single shared hub that relays + records live voice (PTT + panic
+# audio). Reached via /api/voice-ws on this worker's custom domain.
+[[durable_objects.bindings]]
+name = "VOICE_HUB"
+class_name = "VoiceHubDO"
+
 [[migrations]]
 tag = "v1"
 # new_sqlite_classes (not new_classes) — free-plan compatible.
 # SQLite-backed DO storage; same API surface for our use case.
 new_sqlite_classes = ["WelfareWatchDO"]
+
+# VoiceHubDO added in its own migration tag so it doesn't rewrite v1.
+[[migrations]]
+tag = "v2-voicehub"
+new_sqlite_classes = ["VoiceHubDO"]
 
 # KV for sessions and caching
 [[kv_namespaces]]

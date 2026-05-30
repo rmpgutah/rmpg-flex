@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { Bookmark, Trash2 } from 'lucide-react';
 import { apiFetch } from '../../../hooks/useApi';
 import { SectionHeader } from '../components';
+import { AudioPlayButton } from './LiveTab';
 import type { RadioRecording } from '../types';
 
 export default function RecordingsTab() {
@@ -61,6 +62,7 @@ export default function RecordingsTab() {
                     {r.transcript && <div className="mt-0.5" style={{ color: 'var(--rt-text)' }}>{r.transcript}</div>}
                     {r.notes && <div className="mt-0.5 italic" style={{ color: 'var(--rt-muted)' }}>{r.notes}</div>}
                   </div>
+                  <AudioPlayButton transmissionId={r.transmission_id} />
                   <button type="button" onClick={() => remove(r.id)}
                     aria-label="Delete bookmark"
                     className="opacity-60 hover:opacity-100"

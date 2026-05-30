@@ -201,6 +201,50 @@ rt.delete('/transmissions/:id', async (c) => {
   return c.json({ success: true });
 });
 
+// GET /transmissions/:id/audio — stream the recorded clip from R2.
+// VoiceHubDO stores each transmission's WebM at radio-audio/<id>.webm
+// and writes audio_url = this path, so the lookup is a pure id→key map.
+// Range support lets the <audio> element seek (mirrors bodycam stream).
+rt.get('/transmissions/:id/audio', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const key = `radio-audio/${id}.webm`;
+
+  const rangeHeader = c.req.header('Range');
+  let r2Range: R2Range | undefined;
+  let rangeStart = 0;
+  let rangeEnd = -1;
+  if (rangeHeader) {
+    const m = rangeHeader.trim().match(/^bytes=(\d+)-(\d*)$/);
+    if (m) {
+      rangeStart = Number(m[1]);
+      rangeEnd = m[2] ? Number(m[2]) : -1;
+      r2Range = rangeEnd >= 0 ? { offset: rangeStart, length: rangeEnd - rangeStart + 1 } : { offset: rangeStart };
+    }
+  }
+
+  const obj = r2Range
+    ? await c.env.UPLOADS.get(key, { range: r2Range })
+    : await c.env.UPLOADS.get(key);
+  if (!obj) return c.json({ error: 'Recording not found' }, 404);
+
+  const totalSize = obj.size;
+  const headers: Record<string, string> = {
+    'Content-Type': obj.httpMetadata?.contentType || 'audio/webm',
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, max-age=31536000, immutable',
+  };
+  if (r2Range) {
+    const start = rangeStart;
+    const end = rangeEnd >= 0 ? Math.min(rangeEnd, totalSize - 1) : totalSize - 1;
+    headers['Content-Range'] = `bytes ${start}-${end}/${totalSize}`;
+    headers['Content-Length'] = String(end - start + 1);
+    return new Response(obj.body, { status: 206, headers });
+  }
+  headers['Content-Length'] = String(totalSize);
+  return new Response(obj.body, { status: 200, headers });
+});
+
 // ── Recordings (per-user bookmarks) ───────────────────────────
 
 rt.get('/recordings', async (c) => {

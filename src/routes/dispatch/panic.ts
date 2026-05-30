@@ -92,7 +92,10 @@ panic.post('/panic', async (c) => {
   for (const t of targets) {
     sendToUser(t.id, 'panic_alert', { action: 'panic_activated', panic: created });
   }
-  return c.json(created, 201);
+  // Include `panic_id` explicitly: the client (PanicButton) reads it to
+  // open the panic voice room (room panic-<panicId>) for the live mic
+  // broadcast. The full row is spread in for the dispatcher overlay.
+  return c.json({ ...(created as Record<string, unknown>), panic_id: panicId }, 201);
 });
 
 // POST /dispatch/panic/:id/acknowledge — dispatcher confirms receipt
@@ -174,6 +177,50 @@ panic.post('/panic/:id/false-alarm', async (c) => {
   const updated = await queryFirst(db, 'SELECT * FROM panic_alerts WHERE id = ?', id);
   broadcastAll('panic_alert', { action: 'panic_false_alarm', panic: updated });
   return c.json(updated);
+});
+
+// GET /dispatch/panic/:id/audio — stream the archived distress broadcast.
+// VoiceHubDO (panic room) stores the officer's audio at
+// panic-audio/<id>.webm and sets panic_alerts.audio_file_id, so the
+// lookup is a pure id→key map. Range support + ?token= for <audio>.
+panic.get('/panic/:id/audio', async (c) => {
+  const id = parseInt(c.req.param('id'), 10);
+  if (isNaN(id)) return c.json({ error: 'Invalid id' }, 400);
+  const key = `panic-audio/${id}.webm`;
+
+  const rangeHeader = c.req.header('Range');
+  let r2Range: R2Range | undefined;
+  let rangeStart = 0;
+  let rangeEnd = -1;
+  if (rangeHeader) {
+    const m = rangeHeader.trim().match(/^bytes=(\d+)-(\d*)$/);
+    if (m) {
+      rangeStart = Number(m[1]);
+      rangeEnd = m[2] ? Number(m[2]) : -1;
+      r2Range = rangeEnd >= 0 ? { offset: rangeStart, length: rangeEnd - rangeStart + 1 } : { offset: rangeStart };
+    }
+  }
+
+  const obj = r2Range
+    ? await c.env.UPLOADS.get(key, { range: r2Range })
+    : await c.env.UPLOADS.get(key);
+  if (!obj) return c.json({ error: 'No panic recording' }, 404);
+
+  const totalSize = obj.size;
+  const headers: Record<string, string> = {
+    'Content-Type': obj.httpMetadata?.contentType || 'audio/webm',
+    'Accept-Ranges': 'bytes',
+    'Cache-Control': 'private, max-age=31536000, immutable',
+  };
+  if (r2Range) {
+    const start = rangeStart;
+    const end = rangeEnd >= 0 ? Math.min(rangeEnd, totalSize - 1) : totalSize - 1;
+    headers['Content-Range'] = `bytes ${start}-${end}/${totalSize}`;
+    headers['Content-Length'] = String(end - start + 1);
+    return new Response(obj.body, { status: 206, headers });
+  }
+  headers['Content-Length'] = String(totalSize);
+  return new Response(obj.body, { status: 200, headers });
 });
 
 // POST /request-backup — officer requests backup from the quick-action
