@@ -7,6 +7,7 @@ import { authMiddleware, requireRole } from '../../middleware/auth';
 import { applyRunCard } from '../runCards';
 import { sendToUser, broadcastAll } from '../ws';
 import { geocodeAddress } from '../geocode';
+import { resolveDistrict } from '../../utils/districtResolver';
 
 const calls = new Hono<Env>();
 
@@ -227,6 +228,42 @@ calls.post('/', async (c) => {
         body.latitude = coords.lat;
         body.longitude = coords.lng;
       }
+    }
+
+    // ── District backfill (Sector / Zone / Beat) ──
+    // Every entry path (dispatch modal, CAD command line, raw API) lands here,
+    // so resolving geography once on the server guarantees the call list always
+    // shows human-readable Sector/Zone/Beat — not the blank fields that result
+    // when a client form sends ids but no names. Caller-supplied values always
+    // win; we only fill blanks. Authoritative source is the chosen beat_id
+    // (beat_code); if absent we derive the beat from coordinates via the R2
+    // geofence. Best-effort — a miss must never block call creation.
+    try {
+      const lat = body.latitude != null && body.latitude !== '' ? Number(body.latitude) : null;
+      const lng = body.longitude != null && body.longitude !== '' ? Number(body.longitude) : null;
+      const zoneCode = typeof body.zone_id === 'string' ? body.zone_id : null;
+      const beatCode = typeof body.beat_id === 'string' ? body.beat_id : null;
+      if ((zoneCode && beatCode) || (lat != null && lng != null)) {
+        const district = await resolveDistrict(c.env, { zoneCode, beatCode, lat, lng });
+        if (district) {
+          const fill = (key: string, value: unknown) => {
+            if (value != null && value !== '' && (body[key] == null || body[key] === '')) {
+              body[key] = value as any;
+            }
+          };
+          fill('sector_id', district.sector_id);
+          fill('sector_name', district.sector_name);
+          fill('zone_id', district.zone_id);
+          fill('zone_name', district.zone_name);
+          fill('beat_id', district.beat_id);
+          fill('beat_name', district.beat_name);
+          fill('beat_descriptor', district.beat_descriptor);
+          fill('dispatch_code', district.dispatch_code);
+          fill('zone_beat', district.zone_beat);
+        }
+      }
+    } catch (err) {
+      console.warn('[calls.create] district backfill skipped:', (err as Error)?.message);
     }
 
     const cols: string[] = [];
