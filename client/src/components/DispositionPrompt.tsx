@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle, X, Check, FileText } from 'lucide-react';
+import { DEFAULT_DISPOSITIONS } from '../constants/dispositionCodes';
 
 interface DispositionCode {
   code: string;
