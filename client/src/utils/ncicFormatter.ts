@@ -148,6 +148,24 @@ function noRecord(queryType: string, searchTerm: string): string {
   ].join('\n');
 }
 
+// Graceful render for an EXTERNAL data service (DL/OFAC/skip-trace/background
+// APIs) that's down or not configured. These are third-party paid lookups —
+// a missing key or upstream hiccup is an advisory, not a system error, so it
+// renders as an amber SERVICE NOTE rather than a red failure.
+export function formatServiceUnavailable(source: string, searchTerm: string, reason = 'SERVICE UNAVAILABLE'): string {
+  return [
+    header(source, 'QN'),
+    ``,
+    `  ═══ SERVICE NOTES ═══`,
+    `  >> ${source.toUpperCase()}: ${reason.toUpperCase()}`,
+    `  >> EXTERNAL LOOKUP DID NOT RETURN — LOCAL RECORDS UNAFFECTED`,
+    `  SEARCH: ${searchTerm.toUpperCase()}`,
+    ``,
+    `─`.repeat(60),
+    `*** END OF RECORD ***`,
+  ].join('\n');
+}
+
 // ─── Person Query Response ──────────────────────────────────
 
 export interface NcicPerson {

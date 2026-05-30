@@ -19,6 +19,7 @@ import {
   formatArrestResponse,
   formatSkipTracerResponse,
   formatNoRecord,
+  formatServiceUnavailable,
   getNcicLineClass,
   type NcicPerson,
   type NcicVehicle,
@@ -735,14 +736,27 @@ export default function NcicQueryPanel({ isOpen, onClose, initialQuery, embedded
         hasHit,
       }]);
     } catch (err: any) {
+      // External paid-API commands (skip-trace / DL / OFAC / background) being
+      // down or unconfigured is an advisory, not a system fault — render an
+      // amber SERVICE NOTE instead of a red ERROR. Local-DB commands still
+      // surface a real error.
+      const EXTERNAL_SOURCES: Record<string, string> = {
+        QS: 'SKIP TRACKER', QD: "DRIVER'S LICENSE", QL: "DRIVER'S LICENSE",
+        QO: 'OFAC SANCTIONS', QB: 'BACKGROUND CHECK',
+      };
+      const source = EXTERNAL_SOURCES[verb];
+      const reason = /timeout/i.test(err?.message || '') ? 'REQUEST TIMED OUT' : 'SERVICE UNAVAILABLE';
+      const response = source
+        ? formatServiceUnavailable(source, queryText, reason)
+        : `ERROR: ${err.message || 'Query failed'}`;
       setEntries(prev => [...prev, {
         id: ++queryIdCounterRef.current,
         timestamp,
         command,
-        response: `ERROR: ${err.message || 'Query failed'}`,
+        response,
         hasHit: false,
       }]);
-      playTone('error');
+      playTone(source ? 'info' : 'error');
     } finally {
       setLoading(false);
     }
