@@ -75,9 +75,9 @@ describe('runLookup — premise + VIN', () => {
       match: /FROM premise_alerts/,
       rows: [{ alert_type: 'caution', alert_level: 'warning', title: 'Dog on property', description: null, flags: '[]' }],
     }]);
-    const r = await runLookup(db, { type: 'premise', query: '5th and Main' });
-    expect(r).toMatch(/Premise alert/i);
-    expect(r).toMatch(/Dog on property/);
+    const r = await runLookup({} as never, db, { type: 'premise', query: '5th and Main' });
+    expect(r?.text).toMatch(/Premise alert/i);
+    expect(r?.text).toMatch(/Dog on property/);
   });
 
   it('decodes a VIN and flags stolen', async () => {
@@ -88,14 +88,14 @@ describe('runLookup — premise + VIN', () => {
         year: 2003, color: 'silver', is_stolen: 1, registered_owner: 'John Doe',
       }],
     }]);
-    const r = await runLookup(db, { type: 'vin', query: '1HGCM82633A004352' });
-    expect(r).toMatch(/Honda Accord/);
-    expect(r).toMatch(/FLAGGED STOLEN/);
+    const r = await runLookup({} as never, db, { type: 'vin', query: '1HGCM82633A004352' });
+    expect(r?.text).toMatch(/Honda Accord/);
+    expect(r?.text).toMatch(/FLAGGED STOLEN/);
   });
 
   it('reports no record for an unknown VIN', async () => {
     const db = fakeDb([{ match: /FROM vehicles_records/, rows: [] }]);
-    const r = await runLookup(db, { type: 'vin', query: '0000000000ZZZZZ99' });
-    expect(r).toMatch(/No vehicle on file/i);
+    const r = await runLookup({} as never, db, { type: 'vin', query: '0000000000ZZZZZ99' });
+    expect(r?.text).toMatch(/No vehicle on file/i);
   });
 });

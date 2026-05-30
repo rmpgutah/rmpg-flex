@@ -127,7 +127,7 @@ export async function gatherAwareness(db: D1Database, channelId: number, speaker
 
 // ─── CAD lookups ────────────────────────────────────────────
 
-export type LookupType = 'plate' | 'person' | 'warrant' | 'premise' | 'vin';
+export type LookupType = 'plate' | 'person' | 'warrant' | 'premise' | 'vin' | 'unit_location' | 'eta';
 export interface LookupRequest { type: LookupType; query: string }
 
 /**
@@ -170,8 +170,14 @@ export async function runLookup(
     if (req.type === 'plate') return await lookupPlate(db, req.query);
     if (req.type === 'person') return await lookupPerson(db, req.query);
     if (req.type === 'warrant') return await lookupWarrant(db, req.query);
-    if (req.type === 'premise') return await lookupPremiseText(db, req.query);
-    if (req.type === 'vin') return await lookupVin(db, req.query);
+    // premise/vin lookups still return a plain readback string — wrap them in
+    // the LookupResult envelope (no record pointer; they aren't auto-openable).
+    if (req.type === 'premise') return { text: await lookupPremiseText(db, req.query) };
+    if (req.type === 'vin') return { text: await lookupVin(db, req.query) };
+    // unit-centric lookups key off the transmitting unit (ctx.speaker), not a
+    // typed query, and speak a complete radio line themselves.
+    if (req.type === 'unit_location') return await lookupUnitLocation(env, db, ctx.speaker || '');
+    if (req.type === 'eta') return await lookupEta(env, db, ctx.speaker || '');
     return null;
   } catch (err) {
     console.error('[awareness] lookup failed:', (err as Error)?.message);
@@ -261,7 +267,7 @@ async function lookupVin(db: D1Database, raw: string): Promise<string> {
   return parts.join(' ');
 }
 
-async function lookupPlate(db: D1Database, raw: string): Promise<string> {
+async function lookupPlate(db: D1Database, raw: string): Promise<LookupResult> {
   const plate = norm(raw).replace(/\s+/g, '');
   const v = await queryFirst<{
     id: number; plate_number: string; registration_state: string | null; state: string | null;

@@ -442,7 +442,7 @@ export class VoiceHubDO {
     // A record pointer the lookup hit (plate/person), broadcast so the operator
     // console can auto-open the file beside the live feed. Gated by the
     // ai_auto_open_records setting; null otherwise.
-    let recordRef: RecordRef | null = null;
+    let recordRef: import('../utils/dispatcherAwareness').RecordRef | null = null;
     if (decision?.lookup) {
       const result = await runLookup(
         this.env as unknown as Bindings, db, decision.lookup,

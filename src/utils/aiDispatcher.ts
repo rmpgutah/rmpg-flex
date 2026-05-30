@@ -315,7 +315,11 @@ function buildUserPrompt(turn: DispatcherTurn): string {
   return lines.join('\n');
 }
 
-const LOOKUP_TYPES = ['plate', 'person', 'warrant', 'premise', 'vin'] as const;
+const LOOKUP_TYPES = ['plate', 'person', 'warrant', 'premise', 'vin', 'unit_location', 'eta'] as const;
+
+// Unit-centric lookups resolve off the transmitting unit (call-sign), not a
+// typed query, so they're exempt from the "must have a query" rule below.
+const UNIT_CENTRIC_LOOKUPS = new Set<string>(['unit_location', 'eta']);
 
 function parseLookup(value: unknown): LookupRequest | undefined {
   if (!value || typeof value !== 'object') return undefined;
