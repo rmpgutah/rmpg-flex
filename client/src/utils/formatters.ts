@@ -214,19 +214,43 @@ export function truncate(str: string, maxLength: number): string {
 }
 
 /**
- * Convert a string to title case: "hello world" → "Hello World"
+ * Convert a string to title case: "hello world" → "Hello World".
+ * Acronym-aware ("pso" → "PSO") and preserves inner caps for names
+ * ("McDonald" stays "McDonald").
  */
 export function toTitleCase(str: string): string {
   if (!str) return '';
-  return str.replace(/\b\w/g, (c) => c.toUpperCase());
+  return str.replace(/\b[A-Za-z0-9]+\b/g, (word) =>
+    ACRONYMS.has(word.toLowerCase())
+      ? word.toUpperCase()
+      : word.charAt(0).toUpperCase() + word.slice(1),
+  );
 }
 
-/** Common law-enforcement / system acronyms that should remain ALL-CAPS */
-const ACRONYMS = new Set([
+/**
+ * Common law-enforcement / system acronyms that must render ALL-CAPS in
+ * visual labels (never "Pso") and be SPELLED OUT letter-by-letter when
+ * spoken aloud ("P. S. O.", not the word "Pso"). This is the single source
+ * of truth — extend it here and every acronym-aware formatter below picks
+ * it up, so labels stay proper for current AND future enum values.
+ */
+export const ACRONYMS = new Set([
   'pso', 'cfs', 'dv', 'ems', 'leo', 'ncic', 'bolo', 'atl', 'mdt',
   'sla', 'id', 'dui', 'dwi', 'hoa', 'llc', 'eta', 'rmpg', 'gps',
   'ip', 'pdf', 'api', 'url', 'vpn', 'opr', 'le', 'sop',
 ]);
+
+/**
+ * Title-case ONE word, keeping a known acronym ALL-CAPS. The shared atom
+ * behind every label formatter — this is what prevents "PSO" from ever
+ * degrading to the weak lowercase "Pso".
+ */
+export function titleCaseWord(word: string): string {
+  if (!word) return word;
+  return ACRONYMS.has(word.toLowerCase())
+    ? word.toUpperCase()
+    : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+}
 
 /**
  * Convert snake_case or kebab-case to a display label:
@@ -238,11 +262,27 @@ export function toDisplayLabel(str: string): string {
   if (!str) return '';
   return str
     .replace(/[_-]/g, ' ')
-    .replace(/\b\w+/g, (word) =>
+    .replace(/\b[A-Za-z0-9]+\b/g, titleCaseWord);
+}
+
+/**
+ * Spoken form of a label for TTS / voice announcements: known acronyms are
+ * spelled out so the voice says the LETTERS, not a mangled word.
+ * "pso_client_request" → "P. S. O. Client Request"
+ * "dv_in_progress"     → "D. V. In Progress"
+ * Use this anywhere a label is handed to speech synthesis.
+ */
+export function toSpokenLabel(str: string): string {
+  if (!str) return '';
+  return str
+    .replace(/[_-]/g, ' ')
+    .replace(/\b[A-Za-z0-9]+\b/g, (word) =>
       ACRONYMS.has(word.toLowerCase())
-        ? word.toUpperCase()
-        : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
-    );
+        ? word.toUpperCase().split('').join('. ') + '.'
+        : titleCaseWord(word)
+    )
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 /**
@@ -284,7 +324,7 @@ export function formatLabel(value: string | null | undefined): string {
   if (!value) return '';
   return value
     .split('_')
-    .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+    .map(titleCaseWord)
     .join(' ');
 }
 

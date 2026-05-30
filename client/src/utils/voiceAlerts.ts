@@ -8,6 +8,9 @@
 
 import { playToneAsync } from './dispatchTones';
 import { renderCallNarrative, type Terseness, type CallSlots } from './narrativeRenderer';
+// Spoken-label formatter: spells acronyms letter-by-letter so the voice says
+// "P. S. O. Client Request", not the mangled word "Pso Client Request".
+import { toSpokenLabel } from './formatters';
 
 // ─── Terseness adapter (Task 1.6) ───────────────────────────
 // Reads the user's voice persona terseness from localStorage (written
@@ -740,7 +743,7 @@ export async function announceDispatchEvent(call: CallFlags & {
   if (priorityLabel) phrases.push({ text: priorityLabel });
 
   // Incident type + location
-  const type = call.incident_type ? call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : '';
+  const type = call.incident_type ? toSpokenLabel(call.incident_type) : '';
   const loc = call.location || call.location_address || '';
   if (type && loc) {
     const city = call.city || '';
@@ -811,7 +814,7 @@ export async function announceNewCall(call: CallFlags & {
 
   // Priority + call type
   const priorityLabel = call.priority === 'P1' ? 'priority 1' : call.priority === 'P2' ? 'priority 2' : call.priority === 'P3' ? 'priority 3' : call.priority === 'P4' ? 'priority 4' : '';
-  const type = call.incident_type ? call.incident_type.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase()) : 'call';
+  const type = call.incident_type ? toSpokenLabel(call.incident_type) : 'call';
   phrases.push({ text: `New ${priorityLabel} call. ${type}.` });
 
   // Location
@@ -925,7 +928,7 @@ export async function announceUnitDispatched(callOrSign: string | { call_sign?: 
   phrases.push({ text: mainText });
 
   if (incidentType) {
-    const type = incidentType.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
+    const type = toSpokenLabel(incidentType);
     phrases.push({ text: `${type}${location ? ` at ${location}` : ''}.` });
   } else if (location) {
     phrases.push({ text: `At ${location}.` });

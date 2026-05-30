@@ -439,6 +439,11 @@ const STREET_ABBR: Record<string, string> = {
   ln: 'Lane', ct: 'Court', pkwy: 'Parkway', hwy: 'Highway', ste: 'Suite',
 };
 
+// Acronyms a dispatcher SPELLS OUT on the air ("PSO Client Request" is said
+// "P. S. O. Client Request", never the word "Pso"). Curated to unambiguous
+// letter-spoken codes — BOLO is deliberately absent (it's said as a word).
+const SPOKEN_ACRONYMS = new Set(['PSO', 'CFS', 'DV', 'DUI', 'DWI', 'NCIC', 'EMS', 'ATL']);
+
 export function humanizeForSpeech(text: string): string {
   let s = text;
   // 10-codes → "ten ...": "10-4" → "ten 4" (TTS then says "ten four"),
@@ -446,6 +451,12 @@ export function humanizeForSpeech(text: string): string {
   s = s.replace(/\b10-(\d{1,3})\b/g, 'ten $1');
   // "code-4" / "code4" → "code 4" so it isn't run together.
   s = s.replace(/\bcode[-\s]?(\d{1,2})\b/gi, 'code $1');
+  // Spell known UPPERCASE acronyms letter-by-letter ("PSO" → "P. S. O.") so
+  // Aura-2 announces the letters. Runs BEFORE the street-abbr pass so the
+  // resulting single letters aren't re-matched.
+  s = s.replace(/\b[A-Z]{2,5}\b/g, (m) =>
+    SPOKEN_ACRONYMS.has(m) ? m.split('').join('. ') + '.' : m,
+  );
   // Expand street-type abbreviations (word-boundary, optional trailing dot).
   s = s.replace(/\b([A-Za-z]{2,5})\.?\b/g, (m, w) => {
     const full = STREET_ABBR[String(w).toLowerCase()];
