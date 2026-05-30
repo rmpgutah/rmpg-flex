@@ -1111,12 +1111,12 @@ body.fx-noise::after {
     border-left-color: var(--surface-sunken);
     border-bottom-color: var(--border-strong);
     border-right-color: var(--border-strong);
-    caret-color: var(--brand-blue);
-    transition: border-color 0.1s;
+    caret-color: var(--brand-gold);
+    transition: border-color 0.12s, box-shadow 0.12s;
   }
   .input-dark:focus {
-    border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(156, 164, 173, 0.48), 0 0 0 3px rgba(156, 164, 173, 0.12);
+    border-color: var(--brand-gold);
+    box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.55), 0 0 8px rgba(212, 160, 23, 0.22);
     outline: none;
   }
 
@@ -1134,11 +1134,12 @@ body.fx-noise::after {
     background-repeat: no-repeat;
     background-position: right 8px center;
     padding-right: 24px;
-    transition: border-color 0.1s;
+    transition: border-color 0.12s, box-shadow 0.12s;
   }
   .select-dark:focus {
-    border-color: var(--brand-blue);
-    box-shadow: 0 0 0 1px rgba(156, 164, 173, 0.35);
+    border-color: var(--brand-gold);
+    box-shadow: 0 0 0 1px rgba(212, 160, 23, 0.55), 0 0 8px rgba(212, 160, 23, 0.22);
+    outline: none;
   }
   .select-dark option {
     background: var(--surface-base);
