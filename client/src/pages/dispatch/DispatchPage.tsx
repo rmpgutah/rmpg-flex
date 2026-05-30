@@ -323,6 +323,12 @@ export default function DispatchPage() {
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, any>>({});
   const [showAiSidebar, setShowAiSidebar] = useState(false);
 
+  // Queue sort mode. The /user/preferences backend is currently a stub that
+  // doesn't persist dispatch_sort, so we keep the selection in localStorage
+  // (best-effort PUT to the API too, for when it becomes real). This makes the
+  // SORT toggle actually stick across reloads — it previously reverted every time.
+  const [localSort, setLocalSort] = useState<string>(() => localStorage.getItem('rmpg_dispatch_sort') || '');
+
   // ── Feature 1: Call priority sound alerts ──
   const [soundAlertsMuted, setSoundAlertsMuted] = useState(() => localStorage.getItem('rmpg_sound_alerts_muted') === 'true');
   const soundAlertsMutedRef = useRef(soundAlertsMuted);
@@ -1135,7 +1141,16 @@ export default function DispatchPage() {
       (call.location || '').toLowerCase().includes(q) ||
       (call.incident_type || '').toLowerCase().includes(q) ||
       (call.description || '').toLowerCase().includes(q) ||
-      (call.caller_name || '').toLowerCase().includes(q)
+      (call.caller_name || '').toLowerCase().includes(q) ||
+      // Geography: let dispatchers filter the queue to a district by typing a
+      // Spillman code ("SL1", "SL1-HER/C") or a place name ("Herriman").
+      (call.dispatch_code || '').toLowerCase().includes(q) ||
+      (call.zone_beat || '').toLowerCase().includes(q) ||
+      (call.sector_name || '').toLowerCase().includes(q) ||
+      (call.zone_id || '').toLowerCase().includes(q) ||
+      (call.zone_name || '').toLowerCase().includes(q) ||
+      (call.beat_id || '').toLowerCase().includes(q) ||
+      (call.beat_name || '').toLowerCase().includes(q)
     );
   }).filter((call) => {
     // Show cleared calls in 'all' tab if user preference is enabled
@@ -1152,7 +1167,7 @@ export default function DispatchPage() {
     const bPin = b.pinned ? 1 : 0;
     if (aPin !== bPin) return bPin - aPin;
     // User-selectable sort for active tabs
-    const sortMode = userPrefs?.dispatch_sort || 'priority';
+    const sortMode = userPrefs?.dispatch_sort || localSort || 'priority';
     if (sortMode === 'time') {
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
@@ -1162,12 +1177,24 @@ export default function DispatchPage() {
       if (sDiff !== 0) return sDiff;
       return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
     }
+    if (sortMode === 'geo') {
+      // Group the queue by district: section → zone → beat (natural/numeric
+      // order), so a dispatcher can work calls geographically. Calls with no
+      // geography sink to the bottom; priority then breaks ties within a beat.
+      const geoKey = (c: typeof a) => [c.sector_name || '￿', c.zone_id || '￿', c.beat_id || '￿'].join('|');
+      const gDiff = geoKey(a).localeCompare(geoKey(b), undefined, { numeric: true });
+      if (gDiff !== 0) return gDiff;
+      const pOrderGeo: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
+      const pDiffGeo = (pOrderGeo[a.priority] ?? 3) - (pOrderGeo[b.priority] ?? 3);
+      if (pDiffGeo !== 0) return pDiffGeo;
+      return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
+    }
     // Default: priority then newest first
     const pOrder: Record<string, number> = { P1: 0, P2: 1, P3: 2, P4: 3 };
     const pDiff = (pOrder[a.priority] ?? 3) - (pOrder[b.priority] ?? 3);
     if (pDiff !== 0) return pDiff;
     return parseTimestamp(b.created_at).getTime() - parseTimestamp(a.created_at).getTime();
-  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, userPrefs?.dispatch_show_cleared, user?.id]);
+  }), [calls, archivedCalls, filterTab, searchQuery, userPrefs?.dispatch_sort, localSort, userPrefs?.dispatch_show_cleared, user?.id]);
 
   // Keyboard shortcuts for dispatch power users — Spillman Flex F-key style
   useEffect(() => {
@@ -2978,21 +3005,24 @@ export default function DispatchPage() {
                 </span>
                 {/* Sort mode toggle — cycle priority → time → status */}
                 {(() => {
-                  const current = (userPrefs?.dispatch_sort || 'priority') as 'priority' | 'time' | 'status';
-                  const next: Record<string, 'priority' | 'time' | 'status'> = { priority: 'time', time: 'status', status: 'priority' };
-                  const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA' };
+                  const current = (userPrefs?.dispatch_sort || localSort || 'priority') as 'priority' | 'time' | 'status' | 'geo';
+                  const next: Record<string, 'priority' | 'time' | 'status' | 'geo'> = { priority: 'time', time: 'status', status: 'geo', geo: 'priority' };
+                  const labels: Record<string, string> = { priority: 'PRI', time: 'NEW', status: 'STA', geo: 'GEO' };
+                  const titles: Record<string, string> = { priority: 'priority', time: 'newest', status: 'status', geo: 'district (section › zone › beat)' };
                   return (
                     <button
                       type="button"
-                      title={`Sort: ${current.toUpperCase()} (click to cycle)`}
-                      onClick={async () => {
-                        try {
-                          await apiFetch('/user/preferences', {
-                            method: 'PUT',
-                            body: JSON.stringify({ dispatch_sort: next[current] }),
-                          });
-                          reloadPrefs();
-                        } catch { addToast('Failed to update sort', 'error'); }
+                      title={`Sort: ${titles[current]} (click to cycle)`}
+                      onClick={() => {
+                        const target = next[current];
+                        // Persist locally (backend pref is stubbed) so it survives reloads.
+                        setLocalSort(target);
+                        localStorage.setItem('rmpg_dispatch_sort', target);
+                        // Best-effort server persist for when /user/preferences is real.
+                        apiFetch('/user/preferences', {
+                          method: 'PUT',
+                          body: JSON.stringify({ dispatch_sort: target }),
+                        }).then(() => reloadPrefs()).catch(() => { /* stubbed today; local state already applied */ });
                       }}
                       className="flex items-center gap-1 px-1.5 py-0.5 text-[8px] font-bold border border-rmpg-700/50 hover:brightness-125 transition-all"
                       style={{ background: '#0d0d0d', color: '#d4a017' }}

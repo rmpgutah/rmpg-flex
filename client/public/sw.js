@@ -87,7 +87,11 @@
 // v631: prepend the Spillman section code to the queue card geography line,
 //       derived from the composite zone_id via new sectionPrefix() parser
 //       (zero extra lookups). sector_name fallback for non-composite codes.
-const CACHE_NAME = 'rmpg-flex-v631';
+// v632: geography filter + sort. Search box now matches district fields
+//       (Spillman code, zone/beat, place names). New GEO sort mode groups the
+//       queue by section › zone › beat. Sort mode now persists via localStorage
+//       (the /user/preferences backend is stubbed) — fixes the dead SORT toggle.
+const CACHE_NAME = 'rmpg-flex-v632';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',
