@@ -11,6 +11,7 @@ import CallCard from '../../components/CallCard';
 import DuplicateCandidatesModal, { DuplicateCandidate } from '../../components/DuplicateCandidatesModal';
 import UnitStatusBoard from '../../components/UnitStatusBoard';
 import DispositionPrompt from '../../components/DispositionPrompt';
+import { dispositionGroupsForIncident, DEFAULT_DISPOSITION_CODES } from '../../constants/dispositionCodes';
 import DispatchMiniMap from '../../components/DispatchMiniMap';
 import BoloAlertBanner from '../../components/BoloAlertBanner';
 import StatusBadge from '../../components/StatusBadge';
@@ -3846,28 +3847,31 @@ export default function DispatchPage() {
                             onChange={(e) => updateEditField('disposition', e.target.value)}
                           >
                             <option value="">— Select Disposition —</option>
-                            {/* Feature 2: Common disposition quick-picks (always available) */}
-                            <optgroup label="Common Dispositions">
-                              <option value="Report Taken">Report Taken</option>
-                              <option value="Unfounded">Unfounded</option>
-                              <option value="GOA">Gone on Arrival</option>
-                              <option value="Referred">Referred</option>
-                              <option value="No Action">No Action Required</option>
-                              <option value="Arrest">Arrest</option>
-                              <option value="Warning">Warning Issued</option>
-                              <option value="Citation">Citation Issued</option>
-                              <option value="Trespass Warning">Trespass Warning</option>
-                              <option value="Civil Matter">Civil Matter</option>
-                            </optgroup>
-                            {dispositionCodes.length > 0 && (
-                              <optgroup label="Custom Codes">
-                                {dispositionCodes.map((d) => (
-                                  <option key={d.code} value={d.code}>
-                                    {d.code} — {d.description}
-                                  </option>
+                            {/* Built-in dispositions from the shared source of
+                                truth (constants/dispositionCodes). For PSO /
+                                process_service calls the Process Service group is
+                                hoisted to the top so those codes are immediately
+                                reachable. */}
+                            {dispositionGroupsForIncident(selectedCall.incident_type).map((g) => (
+                              <optgroup key={g.label} label={g.label}>
+                                {g.codes.map((d) => (
+                                  <option key={d.code} value={d.code}>{d.description}</option>
                                 ))}
                               </optgroup>
-                            )}
+                            ))}
+                            {/* Admin-defined custom codes from /admin/config that
+                                aren't already built in. The live worker returns
+                                none today; the rewrite worker will. */}
+                            {(() => {
+                              const customs = dispositionCodes.filter((d) => !DEFAULT_DISPOSITION_CODES.has(d.code));
+                              return customs.length > 0 ? (
+                                <optgroup label="Custom Codes">
+                                  {customs.map((d) => (
+                                    <option key={d.code} value={d.code}>{d.code} — {d.description}</option>
+                                  ))}
+                                </optgroup>
+                              ) : null;
+                            })()}
                           </select>
                         </div>
                       </>

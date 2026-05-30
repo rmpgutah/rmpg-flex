@@ -7,6 +7,7 @@
 
 import { useState } from 'react';
 import { AlertTriangle, X, Check, FileText } from 'lucide-react';
+import { DEFAULT_DISPOSITIONS } from '../constants/dispositionCodes';
 
 interface DispositionCode {
   code: string;
@@ -21,54 +22,11 @@ interface DispositionPromptProps {
   onCancel: () => void;
 }
 
-// Built-in fallback when the admin-configured codes haven't loaded
-// (or the prop is empty). Keeps the Clear-call dropdown usable on a
-// fresh database — same defaults the inline edit dropdown uses so a
-// dispatcher's muscle memory matches across both surfaces.
-const FALLBACK_DISPOSITIONS: DispositionCode[] = [
-  { code: 'Report Taken',     description: 'Report Taken' },
-  { code: 'Unfounded',        description: 'Unfounded' },
-  { code: 'GOA',              description: 'Gone on Arrival' },
-  { code: 'Referred',         description: 'Referred to other agency' },
-  { code: 'No Action',        description: 'No Action Required' },
-  { code: 'Arrest',           description: 'Arrest Made' },
-  { code: 'Warning',          description: 'Warning Issued' },
-  { code: 'Citation',         description: 'Citation Issued' },
-  { code: 'Trespass Warning', description: 'Trespass Warning Issued' },
-  { code: 'Civil Matter',     description: 'Civil Matter — No Action' },
-  { code: 'Resolved',         description: 'Resolved on Scene' },
-  { code: 'Transported',      description: 'Subject Transported' },
-  { code: 'False Alarm',      description: 'False Alarm' },
-  { code: 'Verbal Warning',   description: 'Verbal Warning Issued' },
-  { code: 'Field Interview',  description: 'Field Interview (FI) Conducted' },
-  { code: 'Counseled',        description: 'Subject Counseled' },
-  { code: 'Documentation Only', description: 'Documentation Only' },
-  { code: 'UTL',              description: 'Unable to Locate' },
-  { code: 'Assist Rendered',  description: 'Assist Rendered' },
-  { code: 'Negative Contact', description: 'Negative Contact' },
-  { code: 'Patrol Completed', description: 'Patrol Completed' },
-  { code: 'Premise Secured',  description: 'Premise Secured' },
-  { code: 'Owner Notified',   description: 'Owner/Keyholder Notified' },
-  { code: 'Vehicle Towed',    description: 'Vehicle Towed' },
-  { code: 'Standby Complete', description: 'Standby Complete' },
-  // Process Service outcomes (paper service — pso_client_request / process_service
-  // calls). 'PS ' prefix keeps them grouped & distinct from the codes above.
-  // Kept byte-identical to the server defaults in src/routes/admin.ts.
-  { code: 'PS Served',            description: 'Process Served — Personal' },
-  { code: 'PS Sub-Served',        description: 'Process Served — Substitute' },
-  { code: 'PS Posted',            description: 'Process Served — Posted & Mailed' },
-  { code: 'PS Corporate',         description: 'Process Served — Corporate/Registered Agent' },
-  { code: 'PS Mailed',            description: 'Process Served — By Mail' },
-  { code: 'PS Non-Service',       description: 'Process — Unable to Serve' },
-  { code: 'PS Evasive',           description: 'Process — Evasive / Avoiding Service' },
-  { code: 'PS Vacant',            description: 'Process — Vacant / Unoccupied' },
-  { code: 'PS No Access',         description: 'Process — Gated / No Access' },
-  { code: 'PS Unknown',           description: 'Process — Recipient Unknown at Address' },
-  { code: 'PS Out of Jurisdiction', description: 'Process — Out of Jurisdiction' },
-  { code: 'PS Recalled',          description: 'Process — Recalled by Client' },
-  { code: 'PS Non Est',           description: 'Process — Returned Non-Est (Return of Service Filed)' },
-  { code: 'Cancelled',        description: 'Call Cancelled' },
-];
+// Built-in fallback when the admin-configured codes haven't loaded (or the
+// prop is empty). Sourced from the shared DEFAULT_DISPOSITIONS so the
+// Clear-call prompt and the Info-tab edit dropdown always offer the same
+// roster — a dispatcher's muscle memory matches across both surfaces.
+const FALLBACK_DISPOSITIONS: DispositionCode[] = DEFAULT_DISPOSITIONS;
 
 export default function DispositionPrompt({
   callNumber,
