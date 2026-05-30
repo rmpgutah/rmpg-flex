@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import type { Env } from '../../types';
 import { getDb, query, queryFirst } from '../../utils/db';
+import { resolveDistrict } from '../../utils/districtResolver';
 
 const geography = new Hono<Env>();
 
@@ -42,11 +43,18 @@ geography.get('/tree', async (c) => {
       list.push(s);
       sectorsByArea.set(s.area_id, list);
     }
+    const areaIds = new Set(areas.map((a) => a.id));
     for (const area of areas) {
       (area as any).sectors = sectorsByArea.get(area.id) || [];
     }
+    // Sectors whose area_id points at no surviving area would otherwise vanish
+    // from the tree — surface them so the Geography page can still render them.
+    const unassigned_sectors = sectors.filter((s) => !areaIds.has(s.area_id));
 
-    return c.json(areas);
+    // Shape MUST be { areas, unassigned_sectors } — the client GeographyTree
+    // type and GeographyPage read `tree.areas`. Returning a bare array here
+    // (the prior bug) made `tree.areas` undefined and threw on first access.
+    return c.json({ areas, unassigned_sectors });
   } catch (err) {
     console.error('GET /dispatch/geography/tree failed:', err);
     return c.json({ error: 'Failed to get geography', detail: (err as Error)?.message }, 500);
@@ -95,6 +103,31 @@ geography.get('/districts', async (c) => {
     return c.json(rows);
   } catch (err) {
     return c.json({ error: 'Failed' }, 500);
+  }
+});
+
+// GET /dispatch/geography/districts/identify?lat=..&lng=..
+//
+// GPS → district lookup. Ray-casts the point against beat.geojson (served
+// from R2 via the geofence util), then hydrates the full Sector/Zone/Beat
+// hierarchy + names. The client's useDistrictIdentify expects a flat object
+// with a `found` boolean; a miss returns { found: false } (HTTP 200) so the
+// UI silently falls back to manual dropdown selection.
+geography.get('/districts/identify', async (c) => {
+  try {
+    const lat = Number.parseFloat(c.req.query('lat') ?? '');
+    const lng = Number.parseFloat(c.req.query('lng') ?? '');
+    if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+      return c.json({ found: false, error: 'lat and lng are required' }, 400);
+    }
+
+    const district = await resolveDistrict(c.env, { lat, lng });
+    if (!district) return c.json({ found: false });
+
+    return c.json({ found: true, ...district });
+  } catch (err) {
+    console.error('GET /dispatch/geography/districts/identify failed:', err);
+    return c.json({ found: false, error: 'identify failed' }, 500);
   }
 });
 

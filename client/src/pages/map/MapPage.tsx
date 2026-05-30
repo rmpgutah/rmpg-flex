@@ -416,7 +416,7 @@ export default function MapPage() {
 
   useEffect(() => {
     let cancelled = false;
-    apiFetch<any[]>('/dispatch/districts').then((districts) => {
+    apiFetch<any[]>('/dispatch/geography/districts').then((districts) => {
       if (cancelled || !Array.isArray(districts) || districts.length === 0) return;
       const map = new Map<string, Map<string, BeatDistrictEntry>>();
       const sectionSet = new Map<string, string>();
