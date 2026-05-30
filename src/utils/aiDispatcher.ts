@@ -31,6 +31,10 @@
 import type { LookupRequest } from './dispatcherAwareness';
 
 const WHISPER_MODEL = '@cf/openai/whisper-large-v3-turbo';
+// Fallback transcriber. gpt-4o-transcribe explicitly lists `webm` as a
+// supported format and takes a data: URI, so it covers the case where
+// whisper's decoder rejects our WebM/Opus container.
+const TRANSCRIBE_FALLBACK_MODEL = '@cf/openai/gpt-4o-transcribe';
 const LLM_MODEL = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const TTS_MODEL = '@cf/myshell-ai/melotts';
 
@@ -103,22 +107,36 @@ function bytesToBase64(bytes: Uint8Array): string {
 export { bytesToBase64 };
 
 /**
- * Transcribe a recorded transmission. whisper-large-v3-turbo's decoder
- * accepts the WebM/Opus we record; returns null (caller skips) on any
- * failure or empty result. If WebM transcription ever proves unreliable
- * on the account, @cf/openai/gpt-4o-transcribe explicitly supports webm
- * and is a drop-in (it takes a data: URI under `file` instead of `audio`).
+ * Transcribe a recorded transmission. Tries whisper-large-v3-turbo first
+ * (core Workers AI, base64 `audio`); if that throws or returns empty —
+ * e.g. its decoder rejects our WebM/Opus container — it automatically
+ * falls back to gpt-4o-transcribe (explicit webm support, data: URI under
+ * `file`). Returns null only when both fail, so the caller simply skips
+ * the reply rather than crashing the relay.
  */
 export async function transcribeTransmission(ai: Ai, audio: Uint8Array): Promise<string | null> {
+  const b64 = bytesToBase64(audio);
+
+  // Primary — whisper-large-v3-turbo.
   try {
-    const res = (await ai.run(WHISPER_MODEL, {
-      audio: bytesToBase64(audio),
+    const res = (await ai.run(WHISPER_MODEL, { audio: b64, language: 'en' } as never)) as { text?: string };
+    const text = (res?.text || '').trim();
+    if (text) return text;
+    console.warn('[aiDispatcher] whisper returned empty — trying gpt-4o-transcribe');
+  } catch (err) {
+    console.warn('[aiDispatcher] whisper failed, trying gpt-4o-transcribe:', (err as Error)?.message);
+  }
+
+  // Fallback — gpt-4o-transcribe with a webm data URI.
+  try {
+    const res = (await ai.run(TRANSCRIBE_FALLBACK_MODEL, {
+      file: `data:audio/webm;base64,${b64}`,
       language: 'en',
     } as never)) as { text?: string };
     const text = (res?.text || '').trim();
     return text.length > 0 ? text : null;
   } catch (err) {
-    console.error('[aiDispatcher] transcribe failed:', (err as Error)?.message);
+    console.error('[aiDispatcher] transcription failed (both models):', (err as Error)?.message);
     return null;
   }
 }
