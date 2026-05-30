@@ -882,6 +882,12 @@ const API_ROUTES: RouteRule[] = [
   // /src/routes/radio.ts existing on main.
   { kind: 'prefix', value: '/api/radio' },
 
+  // ── Settings sync (per-user + org defaults) ──
+  // GET/PUT /api/settings* live ONLY on the new Worker (src/routes/settings.ts,
+  // tables from migration 0045). Without this rule the path falls through to
+  // env.LEGACY and 404s, so cross-device sync + org defaults silently no-op.
+  { kind: 'prefix', value: '/api/settings' },
+
   // ── Serve Intake (upload + OCR + LLM extraction) ──
   // The new Worker owns /scan-document, /upload, /intake, /:id/documents,
   // and /documents/:docId/file (R2-backed). The legacy `rmpg-flex`
