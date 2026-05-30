@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Clock, MapPin, Users, AlertTriangle, Phone, Radio, UserCheck, Globe, Layers, MessageSquare, ShieldAlert, Star } from 'lucide-react';
 import type { CallForService } from '../types';
 import StatusBadge from './StatusBadge';
@@ -10,6 +10,8 @@ import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../uti
 // Parse server timestamps as UTC (naive strings) — raw new Date() reads
 // them as browser-local and skews every elapsed/age calc by the offset.
 import { parseTimestamp } from '../utils/dateUtils';
+import { callPosture } from '../utils/callThreat';
+import { BADGE_TONES } from './records/recordVisuals';
 
 // Feature 15: Call Source Icons
 const SOURCE_ICONS: Record<string, React.ElementType> = {
@@ -81,6 +83,10 @@ const NON_DROPPABLE_STATUSES = ['cleared', 'closed', 'cancelled', 'archived'];
 
 export default React.memo(function CallCard({ call, isSelected = false, onClick, onUnitDrop, onStatusChange, onContextMenu, warnings, stackCount, onQuickNote, hasActiveWarrant, onTogglePin }: CallCardProps) {
   const isEmergency = call.priority === 'P1';
+  // Officer-safety threat posture from the call's own intrinsic flags (linked
+  // records aren't loaded per-queue-card). Drives a triage strip across the
+  // top edge so a dangerous call reads at a glance regardless of priority.
+  const threatPosture = useMemo(() => callPosture(call), [call]);
   const [isDragOver, setIsDragOver] = useState(false);
   const timerRef = useRef<HTMLSpanElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
@@ -229,6 +235,20 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
         } : {}),
       }}
     >
+      {/* Officer-safety triage strip — top edge glows by threat posture
+          (critical = red pulse, high = orange). Orthogonal to the left
+          priority border so urgency + danger read independently. */}
+      {(threatPosture.level === 'critical' || threatPosture.level === 'high') && (
+        <div
+          className={`absolute top-0 left-0 right-0 h-[2px] pointer-events-none ${threatPosture.pulse ? 'animate-led-pulse' : ''}`}
+          style={{
+            background: BADGE_TONES[threatPosture.tone].border,
+            color: BADGE_TONES[threatPosture.tone].glow,
+            boxShadow: `0 0 6px ${BADGE_TONES[threatPosture.tone].glow}`,
+          }}
+          aria-hidden="true"
+        />
+      )}
       {/* Timer progress bar (thin line at top) */}
       {isActiveStatus(call.status) && (
         <div className="timer-bar-track">
