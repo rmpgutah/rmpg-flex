@@ -1436,8 +1436,78 @@ function fmtClock(ts?: string | null): string {
 // code should call `fmtDateTime` directly.
 const fmtTimestamp = fmtDateTime;
 
+// ============================================================
+// PDF field rendering — sentinel-safe field value
+// ============================================================
+// Live D1 cells frequently hold the literal STRINGS "N/A" / "None" / "0" /
+// "null" / "undefined" instead of SQL NULL — a known data-quality issue
+// documented in the [[project-sentinel-none-strings]] memory entry. Without
+// guarding here, those values flow straight onto the form ("DOB: N/A",
+// "WARRANT #: N/A", "ENTERED BY: N/A"), making a clean-but-empty record
+// look as though it were populated with garbage. They also pollute the
+// filename when warrant_number happens to be "N/A" → sanitization yields
+// "N_A_warrant.pdf".
+//
+// `pdfField()` is the single place to coerce those to a visible em-dash
+// placeholder ("—"), matching the convention already used by the NCIC/ORI
+// block. Pass the raw value (any type), get back a guaranteed non-empty
+// display string.
+//
+// Two intentional choices:
+//   1. Returns the em-dash by default (NOT empty string). `addFieldPair`
+//      with an empty value collapses the row visually; an em-dash makes
+//      "field exists, value missing" legible and prints uniformly across
+//      sections that already use "—" (NCIC) and sections that don't (Court).
+//   2. Sentinel match is CASE-INSENSITIVE on the trimmed value. Live data
+//      has been observed as "N/A", "n/a", "N/a", " N/A ", "None", "NONE",
+//      "null", "undefined". Numeric "0" is intentionally NOT sentinel here
+//      because some text fields (e.g. count fields cast to string) carry
+//      a meaningful "0" — currency handles its own null path via fmtCurrency.
+const EMPTY_FIELD = '—'; // em-dash, matches NCIC/ORI block convention
+const SENTINEL_RE = /^(n\/a|none|null|undefined)$/i;
+function pdfField(v: unknown, fallback: string = EMPTY_FIELD): string {
+  if (v == null) return fallback;
+  const s = String(v).trim();
+  if (s === '' || SENTINEL_RE.test(s)) return fallback;
+  return s;
+}
+
+// ============================================================
+// PDF field rendering — charges (JSON-array or delimited string)
+// ============================================================
+// ArrestFormModal and PersonIntelPanel both JSON.stringify(chargeLines)
+// before writing to the warrants.charges column, so the DB stores e.g.
+// `'["BATTERY"]'` (literal text). Naive `String(charges).split(",")` then
+// produces a single row with the LITERAL text `["BATTERY"]` rendered as
+// the charge — which is what showed up in the N_A_warrant.pdf the
+// operator just printed.
+//
+// `parseCharges()` first tries JSON.parse (the common case for any
+// warrant created from a Records form), then falls back to splitting
+// on common delimiters (the legacy case for warrants imported from
+// scrape sources or hand-typed strings).
+function parseCharges(raw: unknown): string[] {
+  if (raw == null) return [];
+  if (Array.isArray(raw)) return raw.map(String).map(s => s.trim()).filter(Boolean);
+  const s = String(raw).trim();
+  if (!s) return [];
+  // JSON array fast path — warrants written from ArrestFormModal /
+  // PersonIntelPanel land here. Only try JSON.parse if the string LOOKS
+  // like a JSON literal, otherwise every bare "BATTERY, ASSAULT" string
+  // pays for a thrown SyntaxError on the unhappy path.
+  if (s.startsWith('[')) {
+    try {
+      const arr = JSON.parse(s);
+      if (Array.isArray(arr)) return arr.map(String).map(t => t.trim()).filter(Boolean);
+    } catch {
+      // fall through to delimiter split
+    }
+  }
+  return s.split(/\r?\n|;|,(?=\s)|,/).map(t => t.trim()).filter(Boolean);
+}
+
 function fmtCurrency(val?: number | null): string {
-  if (val == null) return 'N/A';
+  if (val == null) return EMPTY_FIELD;
   return `$${val.toLocaleString('en-US', { minimumFractionDigits: 2 })}`;
 }
 
@@ -3631,18 +3701,29 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
 
   const statusPrio = data.status === 'active' ? 'critical' : data.status === 'served' ? 'low' : 'medium';
 
-  setActiveCaseNumber(data.warrant_number);
+  // Display warrant identifier — fall back through warrant_number → case_number →
+  // local id-stamp so we never surface the literal "N/A" sentinel as the case
+  // number (it was producing "WARRANT #: N/A" in the page header, the
+  // quick-reference banner, and the file's barcode metadata).
+  const warrantIdRaw = data.warrant_number ?? (data as any).case_number ?? null;
+  const warrantIdField = pdfField(warrantIdRaw, EMPTY_FIELD);
+  const sentinelFreeWarrantId = warrantIdField === EMPTY_FIELD
+    ? ((data as any).id ? `WARRANT-${(data as any).id}` : EMPTY_FIELD)
+    : warrantIdField;
+  setActiveCaseNumber(sentinelFreeWarrantId);
   let y = drawNibrsHeader(doc, {
     stateIdentifier: 'STATE OF UTAH',
     agencyName: 'ROCKY MOUNTAIN PROTECTIVE GROUP',
     formTitle: 'WARRANT RECORD',
     formNumber: 'FORM PS-204',
-    caseNumber: data.warrant_number,
+    caseNumber: sentinelFreeWarrantId,
     caseNumberLabel: 'WARRANT #',
     reportDate: fmtDate(data.created_at),
   });
 
-  // Quick-reference banner — warrant# + subject + status pill
+  // Quick-reference banner — warrant# + subject + status pill.
+  // Secondary line collapses to charge list via parseCharges so it can never
+  // surface the literal "[...]" stringified JSON we used to print.
   {
     const subject = [data.subject_last_name, data.subject_first_name]
       .filter(Boolean).join(', ').toUpperCase();
@@ -3654,9 +3735,13 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
         : status
           ? { label: status.toUpperCase(), tone: 'elevated' }
           : undefined;
+    const bannerCharges = parseCharges(data.charge_description ?? (data as any).charges);
+    const bannerChargeText = bannerCharges.length
+      ? bannerCharges.join(', ')
+      : undefined;
     y = addQuickReferenceBanner(doc, {
-      primary: data.warrant_number,
-      secondary: [subject, data.charge_description, data.offense_level].filter(Boolean).join(' · '),
+      primary: sentinelFreeWarrantId,
+      secondary: [subject, bannerChargeText, data.offense_level].filter(Boolean).join(' · '),
       pill,
     }, y);
   }
@@ -3761,13 +3846,17 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     const quarterW = ffw / 4;
     // Row 1: Warrant Number (2/5), Type (1/5), Status (1/5), Offense Level (1/5)
     const fifthW = ffw / 5;
-    const r1a = addFieldPair(doc, 'Warrant Number', data.warrant_number || '', lx, y, fifthW * 2);
-    const r1b = addFieldPair(doc, 'Type', formatEnumValue(data.type), lx + fifthW * 2, y, fifthW);
-    const r1c = addFieldPair(doc, 'Status', displayStatus(data.status || ''), lx + fifthW * 3, y, fifthW);
-    const r1d = addFieldPair(doc, 'Offense Level', (data.offense_level || '').toUpperCase(), lx + fifthW * 4, y, fifthW);
+    const r1a = addFieldPair(doc, 'Warrant Number', pdfField(data.warrant_number), lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'Type', pdfField(formatEnumValue(data.type)), lx + fifthW * 2, y, fifthW);
+    const r1c = addFieldPair(doc, 'Status', pdfField(displayStatus(data.status || '')), lx + fifthW * 3, y, fifthW);
+    const r1d = addFieldPair(doc, 'Offense Level', pdfField((data.offense_level || '').toUpperCase()), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c, r1d);
-    // Row 2: Charge Description (full width)
-    y = addFieldPair(doc, 'Charge Description', data.charge_description || '', lx, y, ffw);
+    // Row 2: Charge Description (full width) — runs through parseCharges so
+    // a JSON-array DB value (["BATTERY"]) renders as a real charge list,
+    // not the literal stringified array.
+    const charges = parseCharges(data.charge_description ?? (data as any).charges);
+    y = addFieldPair(doc, 'Charge Description',
+      charges.length ? charges.join(', ') : EMPTY_FIELD, lx, y, ffw);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
 
@@ -3778,21 +3867,21 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
     const sixthW = ffw / 6;
     // Row 1: Last Name (2/5), First Name (2/5), DOB (1/5)
     const fifthW = ffw / 5;
-    const r1a = addFieldPair(doc, 'Last Name', data.subject_last_name || '', lx, y, fifthW * 2);
-    const r1b = addFieldPair(doc, 'First Name', data.subject_first_name || '', lx + fifthW * 2, y, fifthW * 2);
-    const r1c = addFieldPair(doc, 'DOB', fmtDate(data.subject_dob), lx + fifthW * 4, y, fifthW);
+    const r1a = addFieldPair(doc, 'Last Name', pdfField(data.subject_last_name), lx, y, fifthW * 2);
+    const r1b = addFieldPair(doc, 'First Name', pdfField(data.subject_first_name), lx + fifthW * 2, y, fifthW * 2);
+    const r1c = addFieldPair(doc, 'DOB', pdfField(fmtDate(data.subject_dob)), lx + fifthW * 4, y, fifthW);
     y = Math.max(r1a, r1b, r1c);
     // Row 2: Gender, Race, Height, Weight, Hair, Eyes (6 cols)
-    const r2a = addFieldPair(doc, 'Gender', data.subject_gender || '', lx, y, sixthW);
-    const r2b = addFieldPair(doc, 'Race', data.subject_race || '', lx + sixthW, y, sixthW);
-    const r2c = addFieldPair(doc, 'Height', data.subject_height || '', lx + sixthW * 2, y, sixthW);
-    const r2d = addFieldPair(doc, 'Weight', data.subject_weight || '', lx + sixthW * 3, y, sixthW);
-    const r2e = addFieldPair(doc, 'Hair', data.subject_hair_color || '', lx + sixthW * 4, y, sixthW);
-    const r2f = addFieldPair(doc, 'Eyes', data.subject_eye_color || '', lx + sixthW * 5, y, sixthW);
+    const r2a = addFieldPair(doc, 'Gender', pdfField(data.subject_gender), lx, y, sixthW);
+    const r2b = addFieldPair(doc, 'Race', pdfField(data.subject_race), lx + sixthW, y, sixthW);
+    const r2c = addFieldPair(doc, 'Height', pdfField(data.subject_height), lx + sixthW * 2, y, sixthW);
+    const r2d = addFieldPair(doc, 'Weight', pdfField(data.subject_weight), lx + sixthW * 3, y, sixthW);
+    const r2e = addFieldPair(doc, 'Hair', pdfField(data.subject_hair_color), lx + sixthW * 4, y, sixthW);
+    const r2f = addFieldPair(doc, 'Eyes', pdfField(data.subject_eye_color), lx + sixthW * 5, y, sixthW);
     y = Math.max(r2a, r2b, r2c, r2d, r2e, r2f);
     // Row 3: Address (full width, conditional)
     if (data.subject_address) {
-      y = addFieldPair(doc, 'Address', data.subject_address, lx, y, ffw);
+      y = addFieldPair(doc, 'Address', pdfField(data.subject_address), lx, y, ffw);
     }
     // Mugshot — 110pt x 110pt (~1.5"), right-aligned within section (Phase 1 review)
     if (data.subject_photo_url) {
@@ -3816,15 +3905,15 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   y = checkPageBreak(doc, y, 18, statusPrio);
   { const sec = openAutoSection(doc, 'Court Information', y); y = sec.contentY;
     // Row 1: Issuing Court (half), Issuing Judge (half)
-    const r1a = addFieldPair(doc, 'Issuing Court', data.issuing_court || '', lx, y, hfw);
-    const r1b = addFieldPair(doc, 'Issuing Judge', data.issuing_judge || '', rx, y, hfw);
+    const r1a = addFieldPair(doc, 'Issuing Court', pdfField(data.issuing_court), lx, y, hfw);
+    const r1b = addFieldPair(doc, 'Issuing Judge', pdfField(data.issuing_judge), rx, y, hfw);
     y = Math.max(r1a, r1b);
     // Row 2: Bail Amount, Expiration Date, Entered By, Entry Date (4 cols)
     const quarterW = ffw / 4;
-    const r2a = addFieldPair(doc, 'Bail Amount', fmtCurrency(data.bail_amount), lx, y, quarterW);
-    const r2b = addFieldPair(doc, 'Expiration Date', fmtDate(data.expires_at), lx + quarterW, y, quarterW);
-    const r2c = addFieldPair(doc, 'Entered By', data.entered_by_name || '', lx + quarterW * 2, y, quarterW);
-    const r2d = addFieldPair(doc, 'Entry Date', fmtTimestamp(data.created_at), lx + quarterW * 3, y, quarterW);
+    const r2a = addFieldPair(doc, 'Bail Amount', pdfField(fmtCurrency(data.bail_amount)), lx, y, quarterW);
+    const r2b = addFieldPair(doc, 'Expiration Date', pdfField(fmtDate(data.expires_at)), lx + quarterW, y, quarterW);
+    const r2c = addFieldPair(doc, 'Entered By', pdfField(data.entered_by_name), lx + quarterW * 2, y, quarterW);
+    const r2d = addFieldPair(doc, 'Entry Date', pdfField(fmtTimestamp(data.created_at)), lx + quarterW * 3, y, quarterW);
     y = Math.max(r2a, r2b, r2c, r2d);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -3953,25 +4042,41 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   }
 
   // ── Source / provenance (Phase 1) ──
+  // Two distinct provenance shapes: SCRAPED (from utah-warrant-watch or
+  // future state scrapers) vs MANUALLY ENTERED (operator filled the form).
+  // Each gets a context-appropriate Last refreshed + Verification pair.
+  // PRIOR BUG: Verification defaulted to 'auto-scraped' on the manual
+  // branch too, producing the visible contradiction
+  // "SOURCE: MANUALLY ENTERED + VERIFICATION: AUTO-SCRAPED" on the N_A
+  // warrant operator-printed PDF (Karl Turley, 2026-05-30).
   y = checkPageBreak(doc, y, 18, statusPrio);
   {
     const sec = openAutoSection(doc, 'Source / Provenance', y);
     y = sec.contentY;
     const halfW = ffw / 2;
-    if (data.source_scraper_name) {
-      const r1a = addFieldPair(doc, 'Scraper', data.source_scraper_name, lx, y, halfW);
-      const r1b = addFieldPair(doc, 'State',   data.source_state || '—',  lx + halfW, y, halfW);
+    const isScraped = !!data.source_scraper_name;
+    if (isScraped) {
+      const r1a = addFieldPair(doc, 'Scraper', pdfField(data.source_scraper_name), lx, y, halfW);
+      const r1b = addFieldPair(doc, 'State',   pdfField(data.source_state),        lx + halfW, y, halfW);
       y = Math.max(r1a, r1b);
     } else {
-      const r1a = addFieldPair(doc, 'Source', 'Manually entered', lx, y, halfW);
-      const r1b = addFieldPair(doc, 'By',     data.entered_by_name || 'Unknown', lx + halfW, y, halfW);
+      const r1a = addFieldPair(doc, 'Source', 'Manually entered',                  lx, y, halfW);
+      const r1b = addFieldPair(doc, 'By',     pdfField(data.entered_by_name),      lx + halfW, y, halfW);
       y = Math.max(r1a, r1b);
     }
     if (data.source_url) {
-      y = addFieldPair(doc, 'URL', data.source_url, lx, y, ffw);
+      y = addFieldPair(doc, 'URL', pdfField(data.source_url), lx, y, ffw);
     }
-    const r3a = addFieldPair(doc, 'Last refreshed', fmtDate(data.source_last_scraped_at) || '—', lx, y, halfW);
-    const r3b = addFieldPair(doc, 'Verification',   data.source_verification || 'auto-scraped', lx + halfW, y, halfW);
+    const r3a = addFieldPair(doc, 'Last refreshed', pdfField(fmtDate(data.source_last_scraped_at)), lx, y, halfW);
+    // Verification semantics:
+    //  - Scraped + operator hasn't manually verified → "auto-scraped"
+    //  - Scraped + operator has marked verified       → use the stored value
+    //  - Manual entry                                 → "manual"  (NOT auto-scraped!)
+    // pdfField on the manual default still passes through cleanly because
+    // 'manual' isn't a sentinel.
+    const verificationDefault = isScraped ? 'auto-scraped' : 'manual';
+    const r3b = addFieldPair(doc, 'Verification', pdfField(data.source_verification, verificationDefault),
+      lx + halfW, y, halfW);
     y = Math.max(r3a, r3b);
     y = closeAutoSection(doc, sec.sectionY, y, undefined, sec.sectionPage);
   }
@@ -4016,7 +4121,16 @@ export async function renderWarrantIntoDoc(doc: jsPDF, data: WarrantPdfData): Pr
   }
 
   // ── Print audit footer — stamp every page (Phase 1 review) ──
-  const audit = `Printed by: ${data.printed_by_name || 'Unknown'}${data.printed_by_badge ? ' #' + data.printed_by_badge : ''}  on  ${fmtDate(data.printed_at) || fmtDate(new Date().toISOString())}`;
+  // pdfField swallows "N/A"/"None" sentinel strings (sometimes set on the
+  // user row when full_name wasn't migrated) and lets the caller's
+  // pre-computed display name pass through. If we STILL end up with the
+  // em-dash here, surface "(unattributed)" so the print is honest about
+  // missing audit context rather than asserting a fictional "Unknown" user.
+  const printedByName = pdfField(data.printed_by_name);
+  const printedByLabel = printedByName === EMPTY_FIELD ? '(unattributed)' : printedByName;
+  const badgeSuffix = data.printed_by_badge ? ' #' + data.printed_by_badge : '';
+  const printedDate = fmtDate(data.printed_at) || fmtDate(new Date().toISOString());
+  const audit = `Printed by: ${printedByLabel}${badgeSuffix}  on  ${printedDate}`;
   for (let i = 1; i <= totalPages; i++) {
     doc.setPage(i);
     doc.setFontSize(7);
