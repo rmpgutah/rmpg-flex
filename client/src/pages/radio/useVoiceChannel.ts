@@ -53,7 +53,10 @@ export interface DispatchRecordRef { kind: 'person' | 'vehicle'; id: number }
 export function useVoiceChannel(
   channelId: number | null,
   onRecorded?: (transmission: any) => void,
-  onRecordOpen?: (ref: DispatchRecordRef) => void,
+  // `fromMe` = the looked-up record was THIS device's own request. The operator
+  // console opens regardless (it monitors all traffic); a field MDT opens only
+  // its own. See DispatchRecordPanel consumers.
+  onRecordOpen?: (ref: DispatchRecordRef, ctx: { fromMe: boolean }) => void,
 ): VoiceChannelState {
   const [connected, setConnected] = useState(false);
   const [members, setMembers] = useState(0);
@@ -147,8 +150,11 @@ export function useVoiceChannel(
             if (msg.transmission) onRecordedRef.current?.(msg.transmission);
             // If the dispatcher ran a plate/person check, auto-open the record
             // file (operator-gated server-side via ai_auto_open_records).
+            // source_user_id is the requesting officer — fromMe lets a field MDT
+            // open only its own request while the operator console opens all.
             if (msg.record && (msg.record.kind === 'person' || msg.record.kind === 'vehicle') && typeof msg.record.id === 'number') {
-              onRecordOpenRef.current?.(msg.record as DispatchRecordRef);
+              const fromMe = msg.source_user_id != null && msg.source_user_id === myIdRef.current;
+              onRecordOpenRef.current?.(msg.record as DispatchRecordRef, { fromMe });
             }
             const buf = typeof msg.audio === 'string' ? base64ToArrayBuffer(msg.audio) : null;
             if (buf) {

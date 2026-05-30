@@ -393,9 +393,11 @@ export class VoiceHubDO {
         .catch(() => { /* best-effort */ });
     }
 
-    // 2. Context — speaker call-sign, channel name, recent traffic.
-    const speaker = await queryFirst<{ unit_label: string | null }>(
-      db, 'SELECT unit_label FROM radio_transmissions WHERE id = ?', sourceTxId,
+    // 2. Context — speaker call-sign, channel name, recent traffic. user_id is
+    // the requesting officer — carried on dispatch_speak so that officer's own
+    // device (not the whole channel) can auto-open the looked-up record.
+    const speaker = await queryFirst<{ unit_label: string | null; user_id: number | null }>(
+      db, 'SELECT unit_label, user_id FROM radio_transmissions WHERE id = ?', sourceTxId,
     );
     const channel = await queryFirst<{ name: string }>(
       db, 'SELECT name FROM radio_channels WHERE id = ?', this.refId,
@@ -534,8 +536,10 @@ export class VoiceHubDO {
       audio: bytesToBase64(audioBytes),
       intent,
       // Present only when a lookup hit a record AND auto-open is enabled — the
-      // operator console opens this file in its side panel.
+      // operator console opens this file in its side panel; the requesting
+      // officer's own device (matched on source_user_id) opens it too.
       record: recordRef ?? undefined,
+      source_user_id: recordRef ? (speaker?.user_id ?? null) : undefined,
     });
   }
 }

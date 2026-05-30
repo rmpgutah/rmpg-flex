@@ -18,7 +18,8 @@ import { useLocation } from 'react-router-dom';
 import { Radio, Mic, MicOff, RadioTower } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { apiFetch } from '../hooks/useApi';
-import { useVoiceChannel } from '../pages/radio/useVoiceChannel';
+import { useVoiceChannel, type DispatchRecordRef } from '../pages/radio/useVoiceChannel';
+import DispatchRecordPanel from './DispatchRecordPanel';
 import type { RadioChannel } from '../pages/radio/types';
 import { getPttPrefs, keyCodeLabel, PTT_PREFS_EVENT, type PttPreferences } from '../utils/pttPreferences';
 
@@ -31,6 +32,10 @@ export default function PttController() {
   const onRadioPage = location.pathname.startsWith('/radio');
   const [prefs, setPrefs] = useState<PttPreferences>(getPttPrefs);
   const [channels, setChannels] = useState<RadioChannel[]>([]);
+  // Record the AI dispatcher pulled for THIS officer's own plate/person check —
+  // shown as a floating card over whatever page they're on (the operator
+  // console handles its own panel). null = none open.
+  const [fieldRecord, setFieldRecord] = useState<DispatchRecordRef | null>(null);
 
   // Inject the HUD's keyframes once (self-contained — no global CSS dep).
   useEffect(() => {
@@ -70,7 +75,14 @@ export default function PttController() {
   const channelName =
     channels.find((c) => c.id === resolvedChannelId)?.name ?? `CH ${resolvedChannelId ?? '—'}`;
 
-  const voice = useVoiceChannel(resolvedChannelId);
+  const voice = useVoiceChannel(
+    resolvedChannelId,
+    undefined,
+    // Open the looked-up record ONLY when it was this device's own request —
+    // every other officer on the channel ignores it (the operator console is
+    // the one that monitors all lookups).
+    (ref, ctx) => { if (ctx.fromMe) setFieldRecord(ref); },
+  );
 
   // Mirror live values into refs so the key listeners can bind ONCE and
   // still see current state (avoids re-attaching on every render).
@@ -142,6 +154,8 @@ export default function PttController() {
   else { dot = '#d4a017'; label = 'CONNECTING…'; }
 
   return (
+    <>
+      {fieldRecord && <DispatchRecordPanel floating record={fieldRecord} onClose={() => setFieldRecord(null)} />}
     <div
       role="status"
       aria-live="polite"
@@ -175,5 +189,6 @@ export default function PttController() {
         </span>
       </span>
     </div>
+    </>
   );
 }
