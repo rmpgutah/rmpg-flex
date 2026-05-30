@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Building2 } from 'lucide-react';
+import { Building2, MapPin, Shield, Key, Wrench, FileWarning, FileText } from 'lucide-react';
 import FormModal from './FormModal';
+import FormSection from './records/FormSection';
+import FormField from './records/FormField';
 import { useFormDraft } from '../hooks/useFormDraft';
 import type { Property } from '../types';
 import AddressAutocomplete, { type ParsedAddress } from './AddressAutocomplete';
@@ -251,556 +253,486 @@ export default function PropertyFormModal({
         </div>
       )}
 
-      {/* Row 1: Name */}
-      <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
-          Property Name <span className="text-red-400">*</span>
-        </label>
-        <input
-          name="name"
-          type="text"
-          required
-          autoFocus
-          className="input-dark w-full text-xs"
-          placeholder="e.g. Sunrise Office Park"
-          value={form.name}
-          onChange={handleChange}
-        />
-      </div>
-
-      {/* Row 2: Address */}
-      <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">
-          Address <span className="text-red-400">*</span>
-        </label>
-        <AddressAutocomplete
-          name="address"
-          required
-          className="input-dark w-full text-xs"
-          placeholder="Street address"
-          value={form.address}
-          onChange={(val) => setForm((prev) => ({ ...prev, address: val }))}
-          onSelect={(addr: ParsedAddress) => {
-            setForm((prev) => ({
-              ...prev,
-              address: addr.formatted || addr.street,
-              city: addr.city || prev.city,
-              state: addr.state || prev.state,
-              zip: addr.zip || prev.zip,
-              latitude: (addr.latitude as any) ?? prev.latitude,
-              longitude: (addr.longitude as any) ?? prev.longitude,
-            }));
-          }}
-        />
-      </div>
-
-      {/* Row 3: City, State, Zip */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">City</label>
-          <input
-            name="city"
-            type="text"
-            className="input-dark w-full text-xs"
-            value={form.city}
-            onChange={handleChange}
-          />
+      {/* Address / Client */}
+      <FormSection title="Address & Client" icon={MapPin}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FormField label="Property Name" required className="sm:col-span-3">
+            <input
+              name="name"
+              type="text"
+              required
+              autoFocus
+              className="input-dark w-full text-xs"
+              placeholder="e.g. Sunrise Office Park"
+              value={form.name}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Address" required className="sm:col-span-3">
+            <AddressAutocomplete
+              name="address"
+              required
+              className="input-dark w-full text-xs"
+              placeholder="Street address"
+              value={form.address}
+              onChange={(val) => setForm((prev) => ({ ...prev, address: val }))}
+              onSelect={(addr: ParsedAddress) => {
+                setForm((prev) => ({
+                  ...prev,
+                  address: addr.formatted || addr.street,
+                  city: addr.city || prev.city,
+                  state: addr.state || prev.state,
+                  zip: addr.zip || prev.zip,
+                  latitude: (addr.latitude as any) ?? prev.latitude,
+                  longitude: (addr.longitude as any) ?? prev.longitude,
+                }));
+              }}
+            />
+          </FormField>
+          <FormField label="City">
+            <input
+              name="city"
+              type="text"
+              className="input-dark w-full text-xs"
+              value={form.city}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="State">
+            <select name="state" className="select-dark w-full text-xs" value={form.state} onChange={handleChange}>
+              {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Zip">
+            <input
+              name="zip"
+              type="text"
+              className="input-dark w-full text-xs"
+              value={form.zip}
+              onChange={handleChange}
+              pattern="\d{5}(-\d{4})?"
+              maxLength={10}
+              placeholder="e.g. 84101"
+            />
+          </FormField>
+          <FormField label="Client">
+            <select name="client_id" className="select-dark w-full text-xs" value={form.client_id} onChange={handleChange}>
+              <option value="">No Client</option>
+              {clients.map((c) => (
+                <option key={c.id} value={c.id}>{c.name}</option>
+              ))}
+            </select>
+          </FormField>
+          <FormField label="Latitude">
+            <input
+              name="latitude"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. 40.7608"
+              value={form.latitude}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Longitude">
+            <input
+              name="longitude"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. -111.8910"
+              value={form.longitude}
+              onChange={handleChange}
+            />
+          </FormField>
         </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">State</label>
-          <select name="state" className="select-dark w-full text-xs" value={form.state} onChange={handleChange}>
-            {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Zip</label>
-          <input
-            name="zip"
-            type="text"
-            className="input-dark w-full text-xs"
-            value={form.zip}
-            onChange={handleChange}
-            pattern="\d{5}(-\d{4})?"
-            maxLength={10}
-            placeholder="e.g. 84101"
-          />
-        </div>
-      </div>
-
-      {/* Row 4: Client, Property Type, Business Type */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Client</label>
-          <select name="client_id" className="select-dark w-full text-xs" value={form.client_id} onChange={handleChange}>
-            <option value="">No Client</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>{c.name}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Property Type</label>
-          <select name="property_type" className="select-dark w-full text-xs" value={form.property_type} onChange={handleChange}>
-            <option value="">-- Select --</option>
-            {PROPERTY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Business Type</label>
-          <select name="business_type" className="select-dark w-full text-xs" value={form.business_type} onChange={handleChange}>
-            <option value="">-- Select --</option>
-            {BUSINESS_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-      </div>
+      </FormSection>
 
       {/* Property Details */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Structure Type</label>
-          <select name="structure_type" className="select-dark w-full text-xs" value={form.structure_type} onChange={handleChange}>
-            <option value="">-- Select --</option>
-            {STRUCTURE_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+      <FormSection title="Property Details" icon={Building2}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FormField label="Property Type">
+            <select name="property_type" className="select-dark w-full text-xs" value={form.property_type} onChange={handleChange}>
+              <option value="">-- Select --</option>
+              {PROPERTY_TYPES.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Business Type">
+            <select name="business_type" className="select-dark w-full text-xs" value={form.business_type} onChange={handleChange}>
+              <option value="">-- Select --</option>
+              {BUSINESS_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Structure Type">
+            <select name="structure_type" className="select-dark w-full text-xs" value={form.structure_type} onChange={handleChange}>
+              <option value="">-- Select --</option>
+              {STRUCTURE_TYPE_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Occupancy Status">
+            <select name="occupancy_status" className="select-dark w-full text-xs" value={form.occupancy_status} onChange={handleChange}>
+              <option value="">-- Select --</option>
+              {OCCUPANCY_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Year Built">
+            <input
+              name="year_built"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. 2005"
+              value={form.year_built}
+              onChange={handleChange}
+              maxLength={4}
+            />
+          </FormField>
+          <FormField label="Square Footage">
+            <input
+              name="square_footage"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. 12000"
+              value={form.square_footage}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Number of Stories">
+            <input
+              name="number_of_stories"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. 3"
+              value={form.number_of_stories}
+              onChange={handleChange}
+            />
+          </FormField>
         </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Occupancy Status</label>
-          <select name="occupancy_status" className="select-dark w-full text-xs" value={form.occupancy_status} onChange={handleChange}>
-            <option value="">-- Select --</option>
-            {OCCUPANCY_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Year Built</label>
-          <input
-            name="year_built"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. 2005"
-            value={form.year_built}
-            onChange={handleChange}
-            maxLength={4}
-          />
-        </div>
-      </div>
+      </FormSection>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Square Footage</label>
-          <input
-            name="square_footage"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. 12000"
-            value={form.square_footage}
-            onChange={handleChange}
-          />
+      {/* Security & Access */}
+      <FormSection title="Security & Access" icon={Shield} accent="amber">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FormField label="Gate Code">
+            <input
+              name="gate_code"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. #1234"
+              value={form.gate_code}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Alarm Code">
+            <input
+              name="alarm_code"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. 5678"
+              value={form.alarm_code}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Emergency Contact">
+            <input
+              name="emergency_contact"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="Name / Phone"
+              value={form.emergency_contact}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Security Features">
+            <select name="security_features" className="select-dark w-full text-xs" value={form.security_features} onChange={handleChange}>
+              <option value="">-- Select --</option>
+              {SECURITY_FEATURES_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Camera System">
+            <select name="camera_system" className="select-dark w-full text-xs" value={form.camera_system} onChange={handleChange}>
+              <option value="">-- Select --</option>
+              {CAMERA_SYSTEM_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Roof Access">
+            <select name="roof_access" className="select-dark w-full text-xs" value={form.roof_access} onChange={handleChange}>
+              <option value="">-- Select --</option>
+              {ROOF_ACCESS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Alarm System">
+            <select
+              name="alarm_system"
+              className="select-dark w-full text-xs"
+              value={form.alarm_system}
+              onChange={handleChange}
+            >
+              <option value="">-- Select --</option>
+              {ALARM_SYSTEM_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Alarm Company">
+            <input
+              name="alarm_company"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. ADT, Vivint"
+              value={form.alarm_company}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Alarm Account #">
+            <input
+              name="alarm_account"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="Account number"
+              value={form.alarm_account}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Parking Info" className="sm:col-span-3">
+            <RichTextArea
+              name="parking_info"
+              rows={2}
+              className="input-dark w-full text-xs"
+              placeholder="Parking layout, reserved spots, lot access"
+              value={form.parking_info}
+              onChange={handleChange}
+            />
+          </FormField>
         </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Number of Stories</label>
-          <input
-            name="number_of_stories"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. 3"
-            value={form.number_of_stories}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
+      </FormSection>
 
-      {/* Row 5: Gate Code, Alarm Code, Emergency Contact */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Gate Code</label>
-          <input
-            name="gate_code"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. #1234"
-            value={form.gate_code}
-            onChange={handleChange}
-          />
+      {/* Key Holder & Owner */}
+      <FormSection title="Key Holder & Owner" icon={Key}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FormField label="Key Holder Name">
+            <input
+              name="key_holder_name"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="Full name"
+              value={form.key_holder_name}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Key Holder Phone">
+            <input
+              name="key_holder_phone"
+              type="tel"
+              className="input-dark w-full text-xs"
+              placeholder="(801) 555-0100"
+              value={form.key_holder_phone}
+              onChange={(e) => setForm(prev => ({ ...prev, key_holder_phone: formatPhoneInput(e.target.value) }))}
+            />
+          </FormField>
+          <FormField label="Key Holder Relationship">
+            <input
+              name="key_holder_relationship"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. Property Manager"
+              value={form.key_holder_relationship}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Secondary Contact Name">
+            <input
+              name="secondary_contact_name"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="Backup contact name"
+              value={form.secondary_contact_name}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Secondary Contact Phone">
+            <input
+              name="secondary_contact_phone"
+              type="tel"
+              className="input-dark w-full text-xs"
+              placeholder="(801) 555-0200"
+              value={form.secondary_contact_phone}
+              onChange={(e) => setForm(prev => ({ ...prev, secondary_contact_phone: formatPhoneInput(e.target.value) }))}
+            />
+          </FormField>
+          <FormField label="Contact Email">
+            <input
+              name="contact_email"
+              type="email"
+              className="input-dark w-full text-xs"
+              placeholder="Primary contact email"
+              value={form.contact_email}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Owner Name">
+            <input
+              name="owner_name"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="Property owner full name"
+              value={form.owner_name}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Owner Phone">
+            <input
+              name="owner_phone"
+              type="tel"
+              className="input-dark w-full text-xs"
+              placeholder="(801) 555-0100"
+              value={form.owner_phone}
+              onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))}
+            />
+          </FormField>
         </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Alarm Code</label>
-          <input
-            name="alarm_code"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. 5678"
-            value={form.alarm_code}
-            onChange={handleChange}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Emergency Contact</label>
-          <input
-            name="emergency_contact"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="Name / Phone"
-            value={form.emergency_contact}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
+      </FormSection>
 
-      {/* Row 6: Latitude, Longitude */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Latitude</label>
-          <input
-            name="latitude"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. 40.7608"
-            value={form.latitude}
-            onChange={handleChange}
-          />
+      {/* Patrol Operations */}
+      <FormSection title="Patrol Operations" icon={Shield}>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <FormField label="Patrol Frequency">
+            <select name="patrol_frequency" className="select-dark w-full text-xs" value={form.patrol_frequency} onChange={handleChange}>
+              <option value="">-- Select --</option>
+              {PATROL_FREQUENCY_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
+          <FormField label="Opening Hours">
+            <input
+              name="opening_hours"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. 08:00"
+              value={form.opening_hours}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Closing Hours">
+            <input
+              name="closing_hours"
+              type="text"
+              className="input-dark w-full text-xs"
+              placeholder="e.g. 22:00"
+              value={form.closing_hours}
+              onChange={handleChange}
+            />
+          </FormField>
         </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Longitude</label>
-          <input
-            name="longitude"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. -111.8910"
-            value={form.longitude}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
+      </FormSection>
 
-      {/* ── Security & Access ── */}
-      <div className="mt-3 pt-3 border-t border-rmpg-700">
-        <div className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider mb-3">Security & Access</div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Security Features</label>
-          <select name="security_features" className="select-dark w-full text-xs" value={form.security_features} onChange={handleChange}>
-            <option value="">-- Select --</option>
-            {SECURITY_FEATURES_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+      {/* Inspection */}
+      <FormSection title="Inspection" icon={Wrench}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <FormField label="Last Inspection Date">
+            <input
+              name="last_inspection_date"
+              type="date"
+              className="input-dark w-full text-xs"
+              value={form.last_inspection_date}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Inspection Status">
+            <select name="inspection_status" className="select-dark w-full text-xs" value={form.inspection_status} onChange={handleChange}>
+              <option value="">-- Select --</option>
+              {INSPECTION_STATUS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
+            </select>
+          </FormField>
         </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Camera System</label>
-          <select name="camera_system" className="select-dark w-full text-xs" value={form.camera_system} onChange={handleChange}>
-            <option value="">-- Select --</option>
-            {CAMERA_SYSTEM_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Roof Access</label>
-          <select name="roof_access" className="select-dark w-full text-xs" value={form.roof_access} onChange={handleChange}>
-            <option value="">-- Select --</option>
-            {ROOF_ACCESS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Alarm System</label>
-          <select
-            name="alarm_system"
-            className="select-dark w-full text-xs"
-            value={form.alarm_system}
-            onChange={handleChange}
-          >
-            <option value="">-- Select --</option>
-            {ALARM_SYSTEM_OPTIONS.map((a) => <option key={a} value={a}>{a}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Alarm Company</label>
-          <input
-            name="alarm_company"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. ADT, Vivint"
-            value={form.alarm_company}
-            onChange={handleChange}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Alarm Account #</label>
-          <input
-            name="alarm_account"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="Account number"
-            value={form.alarm_account}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
-      <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Parking Info</label>
-        <RichTextArea
-          name="parking_info"
-          rows={2}
-          className="input-dark w-full text-xs"
-          placeholder="Parking layout, reserved spots, lot access"
-          value={form.parking_info}
-          onChange={handleChange}
-        />
-      </div>
+      </FormSection>
 
-      {/* ── Key Holder / Owner ── */}
-      <div className="mt-3 pt-3 border-t border-rmpg-700">
-        <div className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider mb-3">Key Holder / Owner</div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Key Holder Name</label>
-          <input
-            name="key_holder_name"
-            type="text"
+      {/* Post Orders */}
+      <FormSection title="Post Orders" icon={Shield}>
+        <FormField label="Post Orders">
+          <RichTextArea
+            name="post_orders"
+            rows={3}
             className="input-dark w-full text-xs"
-            placeholder="Full name"
-            value={form.key_holder_name}
+            placeholder="Standing instructions for officers at this property"
+            value={form.post_orders}
+            onChange={handleChange}
+            maxLength={5000}
+          />
+          <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.post_orders.length}/5000</div>
+        </FormField>
+      </FormSection>
+
+      {/* Hazard Notes */}
+      <FormSection title="Hazard Notes" icon={FileWarning} accent="red">
+        <div className="space-y-4">
+          <FormField label="Hazard Notes">
+            <RichTextArea
+              name="hazard_notes"
+              rows={3}
+              className="input-dark w-full text-xs"
+              placeholder="Known hazards, safety concerns, or officer caution notes"
+              value={form.hazard_notes}
+              onChange={handleChange}
+              maxLength={3000}
+            />
+            <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.hazard_notes.length}/3000</div>
+          </FormField>
+          <FormField label="Utility Shutoffs">
+            <RichTextArea
+              name="utility_shutoffs"
+              rows={2}
+              className="input-dark w-full text-xs"
+              placeholder="Gas, water, electric shutoff locations"
+              value={form.utility_shutoffs}
+              onChange={handleChange}
+            />
+          </FormField>
+          <FormField label="Known Hazards">
+            <RichTextArea
+              name="known_hazards"
+              rows={2}
+              className="input-dark w-full text-xs"
+              placeholder="Chemical storage, structural issues, aggressive animals, etc."
+              value={form.known_hazards}
+              onChange={handleChange}
+            />
+          </FormField>
+        </div>
+      </FormSection>
+
+      {/* Access Instructions */}
+      <FormSection title="Access Instructions" icon={MapPin}>
+        <FormField label="Access Instructions">
+          <RichTextArea
+            name="access_instructions"
+            rows={2}
+            className="input-dark w-full text-xs"
+            placeholder="How to access the property, key locations, entry points"
+            value={form.access_instructions}
             onChange={handleChange}
           />
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Key Holder Phone</label>
-          <input
-            name="key_holder_phone"
-            type="tel"
+        </FormField>
+      </FormSection>
+
+      {/* Notes */}
+      <FormSection title="Notes" icon={FileText}>
+        <FormField label="Notes">
+          <RichTextArea
+            name="notes"
+            rows={2}
             className="input-dark w-full text-xs"
-            placeholder="(801) 555-0100"
-            value={form.key_holder_phone}
-            onChange={(e) => setForm(prev => ({ ...prev, key_holder_phone: formatPhoneInput(e.target.value) }))}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Key Holder Relationship</label>
-          <input
-            name="key_holder_relationship"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. Property Manager"
-            value={form.key_holder_relationship}
+            value={form.notes}
             onChange={handleChange}
           />
+        </FormField>
+        <div className="flex items-center gap-3 pt-3">
+          <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
+            <input
+              type="checkbox"
+              name="is_active"
+              checked={form.is_active}
+              onChange={handleChange}
+              className="w-4 h-4 bg-rmpg-800 border-rmpg-600 text-brand-500 focus:ring-brand-500"
+            />
+            Active Property
+          </label>
         </div>
-      </div>
-
-      {/* Secondary Contact */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Secondary Contact Name</label>
-          <input
-            name="secondary_contact_name"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="Backup contact name"
-            value={form.secondary_contact_name}
-            onChange={handleChange}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Secondary Contact Phone</label>
-          <input
-            name="secondary_contact_phone"
-            type="tel"
-            className="input-dark w-full text-xs"
-            placeholder="(801) 555-0200"
-            value={form.secondary_contact_phone}
-            onChange={(e) => setForm(prev => ({ ...prev, secondary_contact_phone: formatPhoneInput(e.target.value) }))}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Contact Email</label>
-          <input
-            name="contact_email"
-            type="email"
-            className="input-dark w-full text-xs"
-            placeholder="Primary contact email"
-            value={form.contact_email}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Owner Name</label>
-          <input
-            name="owner_name"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="Property owner full name"
-            value={form.owner_name}
-            onChange={handleChange}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Owner Phone</label>
-          <input
-            name="owner_phone"
-            type="tel"
-            className="input-dark w-full text-xs"
-            placeholder="(801) 555-0100"
-            value={form.owner_phone}
-            onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))}
-          />
-        </div>
-      </div>
-
-      {/* ── Patrol Operations ── */}
-      <div className="mt-3 pt-3 border-t border-rmpg-700">
-        <div className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider mb-3">Patrol Operations</div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Patrol Frequency</label>
-          <select name="patrol_frequency" className="select-dark w-full text-xs" value={form.patrol_frequency} onChange={handleChange}>
-            <option value="">-- Select --</option>
-            {PATROL_FREQUENCY_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Opening Hours</label>
-          <input
-            name="opening_hours"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. 08:00"
-            value={form.opening_hours}
-            onChange={handleChange}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Closing Hours</label>
-          <input
-            name="closing_hours"
-            type="text"
-            className="input-dark w-full text-xs"
-            placeholder="e.g. 22:00"
-            value={form.closing_hours}
-            onChange={handleChange}
-          />
-        </div>
-      </div>
-
-      {/* ── Inspection ── */}
-      <div className="mt-3 pt-3 border-t border-rmpg-700">
-        <div className="text-[10px] font-semibold text-[#d4a017] uppercase tracking-wider mb-3">Inspection</div>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Last Inspection Date</label>
-          <input
-            name="last_inspection_date"
-            type="date"
-            className="input-dark w-full text-xs"
-            value={form.last_inspection_date}
-            onChange={handleChange}
-          />
-        </div>
-        <div>
-          <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Inspection Status</label>
-          <select name="inspection_status" className="select-dark w-full text-xs" value={form.inspection_status} onChange={handleChange}>
-            <option value="">-- Select --</option>
-            {INSPECTION_STATUS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
-        </div>
-      </div>
-
-      {/* Row 7: Post Orders */}
-      <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Post Orders</label>
-        <RichTextArea
-          name="post_orders"
-          rows={3}
-          className="input-dark w-full text-xs"
-          placeholder="Standing instructions for officers at this property"
-          value={form.post_orders}
-          onChange={handleChange}
-          maxLength={5000}
-        />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.post_orders.length}/5000</div>
-      </div>
-
-      {/* Row 8: Hazard Notes */}
-      <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Hazard Notes</label>
-        <RichTextArea
-          name="hazard_notes"
-          rows={3}
-          className="input-dark w-full text-xs"
-          placeholder="Known hazards, safety concerns, or officer caution notes"
-          value={form.hazard_notes}
-          onChange={handleChange}
-          maxLength={3000}
-        />
-        <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.hazard_notes.length}/3000</div>
-      </div>
-
-      {/* ── Safety ── */}
-      <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Utility Shutoffs</label>
-        <RichTextArea
-          name="utility_shutoffs"
-          rows={2}
-          className="input-dark w-full text-xs"
-          placeholder="Gas, water, electric shutoff locations"
-          value={form.utility_shutoffs}
-          onChange={handleChange}
-        />
-      </div>
-      <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Known Hazards</label>
-        <RichTextArea
-          name="known_hazards"
-          rows={2}
-          className="input-dark w-full text-xs"
-          placeholder="Chemical storage, structural issues, aggressive animals, etc."
-          value={form.known_hazards}
-          onChange={handleChange}
-        />
-      </div>
-
-      {/* Row 9: Access Instructions */}
-      <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Access Instructions</label>
-        <RichTextArea
-          name="access_instructions"
-          rows={2}
-          className="input-dark w-full text-xs"
-          placeholder="How to access the property, key locations, entry points"
-          value={form.access_instructions}
-          onChange={handleChange}
-        />
-      </div>
-
-      {/* Row 10: Notes */}
-      <div>
-        <label className="block text-[10px] font-semibold text-rmpg-300 uppercase tracking-wider mb-1">Notes</label>
-        <RichTextArea
-          name="notes"
-          rows={2}
-          className="input-dark w-full text-xs"
-          value={form.notes}
-          onChange={handleChange}
-        />
-      </div>
-
-      {/* Row 11: Is Active */}
-      <div className="flex items-center gap-3 py-2">
-        <label className="flex items-center gap-2 text-xs text-rmpg-200 cursor-pointer">
-          <input
-            type="checkbox"
-            name="is_active"
-            checked={form.is_active}
-            onChange={handleChange}
-            className="w-4 h-4 bg-rmpg-800 border-rmpg-600 text-brand-500 focus:ring-brand-500"
-          />
-          Active Property
-        </label>
-      </div>
+      </FormSection>
     </FormModal>
   );
 }

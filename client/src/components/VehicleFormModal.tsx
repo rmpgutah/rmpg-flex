@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Car } from 'lucide-react';
 import FormModal from './FormModal';
+import FormField from './records/FormField';
 import { useFormDraft } from '../hooks/useFormDraft';
 import type { Vehicle } from '../types';
 import AddressAutocomplete from './AddressAutocomplete';
@@ -314,62 +315,53 @@ export default function VehicleFormModal({
         <>
           {/* Plate / State */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Plate Number</label>
+            <FormField label="Plate Number">
               <input name="plate_number" type="text" className="input-dark mt-1" value={form.plate_number} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">State</label>
+            </FormField>
+            <FormField label="State">
               <select name="state" className="select-dark mt-1" value={form.state} onChange={handleChange}>
                 {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           {/* Make / Model / Year / Body */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Make</label>
+            <FormField label="Make">
               <select name="make" className="select-dark mt-1" value={form.make} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {COMMON_MAKES.map((m) => <option key={m} value={m}>{m}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Model</label>
+            </FormField>
+            <FormField label="Model">
               <input name="model" type="text" className="input-dark mt-1" value={form.model} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Year</label>
+            </FormField>
+            <FormField label="Year">
               <input name="year" type="number" min="1900" max="2030" className="input-dark mt-1" placeholder="e.g. 2024" value={form.year} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Body Style</label>
+            </FormField>
+            <FormField label="Body Style">
               <select name="body_style" className="select-dark mt-1" value={form.body_style} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {VEHICLE_BODY_STYLE_OPTIONS.map((b) => <option key={b} value={b}>{b}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           {/* Color / Secondary Color / Doors */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Primary Color</label>
+            <FormField label="Primary Color">
               <select name="color" className="select-dark mt-1" value={form.color} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {VEHICLE_COLOR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Secondary Color</label>
+            </FormField>
+            <FormField label="Secondary Color">
               <select name="secondary_color" className="select-dark mt-1" value={form.secondary_color} onChange={handleChange}>
                 <option value="">None</option>
                 {VEHICLE_COLOR_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Doors</label>
+            </FormField>
+            <FormField label="Doors">
               <select name="doors" className="select-dark mt-1" value={form.doors} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 <option value="2">2 Door</option>
@@ -377,58 +369,51 @@ export default function VehicleFormModal({
                 <option value="4">4 Door</option>
                 <option value="5">5 Door</option>
               </select>
-            </div>
+            </FormField>
           </div>
 
           {/* VIN */}
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">VIN</label>
+          <FormField label="VIN">
             <input name="vin" type="text" maxLength={17} className="input-dark mt-1 font-mono uppercase" placeholder="17-character VIN" value={form.vin} onChange={handleChange} pattern="[A-HJ-NPR-Za-hj-npr-z0-9]{17}" title="VIN must be 17 alphanumeric characters (no I, O, or Q)" />
-          </div>
+          </FormField>
         </>
       )}
 
       {activeSection === 'mechanical' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Trim / Package</label>
+            <FormField label="Trim / Package">
               <input name="trim" type="text" className="input-dark mt-1" placeholder="e.g. LX, Sport, Limited" value={form.trim} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Engine Type</label>
+            </FormField>
+            <FormField label="Engine Type">
               <select name="engine_type" className="select-dark mt-1" value={form.engine_type} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {ENGINE_OPTIONS.map((e) => <option key={e} value={e}>{e}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Fuel Type</label>
+            </FormField>
+            <FormField label="Fuel Type">
               <select name="fuel_type" className="select-dark mt-1" value={form.fuel_type} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {VEHICLE_FUEL_OPTIONS.map((f) => <option key={f} value={f}>{f}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Transmission</label>
+            <FormField label="Transmission">
               <select name="transmission" className="select-dark mt-1" value={form.transmission} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {VEHICLE_TRANSMISSION_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Drive Type</label>
+            </FormField>
+            <FormField label="Drive Type">
               <select name="drive_type" className="select-dark mt-1" value={form.drive_type} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {VEHICLE_DRIVE_OPTIONS.map((d) => <option key={d} value={d}>{d}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Odometer</label>
+            </FormField>
+            <FormField label="Odometer">
               <input name="odometer" type="text" className="input-dark mt-1" placeholder="e.g. 45,230 mi" value={form.odometer} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
         </>
       )}
@@ -436,95 +421,80 @@ export default function VehicleFormModal({
       {activeSection === 'registration' && (
         <>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Plate Type</label>
+            <FormField label="Plate Type">
               <select name="plate_type" className="select-dark mt-1" value={form.plate_type} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {PLATE_TYPE_OPTIONS.map((p) => <option key={p} value={p}>{p}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Registration Expiry</label>
+            </FormField>
+            <FormField label="Registration Expiry">
               <input name="registration_expiry" type="date" className="input-dark mt-1" value={form.registration_expiry} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Lien Holder</label>
+            </FormField>
+            <FormField label="Lien Holder">
               <input name="lien_holder" type="text" className="input-dark mt-1" placeholder="Bank or finance company" value={form.lien_holder} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Title Status</label>
+            <FormField label="Title Status">
               <select name="title_status" className="select-dark mt-1" value={form.title_status} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {TITLE_STATUS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Registration State</label>
+            </FormField>
+            <FormField label="Registration State">
               <select name="registration_state" className="select-dark mt-1" value={form.registration_state} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {US_STATES.map((s) => <option key={s} value={s}>{s}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Estimated Value</label>
+            </FormField>
+            <FormField label="Estimated Value">
               <input name="estimated_value" type="text" className="input-dark mt-1" placeholder="$" value={form.estimated_value} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Insurance Company</label>
+            <FormField label="Insurance Company">
               <input name="insurance_company" type="text" className="input-dark mt-1" value={form.insurance_company} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Policy Number</label>
+            </FormField>
+            <FormField label="Policy Number">
               <input name="insurance_policy" type="text" className="input-dark mt-1" value={form.insurance_policy} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Insurance Expiry</label>
+            <FormField label="Insurance Expiry">
               <input name="insurance_expiry" type="date" className="input-dark mt-1" value={form.insurance_expiry} onChange={handleChange} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Vehicle Use</label>
+            </FormField>
+            <FormField label="Vehicle Use">
               <select name="vehicle_use" className="select-dark mt-1" value={form.vehicle_use} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {VEHICLE_USE_OPTIONS.map((u) => <option key={u} value={u}>{u}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Primary Driver</label>
+            </FormField>
+            <FormField label="Primary Driver">
               <input name="primary_driver_name" type="text" className="input-dark mt-1" placeholder="Name of primary driver" value={form.primary_driver_name} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">NCIC Entry #</label>
+            <FormField label="NCIC Entry #">
               <input name="ncic_entry_number" type="text" className="input-dark mt-1" placeholder="NCIC stolen vehicle entry number" value={form.ncic_entry_number} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-rmpg-400 uppercase font-semibold mb-2 block">Owner Information</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Name</label>
+              <FormField label="Owner Name">
                 <input name="owner_name" type="text" className="input-dark mt-1" placeholder="Vehicle owner name" value={form.owner_name} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Registered Owner</label>
+              </FormField>
+              <FormField label="Registered Owner">
                 <input name="registered_owner" type="text" className="input-dark mt-1" placeholder="Registered owner (if different)" value={form.registered_owner} onChange={handleChange} />
-              </div>
+              </FormField>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Address</label>
+              <FormField label="Owner Address">
                 <AddressAutocomplete
                   name="owner_address"
                   className="input-dark mt-1"
@@ -533,65 +503,55 @@ export default function VehicleFormModal({
                   onChange={(val) => setForm((prev) => ({ ...prev, owner_address: val }))}
                   onSelect={(addr) => setForm((prev) => ({ ...prev, owner_address: addr.formatted || addr.street }))}
                 />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Phone</label>
+              </FormField>
+              <FormField label="Owner Phone">
                 <input name="owner_phone" type="tel" className="input-dark mt-1" value={form.owner_phone} onChange={(e) => setForm(prev => ({ ...prev, owner_phone: formatPhoneInput(e.target.value) }))} placeholder="(801) 555-1234" pattern="[0-9()\-\s+]{7,20}" />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner Date of Birth</label>
+              </FormField>
+              <FormField label="Owner Date of Birth">
                 <input name="owner_dob" type="date" className="input-dark mt-1" value={form.owner_dob} onChange={handleChange} />
-              </div>
+              </FormField>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-3">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Owner DL #</label>
+              <FormField label="Owner DL #">
                 <input name="owner_dl_number" type="text" className="input-dark mt-1" placeholder="Owner's driver license number" value={form.owner_dl_number} onChange={handleChange} />
-              </div>
+              </FormField>
             </div>
           </div>
 
           <div className="border-t border-rmpg-700 pt-3">
             <label className="text-[10px] text-red-400 uppercase font-semibold mb-2 block">Stolen / Tow Status</label>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Stolen Status</label>
+              <FormField label="Stolen Status">
                 <select name="stolen_status" className="select-dark mt-1" value={form.stolen_status} onChange={handleChange}>
                   <option value="">-- Select --</option>
                   {STOLEN_STATUS_OPTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
                 </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Stolen Date</label>
+              </FormField>
+              <FormField label="Stolen Date">
                 <input name="stolen_date" type="date" className="input-dark mt-1" value={form.stolen_date} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Recovery Date</label>
+              </FormField>
+              <FormField label="Recovery Date">
                 <input name="recovery_date" type="date" className="input-dark mt-1" value={form.recovery_date} onChange={handleChange} />
-              </div>
+              </FormField>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mt-3">
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tow Status</label>
+              <FormField label="Tow Status">
                 <select name="tow_status" className="select-dark mt-1" value={form.tow_status} onChange={handleChange}>
                   <option value="">-- Select --</option>
                   {TOW_STATUS_OPTIONS.map((t) => <option key={t} value={t}>{t}</option>)}
                 </select>
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tow Company</label>
+              </FormField>
+              <FormField label="Tow Company">
                 <input name="tow_company" type="text" className="input-dark mt-1" value={form.tow_company} onChange={handleChange} />
-              </div>
-              <div>
-                <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tow Date</label>
+              </FormField>
+              <FormField label="Tow Date">
                 <input name="tow_date" type="date" className="input-dark mt-1" value={form.tow_date} onChange={handleChange} />
-              </div>
+              </FormField>
             </div>
-            <div className="mt-3">
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Tow Location / Impound Lot</label>
+            <FormField label="Tow Location / Impound Lot" className="mt-3">
               <input name="tow_location" type="text" className="input-dark mt-1" placeholder="Where vehicle was towed / impounded" value={form.tow_location} onChange={handleChange} />
-            </div>
+            </FormField>
           </div>
 
           <div className="flex items-center gap-6 py-2">
@@ -613,55 +573,49 @@ export default function VehicleFormModal({
         <>
           {/* Condition Dropdowns */}
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Exterior Condition</label>
+            <FormField label="Exterior Condition">
               <select name="exterior_condition" className="select-dark mt-1" value={form.exterior_condition} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {VEHICLE_CONDITION_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Interior Condition</label>
+            </FormField>
+            <FormField label="Interior Condition">
               <select name="interior_condition" className="select-dark mt-1" value={form.interior_condition} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {VEHICLE_CONDITION_OPTIONS.map((c) => <option key={`int-${c}`} value={c}>{c}</option>)}
               </select>
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Window Tint</label>
+            </FormField>
+            <FormField label="Window Tint">
               <select name="window_tint" className="select-dark mt-1" value={form.window_tint} onChange={handleChange}>
                 <option value="">-- Select --</option>
                 {WINDOW_TINT_OPTIONS.map((w) => <option key={w} value={w}>{w}</option>)}
               </select>
-            </div>
+            </FormField>
           </div>
 
           {/* Damage / Features */}
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Damage Description</label>
+          <FormField label="Damage Description">
             <input name="damage_description" type="text" className="input-dark mt-1" placeholder="Dents, scratches, broken glass, etc." value={form.damage_description} onChange={handleChange} />
-          </div>
-          <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Distinguishing Features</label>
+          </FormField>
+          <FormField label="Distinguishing Features">
             <input name="distinguishing_features" type="text" className="input-dark mt-1" placeholder="Bumper stickers, custom rims, tinted windows, etc." value={form.distinguishing_features} onChange={handleChange} />
-          </div>
+          </FormField>
 
           {/* Modifications / Equipment */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Modifications</label>
+            <FormField label="Modifications">
               <RichTextArea name="modifications" rows={2} className="input-dark mt-1" placeholder="Lift kit, exhaust, aftermarket bumper, etc." value={form.modifications} onChange={handleChange} maxLength={2000} />
-            </div>
-            <div>
-              <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Equipment Notes</label>
+            </FormField>
+            <FormField label="Equipment Notes">
               <RichTextArea name="equipment_notes" rows={2} className="input-dark mt-1" placeholder="Aftermarket parts, accessories, etc." value={form.equipment_notes} onChange={handleChange} maxLength={2000} />
-            </div>
+            </FormField>
           </div>
 
           {/* Notes */}
           <div>
-            <label className="text-[10px] text-rmpg-400 uppercase font-semibold">Notes</label>
-            <RichTextArea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
+            <FormField label="Notes">
+              <RichTextArea name="notes" rows={3} className="input-dark mt-1" value={form.notes} onChange={handleChange} maxLength={5000} />
+            </FormField>
             <div className="text-[9px] text-rmpg-500 text-right mt-0.5">{form.notes.length}/5000</div>
           </div>
         </>
