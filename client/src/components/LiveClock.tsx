@@ -26,7 +26,7 @@ function LiveClock({ className, style, timeZone = 'America/Denver', hour12 = fal
   }, []);
   return (
     <span className={className} style={style}>
-      {new Date(now).toLocaleTimeString('en-US', { hour12, timeZone })}
+      {/* new-date-ok: `now` is Date.now() epoch ms, not a naive server timestamp string */ new Date(now).toLocaleTimeString('en-US', { hour12, timeZone })}
     </span>
   );
 }
