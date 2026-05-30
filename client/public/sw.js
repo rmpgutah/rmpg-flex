@@ -84,7 +84,10 @@
 //       instead of the redundant composite codes ("SL1-HER", "SL1-HER/C").
 // v630: click-to-copy the Spillman dispatch code + explanatory tooltips on the
 //       Area/Sec/Zone/Beat fields in the call detail panel.
-const CACHE_NAME = 'rmpg-flex-v630';
+// v631: prepend the Spillman section code to the queue card geography line,
+//       derived from the composite zone_id via new sectionPrefix() parser
+//       (zero extra lookups). sector_name fallback for non-composite codes.
+const CACHE_NAME = 'rmpg-flex-v631';
 const MAX_CACHE_ENTRIES = 500; // Limit main cache to prevent unbounded growth
 const STATIC_ASSETS = [
   '/',

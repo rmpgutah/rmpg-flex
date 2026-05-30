@@ -7,7 +7,7 @@ import WarningTags from './WarningTags';
 import type { WarningTag } from './WarningTags';
 import { getTimerState, isActiveStatus } from '../utils/dispatchTimers';
 import { humanizePriority, getStatusTooltip, formatAddressDisplay } from '../utils/statusLabels';
-import { beatLeaf } from '../utils/dispatchCodeParts';
+import { beatLeaf, sectionPrefix } from '../utils/dispatchCodeParts';
 // Parse server timestamps as UTC (naive strings) — raw new Date() reads
 // them as browser-local and skews every elapsed/age calc by the offset.
 import { parseTimestamp } from '../utils/dateUtils';
@@ -438,11 +438,18 @@ export default React.memo(function CallCard({ call, isSelected = false, onClick,
             // beatLeaf strips the redundant "SL1-HER/" parent context → just "C".
             const beatLabel = [beatLeaf(call.beat_id), call.beat_name].filter(Boolean).join(' ');
             const parts = [call.zone_name, beatLabel].filter(Boolean);
-            return parts.length ? (
-              <div className="text-[9px] text-rmpg-500 truncate" title={parts.join(' › ')}>
-                {parts.join(' › ')}
+            if (!parts.length) return null;
+            // Section code rides inside the composite zone_id ("SL1-HER" → "SL1"),
+            // so we surface it with zero extra lookups. sector_name is the fallback
+            // when the zone code isn't a composite.
+            const section = sectionPrefix(call.zone_id) || call.sector_name || '';
+            const geo = parts.join(' › ');
+            return (
+              <div className="text-[9px] text-rmpg-500 truncate" title={[section, geo].filter(Boolean).join(' · ')}>
+                {section && <span className="font-mono text-amber-300/70">{section}</span>}
+                {section && ' · '}{geo}
               </div>
-            ) : null;
+            );
           })()}
         </div>
       </div>
