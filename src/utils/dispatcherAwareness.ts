@@ -127,7 +127,7 @@ export async function gatherAwareness(db: D1Database, channelId: number, speaker
 
 // ─── CAD lookups ────────────────────────────────────────────
 
-export type LookupType = 'plate' | 'person' | 'warrant' | 'premise' | 'vin';
+export type LookupType = 'plate' | 'person' | 'warrant' | 'premise' | 'vin' | 'unit_location' | 'eta';
 export interface LookupRequest { type: LookupType; query: string }
 
 /**
@@ -170,8 +170,16 @@ export async function runLookup(
     if (req.type === 'plate') return await lookupPlate(db, req.query);
     if (req.type === 'person') return await lookupPerson(db, req.query);
     if (req.type === 'warrant') return await lookupWarrant(db, req.query);
-    if (req.type === 'premise') return await lookupPremiseText(db, req.query);
-    if (req.type === 'vin') return await lookupVin(db, req.query);
+    // premise/vin (from the officer-safety upgrade) return a plain string —
+    // wrap them as a text-only LookupResult (no auto-open record).
+    if (req.type === 'premise') return { text: await lookupPremiseText(db, req.query) };
+    if (req.type === 'vin') return { text: await lookupVin(db, req.query) };
+    // "where am I" / "what's my ETA" key off the transmitting unit, not the
+    // spoken query — the model may pass the call-sign through `query`, but the
+    // speaker the relay already knows is authoritative.
+    const unit = (ctx.speaker || req.query || '').trim();
+    if (req.type === 'unit_location') return await lookupUnitLocation(env, db, unit);
+    if (req.type === 'eta') return await lookupEta(env, db, unit);
     return null;
   } catch (err) {
     console.error('[awareness] lookup failed:', (err as Error)?.message);
@@ -261,7 +269,7 @@ async function lookupVin(db: D1Database, raw: string): Promise<string> {
   return parts.join(' ');
 }
 
-async function lookupPlate(db: D1Database, raw: string): Promise<string> {
+async function lookupPlate(db: D1Database, raw: string): Promise<LookupResult> {
   const plate = norm(raw).replace(/\s+/g, '');
   const v = await queryFirst<{
     id: number; plate_number: string; registration_state: string | null; state: string | null;
