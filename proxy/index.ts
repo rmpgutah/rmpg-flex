@@ -557,7 +557,15 @@ const API_ROUTES: RouteRule[] = [
   // shared generateIncidentFromCall() is schema-verified vs live incidents +
   // audit_log; legacy lacked promote-to-incident entirely (CAD "PI" was 404).
   // Listed BEFORE the bare /api/dispatch/calls/:id rule so they win the match.
-  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve|pin)(\/.*)?$/ },
+  //
+  // redispatch / undo-redispatch: re-dispatch ("return visit") chain. Legacy's
+  // handler 500s on live D1 — it INSERTs calls_for_service.parent_call_id (+
+  // gang_related/fire_requested/hazmat/tags), none of which exist on the live
+  // 100-column base table, and snapshots into a call_visit_history schema live
+  // repurposed for premise visits. The rewrite stores the chain link on
+  // calls_for_service_ext.parent_call_id (migration 0044) and reconstructs
+  // visit history from the chain. MUST route here, not fall through to legacy.
+  { kind: 'regex', value: /^\/api\/dispatch\/calls\/\d+\/(recommended-units|closest-unit|auto-assign|timeline|warnings|audit-trail|generate-incident|promote-to-incident|send-to-serve|pin|redispatch|undo-redispatch)(\/.*)?$/ },
 
   // /api/dispatch/calls/:id/{persons,vehicles}[/...] — rewrite implements
   // POST/DELETE/PATCH plus the quick-add fast-path; legacy implements ONLY
