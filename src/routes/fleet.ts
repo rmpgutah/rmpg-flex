@@ -304,6 +304,35 @@ fleet.get('/dashcam-videos', async (c) => {
 });
 
 // ─────────────────────────────────────────────────────────
+// GET /map — lightweight fleet feed for the live Map overlay.
+// MUST be declared BEFORE GET /:id, which would otherwise capture "map"
+// as a vehicle id and 400 with "Invalid vehicle id" (the bug observed on
+// the Map page console). Returns a BARE array — the client hook
+// useMapFleetVehicles expects FleetVehicle[] — reusing the same
+// fleet_vehicles + units join as GET /. Degrades to [] on any error so
+// this optional overlay never surfaces a 4xx/5xx in the console. GPS
+// columns (gps_lat/gps_lon/…) flow through v.* when present on live D1;
+// vehicles lacking coordinates simply don't plot (no error).
+// ─────────────────────────────────────────────────────────
+fleet.get('/map', async (c) => {
+  try {
+    const db = getDb(c.env);
+    const rows = await query<Record<string, unknown>>(
+      db,
+      `SELECT v.*, u.call_sign as assigned_call_sign
+       FROM fleet_vehicles v
+       LEFT JOIN units u ON u.id = v.assigned_unit_id
+       WHERE v.archived_at IS NULL
+       ORDER BY v.vehicle_number`,
+    );
+    return c.json(rows);
+  } catch (err) {
+    console.error('GET /fleet/map failed:', err);
+    return c.json([]);
+  }
+});
+
+// ─────────────────────────────────────────────────────────
 // GET /:id — vehicle detail with linked assignments + recent activity
 // ─────────────────────────────────────────────────────────
 // Split-query pattern (mirrors dispatch/calls.ts:331). Even though
